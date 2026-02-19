@@ -1,0 +1,21 @@
+# TravelCRM Pro — Terraform Variables
+# Copy this file to terraform.tfvars and fill in your values
+# NEVER commit terraform.tfvars to git (it's in .gitignore)
+
+# Project
+project_name = "travelcrm"
+domain       = "yourdomain.com"
+
+# Oracle Cloud
+oci_tenancy_ocid     = "ocid1.tenancy.oc1..aaaa..."
+oci_user_ocid        = "ocid1.user.oc1..aaaa..."
+oci_fingerprint      = "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"
+oci_private_key      = "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
+oci_compartment_ocid = "ocid1.compartment.oc1..aaaa..."
+oci_region           = "ap-mumbai-1"
+oci_image_id         = "ocid1.image.oc1.ap-mumbai-1..aaaa..."  # Ubuntu 22.04 ARM
+ssh_public_key       = "ssh-rsa AAAA... your-key"
+
+# Cloudflare
+cloudflare_account_id = "your-account-id"
+cloudflare_api_token  = "your-api-token"

@@ -1,0 +1,50 @@
+name: travel_crm
+repository: https://github.com/your-org/travel-crm
+
+packages:
+  - packages/*
+
+command:
+  bootstrap:
+    usePubspecOverrides: true
+
+scripts:
+  analyze:
+    run: melos exec -- "dart analyze --fatal-infos"
+    description: Run dart analyze in all packages
+
+  test:
+    run: melos exec -- "flutter test"
+    description: Run tests in all packages
+    packageFilters:
+      dirExists: test
+
+  build:web:
+    run: |
+      cd packages/crm_app && flutter build web --release --web-renderer canvaskit
+    description: Build CRM web app
+
+  build:android:crm:
+    run: |
+      cd packages/crm_app && flutter build apk --release
+    description: Build CRM Android APK
+
+  build:android:driver:
+    run: |
+      cd packages/driver_app && flutter build apk --release
+    description: Build Driver Android APK
+
+  build:windows:
+    run: |
+      cd packages/crm_app && flutter build windows --release
+    description: Build CRM Windows app
+
+  generate:
+    run: melos exec -- "dart run build_runner build --delete-conflicting-outputs"
+    description: Run code generation (freezed, riverpod, json_serializable)
+    packageFilters:
+      dependsOn: build_runner
+
+  clean:
+    run: melos exec -- "flutter clean"
+    description: Clean all packages

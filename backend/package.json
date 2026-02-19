@@ -1,0 +1,33 @@
+{
+  "name": "travelcrm-api",
+  "version": "1.0.0",
+  "description": "TravelCRM Pro — Cloudflare Workers API",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy --env production",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "wrangler d1 migrations apply travelcrm-master --local",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@hono/zod-validator": "^0.7.6",
+    "bcryptjs": "^3.0.3",
+    "drizzle-orm": "^0.45.1",
+    "hono": "^4.12.0",
+    "jose": "^6.1.3",
+    "uuidv7": "^1.1.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260219.0",
+    "@types/bcryptjs": "^2.4.6",
+    "drizzle-kit": "^0.31.9",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.67.0"
+  }
+}

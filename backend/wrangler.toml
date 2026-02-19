@@ -1,0 +1,88 @@
+name = "travelcrm-api"
+main = "src/index.ts"
+compatibility_date = "2026-02-20"
+compatibility_flags = ["nodejs_compat"]
+
+# --- D1 Databases ---
+[[d1_databases]]
+binding = "MASTER_DB"
+database_name = "travelcrm-master"
+database_id = "<MASTER_DB_ID_FROM_TERRAFORM>"
+
+# --- R2 Buckets ---
+[[r2_buckets]]
+binding = "FILE_STORAGE"
+bucket_name = "travelcrm-files"
+
+# --- KV Namespaces ---
+[[kv_namespaces]]
+binding = "CACHE"
+id = "<CACHE_KV_ID_FROM_TERRAFORM>"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "<SESSIONS_KV_ID_FROM_TERRAFORM>"
+
+# --- Queues (Producers) ---
+[[queues.producers]]
+binding = "EMAIL_QUEUE"
+queue = "travelcrm-email-queue"
+
+[[queues.producers]]
+binding = "SMS_QUEUE"
+queue = "travelcrm-sms-queue"
+
+[[queues.producers]]
+binding = "PUSH_NOTIFICATION_QUEUE"
+queue = "travelcrm-push-queue"
+
+[[queues.producers]]
+binding = "WP_PROVISION_QUEUE"
+queue = "travelcrm-wp-provision-queue"
+
+# --- Queues (Consumers) ---
+[[queues.consumers]]
+queue = "travelcrm-email-queue"
+max_batch_size = 10
+max_batch_timeout = 30
+
+[[queues.consumers]]
+queue = "travelcrm-sms-queue"
+max_batch_size = 10
+max_batch_timeout = 30
+
+[[queues.consumers]]
+queue = "travelcrm-push-queue"
+max_batch_size = 10
+max_batch_timeout = 30
+
+[[queues.consumers]]
+queue = "travelcrm-wp-provision-queue"
+max_batch_size = 1
+max_batch_timeout = 60
+
+# --- Durable Objects ---
+[durable_objects]
+bindings = [
+  { name = "REALTIME", class_name = "RealtimeRoom" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["RealtimeRoom"]
+
+# --- Environment Variables (set via wrangler secret) ---
+# JWT_SECRET, JWT_REFRESH_SECRET, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN,
+# SENDGRID_API_KEY, FCM_SERVER_KEY
+
+# --- Dev Environment ---
+[env.dev]
+name = "travelcrm-api-dev"
+
+# --- Staging Environment ---
+[env.staging]
+name = "travelcrm-api-staging"
+
+# --- Production Environment ---
+[env.production]
+name = "travelcrm-api"

@@ -1,0 +1,45 @@
+name: Deploy Super Admin Portal
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'super-admin/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'super-admin/**'
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy Next.js
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: super-admin
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: super-admin/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build for Cloudflare Pages
+        run: npx @cloudflare/next-on-pages
+        env:
+          NODE_ENV: production
+
+      - name: Deploy to Cloudflare Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: travelcrm-admin
+          directory: super-admin/.vercel/output/static

@@ -1,0 +1,65 @@
+name: Deploy CRM Web App
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/crm_app/**'
+      - 'packages/shared/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/crm_app/**'
+      - 'packages/shared/**'
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy Flutter Web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.1'
+          channel: 'stable'
+          cache: true
+
+      - name: Install Melos
+        run: dart pub global activate melos
+
+      - name: Bootstrap packages
+        run: melos bootstrap
+
+      - name: Run code generation
+        run: melos run generate
+
+      - name: Analyze
+        run: melos run analyze
+
+      - name: Build Web (CanvasKit)
+        run: |
+          cd packages/crm_app
+          flutter build web --release --web-renderer canvaskit \
+            --dart-define=API_BASE_URL=${{ vars.API_BASE_URL }} \
+            --dart-define=ENVIRONMENT=${{ github.ref == 'refs/heads/main' && 'production' || 'dev' }}
+
+      - name: Deploy to Cloudflare Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: travelcrm-web
+          directory: packages/crm_app/build/web
+
+      - name: Deploy Preview
+        if: github.event_name == 'pull_request'
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: travelcrm-web
+          directory: packages/crm_app/build/web
+          branch: ${{ github.head_ref }}

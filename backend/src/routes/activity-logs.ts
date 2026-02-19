@@ -1,0 +1,97 @@
+import { Hono } from 'hono';
+import { drizzle } from 'drizzle-orm/d1';
+import { eq, desc, and, sql } from 'drizzle-orm';
+import type { AppContext } from '../types';
+import { activityLogs } from '../db/tenant-schema';
+import { rbac } from '../middleware/rbac';
+import { success } from '../utils/response';
+
+const activityLogRoutes = new Hono<AppContext>();
+
+// ============================================================
+// GET / — List activity logs (admin only, paginated)
+// ============================================================
+
+activityLogRoutes.get('/', rbac(['admin']), async (c) => {
+  const db = drizzle(c.get('tenantDb'));
+
+  const page = Number(c.req.query('page') || '1');
+  const limit = Math.min(Number(c.req.query('limit') || '50'), 100);
+  const offset = (page - 1) * limit;
+
+  const action = c.req.query('action');
+  const entityType = c.req.query('entityType');
+  const userId = c.req.query('userId');
+
+  const conditions = [];
+  if (action) conditions.push(eq(activityLogs.action, action));
+  if (entityType) conditions.push(eq(activityLogs.entityType, entityType));
+  if (userId) conditions.push(eq(activityLogs.userId, userId));
+
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const [logs, countResult] = await Promise.all([
+    db
+      .select()
+      .from(activityLogs)
+      .where(where)
+      .orderBy(desc(activityLogs.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(activityLogs)
+      .where(where),
+  ]);
+
+  return success(c, {
+    data: logs,
+    pagination: {
+      page,
+      limit,
+      total: countResult[0]?.count || 0,
+      totalPages: Math.ceil((countResult[0]?.count || 0) / limit),
+    },
+  });
+});
+
+// ============================================================
+// GET /user/:id — Activity logs for a specific user
+// ============================================================
+
+activityLogRoutes.get('/user/:id', rbac(['admin']), async (c) => {
+  const userId = c.req.param('id');
+  const db = drizzle(c.get('tenantDb'));
+  const limit = Math.min(Number(c.req.query('limit') || '50'), 100);
+
+  const logs = await db
+    .select()
+    .from(activityLogs)
+    .where(eq(activityLogs.userId, userId))
+    .orderBy(desc(activityLogs.createdAt))
+    .limit(limit);
+
+  return success(c, logs);
+});
+
+// ============================================================
+// GET /entity/:type/:id — Activity logs for a specific entity
+// ============================================================
+
+activityLogRoutes.get('/entity/:type/:id', rbac(['admin']), async (c) => {
+  const entityType = c.req.param('type');
+  const entityId = c.req.param('id');
+  const db = drizzle(c.get('tenantDb'));
+  const limit = Math.min(Number(c.req.query('limit') || '50'), 100);
+
+  const logs = await db
+    .select()
+    .from(activityLogs)
+    .where(and(eq(activityLogs.entityType, entityType), eq(activityLogs.entityId, entityId)))
+    .orderBy(desc(activityLogs.createdAt))
+    .limit(limit);
+
+  return success(c, logs);
+});
+
+export default activityLogRoutes;
