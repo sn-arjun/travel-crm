@@ -80,6 +80,7 @@ userRoutes.put(
       entityType: 'user',
       entityId: userId,
       details: JSON.stringify({ fields: Object.keys(data) }),
+      ipAddress: c.get('clientIp'),
     });
 
     return success(c, {
@@ -161,6 +162,7 @@ userRoutes.get('/', rbac(['admin', 'sales_manager']), async (c) => {
       role: users.role,
       avatarUrl: users.avatarUrl,
       department: users.department,
+      inviteStatus: users.inviteStatus,
       isActive: users.isActive,
       lastLoginAt: users.lastLoginAt,
       createdAt: users.createdAt,
@@ -212,14 +214,27 @@ userRoutes.post(
       { expirationTtl: 604800 } // 7 days
     );
 
+    // Insert invited user into tenant DB so they appear in team list
+    const newUserId = generateId();
+    await db.insert(users).values({
+      id: newUserId,
+      email: data.email.toLowerCase(),
+      phone: data.phone || null,
+      name: data.name,
+      passwordHash: 'INVITE_PENDING',
+      role: data.role,
+      department: data.department || null,
+      inviteStatus: 'pending',
+      invitedAt: new Date().toISOString(),
+    });
+
     // Create placeholder in master tenant_users
-    const tenantUserId = generateId();
     await masterDb.insert(tenantUsers).values({
-      id: tenantUserId,
+      id: generateId(),
       tenantId,
       email: data.email.toLowerCase(),
       phone: data.phone || null,
-      userId: tenantUserId, // placeholder, updated on setup
+      userId: newUserId,
       role: data.role,
     });
 
@@ -227,7 +242,9 @@ userRoutes.post(
       userId: c.get('userId'),
       action: 'invite_user',
       entityType: 'user',
+      entityId: newUserId,
       details: JSON.stringify({ email: data.email, role: data.role }),
+      ipAddress: c.get('clientIp'),
     });
 
     return created(c, {
@@ -305,6 +322,7 @@ userRoutes.put(
       entityType: 'user',
       entityId: userId,
       details: JSON.stringify({ fields: Object.keys(data) }),
+      ipAddress: c.get('clientIp'),
     });
 
     return success(c, userWithoutPassword);
@@ -335,6 +353,7 @@ userRoutes.put('/:id/deactivate', rbac(['admin']), async (c) => {
     action: 'deactivate_user',
     entityType: 'user',
     entityId: userId,
+    ipAddress: c.get('clientIp'),
   });
 
   return success(c, { message: 'User deactivated' });
@@ -360,6 +379,7 @@ userRoutes.put('/:id/activate', rbac(['admin']), async (c) => {
     action: 'activate_user',
     entityType: 'user',
     entityId: userId,
+    ipAddress: c.get('clientIp'),
   });
 
   return success(c, { message: 'User activated' });
@@ -388,6 +408,7 @@ userRoutes.post('/:id/unlock', rbac(['admin']), async (c) => {
     action: 'unlock_user',
     entityType: 'user',
     entityId: userId,
+    ipAddress: c.get('clientIp'),
   });
 
   return success(c, { message: 'Account unlocked' });

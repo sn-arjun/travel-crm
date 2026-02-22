@@ -4,6 +4,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'router.dart';
 import 'theme.dart';
+import '../features/settings/profile_screen.dart';
 
 class TravelCrmApp extends ConsumerWidget {
   const TravelCrmApp({super.key});
@@ -11,6 +12,7 @@ class TravelCrmApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
+    final locale = ref.watch(localeProvider);
 
     return ScreenUtilInit(
       designSize: const Size(1440, 900),
@@ -24,6 +26,7 @@ class TravelCrmApp extends ConsumerWidget {
           darkTheme: AppTheme.darkTheme,
           themeMode: ThemeMode.light,
           routerConfig: router,
+          locale: locale,
           localizationsDelegates: const [
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
@@ -32,6 +35,14 @@ class TravelCrmApp extends ConsumerWidget {
           supportedLocales: const [
             Locale('en'),
             Locale('hi'),
+            Locale('ta'),
+            Locale('te'),
+            Locale('kn'),
+            Locale('ml'),
+            Locale('mr'),
+            Locale('gu'),
+            Locale('bn'),
+            Locale('ar'),
           ],
         );
       },

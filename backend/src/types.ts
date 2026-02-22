@@ -27,6 +27,8 @@ export interface Env {
   TWILIO_ACCOUNT_SID: string;
   TWILIO_AUTH_TOKEN: string;
   TWILIO_VERIFY_SERVICE_SID: string;
+  TWILIO_SMS_FROM_NUMBER: string;
+  TWILIO_WHATSAPP_FROM_NUMBER: string;
   SENDGRID_API_KEY: string;
   FCM_SERVER_KEY: string;
 
@@ -43,5 +45,6 @@ export interface AppContext {
     role: string;
     userName: string;
     jwtPayload: TokenPayload;
+    clientIp: string;
   };
 }

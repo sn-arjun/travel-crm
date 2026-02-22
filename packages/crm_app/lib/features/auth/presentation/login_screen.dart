@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared/shared.dart';
 import '../data/auth_provider.dart';
 import '../data/auth_state.dart';
@@ -207,9 +208,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-              onPressed: () {
-                // TODO: Navigate to forgot password
-              },
+              onPressed: () => context.go('/forgot-password'),
               child: const Text('Forgot password?'),
             ),
           ),
@@ -225,6 +224,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ),
           ),
           const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: () => context.push('/otp-login'),
+            icon: const Icon(Icons.phone_outlined, size: 16),
+            label: const Text('Sign in with OTP instead'),
+          ),
           TextButton.icon(
             onPressed: () => ref.read(authProvider.notifier).resetToEmail(),
             icon: const Icon(Icons.arrow_back, size: 16),

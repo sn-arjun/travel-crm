@@ -7,7 +7,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "MASTER_DB"
 database_name = "travelcrm-master"
-database_id = "<MASTER_DB_ID_FROM_TERRAFORM>"
+database_id = "a0000000-0000-0000-0000-000000000001" # Replace with real Terraform ID before deploying
 
 # --- R2 Buckets ---
 [[r2_buckets]]
@@ -17,11 +17,11 @@ bucket_name = "travelcrm-files"
 # --- KV Namespaces ---
 [[kv_namespaces]]
 binding = "CACHE"
-id = "<CACHE_KV_ID_FROM_TERRAFORM>"
+id = "a0000000-0000-0000-0000-000000000002" # Replace with real Terraform ID before deploying
 
 [[kv_namespaces]]
 binding = "SESSIONS"
-id = "<SESSIONS_KV_ID_FROM_TERRAFORM>"
+id = "a0000000-0000-0000-0000-000000000003" # Replace with real Terraform ID before deploying
 
 # --- Queues (Producers) ---
 [[queues.producers]]
@@ -60,6 +60,10 @@ max_batch_timeout = 30
 queue = "travelcrm-wp-provision-queue"
 max_batch_size = 1
 max_batch_timeout = 60
+
+# --- Cron Triggers ---
+[triggers]
+crons = ["*/5 * * * *"]
 
 # --- Durable Objects ---
 [durable_objects]

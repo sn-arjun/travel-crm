@@ -17,6 +17,8 @@ export const users = sqliteTable('users', {
   avatarUrl: text('avatar_url'),
   department: text('department'),
   language: text('language').default('en'),
+  inviteStatus: text('invite_status').default('active'), // pending, active
+  invitedAt: text('invited_at'),
   isActive: integer('is_active').default(1),
   lastLoginAt: text('last_login_at'),
   createdAt: text('created_at').default(timestamp),
@@ -49,6 +51,7 @@ export const contacts = sqliteTable('contacts', {
   birthday: text('birthday'),
   anniversary: text('anniversary'),
   preferredLanguage: text('preferred_language').default('en'),
+  isDeleted: integer('is_deleted').default(0),
   createdBy: text('created_by').references(() => users.id),
   createdAt: text('created_at').default(timestamp),
   updatedAt: text('updated_at').default(timestamp),
@@ -59,6 +62,56 @@ export const contacts = sqliteTable('contacts', {
   index('contacts_source_idx').on(table.source),
   index('contacts_created_by_idx').on(table.createdBy),
   index('contacts_created_at_idx').on(table.createdAt),
+  index('contacts_is_deleted_idx').on(table.isDeleted),
+]);
+
+// ============================================================
+// SHARED CONTACTS
+// ============================================================
+
+export const sharedContacts = sqliteTable('shared_contacts', {
+  id: text('id').primaryKey(),
+  contactId: text('contact_id').notNull().references(() => contacts.id),
+  sharedBy: text('shared_by').notNull().references(() => users.id),
+  sharedWith: text('shared_with').notNull().references(() => users.id),
+  note: text('note'),
+  createdAt: text('created_at').default(timestamp),
+}, (table) => [
+  index('shared_contacts_contact_id_idx').on(table.contactId),
+  index('shared_contacts_shared_by_idx').on(table.sharedBy),
+  index('shared_contacts_shared_with_idx').on(table.sharedWith),
+]);
+
+// ============================================================
+// CONTACT CUSTOM FIELDS (EAV)
+// ============================================================
+
+export const contactCustomFieldDefs = sqliteTable('contact_custom_field_defs', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  label: text('label').notNull(),
+  fieldType: text('field_type').notNull(), // text, number, date, select, multi_select, boolean
+  options: text('options'), // JSON array for select/multi_select
+  isRequired: integer('is_required').default(0),
+  sortOrder: integer('sort_order').default(0),
+  createdBy: text('created_by').references(() => users.id),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  uniqueIndex('custom_field_defs_name_idx').on(table.name),
+]);
+
+export const contactCustomFieldValues = sqliteTable('contact_custom_field_values', {
+  id: text('id').primaryKey(),
+  contactId: text('contact_id').notNull().references(() => contacts.id, { onDelete: 'cascade' }),
+  fieldId: text('field_id').notNull().references(() => contactCustomFieldDefs.id, { onDelete: 'cascade' }),
+  value: text('value'),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('custom_field_values_contact_id_idx').on(table.contactId),
+  index('custom_field_values_field_id_idx').on(table.fieldId),
+  uniqueIndex('custom_field_values_unique_idx').on(table.contactId, table.fieldId),
 ]);
 
 // ============================================================
@@ -89,6 +142,7 @@ export const leads = sqliteTable('leads', {
   mealPreference: text('meal_preference'), // veg, non_veg, vegan, jain, halal
   specialRequirements: text('special_requirements'),
   notes: text('notes'),
+  isDeleted: integer('is_deleted').default(0),
   createdBy: text('created_by').references(() => users.id),
   createdAt: text('created_at').default(timestamp),
   updatedAt: text('updated_at').default(timestamp),
@@ -102,6 +156,7 @@ export const leads = sqliteTable('leads', {
   index('leads_travel_date_idx').on(table.travelDate),
   index('leads_created_at_idx').on(table.createdAt),
   index('leads_created_by_idx').on(table.createdBy),
+  index('leads_is_deleted_idx').on(table.isDeleted),
 ]);
 
 // ============================================================
@@ -150,28 +205,39 @@ export const followUps = sqliteTable('follow_ups', {
 
 export const itineraries = sqliteTable('itineraries', {
   id: text('id').primaryKey(),
-  leadId: text('lead_id').notNull().references(() => leads.id),
+  leadId: text('lead_id').notNull().references(() => leads.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
   version: integer('version').default(1),
-  status: text('status').default('draft'), // draft, sent, approved, rejected
-  inclusions: text('inclusions'),
-  exclusions: text('exclusions'),
-  termsAndConditions: text('terms_and_conditions'),
-  validUntil: text('valid_until'),
-  totalCost: real('total_cost').default(0),
-  totalSellingPrice: real('total_selling_price').default(0),
+  parentId: text('parent_id'), // previous version reference
+  status: text('status').default('draft'), // draft, sent, approved, rejected, expired
+  validityDate: text('validity_date'),
+  notes: text('notes'),
+  inclusions: text('inclusions'), // JSON array
+  exclusions: text('exclusions'), // JSON array
+  termsConditions: text('terms_conditions'),
   currency: text('currency').default('INR'),
+  totalCost: real('total_cost').default(0),
+  totalSelling: real('total_selling').default(0),
+  totalTax: real('total_tax').default(0),
+  grandTotal: real('grand_total').default(0),
   markupType: text('markup_type'), // percentage, fixed
   markupValue: real('markup_value'),
-  isTemplate: integer('is_template').default(0),
-  templateName: text('template_name'),
+  // Share link fields
+  shareToken: text('share_token'),
+  shareLinkActive: integer('share_link_active').default(0),
+  viewCount: integer('view_count').default(0),
+  lastViewedAt: text('last_viewed_at'),
+  isDeleted: integer('is_deleted').default(0),
   createdBy: text('created_by').references(() => users.id),
   createdAt: text('created_at').default(timestamp),
   updatedAt: text('updated_at').default(timestamp),
 }, (table) => [
   index('itineraries_lead_id_idx').on(table.leadId),
   index('itineraries_status_idx').on(table.status),
-  index('itineraries_is_template_idx').on(table.isTemplate),
+  index('itineraries_created_by_idx').on(table.createdBy),
+  index('itineraries_parent_id_idx').on(table.parentId),
+  index('itineraries_share_token_idx').on(table.shareToken),
+  index('itineraries_is_deleted_idx').on(table.isDeleted),
 ]);
 
 export const itineraryDays = sqliteTable('itinerary_days', {
@@ -179,10 +245,12 @@ export const itineraryDays = sqliteTable('itinerary_days', {
   itineraryId: text('itinerary_id').notNull().references(() => itineraries.id, { onDelete: 'cascade' }),
   dayNumber: integer('day_number').notNull(),
   title: text('title'),
-  description: text('description'),
+  description: text('description'), // HTML rich text
   city: text('city'),
-  imageUrl: text('image_url'),
-  sortOrder: integer('sort_order').default(0),
+  overnightCity: text('overnight_city'),
+  images: text('images'), // JSON array of R2 keys
+  isFreeDay: integer('is_free_day').default(0),
+  createdAt: text('created_at').default(timestamp),
 }, (table) => [
   index('itinerary_days_itinerary_id_idx').on(table.itineraryId),
 ]);
@@ -190,21 +258,49 @@ export const itineraryDays = sqliteTable('itinerary_days', {
 export const itineraryItems = sqliteTable('itinerary_items', {
   id: text('id').primaryKey(),
   dayId: text('day_id').notNull().references(() => itineraryDays.id, { onDelete: 'cascade' }),
-  type: text('type').notNull(), // hotel, transport, activity, meal, flight, sightseeing
+  type: text('type').notNull(), // hotel, transport, activity, meal, flight
   title: text('title').notNull(),
   description: text('description'),
-  supplierId: text('supplier_id').references(() => suppliers.id),
-  cost: real('cost').default(0),
+  supplierId: text('supplier_id'),
+  rateCardId: text('rate_card_id'),
+  costPrice: real('cost_price').default(0),
   sellingPrice: real('selling_price').default(0),
-  currency: text('currency').default('INR'),
+  markupType: text('markup_type'), // percentage, fixed
+  markupValue: real('markup_value'),
+  taxRate: real('tax_rate').default(0),
+  taxAmount: real('tax_amount').default(0),
+  quantity: integer('quantity').default(1),
+  paxType: text('pax_type'), // adult, child, infant
   timeStart: text('time_start'),
   timeEnd: text('time_end'),
-  imageUrl: text('image_url'),
   sortOrder: integer('sort_order').default(0),
+  detailsJson: text('details_json'), // type-specific: hotel(room_type, meal_plan), flight(airline, pnr), etc.
+  internalNotes: text('internal_notes'),
+  createdAt: text('created_at').default(timestamp),
 }, (table) => [
   index('itinerary_items_day_id_idx').on(table.dayId),
   index('itinerary_items_type_idx').on(table.type),
-  index('itinerary_items_supplier_id_idx').on(table.supplierId),
+]);
+
+// ============================================================
+// ITINERARY TEMPLATES
+// ============================================================
+
+export const itineraryTemplates = sqliteTable('itinerary_templates', {
+  id: text('id').primaryKey(),
+  title: text('title').notNull(),
+  description: text('description'),
+  destination: text('destination'),
+  durationDays: integer('duration_days'),
+  category: text('category'), // beach, mountain, heritage, adventure, honeymoon, family, corporate, pilgrimage, custom
+  templateData: text('template_data'), // full JSON snapshot of days+items
+  isSystem: integer('is_system').default(0),
+  createdBy: text('created_by').references(() => users.id),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('itinerary_templates_destination_idx').on(table.destination),
+  index('itinerary_templates_category_idx').on(table.category),
 ]);
 
 // ============================================================
@@ -214,12 +310,12 @@ export const itineraryItems = sqliteTable('itinerary_items', {
 export const rateCards = sqliteTable('rate_cards', {
   id: text('id').primaryKey(),
   supplierId: text('supplier_id').references(() => suppliers.id),
-  serviceType: text('service_type').notNull(), // hotel, transport, activity, flight, meal, guide
+  serviceType: text('service_type').notNull(), // hotel, transport, activity, flight, meal
   destination: text('destination'),
   name: text('name').notNull(),
   description: text('description'),
   season: text('season'), // peak, off_peak, shoulder
-  cost: real('cost').notNull(),
+  costPrice: real('cost_price').notNull(),
   sellingPrice: real('selling_price'),
   currency: text('currency').default('INR'),
   unit: text('unit'), // per_person, per_room, per_vehicle, per_day
@@ -227,6 +323,9 @@ export const rateCards = sqliteTable('rate_cards', {
   validTo: text('valid_to'),
   childPricePercent: real('child_price_percent'), // e.g., 50 means 50% of adult price
   groupDiscountJson: text('group_discount_json'), // JSON: [{min_pax: 5, discount_percent: 10}]
+  detailsJson: text('details_json'), // type-specific: hotel(room_type, meal_plan, star_rating), transport(vehicle_type, capacity)
+  isActive: integer('is_active').default(1),
+  createdBy: text('created_by').references(() => users.id),
   createdAt: text('created_at').default(timestamp),
   updatedAt: text('updated_at').default(timestamp),
 }, (table) => [
@@ -234,6 +333,7 @@ export const rateCards = sqliteTable('rate_cards', {
   index('rate_cards_service_type_idx').on(table.serviceType),
   index('rate_cards_destination_idx').on(table.destination),
   index('rate_cards_season_idx').on(table.season),
+  index('rate_cards_is_active_idx').on(table.isActive),
 ]);
 
 // ============================================================
@@ -329,18 +429,30 @@ export const payments = sqliteTable('payments', {
 
 export const vouchers = sqliteTable('vouchers', {
   id: text('id').primaryKey(),
-  leadId: text('lead_id').notNull().references(() => leads.id),
+  leadId: text('lead_id').notNull().references(() => leads.id, { onDelete: 'cascade' }),
   type: text('type').notNull(), // hotel, transport, flight, activity
-  supplierId: text('supplier_id').references(() => suppliers.id),
+  supplierId: text('supplier_id').references(() => suppliers.id, { onDelete: 'set null' }),
+  title: text('title').notNull(),
   detailsJson: text('details_json'), // Type-specific JSON data
   status: text('status').default('draft'), // draft, sent, confirmed
+  language: text('language').default('en'),
+  itineraryItemId: text('itinerary_item_id'),
+  pdfR2Key: text('pdf_r2_key'),
+  sentVia: text('sent_via'), // email, whatsapp, both
+  sentAt: text('sent_at'),
+  confirmedAt: text('confirmed_at'),
+  notes: text('notes'),
   createdBy: text('created_by').references(() => users.id),
   createdAt: text('created_at').default(timestamp),
   updatedAt: text('updated_at').default(timestamp),
+  isDeleted: integer('is_deleted').default(0),
 }, (table) => [
   index('vouchers_lead_id_idx').on(table.leadId),
   index('vouchers_type_idx').on(table.type),
   index('vouchers_status_idx').on(table.status),
+  index('vouchers_itinerary_item_id_idx').on(table.itineraryItemId),
+  index('vouchers_type_status_idx').on(table.type, table.status),
+  index('vouchers_created_by_idx').on(table.createdBy),
 ]);
 
 // ============================================================
@@ -772,3 +884,77 @@ export const settings = sqliteTable('settings', {
   updatedBy: text('updated_by').references(() => users.id),
   updatedAt: text('updated_at').default(timestamp),
 });
+
+// ============================================================
+// LEAD FOLLOW-UP SEQUENCES (TICKET-077)
+// ============================================================
+
+export const followUpSequences = sqliteTable('follow_up_sequences', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  triggerStatus: text('trigger_status').notNull(),
+  steps: text('steps').notNull(), // JSON array: [{day, type, notes, template_id?}]
+  isActive: integer('is_active').default(1),
+  createdBy: text('created_by').references(() => users.id),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('follow_up_sequences_trigger_status_idx').on(table.triggerStatus),
+  index('follow_up_sequences_is_active_idx').on(table.isActive),
+]);
+
+// ============================================================
+// EMAIL CAMPAIGNS (MILESTONE 9)
+// ============================================================
+
+export const emailCampaigns = sqliteTable('email_campaigns', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  templateId: text('template_id'), // SendGrid template ID (optional)
+  subject: text('subject').notNull(),
+  body: text('body'), // HTML body content
+  segmentFilters: text('segment_filters'), // JSON object with filter criteria
+  status: text('status').notNull(), // draft, scheduled, sending, sent, cancelled
+  scheduledAt: text('scheduled_at'), // ISO timestamp for scheduled campaigns
+  sentAt: text('sent_at'), // ISO timestamp when campaign was sent
+  totalRecipients: integer('total_recipients').default(0),
+  sentCount: integer('sent_count').default(0),
+  openedCount: integer('opened_count').default(0),
+  clickedCount: integer('clicked_count').default(0),
+  bouncedCount: integer('bounced_count').default(0),
+  unsubscribedCount: integer('unsubscribed_count').default(0),
+  createdBy: text('created_by').notNull().references(() => users.id),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('email_campaigns_status_idx').on(table.status),
+  index('email_campaigns_created_by_idx').on(table.createdBy),
+  index('email_campaigns_created_at_idx').on(table.createdAt),
+  index('email_campaigns_scheduled_at_idx').on(table.scheduledAt),
+]);
+
+// ============================================================
+// EMAIL MESSAGE LOG (track individual email sends)
+// ============================================================
+
+export const emailMessageLog = sqliteTable('email_message_log', {
+  id: text('id').primaryKey(),
+  campaignId: text('campaign_id').references(() => emailCampaigns.id),
+  contactId: text('contact_id').notNull().references(() => contacts.id),
+  recipientEmail: text('recipient_email').notNull(),
+  messageId: text('message_id'), // SendGrid message ID
+  status: text('status').notNull(), // queued, sent, delivered, opened, clicked, bounced, dropped, unsubscribed
+  openedAt: text('opened_at'),
+  clickedAt: text('clicked_at'),
+  bounceReason: text('bounce_reason'),
+  failureReason: text('failure_reason'),
+  metadata: text('metadata'), // JSON for tracking data
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('email_message_log_campaign_id_idx').on(table.campaignId),
+  index('email_message_log_contact_id_idx').on(table.contactId),
+  index('email_message_log_status_idx').on(table.status),
+  index('email_message_log_message_id_idx').on(table.messageId),
+  index('email_message_log_created_at_idx').on(table.createdAt),
+]);

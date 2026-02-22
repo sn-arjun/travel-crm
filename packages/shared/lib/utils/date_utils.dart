@@ -44,8 +44,9 @@ class AppDateUtils {
   /// Relative time: "2 hours ago", "just now", "yesterday"
   static String timeAgo(DateTime? date) {
     if (date == null) return '';
-    final now = DateTime.now();
-    final diff = now.difference(date);
+    final now = DateTime.now().toUtc();
+    final utcDate = date.isUtc ? date : date.toUtc();
+    final diff = now.difference(utcDate);
 
     if (diff.inSeconds < 60) return 'just now';
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';

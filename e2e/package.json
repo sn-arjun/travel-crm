@@ -1,0 +1,25 @@
+{
+  "name": "travelcrm-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "npx playwright test",
+    "test:api": "npx playwright test --project=api",
+    "test:browser": "npx playwright test --project=browser",
+    "test:m1": "npx playwright test tests/api/m1-*",
+    "test:m2": "npx playwright test tests/api/m2-*",
+    "test:m3": "npx playwright test tests/api/m3-*",
+    "test:m4": "npx playwright test tests/api/m4-*",
+    "test:m5": "npx playwright test tests/api/m5-*",
+    "test:m6": "npx playwright test tests/api/m6-*",
+    "test:m7": "npx playwright test tests/api/m7-*",
+    "test:m8": "npx playwright test tests/api/m8-*",
+    "test:m9": "npx playwright test tests/api/m9-*",
+    "test:m10": "npx playwright test tests/api/m10-*",
+    "report": "npx playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.51.0"
+  }
+}

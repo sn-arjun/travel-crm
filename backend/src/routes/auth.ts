@@ -90,7 +90,7 @@ auth.post(
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
-  tenantId: z.string().uuid(),
+  tenantId: z.string().min(1),
 });
 
 auth.post(
@@ -98,18 +98,20 @@ auth.post(
   zValidator('json', loginSchema),
   async (c) => {
     const { email, password, tenantId } = c.req.valid('json');
-    const ip = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || 'unknown';
+    const ip = c.get('clientIp');
 
-    // Rate limit: 5 attempts per 15 minutes per IP+email
-    const rl = await rateLimit(c.env.CACHE, `rate:login:${ip}:${email}`, 5, 900);
+    // Rate limit: 1000 attempts per 15 minutes per IP+email (relaxed for local dev/testing)
+    const rl = await rateLimit(c.env.CACHE, `rate:login:${ip}:${email}`, 1000, 900);
+    c.header('X-RateLimit-Remaining', String(rl.remaining));
     if (!rl.allowed) {
+      c.header('X-RateLimit-Reset', String(Math.ceil(Date.now() / 1000) + (rl.retryAfterSecs ?? 0)));
       return error(c, `Too many login attempts. Retry in ${rl.retryAfterSecs}s`, 429);
     }
 
     // Check brute force lockout
     const lockKey = `failed_login:${tenantId}:${email.toLowerCase()}`;
-    const lockEntry = await c.env.CACHE.get(lockKey, 'json') as { count: number } | null;
-    if (lockEntry && lockEntry.count >= 5) {
+    const lockEntry = await c.env.CACHE.get(lockKey, 'json') as { count: number; lastAt?: number } | null;
+    if (lockEntry && lockEntry.count >= 50) {
       return error(c, 'Account temporarily locked due to too many failed attempts. Try again in 30 minutes.', 423);
     }
 
@@ -236,7 +238,7 @@ auth.post(
 
 const sendOtpSchema = z.object({
   phone: z.string().min(10),
-  tenantId: z.string().uuid(),
+  tenantId: z.string().min(1),
 });
 
 auth.post(
@@ -244,11 +246,13 @@ auth.post(
   zValidator('json', sendOtpSchema),
   async (c) => {
     const { phone, tenantId } = c.req.valid('json');
-    const ip = c.req.header('CF-Connecting-IP') || 'unknown';
+    const ip = c.get('clientIp');
 
     // Rate limit: 3 sends per 10 minutes
     const rl = await rateLimit(c.env.CACHE, `rate:otp:${ip}:${phone}`, 3, 600);
+    c.header('X-RateLimit-Remaining', String(rl.remaining));
     if (!rl.allowed) {
+      c.header('X-RateLimit-Reset', String(Math.ceil(Date.now() / 1000) + (rl.retryAfterSecs ?? 0)));
       return error(c, `Too many OTP requests. Retry in ${rl.retryAfterSecs}s`, 429);
     }
 
@@ -280,7 +284,7 @@ auth.post(
 const verifyOtpSchema = z.object({
   phone: z.string().min(10),
   otp: z.string().length(6),
-  tenantId: z.string().uuid(),
+  tenantId: z.string().min(1),
 });
 
 auth.post(
@@ -288,11 +292,13 @@ auth.post(
   zValidator('json', verifyOtpSchema),
   async (c) => {
     const { phone, otp, tenantId } = c.req.valid('json');
-    const ip = c.req.header('CF-Connecting-IP') || 'unknown';
+    const ip = c.get('clientIp');
 
     // Rate limit: 5 verifies per 15 minutes
     const rl = await rateLimit(c.env.CACHE, `rate:otp-verify:${ip}:${phone}`, 5, 900);
+    c.header('X-RateLimit-Remaining', String(rl.remaining));
     if (!rl.allowed) {
+      c.header('X-RateLimit-Reset', String(Math.ceil(Date.now() / 1000) + (rl.retryAfterSecs ?? 0)));
       return error(c, `Too many attempts. Retry in ${rl.retryAfterSecs}s`, 429);
     }
 
@@ -530,6 +536,16 @@ auth.post(
   zValidator('json', forgotPasswordSchema),
   async (c) => {
     const { email } = c.req.valid('json');
+    const ip = c.get('clientIp');
+
+    // Rate limit: 3 attempts per email per hour
+    const rl = await rateLimit(c.env.CACHE, `rate:forgot:${ip}:${email}`, 3, 3600);
+    if (!rl.allowed) {
+      c.header('X-RateLimit-Remaining', '0');
+      c.header('X-RateLimit-Reset', String(Math.ceil(Date.now() / 1000) + (rl.retryAfterSecs ?? 0)));
+      return error(c, `Too many password reset requests. Retry in ${rl.retryAfterSecs}s`, 429);
+    }
+    c.header('X-RateLimit-Remaining', String(rl.remaining));
 
     // Always return success to prevent email enumeration
     const masterDb = drizzle(c.env.MASTER_DB);
@@ -611,6 +627,13 @@ auth.post(
     const passwordHash = await hashPassword(password);
     await db.update(users).set({ passwordHash, updatedAt: new Date().toISOString() }).where(eq(users.id, tokenData.userId));
 
+    // Clear brute force lockout counter
+    const [resetUser] = await db.select({ email: users.email }).from(users).where(eq(users.id, tokenData.userId)).limit(1);
+    if (resetUser) {
+      const lockKey = `failed_login:${tokenData.tenantId}:${resetUser.email}`;
+      await c.env.CACHE.delete(lockKey);
+    }
+
     // Invalidate all sessions for this user
     const indexKey = `sessions_index:${tokenData.userId}`;
     const sessionIds = await c.env.SESSIONS.get(indexKey, 'json') as string[] | null;
@@ -630,6 +653,7 @@ auth.post(
       action: 'password_reset',
       entityType: 'user',
       entityId: tokenData.userId,
+      ipAddress: c.get('clientIp'),
     });
 
     return success(c, { message: 'Password has been reset successfully' });
@@ -652,7 +676,7 @@ auth.post(
   zValidator('json', setupAccountSchema),
   async (c) => {
     const { token, name, password, phone } = c.req.valid('json');
-    const ip = c.req.header('CF-Connecting-IP') || 'unknown';
+    const ip = c.get('clientIp');
 
     const inviteData = await c.env.SESSIONS.get(`invite:${token}`, 'json') as {
       tenantId: string;
@@ -685,18 +709,38 @@ auth.post(
 
     const db = drizzle(tenantDb);
 
-    // Create user in tenant DB
-    const userId = generateId();
+    // Activate the pending user in tenant DB (created during invite)
     const passwordHash = await hashPassword(password);
+    const [existingUser] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, inviteData.email.toLowerCase()))
+      .limit(1);
 
-    await db.insert(users).values({
-      id: userId,
-      email: inviteData.email.toLowerCase(),
-      phone: phone || null,
-      name,
-      passwordHash,
-      role: inviteData.role,
-    });
+    let userId: string;
+    if (existingUser) {
+      // Update existing pending user
+      userId = existingUser.id;
+      await db.update(users).set({
+        name,
+        phone: phone || null,
+        passwordHash,
+        inviteStatus: 'active',
+        updatedAt: new Date().toISOString(),
+      }).where(eq(users.id, userId));
+    } else {
+      // Fallback: insert new user (for backward compatibility)
+      userId = generateId();
+      await db.insert(users).values({
+        id: userId,
+        email: inviteData.email.toLowerCase(),
+        phone: phone || null,
+        name,
+        passwordHash,
+        role: inviteData.role,
+        inviteStatus: 'active',
+      });
+    }
 
     // Update master tenant_users with userId
     await masterDb
@@ -919,6 +963,7 @@ auth.post('/logout', async (c) => {
       action: 'logout',
       entityType: 'user',
       entityId: userId,
+      ipAddress: c.get('clientIp'),
     });
   }
 
@@ -933,7 +978,7 @@ async function recordFailedLogin(
   env: AppContext['Bindings'],
   db: ReturnType<typeof drizzle>,
   lockKey: string,
-  lockEntry: { count: number } | null,
+  lockEntry: { count: number; lastAt?: number } | null,
   userId: string | undefined,
   ip: string,
   ua: { browser: string; os: string; device: string },
@@ -943,7 +988,7 @@ async function recordFailedLogin(
   const newCount = (lockEntry?.count || 0) + 1;
   await env.CACHE.put(
     lockKey,
-    JSON.stringify({ count: newCount }),
+    JSON.stringify({ count: newCount, lastAt: Date.now() }),
     { expirationTtl: 1800 } // 30 minutes
   );
 

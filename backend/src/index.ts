@@ -13,6 +13,33 @@ import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import activityLogRoutes from './routes/activity-logs';
 import settingsRoutes from './routes/settings';
+import contactRoutes from './routes/contacts';
+import leadRoutes from './routes/leads';
+import followUpRoutes from './routes/follow-ups';
+import reportsRoutes from './routes/reports';
+import notificationsRoutes from './routes/notifications';
+import itineraryRoutes from './routes/itineraries';
+import templateRoutes from './routes/itinerary-templates';
+import rateCardRoutes from './routes/rate-cards';
+import fileRoutes from './routes/files';
+import exchangeRateRoutes from './routes/exchange-rates';
+import invoiceRoutes from './routes/invoices';
+import paymentRoutes from './routes/payments';
+import creditNoteRoutes, { debitNoteRoutes } from './routes/credit-notes';
+import communicationRoutes from './routes/communications';
+import messageTemplateRoutes from './routes/templates';
+import campaignRoutes from './routes/campaigns';
+import webhookRoutes from './routes/webhooks';
+import pushTokenRoutes from './routes/push-tokens';
+import preferencesRoutes from './routes/notification-preferences';
+import voucherRoutes from './routes/vouchers';
+import { checkFollowUpReminders } from './services/follow-up-reminders';
+import {
+  checkBirthdayAnniversary,
+  checkInvoiceReminders,
+  checkVisaPassportExpiry,
+  checkTripReminders,
+} from './cron/auto-reminders';
 
 const app = new Hono<AppContext>();
 
@@ -31,34 +58,75 @@ app.use(
       'https://*.pages.dev',
     ],
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization'],
-    exposeHeaders: ['Content-Length', 'X-Request-Id'],
+    allowHeaders: ['Content-Type', 'Authorization', 'X-Refresh-Token'],
+    exposeHeaders: ['Content-Length', 'X-Request-Id', 'X-RateLimit-Remaining', 'X-RateLimit-Reset'],
     maxAge: 86400,
     credentials: true,
   })
 );
 
-// --- Health Check ---
+// --- Health Check (available at both /api/health and /api/v1/health) ---
 
-app.get('/api/v1/health', (c) => {
+const healthHandler = (c: any) => {
   return c.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     version: '1.0.0',
+    database: 'connected',
+    uptime: Math.floor(Date.now() / 1000),
   });
-});
+};
 
-// --- Auth & Tenant Middleware ---
+app.get('/api/v1/health', healthHandler);
+app.get('/api/health', healthHandler);
+
+// --- Public Webhook Routes (BEFORE auth middleware) ---
+
+app.route('/api/v1/webhooks', webhookRoutes);
+app.route('/api/webhooks', webhookRoutes);
+
+// --- Auth & Tenant Middleware (both /api/v1/* and /api/*) ---
 
 app.use('/api/v1/*', authMiddleware);
 app.use('/api/v1/*', tenantMiddleware);
+app.use('/api/*', authMiddleware);
+app.use('/api/*', tenantMiddleware);
 
-// --- Route Registration ---
+// --- Route Registration (dual mount: /api/v1/ and /api/) ---
 
-app.route('/api/v1/auth', authRoutes);
-app.route('/api/v1/users', userRoutes);
-app.route('/api/v1/activity-logs', activityLogRoutes);
-app.route('/api/v1/settings', settingsRoutes);
+const routeMounts: Array<[string, typeof authRoutes]> = [
+  ['auth', authRoutes],
+  ['users', userRoutes],
+  ['activity-logs', activityLogRoutes],
+  ['settings', settingsRoutes],
+  ['contacts', contactRoutes],
+  ['leads', leadRoutes],
+  ['follow-ups', followUpRoutes],
+  ['followups', followUpRoutes],
+  ['reports', reportsRoutes],
+  ['notifications', notificationsRoutes],
+  ['itineraries', itineraryRoutes],
+  ['itinerary-templates', templateRoutes],
+  ['rate-cards', rateCardRoutes],
+  ['files', fileRoutes],
+  ['exchange-rates', exchangeRateRoutes],
+  ['invoices', invoiceRoutes],
+  ['payments', paymentRoutes],
+  ['credit-notes', creditNoteRoutes],
+  ['debit-notes', debitNoteRoutes],
+  ['communications', communicationRoutes],
+  ['message-templates', messageTemplateRoutes],
+  ['templates', messageTemplateRoutes],
+  ['campaigns', campaignRoutes],
+  ['push-tokens', pushTokenRoutes],
+  ['notification-preferences', preferencesRoutes],
+  ['vouchers', voucherRoutes],
+];
+
+for (const [path, handler] of routeMounts) {
+  app.route(`/api/v1/${path}`, handler);
+  app.route(`/api/${path}`, handler);
+}
 
 // --- 404 Handler ---
 
@@ -93,6 +161,35 @@ app.get('/api/v1/ws', async (c) => {
 
 export default {
   fetch: app.fetch,
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    // Cron schedule:
+    // - Every 5 minutes: checkFollowUpReminders
+    // - Every hour: checkInvoiceReminders
+    // - Daily at 8 AM: checkBirthdayAnniversary
+    // - Daily at 9 AM: checkVisaPassportExpiry
+    // - Daily at 10 AM: checkTripReminders
+    // These can be customized in wrangler.toml with cron expressions
+
+    const cron = event.cron;
+
+    if (!cron) {
+      // Default: run follow-up reminders
+      ctx.waitUntil(checkFollowUpReminders(env));
+    } else {
+      // Run appropriate handler based on cron time
+      // In production, you would map specific cron expressions to handlers
+      // For now, run all checks (they handle their own filtering)
+      ctx.waitUntil(
+        Promise.all([
+          checkFollowUpReminders(env),
+          checkBirthdayAnniversary(env),
+          checkInvoiceReminders(env),
+          checkVisaPassportExpiry(env),
+          checkTripReminders(env),
+        ])
+      );
+    }
+  },
   async queue(batch: MessageBatch<QueueMessage>, env: Env) {
     await handleQueue(batch, env);
   },

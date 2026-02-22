@@ -74,6 +74,9 @@ class AppDataTable<T> extends StatelessWidget {
   final Set<int>? selectedIndices;
   final ValueChanged<Set<int>>? onSelectionChanged;
 
+  // Row tap (navigating to detail)
+  final void Function(int index)? onRowTap;
+
   // Empty state
   final Widget? emptyState;
 
@@ -89,6 +92,7 @@ class AppDataTable<T> extends StatelessWidget {
     this.selectable = false,
     this.selectedIndices,
     this.onSelectionChanged,
+    this.onRowTap,
     this.emptyState,
   });
 
@@ -144,11 +148,15 @@ class AppDataTable<T> extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             child: SingleChildScrollView(
               child: DataTable(
-                sortColumnIndex: sortState != null
-                    ? columns.indexWhere((c) => c.field == sortState!.field)
-                    : null,
+                sortColumnIndex: () {
+                  if (sortState == null) return null;
+                  final idx = columns.indexWhere((c) => c.field == sortState!.field);
+                  if (idx < 0) return null;
+                  // When selectable, DataTable has an extra checkbox column at index 0.
+                  return selectable ? idx + 1 : idx;
+                }(),
                 sortAscending: sortState?.ascending ?? true,
-                showCheckboxColumn: selectable,
+                showCheckboxColumn: false,
                 headingRowColor: WidgetStateProperty.all(
                   theme.colorScheme.surfaceContainerHighest,
                 ),
@@ -181,7 +189,6 @@ class AppDataTable<T> extends StatelessWidget {
 
                   return DataRow(
                     selected: isSelected,
-                    onSelectChanged: selectable ? (_) => _toggleRow(i) : null,
                     cells: [
                       if (selectable)
                         DataCell(
@@ -196,6 +203,7 @@ class AppDataTable<T> extends StatelessWidget {
                           col.cellBuilder != null
                               ? col.cellBuilder!(value)
                               : Text('${value ?? ''}'),
+                          onTap: onRowTap != null ? () => onRowTap!(i) : null,
                         );
                       }),
                     ],

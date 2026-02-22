@@ -26,6 +26,7 @@ dependencies:
   # UI
   flutter_screenutil: ^5.9.3
   cupertino_icons: ^1.0.8
+  google_fonts: ^6.2.1
   flutter_svg: ^2.0.17
   cached_network_image: ^3.4.1
   shimmer: ^3.0.0
@@ -33,12 +34,28 @@ dependencies:
   # Internationalization
   intl: ^0.20.2
 
-  # Secure Storage
+  # Secure Storage (native only; web uses dart:js_interop + package:web localStorage)
   flutter_secure_storage: ^9.2.4
+  web: ^1.1.1
+
+  # Networking
+  dio: ^5.7.0
+
+  # Rich text editor
+  flutter_quill: ^11.5.0
+
+  # Biometric auth
+  local_auth: ^2.3.0
+  shared_preferences: ^2.3.5
+
+  # PDF
+  pdf: ^3.11.1
+  printing: ^5.13.3
 
   # Utils
   uuid: ^4.5.1
   url_launcher: ^6.3.1
+  file_picker: ^8.0.0+1
 
 dev_dependencies:
   flutter_test:

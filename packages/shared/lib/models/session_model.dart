@@ -7,13 +7,13 @@ part 'session_model.g.dart';
 abstract class SessionModel with _$SessionModel {
   const factory SessionModel({
     required String id,
-    required String device,
-    required String browser,
-    required String os,
+    @Default('Unknown') String device,
+    @Default('Unknown') String browser,
+    @Default('Unknown') String os,
     String? ipAddress,
     String? city,
     String? country,
-    required String loginAt,
+    @Default('') String loginAt,
     @Default(false) bool isCurrent,
   }) = _SessionModel;
 

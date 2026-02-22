@@ -1,51 +1,37 @@
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared/shared.dart';
 
+/// Wraps [TokenStore] (platform-conditional: localStorage on web,
+/// flutter_secure_storage on native) for a clean async key/value API.
 class TokenStorage {
-  final FlutterSecureStorage _storage;
-
-  TokenStorage({FlutterSecureStorage? storage})
-      : _storage = storage ?? const FlutterSecureStorage();
-
   // --- Access Token ---
-  Future<String?> getAccessToken() =>
-      _storage.read(key: StorageKeys.accessToken);
-
+  Future<String?> getAccessToken() => TokenStore.read(StorageKeys.accessToken);
   Future<void> setAccessToken(String token) =>
-      _storage.write(key: StorageKeys.accessToken, value: token);
+      TokenStore.write(StorageKeys.accessToken, token);
 
   // --- Refresh Token ---
-  Future<String?> getRefreshToken() =>
-      _storage.read(key: StorageKeys.refreshToken);
-
+  Future<String?> getRefreshToken() => TokenStore.read(StorageKeys.refreshToken);
   Future<void> setRefreshToken(String token) =>
-      _storage.write(key: StorageKeys.refreshToken, value: token);
+      TokenStore.write(StorageKeys.refreshToken, token);
 
   // --- User Info ---
-  Future<String?> getUserId() => _storage.read(key: StorageKeys.userId);
+  Future<String?> getUserId() => TokenStore.read(StorageKeys.userId);
+  Future<void> setUserId(String id) => TokenStore.write(StorageKeys.userId, id);
 
-  Future<void> setUserId(String id) =>
-      _storage.write(key: StorageKeys.userId, value: id);
-
-  Future<String?> getTenantId() => _storage.read(key: StorageKeys.tenantId);
-
+  Future<String?> getTenantId() => TokenStore.read(StorageKeys.tenantId);
   Future<void> setTenantId(String id) =>
-      _storage.write(key: StorageKeys.tenantId, value: id);
+      TokenStore.write(StorageKeys.tenantId, id);
 
-  Future<String?> getUserRole() => _storage.read(key: StorageKeys.userRole);
-
+  Future<String?> getUserRole() => TokenStore.read(StorageKeys.userRole);
   Future<void> setUserRole(String role) =>
-      _storage.write(key: StorageKeys.userRole, value: role);
+      TokenStore.write(StorageKeys.userRole, role);
 
-  Future<String?> getUserName() => _storage.read(key: StorageKeys.userName);
-
+  Future<String?> getUserName() => TokenStore.read(StorageKeys.userName);
   Future<void> setUserName(String name) =>
-      _storage.write(key: StorageKeys.userName, value: name);
+      TokenStore.write(StorageKeys.userName, name);
 
-  Future<String?> getUserEmail() => _storage.read(key: StorageKeys.userEmail);
-
+  Future<String?> getUserEmail() => TokenStore.read(StorageKeys.userEmail);
   Future<void> setUserEmail(String email) =>
-      _storage.write(key: StorageKeys.userEmail, value: email);
+      TokenStore.write(StorageKeys.userEmail, email);
 
   // --- Store all auth data at once ---
   Future<void> saveAuthData({
@@ -71,13 +57,13 @@ class TokenStorage {
   // --- Clear all auth data ---
   Future<void> clearAuthData() async {
     await Future.wait([
-      _storage.delete(key: StorageKeys.accessToken),
-      _storage.delete(key: StorageKeys.refreshToken),
-      _storage.delete(key: StorageKeys.userId),
-      _storage.delete(key: StorageKeys.tenantId),
-      _storage.delete(key: StorageKeys.userRole),
-      _storage.delete(key: StorageKeys.userName),
-      _storage.delete(key: StorageKeys.userEmail),
+      TokenStore.delete(StorageKeys.accessToken),
+      TokenStore.delete(StorageKeys.refreshToken),
+      TokenStore.delete(StorageKeys.userId),
+      TokenStore.delete(StorageKeys.tenantId),
+      TokenStore.delete(StorageKeys.userRole),
+      TokenStore.delete(StorageKeys.userName),
+      TokenStore.delete(StorageKeys.userEmail),
     ]);
   }
 

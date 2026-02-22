@@ -14,6 +14,8 @@ abstract class UserModel with _$UserModel {
     String? avatarUrl,
     String? department,
     @Default('en') String language,
+    String? inviteStatus,
+    @JsonKey(fromJson: _intOrBoolToBool)
     @Default(true) bool isActive,
     String? lastLoginAt,
     String? createdAt,
@@ -22,4 +24,10 @@ abstract class UserModel with _$UserModel {
 
   factory UserModel.fromJson(Map<String, dynamic> json) =>
       _$UserModelFromJson(json);
+}
+
+bool _intOrBoolToBool(dynamic value) {
+  if (value is bool) return value;
+  if (value is int) return value != 0;
+  return true;
 }

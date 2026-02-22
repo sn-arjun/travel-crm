@@ -2,9 +2,9 @@ import { Hono } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, desc, and, sql } from 'drizzle-orm';
 import type { AppContext } from '../types';
-import { activityLogs } from '../db/tenant-schema';
+import { activityLogs, users } from '../db/tenant-schema';
 import { rbac } from '../middleware/rbac';
-import { success } from '../utils/response';
+import { success, paginated } from '../utils/response';
 
 const activityLogRoutes = new Hono<AppContext>();
 
@@ -32,8 +32,19 @@ activityLogRoutes.get('/', rbac(['admin']), async (c) => {
 
   const [logs, countResult] = await Promise.all([
     db
-      .select()
+      .select({
+        id: activityLogs.id,
+        userId: activityLogs.userId,
+        userName: users.name,
+        action: activityLogs.action,
+        entityType: activityLogs.entityType,
+        entityId: activityLogs.entityId,
+        details: activityLogs.details,
+        ipAddress: activityLogs.ipAddress,
+        createdAt: activityLogs.createdAt,
+      })
       .from(activityLogs)
+      .leftJoin(users, eq(activityLogs.userId, users.id))
       .where(where)
       .orderBy(desc(activityLogs.createdAt))
       .limit(limit)
@@ -44,15 +55,7 @@ activityLogRoutes.get('/', rbac(['admin']), async (c) => {
       .where(where),
   ]);
 
-  return success(c, {
-    data: logs,
-    pagination: {
-      page,
-      limit,
-      total: countResult[0]?.count || 0,
-      totalPages: Math.ceil((countResult[0]?.count || 0) / limit),
-    },
-  });
+  return paginated(c, logs, countResult[0]?.count || 0, page, limit);
 });
 
 // ============================================================

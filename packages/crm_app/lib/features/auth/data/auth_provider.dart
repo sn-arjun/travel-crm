@@ -169,6 +169,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  /// Refresh user profile without changing auth status
+  Future<void> refreshProfile() async {
+    try {
+      final user = await _repository.getProfile();
+      state = state.copyWith(user: user);
+    } catch (_) {
+      // Silently fail — don't logout just because profile refresh failed
+    }
+  }
+
   /// Logout
   Future<void> logout() async {
     try {

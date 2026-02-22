@@ -1,35 +1,110 @@
+import { drizzle } from 'drizzle-orm/d1';
+import { eq } from 'drizzle-orm';
 import type { Env } from '../types';
+import { messageLog } from '../db/tenant-schema';
+import { sendSms, sendWhatsApp, sendMediaMessage } from '../services/twilio-messaging';
+import { sendEmail } from '../services/email';
 
 export interface SmsJob {
-  to: string; // E.164 format: +919876543210
-  body: string;
+  to: string; // E.164 format: +919876543210 or email
+  body?: string; // for SMS/WhatsApp
+  subject?: string; // for email
+  html?: string; // for email
   templateId?: string;
   templateData?: Record<string, string>;
+  messageLogId?: string; // DB record ID to update
+  contactId?: string;
+  channel?: 'sms' | 'whatsapp' | 'email';
+  mediaUrl?: string; // for media messages
 }
 
 /**
- * Process SMS sending jobs via Twilio.
- * Stub implementation — will be completed in Milestone 8.
+ * Process SMS/WhatsApp/Email sending jobs via Twilio or SendGrid.
  */
 export async function handleSmsJob(job: SmsJob, env: Env): Promise<void> {
-  console.log(`[SMS QUEUE] Sending SMS to ${job.to}: ${job.body.substring(0, 50)}...`);
+  const channel = job.channel || 'sms';
+  const messageLogId = job.messageLogId;
 
-  // TODO (Milestone 8): Implement Twilio SMS API call
-  // const response = await fetch(
-  //   `https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Messages.json`,
-  //   {
-  //     method: 'POST',
-  //     headers: {
-  //       'Authorization': `Basic ${btoa(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`)}`,
-  //       'Content-Type': 'application/x-www-form-urlencoded',
-  //     },
-  //     body: new URLSearchParams({
-  //       To: job.to,
-  //       From: '+1XXXXXXXXXX',
-  //       Body: job.body,
-  //     }),
-  //   }
-  // );
+  try {
+    console.log(`[SMS QUEUE] Sending ${channel} to ${job.to}...`);
 
-  console.log(`[SMS QUEUE] SMS job processed (stub)`);
+    let result: { success: boolean; sid?: string; error?: string } | { success: boolean };
+
+    if (channel === 'whatsapp') {
+      if (job.mediaUrl) {
+        result = await sendMediaMessage(env, job.to, 'whatsapp', job.mediaUrl, job.body);
+      } else {
+        result = await sendWhatsApp(env, job.to, job.body || '');
+      }
+    } else if (channel === 'sms') {
+      if (job.mediaUrl) {
+        result = await sendMediaMessage(env, job.to, 'sms', job.mediaUrl, job.body);
+      } else {
+        result = await sendSms(env, job.to, job.body || '');
+      }
+    } else if (channel === 'email') {
+      result = await sendEmail(env, {
+        to: job.to,
+        subject: job.subject || 'Message',
+        html: job.html || '',
+        from: 'noreply@travelcrm.pro',
+      });
+    } else {
+      throw new Error(`Unknown channel: ${channel}`);
+    }
+
+    // Update message log with result
+    if (messageLogId && job.contactId) {
+      const tenantDb = env[`TENANT_DB_${job.contactId}`];
+      if (tenantDb) {
+        const db = drizzle(tenantDb);
+
+        if (result.success) {
+          const now = new Date().toISOString();
+          await db
+            .update(messageLog)
+            .set({
+              status: 'sent',
+              externalId: (result as any).sid || null,
+              sentAt: now,
+              errorMessage: null,
+            })
+            .where(eq(messageLog.id, messageLogId));
+
+          console.log(`[SMS QUEUE] ${channel.toUpperCase()} sent successfully: ${messageLogId}`);
+        } else {
+          await db
+            .update(messageLog)
+            .set({
+              status: 'failed',
+              errorMessage: (result as any).error || 'Unknown error',
+            })
+            .where(eq(messageLog.id, messageLogId));
+
+          console.error(`[SMS QUEUE] ${channel.toUpperCase()} failed: ${(result as any).error}`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`[SMS QUEUE] Error processing ${channel} job:`, err);
+
+    // Update message log with error
+    if (messageLogId && job.contactId) {
+      const tenantDb = env[`TENANT_DB_${job.contactId}`];
+      if (tenantDb) {
+        const db = drizzle(tenantDb);
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+
+        await db
+          .update(messageLog)
+          .set({
+            status: 'failed',
+            errorMessage: errorMessage,
+          })
+          .where(eq(messageLog.id, messageLogId));
+      }
+    }
+
+    throw err; // Re-throw to trigger queue retry
+  }
 }

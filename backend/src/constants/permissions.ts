@@ -13,6 +13,7 @@ export type Module =
   | 'travellers'
   | 'visa'
   | 'communications'
+  | 'campaigns'
   | 'tasks'
   | 'planner'
   | 'fleet'
@@ -43,6 +44,7 @@ export const PERMISSIONS: PermissionMatrix = {
     travellers: ALL,
     visa: ALL,
     communications: ALL,
+    campaigns: ALL,
     tasks: ALL,
     planner: ALL,
     fleet: ALL,
@@ -63,6 +65,7 @@ export const PERMISSIONS: PermissionMatrix = {
     travellers: ALL,
     visa: ALL,
     communications: ALL,
+    campaigns: ALL,
     tasks: ALL,
     planner: ALL,
     fleet: VIEW_ONLY_PERMS,
@@ -79,6 +82,7 @@ export const PERMISSIONS: PermissionMatrix = {
     travellers: VIEW_CREATE_EDIT,
     visa: VIEW_CREATE_EDIT,
     communications: ['view', 'create'],
+    campaigns: ['view'],
     tasks: VIEW_CREATE_EDIT,
     planner: VIEW_CREATE_EDIT,
   },
@@ -93,6 +97,7 @@ export const PERMISSIONS: PermissionMatrix = {
     travellers: VIEW_CREATE_EDIT,
     visa: ALL,
     fleet: ALL,
+    campaigns: ['view'],
     tasks: VIEW_CREATE_EDIT,
     planner: VIEW_CREATE_EDIT,
   },
@@ -115,6 +120,7 @@ export const PERMISSIONS: PermissionMatrix = {
     vouchers: VIEW_ONLY_PERMS,
     suppliers: VIEW_ONLY_PERMS,
     travellers: VIEW_ONLY_PERMS,
+    campaigns: VIEW_ONLY_PERMS,
     reports: VIEW_ONLY_PERMS,
   },
 };

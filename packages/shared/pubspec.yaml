@@ -14,8 +14,9 @@ dependencies:
   # HTTP Client
   dio: ^5.8.0+1
 
-  # Secure Storage
+  # Secure Storage (native only; web uses dart:js_interop + package:web localStorage)
   flutter_secure_storage: ^9.2.4
+  web: ^1.1.1
 
   # Models
   freezed_annotation: ^3.0.0
