@@ -102,7 +102,7 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
                     child: InkWell(
                       onTap: () => setState(() => _selectedChannel = 'email'),
                       child: Padding(
-                        padding: const EdgeInsets.all(AppTheme.spacingMd),
+                        padding: const EdgeInsets.all(16.0),
                         child: Column(
                           children: [
                             Icon(Icons.email_outlined,
@@ -130,10 +130,10 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
                     child: InkWell(
                       onTap: () => setState(() => _selectedChannel = 'whatsapp'),
                       child: Padding(
-                        padding: const EdgeInsets.all(AppTheme.spacingMd),
+                        padding: const EdgeInsets.all(16.0),
                         child: Column(
                           children: [
-                            Icon(Icons.whatsapp,
+                            Icon(Icons.chat_bubble_rounded,
                                 size: 32,
                                 color: _selectedChannel == 'whatsapp'
                                     ? theme.colorScheme.primary
@@ -218,7 +218,7 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
             Card(
               color: theme.colorScheme.surfaceContainerHighest,
               child: Padding(
-                padding: const EdgeInsets.all(AppTheme.spacingMd),
+                padding: const EdgeInsets.all(16.0),
                 child: Row(
                   children: [
                     Icon(Icons.info_outline,

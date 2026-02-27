@@ -18,8 +18,8 @@ class TemplateRepository {
       'page': page,
       'limit': limit,
       if (search != null && search.isNotEmpty) 'search': search,
-      if (destination != null) 'destination': destination,
-      if (category != null) 'category': category,
+      'destination': ?destination,
+      'category': ?category,
     };
 
     final response = await _apiClient.get(
@@ -68,9 +68,9 @@ class TemplateRepository {
       data: {
         'itineraryId': itineraryId,
         'title': title,
-        if (description != null) 'description': description,
-        if (destination != null) 'destination': destination,
-        if (category != null) 'category': category,
+        'description': ?description,
+        'destination': ?destination,
+        'category': ?category,
       },
     );
     return ItineraryTemplateModel.fromJson(
@@ -88,7 +88,7 @@ class TemplateRepository {
       data: {
         'templateId': templateId,
         'leadId': leadId,
-        if (title != null) 'title': title,
+        'title': ?title,
       },
     );
     return response.data['data'] as Map<String, dynamic>;

@@ -58,8 +58,8 @@ class PaymentRepository {
         'amount': amount,
         'method': method,
         'type': type,
-        if (referenceNumber != null) 'referenceNumber': referenceNumber,
-        if (notes != null) 'notes': notes,
+        'referenceNumber': ?referenceNumber,
+        'notes': ?notes,
         if (paymentDate != null) 'paymentDate': paymentDate.toIso8601String().split('T')[0],
       },
     );

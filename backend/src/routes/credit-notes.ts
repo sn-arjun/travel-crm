@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
+import { drizzle } from 'drizzle-orm/d1';
 import type { AppContext } from '../types';
 import { generateId } from '../utils/uuid';
 import { success, created, paginated, error, notFound, forbidden } from '../utils/response';
@@ -162,11 +163,12 @@ creditNoteRoutes.post('/', zValidator('json', createCreditNoteSchema), async (c)
     }
 
     // Log activity
-    await logActivity(tenantDb, userId, 'credit_note_created', `Credit note ${creditNoteNumber} created`, {
-      creditNoteId,
-      creditNoteNumber,
-      invoiceId: data.invoiceId,
-      amount: total,
+    await logActivity(drizzle(tenantDb), {
+      userId,
+      action: 'credit_note_created',
+      entityType: 'credit_note',
+      entityId: creditNoteId,
+      details: JSON.stringify({ creditNoteNumber, invoiceId: data.invoiceId, amount: total }),
     });
 
     return created(c, {
@@ -315,10 +317,12 @@ creditNoteRoutes.post('/:id/apply', zValidator('json', applyNoteSchema), async (
       .run();
 
     // Log activity
-    await logActivity(tenantDb, userId, 'credit_note_applied', `Credit note applied to invoice`, {
-      creditNoteId,
-      invoiceId,
-      appliedAmount: applyAmount,
+    await logActivity(drizzle(tenantDb), {
+      userId,
+      action: 'credit_note_applied',
+      entityType: 'credit_note',
+      entityId: creditNoteId,
+      details: JSON.stringify({ invoiceId, appliedAmount: applyAmount }),
     });
 
     return success(c, {
@@ -441,11 +445,12 @@ debitNoteRoutes.post('/', zValidator('json', createDebitNoteSchema), async (c) =
     }
 
     // Log activity
-    await logActivity(tenantDb, userId, 'debit_note_created', `Debit note ${debitNoteNumber} created`, {
-      debitNoteId,
-      debitNoteNumber,
-      invoiceId: data.invoiceId,
-      amount: total,
+    await logActivity(drizzle(tenantDb), {
+      userId,
+      action: 'debit_note_created',
+      entityType: 'debit_note',
+      entityId: debitNoteId,
+      details: JSON.stringify({ debitNoteNumber, invoiceId: data.invoiceId, amount: total }),
     });
 
     return created(c, {
@@ -588,10 +593,12 @@ debitNoteRoutes.post('/:id/apply', zValidator('json', applyNoteSchema), async (c
       .run();
 
     // Log activity
-    await logActivity(tenantDb, userId, 'debit_note_applied', `Debit note applied to invoice`, {
-      debitNoteId,
-      invoiceId,
-      appliedAmount: applyAmount,
+    await logActivity(drizzle(tenantDb), {
+      userId,
+      action: 'debit_note_applied',
+      entityType: 'debit_note',
+      entityId: debitNoteId,
+      details: JSON.stringify({ invoiceId, appliedAmount: applyAmount }),
     });
 
     return success(c, {

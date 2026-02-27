@@ -40,6 +40,9 @@ dependencies:
   # Camera
   image_picker: ^1.1.2
 
+  # Networking
+  dio: ^5.7.0
+
   # Maps
   url_launcher: ^6.3.1
 

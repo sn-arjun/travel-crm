@@ -145,7 +145,7 @@ class _ScheduleFollowUpDialogState
           ),
           const Divider(),
           Padding(
-            padding: const EdgeInsets.all(AppTheme.spacingMd),
+            padding: const EdgeInsets.all(16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

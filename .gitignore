@@ -99,3 +99,4 @@ desktop.ini
 # Coverage
 coverage/
 *.lcov
+*.log

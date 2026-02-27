@@ -104,7 +104,7 @@ class _ContactMergeScreenState extends ConsumerState<ContactMergeScreen> {
     final theme = Theme.of(context);
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppTheme.spacingLg),
+      padding: const EdgeInsets.all(24.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -325,7 +325,7 @@ class _ContactMergeScreenState extends ConsumerState<ContactMergeScreen> {
     return Card(
       color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
       child: Padding(
-        padding: const EdgeInsets.all(AppTheme.spacingMd),
+        padding: const EdgeInsets.all(16.0),
         child: Row(
           children: [
             Icon(Icons.warning_amber_rounded, color: theme.colorScheme.error),

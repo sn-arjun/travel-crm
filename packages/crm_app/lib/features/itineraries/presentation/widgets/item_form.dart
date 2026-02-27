@@ -264,7 +264,7 @@ class _ItemFormState extends State<ItemForm> {
           if (_expanded) ...[
             const Divider(height: 1),
             Padding(
-              padding: const EdgeInsets.all(AppTheme.spacingMd),
+              padding: const EdgeInsets.all(16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

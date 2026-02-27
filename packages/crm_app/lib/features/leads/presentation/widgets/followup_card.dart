@@ -26,7 +26,7 @@ class FollowUpCard extends ConsumerWidget {
             ? () => _complete(context, ref)
             : null,
         child: Padding(
-          padding: const EdgeInsets.all(AppTheme.spacingMd),
+          padding: const EdgeInsets.all(16.0),
           child: Row(
             children: [
               // Type icon with colored background

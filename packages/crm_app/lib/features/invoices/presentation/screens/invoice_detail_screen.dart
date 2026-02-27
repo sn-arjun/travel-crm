@@ -60,7 +60,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                 ),
                 PopupMenuItem(
                   child: const Text('Void Invoice'),
-                  onTap: () => _showVoidDialog(context),
+                  onTap: () => _showVoidDialog(),
                 ),
               ],
             ),
@@ -94,7 +94,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
 
     return SingleChildScrollView(
       child: Padding(
-        padding: const EdgeInsets.all(AppTheme.spacingMd),
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -261,7 +261,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     if (items.isEmpty) {
       return const Center(
         child: Padding(
-          padding: EdgeInsets.all(AppTheme.spacingMd),
+          padding: EdgeInsets.all(16.0),
           child: Text('No line items'),
         ),
       );
@@ -304,7 +304,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
         return Card(
           margin: const EdgeInsets.only(bottom: AppTheme.spacingMd),
           child: Padding(
-            padding: const EdgeInsets.all(AppTheme.spacingMd),
+            padding: const EdgeInsets.all(16.0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -417,33 +417,32 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     );
   }
 
-  void _showVoidDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AppConfirmDialog(
-        title: 'Void Invoice',
-        message: 'Are you sure you want to void this invoice? This action cannot be undone.',
-        confirmText: 'Void',
-        confirmColor: AppColors.error,
-        onConfirm: () {
-          ref
-              .read(invoiceDetailProvider(widget.invoiceId).notifier)
-              .voidInvoice();
-          AppSnackbar.success(context, 'Invoice voided successfully');
-          Navigator.pop(context);
-          context.pop();
-        },
-      ),
+  void _showVoidDialog() async {
+    final confirmed = await AppConfirmDialog.show(
+      context,
+      title: 'Void Invoice',
+      message: 'Are you sure you want to void this invoice? This action cannot be undone.',
+      confirmLabel: 'Void',
+      destructive: true,
     );
+    if (confirmed && mounted) {
+      ref
+          .read(invoiceDetailProvider(widget.invoiceId).notifier)
+          .voidInvoice();
+      AppSnackbar.success(context, 'Invoice voided successfully');
+      context.pop();
+    }
   }
 
   Future<void> _downloadPdf() async {
     try {
-      final pdf = await ref
+      await ref
           .read(invoiceRepositoryProvider)
           .getInvoicePdf(widget.invoiceId);
+      if (!mounted) return;
       AppSnackbar.success(context, 'PDF downloaded');
     } catch (e) {
+      if (!mounted) return;
       AppSnackbar.error(context, 'Failed to download PDF');
     }
   }

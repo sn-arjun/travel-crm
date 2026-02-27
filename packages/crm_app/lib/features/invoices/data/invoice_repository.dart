@@ -105,9 +105,9 @@ class InvoiceRepository {
       ApiEndpoints.invoiceSend(id),
       data: {
         'channel': channel,
-        if (email != null) 'email': email,
-        if (phone != null) 'phone': phone,
-        if (note != null) 'note': note,
+        'email': ?email,
+        'phone': ?phone,
+        'note': ?note,
       },
     );
   }

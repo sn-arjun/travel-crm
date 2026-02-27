@@ -45,6 +45,12 @@ scripts:
     packageFilters:
       dependsOn: build_runner
 
+  generate:watch:
+    run: melos exec -- "dart run build_runner watch --delete-conflicting-outputs"
+    description: Run code generation in watch mode
+    packageFilters:
+      dependsOn: build_runner
+
   clean:
     run: melos exec -- "flutter clean"
     description: Clean all packages

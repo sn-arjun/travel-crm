@@ -47,13 +47,13 @@ class _LeadTimelineTabState extends ConsumerState<LeadTimelineTab> {
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(AppTheme.spacingMd),
+      padding: const EdgeInsets.all(16.0),
       itemCount: state.activities.length + 1,
       itemBuilder: (context, index) {
         if (index == state.activities.length) {
           if (state.activitiesLoading) {
             return const Padding(
-              padding: EdgeInsets.all(AppTheme.spacingMd),
+              padding: EdgeInsets.all(16.0),
               child: Center(child: AppLoading()),
             );
           }

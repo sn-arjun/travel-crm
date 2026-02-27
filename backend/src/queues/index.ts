@@ -3,10 +3,13 @@ import { handleEmailJob, type EmailJob } from './email-queue';
 import { handleSmsJob, type SmsJob } from './sms-queue';
 import { handlePushJob, type PushNotificationJob } from './push-notification-queue';
 import { handleWpProvisionJob, type WpProvisionJob } from './wp-provision-queue';
+import { handleImportQueue } from './import-queue';
+import { handleExportQueue } from './export-queue';
+import { handleCampaignQueue } from './campaign-queue';
 
 export interface QueueMessage {
-  type: 'email' | 'sms' | 'push' | 'wp-provision';
-  data: EmailJob | SmsJob | PushNotificationJob | WpProvisionJob;
+  type: 'email' | 'sms' | 'push' | 'wp-provision' | 'import' | 'export_invoices' | 'export_full' | 'whatsapp_campaign' | 'sms_campaign' | 'email_campaign';
+  data: any;
 }
 
 /**
@@ -17,6 +20,23 @@ export async function handleQueue(
   batch: MessageBatch<QueueMessage>,
   env: Env
 ): Promise<void> {
+
+  if (batch.queue === 'import-queue' || batch.queue.includes('import')) {
+    await handleImportQueue(batch as any, env);
+    return;
+  }
+
+  if (batch.queue === 'export-queue' || batch.queue.includes('export')) {
+    await handleExportQueue(batch as any, env);
+    return;
+  }
+
+  if (batch.queue === 'travelcrm-campaign-queue' || batch.queue.includes('campaign')) {
+    await handleCampaignQueue(batch as any, env);
+    return;
+  }
+
+  // legacy / existing handlers for general queue
   for (const msg of batch.messages) {
     try {
       const { type, data } = msg.body;

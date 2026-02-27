@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared/shared.dart';
 import '../data/notification_provider.dart';
 
 class SendAnnouncementScreen extends ConsumerStatefulWidget {
@@ -88,33 +87,40 @@ class _SendAnnouncementScreenState extends ConsumerState<SendAnnouncementScreen>
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
-                    RadioListTile<String>(
-                      title: const Text('All Users'),
-                      value: 'all_users',
+                    RadioGroup<String>(
                       groupValue: _targetType,
                       onChanged: (value) {
                         setState(() {
                           _targetType = value!;
-                          _selectedRole = null;
-                          _selectedUserIds.clear();
+                          if (value == 'all_users') {
+                            _selectedRole = null;
+                            _selectedUserIds.clear();
+                          } else if (value == 'by_role') {
+                            _selectedUserIds.clear();
+                          } else if (value == 'specific_users') {
+                            _selectedRole = null;
+                          }
                         });
                       },
-                    ),
-                    RadioListTile<String>(
-                      title: const Text('By Role'),
-                      value: 'by_role',
-                      groupValue: _targetType,
-                      onChanged: (value) {
-                        setState(() {
-                          _targetType = value!;
-                          _selectedUserIds.clear();
-                        });
-                      },
+                      child: Column(children: [
+                        RadioListTile<String>(
+                          title: const Text('All Users'),
+                          value: 'all_users',
+                        ),
+                        RadioListTile<String>(
+                          title: const Text('By Role'),
+                          value: 'by_role',
+                        ),
+                        RadioListTile<String>(
+                          title: const Text('Specific Users'),
+                          value: 'specific_users',
+                        ),
+                      ]),
                     ),
                     if (_targetType == 'by_role') ...[
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
-                        value: _selectedRole,
+                        initialValue: _selectedRole,
                         decoration: InputDecoration(
                           labelText: 'Select Role',
                           border: OutlineInputBorder(
@@ -144,17 +150,6 @@ class _SendAnnouncementScreenState extends ConsumerState<SendAnnouncementScreen>
                         },
                       ),
                     ],
-                    RadioListTile<String>(
-                      title: const Text('Specific Users'),
-                      value: 'specific_users',
-                      groupValue: _targetType,
-                      onChanged: (value) {
-                        setState(() {
-                          _targetType = value!;
-                          _selectedRole = null;
-                        });
-                      },
-                    ),
                     if (_targetType == 'specific_users') ...[
                       const SizedBox(height: 12),
                       FilledButton.icon(

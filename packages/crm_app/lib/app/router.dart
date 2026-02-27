@@ -13,6 +13,7 @@ import '../features/auth/presentation/setup_account_screen.dart';
 import '../features/auth/presentation/biometric_prompt_screen.dart';
 import '../features/auth/presentation/splash_screen.dart';
 import '../features/notifications/notifications_screen.dart';
+import '../features/notifications/data/notification_provider.dart';
 import '../features/notifications/presentation/notification_preferences_screen.dart';
 import '../features/notifications/presentation/send_announcement_screen.dart';
 import '../features/dashboard/dashboard_screen.dart';
@@ -25,7 +26,7 @@ import '../features/settings/sessions_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/contacts/presentation/contact_detail_screen.dart';
 import '../features/contacts/presentation/contact_form_screen.dart';
-import '../features/contacts/presentation/contact_import_screen.dart';
+import '../features/imports/presentation/screens/import_wizard_screen.dart';
 import '../features/contacts/presentation/contact_list_screen.dart';
 import '../features/contacts/presentation/contact_merge_screen.dart';
 import '../features/settings/user_management_screen.dart';
@@ -47,7 +48,6 @@ import '../features/invoices/presentation/screens/invoice_list_screen.dart';
 import '../features/invoices/presentation/screens/invoice_form_screen.dart';
 import '../features/invoices/presentation/screens/invoice_detail_screen.dart';
 import '../features/invoices/presentation/screens/payment_list_screen.dart';
-import '../features/invoices/presentation/screens/ageing_report_screen.dart';
 import '../features/communications/presentation/screens/communication_hub_screen.dart';
 import '../features/communications/presentation/screens/communication_log_screen.dart';
 import '../features/communications/presentation/screens/template_list_screen.dart';
@@ -55,6 +55,67 @@ import '../features/communications/presentation/screens/template_editor_screen.d
 import '../features/communications/presentation/screens/bulk_send_screen.dart';
 import '../features/communications/presentation/screens/email_compose_screen.dart';
 import '../features/communications/presentation/screens/campaign_list_screen.dart';
+import '../features/vouchers/presentation/screens/voucher_list_screen.dart';
+import '../features/vouchers/presentation/screens/voucher_form_screen.dart';
+import '../features/vouchers/presentation/screens/voucher_detail_screen.dart';
+import '../features/suppliers/presentation/screens/supplier_list_screen.dart';
+import '../features/suppliers/presentation/screens/supplier_form_screen.dart';
+import '../features/suppliers/presentation/screens/supplier_detail_screen.dart';
+import '../features/suppliers/presentation/screens/rate_comparison_screen.dart';
+import '../features/visa/presentation/screens/traveller_list_screen.dart';
+import '../features/visa/presentation/screens/traveller_form_screen.dart';
+import '../features/visa/presentation/screens/traveller_detail_screen.dart';
+import '../features/visa/presentation/screens/visa_list_screen.dart';
+import '../features/visa/presentation/screens/visa_form_screen.dart';
+import '../features/visa/presentation/screens/visa_detail_screen.dart';
+import '../features/visa/presentation/screens/visa_dashboard_screen.dart';
+import '../features/planner/presentation/screens/calendar_screen.dart';
+import '../features/planner/presentation/screens/event_form_screen.dart';
+import '../features/tasks/presentation/screens/task_list_screen.dart';
+import '../features/tasks/presentation/screens/task_form_screen.dart';
+import '../features/tasks/presentation/screens/task_detail_screen.dart';
+import '../features/reports/presentation/screens/reports_dashboard_screen.dart';
+import '../features/reports/presentation/screens/sales_summary_report_screen.dart';
+import '../features/reports/presentation/screens/win_loss_report_screen.dart';
+import '../features/reports/presentation/screens/revenue_summary_report_screen.dart';
+import '../features/reports/presentation/screens/collections_report_screen.dart';
+import '../features/reports/presentation/screens/tax_report_screen.dart';
+import '../features/reports/presentation/screens/pipeline_summary_report_screen.dart';
+import '../features/reports/presentation/screens/lead_ageing_report_screen.dart';
+import '../features/reports/presentation/screens/lead_velocity_report_screen.dart';
+import '../features/reports/presentation/screens/customer_ltv_report_screen.dart';
+import '../features/reports/presentation/screens/team_performance_report_screen.dart';
+import '../features/reports/presentation/screens/fleet_utilization_report_screen.dart';
+import '../features/reports/presentation/screens/supplier_usage_report_screen.dart';
+import '../features/reports/presentation/screens/visa_status_report_screen.dart';
+import '../features/reports/presentation/screens/campaign_performance_report_screen.dart';
+import '../features/imports/presentation/screens/import_history_screen.dart';
+import '../features/settings/data_export_screen.dart';
+import '../features/marketing/presentation/screens/marketing_dashboard_screen.dart';
+import '../features/marketing/presentation/screens/template_gallery_screen.dart';
+import '../features/marketing/presentation/screens/segment_list_screen.dart';
+import '../features/marketing/presentation/screens/segment_builder_screen.dart';
+import '../features/marketing/presentation/screens/campaign_list_screen.dart'
+    as mkt;
+import '../features/marketing/presentation/screens/campaign_create_screen.dart';
+import '../features/marketing/presentation/screens/campaign_detail_screen.dart';
+import '../features/marketing/presentation/screens/branding_settings_screen.dart';
+import '../features/marketing/presentation/screens/my_flyers_screen.dart';
+import '../features/marketing/presentation/screens/quick_create_screen.dart';
+import '../features/marketing/presentation/screens/flyer_editor_screen.dart';
+import '../features/fleet/presentation/screens/fleet_dashboard_screen.dart';
+import '../features/fleet/presentation/screens/vehicle_list_screen.dart';
+import '../features/fleet/presentation/screens/vehicle_form_screen.dart';
+import '../features/fleet/presentation/screens/vehicle_detail_screen.dart';
+import '../features/fleet/presentation/screens/driver_list_screen.dart';
+import '../features/fleet/presentation/screens/driver_form_screen.dart';
+import '../features/fleet/presentation/screens/driver_detail_screen.dart';
+import '../features/fleet/presentation/screens/trip_list_screen.dart';
+import '../features/fleet/presentation/screens/trip_form_screen.dart';
+import '../features/fleet/presentation/screens/trip_detail_screen.dart';
+import '../features/fleet/presentation/screens/fleet_alerts_screen.dart';
+import '../features/fleet/presentation/screens/vehicle_rate_card_list_screen.dart';
+import '../features/fleet/presentation/screens/vehicle_rate_card_form_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authProvider);
@@ -148,7 +209,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
               GoRoute(
                 path: 'import',
-                builder: (context, state) => const ContactImportScreen(),
+                builder: (context, state) => const ImportWizardScreen(),
               ),
               GoRoute(
                 path: 'merge',
@@ -328,21 +389,403 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/reports',
-            builder: (context, state) => const _PlaceholderScreen(title: 'Reports'),
+            builder: (context, state) => const ReportsDashboardScreen(),
             routes: [
+              // Phase 3: Sales & Financial
               GoRoute(
-                path: 'ageing',
-                builder: (context, state) => const AgeingReportScreen(),
+                path: 'sales-summary',
+                builder: (context, state) => const SalesSummaryReportScreen(),
+              ),
+              GoRoute(
+                path: 'win-loss',
+                builder: (context, state) => const WinLossReportScreen(),
+              ),
+              GoRoute(
+                path: 'revenue-summary',
+                builder: (context, state) => const RevenueSummaryReportScreen(),
+              ),
+              GoRoute(
+                path: 'collections',
+                builder: (context, state) => const CollectionsReportScreen(),
+              ),
+              GoRoute(
+                path: 'tax',
+                builder: (context, state) => const TaxReportScreen(),
+              ),
+              // Phase 4: Leads & Customers
+              GoRoute(
+                path: 'pipeline-summary',
+                builder: (context, state) => const PipelineSummaryReportScreen(),
+              ),
+              GoRoute(
+                path: 'lead-ageing',
+                builder: (context, state) => const LeadAgeingReportScreen(),
+              ),
+              GoRoute(
+                path: 'lead-velocity',
+                builder: (context, state) => const LeadVelocityReportScreen(),
+              ),
+              GoRoute(
+                path: 'customer-ltv',
+                builder: (context, state) => const CustomerLtvReportScreen(),
+              ),
+              // Phase 5: Operations & Team
+              GoRoute(
+                path: 'team-performance',
+                builder: (context, state) => const TeamPerformanceReportScreen(),
+              ),
+              GoRoute(
+                path: 'fleet-utilization',
+                builder: (context, state) => const FleetUtilizationReportScreen(),
+              ),
+              GoRoute(
+                path: 'supplier-usage',
+                builder: (context, state) => const SupplierUsageReportScreen(),
+              ),
+              GoRoute(
+                path: 'visa-status',
+                builder: (context, state) => const VisaStatusReportScreen(),
+              ),
+              GoRoute(
+                path: 'campaign-performance',
+                builder: (context, state) => const CampaignPerformanceReportScreen(),
               ),
             ],
           ),
-          GoRoute(path: '/vouchers', builder: (context, state) => const _PlaceholderScreen(title: 'Vouchers')),
-          GoRoute(path: '/suppliers', builder: (context, state) => const _PlaceholderScreen(title: 'Suppliers')),
-          GoRoute(path: '/visa-travellers', builder: (context, state) => const _PlaceholderScreen(title: 'Visa & Travellers')),
-          GoRoute(path: '/planner', builder: (context, state) => const _PlaceholderScreen(title: 'Planner')),
-          GoRoute(path: '/tasks', builder: (context, state) => const _PlaceholderScreen(title: 'Tasks')),
-          GoRoute(path: '/marketing', builder: (context, state) => const _PlaceholderScreen(title: 'Marketing')),
-          GoRoute(path: '/fleet', builder: (context, state) => const _PlaceholderScreen(title: 'Fleet')),
+          GoRoute(
+            path: '/vouchers',
+            builder: (context, state) => const VoucherListScreen(),
+            routes: [
+              GoRoute(
+                path: 'new',
+                builder: (context, state) => VoucherFormScreen(
+                  initialType: state.uri.queryParameters['type'],
+                ),
+              ),
+              GoRoute(
+                path: ':id',
+                builder: (context, state) => VoucherDetailScreen(
+                  voucherId: state.pathParameters['id']!,
+                ),
+                routes: [
+                  GoRoute(
+                    path: 'edit',
+                    builder: (context, state) => VoucherFormScreen(
+                      voucherId: state.pathParameters['id'],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          GoRoute(
+            path: '/suppliers',
+            builder: (context, state) => const SupplierListScreen(),
+            routes: [
+              GoRoute(
+                path: 'new',
+                builder: (context, state) => const SupplierFormScreen(),
+              ),
+              GoRoute(
+                path: 'compare-rates',
+                builder: (context, state) => const RateComparisonScreen(),
+              ),
+              GoRoute(
+                path: ':id',
+                builder: (context, state) {
+                  if (state.pathParameters['id'] == 'compare-rates') {
+                    // Fallback to avoid matching as ID if router evaluates out of order
+                    return const RateComparisonScreen();
+                  }
+                  return SupplierDetailScreen(
+                    supplierId: state.pathParameters['id']!,
+                  );
+                },
+                routes: [
+                  GoRoute(
+                    path: 'edit',
+                    builder: (context, state) => SupplierFormScreen(
+                      supplierId: state.pathParameters['id'],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          GoRoute(
+            path: '/travellers',
+            builder: (context, state) => const TravellerListScreen(),
+            routes: [
+              GoRoute(
+                path: 'new',
+                builder: (context, state) => TravellerFormScreen(
+                  initialContactId: state.uri.queryParameters['contactId'],
+                ),
+              ),
+              GoRoute(
+                path: ':id',
+                builder: (context, state) => TravellerDetailScreen(
+                  travellerId: state.pathParameters['id']!,
+                ),
+                routes: [
+                  GoRoute(
+                    path: 'edit',
+                    builder: (context, state) => TravellerFormScreen(
+                      travellerId: state.pathParameters['id'],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          GoRoute(
+            path: '/visas',
+            builder: (context, state) => const VisaListScreen(),
+            routes: [
+              GoRoute(
+                path: 'dashboard',
+                builder: (context, state) => const VisaDashboardScreen(),
+              ),
+              GoRoute(
+                path: 'new',
+                builder: (context, state) => VisaFormScreen(
+                  initialTravellerId: state.uri.queryParameters['travellerId'],
+                ),
+              ),
+              GoRoute(
+                path: ':id',
+                builder: (context, state) {
+                   if (state.pathParameters['id'] == 'dashboard') {
+                      return const VisaDashboardScreen();
+                   }
+                   return VisaDetailScreen(
+                    visaId: state.pathParameters['id']!,
+                   );
+                },
+                routes: [
+                  GoRoute(
+                    path: 'edit',
+                    builder: (context, state) => VisaFormScreen(
+                      visaId: state.pathParameters['id'],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          GoRoute(path: '/visa-travellers', redirect: (_, _) => '/visas'),
+          GoRoute(
+            path: '/marketing',
+            builder: (context, state) => const MarketingDashboardScreen(),
+            routes: [
+              GoRoute(
+                path: 'templates',
+                builder: (context, state) => const TemplateGalleryScreen(),
+              ),
+              GoRoute(
+                path: 'segments',
+                builder: (context, state) => const SegmentListScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'new',
+                    builder: (context, state) => const SegmentBuilderScreen(),
+                  ),
+                  GoRoute(
+                    path: ':id/edit',
+                    builder: (context, state) => SegmentBuilderScreen(
+                      segmentId: state.pathParameters['id'],
+                    ),
+                  ),
+                ],
+              ),
+              GoRoute(
+                path: 'campaigns',
+                builder: (context, state) =>
+                    const mkt.MarketingCampaignListScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'new',
+                    builder: (context, state) =>
+                        const CampaignCreateScreen(),
+                  ),
+                  GoRoute(
+                    path: ':id',
+                    builder: (context, state) => CampaignDetailScreen(
+                      id: state.pathParameters['id']!,
+                    ),
+                  ),
+                ],
+              ),
+              GoRoute(
+                path: 'branding',
+                builder: (context, state) =>
+                    const BrandingSettingsScreen(),
+              ),
+              GoRoute(
+                path: 'my-flyers',
+                builder: (context, state) => const MyFlyersScreen(),
+              ),
+              GoRoute(
+                path: 'quick-create/:templateId',
+                builder: (context, state) => QuickCreateScreen(
+                  templateId: state.pathParameters['templateId']!,
+                ),
+              ),
+              GoRoute(
+                path: 'editor',
+                builder: (context, state) => FlyerEditorScreen(
+                  templateId: state.uri.queryParameters['templateId'],
+                  draftId: state.uri.queryParameters['draftId'],
+                ),
+              ),
+            ],
+          ),
+          GoRoute(
+            path: '/fleet',
+            builder: (context, state) => const FleetDashboardScreen(),
+            routes: [
+              GoRoute(
+                path: 'vehicles',
+                builder: (context, state) => const VehicleListScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'new',
+                    builder: (context, state) => const VehicleFormScreen(),
+                  ),
+                  GoRoute(
+                    path: ':id',
+                    builder: (context, state) => VehicleDetailScreen(
+                      vehicleId: state.pathParameters['id']!,
+                    ),
+                    routes: [
+                      GoRoute(
+                        path: 'edit',
+                        builder: (context, state) => VehicleFormScreen(
+                          vehicleId: state.pathParameters['id'],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              GoRoute(
+                path: 'drivers',
+                builder: (context, state) => const DriverListScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'new',
+                    builder: (context, state) => const DriverFormScreen(),
+                  ),
+                  GoRoute(
+                    path: ':id',
+                    builder: (context, state) => DriverDetailScreen(
+                      driverId: state.pathParameters['id']!,
+                    ),
+                    routes: [
+                      GoRoute(
+                        path: 'edit',
+                        builder: (context, state) => DriverFormScreen(
+                          driverId: state.pathParameters['id'],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              GoRoute(
+                path: 'trips',
+                builder: (context, state) => const TripListScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'new',
+                    builder: (context, state) => const TripFormScreen(),
+                  ),
+                  GoRoute(
+                    path: ':id',
+                    builder: (context, state) => TripDetailScreen(
+                      tripId: state.pathParameters['id']!,
+                    ),
+                    routes: [
+                      GoRoute(
+                        path: 'edit',
+                        builder: (context, state) => TripFormScreen(
+                          tripId: state.pathParameters['id'],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              GoRoute(
+                path: 'rate-cards',
+                builder: (context, state) =>
+                    const VehicleRateCardListScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'new',
+                    builder: (context, state) =>
+                        const VehicleRateCardFormScreen(),
+                  ),
+                  GoRoute(
+                    path: ':id/edit',
+                    builder: (context, state) => VehicleRateCardFormScreen(
+                      rateCardId: state.pathParameters['id'],
+                    ),
+                  ),
+                ],
+              ),
+              GoRoute(
+                path: 'alerts',
+                builder: (context, state) => const FleetAlertsScreen(),
+              ),
+            ],
+          ),
+          // --- Planner / Calendar ---
+          GoRoute(
+            path: '/planner',
+            builder: (context, state) => const CalendarScreen(),
+            routes: [
+              GoRoute(
+                path: 'events/create',
+                builder: (context, state) => EventFormScreen(
+                  initialDate: state.extra as DateTime?,
+                ),
+              ),
+              GoRoute(
+                path: 'events/:id/edit',
+                builder: (context, state) => EventFormScreen(
+                  eventId: state.pathParameters['id'],
+                ),
+              ),
+            ],
+          ),
+          // --- Tasks ---
+          GoRoute(
+            path: '/tasks',
+            builder: (context, state) => const TaskListScreen(),
+            routes: [
+              GoRoute(
+                path: 'create',
+                builder: (context, state) => TaskFormScreen(
+                  relatedLeadId: state.uri.queryParameters['related_lead_id'],
+                ),
+              ),
+              GoRoute(
+                path: ':id',
+                builder: (context, state) => TaskDetailScreen(
+                  taskId: state.pathParameters['id']!,
+                ),
+                routes: [
+                  GoRoute(
+                    path: 'edit',
+                    builder: (context, state) => TaskFormScreen(
+                      taskId: state.pathParameters['id'],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
           GoRoute(
             path: '/settings',
             builder: (context, state) => const SettingsScreen(),
@@ -373,6 +816,22 @@ final routerProvider = Provider<GoRouter>((ref) {
                 },
                 builder: (context, state) => const SendAnnouncementScreen(),
               ),
+              GoRoute(
+                path: 'import',
+                builder: (context, state) => const ImportWizardScreen(),
+              ),
+              GoRoute(
+                path: 'import-history',
+                builder: (context, state) => const ImportHistoryScreen(),
+              ),
+              GoRoute(
+                path: 'data-export',
+                builder: (context, state) => const DataExportScreen(),
+              ),
+              GoRoute(
+                path: 'export-history',
+                builder: (context, state) => const DataExportScreen(),
+              ),
             ],
           ),
         ],
@@ -394,7 +853,7 @@ class _AppShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authProvider);
-    final unreadAsync = ref.watch(unreadNotificationCountProvider);
+    final unreadAsync = ref.watch(unreadCountProvider);
 
     return AppScaffold(
       title: _titleFromLocation(location),
@@ -441,12 +900,36 @@ String _titleFromLocation(String location) {
     '/reports/ageing': 'Ageing Report',
     '/vouchers': 'Vouchers',
     '/suppliers': 'Suppliers',
+    '/suppliers/new': 'New Supplier',
+    '/suppliers/compare-rates': 'Rate Comparison',
+    '/travellers': 'Travellers',
+    '/travellers/new': 'New Traveller',
+    '/visas': 'Visa Applications',
+    '/visas/new': 'New Visa Application',
+    '/visas/dashboard': 'Visa Pipeline',
     '/visa-travellers': 'Visa & Travellers',
     '/planner': 'Planner',
     '/tasks': 'Tasks',
     '/reports': 'Reports',
     '/marketing': 'Marketing',
-    '/fleet': 'Fleet',
+    '/marketing/templates': 'Template Gallery',
+    '/marketing/segments': 'Segments',
+    '/marketing/segments/new': 'New Segment',
+    '/marketing/campaigns': 'Marketing Campaigns',
+    '/marketing/campaigns/new': 'New Campaign',
+    '/marketing/branding': 'Branding Settings',
+    '/marketing/my-flyers': 'My Flyers',
+    '/marketing/editor': 'Flyer Editor',
+    '/fleet': 'Fleet Dashboard',
+    '/fleet/vehicles': 'Vehicles',
+    '/fleet/vehicles/new': 'Add Vehicle',
+    '/fleet/drivers': 'Drivers',
+    '/fleet/drivers/new': 'Add Driver',
+    '/fleet/trips': 'Trips',
+    '/fleet/trips/new': 'New Trip',
+    '/fleet/rate-cards': 'Vehicle Rate Cards',
+    '/fleet/rate-cards/new': 'New Rate Card',
+    '/fleet/alerts': 'Fleet Alerts',
     '/settings': 'Settings',
     '/settings/profile': 'Profile',
     '/settings/sessions': 'Active Sessions',
@@ -458,6 +941,9 @@ String _titleFromLocation(String location) {
     '/settings/followup-sequences': 'Follow-Up Sequences',
     '/settings/notifications': 'Notification Preferences',
     '/settings/announcements': 'Send Announcement',
+    '/settings/import-history': 'Import History',
+    '/settings/data-export': 'Data Export',
+    '/settings/export-history': 'Export History',
   };
   final exact = titles[location];
   if (exact != null) return exact;
@@ -489,28 +975,44 @@ String _titleFromLocation(String location) {
   if (location.startsWith('/templates/') && location.endsWith('/edit')) {
     return 'Edit Template';
   }
+  if (location.startsWith('/vouchers/') && location.endsWith('/edit')) {
+    return 'Edit Voucher';
+  }
+  if (location.startsWith('/vouchers/')) return 'Voucher Details';
+  if (location.startsWith('/suppliers/') && location.endsWith('/edit')) {
+    return 'Edit Supplier';
+  }
+  if (location.startsWith('/suppliers/')) return 'Supplier Details';
+  if (location.startsWith('/travellers/') && location.endsWith('/edit')) {
+    return 'Edit Traveller';
+  }
+  if (location.startsWith('/travellers/')) return 'Traveller Details';
+  if (location.startsWith('/visas/') && location.endsWith('/edit')) {
+    return 'Edit Visa App';
+  }
+  if (location.startsWith('/visas/')) return 'Visa Details';
+  if (location.startsWith('/marketing/segments/') && location.endsWith('/edit')) {
+    return 'Edit Segment';
+  }
+  if (location.startsWith('/marketing/campaigns/')) return 'Campaign Details';
+  if (location.startsWith('/marketing/quick-create/')) return 'Quick Create';
+  if (location.startsWith('/fleet/vehicles/') && location.endsWith('/edit')) {
+    return 'Edit Vehicle';
+  }
+  if (location.startsWith('/fleet/vehicles/')) return 'Vehicle Details';
+  if (location.startsWith('/fleet/drivers/') && location.endsWith('/edit')) {
+    return 'Edit Driver';
+  }
+  if (location.startsWith('/fleet/drivers/')) return 'Driver Details';
+  if (location.startsWith('/fleet/trips/') && location.endsWith('/edit')) {
+    return 'Edit Trip';
+  }
+  if (location.startsWith('/fleet/trips/')) return 'Trip Details';
+  if (location.startsWith('/fleet/rate-cards/') && location.endsWith('/edit')) {
+    return 'Edit Rate Card';
+  }
+  if (location.startsWith('/fleet/rate-cards/')) return 'Rate Card Details';
 
   return 'TravelCRM Pro';
 }
 
-class _PlaceholderScreen extends StatelessWidget {
-  final String title;
-  const _PlaceholderScreen({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.construction_outlined, size: 48, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
-          const SizedBox(height: 16),
-          Text(title, style: theme.textTheme.headlineMedium),
-          const SizedBox(height: 8),
-          Text('Coming soon', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-        ],
-      ),
-    );
-  }
-}

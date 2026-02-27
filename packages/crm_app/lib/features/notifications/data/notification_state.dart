@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:shared/shared.dart';
 
 enum NotificationListStatus { initial, loading, loaded, error }
@@ -20,8 +21,8 @@ class NotificationListState {
   });
 
   bool get hasMore => pagination?.hasMore ?? false;
-  int get currentPage => pagination?.currentPage ?? 1;
-  int get totalItems => pagination?.totalItems ?? 0;
+  int get currentPage => pagination?.page ?? 1;
+  int get totalItems => pagination?.total ?? 0;
 
   NotificationListState copyWith({
     NotificationListStatus? status,

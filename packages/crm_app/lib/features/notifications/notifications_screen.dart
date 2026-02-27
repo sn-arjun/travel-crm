@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shared/shared.dart';
 import 'data/notification_provider.dart';
+import 'data/notification_state.dart';
 import 'presentation/widgets/notification_tile.dart';
 
 class NotificationsScreen extends ConsumerWidget {

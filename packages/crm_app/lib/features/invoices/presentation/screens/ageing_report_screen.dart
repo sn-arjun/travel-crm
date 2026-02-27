@@ -6,7 +6,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/widgets/feedback/app_loading.dart';
 import '../../../../core/widgets/feedback/app_error_widget.dart';
 import '../../../../core/widgets/layout/app_section_card.dart';
-import '../../data/invoice_repository.dart';
+import '../../data/invoice_provider.dart';
 
 final ageingReportProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) {
@@ -47,7 +47,7 @@ class AgeingReportScreen extends ConsumerWidget {
 
           return SingleChildScrollView(
             child: Padding(
-              padding: const EdgeInsets.all(AppTheme.spacingMd),
+              padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
                   // Summary cards
@@ -116,7 +116,7 @@ class AgeingReportScreen extends ConsumerWidget {
                   _buildLegend(theme),
                 ],
               ),
-            );
+            ),
           );
         },
       ),
@@ -164,7 +164,7 @@ class AgeingReportScreen extends ConsumerWidget {
   ) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(AppTheme.spacingMd),
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -228,7 +228,7 @@ class AgeingReportScreen extends ConsumerWidget {
 
   Widget _buildLegend(ThemeData theme) {
     return Container(
-      padding: const EdgeInsets.all(AppTheme.spacingMd),
+      padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
         border: Border.all(color: theme.colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(8),

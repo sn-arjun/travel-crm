@@ -33,15 +33,55 @@ import webhookRoutes from './routes/webhooks';
 import pushTokenRoutes from './routes/push-tokens';
 import preferencesRoutes from './routes/notification-preferences';
 import voucherRoutes from './routes/vouchers';
+import supplierRoutes from './routes/suppliers';
+import travellerRoutes from './routes/travellers';
+import visaRoutes from './routes/visa';
+import importRoutes from './routes/imports';
+import exportRoutes from './routes/exports';
+import { registerSalesReports } from './services/reports/sales-reports';
+import { registerFinancialReports } from './services/reports/financial-reports';
+import { registerLeadReports } from './services/reports/lead-reports';
+import { registerCustomerReports } from './services/reports/customer-reports';
+import { registerTeamReports } from './services/reports/team-reports';
+import { registerFleetReports } from './services/reports/fleet-reports';
+import { registerSupplierReports } from './services/reports/supplier-reports';
+import { registerVisaReports } from './services/reports/visa-reports';
+import { registerMarketingReports } from './services/reports/marketing-reports';
+import testRoutes from './routes/test';
+import plannerRoutes from './routes/planner';
+import taskRoutes from './routes/tasks';
+import mktFlyerTemplateRoutes from './routes/marketing/flyer-templates';
+import mktImageRoutes from './routes/marketing/images';
+import mktBrandingRoutes from './routes/marketing/branding';
+import mktSegmentRoutes from './routes/marketing/segments';
+import mktCampaignRoutes from './routes/marketing/campaigns';
+import mktFlyerRoutes from './routes/marketing/flyers';
+import mktOptOutRoutes from './routes/marketing/opt-out';
+import fleetRoutes from './routes/fleet';
+import driverRoutes from './routes/driver';
 import { checkFollowUpReminders } from './services/follow-up-reminders';
 import {
   checkBirthdayAnniversary,
   checkInvoiceReminders,
   checkVisaPassportExpiry,
   checkTripReminders,
+  checkMissingVisaDocuments,
 } from './cron/auto-reminders';
+import { processOverdueTasks } from './cron/overdue-tasks';
+import { processFleetAlerts } from './cron/fleet-alerts';
 
 const app = new Hono<AppContext>();
+
+// Register reports on startup
+registerSalesReports();
+registerFinancialReports();
+registerLeadReports();
+registerCustomerReports();
+registerTeamReports();
+registerFleetReports();
+registerSupplierReports();
+registerVisaReports();
+registerMarketingReports();
 
 // --- Global Middleware ---
 
@@ -85,6 +125,14 @@ app.get('/api/health', healthHandler);
 app.route('/api/v1/webhooks', webhookRoutes);
 app.route('/api/webhooks', webhookRoutes);
 
+// --- Testing Routes (Protected internally by TEST_MODE flag) ---
+app.route('/api/v1/test', testRoutes);
+app.route('/api/test', testRoutes);
+
+// --- Driver App Routes (own auth middleware — BEFORE global CRM auth) ---
+app.route('/api/v1/driver', driverRoutes);
+app.route('/api/driver', driverRoutes);
+
 // --- Auth & Tenant Middleware (both /api/v1/* and /api/*) ---
 
 app.use('/api/v1/*', authMiddleware);
@@ -121,6 +169,21 @@ const routeMounts: Array<[string, typeof authRoutes]> = [
   ['push-tokens', pushTokenRoutes],
   ['notification-preferences', preferencesRoutes],
   ['vouchers', voucherRoutes],
+  ['suppliers', supplierRoutes],
+  ['travellers', travellerRoutes],
+  ['visa', visaRoutes],
+  ['events', plannerRoutes],
+  ['tasks', taskRoutes],
+  ['imports', importRoutes],
+  ['exports', exportRoutes],
+  ['marketing/flyer-templates', mktFlyerTemplateRoutes],
+  ['marketing/images', mktImageRoutes],
+  ['marketing/branding', mktBrandingRoutes],
+  ['marketing/segments', mktSegmentRoutes],
+  ['marketing/campaigns', mktCampaignRoutes],
+  ['marketing/flyers', mktFlyerRoutes],
+  ['marketing/opt-out', mktOptOutRoutes],
+  ['fleet', fleetRoutes],
 ];
 
 for (const [path, handler] of routeMounts) {
@@ -185,7 +248,10 @@ export default {
           checkBirthdayAnniversary(env),
           checkInvoiceReminders(env),
           checkVisaPassportExpiry(env),
+          checkMissingVisaDocuments(env),
           checkTripReminders(env),
+          processOverdueTasks(env),
+          processFleetAlerts(env),
         ])
       );
     }

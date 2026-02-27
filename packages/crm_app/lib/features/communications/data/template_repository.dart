@@ -16,8 +16,8 @@ class TemplateRepository {
     final params = <String, dynamic>{
       'page': page,
       'limit': limit,
-      if (channel != null) 'channel': channel,
-      if (category != null) 'category': category,
+      'channel': ?channel,
+      'category': ?category,
       if (search != null && search.isNotEmpty) 'search': search,
     };
 

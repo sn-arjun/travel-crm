@@ -23,9 +23,9 @@ class ItineraryRepository {
       'sortBy': sortBy,
       'sortOrder': sortOrder,
       if (search != null && search.isNotEmpty) 'search': search,
-      if (status != null) 'status': status,
-      if (leadId != null) 'leadId': leadId,
-      if (createdBy != null) 'createdBy': createdBy,
+      'status': ?status,
+      'leadId': ?leadId,
+      'createdBy': ?createdBy,
     };
 
     final response = await _apiClient.get(
@@ -80,7 +80,7 @@ class ItineraryRepository {
     final response = await _apiClient.post(
       ApiEndpoints.itineraryClone(id),
       data: {
-        if (targetLeadId != null) 'targetLeadId': targetLeadId,
+        'targetLeadId': ?targetLeadId,
       },
     );
     return ItineraryModel.fromJson(
@@ -119,8 +119,8 @@ class ItineraryRepository {
       data: {
         'channel': channel,
         'to': to,
-        if (subject != null) 'subject': subject,
-        if (message != null) 'message': message,
+        'subject': ?subject,
+        'message': ?message,
       },
     );
   }

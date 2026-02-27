@@ -7,6 +7,7 @@ import { success, created, paginated, error, notFound, forbidden } from '../util
 import { generateInvoiceNumber } from '../services/numbering';
 import { calculateInvoiceTotals, detectTaxType } from '../services/tax-calculator';
 import { logActivity } from '../utils/activity-logger';
+import { drizzle } from 'drizzle-orm/d1';
 
 const invoiceRoutes = new Hono<AppContext>();
 
@@ -276,10 +277,9 @@ invoiceRoutes.post('/', zValidator('json', createInvoiceSchema), async (c) => {
     }
 
     // Log activity
-    await logActivity(tenantDb, userId, 'invoice_created', `Invoice ${invoiceNumber} created`, {
-      invoiceId,
-      invoiceNumber,
-      contactId: data.contactId,
+    await logActivity(drizzle(tenantDb), {
+      userId, action: 'invoice_created', entityType: 'invoice', entityId: invoiceId,
+      details: JSON.stringify({ invoiceNumber, contactId: data.contactId }),
     });
 
     return created(c, {
@@ -360,6 +360,33 @@ invoiceRoutes.get('/:id', async (c) => {
   } catch (err) {
     console.error('Error fetching invoice:', err);
     return error(c, 'Failed to fetch invoice', 500);
+  }
+});
+
+// ============================================================
+// GET /:id/payments — Get payments for an invoice
+// ============================================================
+
+invoiceRoutes.get('/:id/payments', async (c) => {
+  const tenantDb = c.get('tenantDb');
+  const invoiceId = c.req.param('id');
+
+  try {
+    const payments = await tenantDb
+      .prepare(
+        `SELECT
+          id, amount, currency, method, reference, type, date, notes, created_by, created_at
+        FROM payments
+        WHERE invoice_id = ?1
+        ORDER BY date DESC`
+      )
+      .bind(invoiceId)
+      .all<Record<string, unknown>>();
+
+    return success(c, payments.results || []);
+  } catch (err) {
+    console.error('Error fetching invoice payments:', err);
+    return error(c, 'Failed to fetch invoice payments', 500);
   }
 });
 
@@ -477,8 +504,9 @@ invoiceRoutes.put('/:id', zValidator('json', updateInvoiceSchema), async (c) => 
       .run();
 
     // Log activity
-    await logActivity(tenantDb, userId, 'invoice_updated', `Invoice ${invoice.invoice_number} updated`, {
-      invoiceId,
+    await logActivity(drizzle(tenantDb), {
+      userId, action: 'invoice_updated', entityType: 'invoice', entityId: invoiceId,
+      details: JSON.stringify({ invoiceNumber: invoice.invoice_number }),
     });
 
     return success(c, { id: invoiceId, ...updateData });
@@ -518,8 +546,9 @@ invoiceRoutes.delete('/:id', async (c) => {
       .bind('cancelled', now, invoiceId)
       .run();
 
-    await logActivity(tenantDb, userId, 'invoice_deleted', `Invoice ${invoice.invoice_number} cancelled`, {
-      invoiceId,
+    await logActivity(drizzle(tenantDb), {
+      userId, action: 'invoice_deleted', entityType: 'invoice', entityId: invoiceId,
+      details: JSON.stringify({ invoiceNumber: invoice.invoice_number }),
     });
 
     return success(c, { id: invoiceId, status: 'cancelled' });
@@ -559,8 +588,9 @@ invoiceRoutes.post('/:id/void', async (c) => {
       .bind('cancelled', now, invoiceId)
       .run();
 
-    await logActivity(tenantDb, userId, 'invoice_voided', `Invoice ${invoice.invoice_number} voided`, {
-      invoiceId,
+    await logActivity(drizzle(tenantDb), {
+      userId, action: 'invoice_voided', entityType: 'invoice', entityId: invoiceId,
+      details: JSON.stringify({ invoiceNumber: invoice.invoice_number }),
     });
 
     return success(c, { id: invoiceId, status: 'cancelled' });
@@ -688,10 +718,9 @@ invoiceRoutes.post('/:id/duplicate', async (c) => {
         .run();
     }
 
-    await logActivity(tenantDb, userId, 'invoice_duplicated', `Invoice ${invoiceNumber} created from duplication`, {
-      invoiceId: newInvoiceId,
-      invoiceNumber,
-      sourceInvoiceId: invoiceId,
+    await logActivity(drizzle(tenantDb), {
+      userId, action: 'invoice_duplicated', entityType: 'invoice', entityId: newInvoiceId,
+      details: JSON.stringify({ invoiceNumber, sourceInvoiceId: invoiceId }),
     });
 
     return created(c, {

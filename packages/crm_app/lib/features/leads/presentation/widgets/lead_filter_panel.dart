@@ -111,7 +111,7 @@ class _LeadFilterPanelState extends ConsumerState<LeadFilterPanel> {
           Expanded(
             child: ListView(
               controller: controller,
-              padding: const EdgeInsets.all(AppTheme.spacingMd),
+              padding: const EdgeInsets.all(16.0),
               children: [
                 // Status
                 Text('Status', style: theme.textTheme.labelLarge),

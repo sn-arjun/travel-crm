@@ -1,0 +1,11 @@
+{
+    "name": "travel-crm-root",
+    "version": "1.0.0",
+    "private": true,
+    "scripts": {
+        "dev": "concurrently \"npm run dev --prefix backend\" \"melos run generate:watch\" \"cd packages/crm_app && flutter run -d chrome --web-port 8080\""
+    },
+    "devDependencies": {
+        "concurrently": "^8.2.2"
+    }
+}

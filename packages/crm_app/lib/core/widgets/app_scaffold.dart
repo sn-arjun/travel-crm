@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared/shared.dart';
 
 import '../../app/theme.dart';
 
@@ -40,7 +41,7 @@ const List<SidebarMenuItem> kMenuItems = [
   SidebarMenuItem(label: 'Planner', icon: Icons.calendar_month_outlined, route: '/planner'),
   SidebarMenuItem(label: 'Tasks', icon: Icons.task_alt_outlined, route: '/tasks'),
   SidebarMenuItem(label: 'Reports', icon: Icons.bar_chart_outlined, route: '/reports', roles: ['admin', 'sales_manager']),
-  SidebarMenuItem(label: 'Marketing', icon: Icons.campaign_outlined, route: '/marketing', roles: ['admin']),
+  SidebarMenuItem(label: 'Marketing', icon: Icons.campaign_outlined, route: '/marketing', roles: ['admin', 'sales_manager']),
   SidebarMenuItem(label: 'Fleet', icon: Icons.directions_car_outlined, route: '/fleet', roles: ['admin']),
   SidebarMenuItem(label: 'Settings', icon: Icons.settings_outlined, route: '/settings'),
 ];
@@ -104,10 +105,41 @@ class AppScaffold extends StatelessWidget {
     context.go(_visibleItems[index].route);
   }
 
+  /// Whether the current location is a sub-route (not a direct sidebar item).
+  bool _isSubRoute(BuildContext context) {
+    final location = GoRouterState.of(context).uri.toString();
+    final items = _visibleItems;
+    for (final item in items) {
+      if (location == item.route) return false;
+    }
+    return true;
+  }
+
   // --- Top app bar (shared between all breakpoints) ---
   PreferredSizeWidget _buildTopBar(BuildContext context) {
     final theme = Theme.of(context);
+    final showBack = _isSubRoute(context);
     return AppBar(
+      automaticallyImplyLeading: false,
+      leading: showBack
+          ? IconButton(
+              icon: const Icon(Icons.arrow_back),
+              tooltip: 'Back',
+              onPressed: () {
+                if (Navigator.of(context).canPop()) {
+                  Navigator.of(context).pop();
+                } else {
+                  // Fall back to parent route
+                  final location = GoRouterState.of(context).uri.toString();
+                  final segments = location.split('/');
+                  if (segments.length > 2) {
+                    segments.removeLast();
+                    context.go(segments.join('/'));
+                  }
+                }
+              },
+            )
+          : null,
       title: breadcrumbs != null
           ? Row(children: breadcrumbs!)
           : Text(title, style: theme.textTheme.titleLarge),
@@ -185,7 +217,11 @@ class AppScaffold extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingSm),
             child: CircleAvatar(
               radius: 16,
-              backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl!) : null,
+              backgroundImage: avatarUrl != null
+                  ? NetworkImage(avatarUrl!.startsWith('http')
+                      ? avatarUrl!
+                      : '${AppConstants.apiBaseUrl}/api/v1$avatarUrl')
+                  : null,
               child: avatarUrl == null
                   ? Text(
                       (userName ?? 'U')[0].toUpperCase(),

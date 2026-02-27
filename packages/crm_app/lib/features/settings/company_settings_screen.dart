@@ -108,7 +108,7 @@ class _CompanySettingsScreenState extends ConsumerState<CompanySettingsScreen> {
     final theme = Theme.of(context);
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppTheme.spacingLg),
+      padding: const EdgeInsets.all(24.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -157,7 +157,7 @@ class _CompanySettingsScreenState extends ConsumerState<CompanySettingsScreen> {
                 // Logo Card
                 Card(
                   child: Padding(
-                    padding: const EdgeInsets.all(AppTheme.spacingLg),
+                    padding: const EdgeInsets.all(24.0),
                     child: Row(
                       children: [
                         Container(
@@ -206,7 +206,7 @@ class _CompanySettingsScreenState extends ConsumerState<CompanySettingsScreen> {
                 // Details Card
                 Card(
                   child: Padding(
-                    padding: const EdgeInsets.all(AppTheme.spacingLg),
+                    padding: const EdgeInsets.all(24.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [

@@ -14,6 +14,7 @@ import '../../../core/widgets/layout/app_filter_bar.dart';
 import '../../../core/widgets/layout/app_responsive_builder.dart';
 import '../data/contact_provider.dart';
 import '../data/contact_state.dart';
+import '../../exports/data/export_provider.dart';
 import 'widgets/contact_type_badge.dart';
 import 'widgets/source_badge.dart';
 import 'widgets/tag_chips.dart';
@@ -78,6 +79,11 @@ class _ContactListScreenState extends ConsumerState<ContactListScreen> {
                 ),
                 const SizedBox(width: AppTheme.spacingSm),
               ],
+              IconButton(
+                icon: const Icon(Icons.download_outlined),
+                tooltip: 'Export',
+                onPressed: () => ref.read(exportProvider).exportContacts(),
+              ),
               IconButton(
                 icon: const Icon(Icons.upload_file_outlined),
                 tooltip: 'Import',
@@ -151,79 +157,88 @@ class _ContactListScreenState extends ConsumerState<ContactListScreen> {
     ContactListState state,
     ContactListNotifier notifier,
   ) {
-    return AppDataTable<ContactModel>(
-      columns: [
-        AppDataColumn(title: 'Name', field: 'name', sortable: true, width: 200),
-        AppDataColumn(title: 'Email', field: 'email', sortable: true),
-        AppDataColumn(title: 'Phone', field: 'phone'),
-        AppDataColumn(title: 'Company', field: 'company', sortable: true),
-        AppDataColumn(
-          title: 'Type',
-          field: 'type',
-          cellBuilder: (value) => ContactTypeBadge(type: value ?? ''),
-        ),
-        AppDataColumn(
-          title: 'Source',
-          field: 'source',
-          cellBuilder: (value) => SourceBadge(source: value),
-        ),
-        AppDataColumn(title: 'City', field: 'city', sortable: true),
-        AppDataColumn(
-          title: 'Tags',
-          field: 'tags',
-          width: 200,
-          cellBuilder: (value) {
-            final tags = (value as List<dynamic>?)?.cast<String>() ?? [];
-            return TagChips(tags: tags, maxVisible: 2);
-          },
-        ),
-      ],
-      rows: state.contacts,
-      rowValueFor: (contact, field) => switch (field) {
-        'name' => contact.name,
-        'email' => contact.email,
-        'phone' => contact.phone,
-        'company' => contact.company,
-        'type' => contact.type,
-        'source' => contact.source,
-        'city' => contact.city,
-        'tags' => contact.tags,
-        _ => '',
-      },
-      selectable: true,
-      selectedIndices: state.contacts
-          .asMap()
-          .entries
-          .where((e) => state.selectedIds.contains(e.value.id))
-          .map((e) => e.key)
-          .toSet(),
-      onSelectionChanged: (indices) {
-        final ids = indices.map((i) => state.contacts[i].id).toSet();
-        notifier.clearSelection();
-        for (final id in ids) {
-          notifier.toggleSelection(id);
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification is ScrollEndNotification &&
+            notification.metrics.pixels >= notification.metrics.maxScrollExtent - 200) {
+          notifier.loadNextPage();
         }
+        return false;
       },
-      onRowTap: (i) => context.go('/contacts/${state.contacts[i].id}'),
-      sortState: SortState(
-        field: state.sortBy,
-        ascending: state.sortOrder == 'asc',
+      child: Column(
+        children: [
+          Expanded(
+            child: AppDataTable<ContactModel>(
+              columns: [
+                AppDataColumn(title: 'Name', field: 'name', sortable: true, width: 200),
+                AppDataColumn(title: 'Email', field: 'email', sortable: true),
+                AppDataColumn(title: 'Phone', field: 'phone'),
+                AppDataColumn(title: 'Company', field: 'company', sortable: true),
+                AppDataColumn(
+                  title: 'Type',
+                  field: 'type',
+                  cellBuilder: (value) => ContactTypeBadge(type: value ?? ''),
+                ),
+                AppDataColumn(
+                  title: 'Source',
+                  field: 'source',
+                  cellBuilder: (value) => SourceBadge(source: value),
+                ),
+                AppDataColumn(title: 'City', field: 'city', sortable: true),
+                AppDataColumn(
+                  title: 'Tags',
+                  field: 'tags',
+                  width: 200,
+                  cellBuilder: (value) {
+                    final tags = (value as List<dynamic>?)?.cast<String>() ?? [];
+                    return TagChips(tags: tags, maxVisible: 2);
+                  },
+                ),
+              ],
+              rows: state.contacts,
+              rowValueFor: (contact, field) => switch (field) {
+                'name' => contact.name,
+                'email' => contact.email,
+                'phone' => contact.phone,
+                'company' => contact.company,
+                'type' => contact.type,
+                'source' => contact.source,
+                'city' => contact.city,
+                'tags' => contact.tags,
+                _ => '',
+              },
+              selectable: true,
+              selectedIndices: state.contacts
+                  .asMap()
+                  .entries
+                  .where((e) => state.selectedIds.contains(e.value.id))
+                  .map((e) => e.key)
+                  .toSet(),
+              onSelectionChanged: (indices) {
+                final ids = indices.map((i) => state.contacts[i].id).toSet();
+                notifier.clearSelection();
+                for (final id in ids) {
+                  notifier.toggleSelection(id);
+                }
+              },
+              onRowTap: (i) => context.go('/contacts/${state.contacts[i].id}'),
+              sortState: SortState(
+                field: state.sortBy,
+                ascending: state.sortOrder == 'asc',
+              ),
+              onSort: (sort) => notifier.setSort(
+                sort.field,
+                sort.ascending ? 'asc' : 'desc',
+              ),
+            ),
+          ),
+          if (state.hasMore && state.status == ContactListStatus.loading)
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+        ],
       ),
-      onSort: (sort) => notifier.setSort(
-        sort.field,
-        sort.ascending ? 'asc' : 'desc',
-      ),
-      pagination: state.pagination != null
-          ? PaginationState(
-              page: state.pagination!.page,
-              pageSize: state.pagination!.limit,
-              total: state.pagination!.total,
-            )
-          : null,
-      onPageChanged: (page) {
-        // Reload for that page
-        notifier.loadContacts(refresh: true);
-      },
     );
   }
 
@@ -234,12 +249,12 @@ class _ContactListScreenState extends ConsumerState<ContactListScreen> {
   ) {
     return ListView.builder(
       controller: _scrollController,
-      padding: const EdgeInsets.all(AppTheme.spacingMd),
+      padding: const EdgeInsets.all(16.0),
       itemCount: state.contacts.length + (state.hasMore ? 1 : 0),
       itemBuilder: (context, index) {
         if (index >= state.contacts.length) {
           return const Padding(
-            padding: EdgeInsets.all(AppTheme.spacingMd),
+            padding: EdgeInsets.all(16.0),
             child: Center(child: CircularProgressIndicator()),
           );
         }
@@ -364,7 +379,7 @@ class _ContactCard extends StatelessWidget {
         onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         child: Padding(
-          padding: const EdgeInsets.all(AppTheme.spacingMd),
+          padding: const EdgeInsets.all(16.0),
           child: Row(
             children: [
               CircleAvatar(

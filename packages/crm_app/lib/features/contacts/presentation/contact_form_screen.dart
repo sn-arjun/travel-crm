@@ -222,7 +222,7 @@ class _ContactFormScreenState extends ConsumerState<ContactFormScreen> {
       body: Form(
         key: _formKey,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(AppTheme.spacingLg),
+          padding: const EdgeInsets.all(24.0),
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 800),
@@ -232,7 +232,7 @@ class _ContactFormScreenState extends ConsumerState<ContactFormScreen> {
                   if (_hasDuplicate)
                     Container(
                       margin: const EdgeInsets.only(bottom: AppTheme.spacingMd),
-                      padding: const EdgeInsets.all(AppTheme.spacingMd),
+                      padding: const EdgeInsets.all(16.0),
                       decoration: BoxDecoration(
                         color: AppTheme.warningColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(AppTheme.radiusSm),

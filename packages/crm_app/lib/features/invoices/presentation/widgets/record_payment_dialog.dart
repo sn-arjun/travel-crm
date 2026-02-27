@@ -117,7 +117,7 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
             Card(
               color: theme.colorScheme.surfaceContainerHighest,
               child: Padding(
-                padding: const EdgeInsets.all(AppTheme.spacingMd),
+                padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
                     Row(
@@ -192,7 +192,7 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
 
             // Payment Method
             DropdownButtonFormField<String>(
-              value: _methodCtrl.text,
+              initialValue: _methodCtrl.text,
               decoration: InputDecoration(
                 labelText: 'Payment Method',
                 border: OutlineInputBorder(
@@ -215,7 +215,7 @@ class _RecordPaymentDialogState extends State<RecordPaymentDialog> {
 
             // Payment Type
             DropdownButtonFormField<String>(
-              value: _typeCtrl.text,
+              initialValue: _typeCtrl.text,
               decoration: InputDecoration(
                 labelText: 'Payment Type',
                 border: OutlineInputBorder(

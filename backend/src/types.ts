@@ -11,12 +11,16 @@ export interface Env {
   // KV Namespaces
   CACHE: KVNamespace;
   SESSIONS: KVNamespace;
+  REPORT_CACHE: KVNamespace;
 
   // Queues
   EMAIL_QUEUE: Queue;
   SMS_QUEUE: Queue;
   PUSH_NOTIFICATION_QUEUE: Queue;
   WP_PROVISION_QUEUE: Queue;
+  IMPORT_QUEUE: Queue;
+  EXPORT_QUEUE: Queue;
+  CAMPAIGN_QUEUE: Queue;
 
   // Durable Objects
   REALTIME: DurableObjectNamespace;
@@ -31,6 +35,8 @@ export interface Env {
   TWILIO_WHATSAPP_FROM_NUMBER: string;
   SENDGRID_API_KEY: string;
   FCM_SERVER_KEY: string;
+  GOOGLE_MAPS_API_KEY?: string;
+  TEST_MODE?: string;
 
   // Dynamic tenant D1 bindings — resolved at runtime
   [key: `TENANT_DB_${string}`]: D1Database;

@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
+import { drizzle } from 'drizzle-orm/d1';
 import type { AppContext } from '../types';
 import { generateId } from '../utils/uuid';
 import { success, created, paginated, error, notFound, forbidden } from '../utils/response';
@@ -127,10 +128,12 @@ paymentRoutes.post('/', zValidator('json', recordPaymentSchema), async (c) => {
       .run();
 
     // Log activity
-    await logActivity(tenantDb, userId, 'payment_recorded', `Payment of ${data.amount} recorded for invoice`, {
-      paymentId,
-      invoiceId: data.invoiceId,
-      amount: data.amount,
+    await logActivity(drizzle(tenantDb), {
+      userId,
+      action: 'payment_recorded',
+      entityType: 'payment',
+      entityId: paymentId,
+      details: JSON.stringify({ invoiceId: data.invoiceId, amount: data.amount }),
     });
 
     return created(c, {
@@ -335,10 +338,12 @@ paymentRoutes.delete('/:id', async (c) => {
       .run();
 
     // Log activity
-    await logActivity(tenantDb, userId, 'payment_deleted', `Payment of ${payment.amount} deleted`, {
-      paymentId,
-      invoiceId: payment.invoice_id,
-      amount: payment.amount,
+    await logActivity(drizzle(tenantDb), {
+      userId,
+      action: 'payment_deleted',
+      entityType: 'payment',
+      entityId: paymentId,
+      details: JSON.stringify({ invoiceId: payment.invoice_id, amount: payment.amount }),
     });
 
     return success(c, { id: paymentId, deleted: true });
@@ -430,10 +435,12 @@ paymentRoutes.post('/:id/link-invoice', zValidator('json', linkAdvancePaymentSch
       .run();
 
     // Log activity
-    await logActivity(tenantDb, userId, 'advance_payment_linked', `Advance payment linked to invoice`, {
-      paymentId,
-      invoiceId: data.invoiceId,
-      amount: data.amount,
+    await logActivity(drizzle(tenantDb), {
+      userId,
+      action: 'advance_payment_linked',
+      entityType: 'payment',
+      entityId: paymentId,
+      details: JSON.stringify({ invoiceId: data.invoiceId, amount: data.amount }),
     });
 
     return success(c, {

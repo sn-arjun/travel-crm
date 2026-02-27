@@ -25,4 +25,13 @@ class AppConfig {
 
   /// Enable debug features (logging, dev tools)
   static bool get isDebug => !isProduction;
+
+  /// Google Places API key for address autocomplete
+  static const String googlePlacesApiKey = String.fromEnvironment(
+    'GOOGLE_PLACES_API_KEY',
+    defaultValue: '',
+  );
+
+  /// Whether Google Places autocomplete is available
+  static bool get hasGooglePlaces => googlePlacesApiKey.isNotEmpty;
 }

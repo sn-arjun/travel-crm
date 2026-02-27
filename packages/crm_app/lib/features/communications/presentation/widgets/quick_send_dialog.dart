@@ -77,7 +77,7 @@ class _QuickSendDialogState extends State<QuickSendDialog> {
     final theme = Theme.of(context);
 
     return Dialog(
-      insetPadding: const EdgeInsets.all(AppTheme.spacingMd),
+      insetPadding: const EdgeInsets.all(16.0),
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Send Message'),
@@ -93,7 +93,7 @@ class _QuickSendDialogState extends State<QuickSendDialog> {
           children: [
             // Progress indicator
             Padding(
-              padding: const EdgeInsets.all(AppTheme.spacingMd),
+              padding: const EdgeInsets.all(16.0),
               child: Row(
                 children: [
                   _buildProgressDot(0, 'Channel'),
@@ -136,7 +136,7 @@ class _QuickSendDialogState extends State<QuickSendDialog> {
             const Divider(height: 1),
             // Action buttons
             Padding(
-              padding: const EdgeInsets.all(AppTheme.spacingMd),
+              padding: const EdgeInsets.all(16.0),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -222,7 +222,7 @@ class _QuickSendDialogState extends State<QuickSendDialog> {
                 },
                 child: Container(
                   width: 120,
-                  padding: const EdgeInsets.all(AppTheme.spacingMd),
+                  padding: const EdgeInsets.all(16.0),
                   decoration: BoxDecoration(
                     border: Border.all(
                       color: isSelected
@@ -261,7 +261,7 @@ class _QuickSendDialogState extends State<QuickSendDialog> {
 
   Widget _buildMessagePage(ThemeData theme) {
     return Padding(
-      padding: const EdgeInsets.all(AppTheme.spacingMd),
+      padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -288,7 +288,7 @@ class _QuickSendDialogState extends State<QuickSendDialog> {
 
   Widget _buildReviewPage(ThemeData theme) {
     return Padding(
-      padding: const EdgeInsets.all(AppTheme.spacingMd),
+      padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -298,7 +298,7 @@ class _QuickSendDialogState extends State<QuickSendDialog> {
           ),
           const SizedBox(height: AppTheme.spacingMd),
           Container(
-            padding: const EdgeInsets.all(AppTheme.spacingMd),
+            padding: const EdgeInsets.all(16.0),
             decoration: BoxDecoration(
               color: AppTheme.colorGrey100,
               borderRadius: BorderRadius.circular(AppTheme.radiusMd),

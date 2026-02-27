@@ -79,7 +79,7 @@ class _LeadFormScreenState extends ConsumerState<LeadFormScreen> {
         _budget = lead.budget;
         _currency = lead.currency;
         _tripType = lead.tripType;
-        _source = lead.source;
+        _source = lead.source ?? 'manual';
         _priority = lead.priority;
         _assignedTo = lead.assignedTo;
         _travelClass = lead.travelClass;
@@ -177,7 +177,7 @@ class _LeadFormScreenState extends ConsumerState<LeadFormScreen> {
       body: Form(
         key: _formKey,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(AppTheme.spacingMd),
+          padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../../app/theme.dart';
 import '../../../../core/widgets/feedback/app_loading.dart';
 import '../../../../core/widgets/feedback/app_error_widget.dart';
 import '../../data/lead_state.dart';
@@ -33,7 +32,7 @@ class KanbanBoard extends StatelessWidget {
 
     return ListView.builder(
       scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.all(AppTheme.spacingMd),
+      padding: const EdgeInsets.all(16.0),
       itemCount: stages.length,
       itemBuilder: (_, i) => KanbanColumn(stage: stages[i]),
     );

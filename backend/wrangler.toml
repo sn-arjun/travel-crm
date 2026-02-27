@@ -8,6 +8,7 @@ compatibility_flags = ["nodejs_compat"]
 binding = "MASTER_DB"
 database_name = "travelcrm-master"
 database_id = "a0000000-0000-0000-0000-000000000001" # Replace with real Terraform ID before deploying
+migrations_dir = "drizzle/tenant"
 
 # --- R2 Buckets ---
 [[r2_buckets]]
@@ -17,11 +18,15 @@ bucket_name = "travelcrm-files"
 # --- KV Namespaces ---
 [[kv_namespaces]]
 binding = "CACHE"
-id = "a0000000-0000-0000-0000-000000000002" # Replace with real Terraform ID before deploying
+id = "a0000000-0000-0000-0000-000000000002"
 
 [[kv_namespaces]]
 binding = "SESSIONS"
-id = "a0000000-0000-0000-0000-000000000003" # Replace with real Terraform ID before deploying
+id = "a0000000-0000-0000-0000-000000000003"
+
+[[kv_namespaces]]
+binding = "REPORT_CACHE"
+id = "a0000000-0000-0000-0000-000000000004"
 
 # --- Queues (Producers) ---
 [[queues.producers]]
@@ -59,7 +64,52 @@ max_batch_timeout = 30
 [[queues.consumers]]
 queue = "travelcrm-wp-provision-queue"
 max_batch_size = 1
+max_batch_timeout = 30
+
+[[queues.producers]]
+binding = "IMPORT_QUEUE"
+queue = "travelcrm-import-queue"
+
+[[queues.producers]]
+binding = "EXPORT_QUEUE"
+queue = "travelcrm-export-queue"
+
+[[queues.consumers]]
+queue = "travelcrm-import-queue"
+max_batch_size = 1 # process 1 chunk at a time per invocation
+max_batch_timeout = 30
+max_retries = 3
+dead_letter_queue = "travelcrm-import-dlq"
+
+[[queues.consumers]]
+queue = "travelcrm-export-queue"
+max_batch_size = 1
 max_batch_timeout = 60
+max_retries = 3
+dead_letter_queue = "travelcrm-export-dlq"
+
+[[queues.producers]]
+binding = "IMPORT_DL_QUEUE"
+queue = "travelcrm-import-dlq"
+
+[[queues.producers]]
+binding = "EXPORT_DL_QUEUE"
+queue = "travelcrm-export-dlq"
+
+[[queues.producers]]
+binding = "CAMPAIGN_QUEUE"
+queue = "travelcrm-campaign-queue"
+
+[[queues.consumers]]
+queue = "travelcrm-campaign-queue"
+max_batch_size = 1
+max_batch_timeout = 30
+max_retries = 3
+dead_letter_queue = "travelcrm-campaign-dlq"
+
+[[queues.producers]]
+binding = "CAMPAIGN_DL_QUEUE"
+queue = "travelcrm-campaign-dlq"
 
 # --- Cron Triggers ---
 [triggers]

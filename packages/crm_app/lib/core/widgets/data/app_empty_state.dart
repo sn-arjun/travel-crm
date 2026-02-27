@@ -10,6 +10,8 @@ class AppEmptyState extends StatelessWidget {
   final IconData icon;
   final String title;
   final String? subtitle;
+  final String? message;
+  final String? description;
   final String? actionLabel;
   final VoidCallback? onAction;
 
@@ -18,6 +20,8 @@ class AppEmptyState extends StatelessWidget {
     this.icon = Icons.inbox_outlined,
     required this.title,
     this.subtitle,
+    this.message,
+    this.description,
     this.actionLabel,
     this.onAction,
   });
@@ -45,10 +49,10 @@ class AppEmptyState extends StatelessWidget {
               ),
               textAlign: TextAlign.center,
             ),
-            if (subtitle != null) ...[
+            if ((subtitle ?? message ?? description) != null) ...[
               const SizedBox(height: AppTheme.spacingSm),
               Text(
-                subtitle!,
+                (subtitle ?? message ?? description)!,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
                 ),

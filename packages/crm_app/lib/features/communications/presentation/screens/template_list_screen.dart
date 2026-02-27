@@ -84,7 +84,7 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen>
         children: [
           // Search bar
           Padding(
-            padding: const EdgeInsets.all(AppTheme.spacingMd),
+            padding: const EdgeInsets.all(16.0),
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
@@ -139,7 +139,7 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen>
         child: AppEmptyState(
           title: 'No templates',
           description: 'Create a template to quickly send messages',
-          icon: Icons.template_banner_rounded,
+          icon: Icons.article_outlined,
         ),
       );
     }
@@ -153,7 +153,7 @@ class _TemplateListScreenState extends ConsumerState<TemplateListScreen>
             state.status == CommunicationStatus.loading) {
           return const Center(
             child: Padding(
-              padding: EdgeInsets.all(AppTheme.spacingMd),
+              padding: EdgeInsets.all(16.0),
               child: AppLoading(),
             ),
           );

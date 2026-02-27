@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import 'package:shared/shared.dart';
 
 class CommunicationRepository {
@@ -19,9 +18,9 @@ class CommunicationRepository {
       data: {
         'channel': channel,
         'contactId': contactId,
-        if (leadId != null) 'leadId': leadId,
+        'leadId': ?leadId,
         'message': message,
-        if (mediaUrl != null) 'mediaUrl': mediaUrl,
+        'mediaUrl': ?mediaUrl,
       },
     );
     return response.data['data'] as Map<String, dynamic>;
@@ -37,7 +36,7 @@ class CommunicationRepository {
       '${ApiEndpoints.messageTemplates}/$templateId/send',
       data: {
         'contactId': contactId,
-        if (variables != null) 'variables': variables,
+        'variables': ?variables,
       },
     );
     return response.data['data'] as Map<String, dynamic>;
@@ -58,7 +57,7 @@ class CommunicationRepository {
         'channel': channel,
         'documentType': documentType,
         'documentId': documentId,
-        if (caption != null) 'caption': caption,
+        'caption': ?caption,
       },
     );
     return response.data['data'] as Map<String, dynamic>;
@@ -75,8 +74,8 @@ class CommunicationRepository {
       ApiEndpoints.bulkSend,
       data: {
         'channel': channel,
-        if (templateId != null) 'templateId': templateId,
-        if (message != null) 'message': message,
+        'templateId': ?templateId,
+        'message': ?message,
         'contactIds': contactIds,
       },
     );
@@ -101,7 +100,7 @@ class CommunicationRepository {
     final params = <String, dynamic>{
       'page': page,
       'limit': limit,
-      if (channel != null) 'channel': channel,
+      'channel': ?channel,
     };
 
     final response = await _apiClient.get(

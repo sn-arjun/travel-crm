@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/notification_provider.dart';
+import '../data/notification_state.dart';
 
 class NotificationPreferencesScreen extends ConsumerStatefulWidget {
   const NotificationPreferencesScreen({super.key});
@@ -198,7 +199,7 @@ class _NotificationPreferencesScreenState extends ConsumerState<NotificationPref
                                 ),
                                 const SizedBox(height: 16),
                                 DropdownButtonFormField<String>(
-                                  value: _selectedTimezone,
+                                  initialValue: _selectedTimezone,
                                   decoration: InputDecoration(
                                     labelText: 'Timezone',
                                     border: OutlineInputBorder(
@@ -273,7 +274,8 @@ class _NotificationPreferencesScreenState extends ConsumerState<NotificationPref
 
     return DataTable(
       columnSpacing: 12,
-      dataRowHeight: 56,
+      dataRowMinHeight: 56,
+      dataRowMaxHeight: 56,
       headingRowHeight: 48,
       columns: [
         const DataColumn(label: Text('Type', style: TextStyle(fontWeight: FontWeight.bold))),

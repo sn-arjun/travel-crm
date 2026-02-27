@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
@@ -89,28 +90,56 @@ const noteSchema = z.object({
 });
 
 // ── Helper: build lead response object ───────────────────────
+// Raw D1 SQL returns snake_case columns; Flutter models expect camelCase.
 
 function parseLead(row: Record<string, unknown>) {
   let destinations: string[] = [];
   try {
-    const raw = row.destination as string | null;
+    const raw = (row.destination ?? row.destinations) as string | null;
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) destinations = parsed as string[];
     }
-  } catch (_) {}
+  } catch (_) { }
 
   return {
-    ...row,
+    id: row.id,
+    contactId: row.contact_id ?? row.contactId,
+    contactName: row.contact_name ?? row.contactName ?? null,
+    title: row.title,
     destinations,
-    destination: undefined, // remove raw field
+    destination: undefined, // keep undefined so Flutter's JsonKey(name:'destination') still works — we send destinations instead
+    travelDate: row.travel_date ?? row.travelDate,
+    returnDate: row.return_date ?? row.returnDate ?? null,
+    paxAdults: row.pax_adults ?? row.paxAdults ?? 1,
+    paxChildren: row.pax_children ?? row.paxChildren ?? 0,
+    paxInfants: row.pax_infants ?? row.paxInfants ?? 0,
+    budget: row.budget ?? null,
+    currency: row.currency ?? 'INR',
+    tripType: row.trip_type ?? row.tripType,
+    source: row.source,
+    status: row.status ?? 'new',
+    priority: row.priority ?? null,
+    assignedTo: row.assigned_to ?? row.assignedTo ?? null,
+    assignedToName: row.assigned_to_name ?? row.assignedToName ?? null,
+    lostReason: row.lost_reason ?? row.lostReason ?? null,
+    passportAvailable: !!(row.passport_available ?? row.passportAvailable),
+    travelClass: row.travel_class ?? row.travelClass ?? null,
+    hotelPreference: row.hotel_preference ?? row.hotelPreference ?? null,
+    mealPreference: row.meal_preference ?? row.mealPreference ?? null,
+    specialRequirements: row.special_requirements ?? row.specialRequirements ?? null,
+    notes: row.notes ?? null,
+    createdBy: row.created_by ?? row.createdBy ?? null,
+    createdByName: row.created_by_name ?? row.createdByName ?? null,
+    createdAt: row.created_at ?? row.createdAt ?? null,
+    updatedAt: row.updated_at ?? row.updatedAt ?? null,
   };
 }
 
 // ── Helper: broadcast to realtime DO ─────────────────────────
 
 async function broadcastLeadEvent(
-  c: Parameters<Parameters<typeof leadRoutes.use>[1]>[0],
+  c: Context<AppContext>,
   type: string,
   data: Record<string, unknown>
 ) {
@@ -130,7 +159,7 @@ async function broadcastLeadEvent(
 // ── Helper: notify user via push queue ───────────────────────
 
 async function notifyUser(
-  c: Parameters<Parameters<typeof leadRoutes.use>[1]>[0],
+  c: Context<AppContext>,
   db: ReturnType<typeof drizzle>,
   tenantDb: D1Database,
   targetUserId: string,
@@ -386,7 +415,7 @@ leadRoutes.get('/filter-options', requirePermission('leads', 'view'), async (c) 
     try {
       const parsed = JSON.parse(row.destination);
       if (Array.isArray(parsed)) parsed.forEach((d: string) => destSet.add(d));
-    } catch (_) {}
+    } catch (_) { }
   }
 
   return success(c, {

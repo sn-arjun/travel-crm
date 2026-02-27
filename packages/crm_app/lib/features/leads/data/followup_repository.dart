@@ -12,7 +12,7 @@ class FollowUpRepository {
     final response = await _apiClient.get(
       ApiEndpoints.followUps,
       queryParameters: {
-        if (filter != null) 'filter': filter,
+        'filter': ?filter,
         if (team) 'team': 'true',
       },
     );
@@ -34,7 +34,7 @@ class FollowUpRepository {
         'leadId': leadId,
         'scheduledAt': scheduledAt,
         'type': type,
-        if (notes != null) 'notes': notes,
+        'notes': ?notes,
       },
     );
     return FollowUpModel.fromJson(
@@ -51,9 +51,9 @@ class FollowUpRepository {
     final response = await _apiClient.put(
       ApiEndpoints.followUp(id),
       data: {
-        if (scheduledAt != null) 'scheduledAt': scheduledAt,
-        if (type != null) 'type': type,
-        if (notes != null) 'notes': notes,
+        'scheduledAt': ?scheduledAt,
+        'type': ?type,
+        'notes': ?notes,
       },
     );
     return FollowUpModel.fromJson(
@@ -65,7 +65,7 @@ class FollowUpRepository {
     final response = await _apiClient.put(
       ApiEndpoints.followUpComplete(id),
       data: {
-        if (outcomeNotes != null) 'outcomeNotes': outcomeNotes,
+        'outcomeNotes': ?outcomeNotes,
       },
     );
     return FollowUpModel.fromJson(

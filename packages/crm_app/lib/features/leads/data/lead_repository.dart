@@ -31,17 +31,17 @@ class LeadRepository {
       'sortBy': sortBy,
       'sortOrder': sortOrder,
       if (search != null && search.isNotEmpty) 'search': search,
-      if (view != null) 'view': view,
-      if (status != null) 'status': status,
-      if (priority != null) 'priority': priority,
-      if (assignedTo != null) 'assignedTo': assignedTo,
-      if (source != null) 'source': source,
-      if (tripType != null) 'tripType': tripType,
-      if (destination != null) 'destination': destination,
-      if (travelDateFrom != null) 'travelDateFrom': travelDateFrom,
-      if (travelDateTo != null) 'travelDateTo': travelDateTo,
-      if (budgetMin != null) 'budgetMin': budgetMin,
-      if (budgetMax != null) 'budgetMax': budgetMax,
+      'view': ?view,
+      'status': ?status,
+      'priority': ?priority,
+      'assignedTo': ?assignedTo,
+      'source': ?source,
+      'tripType': ?tripType,
+      'destination': ?destination,
+      'travelDateFrom': ?travelDateFrom,
+      'travelDateTo': ?travelDateTo,
+      'budgetMin': ?budgetMin,
+      'budgetMax': ?budgetMax,
     };
 
     final response = await _apiClient.get(
@@ -58,7 +58,7 @@ class LeadRepository {
       ApiEndpoints.leads,
       queryParameters: {
         'view': 'pipeline',
-        if (assignedTo != null) 'assignedTo': assignedTo,
+        'assignedTo': ?assignedTo,
       },
     );
     return PipelineData.fromJson(
@@ -103,8 +103,8 @@ class LeadRepository {
       ApiEndpoints.leadStatus(id),
       data: {
         'status': status,
-        if (lostReason != null) 'lostReason': lostReason,
-        if (lostReasonNotes != null) 'lostReasonNotes': lostReasonNotes,
+        'lostReason': ?lostReason,
+        'notes': ?lostReasonNotes,
       },
     );
     return LeadModel.fromJson(
@@ -147,8 +147,8 @@ class LeadRepository {
       ApiEndpoints.leadActivities(leadId),
       data: {
         'type': type,
-        if (content != null) 'content': content,
-        if (metadata != null) 'metadata': metadata,
+        'content': ?content,
+        'metadata': ?metadata,
       },
     );
     return LeadActivity.fromJson(
@@ -218,7 +218,7 @@ class LeadRepository {
   Future<int> bulkAssign(List<String> leadIds, String userId) async {
     final response = await _apiClient.post(
       ApiEndpoints.leadsBulkAssign,
-      data: {'leadIds': leadIds, 'userId': userId},
+      data: {'leadIds': leadIds, 'assignedTo': userId},
     );
     return response.data['data']['updated'] as int;
   }
@@ -233,7 +233,7 @@ class LeadRepository {
       data: {
         'leadIds': leadIds,
         'status': status,
-        if (lostReason != null) 'lostReason': lostReason,
+        'lostReason': ?lostReason,
       },
     );
     return response.data['data']['updated'] as int;

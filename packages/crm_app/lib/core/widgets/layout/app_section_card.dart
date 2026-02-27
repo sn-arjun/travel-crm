@@ -14,17 +14,19 @@ import '../../../app/theme.dart';
 /// )
 /// ```
 class AppSectionCard extends StatelessWidget {
-  final String title;
+  final String? title;
   final Widget? trailing;
   final Widget child;
   final EdgeInsetsGeometry? padding;
+  final bool expand;
 
   const AppSectionCard({
     super.key,
-    required this.title,
+    this.title,
     this.trailing,
     required this.child,
     this.padding,
+    this.expand = false,
   });
 
   @override
@@ -36,28 +38,30 @@ class AppSectionCard extends StatelessWidget {
         padding: padding ?? const EdgeInsets.all(AppTheme.spacingMd),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
           children: [
             // Header
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
+            if (title != null) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      title!,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                ),
-                ?trailing,
-              ],
-            ),
-            const SizedBox(height: AppTheme.spacingSm),
-            const Divider(height: 1),
-            const SizedBox(height: AppTheme.spacingMd),
+                  ?trailing,
+                ],
+              ),
+              const SizedBox(height: AppTheme.spacingSm),
+              const Divider(height: 1),
+              const SizedBox(height: AppTheme.spacingMd),
+            ],
 
             // Body
-            child,
+            expand ? Expanded(child: child) : child,
           ],
         ),
       ),

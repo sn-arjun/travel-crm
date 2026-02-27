@@ -31,4 +31,7 @@ class AppColors {
   static const stageBooking = Color(0xFFA5D6A7);
   static const stageCompleted = Color(0xFF4CAF50);
   static const stageLost = Color(0xFFEF9A9A);
+
+  // Neutral
+  static const divider = Color(0xFFE0E0E0);
 }

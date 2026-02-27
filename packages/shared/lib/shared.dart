@@ -28,6 +28,19 @@ export 'models/activity_log_model.dart';
 export 'models/itinerary_model.dart';
 export 'models/itinerary_template_model.dart';
 export 'models/rate_card_model.dart';
+export 'models/paginated_response.dart';
+export 'models/import_job_model.dart';
+export 'models/export_job_model.dart';
+export 'models/flyer_template_model.dart';
+export 'models/image_library_model.dart';
+export 'models/contact_segment_model.dart';
+export 'models/tenant_branding_model.dart';
+export 'models/marketing_campaign_model.dart';
+export 'models/generated_flyer_model.dart';
+export 'models/vehicle_model.dart';
+export 'models/driver_model.dart';
+export 'models/trip_assignment_model.dart';
+export 'models/vehicle_rate_card_model.dart';
 
 // Utils
 export 'utils/date_utils.dart';

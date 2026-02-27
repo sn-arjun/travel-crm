@@ -189,7 +189,7 @@ voucherRoutes.get('/', async (c) => {
       .prepare(`
         SELECT v.id, v.title, v.type, v.status, v.language, v.lead_id,
                v.supplier_id, v.sent_via, v.sent_at, v.confirmed_at,
-               v.created_by, v.created_at, v.updated_at,
+               v.created_by, v.created_at, v.updated_at, v.details_json,
                l.title as lead_name,
                s.company_name as supplier_name
         FROM vouchers v
@@ -202,7 +202,13 @@ voucherRoutes.get('/', async (c) => {
       .bind(...params, limit, offset)
       .all<Record<string, unknown>>();
 
-    return paginated(c, vouchers.results || [], total, page, limit);
+    const mappedVouchers = (vouchers.results || []).map((v) => {
+      const details = v.details_json ? JSON.parse(v.details_json as string) : {};
+      const { details_json, ...rest } = v;
+      return { ...rest, details };
+    });
+
+    return paginated(c, mappedVouchers, total, page, limit);
   } catch (err) {
     console.error('Error listing vouchers:', err);
     return error(c, 'Failed to list vouchers', 500);
@@ -712,8 +718,8 @@ voucherRoutes.post('/:id/send', async (c) => {
   const body = await c.req.json();
   const { channel, to } = body;
 
-  if (!channel || !['email', 'whatsapp', 'both'].includes(channel)) {
-    return error(c, 'Invalid channel. Must be email, whatsapp, or both', 400);
+  if (!channel || !['email', 'whatsapp', 'sms', 'both'].includes(channel)) {
+    return error(c, 'Invalid channel. Must be email, whatsapp, sms, or both', 400);
   }
   if (!to) {
     return error(c, 'Recipient (to) is required', 400);

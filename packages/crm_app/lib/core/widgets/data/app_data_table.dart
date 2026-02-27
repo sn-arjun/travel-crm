@@ -140,83 +140,100 @@ class AppDataTable<T> extends StatelessWidget {
 
     final theme = Theme.of(context);
 
-    return Column(
-      children: [
-        // Table
-        Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: SingleChildScrollView(
-              child: DataTable(
-                sortColumnIndex: () {
-                  if (sortState == null) return null;
-                  final idx = columns.indexWhere((c) => c.field == sortState!.field);
-                  if (idx < 0) return null;
-                  // When selectable, DataTable has an extra checkbox column at index 0.
-                  return selectable ? idx + 1 : idx;
-                }(),
-                sortAscending: sortState?.ascending ?? true,
-                showCheckboxColumn: false,
-                headingRowColor: WidgetStateProperty.all(
-                  theme.colorScheme.surfaceContainerHighest,
+    final tableScrollArea = SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: SingleChildScrollView(
+        child: DataTable(
+          sortColumnIndex: () {
+            if (sortState == null) return null;
+            final idx = columns.indexWhere((c) => c.field == sortState!.field);
+            if (idx < 0) return null;
+            // When selectable, DataTable has an extra checkbox column at index 0.
+            return selectable ? idx + 1 : idx;
+          }(),
+          sortAscending: sortState?.ascending ?? true,
+          showCheckboxColumn: false,
+          headingRowColor: WidgetStateProperty.all(
+            theme.colorScheme.surfaceContainerHighest,
+          ),
+          columns: [
+            if (selectable)
+              DataColumn(
+                label: Checkbox(
+                  value: (selectedIndices?.length ?? 0) == rows.length &&
+                      rows.isNotEmpty,
+                  tristate: (selectedIndices?.isNotEmpty ?? false) &&
+                      (selectedIndices!.length < rows.length),
+                  onChanged: (_) => _toggleAll(),
                 ),
-                columns: [
-                  if (selectable)
-                    DataColumn(
-                      label: Checkbox(
-                        value: (selectedIndices?.length ?? 0) == rows.length &&
-                            rows.isNotEmpty,
-                        tristate: (selectedIndices?.isNotEmpty ?? false) &&
-                            (selectedIndices!.length < rows.length),
-                        onChanged: (_) => _toggleAll(),
-                      ),
-                    ),
-                  ...columns.map((col) {
-                    return DataColumn(
-                      label: Text(
-                        col.title,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      onSort: col.sortable ? (_, _) => _handleSort(col) : null,
-                    );
-                  }),
-                ],
-                rows: List.generate(rows.length, (i) {
-                  final row = rows[i];
-                  final isSelected = selectedIndices?.contains(i) ?? false;
+              ),
+            ...columns.map((col) {
+              return DataColumn(
+                label: Text(
+                  col.title,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                onSort: col.sortable ? (_, _) => _handleSort(col) : null,
+              );
+            }),
+          ],
+          rows: List.generate(rows.length, (i) {
+            final row = rows[i];
+            final isSelected = selectedIndices?.contains(i) ?? false;
 
-                  return DataRow(
-                    selected: isSelected,
-                    cells: [
-                      if (selectable)
-                        DataCell(
-                          Checkbox(
-                            value: isSelected,
-                            onChanged: (_) => _toggleRow(i),
-                          ),
-                        ),
-                      ...columns.map((col) {
-                        final value = rowValueFor(row, col.field);
-                        return DataCell(
-                          col.cellBuilder != null
-                              ? col.cellBuilder!(value)
-                              : Text('${value ?? ''}'),
-                          onTap: onRowTap != null ? () => onRowTap!(i) : null,
-                        );
-                      }),
-                    ],
+            return DataRow(
+              selected: isSelected,
+              cells: [
+                if (selectable)
+                  DataCell(
+                    Checkbox(
+                      value: isSelected,
+                      onChanged: (_) => _toggleRow(i),
+                    ),
+                  ),
+                ...columns.map((col) {
+                  final value = rowValueFor(row, col.field);
+                  return DataCell(
+                    col.cellBuilder != null
+                        ? col.cellBuilder!(value)
+                        : Text('${value ?? ''}'),
+                    onTap: onRowTap != null ? () => onRowTap!(i) : null,
                   );
                 }),
-              ),
-            ),
-          ),
+              ],
+            );
+          }),
         ),
+      ),
+    );
 
-        // Pagination
-        if (pagination != null) _buildPagination(context),
-      ],
+    final paginationBar = pagination != null ? _buildPagination(context) : const SizedBox.shrink();
+
+    // Use LayoutBuilder to adapt to bounded vs unbounded height constraints.
+    // Expanded requires bounded height; when unbounded, just shrink-wrap.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final hasBoundedHeight = constraints.maxHeight != double.infinity;
+
+        if (hasBoundedHeight) {
+          return Column(
+            children: [
+              Expanded(child: tableScrollArea),
+              if (pagination != null) paginationBar,
+            ],
+          );
+        } else {
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              tableScrollArea,
+              if (pagination != null) paginationBar,
+            ],
+          );
+        }
+      },
     );
   }
 

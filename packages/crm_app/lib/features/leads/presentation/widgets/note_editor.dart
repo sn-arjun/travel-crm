@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 
-import '../../../../app/theme.dart';
 
 /// A rich-text note editor backed by [flutter_quill].
 ///
@@ -108,7 +107,7 @@ class _NoteEditorState extends State<NoteEditor> {
             controller: _controller,
             config: const QuillEditorConfig(
               placeholder: 'Write your note here…',
-              padding: EdgeInsets.all(AppTheme.spacingMd),
+              padding: EdgeInsets.all(16.0),
             ),
           ),
         ),

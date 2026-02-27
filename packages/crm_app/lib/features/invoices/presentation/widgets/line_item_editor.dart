@@ -127,7 +127,7 @@ class _LineItemEditorState extends State<LineItemEditor> {
         if (_items.isEmpty)
           Center(
             child: Padding(
-              padding: const EdgeInsets.all(AppTheme.spacingLg),
+              padding: const EdgeInsets.all(24.0),
               child: Text(
                 'No items added',
                 style: theme.textTheme.bodyMedium?.copyWith(
@@ -237,7 +237,7 @@ class _LineItemCardState extends State<_LineItemCard> {
     return Card(
       margin: const EdgeInsets.only(bottom: AppTheme.spacingMd),
       child: Padding(
-        padding: const EdgeInsets.all(AppTheme.spacingMd),
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

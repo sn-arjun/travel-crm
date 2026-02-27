@@ -25,7 +25,7 @@ export async function checkFollowUpReminders(env: Env): Promise<void> {
       .all<{ db_binding: string; id: string }>();
 
     for (const tenant of tenants.results) {
-      const tenantDb = (env as Record<string, unknown>)[tenant.db_binding] as D1Database | undefined;
+      const tenantDb = (env as unknown as Record<string, unknown>)[tenant.db_binding] as D1Database | undefined;
       if (!tenantDb) continue;
 
       await processFollowUpsForTenant(env, tenantDb, tenant.id, nowIso, in15MinIso);

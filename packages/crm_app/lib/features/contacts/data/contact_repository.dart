@@ -27,12 +27,12 @@ class ContactRepository {
       'sortBy': sortBy,
       'sortOrder': sortOrder,
       if (search != null && search.isNotEmpty) 'search': search,
-      if (type != null) 'type': type,
-      if (source != null) 'source': source,
-      if (city != null) 'city': city,
-      if (country != null) 'country': country,
-      if (tag != null) 'tag': tag,
-      if (language != null) 'language': language,
+      'type': ?type,
+      'source': ?source,
+      'city': ?city,
+      'country': ?country,
+      'tag': ?tag,
+      'language': ?language,
     };
 
     final response = await _apiClient.get(
@@ -84,8 +84,8 @@ class ContactRepository {
     final response = await _apiClient.post(
       ApiEndpoints.contactsCheckDuplicate,
       data: {
-        if (email != null) 'email': email,
-        if (phone != null) 'phone': phone,
+        'email': ?email,
+        'phone': ?phone,
       },
     );
     return ContactDuplicateCheck.fromJson(
@@ -148,10 +148,10 @@ class ContactRepository {
     String? country,
   }) async {
     final params = <String, dynamic>{
-      if (type != null) 'type': type,
-      if (source != null) 'source': source,
-      if (city != null) 'city': city,
-      if (country != null) 'country': country,
+      'type': ?type,
+      'source': ?source,
+      'city': ?city,
+      'country': ?country,
     };
 
     final response = await _apiClient.get(
@@ -197,7 +197,7 @@ class ContactRepository {
       ApiEndpoints.contactShare(contactId),
       data: {
         'sharedWith': sharedWith,
-        if (note != null) 'note': note,
+        'note': ?note,
       },
     );
   }

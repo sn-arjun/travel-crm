@@ -15,6 +15,8 @@ import 'widgets/contact_type_badge.dart';
 import 'widgets/language_badge.dart';
 import 'widgets/source_badge.dart';
 import 'widgets/tag_chips.dart';
+import '../../visa/data/models/traveller.dart';
+import '../../visa/data/repositories/traveller_repository.dart';
 
 class ContactDetailScreen extends ConsumerStatefulWidget {
   final String contactId;
@@ -32,7 +34,7 @@ class _ContactDetailScreenState extends ConsumerState<ContactDetailScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     Future.microtask(() {
       ref.read(contactDetailProvider(widget.contactId).notifier).load();
       ref.read(contactDetailProvider(widget.contactId).notifier).loadTimeline();
@@ -108,6 +110,7 @@ class _ContactDetailScreenState extends ConsumerState<ContactDetailScreen>
             Tab(text: 'Details'),
             Tab(text: 'Activity'),
             Tab(text: 'Timeline'),
+            Tab(text: 'Travellers'),
           ],
         ),
         // Tab content
@@ -118,6 +121,7 @@ class _ContactDetailScreenState extends ConsumerState<ContactDetailScreen>
               _DetailsTab(contact: contact),
               _ActivityTab(contact: contact),
               _TimelineTab(timeline: state.timeline),
+              _TravellersTab(contactId: contact.id),
             ],
           ),
         ),
@@ -168,7 +172,7 @@ class _ContactHeader extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Container(
-      padding: const EdgeInsets.all(AppTheme.spacingLg),
+      padding: const EdgeInsets.all(24.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -305,7 +309,7 @@ class _DetailsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppTheme.spacingLg),
+      padding: const EdgeInsets.all(24.0),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 800),
@@ -452,7 +456,7 @@ class _TimelineTab extends StatelessWidget {
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(AppTheme.spacingMd),
+      padding: const EdgeInsets.all(16.0),
       itemCount: timeline.length,
       itemBuilder: (context, index) {
         final entry = timeline[index];
@@ -522,3 +526,90 @@ class _TimelineItem extends StatelessWidget {
     };
   }
 }
+
+// ── Travellers Tab ──────────────────────────────────────────
+
+class _TravellersTab extends ConsumerStatefulWidget {
+  final String contactId;
+  const _TravellersTab({required this.contactId});
+
+  @override
+  ConsumerState<_TravellersTab> createState() => _TravellersTabState();
+}
+
+class _TravellersTabState extends ConsumerState<_TravellersTab> {
+  bool _isLoading = true;
+  List<Traveller> _travellers = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTravellers();
+  }
+
+  Future<void> _loadTravellers() async {
+    try {
+      final repo = ref.read(travellerRepositoryProvider);
+      final res = await repo.getTravellers(contactId: widget.contactId);
+      if (mounted) {
+        setState(() {
+          _travellers = res.data;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_travellers.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('No travellers linked to this contact.'),
+            const SizedBox(height: AppTheme.spacingMd),
+            ElevatedButton.icon(
+              onPressed: () => context.go('/travellers/new?contactId=${widget.contactId}'),
+              icon: const Icon(Icons.add),
+              label: const Text('Add Traveller'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16.0),
+      itemCount: _travellers.length,
+      itemBuilder: (context, index) {
+        final t = _travellers[index];
+        return Card(
+          elevation: 0,
+          margin: const EdgeInsets.only(bottom: AppTheme.spacingMd),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+          ),
+          child: ListTile(
+            leading: CircleAvatar(
+              backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+              child: Text(t.firstName[0].toUpperCase()),
+            ),
+            title: Text('${t.firstName} ${t.lastName}'),
+            subtitle: Text(t.passportNumber != null ? 'PP: ${t.passportNumber}' : 'No Passport Data'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.go('/travellers/${t.id}'),
+          ),
+        );
+      },
+    );
+  }
+}
+

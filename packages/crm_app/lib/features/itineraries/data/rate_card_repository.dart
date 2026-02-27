@@ -21,10 +21,10 @@ class RateCardRepository {
       'page': page,
       'limit': limit,
       if (search != null && search.isNotEmpty) 'search': search,
-      if (serviceType != null) 'serviceType': serviceType,
-      if (destination != null) 'destination': destination,
-      if (season != null) 'season': season,
-      if (supplierId != null) 'supplierId': supplierId,
+      'serviceType': ?serviceType,
+      'destination': ?destination,
+      'season': ?season,
+      'supplierId': ?supplierId,
       if (isActive != null) 'isActive': isActive.toString(),
     };
 
@@ -45,9 +45,9 @@ class RateCardRepository {
     final response = await _apiClient.get(
       ApiEndpoints.rateCardsLookup,
       queryParameters: {
-        if (type != null) 'type': type,
-        if (destination != null) 'destination': destination,
-        if (season != null) 'season': season,
+        'type': ?type,
+        'destination': ?destination,
+        'season': ?season,
       },
     );
     final list = response.data['data'] as List;

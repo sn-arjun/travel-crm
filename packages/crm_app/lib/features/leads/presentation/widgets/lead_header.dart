@@ -24,9 +24,9 @@ class LeadHeader extends ConsumerWidget {
     final theme = Theme.of(context);
 
     return Card(
-      margin: const EdgeInsets.all(AppTheme.spacingMd),
+      margin: const EdgeInsets.all(16.0),
       child: Padding(
-        padding: const EdgeInsets.all(AppTheme.spacingMd),
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shared/shared.dart';
 
 import '../../../../app/theme.dart';
 import '../../../../core/widgets/feedback/app_snackbar.dart';
 import '../../../../core/widgets/layout/app_section_card.dart';
-import '../../../contacts/data/contact_provider.dart';
-import '../../../leads/data/lead_provider.dart';
+import '../../../leads/presentation/widgets/contact_selector.dart';
+import '../../../leads/presentation/widgets/lead_selector.dart';
 import '../../data/invoice_provider.dart';
 import '../widgets/line_item_editor.dart';
 import '../widgets/tax_summary_section.dart';
@@ -24,8 +23,6 @@ class InvoiceFormScreen extends ConsumerStatefulWidget {
 
 class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
   late TextEditingController _invoiceNumberCtrl;
-  late TextEditingController _contactCtrl;
-  late TextEditingController _leadCtrl;
   late TextEditingController _typeCtrl;
   late TextEditingController _invoiceDateCtrl;
   late TextEditingController _dueDateCtrl;
@@ -35,6 +32,11 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
   late TextEditingController _notesCtrl;
   late TextEditingController _bankDetailsCtrl;
 
+  String? _contactId;
+  String? _contactName;
+  String? _leadId;
+  String? _leadTitle;
+
   List<LineItem> _lineItems = [];
   bool _isLoading = false;
 
@@ -42,8 +44,6 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
   void initState() {
     super.initState();
     _invoiceNumberCtrl = TextEditingController();
-    _contactCtrl = TextEditingController();
-    _leadCtrl = TextEditingController();
     _typeCtrl = TextEditingController(text: 'invoice');
     _invoiceDateCtrl = TextEditingController(
       text: DateTime.now().toIso8601String().split('T')[0],
@@ -68,8 +68,6 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
   @override
   void dispose() {
     _invoiceNumberCtrl.dispose();
-    _contactCtrl.dispose();
-    _leadCtrl.dispose();
     _typeCtrl.dispose();
     _invoiceDateCtrl.dispose();
     _dueDateCtrl.dispose();
@@ -89,7 +87,10 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
           .getInvoice(invoiceId);
 
       _invoiceNumberCtrl.text = invoice['invoiceNumber'] ?? '';
-      _contactCtrl.text = invoice['contactName'] ?? '';
+      _contactId = invoice['contactId'];
+      _contactName = invoice['contactName'];
+      _leadId = invoice['leadId'];
+      _leadTitle = invoice['leadName'] ?? invoice['leadTitle'];
       _typeCtrl.text = invoice['type'] ?? 'invoice';
       _invoiceDateCtrl.text =
           (invoice['invoiceDate'] as String?)?.split('T')[0] ?? '';
@@ -116,9 +117,10 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
             .toList();
       }
     } catch (e) {
+      if (!mounted) return;
       AppSnackbar.error(context, 'Failed to load invoice');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -139,7 +141,7 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
   }
 
   Future<void> _submit() async {
-    if (_contactCtrl.text.isEmpty) {
+    if (_contactId == null) {
       AppSnackbar.error(context, 'Please select a contact');
       return;
     }
@@ -152,6 +154,8 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
     setState(() => _isLoading = true);
     try {
       final data = {
+        'contactId': _contactId,
+        if (_leadId != null) 'leadId': _leadId,
         'invoiceNumber': _invoiceNumberCtrl.text,
         'type': _typeCtrl.text,
         'invoiceDate': _invoiceDateCtrl.text,
@@ -177,11 +181,13 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
         await ref
             .read(invoiceRepositoryProvider)
             .updateInvoice(widget.invoiceId!, data);
+        if (!mounted) return;
         AppSnackbar.success(context, 'Invoice updated successfully');
       } else {
         await ref
             .read(invoiceRepositoryProvider)
             .createInvoice(data);
+        if (!mounted) return;
         AppSnackbar.success(context, 'Invoice created successfully');
       }
 
@@ -189,16 +195,15 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
         context.pop();
       }
     } catch (e) {
+      if (!mounted) return;
       AppSnackbar.error(context, 'Failed to save invoice');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     if (_isLoading && widget.invoiceId != null && _lineItems.isEmpty) {
       return Scaffold(
         appBar: AppBar(title: const Text('Loading Invoice')),
@@ -219,7 +224,7 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
       ),
       body: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.all(AppTheme.spacingMd),
+          padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -242,25 +247,42 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
                       ),
                     ),
                     const SizedBox(height: AppTheme.spacingMd),
-                    TextField(
-                      controller: _contactCtrl,
-                      decoration: InputDecoration(
-                        labelText: 'Contact',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: AppTheme.spacingMd,
-                          vertical: AppTheme.spacingSm,
-                        ),
-                      ),
+                    ContactSelector(
+                      contactId: _contactId,
+                      contactName: _contactName,
+                      onChanged: (contact) {
+                        setState(() {
+                          _contactId = contact?.id;
+                          _contactName = contact?.name;
+                          // If contact changes, clear lead to ensure consistency
+                          _leadId = null;
+                          _leadTitle = null;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: AppTheme.spacingMd),
+                    LeadSelector(
+                      leadId: _leadId,
+                      leadTitle: _leadTitle,
+                      contactId: _contactId,
+                      onChanged: (lead) {
+                        setState(() {
+                          _leadId = lead?.id;
+                          _leadTitle = lead?.title;
+                          // If lead is selected and it belongs to a contact, auto-select it
+                          if (lead != null && _contactId != lead.contactId) {
+                            _contactId = lead.contactId;
+                            _contactName = lead.contactName; 
+                          }
+                        });
+                      },
                     ),
                     const SizedBox(height: AppTheme.spacingMd),
                     Row(
                       children: [
                         Expanded(
                           child: DropdownButtonFormField<String>(
-                            value: _typeCtrl.text,
+                            initialValue: _typeCtrl.text,
                             decoration: InputDecoration(
                               labelText: 'Type',
                               border: OutlineInputBorder(
@@ -283,7 +305,7 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
                         const SizedBox(width: AppTheme.spacingMd),
                         Expanded(
                           child: DropdownButtonFormField<String>(
-                            value: _currencyCtrl.text,
+                            initialValue: _currencyCtrl.text,
                             decoration: InputDecoration(
                               labelText: 'Currency',
                               border: OutlineInputBorder(

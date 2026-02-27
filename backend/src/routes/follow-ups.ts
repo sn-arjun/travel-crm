@@ -91,7 +91,7 @@ function buildFollowUpQuery(
 followUpRoutes.get('/', requirePermission('leads', 'view'), async (c) => {
   const tenantDb = c.get('tenantDb');
   const userId = c.get('userId');
-  const role = c.get('userRole');
+  const role = c.get('role');
   const filter = c.req.query('filter'); // today | overdue | upcoming
   const teamView = c.req.query('team') === 'true';
   const now = new Date().toISOString();
@@ -150,7 +150,6 @@ followUpRoutes.post(
       status: 'pending',
       createdBy: userId,
       createdAt: now,
-      updatedAt: now,
     });
 
     await logLeadActivity(db, {
@@ -185,13 +184,13 @@ followUpRoutes.put(
     if (!existing) return notFound(c, 'Follow-up');
 
     // Only creator or admin/manager can edit
-    const role = c.get('userRole');
+    const role = c.get('role');
     if (existing.createdBy !== userId && role !== 'admin' && role !== 'sales_manager') {
       return error(c, 'Forbidden', 403);
     }
 
     const now = new Date().toISOString();
-    await db.update(followUps).set({ ...body, updatedAt: now }).where(eq(followUps.id, followUpId));
+    await db.update(followUps).set({ ...body }).where(eq(followUps.id, followUpId));
 
     if (body.scheduledAt) {
       await logLeadActivity(db, {
@@ -235,8 +234,7 @@ followUpRoutes.put(
     await db.update(followUps).set({
       status: 'completed',
       completedAt: now,
-      outcomeNotes: body.outcomeNotes ?? null,
-      updatedAt: now,
+      outcome: body.outcomeNotes ?? null,
     }).where(eq(followUps.id, followUpId));
 
     await logLeadActivity(db, {
@@ -271,7 +269,7 @@ followUpRoutes.delete('/:id', requirePermission('leads', 'delete'), async (c) =>
   if (!existing) return notFound(c, 'Follow-up');
 
   // Only creator or admin/manager can delete
-  const role = c.get('userRole');
+  const role = c.get('role');
   if (existing.createdBy !== userId && role !== 'admin' && role !== 'sales_manager') {
     return error(c, 'Forbidden', 403);
   }

@@ -13,10 +13,9 @@ final _contactSearchProvider =
   final api = ref.read(apiClientProvider);
   final response = await api.get(
     ApiEndpoints.contacts,
-    queryParameters: {'search': query, 'pageSize': '20'},
+    queryParameters: {'search': query, 'limit': '20'},
   );
-  final data = response.data['data'] as Map<String, dynamic>?;
-  final items = (data?['items'] as List?) ?? [];
+  final items = (response.data['data'] as List?) ?? [];
   return items
       .map((e) => ContactModel.fromJson(e as Map<String, dynamic>))
       .toList();
@@ -85,7 +84,7 @@ class _ContactSelectorState extends ConsumerState<ContactSelector> {
         'name': name,
         'phone': phone,
         if (_emailCtrl.text.trim().isNotEmpty) 'email': _emailCtrl.text.trim(),
-        'type': 'lead',
+        'type': 'customer',
         'source': 'manual',
       });
       final contact = ContactModel.fromJson(
@@ -193,7 +192,7 @@ class _ContactSelectorState extends ConsumerState<ContactSelector> {
           const SizedBox(height: AppTheme.spacingSm),
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(AppTheme.spacingMd),
+              padding: const EdgeInsets.all(16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

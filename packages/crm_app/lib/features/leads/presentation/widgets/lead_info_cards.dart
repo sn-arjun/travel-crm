@@ -154,7 +154,7 @@ class _SourceCard extends StatelessWidget {
           _Row(
             icon: Icons.input_outlined,
             label: 'Source',
-            value: _capitalise(lead.source),
+            value: _capitalise(lead.source ?? ''),
           ),
           if (lead.createdByName != null)
             _Row(

@@ -160,7 +160,7 @@ class _ItineraryDetailScreenState
             .read(itineraryDetailProvider(widget.itineraryId).notifier)
             .load(),
         child: ListView(
-          padding: const EdgeInsets.all(AppTheme.spacingMd),
+          padding: const EdgeInsets.all(16.0),
           children: [
             // Header Section
             _HeaderSection(itinerary: itinerary),
@@ -421,7 +421,7 @@ class _ItineraryDetailScreenState
                 const SizedBox(height: AppTheme.spacingMd),
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(AppTheme.spacingMd),
+                  padding: const EdgeInsets.all(16.0),
                   decoration: BoxDecoration(
                     color: Theme.of(ctx)
                         .colorScheme
@@ -502,7 +502,7 @@ class _ItineraryDetailScreenState
                 const SizedBox(height: AppTheme.spacingMd),
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(AppTheme.spacingMd),
+                  padding: const EdgeInsets.all(16.0),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainerHighest,
                     borderRadius:
@@ -591,7 +591,7 @@ class _HeaderSection extends StatelessWidget {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(AppTheme.spacingMd),
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -715,7 +715,7 @@ class _DayCard extends StatelessWidget {
             onTap: onToggle,
             borderRadius: BorderRadius.circular(AppTheme.radiusLg),
             child: Padding(
-              padding: const EdgeInsets.all(AppTheme.spacingMd),
+              padding: const EdgeInsets.all(16.0),
               child: Row(
                 children: [
                   Container(
@@ -789,7 +789,7 @@ class _DayCard extends StatelessWidget {
           if (isExpanded) ...[
             const Divider(height: 1),
             Padding(
-              padding: const EdgeInsets.all(AppTheme.spacingMd),
+              padding: const EdgeInsets.all(16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1105,7 +1105,7 @@ class _VersionHistorySectionState
               if (_expanded) _loadVersions();
             },
             child: Padding(
-              padding: const EdgeInsets.all(AppTheme.spacingMd),
+              padding: const EdgeInsets.all(16.0),
               child: Row(
                 children: [
                   const Icon(Icons.history, size: 20),
@@ -1131,7 +1131,7 @@ class _VersionHistorySectionState
             const Divider(height: 1),
             if (_loading)
               const Padding(
-                padding: EdgeInsets.all(AppTheme.spacingMd),
+                padding: EdgeInsets.all(16.0),
                 child: Center(
                   child: SizedBox(
                     width: 24,
@@ -1183,7 +1183,7 @@ class _VersionHistorySectionState
               )
             else
               Padding(
-                padding: const EdgeInsets.all(AppTheme.spacingMd),
+                padding: const EdgeInsets.all(16.0),
                 child: Text(
                   'No other versions',
                   style: theme.textTheme.bodySmall?.copyWith(

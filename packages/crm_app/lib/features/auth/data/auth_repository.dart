@@ -108,7 +108,7 @@ class AuthRepository {
         'token': token,
         'name': name,
         'password': password,
-        if (phone != null) 'phone': phone,
+        'phone': ?phone,
       },
     );
     return AuthResponse.fromJson(

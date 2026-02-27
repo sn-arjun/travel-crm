@@ -55,7 +55,7 @@ class NotificationBell extends ConsumerWidget {
         icon: const Icon(Icons.notifications_outlined),
         onPressed: onPressed ?? () => context.go('/notifications'),
       ),
-      error: (_, __) => IconButton(
+      error: (_, _) => IconButton(
         icon: const Icon(Icons.notifications_outlined),
         onPressed: onPressed ?? () => context.go('/notifications'),
       ),

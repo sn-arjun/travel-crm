@@ -13,11 +13,9 @@ final _assignableUsersProvider =
     queryParameters: {
       'role': 'salesperson,sales_manager,admin',
       'isActive': '1',
-      'pageSize': '100',
     },
   );
-  final data = response.data['data'] as Map<String, dynamic>?;
-  final list = (data?['items'] ?? response.data['data']) as List? ?? [];
+  final list = (response.data['data'] as List?) ?? [];
   return list.cast<Map<String, dynamic>>();
 });
 

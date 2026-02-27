@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../app/theme.dart';
-import '../../../../core/widgets/data/app_data_table.dart';
 import '../../../../core/widgets/data/app_empty_state.dart';
 import '../../../../core/widgets/data/app_stat_card.dart';
 import '../../../../core/widgets/feedback/app_loading.dart';
@@ -113,7 +112,7 @@ class _CommunicationLogScreenState
             ],
             selectedFilter: state.channelFilter,
             onFilterChanged: (value) {
-              ref.read(communicationLogProvider.notifier).setChannelFilter(value);
+              ref.read(communicationLogProvider.notifier).setChannelFilter(value as String?);
             },
             onClear: () {
               ref.read(communicationLogProvider.notifier).clearFilters();
@@ -133,7 +132,7 @@ class _CommunicationLogScreenState
 
   Widget _buildSummaryCards(BuildContext context, state) {
     return Container(
-      padding: const EdgeInsets.all(AppTheme.spacingMd),
+      padding: const EdgeInsets.all(16.0),
       child: Row(
         children: [
           Expanded(
@@ -192,7 +191,7 @@ class _CommunicationLogScreenState
             state.status == CommunicationStatus.loading) {
           return const Center(
             child: Padding(
-              padding: EdgeInsets.all(AppTheme.spacingMd),
+              padding: EdgeInsets.all(16.0),
               child: AppLoading(),
             ),
           );
@@ -247,8 +246,8 @@ class _CommunicationLogScreenState
             ),
             decoration: BoxDecoration(
               color: isOutgoing
-                  ? Colors.blue.withOpacity(0.2)
-                  : Colors.green.withOpacity(0.2),
+                  ? Colors.blue.withValues(alpha: 0.2)
+                  : Colors.green.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(4),
             ),
             child: Text(

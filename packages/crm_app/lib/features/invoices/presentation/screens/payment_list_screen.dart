@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../app/theme.dart';
 import '../../../../core/widgets/data/app_data_table.dart';
 import '../../../../core/widgets/data/app_empty_state.dart';
 import '../../../../core/widgets/feedback/app_loading.dart';
@@ -103,7 +102,7 @@ class _PaymentListScreenState extends ConsumerState<PaymentListScreen> {
             ],
             selectedFilter: state.methodFilter,
             onFilterChanged: (value) {
-              ref.read(paymentListProvider.notifier).setMethodFilter(value);
+              ref.read(paymentListProvider.notifier).setMethodFilter(value as String?);
             },
             onClear: () {
               ref.read(paymentListProvider.notifier).clearFilters();
@@ -152,6 +151,7 @@ class _PaymentListScreenState extends ConsumerState<PaymentListScreen> {
 
     // Data table
     return AppSectionCard(
+      expand: true,
       child: AppDataTable<Map<String, dynamic>>(
         columns: [
           AppDataColumn(
@@ -165,7 +165,7 @@ class _PaymentListScreenState extends ConsumerState<PaymentListScreen> {
             field: 'amount',
             width: 100,
             cellBuilder: (value) => Text(
-              '${(value as Map<String, dynamic>?)?.values.first ?? 'INR'} ${(value as Map<String, dynamic>?)?.values.last?.toString() ?? '0'}',
+              '${(value as Map<String, dynamic>?)?.values.first ?? 'INR'} ${(value)?.values.last?.toString() ?? '0'}',
             ),
           ),
           AppDataColumn(
@@ -205,7 +205,7 @@ class _PaymentListScreenState extends ConsumerState<PaymentListScreen> {
         pagination: state.pagination != null
             ? PaginationState(
                 page: state.pagination!.page,
-                pageSize: state.pagination!.pageSize,
+                pageSize: state.pagination!.limit,
                 total: state.pagination!.total,
               )
             : null,

@@ -16,6 +16,10 @@ final localeProvider = StateProvider<Locale>((ref) {
   return Locale(lang);
 });
 
+// ── Theme Mode Provider ──────────────────────────────────
+
+final themeModeProvider = StateProvider<ThemeMode>((ref) => ThemeMode.light);
+
 // ── Screen ────────────────────────────────────────────────
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -115,7 +119,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final theme = Theme.of(context);
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppTheme.spacingLg),
+      padding: const EdgeInsets.all(24.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -130,7 +134,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           // Profile Header Card
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(AppTheme.spacingLg),
+              padding: const EdgeInsets.all(24.0),
               child: Row(
                 children: [
                   // Avatar — shows image if avatarUrl exists, otherwise initial letter
@@ -177,7 +181,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           // Account Details
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(AppTheme.spacingLg),
+              padding: const EdgeInsets.all(24.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -261,8 +265,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Widget _buildAvatar(UserModel? user) {
-    final avatarUrl = user?.avatarUrl;
-    final hasAvatar = avatarUrl != null && avatarUrl.isNotEmpty;
+    final rawUrl = user?.avatarUrl;
+    final hasAvatar = rawUrl != null && rawUrl.isNotEmpty;
+    final avatarUrl = hasAvatar
+        ? (rawUrl.startsWith('http')
+            ? rawUrl
+            : '${AppConstants.apiBaseUrl}/api/v1$rawUrl')
+        : null;
     return GestureDetector(
       onTap: _uploadingAvatar ? null : _pickAndUploadAvatar,
       child: Stack(
@@ -281,7 +290,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               borderRadius: BorderRadius.circular(AppTheme.radiusLg),
               image: hasAvatar
                   ? DecorationImage(
-                      image: NetworkImage(avatarUrl),
+                      image: NetworkImage(avatarUrl!),
                       fit: BoxFit.cover,
                     )
                   : null,

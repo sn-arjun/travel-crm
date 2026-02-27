@@ -272,13 +272,13 @@ class _ItineraryListScreenState extends ConsumerState<ItineraryListScreen> {
       BuildContext context, ItineraryListState state, ThemeData theme) {
     return ListView.builder(
       controller: _scrollController,
-      padding: const EdgeInsets.all(AppTheme.spacingMd),
+      padding: const EdgeInsets.all(16.0),
       itemCount: state.itineraries.length +
           (state.status == ItineraryListStatus.loading ? 1 : 0),
       itemBuilder: (context, index) {
         if (index >= state.itineraries.length) {
           return const Padding(
-            padding: EdgeInsets.all(AppTheme.spacingMd),
+            padding: EdgeInsets.all(16.0),
             child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
           );
         }
@@ -296,7 +296,7 @@ class _ItineraryListScreenState extends ConsumerState<ItineraryListScreen> {
 
   Widget _buildShimmerLoading(ThemeData theme) {
     return ListView.builder(
-      padding: const EdgeInsets.all(AppTheme.spacingMd),
+      padding: const EdgeInsets.all(16.0),
       itemCount: 6,
       itemBuilder: (context, index) {
         return Padding(
@@ -304,7 +304,7 @@ class _ItineraryListScreenState extends ConsumerState<ItineraryListScreen> {
           child: Card(
             margin: EdgeInsets.zero,
             child: Padding(
-              padding: const EdgeInsets.all(AppTheme.spacingMd),
+              padding: const EdgeInsets.all(16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -449,7 +449,7 @@ class _ItineraryCard extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(AppTheme.radiusLg),
           child: Padding(
-            padding: const EdgeInsets.all(AppTheme.spacingMd),
+            padding: const EdgeInsets.all(16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -696,7 +696,7 @@ class _ErrorState extends StatelessWidget {
 
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(AppTheme.spacingLg),
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

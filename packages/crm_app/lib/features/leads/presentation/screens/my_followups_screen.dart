@@ -156,7 +156,7 @@ class _FollowUpList extends ConsumerWidget {
           .read(myFollowUpsProvider.notifier)
           .loadTab(isOverdue ? FollowUpTab.overdue : FollowUpTab.today),
       child: ListView.separated(
-        padding: const EdgeInsets.all(AppTheme.spacingMd),
+        padding: const EdgeInsets.all(16.0),
         itemCount: items.length,
         separatorBuilder: (_, _) =>
             const SizedBox(height: AppTheme.spacingSm),

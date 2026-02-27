@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../app/theme.dart';
 import '../../../../core/widgets/data/app_empty_state.dart';
-import '../../../../core/widgets/feedback/app_loading.dart';
 
 class CampaignListScreen extends ConsumerStatefulWidget {
   const CampaignListScreen({super.key});
@@ -65,7 +64,7 @@ class _CampaignListScreenState extends ConsumerState<CampaignListScreen> {
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Padding(
-              padding: const EdgeInsets.all(AppTheme.spacingMd),
+              padding: const EdgeInsets.all(16.0),
               child: Row(
                 children: ['All', 'Draft', 'Active', 'Completed']
                     .map((status) {
@@ -135,7 +134,7 @@ class _CampaignListScreenState extends ConsumerState<CampaignListScreen> {
         leading: Container(
           padding: const EdgeInsets.all(AppTheme.spacingSm),
           decoration: BoxDecoration(
-            color: statusColor.withOpacity(0.2),
+            color: statusColor.withValues(alpha: 0.2),
             borderRadius: BorderRadius.circular(AppTheme.radiusSm),
           ),
           child: Icon(
@@ -150,7 +149,7 @@ class _CampaignListScreenState extends ConsumerState<CampaignListScreen> {
         ),
         trailing: Chip(
           label: Text(campaign['status'].toUpperCase()),
-          backgroundColor: statusColor.withOpacity(0.2),
+          backgroundColor: statusColor.withValues(alpha: 0.2),
           labelStyle: TextStyle(
             color: statusColor,
             fontSize: 12,

@@ -23,7 +23,7 @@ class LeadCard extends ConsumerWidget {
         onTap: () => context.push('/leads/${lead.id}'),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.all(AppTheme.spacingMd),
+          padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

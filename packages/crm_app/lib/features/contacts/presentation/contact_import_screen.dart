@@ -75,7 +75,7 @@ class _ContactImportScreenState extends ConsumerState<ContactImportScreen> {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 600),
           child: Padding(
-            padding: const EdgeInsets.all(AppTheme.spacingLg),
+            padding: const EdgeInsets.all(24.0),
             child: Column(
               children: [
                 // Stepper indicator

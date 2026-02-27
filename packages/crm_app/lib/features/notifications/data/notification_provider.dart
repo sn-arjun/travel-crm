@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared/shared.dart';
@@ -257,13 +258,13 @@ class NotificationPreferencesNotifier
     state = state.copyWith(isLoading: true);
     try {
       final payload = <String, dynamic>{
-        if (muteAll != null) 'mute_all': muteAll,
-        if (preferences != null) 'preferences': preferences,
+        'mute_all': ?muteAll,
+        'preferences': ?preferences,
         if (quietHoursStart != null)
           'quiet_hours_start': '${quietHoursStart.hour}:${quietHoursStart.minute}',
         if (quietHoursEnd != null)
           'quiet_hours_end': '${quietHoursEnd.hour}:${quietHoursEnd.minute}',
-        if (quietHoursTimezone != null) 'quiet_hours_timezone': quietHoursTimezone,
+        'quiet_hours_timezone': ?quietHoursTimezone,
       };
 
       await _repository.updateNotificationPreferences(payload);

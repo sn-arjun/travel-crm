@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import 'package:shared/shared.dart';
 
 class NotificationRepository {
@@ -116,8 +115,8 @@ class NotificationRepository {
         'title': title,
         'body': body,
         'target': target,
-        if (targetRole != null) 'target_role': targetRole,
-        if (targetUserIds != null) 'target_user_ids': targetUserIds,
+        'target_role': ?targetRole,
+        'target_user_ids': ?targetUserIds,
       },
     );
     return response.data['data'] as Map<String, dynamic>;

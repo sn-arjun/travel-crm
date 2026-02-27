@@ -199,7 +199,7 @@ communicationRoutes.post(
       }
 
       // Resolve variables
-      const variables = await resolveVariables(db, body.contact_id, body.lead_id);
+      const variables = await resolveVariables((db as any).$client as D1Database, body.contact_id, body.lead_id);
       const mergedVariables = { ...variables, ...body.variables };
 
       // Substitute in template
@@ -462,7 +462,7 @@ communicationRoutes.post(
         messageIds.push(messageId);
 
         // Resolve and substitute variables for this contact
-        const variables = await resolveVariables(db, contact.id);
+        const variables = await resolveVariables((db as any).$client as D1Database, contact.id);
         const content = substituteVariables(messageContent, variables);
 
         await db.insert(messageLog).values({

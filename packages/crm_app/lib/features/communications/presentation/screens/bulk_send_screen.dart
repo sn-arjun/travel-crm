@@ -129,7 +129,7 @@ class _BulkSendScreenState extends ConsumerState<BulkSendScreen>
         children: [
           // Progress indicator
           Padding(
-            padding: const EdgeInsets.all(AppTheme.spacingMd),
+            padding: const EdgeInsets.all(16.0),
             child: Row(
               children: [
                 _buildProgressDot(0, 'Channel'),
@@ -182,7 +182,7 @@ class _BulkSendScreenState extends ConsumerState<BulkSendScreen>
           const Divider(height: 1),
           // Action buttons
           Padding(
-            padding: const EdgeInsets.all(AppTheme.spacingMd),
+            padding: const EdgeInsets.all(16.0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -280,7 +280,7 @@ class _BulkSendScreenState extends ConsumerState<BulkSendScreen>
                 },
                 child: Container(
                   width: 120,
-                  padding: const EdgeInsets.all(AppTheme.spacingMd),
+                  padding: const EdgeInsets.all(16.0),
                   decoration: BoxDecoration(
                     border: Border.all(
                       color: isSelected
@@ -317,7 +317,7 @@ class _BulkSendScreenState extends ConsumerState<BulkSendScreen>
 
   Widget _buildMessagePage() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppTheme.spacingMd),
+      padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -362,7 +362,7 @@ class _BulkSendScreenState extends ConsumerState<BulkSendScreen>
                       },
                       child: Card(
                         color: isSelected
-                            ? Theme.of(context).primaryColor.withOpacity(0.1)
+                            ? Theme.of(context).primaryColor.withValues(alpha: 0.1)
                             : null,
                         child: ListTile(
                           title: Text(template['name']),
@@ -399,7 +399,7 @@ class _BulkSendScreenState extends ConsumerState<BulkSendScreen>
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.all(AppTheme.spacingMd),
+          padding: const EdgeInsets.all(16.0),
           child: TextField(
             controller: _contactSearchController,
             decoration: InputDecoration(
@@ -438,9 +438,9 @@ class _BulkSendScreenState extends ConsumerState<BulkSendScreen>
     );
   }
 
-  Widget _buildPreviewPage(bulkSendState) {
+  Widget _buildPreviewPage(BulkSendState bulkSendState) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppTheme.spacingMd),
+      padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

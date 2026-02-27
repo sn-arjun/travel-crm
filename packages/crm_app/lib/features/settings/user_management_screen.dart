@@ -36,7 +36,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
     final isAdmin = currentUser?.role == 'admin';
 
     return Padding(
-      padding: const EdgeInsets.all(AppTheme.spacingLg),
+      padding: const EdgeInsets.all(24.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -340,7 +340,7 @@ class _UserCard extends StatelessWidget {
       child: Card(
         margin: EdgeInsets.zero,
         child: Padding(
-          padding: const EdgeInsets.all(AppTheme.spacingMd),
+          padding: const EdgeInsets.all(16.0),
           child: Row(
             children: [
               // Avatar with status dot

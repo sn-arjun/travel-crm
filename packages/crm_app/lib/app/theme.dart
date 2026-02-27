@@ -27,6 +27,14 @@ class AppTheme {
   static const Color warmColor = Color(0xFFF59E0B);
   static const Color coldColor = Color(0xFF3B82F6);
 
+  // Grey scale
+  static const Color colorGrey100 = Color(0xFFF1F5F9);
+  static const Color colorGrey200 = Color(0xFFE2E8F0);
+  static const Color colorGrey300 = Color(0xFFCBD5E1);
+  static const Color colorGrey400 = Color(0xFF94A3B8);
+  static const Color colorGrey500 = Color(0xFF64748B);
+  static const Color colorGrey600 = Color(0xFF475569);
+
   // Neutral
   static const Color backgroundLight = Color(0xFFF8FAFC);
   static const Color surfaceLight = Color(0xFFFFFFFF);
@@ -152,6 +160,7 @@ class AppTheme {
       dialogTheme: DialogThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radiusLg)),
         elevation: 8,
+        constraints: const BoxConstraints(minWidth: 480, maxWidth: 600),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
@@ -267,6 +276,7 @@ class AppTheme {
       dialogTheme: DialogThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radiusLg)),
         elevation: 8,
+        constraints: const BoxConstraints(minWidth: 480, maxWidth: 600),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,

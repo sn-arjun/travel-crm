@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/theme.dart';
 import '../auth/data/auth_provider.dart';
 import '../auth/data/biometric_provider.dart';
+import 'profile_screen.dart' show themeModeProvider;
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -14,7 +15,7 @@ class SettingsScreen extends ConsumerWidget {
     final theme = Theme.of(context);
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppTheme.spacingLg),
+      padding: const EdgeInsets.all(24.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -65,6 +66,7 @@ class SettingsScreen extends ConsumerWidget {
           if (defaultTargetPlatform == TargetPlatform.android ||
               defaultTargetPlatform == TargetPlatform.iOS)
             _BiometricTile(),
+          _ThemeModeTile(),
 
           const SizedBox(height: AppTheme.spacingLg),
 
@@ -95,6 +97,22 @@ class SettingsScreen extends ConsumerWidget {
             subtitle: 'Update company details and logo',
             onTap: () => context.go('/settings/company'),
           ),
+          _SettingsTile(
+            icon: Icons.upload_file_rounded,
+            iconBg: const Color(0xFFE0F2FE),
+            iconColor: const Color(0xFF0284C7),
+            title: 'Data Import & Export',
+            subtitle: 'Import data from CSV/Excel and review history',
+            onTap: () => context.go('/settings/import-history'),
+          ),
+          _SettingsTile(
+            icon: Icons.shield_outlined,
+            iconBg: const Color(0xFFF0FDF4),
+            iconColor: const Color(0xFF16A34A),
+            title: 'Data Privacy & Export',
+            subtitle: 'Export all tenant data (GDPR compliance)',
+            onTap: () => context.go('/settings/data-export'),
+          ),
 
           const SizedBox(height: AppTheme.spacingXl),
 
@@ -107,7 +125,7 @@ class SettingsScreen extends ConsumerWidget {
               borderRadius: BorderRadius.circular(AppTheme.radiusLg),
               onTap: () => _confirmLogout(context, ref),
               child: Padding(
-                padding: const EdgeInsets.all(AppTheme.spacingMd),
+                padding: const EdgeInsets.all(16.0),
                 child: Row(
                   children: [
                     Container(
@@ -236,7 +254,7 @@ class _SettingsTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppTheme.radiusLg),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.all(AppTheme.spacingMd),
+            padding: const EdgeInsets.all(16.0),
             child: Row(
               children: [
                 Container(
@@ -296,7 +314,7 @@ class _BiometricTile extends ConsumerWidget {
       child: Card(
         margin: EdgeInsets.zero,
         child: Padding(
-          padding: const EdgeInsets.all(AppTheme.spacingMd),
+          padding: const EdgeInsets.all(16.0),
           child: Row(
             children: [
               Container(
@@ -325,6 +343,68 @@ class _BiometricTile extends ConsumerWidget {
               Switch.adaptive(
                 value: isEnabled,
                 onChanged: (v) => ref.read(biometricEnabledProvider.notifier).setEnabled(v),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Theme Mode Toggle Tile ──────────────────────────────
+
+class _ThemeModeTile extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final mode = ref.watch(themeModeProvider);
+    final isDark = mode == ThemeMode.dark;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppTheme.spacingSm),
+      child: Card(
+        margin: EdgeInsets.zero,
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E1B4B) : const Color(0xFFF5F3FF),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                ),
+                child: Icon(
+                  isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+                  color: isDark ? const Color(0xFFA78BFA) : const Color(0xFF7C3AED),
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: AppTheme.spacingMd),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Dark Mode',
+                        style: theme.textTheme.titleSmall
+                            ?.copyWith(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 2),
+                    Text(
+                      isDark ? 'Switch to light theme' : 'Switch to dark theme',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+              Switch.adaptive(
+                value: isDark,
+                onChanged: (v) {
+                  ref.read(themeModeProvider.notifier).state =
+                      v ? ThemeMode.dark : ThemeMode.light;
+                },
               ),
             ],
           ),

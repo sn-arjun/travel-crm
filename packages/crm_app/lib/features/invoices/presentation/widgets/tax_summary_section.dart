@@ -32,7 +32,7 @@ class TaxSummarySection extends StatelessWidget {
         border: Border.all(color: theme.colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(8),
       ),
-      padding: const EdgeInsets.all(AppTheme.spacingMd),
+      padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
@@ -75,7 +75,7 @@ class TaxSummarySection extends StatelessWidget {
             const SizedBox(height: AppTheme.spacingSm),
             _buildRow(
               theme,
-              label: '${taxType ?? 'Tax'}',
+              label: taxType ?? 'Tax',
               value: '+ $currency ${taxAmount.toStringAsFixed(2)}',
               isBold: false,
             ),

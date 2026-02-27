@@ -19,7 +19,8 @@ export type Module =
   | 'fleet'
   | 'reports'
   | 'settings'
-  | 'users';
+  | 'users'
+  | 'marketing';
 
 export type Permission = 'view' | 'create' | 'edit' | 'delete' | 'export' | 'import';
 
@@ -51,6 +52,7 @@ export const PERMISSIONS: PermissionMatrix = {
     reports: ALL,
     settings: ALL,
     users: ALL,
+    marketing: ALL,
   },
   sales_manager: {
     dashboard: VIEW_ONLY_PERMS,
@@ -70,6 +72,7 @@ export const PERMISSIONS: PermissionMatrix = {
     planner: ALL,
     fleet: VIEW_ONLY_PERMS,
     reports: VIEW_EXPORT,
+    marketing: ALL,
   },
   salesperson: {
     dashboard: VIEW_ONLY_PERMS,

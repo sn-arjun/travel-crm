@@ -8,6 +8,7 @@ import '../widgets/kanban_board.dart';
 import '../widgets/lead_filter_bar.dart';
 import '../widgets/lead_bulk_actions.dart';
 import 'lead_list_screen.dart';
+import '../../../exports/data/export_provider.dart';
 
 class LeadPipelineScreen extends ConsumerStatefulWidget {
   const LeadPipelineScreen({super.key});
@@ -68,6 +69,12 @@ class _LeadPipelineScreenState extends ConsumerState<LeadPipelineScreen> {
                 },
               ),
               const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.download_outlined),
+                tooltip: 'Export',
+                onPressed: () => ref.read(exportProvider).exportLeads(),
+              ),
+              const SizedBox(width: AppTheme.spacingSm),
               FilledButton.icon(
                 onPressed: () => context.push('/leads/new'),
                 icon: const Icon(Icons.add, size: 18),

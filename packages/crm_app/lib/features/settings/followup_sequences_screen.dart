@@ -53,7 +53,7 @@ class FollowUpSequencesScreen extends ConsumerWidget {
                 ),
               )
             : ListView.builder(
-                padding: const EdgeInsets.all(AppTheme.spacingMd),
+                padding: const EdgeInsets.all(16.0),
                 itemCount: sequences.length,
                 itemBuilder: (context, i) {
                   final seq = sequences[i];
@@ -297,7 +297,7 @@ class _SequenceBuilderState extends State<_SequenceBuilder> {
           Expanded(
             child: ListView(
               controller: controller,
-              padding: const EdgeInsets.all(AppTheme.spacingMd),
+              padding: const EdgeInsets.all(16.0),
               children: [
                 AppSectionCard(
                   title: 'Sequence Settings',

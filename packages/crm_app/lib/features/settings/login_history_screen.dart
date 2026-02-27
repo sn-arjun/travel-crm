@@ -27,7 +27,7 @@ class LoginHistoryScreen extends ConsumerWidget {
     final theme = Theme.of(context);
 
     return Padding(
-      padding: const EdgeInsets.all(AppTheme.spacingLg),
+      padding: const EdgeInsets.all(24.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -43,7 +43,7 @@ class LoginHistoryScreen extends ConsumerWidget {
                   ? _EmptyState()
                   : ListView.separated(
                       itemCount: entries.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: AppTheme.spacingSm),
+                      separatorBuilder: (_, _) => const SizedBox(height: AppTheme.spacingSm),
                       itemBuilder: (context, i) => _LoginEntryCard(entry: entries[i]),
                     ),
             ),
@@ -78,7 +78,7 @@ class _LoginEntryCard extends StatelessWidget {
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.all(AppTheme.spacingMd),
+        padding: const EdgeInsets.all(16.0),
         child: Row(
           children: [
             Container(

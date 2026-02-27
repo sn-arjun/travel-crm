@@ -24,6 +24,7 @@ class AppStatCard extends StatelessWidget {
   final String? trendLabel;
   final Color? iconColor;
   final VoidCallback? onTap;
+  final bool isAlert;
 
   const AppStatCard({
     super.key,
@@ -34,12 +35,14 @@ class AppStatCard extends StatelessWidget {
     this.trendLabel,
     this.iconColor,
     this.onTap,
+    this.isAlert = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final effectiveIconColor = iconColor ?? theme.colorScheme.primary;
+    final effectiveIconColor =
+        isAlert ? AppTheme.warningColor : (iconColor ?? theme.colorScheme.primary);
 
     return Card(
       child: InkWell(

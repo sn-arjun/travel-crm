@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(done)",
+      "Bash(grep:*)",
+      "Bash(\"C:/Windows/SysWOW64/WindowsPowerShell/v1.0/powershell.exe\":*)",
+      "mcp__dart__analyze_files",
+      "Bash(cd /c/Users/Admin/Downloads/pro/CRM/backend && npx wrangler d1 migrations apply travelcrm-master --local 2>&1)",
+      "Bash(cd /c/Users/Admin/Downloads/pro/CRM/backend && npx wrangler d1 execute travelcrm-master --local --file=drizzle/tenant/0010_marketing_tables.sql 2>&1)",
+      "Bash(npx wrangler:*)",
+      "Bash(read file:*)",
+      "mcp__dart__dart_fix"
+    ]
+  }
+}

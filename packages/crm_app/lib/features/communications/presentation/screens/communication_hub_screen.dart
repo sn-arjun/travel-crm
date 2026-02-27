@@ -112,7 +112,7 @@ class _CommunicationHubScreenState
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Padding(
-              padding: const EdgeInsets.all(AppTheme.spacingMd),
+              padding: const EdgeInsets.all(16.0),
               child: Row(
                 children: ['All', 'WhatsApp', 'SMS', 'Email'].map((channel) {
                   final value = channel == 'All' ? null : channel.toLowerCase();
@@ -194,7 +194,7 @@ class _CommunicationHubScreenState
         if (index == 0 && state.status == CommunicationStatus.loading) {
           return const Center(
             child: Padding(
-              padding: EdgeInsets.all(AppTheme.spacingMd),
+              padding: EdgeInsets.all(16.0),
               child: AppLoading(),
             ),
           );

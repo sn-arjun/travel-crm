@@ -38,8 +38,8 @@ abstract class LeadModel with _$LeadModel {
     required String contactId,
     String? contactName,
     required String title,
-    // destinations is stored as JSON in `destination` column
-    @_DestinationsConverter() @JsonKey(name: 'destination') @Default([]) List<String> destinations,
+    // destinations is returned as a parsed array from the backend
+    @_DestinationsConverter() @JsonKey(name: 'destinations') @Default([]) List<String> destinations,
     required String travelDate,
     String? returnDate,
     @Default(1) int paxAdults,
@@ -48,7 +48,7 @@ abstract class LeadModel with _$LeadModel {
     double? budget,
     @Default('INR') String currency,
     required String tripType,
-    required String source,
+    String? source,
     @Default('new') String status,
     String? priority,
     String? assignedTo,

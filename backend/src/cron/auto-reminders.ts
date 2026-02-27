@@ -257,6 +257,60 @@ async function processInvoiceRemindersForTenant(env: Env, db: D1Database): Promi
         });
       }
     }
+
+    // Overdue 14 days — final escalation
+    const week2Ago = new Date(Date.now() - 14 * 86400000).toISOString().substring(0, 10);
+    const overdue14Days = await db
+      .prepare(`
+        SELECT id, invoice_number, contact_id, total, due_date, created_by
+        FROM invoices
+        WHERE status NOT IN ('paid', 'cancelled')
+          AND due_date = ?
+      `)
+      .bind(week2Ago)
+      .all<{ id: string; invoice_number: string; contact_id: string; total: number; due_date: string; created_by: string }>();
+
+    for (const inv of overdue14Days.results) {
+      const contact = await db.prepare(`SELECT phone, email FROM contacts WHERE id = ?`).bind(inv.contact_id).first();
+
+      if (contact?.phone) {
+        await env.SMS_QUEUE.send({
+          type: 'sms',
+          data: {
+            toNumber: contact.phone,
+            message: `FINAL NOTICE: Invoice ${inv.invoice_number} is 14 days overdue. Amount: ${inv.total}. Please contact us immediately to avoid service suspension.`,
+            templateId: 'invoice_final_notice',
+          },
+        });
+      }
+
+      if (contact?.email) {
+        await env.EMAIL_QUEUE.send({
+          type: 'email',
+          data: {
+            toEmail: contact.email,
+            subject: `FINAL NOTICE: Invoice ${inv.invoice_number} - 14 Days Overdue`,
+            templateId: 'invoice_final_notice_email',
+          },
+        });
+      }
+
+      // Notify all admins
+      const admins = await db
+        .prepare(`SELECT id FROM users WHERE role = 'admin' AND is_active = 1`)
+        .all<{ id: string }>();
+      for (const admin of admins.results) {
+        await createInAppNotification(
+          db,
+          admin.id,
+          `Invoice ${inv.invoice_number} - 14 Days Overdue`,
+          `Invoice for ${inv.total} is critically overdue (14 days). Immediate action required.`,
+          'invoice_overdue',
+          'invoice',
+          inv.id
+        );
+      }
+    }
   } catch (err) {
     console.error('Invoice reminder processing failed:', err);
   }
@@ -352,6 +406,61 @@ async function processVisaPassportForTenant(env: Env, db: D1Database): Promise<v
     }
   } catch (err) {
     console.error('Visa/Passport expiry processing failed:', err);
+  }
+}
+
+/**
+ * Daily cron job to check for missing visa documents.
+ * - If > 7 days since application and status is documents_collecting -> Email to contact
+ */
+export async function checkMissingVisaDocuments(env: Env): Promise<void> {
+  try {
+    const tenants = await env.MASTER_DB
+      .prepare('SELECT db_binding, id FROM workspaces WHERE is_active = 1')
+      .all<{ db_binding: string; id: string }>();
+
+    for (const tenant of tenants.results) {
+      const tenantDb = ((env as unknown) as Record<string, D1Database>)[tenant.db_binding] as D1Database | undefined;
+      if (!tenantDb) continue;
+
+      await processMissingVisaDocsForTenant(env, tenantDb);
+    }
+  } catch (err) {
+    console.error('Missing visa docs check failed:', err);
+  }
+}
+
+async function processMissingVisaDocsForTenant(env: Env, db: D1Database): Promise<void> {
+  try {
+    const today = new Date();
+    const sevenDaysAgo = new Date(today.getTime() - 7 * 86400000).toISOString().substring(0, 10);
+
+    const pendingVisas = await db
+      .prepare(`
+        SELECT va.id, va.destination_country as country, t.first_name, t.last_name, c.email
+        FROM visa_applications va
+        JOIN travellers t ON va.traveller_id = t.id
+        LEFT JOIN contacts c ON t.contact_id = c.id
+        WHERE va.status = 'documents_collecting'
+          AND substr(va.created_at, 1, 10) <= ?
+      `)
+      .bind(sevenDaysAgo)
+      .all<{ id: string; country: string; first_name: string; last_name: string; email?: string }>();
+
+    for (const visa of pendingVisas.results) {
+      if (visa.email) {
+        await env.EMAIL_QUEUE.send({
+          type: 'email',
+          data: {
+            toEmail: visa.email,
+            subject: `Action Required: Missing Documents for ${visa.country} Visa`,
+            templateId: 'visa_missing_docs_reminder',
+          }
+        });
+      }
+    }
+  } catch (err) {
+    console.error('Missing visa docs processing failed:', err);
   }
 }
 

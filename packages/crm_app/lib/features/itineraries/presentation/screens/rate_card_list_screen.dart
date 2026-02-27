@@ -203,7 +203,7 @@ class _RateCardListScreenState extends ConsumerState<RateCardListScreen> {
         itemBuilder: (context, index) {
           if (index >= state.rateCards.length) {
             return const Padding(
-              padding: EdgeInsets.all(AppTheme.spacingMd),
+              padding: EdgeInsets.all(16.0),
               child: Center(
                 child: SizedBox(
                   width: 24,
@@ -308,7 +308,7 @@ class _RateCardTile extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppTheme.radiusLg),
         child: Padding(
-          padding: const EdgeInsets.all(AppTheme.spacingMd),
+          padding: const EdgeInsets.all(16.0),
           child: Row(
             children: [
               // Service type icon
