@@ -3,6 +3,8 @@ import { authMiddleware } from '../middleware/auth';
 import { AppContext } from '../types';
 import { reportEngine } from '../services/report-engine';
 import { reportRegistry } from '../services/report-registry';
+import { ReportCache } from '../services/report-cache';
+import { resolveDateRange } from '../utils/date-range';
 import { success, error } from '../utils/response';
 import { excelExportService } from '../services/exports/excel-export';
 import { pdfExportService } from '../services/exports/pdf-export';
@@ -178,6 +180,37 @@ reportRoutes.get('/ageing', async (c) => {
   }
 });
 
+// DELETE /cache — invalidate all report caches for tenant
+reportRoutes.delete('/cache', async (c) => {
+  try {
+    const kv = (c.env as any).REPORT_CACHE;
+    const tenantId = c.get('tenantId') as string;
+    if (kv && tenantId) {
+      const cache = new ReportCache(kv);
+      await cache.invalidate(tenantId);
+    }
+    return success(c, { invalidated: true });
+  } catch (err: any) {
+    return error(c, err.message, 500);
+  }
+});
+
+// DELETE /:id/cache — invalidate cache for a specific report
+reportRoutes.delete('/:id/cache', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const kv = (c.env as any).REPORT_CACHE;
+    const tenantId = c.get('tenantId') as string;
+    if (kv && tenantId) {
+      const cache = new ReportCache(kv);
+      await cache.invalidate(tenantId, id);
+    }
+    return success(c, { invalidated: true, reportId: id });
+  } catch (err: any) {
+    return error(c, err.message, 500);
+  }
+});
+
 reportRoutes.get('/:id', async (c) => {
   try {
     const id = c.req.param('id');
@@ -191,20 +224,54 @@ reportRoutes.get('/:id', async (c) => {
     const tenantDb = c.get('tenantDb') as any;
     const userId = c.get('userId') as string;
     const role = c.get('role') as string;
+    const tenantId = c.get('tenantId') as string;
 
     const sortOrder = query.sort_order || query.sortOrder;
+    const datePreset = query.date_preset || query.datePreset;
+    let dateFrom = query.date_from || query.startDate;
+    let dateTo = query.date_to || query.endDate;
 
-    const result = await reportEngine.execute(tenantDb, id, {
-      date_from: query.date_from || query.startDate,
-      date_to: query.date_to || query.endDate,
-      date_preset: query.date_preset || query.datePreset,
+    // Resolve preset to concrete date range if provided
+    if (datePreset && !dateFrom && !dateTo) {
+      try {
+        const resolved = resolveDateRange(datePreset, dateFrom, dateTo);
+        dateFrom = resolved.from;
+        dateTo = resolved.to;
+      } catch (e) { /* ignore invalid presets — engine handles no-date case */ }
+    }
+
+    const params = {
+      date_from: dateFrom,
+      date_to: dateTo,
+      date_preset: datePreset,
       group_by: query.group_by || query.groupBy,
       sort_by: query.sort_by || query.sortBy,
       sort_order: (sortOrder === 'asc' || sortOrder === 'desc') ? sortOrder : undefined,
       page: query.page ? parseInt(query.page) : undefined,
       per_page: (query.per_page || query.limit) ? parseInt(query.per_page || query.limit) : undefined,
+      compare: query.compare,
       ...parsedFilters
-    }, userId, role);
+    };
+
+    // Try cache first
+    const kv = (c.env as any).REPORT_CACHE;
+    if (kv && tenantId) {
+      const cache = new ReportCache(kv);
+      const cached = await cache.get(tenantId, id, params);
+      if (cached) {
+        c.header('X-Cache', 'HIT');
+        return success(c, cached);
+      }
+    }
+
+    const result = await reportEngine.execute(tenantDb, id, params, userId, role);
+
+    // Store in cache
+    if (kv && tenantId) {
+      const cache = new ReportCache(kv);
+      await cache.set(tenantId, id, params, result);
+    }
+    c.header('X-Cache', 'MISS');
 
     return success(c, result);
   } catch (err: any) {
@@ -232,12 +299,26 @@ reportRoutes.get('/:id/export', async (c) => {
     const role = c.get('role') as string;
 
     const sortOrder = query.sort_order || query.sortOrder;
+    const exportDatePreset = query.date_preset || query.datePreset;
+    let exportDateFrom = query.date_from || query.startDate;
+    let exportDateTo = query.date_to || query.endDate;
+
+    if (exportDatePreset && !exportDateFrom && !exportDateTo) {
+      try {
+        const resolved = resolveDateRange(exportDatePreset, exportDateFrom, exportDateTo);
+        exportDateFrom = resolved.from;
+        exportDateTo = resolved.to;
+      } catch (e) { /* ignore */ }
+    }
+
+    const reportDef = reportRegistry.get(id);
+    if (!reportDef) throw new Error('Report not found');
 
     // Export doesn't use pagination to get all data
     const result = await reportEngine.execute(tenantDb, id, {
-      date_from: query.date_from || query.startDate,
-      date_to: query.date_to || query.endDate,
-      date_preset: query.date_preset || query.datePreset,
+      date_from: exportDateFrom,
+      date_to: exportDateTo,
+      date_preset: exportDatePreset,
       group_by: query.group_by || query.groupBy,
       sort_by: query.sort_by || query.sortBy,
       sort_order: (sortOrder === 'asc' || sortOrder === 'desc') ? sortOrder : undefined,
@@ -246,18 +327,18 @@ reportRoutes.get('/:id/export', async (c) => {
       ...parsedFilters
     }, userId, role);
 
-    const reportDef = reportRegistry.get(id);
-    if (!reportDef) throw new Error('Report not found');
+    const dateLabel = exportDatePreset || (exportDateFrom ? `${exportDateFrom.split('T')[0]}_to_${exportDateTo?.split('T')[0]}` : 'all');
+    const fileName = `${id}_${dateLabel}`;
 
     if (format === 'excel') {
       const buffer = await excelExportService.generateExcel(reportDef, result.data);
       c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      c.header('Content-Disposition', `attachment; filename="${id}_export.xlsx"`);
+      c.header('Content-Disposition', `attachment; filename="${fileName}.xlsx"`);
       return c.body(buffer as any);
     } else if (format === 'pdf') {
       const buffer = await pdfExportService.generatePdf(reportDef, result.data);
       c.header('Content-Type', 'application/pdf');
-      c.header('Content-Disposition', `attachment; filename="${id}_export.pdf"`);
+      c.header('Content-Disposition', `attachment; filename="${fileName}.pdf"`);
       return c.body(buffer as any);
     } else {
       return error(c, 'Invalid export format. Supported: excel, pdf', 400);

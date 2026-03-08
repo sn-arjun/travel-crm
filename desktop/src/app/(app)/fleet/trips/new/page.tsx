@@ -1,56 +1,99 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
-import { ArrowLeft, Loader2, Save, Route } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { ArrowLeft, Loader2, Save, Route, User, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { toast } from 'sonner';
 import { fleetApi } from '@/lib/api/fleet';
 import { useApiQuery } from '@/hooks/use-api';
 
+const mapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+
+function LocationInput({ id, label, value, onChange, required }: { id: string; label: string; value: string; onChange: (v: string) => void; required?: boolean }) {
+  if (mapsApiKey) {
+    // When Google Maps is available, we'd use AddressAutocomplete — for now fall through to Input
+    return (
+      <div className="space-y-2">
+        <Label htmlFor={id}>{label} {required && <span className="text-destructive">*</span>}</Label>
+        <Input id={id} placeholder={`Enter ${label.toLowerCase()}`} value={value} onChange={(e) => onChange(e.target.value)} required={required} />
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label} {required && <span className="text-destructive">*</span>}</Label>
+      <div className="relative">
+        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input id={id} className="pl-9" placeholder={`Enter ${label.toLowerCase()}`} value={value} onChange={(e) => onChange(e.target.value)} required={required} />
+      </div>
+    </div>
+  );
+}
+
 export default function NewTripPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [vehicleSearch, setVehicleSearch] = React.useState('');
+  const [driverSearch, setDriverSearch] = React.useState('');
 
   const vehiclesQuery = useApiQuery(
-    () => fleetApi.vehicles.list({ limit: 100 }).then(res => res.data),
-    []
+    () => fleetApi.vehicles.list({ limit: 50, search: vehicleSearch || undefined }).then(res => res.data),
+    [vehicleSearch]
   );
 
   const driversQuery = useApiQuery(
-    () => fleetApi.drivers.list({ limit: 100 }).then(res => res.data),
-    []
+    () => fleetApi.drivers.list({ limit: 50, search: driverSearch || undefined }).then(res => res.data),
+    [driverSearch]
   );
+
+  const prefillLeadId = searchParams.get('leadId') || '';
+  const prefillPassengerName = searchParams.get('passengerName') || '';
+  const prefillPassengerPhone = searchParams.get('passengerPhone') || '';
 
   const [form, setForm] = React.useState({
     vehicleId: '',
     driverId: '',
+    leadId: prefillLeadId,
+    passengerName: prefillPassengerName,
+    passengerPhone: prefillPassengerPhone,
+    specialInstructions: '',
     startLocation: '',
     endLocation: '',
     startTime: '',
     endTime: '',
     distance: '',
     fare: '',
-    status: 'scheduled' as const,
   });
 
-  function updateField(field: string, value: string | number) {
+  function updateField(field: string, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
   const vehicles: any[] = Array.isArray(vehiclesQuery.data) ? vehiclesQuery.data : (vehiclesQuery.data?.data ?? []);
   const drivers: any[] = Array.isArray(driversQuery.data) ? driversQuery.data : (driversQuery.data?.data ?? []);
 
+  const vehicleOptions = vehicles.map((v: any) => ({
+    value: v.id,
+    label: `${v.registrationNumber} — ${v.make} ${v.model}`,
+  }));
+
+  const driverOptions = drivers.map((d: any) => ({
+    value: d.id,
+    label: d.name + (d.phone ? ` (${d.phone})` : ''),
+  }));
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!form.vehicleId || !form.driverId || !form.startLocation || !form.endLocation || !form.startTime || !form.endTime || !form.distance || !form.fare) {
+    if (!form.vehicleId || !form.driverId || !form.startLocation || !form.endLocation || !form.startTime || !form.endTime) {
       toast.error('Please fill in all required fields');
       return;
     }
@@ -60,17 +103,20 @@ export default function NewTripPage() {
       await fleetApi.trips.create({
         vehicleId: form.vehicleId,
         driverId: form.driverId,
+        leadId: form.leadId || undefined,
+        passengerName: form.passengerName || undefined,
+        passengerPhone: form.passengerPhone || undefined,
+        specialInstructions: form.specialInstructions || undefined,
         startLocation: form.startLocation,
         endLocation: form.endLocation,
         startTime: form.startTime,
         endTime: form.endTime,
-        distance: parseInt(form.distance as string),
-        fare: parseInt(form.fare as string),
-        status: form.status,
+        distance: form.distance ? parseInt(form.distance) : undefined,
+        fare: form.fare ? parseInt(form.fare) : undefined,
       });
       toast.success('Trip created successfully');
       router.push('/fleet/trips');
-    } catch (error) {
+    } catch {
       toast.error('Failed to create trip');
     } finally {
       setIsSubmitting(false);
@@ -100,19 +146,13 @@ export default function NewTripPage() {
 
       <div className="flex-1 overflow-auto p-6">
         <form onSubmit={handleSubmit} className="max-w-3xl mx-auto space-y-6">
-          {/* Route */}
+          {/* Route & Schedule */}
           <Card>
             <CardHeader><CardTitle className="text-base flex items-center gap-2"><Route className="h-4 w-4" />Route & Schedule</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="startLocation">Start Location <span className="text-destructive">*</span></Label>
-                  <Input id="startLocation" placeholder="e.g., Mumbai Airport" value={form.startLocation} onChange={(e) => updateField('startLocation', e.target.value)} required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="endLocation">End Location <span className="text-destructive">*</span></Label>
-                  <Input id="endLocation" placeholder="e.g., Hotel Grand Hyatt" value={form.endLocation} onChange={(e) => updateField('endLocation', e.target.value)} required />
-                </div>
+                <LocationInput id="startLocation" label="Start Location" value={form.startLocation} onChange={(v) => updateField('startLocation', v)} required />
+                <LocationInput id="endLocation" label="End Location" value={form.endLocation} onChange={(v) => updateField('endLocation', v)} required />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -134,48 +174,73 @@ export default function NewTripPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Vehicle <span className="text-destructive">*</span></Label>
-                  <Select value={form.vehicleId} onValueChange={(v) => updateField('vehicleId', v)}>
-                    <SelectTrigger><SelectValue placeholder="Select vehicle" /></SelectTrigger>
-                    <SelectContent>
-                      {vehicles.map((v: any) => (
-                        <SelectItem key={v.id} value={v.id}>
-                          {v.registrationNumber} — {v.make} {v.model}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">{vehicles.length} vehicles available</p>
+                  <Combobox
+                    options={vehicleOptions}
+                    value={form.vehicleId}
+                    onValueChange={(v) => updateField('vehicleId', v)}
+                    onSearch={setVehicleSearch}
+                    placeholder="Search vehicles..."
+                    searchPlaceholder="Registration or make/model..."
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Driver <span className="text-destructive">*</span></Label>
-                  <Select value={form.driverId} onValueChange={(v) => updateField('driverId', v)}>
-                    <SelectTrigger><SelectValue placeholder="Select driver" /></SelectTrigger>
-                    <SelectContent>
-                      {drivers.map((d: any) => (
-                        <SelectItem key={d.id} value={d.id}>
-                          {d.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">{drivers.length} drivers available</p>
+                  <Combobox
+                    options={driverOptions}
+                    value={form.driverId}
+                    onValueChange={(v) => updateField('driverId', v)}
+                    onSearch={setDriverSearch}
+                    placeholder="Search drivers..."
+                    searchPlaceholder="Driver name or phone..."
+                  />
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Pricing */}
+          {/* Passenger Details */}
+          <Card>
+            <CardHeader><CardTitle className="text-base flex items-center gap-2"><User className="h-4 w-4" />Passenger Details</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="passengerName">Passenger Name</Label>
+                  <Input id="passengerName" placeholder="Full name" value={form.passengerName} onChange={(e) => updateField('passengerName', e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="passengerPhone">Passenger Phone</Label>
+                  <PhoneInput
+                    value={form.passengerPhone}
+                    onChange={(v) => updateField('passengerPhone', v)}
+                    placeholder="Phone number"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="specialInstructions">Special Instructions</Label>
+                <Textarea
+                  id="specialInstructions"
+                  placeholder="Any special requirements or instructions..."
+                  value={form.specialInstructions}
+                  onChange={(e) => updateField('specialInstructions', e.target.value)}
+                  rows={3}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Trip Details */}
           <Card>
             <CardHeader><CardTitle className="text-base">Trip Details</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="distance">Distance (km) <span className="text-destructive">*</span></Label>
-                  <Input id="distance" type="number" min={0} placeholder="0" value={form.distance} onChange={(e) => updateField('distance', e.target.value)} required />
+                  <Label htmlFor="distance">Estimated Distance (km)</Label>
+                  <Input id="distance" type="number" min={0} placeholder="0" value={form.distance} onChange={(e) => updateField('distance', e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="fare">Fare (₹) <span className="text-destructive">*</span></Label>
-                  <Input id="fare" type="number" min={0} placeholder="0" value={form.fare} onChange={(e) => updateField('fare', e.target.value)} required />
+                  <Label htmlFor="fare">Estimated Fare (₹)</Label>
+                  <Input id="fare" type="number" min={0} placeholder="0" value={form.fare} onChange={(e) => updateField('fare', e.target.value)} />
                 </div>
               </div>
             </CardContent>

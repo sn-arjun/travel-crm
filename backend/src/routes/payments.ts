@@ -6,6 +6,7 @@ import type { AppContext } from '../types';
 import { generateId } from '../utils/uuid';
 import { success, created, paginated, error, notFound, forbidden } from '../utils/response';
 import { logActivity } from '../utils/activity-logger';
+import { notifications } from '../db/tenant-schema';
 
 const paymentRoutes = new Hono<AppContext>();
 
@@ -128,13 +129,35 @@ paymentRoutes.post('/', zValidator('json', recordPaymentSchema), async (c) => {
       .run();
 
     // Log activity
-    await logActivity(drizzle(tenantDb), {
+    const db = drizzle(tenantDb);
+    await logActivity(db, {
       userId,
       action: 'payment_recorded',
       entityType: 'payment',
       entityId: paymentId,
       details: JSON.stringify({ invoiceId: data.invoiceId, amount: data.amount }),
     });
+
+    // Notify invoice creator (lead owner) of payment received (TICKET-166)
+    try {
+      const invoiceCreator = await tenantDb
+        .prepare('SELECT created_by FROM invoices WHERE id = ?')
+        .bind(data.invoiceId)
+        .first<{ created_by: string }>();
+      if (invoiceCreator?.created_by && invoiceCreator.created_by !== userId) {
+        await db.insert(notifications).values({
+          id: generateId(),
+          userId: invoiceCreator.created_by,
+          title: 'Payment received',
+          message: `₹${data.amount.toLocaleString('en-IN')} recorded against invoice`,
+          type: 'payment_received',
+          referenceType: 'payment',
+          referenceId: paymentId,
+        });
+      }
+    } catch (_) {
+      // Non-critical
+    }
 
     return created(c, {
       id: paymentId,

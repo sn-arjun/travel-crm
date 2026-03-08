@@ -134,30 +134,20 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel 
   async function handleSend() {
     setIsSending(true);
     try {
-      if (channel === 'email') {
-        if (!contact.email) {
-          toast.error('Contact has no email address');
-          return;
-        }
-        await communicationsApi.send({
-          to: [contact.email],
-          subject,
-          body,
-          type: 'email',
-          template: selectedTemplate?.id,
-        });
-      } else {
-        if (!contact.phone) {
-          toast.error(`Contact has no phone number for ${channel}`);
-          return;
-        }
-        await communicationsApi.send({
-          to: [contact.phone],
-          body,
-          type: channel,
-          template: selectedTemplate?.id,
-        });
+      if (channel === 'email' && !contact.email) {
+        toast.error('Contact has no email address');
+        return;
       }
+      if (channel !== 'email' && !contact.phone) {
+        toast.error(`Contact has no phone number for ${channel}`);
+        return;
+      }
+      await communicationsApi.send({
+        contact_id: contact.id,
+        channel,
+        message: body,
+        subject: channel === 'email' ? subject : undefined,
+      });
       toast.success(`${channel === 'email' ? 'Email' : channel === 'whatsapp' ? 'WhatsApp message' : 'SMS'} sent via Communication Hub`);
       onOpenChange(false);
     } catch (err: any) {

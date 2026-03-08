@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, Star, Phone, Mail, MapPin, Building2, CreditCard, FileText, Loader2,
-  AlertCircle, Edit, Trash2, Heart, DollarSign, TrendingUp, Clock, BarChart3,
+  AlertCircle, Edit, Trash2, Heart, DollarSign, TrendingUp, BarChart3, Plus, Upload,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,11 +12,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { suppliersApi, type SupplierRateCard, type SupplierPayment, type SupplierLedger } from '@/lib/api/suppliers';
+import { SendMessageDialog } from '@/components/communication/send-message-dialog';
 import { toast } from 'sonner';
 
 function getInitials(name: string) {
@@ -29,18 +33,28 @@ export default function SupplierDetailPage() {
   const supplierId = params.id as string;
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
+  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = React.useState(false);
+  const [isEmailDialogOpen, setIsEmailDialogOpen] = React.useState(false);
+  const [paymentForm, setPaymentForm] = React.useState({
+    amount: '',
+    method: 'bank_transfer',
+    reference_number: '',
+    payment_date: new Date().toISOString().split('T')[0]!,
+    notes: '',
+  });
+  const [isSavingPayment, setIsSavingPayment] = React.useState(false);
 
   const { data: supplierResponse, loading, error, refetch } = useApiQuery(
     () => suppliersApi.getById(supplierId),
     [supplierId],
   );
 
-  const { data: rateCardsResponse } = useApiQuery(
+  const { data: rateCardsResponse, refetch: refetchRateCards } = useApiQuery(
     () => suppliersApi.getRateCards(supplierId),
     [supplierId],
   );
 
-  const { data: paymentsResponse } = useApiQuery(
+  const { data: paymentsResponse, refetch: refetchPayments } = useApiQuery(
     () => suppliersApi.getPayments(supplierId),
     [supplierId],
   );
@@ -75,7 +89,7 @@ export default function SupplierDetailPage() {
   }, [ledgerResponse]);
 
   const totalPayments = payments.reduce((sum, p) => sum + p.amount, 0);
-  const outstanding = ledger.length > 0 ? ledger[ledger.length - 1]!.balance : 0;
+  const outstanding = ledger.length > 0 ? ledger[ledger.length - 1]!.runningBalance : 0;
 
   async function handleDelete() {
     const result = await deleteSupplier(supplierId);
@@ -89,10 +103,37 @@ export default function SupplierDetailPage() {
 
   async function handleTogglePreferred() {
     if (!supplier) return;
-    const result = await togglePreferred(!(supplier as any).isPreferred);
+    const sup = supplier as any;
+    const current = sup.is_preferred ?? sup.isPreferred ?? false;
+    const result = await togglePreferred(!current);
     if (result) {
       toast.success('Supplier preference updated');
       refetch();
+    }
+  }
+
+  async function handleRecordPayment() {
+    if (!paymentForm.amount || !paymentForm.payment_date) {
+      toast.error('Amount and date are required');
+      return;
+    }
+    setIsSavingPayment(true);
+    try {
+      await suppliersApi.recordPayment(supplierId, {
+        amount: parseFloat(paymentForm.amount),
+        method: paymentForm.method,
+        reference_number: paymentForm.reference_number || undefined,
+        payment_date: paymentForm.payment_date,
+        notes: paymentForm.notes || undefined,
+      });
+      toast.success('Payment recorded');
+      setIsPaymentDialogOpen(false);
+      setPaymentForm({ amount: '', method: 'bank_transfer', reference_number: '', payment_date: new Date().toISOString().split('T')[0]!, notes: '' });
+      refetchPayments();
+    } catch {
+      toast.error('Failed to record payment');
+    } finally {
+      setIsSavingPayment(false);
     }
   }
 
@@ -116,6 +157,8 @@ export default function SupplierDetailPage() {
   }
 
   const sup = supplier as any;
+  const supplierName = sup.company_name || sup.name || 'Unknown';
+  const isPreferred = sup.is_preferred ?? sup.isPreferred ?? false;
 
   return (
     <div className="flex flex-col h-full">
@@ -126,15 +169,15 @@ export default function SupplierDetailPage() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <Avatar className="h-12 w-12">
-            <AvatarFallback className="text-base">{getInitials(sup.name ?? '')}</AvatarFallback>
+            <AvatarFallback className="text-base">{getInitials(supplierName)}</AvatarFallback>
           </Avatar>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-                {sup.name}
+                {supplierName}
               </h1>
-              <Badge variant="outline" className="text-xs capitalize">{(sup.category ?? 'other').replace('_', ' ')}</Badge>
-              {sup.isPreferred && (
+              <Badge variant="outline" className="text-xs capitalize">{(sup.category ?? 'other').replace(/_/g, ' ')}</Badge>
+              {isPreferred && (
                 <Badge className="text-xs bg-amber-100 text-amber-900">
                   <Star className="h-3 w-3 mr-1 fill-current" /> Preferred
                 </Badge>
@@ -147,9 +190,12 @@ export default function SupplierDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setIsEmailDialogOpen(true)}>
+            <Mail className="h-4 w-4 mr-1.5" /> Email Supplier
+          </Button>
           <Button variant="outline" size="sm" onClick={handleTogglePreferred}>
-            <Heart className={cn('h-4 w-4 mr-1.5', sup.isPreferred && 'fill-current text-red-500')} />
-            {sup.isPreferred ? 'Unprefer' : 'Prefer'}
+            <Heart className={cn('h-4 w-4 mr-1.5', isPreferred && 'fill-current text-red-500')} />
+            {isPreferred ? 'Unprefer' : 'Prefer'}
           </Button>
           <Button variant="outline" size="sm" onClick={() => router.push(`/suppliers/${supplierId}/edit`)}>
             <Edit className="h-4 w-4 mr-1.5" /> Edit
@@ -204,6 +250,7 @@ export default function SupplierDetailPage() {
             <TabsTrigger value="rate-cards">Rate Cards ({rateCards.length})</TabsTrigger>
             <TabsTrigger value="payments">Payments ({payments.length})</TabsTrigger>
             <TabsTrigger value="ledger">Ledger</TabsTrigger>
+            <TabsTrigger value="documents">Documents</TabsTrigger>
           </TabsList>
         </div>
 
@@ -216,7 +263,7 @@ export default function SupplierDetailPage() {
                 <CardContent className="space-y-3">
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">Contact Person</span>
-                    <span className="text-sm font-medium">{sup.contactPerson || '—'}</span>
+                    <span className="text-sm font-medium">{sup.contact_person || sup.contactPerson || '—'}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">Email</span>
@@ -230,10 +277,14 @@ export default function SupplierDetailPage() {
                     <span className="text-sm text-muted-foreground">Website</span>
                     <span className="text-sm font-medium">{sup.website || '—'}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Address</span>
-                    <span className="text-sm font-medium text-right max-w-[200px]">{sup.address || '—'}</span>
-                  </div>
+                  {(sup.city || sup.state || sup.country) && (
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />Location</span>
+                      <span className="text-sm font-medium text-right max-w-[200px]">
+                        {[sup.city, sup.state, sup.country].filter(Boolean).join(', ')}
+                      </span>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -242,15 +293,21 @@ export default function SupplierDetailPage() {
                 <CardContent className="space-y-3">
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">Category</span>
-                    <Badge variant="outline" className="text-xs capitalize">{(sup.category ?? 'other').replace('_', ' ')}</Badge>
+                    <Badge variant="outline" className="text-xs capitalize">{(sup.category ?? 'other').replace(/_/g, ' ')}</Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Status</span>
+                    <Badge variant={sup.status === 'inactive' ? 'secondary' : 'outline'} className={sup.status !== 'inactive' ? 'text-green-700 border-green-300' : ''}>
+                      {sup.status ?? 'active'}
+                    </Badge>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">GST Number</span>
-                    <span className="text-sm font-mono font-medium">{sup.gstNumber || '—'}</span>
+                    <span className="text-sm font-mono font-medium">{sup.gst_number || sup.gstNumber || '—'}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Preferred</span>
-                    <span className="text-sm font-medium">{sup.isPreferred ? 'Yes' : 'No'}</span>
+                    <span className="text-sm text-muted-foreground">Tax ID</span>
+                    <span className="text-sm font-mono font-medium">{sup.tax_id || sup.taxId || '—'}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">Rating</span>
@@ -278,8 +335,8 @@ export default function SupplierDetailPage() {
               <Card className="lg:col-span-2">
                 <CardHeader><CardTitle className="text-base">Timeline</CardTitle></CardHeader>
                 <CardContent className="space-y-2 text-sm text-muted-foreground">
-                  <p>Created {new Date(sup.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                  <p>Last updated {new Date(sup.updatedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                  <p>Created {new Date(sup.created_at || sup.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                  <p>Last updated {new Date(sup.updated_at || sup.updatedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                 </CardContent>
               </Card>
             </div>
@@ -288,11 +345,25 @@ export default function SupplierDetailPage() {
           {/* Rate Cards */}
           <TabsContent value="rate-cards" className="mt-0">
             <div className="max-w-5xl">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-medium text-muted-foreground">Rate Cards</h3>
+                <Button size="sm" onClick={() => router.push(`/rate-cards/new?supplierId=${supplierId}&supplierName=${encodeURIComponent(supplierName)}`)}>
+                  <Plus className="h-4 w-4 mr-1.5" /> Add Rate Card
+                </Button>
+              </div>
               {rateCards.length === 0 ? (
                 <Card>
                   <CardContent className="p-8 text-center text-muted-foreground">
                     <CreditCard className="h-8 w-8 mx-auto mb-2 opacity-50" />
                     <p className="text-sm">No rate cards available</p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-3"
+                      onClick={() => router.push(`/rate-cards/new?supplierId=${supplierId}&supplierName=${encodeURIComponent(supplierName)}`)}
+                    >
+                      <Plus className="h-4 w-4 mr-1.5" /> Add Rate Card
+                    </Button>
                   </CardContent>
                 </Card>
               ) : (
@@ -312,8 +383,8 @@ export default function SupplierDetailPage() {
                         <TableCell className="font-medium text-sm">{rc.name}</TableCell>
                         <TableCell><Badge variant="outline" className="text-xs capitalize">{rc.category}</Badge></TableCell>
                         <TableCell className="text-sm text-muted-foreground">{rc.description || '—'}</TableCell>
-                        <TableCell className="text-sm">{rc.validity.from}</TableCell>
-                        <TableCell className="text-sm">{rc.validity.to}</TableCell>
+                        <TableCell className="text-sm">{rc.validity?.from ?? '—'}</TableCell>
+                        <TableCell className="text-sm">{rc.validity?.to ?? '—'}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -325,11 +396,20 @@ export default function SupplierDetailPage() {
           {/* Payments */}
           <TabsContent value="payments" className="mt-0">
             <div className="max-w-5xl">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-medium text-muted-foreground">Payments</h3>
+                <Button size="sm" onClick={() => setIsPaymentDialogOpen(true)}>
+                  <Plus className="h-4 w-4 mr-1.5" /> Record Payment
+                </Button>
+              </div>
               {payments.length === 0 ? (
                 <Card>
                   <CardContent className="p-8 text-center text-muted-foreground">
                     <DollarSign className="h-8 w-8 mx-auto mb-2 opacity-50" />
                     <p className="text-sm">No payments recorded</p>
+                    <Button size="sm" variant="outline" className="mt-3" onClick={() => setIsPaymentDialogOpen(true)}>
+                      <Plus className="h-4 w-4 mr-1.5" /> Record Payment
+                    </Button>
                   </CardContent>
                 </Card>
               ) : (
@@ -348,7 +428,7 @@ export default function SupplierDetailPage() {
                         <TableCell className="font-mono font-semibold text-sm">
                           ₹{pay.amount.toLocaleString('en-IN')}
                         </TableCell>
-                        <TableCell className="text-sm capitalize">{pay.method.replace('_', ' ')}</TableCell>
+                        <TableCell className="text-sm capitalize">{pay.method.replace(/_/g, ' ')}</TableCell>
                         <TableCell className="text-sm">
                           {new Date(pay.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                         </TableCell>
@@ -384,25 +464,44 @@ export default function SupplierDetailPage() {
                   </TableHeader>
                   <TableBody>
                     {ledger.map((entry, idx) => (
-                      <TableRow key={idx}>
+                      <TableRow key={entry.id ?? idx}>
                         <TableCell className="text-sm">
                           {new Date(entry.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                         </TableCell>
                         <TableCell className="text-sm">{entry.description}</TableCell>
                         <TableCell className="text-right font-mono text-sm text-red-600">
-                          {entry.debit ? `₹${entry.debit.toLocaleString('en-IN')}` : '—'}
+                          {entry.debitAmount ? `₹${entry.debitAmount.toLocaleString('en-IN')}` : '—'}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm text-green-600">
-                          {entry.credit ? `₹${entry.credit.toLocaleString('en-IN')}` : '—'}
+                          {entry.creditAmount ? `₹${entry.creditAmount.toLocaleString('en-IN')}` : '—'}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm font-semibold">
-                          ₹{entry.balance.toLocaleString('en-IN')}
+                          ₹{Math.abs(entry.runningBalance).toLocaleString('en-IN')}
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               )}
+            </div>
+          </TabsContent>
+
+          {/* Documents */}
+          <TabsContent value="documents" className="mt-0">
+            <div className="max-w-5xl">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-medium text-muted-foreground">Documents</h3>
+                <Button size="sm" disabled>
+                  <Upload className="h-4 w-4 mr-1.5" /> Upload Document
+                </Button>
+              </div>
+              <Card>
+                <CardContent className="p-8 text-center text-muted-foreground">
+                  <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm font-medium">No documents uploaded</p>
+                  <p className="text-xs mt-1">Document upload requires R2 bucket configuration</p>
+                </CardContent>
+              </Card>
             </div>
           </TabsContent>
         </div>
@@ -415,12 +514,10 @@ export default function SupplierDetailPage() {
             <DialogTitle>Delete Supplier</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Are you sure you want to delete <strong>{sup.name}</strong>? This action cannot be undone.
+            Are you sure you want to delete <strong>{supplierName}</strong>? This action cannot be undone.
           </p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)} disabled={isDeleting}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)} disabled={isDeleting}>Cancel</Button>
             <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
               {isDeleting ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : null}
               Delete
@@ -428,6 +525,93 @@ export default function SupplierDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Record Payment Dialog */}
+      <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Record Payment to {supplierName}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Amount <span className="text-destructive">*</span></Label>
+                <Input
+                  type="number"
+                  placeholder="0.00"
+                  value={paymentForm.amount}
+                  onChange={(e) => setPaymentForm((f) => ({ ...f, amount: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Payment Date <span className="text-destructive">*</span></Label>
+                <Input
+                  type="date"
+                  value={paymentForm.payment_date}
+                  onChange={(e) => setPaymentForm((f) => ({ ...f, payment_date: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Method</Label>
+              <Select value={paymentForm.method} onValueChange={(v) => setPaymentForm((f) => ({ ...f, method: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                  <SelectItem value="cash">Cash</SelectItem>
+                  <SelectItem value="cheque">Cheque</SelectItem>
+                  <SelectItem value="upi">UPI</SelectItem>
+                  <SelectItem value="card">Card</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Reference Number</Label>
+              <Input
+                placeholder="Transaction / cheque number"
+                value={paymentForm.reference_number}
+                onChange={(e) => setPaymentForm((f) => ({ ...f, reference_number: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Notes</Label>
+              <Textarea
+                placeholder="Optional notes..."
+                rows={2}
+                value={paymentForm.notes}
+                onChange={(e) => setPaymentForm((f) => ({ ...f, notes: e.target.value }))}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsPaymentDialogOpen(false)} disabled={isSavingPayment}>Cancel</Button>
+            <Button onClick={handleRecordPayment} disabled={isSavingPayment}>
+              {isSavingPayment ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : null}
+              Record Payment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Email Supplier Dialog */}
+      {isEmailDialogOpen && sup.email ? (
+        <SendMessageDialog
+          open={isEmailDialogOpen}
+          onOpenChange={setIsEmailDialogOpen}
+          defaultChannel="email"
+          contact={{ id: supplierId, name: supplierName, email: sup.email, phone: sup.phone }}
+        />
+      ) : isEmailDialogOpen ? (
+        <Dialog open={isEmailDialogOpen} onOpenChange={setIsEmailDialogOpen}>
+          <DialogContent>
+            <DialogHeader><DialogTitle>No Email Address</DialogTitle></DialogHeader>
+            <p className="text-sm text-muted-foreground">This supplier has no email address. Please edit the supplier to add one.</p>
+            <DialogFooter>
+              <Button onClick={() => setIsEmailDialogOpen(false)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
     </div>
   );
 }

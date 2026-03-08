@@ -1,48 +1,27 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  ArrowLeft, Send, Paperclip, X, Search, ChevronDown, Loader2,
+  ArrowLeft, Send, Paperclip, X, Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import {
-  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
-} from '@/components/ui/command';
-import {
-  Popover, PopoverContent, PopoverTrigger,
-} from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { communicationsApi, type SendCommunicationRequest } from '@/lib/api/communications';
-
-// Local templates for template selector
-const emailTemplates = [
-  { id: 'welcome', name: 'Welcome Email', subject: 'Welcome to TravelCRM!' },
-  { id: 'followup', name: 'Follow-up Email', subject: 'Following up on your inquiry' },
-  { id: 'proposal', name: 'Proposal Email', subject: 'Your customized travel proposal' },
-  { id: 'booking-confirm', name: 'Booking Confirmation', subject: 'Booking Confirmed!' },
-  { id: 'payment-reminder', name: 'Payment Reminder', subject: 'Payment Reminder' },
-  { id: 'thankyou', name: 'Thank You Email', subject: 'Thank you for traveling with us!' },
-];
-
-const templateBodies: Record<string, string> = {
-  welcome: 'Dear {{name}},\n\nWelcome to our travel services! We\'re excited to help you plan your perfect trip.\n\nBest regards,\nTravelCRM Team',
-  followup: 'Dear {{name}},\n\nI wanted to follow up on your recent inquiry. Are you available for a quick call this week?\n\nBest regards',
-  proposal: 'Dear {{name}},\n\nPlease find your customized travel proposal below.\n\nTotal cost: {{amount}}\n\nPlease review and let me know if you\'d like any modifications.',
-  'booking-confirm': 'Dear {{name}},\n\nYour booking is confirmed!\n\nDestination: {{destination}}\nTravel Date: {{date}}\nBooking Reference: {{ref}}\n\nThank you!',
-  'payment-reminder': 'Dear {{name}},\n\nThis is a friendly reminder that payment of {{amount}} is due by {{dueDate}}.\n\nPlease complete the payment at your earliest convenience.\n\nThank you!',
-  thankyou: 'Dear {{name}},\n\nThank you for choosing us for your trip! We hope you had an amazing experience.\n\nWarm regards,\nTravelCRM Team',
-};
+import { communicationsApi } from '@/lib/api/communications';
+import { templatesApi, type MessageTemplate } from '@/lib/api/templates';
+import { contactsApi } from '@/lib/api/contacts';
+import type { Contact } from '@travelcrm/shared';
+import { Combobox } from '@/components/ui/combobox';
 
 interface RecipientChip {
   id: string;
@@ -50,7 +29,7 @@ interface RecipientChip {
   email?: string;
 }
 
-function RecipientInput({
+function ContactCombobox({
   label,
   recipients,
   onAdd,
@@ -61,20 +40,27 @@ function RecipientInput({
   onAdd: (recipient: RecipientChip) => void;
   onRemove: (id: string) => void;
 }) {
-  const [inputValue, setInputValue] = React.useState('');
+  const [search, setSearch] = React.useState('');
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault();
-      const trimmed = inputValue.trim().replace(/,$/, '');
-      if (trimmed) {
-        onAdd({ id: trimmed, label: trimmed, email: trimmed });
-        setInputValue('');
-      }
+  const { data: contactsResponse } = useApiQuery(
+    () => contactsApi.list({ search: search || undefined, limit: 20 }),
+    [search],
+  );
+  const contacts: Contact[] = (contactsResponse?.data?.data ?? contactsResponse?.data ?? []) as Contact[];
+
+  const options = contacts
+    .filter((c) => !recipients.find((r) => r.id === c.id))
+    .map((c) => ({
+      value: c.id,
+      label: c.email ? `${c.name} <${c.email}>` : c.name,
+    }));
+
+  const handleSelect = (contactId: string) => {
+    const contact = contacts.find((c) => c.id === contactId);
+    if (contact) {
+      onAdd({ id: contact.id, label: contact.email ? `${contact.name} <${contact.email}>` : contact.name, email: contact.email ?? '' });
     }
-    if (e.key === 'Backspace' && !inputValue && recipients.length > 0) {
-      onRemove(recipients[recipients.length - 1]!.id);
-    }
+    setSearch('');
   };
 
   return (
@@ -89,13 +75,15 @@ function RecipientInput({
             </button>
           </Badge>
         ))}
-        <input
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={recipients.length === 0 ? 'Type email and press Enter...' : ''}
-          className="flex-1 min-w-[120px] bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-        />
+        <div className="flex-1 min-w-[200px]">
+          <Combobox
+            options={options}
+            onSearch={setSearch}
+            placeholder={recipients.length === 0 ? 'Search contacts...' : 'Add more...'}
+            onValueChange={handleSelect}
+            className="border-0 shadow-none h-7 px-0 focus-visible:ring-0"
+          />
+        </div>
       </div>
     </div>
   );
@@ -103,36 +91,98 @@ function RecipientInput({
 
 export default function ComposeEmailPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [showCc, setShowCc] = React.useState(false);
   const [showBcc, setShowBcc] = React.useState(false);
-
   const [toRecipients, setToRecipients] = React.useState<RecipientChip[]>([]);
   const [ccRecipients, setCcRecipients] = React.useState<RecipientChip[]>([]);
   const [bccRecipients, setBccRecipients] = React.useState<RecipientChip[]>([]);
   const [subject, setSubject] = React.useState('');
   const [body, setBody] = React.useState('');
-  const [selectedTemplate, setSelectedTemplate] = React.useState('');
-  const [attachments, setAttachments] = React.useState<string[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = React.useState('');
+  const [attachments, setAttachments] = React.useState<{ name: string; data: string; type: string }[]>([]);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Auto-populate from URL params
+  const prefillContactId = searchParams.get('contactId');
+  const prefillContactName = searchParams.get('contactName');
+  const prefillLeadId = searchParams.get('leadId');
+
+  React.useEffect(() => {
+    if (prefillContactId && prefillContactName) {
+      setToRecipients([{ id: prefillContactId, label: prefillContactName }]);
+    }
+  }, [prefillContactId, prefillContactName]);
+
+  // Fetch API templates
+  const { data: templatesResponse } = useApiQuery(
+    () => templatesApi.list({ channel: 'email', limit: 50 }),
+    [],
+  );
+  const apiTemplates: MessageTemplate[] = (templatesResponse?.data?.data ?? templatesResponse?.data ?? []) as MessageTemplate[];
 
   const { mutate: sendEmail, loading: isSending } = useApiMutation(
-    (data: SendCommunicationRequest) => communicationsApi.send(data),
+    (data: Parameters<typeof communicationsApi.send>[0]) => communicationsApi.send(data),
   );
 
   const handleTemplateChange = (templateId: string) => {
-    setSelectedTemplate(templateId);
-    const template = emailTemplates.find((t) => t.id === templateId);
+    setSelectedTemplateId(templateId);
+    if (templateId === 'none') return;
+    const template = apiTemplates.find((t) => t.id === templateId);
     if (template) {
-      setSubject(template.subject);
-      setBody(templateBodies[templateId] || '');
+      if (template.subject) setSubject(template.subject);
+      setBody(template.content);
     }
   };
 
   const handleAttachFile = () => {
-    // In production, this would open a file picker and upload
-    const fileName = `attachment-${Date.now()}.pdf`;
-    setAttachments((prev) => [...prev, fileName]);
-    toast.success('File attached (simulated)');
+    fileInputRef.current?.click();
   };
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file
+    const MAX_TOTAL = 25 * 1024 * 1024; // 25MB total
+    const MAX_FILES = 5;
+
+    if (attachments.length + files.length > MAX_FILES) {
+      toast.error(`Maximum ${MAX_FILES} attachments allowed`);
+      return;
+    }
+
+    const currentTotal = attachments.reduce((sum, a) => sum + (a.data.length * 0.75), 0); // approx bytes from base64
+
+    for (const file of files) {
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(`File "${file.name}" exceeds 10MB limit`);
+        continue;
+      }
+      if (currentTotal + file.size > MAX_TOTAL) {
+        toast.error('Total attachment size would exceed 25MB');
+        break;
+      }
+      const base64 = await fileToBase64(file);
+      setAttachments((prev) => [...prev, { name: file.name, data: base64, type: file.type }]);
+    }
+
+    // Reset input so same file can be selected again
+    e.target.value = '';
+  };
+
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Strip data URL prefix, keep only base64 content
+        resolve(result.split(',')[1] ?? '');
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
 
   const handleRemoveAttachment = (index: number) => {
     setAttachments((prev) => prev.filter((_, i) => i !== index));
@@ -152,19 +202,14 @@ export default function ComposeEmailPage() {
       return;
     }
 
-    const allRecipients = [
-      ...toRecipients.map((r) => r.email || r.label),
-      ...ccRecipients.map((r) => r.email || r.label),
-      ...bccRecipients.map((r) => r.email || r.label),
-    ];
-
+    // Use first recipient's contact_id; send to all recipients via message field
+    const firstRecipient = toRecipients[0]!;
     const result = await sendEmail({
-      to: allRecipients,
+      contact_id: firstRecipient.id,
+      channel: 'email',
+      message: body,
       subject,
-      body,
-      type: 'email',
-      template: selectedTemplate || undefined,
-      attachments: attachments.length > 0 ? attachments : undefined,
+      lead_id: prefillLeadId ?? undefined,
     });
 
     if (result) {
@@ -177,6 +222,16 @@ export default function ComposeEmailPage() {
 
   return (
     <div className="flex flex-col h-full">
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept="*/*"
+        className="hidden"
+        onChange={handleFileSelected}
+      />
+
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b">
         <div className="flex items-center gap-3">
@@ -208,18 +263,18 @@ export default function ComposeEmailPage() {
       {/* Compose Form */}
       <div className="flex-1 overflow-auto">
         <div className="max-w-4xl mx-auto p-6 space-y-4">
-          {/* Template Selector */}
+          {/* Template Selector (from API) */}
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 <Label className="text-sm font-medium text-muted-foreground shrink-0">Template</Label>
-                <Select value={selectedTemplate} onValueChange={handleTemplateChange}>
+                <Select value={selectedTemplateId} onValueChange={handleTemplateChange}>
                   <SelectTrigger className="w-72 h-9">
                     <SelectValue placeholder="Choose a template (optional)" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No Template</SelectItem>
-                    {emailTemplates.map((t) => (
+                    {apiTemplates.map((t) => (
                       <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                     ))}
                   </SelectContent>
@@ -231,7 +286,7 @@ export default function ComposeEmailPage() {
           {/* Recipients & Subject */}
           <Card>
             <CardContent className="p-4 space-y-3">
-              <RecipientInput
+              <ContactCombobox
                 label="To"
                 recipients={toRecipients}
                 onAdd={(r) => setToRecipients((prev) => [...prev, r])}
@@ -257,7 +312,7 @@ export default function ComposeEmailPage() {
               )}
 
               {showCc && (
-                <RecipientInput
+                <ContactCombobox
                   label="CC"
                   recipients={ccRecipients}
                   onAdd={(r) => setCcRecipients((prev) => [...prev, r])}
@@ -266,7 +321,7 @@ export default function ComposeEmailPage() {
               )}
 
               {showBcc && (
-                <RecipientInput
+                <ContactCombobox
                   label="BCC"
                   recipients={bccRecipients}
                   onAdd={(r) => setBccRecipients((prev) => [...prev, r])}
@@ -311,7 +366,7 @@ You can use variables like {{name}}, {{company}}, {{destination}} for personaliz
                   {attachments.map((file, idx) => (
                     <Badge key={idx} variant="secondary" className="gap-1.5 py-1">
                       <Paperclip className="h-3 w-3" />
-                      {file}
+                      {file.name}
                       <button onClick={() => handleRemoveAttachment(idx)} className="ml-1 hover:text-destructive">
                         <X className="h-3 w-3" />
                       </button>
@@ -328,6 +383,7 @@ You can use variables like {{name}}, {{company}}, {{destination}} for personaliz
               <Paperclip className="h-4 w-4 mr-1.5" />
               Attach File
             </Button>
+            <p className="text-xs text-muted-foreground">Max 5 files, 10MB each, 25MB total</p>
           </div>
         </div>
       </div>

@@ -29,6 +29,7 @@ export default function ComposePage() {
   const [message, setMessage] = React.useState<ComposedMessage | null>(null);
   const [sendDialogOpen, setSendDialogOpen] = React.useState(false);
   const [sendTo, setSendTo] = React.useState('');
+  const [sendContactId, setSendContactId] = React.useState('');
   const [sendType, setSendType] = React.useState<'email' | 'sms' | 'whatsapp'>('email');
   const [isSending, setIsSending] = React.useState(false);
 
@@ -73,21 +74,22 @@ export default function ComposePage() {
   };
 
   const handleSendConfirm = async () => {
-    if (!message || !sendTo.trim()) {
-      toast.error('Please enter a recipient');
+    if (!message || (!sendContactId.trim() && !sendTo.trim())) {
+      toast.error('Please enter a Contact ID or recipient');
       return;
     }
     setIsSending(true);
     try {
       await communicationsApi.send({
-        to: [sendTo.trim()],
-        subject: message.subject,
-        body: message.body,
-        type: sendType,
+        contact_id: sendContactId.trim() || sendTo.trim(),
+        channel: sendType,
+        message: message.body,
+        subject: sendType === 'email' ? message.subject : undefined,
       });
       toast.success(`Message sent via ${sendType} successfully!`);
       setSendDialogOpen(false);
       setSendTo('');
+      setSendContactId('');
     } catch {
       toast.error('Failed to send message');
     } finally {
@@ -275,12 +277,15 @@ export default function ComposePage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>{sendType === 'email' ? 'Email Address' : 'Phone Number'}</Label>
+              <Label>Contact ID</Label>
               <Input
-                value={sendTo}
-                onChange={(e) => setSendTo(e.target.value)}
-                placeholder={sendType === 'email' ? 'recipient@example.com' : '+91 98765 43210'}
+                value={sendContactId}
+                onChange={(e) => setSendContactId(e.target.value)}
+                placeholder="Enter contact ID (from Contacts page)"
               />
+              <p className="text-xs text-muted-foreground">
+                The contact must exist in CRM. Find their ID on the Contacts page.
+              </p>
             </div>
           </div>
           <DialogFooter>

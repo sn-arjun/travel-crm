@@ -43,7 +43,7 @@ export interface CreateVisaRequest {
   visaType?: string;
   applicationDate?: string;
   expiryDate?: string;
-  status?: 'applied' | 'approved' | 'rejected' | 'processing';
+  status?: 'not_started' | 'documents_collecting' | 'applied' | 'approved' | 'rejected' | 'processing';
   notes?: string;
   customFields?: Record<string, unknown>;
 }
@@ -52,7 +52,7 @@ export interface UpdateVisaRequest {
   visaType?: string;
   applicationDate?: string;
   expiryDate?: string;
-  status?: 'applied' | 'approved' | 'rejected' | 'processing';
+  status?: 'not_started' | 'documents_collecting' | 'applied' | 'approved' | 'rejected' | 'processing';
   notes?: string;
   customFields?: Record<string, unknown>;
 }
@@ -73,6 +73,7 @@ export interface CreateTravellerRequest {
   email?: string;
   phone?: string;
   leadId?: string;
+  contactId?: string;
   customFields?: Record<string, unknown>;
 }
 

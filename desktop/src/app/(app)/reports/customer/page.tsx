@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import {
-  ArrowLeft, Download, Zap, TrendingUp, Users, Cake, Clock,
+  Download, Users, TrendingUp, Cake, Clock, AlertCircle, RefreshCw,
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -21,162 +21,129 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
-import { useApiQuery } from '@/hooks/use-api';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { reportsApi } from '@/lib/api/reports';
 
-const REF_DATE = Date.now();
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 
-interface Customer {
-  id: string;
-  name: string;
-  bookings: number;
-  totalSpend: number;
-  lastBooking: string;
-  birthday?: string;
-  status: 'VIP' | 'Frequent' | 'One-time' | 'Prospect' | 'Dormant';
+const fmt = (n: number) => n >= 10000000 ? `₹${(n / 10000000).toFixed(1)}Cr` : n >= 100000 ? `₹${(n / 100000).toFixed(1)}L` : `₹${n.toLocaleString('en-IN')}`;
+
+const presetMap: Record<string, string> = {
+  '7days': 'this_week',
+  '30days': 'this_month',
+  '90days': 'this_quarter',
+  'thisMonth': 'this_month',
+  'lastMonth': 'last_month',
+  'thisQuarter': 'this_quarter',
+  'thisYear': 'this_year',
+};
+
+function ChartSkeleton() {
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-4 w-16" />
+      </div>
+      <Skeleton className="h-[300px] w-full" />
+    </div>
+  );
 }
-
-const getFallbackCustomers = (): Customer[] => {
-  const names = [
-    'Rajesh Kumar', 'Anjali Sharma', 'Vikram Singh', 'Priya Patel',
-    'Amit Gupta', 'Sneha Desai', 'Rohan Iyer', 'Neha Kapoor',
-    'Arjun Reddy', 'Divya Nair', 'Sanjay Menon', 'Kavya Verma',
-    'Nitin Shah', 'Simran Kaur', 'Arun Pillai', 'Pooja Sinha',
-    'Karan Malik', 'Nisha Rao', 'Deepak Chopra', 'Isha Deshmukh',
-  ];
-
-  return names.map((name, idx) => {
-    const seed = REF_DATE + idx;
-    const bookings = 1 + (seed % 12);
-    const totalSpend = bookings * (75000 + (seed % 125000));
-    const daysAgo = (seed % 365);
-    const date = new Date(REF_DATE - daysAgo * 24 * 60 * 60 * 1000);
-    const lastBooking = date.toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' });
-
-    let status: Customer['status'] = 'Prospect';
-    if (bookings > 8) status = 'VIP';
-    else if (bookings > 5) status = 'Frequent';
-    else if (bookings > 2) status = 'One-time';
-    else if (daysAgo > 90) status = 'Dormant';
-
-    const birthdaySeed = (seed % 365);
-    const monthDay = ((birthdaySeed % 12) + 1).toString().padStart(2, '0') +
-      '-' +
-      ((birthdaySeed % 28) + 1).toString().padStart(2, '0');
-
-    return {
-      id: `cust-${idx}`,
-      name,
-      bookings,
-      totalSpend,
-      lastBooking,
-      birthday: monthDay,
-      status,
-    };
-  });
-};
-
-const getFallbackMonthlyData = () => {
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return months.map((month, idx) => {
-    const seed = REF_DATE + idx;
-    const newCustomers = 5 + (seed % 15);
-    const returning = 8 + ((seed * 2) % 20);
-    return {
-      month,
-      New: newCustomers,
-      Returning: returning,
-    };
-  });
-};
 
 export default function CustomerReportsPage() {
   const [dateRange, setDateRange] = React.useState('30days');
+  const [showComparison, setShowComparison] = React.useState(false);
+  const [activeTab, setActiveTab] = React.useState('repeat');
 
-  // Fetch customer report data from API
-  const { data: reportData, loading, error } = useApiQuery(
-    async () => {
-      try {
-        const response = await reportsApi.getCustomerReport?.({ dateRange }) ??
-          Promise.resolve({
-            customers: getFallbackCustomers(),
-            monthly: getFallbackMonthlyData(),
-          });
-        return response;
-      } catch (err) {
-        toast.error('Failed to load customer report. Showing sample data.');
-        return {
-          customers: getFallbackCustomers(),
-          monthly: getFallbackMonthlyData(),
-        };
-      }
-    },
-    [dateRange],
+  const [repeatData, setRepeatData] = React.useState<any[]>([]);
+  const [ltvData, setLtvData] = React.useState<any[]>([]);
+  const [birthdayData, setBirthdayData] = React.useState<any[]>([]);
+  const [dormantData, setDormantData] = React.useState<any[]>([]);
+
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [retryKey, setRetryKey] = React.useState(0);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    const params = { date_preset: presetMap[dateRange] ?? 'this_month', compare: showComparison };
+
+    const reportId = activeTab === 'repeat' ? 'repeat_customers'
+      : activeTab === 'ltv' ? 'customer_ltv'
+      : activeTab === 'birthday' ? 'birthday_upcoming'
+      : 'dormant_customers';
+
+    reportsApi.execute(reportId, params)
+      .then((res: any) => {
+        if (cancelled) return;
+        const rows = Array.isArray(res) ? res : (res?.data ?? res?.rows ?? []);
+        if (activeTab === 'repeat') setRepeatData(rows);
+        else if (activeTab === 'ltv') setLtvData(rows);
+        else if (activeTab === 'birthday') setBirthdayData(rows);
+        else setDormantData(rows);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setError('Failed to load report data');
+        setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [dateRange, showComparison, activeTab, retryKey]);
+
+  const handleExport = async () => {
+    try {
+      await reportsApi.export('repeat_customers', 'excel', { date_preset: presetMap[dateRange] ?? 'this_month' });
+      toast.success('Export started');
+    } catch {
+      toast.error('Export failed');
+    }
+  };
+
+  const renderError = () => (
+    <div className="flex flex-col items-center justify-center h-[300px] gap-3">
+      <AlertCircle className="h-8 w-8 text-destructive" />
+      <p className="text-sm text-muted-foreground">Failed to load report data</p>
+      <Button size="sm" variant="outline" onClick={() => setRetryKey((k) => k + 1)}>
+        <RefreshCw className="h-4 w-4 mr-1.5" />
+        Retry
+      </Button>
+    </div>
   );
 
-    // @ts-expect-error
-  const customers = reportData?.customers ?? getFallbackCustomers();
+  const renderEmpty = () => (
+    <div className="flex items-center justify-center h-[300px]">
+      <p className="text-sm text-muted-foreground">No data for selected period</p>
+    </div>
+  );
 
-  const repeatCustomers = customers.filter((c: any) => c.bookings > 1);
-  const topLtvCustomers = [...customers]
-    .sort((a: any, b: any) => b.totalSpend - a.totalSpend)
-    .slice(0, 15);
+  const topLtv = [...ltvData].sort((a, b) => (b.total_ltv ?? 0) - (a.total_ltv ?? 0)).slice(0, 15);
 
-  const upcomingCakes = customers
-    .filter((c: any) => {
-      const parts = (c.birthday || '').split('-');
-      const month = parts[0] ?? '1';
-      const day = parts[1] ?? '1';
-      const today = new Date(REF_DATE);
-      const birthdayThisYear = new Date(today.getFullYear(), parseInt(month) - 1, parseInt(day));
-      const thirtyDaysLater = new Date(REF_DATE + 30 * 24 * 60 * 60 * 1000);
-      return birthdayThisYear >= today && birthdayThisYear <= thirtyDaysLater;
-    })
-    .sort((a: any, b: any) => {
-      const aParts = (a.birthday || '1-1').split('-');
-      const bParts = (b.birthday || '1-1').split('-');
-      const aDate = new Date(2026, parseInt(aParts[0] ?? '1') - 1, parseInt(aParts[1] ?? '1'));
-      const bDate = new Date(2026, parseInt(bParts[0] ?? '1') - 1, parseInt(bParts[1] ?? '1'));
-      return aDate.getTime() - bDate.getTime();
-    });
-
-  const dormantCustomers = customers.filter((c: any) => c.status === 'Dormant');
-
-  const segmentationData = [
-    { name: 'VIP', value: customers.filter((c: any) => c.status === 'VIP').length },
-    { name: 'Frequent', value: customers.filter((c: any) => c.status === 'Frequent').length },
-    { name: 'One-time', value: customers.filter((c: any) => c.status === 'One-time').length },
-    { name: 'Prospect', value: customers.filter((c: any) => c.status === 'Prospect').length },
-  ];
-
-    // @ts-expect-error
-  const monthlyData = reportData?.monthly ?? getFallbackMonthlyData();
-
-  const totalCustomers = customers.length;
-  const totalRevenue = customers.reduce((sum: any, c: any) => sum + c.totalSpend, 0);
-  const avgLifetimeValue = (totalRevenue / totalCustomers).toFixed(0);
-  const repeatRate = ((repeatCustomers.length / totalCustomers) * 100).toFixed(1);
+  const repeatTotal = repeatData.reduce((s, r) => s + (r.total_spent ?? 0), 0);
+  const repeatCount = repeatData.length;
 
   return (
     <div className="flex flex-col h-full overflow-auto">
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b">
         <div className="flex items-center gap-3">
-          <Link href="/reports">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-              Customer Reports
-            </h1>
-            <p className="text-sm text-muted-foreground">Customer lifetime value and segmentation analysis</p>
-          </div>
+          <nav className="flex items-center gap-1 text-sm text-muted-foreground">
+            <Link href="/reports" className="hover:text-foreground transition-colors">Reports</Link>
+            <span>/</span>
+            <span className="text-foreground font-medium">Customer Reports</span>
+          </nav>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Switch id="compare" checked={showComparison} onCheckedChange={setShowComparison} />
+            <Label htmlFor="compare" className="text-sm cursor-pointer">Compare with previous period</Label>
+          </div>
           <Select value={dateRange} onValueChange={setDateRange}>
             <SelectTrigger className="w-48">
               <SelectValue />
@@ -191,304 +158,317 @@ export default function CustomerReportsPage() {
               <SelectItem value="thisYear">This Year</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={handleExport}>
             <Download className="h-4 w-4 mr-1.5" />
             Export
           </Button>
         </div>
       </div>
 
+      {/* Title */}
+      <div className="px-6 py-3 border-b">
+        <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
+          Customer Reports
+        </h1>
+        <p className="text-sm text-muted-foreground">Customer lifetime value and segmentation analysis</p>
+      </div>
+
       {/* Content */}
       <div className="flex-1 p-6 overflow-auto">
-        <div className="space-y-6">
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Total Customers</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-end gap-2">
-                  <div className="text-2xl font-bold">{totalCustomers}</div>
-                  <Users className="h-4 w-4 text-blue-500 mb-1" />
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="mb-6">
+            <TabsTrigger value="repeat">Repeat Customers</TabsTrigger>
+            <TabsTrigger value="ltv">Lifetime Value</TabsTrigger>
+            <TabsTrigger value="birthday">Upcoming Birthdays</TabsTrigger>
+            <TabsTrigger value="dormant">Dormant</TabsTrigger>
+          </TabsList>
+
+          {/* Repeat Customers Tab */}
+          <TabsContent value="repeat" className="space-y-6">
+            {loading ? (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {[...Array(3)].map((_, i) => (
+                    <Card key={i}><CardContent className="pt-4 space-y-2"><Skeleton className="h-4 w-24" /><Skeleton className="h-8 w-16" /></CardContent></Card>
+                  ))}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">Active &amp; Dormant</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  ₹
-                  {(totalRevenue / 1000000).toFixed(1)}
-                  M
+                <ChartSkeleton />
+              </>
+            ) : error ? renderError() : repeatData.length === 0 ? renderEmpty() : (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Repeat Customers</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-end gap-2">
+                        <div className="text-2xl font-bold">{repeatCount}</div>
+                        <Users className="h-4 w-4 text-blue-500 mb-1" />
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">Multiple bookings</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Total Spend</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{fmt(repeatTotal)}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Repeat customer revenue</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Avg Bookings</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-end gap-2">
+                        <div className="text-2xl font-bold">
+                          {repeatCount > 0 ? (repeatData.reduce((s, r) => s + (r.booking_count ?? 0), 0) / repeatCount).toFixed(1) : '0'}
+                        </div>
+                        <TrendingUp className="h-4 w-4 text-green-500 mb-1" />
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">Per customer</p>
+                    </CardContent>
+                  </Card>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">Lifetime value</p>
-              </CardContent>
-            </Card>
 
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Avg LTV</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  ₹
-                  {(parseInt(avgLifetimeValue) / 100000).toFixed(1)}
-                  L
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">Per customer</p>
-              </CardContent>
-            </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Top Repeat Customers by Spend</CardTitle>
+                    <CardDescription>Customers with highest total booking value</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart
+                        data={[...repeatData].sort((a, b) => (b.total_spent ?? 0) - (a.total_spent ?? 0)).slice(0, 10).map((r) => ({
+                          name: (r.customer_name ?? '').split(' ').slice(0, 1).join(''),
+                          Spend: r.total_spent ?? 0,
+                          Bookings: r.booking_count ?? 0,
+                        }))}
+                        margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" />
+                        <YAxis tickFormatter={(v) => fmt(v)} />
+                        <Tooltip formatter={(v, name) => name === 'Spend' ? fmt(v as number) : v} />
+                        <Legend />
+                        <Bar dataKey="Spend" fill="#3b82f6" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
 
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Repeat Rate</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-end gap-2">
-                  <div className="text-2xl font-bold">{repeatRate}%</div>
-                  <TrendingUp className="h-4 w-4 text-green-500 mb-1" />
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {repeatCustomers.length}
-                  {' '}
-                  repeat customers
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Main Charts */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Customer LTV Chart */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Top 15 Customers by LTV</CardTitle>
-                <CardDescription>Lifetime value ranking</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart
-                    data={topLtvCustomers}
-                    layout="vertical"
-                    margin={{ top: 5, right: 30, left: 150, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" />
-                    <YAxis type="category" dataKey="name" width={145} tick={{ fontSize: 12 }} />
-                    <Tooltip formatter={(value) => `₹${(value as number / 100000).toFixed(1)}L`} />
-                    <Bar dataKey="totalSpend" fill="#3b82f6" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            {/* Customer Segmentation */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Customer Segmentation</CardTitle>
-                <CardDescription>By customer type</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={segmentationData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, value }) => `${name} (${value})`}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {segmentationData.map((_, index) => (
-                        <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            {/* New vs Returning */}
-            <Card>
-              <CardHeader>
-                <CardTitle>New vs Returning Customers</CardTitle>
-                <CardDescription>Monthly acquisition trend</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={monthlyData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="New" fill="#3b82f6" />
-                    <Bar dataKey="Returning" fill="#10b981" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            {/* Upcoming Cakes Preview */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Cake className="h-5 w-5" />
-                  Customer Satisfaction
-                </CardTitle>
-                <CardDescription>Overall satisfaction metrics</CardDescription>
-              </CardHeader>
-              <CardContent className="flex items-center justify-center min-h-[300px]">
-                <div className="text-center">
-                  <Zap className="h-12 w-12 text-muted-foreground mx-auto mb-2 opacity-50" />
-                  <p className="text-muted-foreground">
-                    Not enough data to display satisfaction metrics yet.
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">Collect customer feedback to populate this section.</p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Tables Section */}
-          <div className="space-y-6">
-            {/* Repeat Customers Table */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Repeat Customers</CardTitle>
-                <CardDescription>
-                  {repeatCustomers.length}
-                  {' '}
-                  customers with multiple bookings
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Customer Name</TableHead>
-                        <TableHead className="text-right">Total Bookings</TableHead>
-                        <TableHead className="text-right">Total Spend</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {repeatCustomers
-                        .sort((a: any, b: any) => b.bookings - a.bookings)
-                        .map((customer: any) => (
-                          <TableRow key={customer.id}>
-                            <TableCell className="font-medium">{customer.name}</TableCell>
-                            <TableCell className="text-right">{customer.bookings}</TableCell>
-                            <TableCell className="text-right">
-                              ₹
-                              {(customer.totalSpend / 100000).toFixed(1)}
-                              L
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="text-xs">{customer.status}</Badge>
-                            </TableCell>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Repeat Customers</CardTitle>
+                    <CardDescription>{repeatCount} customers with multiple bookings</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Customer Name</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead className="text-right">Bookings</TableHead>
+                          <TableHead className="text-right">Total Spent</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {[...repeatData].sort((a, b) => (b.booking_count ?? 0) - (a.booking_count ?? 0)).map((row, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell className="font-medium">{row.customer_name ?? '—'}</TableCell>
+                            <TableCell className="text-muted-foreground">{row.email ?? '—'}</TableCell>
+                            <TableCell className="text-right">{row.booking_count ?? 0}</TableCell>
+                            <TableCell className="text-right">{fmt(row.total_spent ?? 0)}</TableCell>
                           </TableRow>
                         ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </TabsContent>
 
-            {/* Upcoming Cakes Table */}
-            {upcomingCakes.length > 0 && (
+          {/* LTV Tab */}
+          <TabsContent value="ltv" className="space-y-6">
+            {loading ? <ChartSkeleton /> : error ? renderError() : ltvData.length === 0 ? renderEmpty() : (
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Top 15 Customers by Lifetime Value</CardTitle>
+                    <CardDescription>Ranked by total LTV</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart
+                        data={topLtv.map((r) => ({ name: (r.customer_name ?? '').split(' ')[0], LTV: r.total_ltv ?? 0 }))}
+                        layout="vertical"
+                        margin={{ top: 5, right: 30, left: 80, bottom: 5 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis type="number" tickFormatter={(v) => fmt(v)} />
+                        <YAxis type="category" dataKey="name" width={75} tick={{ fontSize: 12 }} />
+                        <Tooltip formatter={(v) => fmt(v as number)} />
+                        <Bar dataKey="LTV" fill="#3b82f6" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader><CardTitle>Customer LTV Details</CardTitle></CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Customer Name</TableHead>
+                          <TableHead className="text-right">Total Bookings</TableHead>
+                          <TableHead className="text-right">Total LTV</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {ltvData.map((row, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell className="font-medium">{row.customer_name ?? '—'}</TableCell>
+                            <TableCell className="text-right">{row.total_bookings ?? 0}</TableCell>
+                            <TableCell className="text-right font-semibold">{fmt(row.total_ltv ?? 0)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </TabsContent>
+
+          {/* Birthday Tab */}
+          <TabsContent value="birthday" className="space-y-6">
+            {loading ? <ChartSkeleton /> : error ? renderError() : birthdayData.length === 0 ? renderEmpty() : (
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Cake className="h-5 w-5" />
-                    Upcoming Cakes
+                    Upcoming Birthdays
                   </CardTitle>
-                  <CardDescription>Next 30 days</CardDescription>
+                  <CardDescription>{birthdayData.length} customers with upcoming birthdays</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Customer Name</TableHead>
-                          <TableHead>Cake</TableHead>
-                          <TableHead className="text-right">Total Spend</TableHead>
-                          <TableHead>Status</TableHead>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Customer Name</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Phone</TableHead>
+                        <TableHead>Date of Birth</TableHead>
+                        <TableHead className="text-right">Days Until Birthday</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {[...birthdayData].sort((a, b) => (a.days_until_birthday ?? 0) - (b.days_until_birthday ?? 0)).map((row, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell className="font-medium">{row.customer_name ?? '—'}</TableCell>
+                          <TableCell className="text-muted-foreground">{row.email ?? '—'}</TableCell>
+                          <TableCell>{row.phone ?? '—'}</TableCell>
+                          <TableCell>{row.date_of_birth ?? '—'}</TableCell>
+                          <TableCell className="text-right">
+                            <Badge variant={row.days_until_birthday <= 7 ? 'default' : 'outline'} className="text-xs">
+                              {row.days_until_birthday ?? 0} days
+                            </Badge>
+                          </TableCell>
                         </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {upcomingCakes.map((customer: any) => (
-                          <TableRow key={customer.id}>
-                            <TableCell className="font-medium">{customer.name}</TableCell>
-                            <TableCell>{customer.birthday}</TableCell>
-                            <TableCell className="text-right">
-                              ₹
-                              {(customer.totalSpend / 100000).toFixed(1)}
-                              L
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="text-xs">{customer.status}</Badge>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </CardContent>
               </Card>
             )}
+          </TabsContent>
 
-            {/* Dormant Customers Table */}
-            {dormantCustomers.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Clock className="h-5 w-5" />
-                    Dormant Customers
-                  </CardTitle>
-                  <CardDescription>No activity in 90+ days</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="overflow-x-auto">
+          {/* Dormant Tab */}
+          <TabsContent value="dormant" className="space-y-6">
+            {loading ? <ChartSkeleton /> : error ? renderError() : dormantData.length === 0 ? renderEmpty() : (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Dormant Customers</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-end gap-2">
+                        <div className="text-2xl font-bold">{dormantData.length}</div>
+                        <Clock className="h-4 w-4 text-orange-500 mb-1" />
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">No recent activity</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Avg Days Inactive</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">
+                        {dormantData.length > 0 ? Math.round(dormantData.reduce((s, r) => s + (r.days_since_last_booking ?? 0), 0) / dormantData.length) : 0}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">Days since last booking</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Recoverable Revenue</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{fmt(dormantData.reduce((s, r) => s + (r.total_past_bookings ?? 0) * 50000, 0))}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Est. re-engagement value</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Clock className="h-5 w-5" />
+                      Dormant Customers
+                    </CardTitle>
+                    <CardDescription>No activity — re-engagement opportunities</CardDescription>
+                  </CardHeader>
+                  <CardContent>
                     <Table>
                       <TableHeader>
                         <TableRow>
                           <TableHead>Customer Name</TableHead>
-                          <TableHead className="text-right">Bookings</TableHead>
-                          <TableHead>Last Activity</TableHead>
-                          <TableHead className="text-right">Total Spend</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Phone</TableHead>
+                          <TableHead>Last Booking</TableHead>
+                          <TableHead className="text-right">Past Bookings</TableHead>
+                          <TableHead className="text-right">Days Inactive</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {dormantCustomers.map((customer: any) => (
-                          <TableRow key={customer.id}>
-                            <TableCell className="font-medium">{customer.name}</TableCell>
-                            <TableCell className="text-right">{customer.bookings}</TableCell>
-                            <TableCell>{customer.lastBooking}</TableCell>
+                        {[...dormantData].sort((a, b) => (b.days_since_last_booking ?? 0) - (a.days_since_last_booking ?? 0)).map((row, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell className="font-medium">{row.customer_name ?? '—'}</TableCell>
+                            <TableCell className="text-muted-foreground">{row.email ?? '—'}</TableCell>
+                            <TableCell>{row.phone ?? '—'}</TableCell>
+                            <TableCell>{row.last_booking_date ?? '—'}</TableCell>
+                            <TableCell className="text-right">{row.total_past_bookings ?? 0}</TableCell>
                             <TableCell className="text-right">
-                              ₹
-                              {(customer.totalSpend / 100000).toFixed(1)}
-                              L
+                              <Badge variant={row.days_since_last_booking > 180 ? 'destructive' : 'secondary'} className="text-xs">
+                                {row.days_since_last_booking ?? 0}d
+                              </Badge>
                             </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                     </Table>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              </>
             )}
-          </div>
-        </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

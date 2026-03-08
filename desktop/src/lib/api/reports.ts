@@ -25,6 +25,43 @@ export interface UpdateReportRequest {
   config?: Record<string, unknown>;
 }
 
+export interface ReportExecuteParams {
+  date_from?: string;
+  date_to?: string;
+  date_preset?: string;
+  group_by?: string;
+  sort_by?: string;
+  sort_order?: 'asc' | 'desc';
+  page?: number;
+  per_page?: number;
+  compare?: boolean;
+  [key: string]: string | number | boolean | undefined;
+}
+
+export interface ReportResult {
+  data: Record<string, any>[];
+  columns: Array<{ name: string; type: string }>;
+  meta: { total: number; page: number; per_page: number };
+  previous_period?: Record<string, any> | Record<string, Record<string, any>>;
+  cached_at?: string;
+}
+
+// Map frontend date range labels to backend date_preset values
+export function mapDateRangeToPreset(range: string): { date_preset?: string } {
+  const map: Record<string, string> = {
+    '7days': 'this_week',
+    '30days': 'this_month',
+    '90days': 'this_quarter',
+    'thisMonth': 'this_month',
+    'lastMonth': 'last_month',
+    'thisQuarter': 'this_quarter',
+    'thisYear': 'this_year',
+    'lastYear': 'last_year',
+  };
+  if (map[range]) return { date_preset: map[range] };
+  return {};
+}
+
 export const reportsApi = {
   list: (params?: {
     page?: number;
@@ -48,8 +85,21 @@ export const reportsApi = {
   delete: (id: string) =>
     client.delete<ApiResponse<void>>(API_ENDPOINTS.reports.byId(id)),
 
-  export: (id: string, format?: 'pdf' | 'xlsx' | 'csv') =>
-    client.get<Blob>(API_ENDPOINTS.reports.export(id), { params: { format }, responseType: 'blob' }),
+  // Execute a report from the report engine registry
+  execute: (reportId: string, params?: ReportExecuteParams) => {
+    const queryParams: Record<string, any> = { ...params };
+    if (params?.compare) queryParams.compare = 'true';
+    return client.get<ApiResponse<ReportResult>>(
+      API_ENDPOINTS.reports.byId(reportId),
+      { params: queryParams }
+    );
+  },
+
+  export: (id: string, format?: 'pdf' | 'excel', params?: ReportExecuteParams) =>
+    client.get<Blob>(API_ENDPOINTS.reports.export(id), {
+      params: { format, ...params },
+      responseType: 'blob',
+    }),
 
   getDashboard: () =>
     client.get<ApiResponse<{
@@ -57,42 +107,23 @@ export const reportsApi = {
       hotLeads: Array<any>;
       followUps: { total: number; overdue: number; pending: number };
       recentActivities: Array<any>;
+      financial: {
+        revenueThisMonth: number;
+        outstanding: number;
+        overdue: number;
+        invoicedThisMonth: number;
+        collectionsThisMonth: number;
+      };
     }>>(API_ENDPOINTS.reports.dashboard),
 
-  // Report-specific methods
-  getSalesReport: async (params?: { dateRange?: string; startDate?: string; endDate?: string }) =>
-    client.get<ApiResponse<any>>(`${API_ENDPOINTS.reports.list}/sales`, { params }),
-
-  getLeadReport: async (params?: { dateRange?: string; startDate?: string; endDate?: string }) =>
-    client.get<ApiResponse<any>>(`${API_ENDPOINTS.reports.list}/leads`, { params }),
-
-  getFinancialReport: async (params?: { dateRange?: string; startDate?: string; endDate?: string }) =>
-    client.get<ApiResponse<any>>(`${API_ENDPOINTS.reports.list}/financial`, { params }),
-
-  getTeamReport: async (params?: { dateRange?: string; startDate?: string; endDate?: string }) =>
-    client.get<ApiResponse<any>>(`${API_ENDPOINTS.reports.list}/team`, { params }),
-
-  getCustomerReport: async (params?: { dateRange?: string; startDate?: string; endDate?: string }) =>
-    client.get<ApiResponse<any>>(`${API_ENDPOINTS.reports.list}/customer`, { params }),
-
-  getVisaReport: async (params?: { dateRange?: string; startDate?: string; endDate?: string }) =>
-    client.get<ApiResponse<any>>(`${API_ENDPOINTS.reports.list}/visa`, { params }),
-
-  getSupplierReport: async (params?: { dateRange?: string; startDate?: string; endDate?: string }) =>
-    client.get<ApiResponse<any>>(`${API_ENDPOINTS.reports.list}/supplier`, { params }),
-
-  getMarketingReport: async (params?: { dateRange?: string; startDate?: string; endDate?: string }) =>
-    client.get<ApiResponse<any>>(`${API_ENDPOINTS.reports.list}/marketing`, { params }),
-
-  getRevenueReport: async (params?: { dateRange?: string; startDate?: string; endDate?: string }) =>
-    client.get<ApiResponse<any>>(`${API_ENDPOINTS.reports.list}/revenue`, { params }),
-
-  getFleetReport: async (params?: { dateRange?: string; startDate?: string; endDate?: string }) =>
-    client.get<ApiResponse<any>>(`${API_ENDPOINTS.reports.list}/fleet`, { params }),
-
-  getOutstandingReport: async (params?: { dateRange?: string; startDate?: string; endDate?: string; contactId?: string }) =>
+  getOutstandingReport: (params?: { date_from?: string; date_to?: string }) =>
     client.get<ApiResponse<any>>(API_ENDPOINTS.reports.outstanding, { params }),
 
-  getAgeingReport: async (params?: { dateRange?: string; startDate?: string; endDate?: string; contactId?: string }) =>
+  getAgeingReport: (params?: { date_from?: string; date_to?: string }) =>
     client.get<ApiResponse<any>>(API_ENDPOINTS.reports.ageing, { params }),
+
+  invalidateCache: (reportId?: string) =>
+    reportId
+      ? client.delete<ApiResponse<void>>(`${API_ENDPOINTS.reports.list}/${reportId}/cache`)
+      : client.delete<ApiResponse<void>>(`${API_ENDPOINTS.reports.list}/cache`),
 };

@@ -523,6 +523,70 @@ campaignRoutes.put(
 );
 
 // ============================================================
+// GET /:id/recipients - List recipients with delivery status
+// ============================================================
+
+campaignRoutes.get(
+  '/:id/recipients',
+  requirePermission('campaigns', 'view'),
+  async (c) => {
+    const tenantDb = c.get('tenantDb');
+    const campaignId = c.req.param('id');
+    const page = parseInt(c.req.query('page') ?? '1');
+    const limit = parseInt(c.req.query('limit') ?? '25');
+    const offset = (page - 1) * limit;
+
+    try {
+      const rows = await tenantDb
+        .prepare(`
+          SELECT
+            m.id, m.contact_id, m.recipient_email, m.status,
+            m.opened_at, m.clicked_at, m.sent_at, m.error_message,
+            c.name AS contact_name, c.email AS contact_email
+          FROM email_message_log m
+          LEFT JOIN contacts c ON c.id = m.contact_id
+          WHERE m.campaign_id = ?
+          ORDER BY m.sent_at DESC
+          LIMIT ? OFFSET ?
+        `)
+        .bind(campaignId, limit, offset)
+        .all<any>();
+
+      const total = await tenantDb
+        .prepare('SELECT COUNT(*) AS count FROM email_message_log WHERE campaign_id = ?')
+        .bind(campaignId)
+        .first<{ count: number }>();
+
+      const recipients = (rows.results ?? []).map((r: any) => ({
+        id: r.id,
+        contactId: r.contact_id,
+        name: r.contact_name ?? r.recipient_email ?? 'Unknown',
+        email: r.contact_email ?? r.recipient_email ?? '',
+        status: r.status,
+        openedAt: r.opened_at,
+        clickedAt: r.clicked_at,
+        sentAt: r.sent_at,
+        errorMessage: r.error_message,
+      }));
+
+      return c.json({
+        success: true,
+        data: recipients,
+        pagination: {
+          page,
+          limit,
+          total: total?.count ?? 0,
+          totalPages: Math.ceil((total?.count ?? 0) / limit),
+        },
+      });
+    } catch (err: any) {
+      console.error('[CAMPAIGNS] Recipients error:', err.message);
+      return error(c, 'Failed to fetch recipients', 500);
+    }
+  }
+);
+
+// ============================================================
 // DELETE /:id - Delete campaign (only when draft)
 // ============================================================
 

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ChevronRight, Mail, MessageSquare, Calendar, FileText, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,8 +14,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { useApiMutation } from '@/hooks/use-api';
+import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { campaignsApi } from '@/lib/api/campaigns';
+import { templatesApi, type MessageTemplate } from '@/lib/api/templates';
+import { contactsApi } from '@/lib/api/contacts';
+import { Combobox } from '@/components/ui/combobox';
 
 interface FormState {
   // Card 1: Campaign Details
@@ -27,6 +30,8 @@ interface FormState {
   audienceType: 'tags' | 'lead_status' | 'custom';
   selectedTags: string[];
   selectedStatuses: string[];
+  segmentId: string;
+  segmentName: string;
 
   // Card 3: Content
   contentSource: 'template' | 'custom';
@@ -47,6 +52,8 @@ const initialFormState: FormState = {
   audienceType: 'tags',
   selectedTags: [],
   selectedStatuses: [],
+  segmentId: '',
+  segmentName: '',
   contentSource: 'template',
   selectedTemplate: '',
   customContent: '',
@@ -56,28 +63,44 @@ const initialFormState: FormState = {
   scheduleTime: '',
 };
 
-const availableTags = [
-  'VIP', 'Frequent', 'Honeymoon', 'Family', 'Adventure', 'Budget', 'Luxury',
-];
-
 const leadStatuses = [
   'New', 'Contacted', 'Qualified', 'Proposal Sent', 'Negotiation', 'Won', 'Lost',
 ];
 
-const templates = [
-  { id: 'welcome', name: 'Welcome Email' },
-  { id: 'followup', name: 'Follow-up Email' },
-  { id: 'proposal', name: 'Proposal Email' },
-  { id: 'reminder', name: 'Payment Reminder' },
-];
+// SMS character limit
+const SMS_LIMIT = 160;
 
 export default function NewCampaignPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [form, setForm] = React.useState<FormState>(initialFormState);
   const [currentStep, setCurrentStep] = React.useState(1);
 
+  // Auto-populate from URL params (e.g., navigating from a segment's "Use in Campaign")
+  React.useEffect(() => {
+    const segmentId = searchParams.get('segmentId');
+    const segmentName = searchParams.get('segmentName');
+    if (segmentId) {
+      setForm((prev) => ({ ...prev, audienceType: 'custom', segmentId, segmentName: segmentName ?? '' }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const { mutate: createCampaign, loading: isCreating } = useApiMutation(campaignsApi.create);
-  const { mutate: scheduleCampaign, loading: isScheduling } = useApiMutation((data: { id: string; scheduledFor: string }) => campaignsApi.schedule(data.id, { scheduledFor: data.scheduledFor }));
+  const { mutate: scheduleCampaign, loading: isScheduling } = useApiMutation((data: { id: string; scheduledAt: string }) => campaignsApi.schedule(data.id, { scheduledFor: data.scheduledAt }));
+
+  // Fetch API data for form fields
+  const { data: templatesResponse } = useApiQuery(
+    () => templatesApi.list({ channel: form.campaignType, limit: 100 }),
+    [form.campaignType],
+  );
+  const apiTemplates: MessageTemplate[] = (templatesResponse?.data?.data ?? templatesResponse?.data ?? []) as MessageTemplate[];
+
+  const { data: tagsResponse } = useApiQuery(
+    () => contactsApi.getTags(),
+    [],
+  );
+  const availableTags: string[] = (tagsResponse?.data ?? []) as string[];
 
   const handleFieldChange = (field: keyof FormState, value: unknown) => {
     setForm((prev) => ({
@@ -112,9 +135,30 @@ export default function NewCampaignPage() {
   const isStep3Valid =
     (form.contentSource === 'template' && form.selectedTemplate) ||
     (form.contentSource === 'custom' && form.customContent.trim() !== '');
-  const isStep4Valid = true;
+  const isStep4Valid = form.scheduleType === 'now' || (() => {
+    if (!form.scheduleDate || !form.scheduleTime) return false;
+    const scheduled = new Date(`${form.scheduleDate}T${form.scheduleTime}`);
+    const minTime = new Date(Date.now() + 15 * 60 * 1000);
+    const maxTime = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+    return scheduled >= minTime && scheduled <= maxTime;
+  })();
 
   const stepValid = [isStep1Valid, isStep2Valid, isStep3Valid, isStep4Valid];
+
+  const buildCampaignPayload = (extraFields?: Partial<{ status: 'draft' | 'running' | 'scheduled' | 'completed' | 'paused'; startDate: string }>) => {
+    const segmentFilters: Record<string, unknown> = {};
+    if (form.audienceType === 'tags' && form.selectedTags.length > 0) {
+      segmentFilters.tags = form.selectedTags;
+    }
+    return {
+      name: form.campaignName,
+      subject: form.emailSubject || form.campaignName, // subject is required by backend
+      body: form.contentSource === 'custom' ? form.customContent : undefined,
+      templateId: form.contentSource === 'template' && form.selectedTemplate ? form.selectedTemplate : undefined,
+      segmentFilters,
+      ...extraFields,
+    };
+  };
 
   const handleSaveDraft = async () => {
     if (!isStep1Valid) {
@@ -122,16 +166,7 @@ export default function NewCampaignPage() {
       return;
     }
 
-    const result = await createCampaign({
-      name: form.campaignName,
-      // @ts-ignore-next-line
-      type: form.campaignType,
-      description: form.description,
-      status: 'draft',
-      content: form.contentSource === 'template' ? form.selectedTemplate : form.customContent,
-      subject: form.emailSubject || undefined,
-      targetSegment: form.selectedTags.join(',') || form.selectedStatuses.join(',') || undefined,
-    });
+    const result = await createCampaign(buildCampaignPayload());
 
     if (result) {
       toast.success('Campaign saved as draft!');
@@ -147,23 +182,17 @@ export default function NewCampaignPage() {
       return;
     }
 
-    const result = await createCampaign({
-      name: form.campaignName,
-      // @ts-ignore-next-line
-      type: form.campaignType,
-      description: form.description,
-      status: form.scheduleType === 'now' ? 'running' : 'scheduled',
-      content: form.contentSource === 'template' ? form.selectedTemplate : form.customContent,
-      subject: form.emailSubject || undefined,
-      targetSegment: form.selectedTags.join(',') || form.selectedStatuses.join(',') || undefined,
-      startDate: form.scheduleType === 'later' ? `${form.scheduleDate}T${form.scheduleTime}:00` : undefined,
-    });
+    const result = await createCampaign(
+      buildCampaignPayload({
+        startDate: form.scheduleType === 'later' ? `${form.scheduleDate}T${form.scheduleTime}:00` : undefined,
+      }),
+    );
 
     if (result) {
       if (form.scheduleType === 'later') {
-        const scheduledFor = `${form.scheduleDate}T${form.scheduleTime}:00`;
+        const scheduledAt = `${form.scheduleDate}T${form.scheduleTime}:00`;
         // @ts-ignore-next-line
-        const scheduleResult = await scheduleCampaign({ id: result.id, scheduledFor });
+        const scheduleResult = await scheduleCampaign({ id: result.id, scheduledAt });
         if (scheduleResult) {
           toast.success('Campaign scheduled successfully!');
         } else {
@@ -300,21 +329,21 @@ export default function NewCampaignPage() {
                       borderColor: form.audienceType === 'tags' ? 'hsl(var(--primary))' : undefined,
                       backgroundColor: form.audienceType === 'tags' ? 'hsl(var(--primary))10' : undefined,
                     }}>
-                      <Checkbox checked={form.audienceType === 'tags'} onChange={() => handleFieldChange('audienceType', 'tags')} />
+                      <Checkbox checked={form.audienceType === 'tags'} onCheckedChange={() => handleFieldChange('audienceType', 'tags')} />
                       <span className="text-sm font-medium">By Tags</span>
                     </label>
                     <label className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50" style={{
                       borderColor: form.audienceType === 'lead_status' ? 'hsl(var(--primary))' : undefined,
                       backgroundColor: form.audienceType === 'lead_status' ? 'hsl(var(--primary))10' : undefined,
                     }}>
-                      <Checkbox checked={form.audienceType === 'lead_status'} onChange={() => handleFieldChange('audienceType', 'lead_status')} />
+                      <Checkbox checked={form.audienceType === 'lead_status'} onCheckedChange={() => handleFieldChange('audienceType', 'lead_status')} />
                       <span className="text-sm font-medium">By Lead Status</span>
                     </label>
                     <label className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50" style={{
                       borderColor: form.audienceType === 'custom' ? 'hsl(var(--primary))' : undefined,
                       backgroundColor: form.audienceType === 'custom' ? 'hsl(var(--primary))10' : undefined,
                     }}>
-                      <Checkbox checked={form.audienceType === 'custom'} onChange={() => handleFieldChange('audienceType', 'custom')} />
+                      <Checkbox checked={form.audienceType === 'custom'} onCheckedChange={() => handleFieldChange('audienceType', 'custom')} />
                       <span className="text-sm font-medium">Custom Filter</span>
                     </label>
                   </div>
@@ -350,7 +379,7 @@ export default function NewCampaignPage() {
                         <label key={status} className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50">
                           <Checkbox
                             checked={form.selectedStatuses.includes(status)}
-                            onChange={() => handleStatusToggle(status)}
+                            onCheckedChange={() => handleStatusToggle(status)}
                           />
                           <span className="text-sm">{status}</span>
                         </label>
@@ -387,14 +416,14 @@ export default function NewCampaignPage() {
                       borderColor: form.contentSource === 'template' ? 'hsl(var(--primary))' : undefined,
                       backgroundColor: form.contentSource === 'template' ? 'hsl(var(--primary))10' : undefined,
                     }}>
-                      <Checkbox checked={form.contentSource === 'template'} onChange={() => handleFieldChange('contentSource', 'template')} />
+                      <Checkbox checked={form.contentSource === 'template'} onCheckedChange={() => handleFieldChange('contentSource', 'template')} />
                       <span className="text-sm font-medium">Use Template</span>
                     </label>
                     <label className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50" style={{
                       borderColor: form.contentSource === 'custom' ? 'hsl(var(--primary))' : undefined,
                       backgroundColor: form.contentSource === 'custom' ? 'hsl(var(--primary))10' : undefined,
                     }}>
-                      <Checkbox checked={form.contentSource === 'custom'} onChange={() => handleFieldChange('contentSource', 'custom')} />
+                      <Checkbox checked={form.contentSource === 'custom'} onCheckedChange={() => handleFieldChange('contentSource', 'custom')} />
                       <span className="text-sm font-medium">Write Custom Content</span>
                     </label>
                   </div>
@@ -402,20 +431,24 @@ export default function NewCampaignPage() {
 
                 <Separator />
 
-                {/* Template Selection */}
+                {/* Template Selection — searchable Combobox */}
                 {form.contentSource === 'template' && (
                   <div>
                     <label className="block text-sm font-medium mb-3">Select Template *</label>
-                    <Select value={form.selectedTemplate} onValueChange={(v) => handleFieldChange('selectedTemplate', v)}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Choose a template..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {templates.map((t: any) => (
-                          <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Combobox
+                      options={apiTemplates.map((t) => ({ value: t.id, label: t.name }))}
+                      value={form.selectedTemplate}
+                      onValueChange={(v) => handleFieldChange('selectedTemplate', v)}
+                      placeholder="Choose a template..."
+                      searchPlaceholder="Search templates..."
+                      emptyText={`No ${form.campaignType} templates found`}
+                    />
+                    {apiTemplates.length === 0 && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        No {form.campaignType} templates found.{' '}
+                        <a href="/communication/templates/new" className="text-primary hover:underline">Create one</a>.
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -433,13 +466,42 @@ export default function NewCampaignPage() {
                       </div>
                     )}
                     <div>
-                      <label className="block text-sm font-medium mb-2">Message Content *</label>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-sm font-medium">Message Content *</label>
+                        {form.campaignType === 'sms' && (
+                          <span className={cn(
+                            'text-xs font-mono',
+                            form.customContent.length > SMS_LIMIT
+                              ? 'text-destructive'
+                              : form.customContent.length > SMS_LIMIT * 0.8
+                                ? 'text-amber-500'
+                                : 'text-muted-foreground',
+                          )}>
+                            {form.customContent.length}/{SMS_LIMIT}
+                            {form.customContent.length > SMS_LIMIT && (
+                              <span className="ml-1">
+                                ({Math.ceil(form.customContent.length / SMS_LIMIT)} parts)
+                              </span>
+                            )}
+                          </span>
+                        )}
+                      </div>
                       <textarea
                         placeholder="Write your message here... You can use {{firstName}}, {{email}} for personalization"
                         value={form.customContent}
                         onChange={(e) => handleFieldChange('customContent', e.target.value)}
-                        className="w-full h-32 rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                        className={cn(
+                          'w-full h-32 rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary',
+                          form.campaignType === 'sms' && form.customContent.length > SMS_LIMIT
+                            ? 'border-destructive focus:ring-destructive'
+                            : 'border-input',
+                        )}
                       />
+                      {form.campaignType === 'sms' && form.customContent.length > SMS_LIMIT && (
+                        <p className="text-xs text-amber-600 mt-1">
+                          Message exceeds 160 characters and will be split into {Math.ceil(form.customContent.length / SMS_LIMIT)} SMS parts.
+                        </p>
+                      )}
                     </div>
                   </>
                 )}
@@ -464,38 +526,62 @@ export default function NewCampaignPage() {
                       borderColor: form.scheduleType === 'now' ? 'hsl(var(--primary))' : undefined,
                       backgroundColor: form.scheduleType === 'now' ? 'hsl(var(--primary))10' : undefined,
                     }}>
-                      <Checkbox checked={form.scheduleType === 'now'} onChange={() => handleFieldChange('scheduleType', 'now')} />
+                      <Checkbox checked={form.scheduleType === 'now'} onCheckedChange={() => handleFieldChange('scheduleType', 'now')} />
                       <span className="text-sm font-medium">Send Immediately</span>
                     </label>
                     <label className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50" style={{
                       borderColor: form.scheduleType === 'later' ? 'hsl(var(--primary))' : undefined,
                       backgroundColor: form.scheduleType === 'later' ? 'hsl(var(--primary))10' : undefined,
                     }}>
-                      <Checkbox checked={form.scheduleType === 'later'} onChange={() => handleFieldChange('scheduleType', 'later')} />
+                      <Checkbox checked={form.scheduleType === 'later'} onCheckedChange={() => handleFieldChange('scheduleType', 'later')} />
                       <span className="text-sm font-medium">Schedule for Later</span>
                     </label>
                   </div>
                 </div>
 
                 {form.scheduleType === 'later' && (
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-2">Date</label>
-                      <Input
-                        type="date"
-                        value={form.scheduleDate}
-                        onChange={(e) => handleFieldChange('scheduleDate', e.target.value)}
-                      />
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Date</label>
+                        <Input
+                          type="date"
+                          min={new Date(Date.now() + 15 * 60 * 1000).toISOString().split('T')[0]}
+                          max={new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
+                          value={form.scheduleDate}
+                          onChange={(e) => handleFieldChange('scheduleDate', e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Time</label>
+                        <Input
+                          type="time"
+                          value={form.scheduleTime}
+                          onChange={(e) => handleFieldChange('scheduleTime', e.target.value)}
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-2">Time</label>
-                      <Input
-                        type="time"
-                        value={form.scheduleTime}
-                        onChange={(e) => handleFieldChange('scheduleTime', e.target.value)}
-                      />
-                    </div>
-                  </div>
+                    {form.scheduleDate && form.scheduleTime && (() => {
+                      const scheduled = new Date(`${form.scheduleDate}T${form.scheduleTime}`);
+                      const minTime = new Date(Date.now() + 15 * 60 * 1000);
+                      const maxTime = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+                      if (scheduled < minTime) {
+                        return (
+                          <p className="text-xs text-destructive">
+                            Schedule must be at least 15 minutes from now.
+                          </p>
+                        );
+                      }
+                      if (scheduled > maxTime) {
+                        return (
+                          <p className="text-xs text-destructive">
+                            Schedule cannot be more than 90 days in the future.
+                          </p>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </>
                 )}
 
                 <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">

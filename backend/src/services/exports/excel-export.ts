@@ -32,7 +32,7 @@ export const excelExportService = {
         // Formatting based on type
         reportDef.columns.forEach((col, index) => {
             if (col.type === 'currency') {
-                sheet.getColumn(index + 1).numFmt = '"$"#,##0.00';
+                sheet.getColumn(index + 1).numFmt = '"₹"#,##0.00';
             } else if (col.type === 'date') {
                 sheet.getColumn(index + 1).numFmt = 'yyyy-mm-dd';
             } else if (col.type === 'number') {

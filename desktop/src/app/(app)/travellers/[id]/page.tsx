@@ -4,11 +4,12 @@ import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, Loader2, AlertCircle, User, FileText, Edit, Trash2, Globe, Mail, Phone,
-  Upload, Download, File,
+  Upload, Download, File, Plus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -124,7 +125,29 @@ export default function TravellerDetailPage() {
     }
   };
 
-  const traveller = travellerResponse?.data as Traveller | undefined;
+  // API returns { data: { first_name, last_name, ... } } — normalize snake_case to camelCase
+  const travellerRaw = ((travellerResponse?.data as any)?.data ?? travellerResponse?.data) as any;
+  const traveller: Traveller | undefined = travellerRaw ? {
+    ...travellerRaw,
+    firstName: travellerRaw.firstName ?? travellerRaw.first_name ?? '',
+    lastName: travellerRaw.lastName ?? travellerRaw.last_name ?? '',
+    passportNumber: travellerRaw.passportNumber ?? travellerRaw.passport_number ?? '',
+    dateOfBirth: travellerRaw.dateOfBirth ?? travellerRaw.date_of_birth,
+    nationality: travellerRaw.nationality,
+    email: travellerRaw.email,
+    phone: travellerRaw.phone,
+    passportExpiryDate: travellerRaw.passportExpiryDate ?? travellerRaw.passport_expiry_date,
+    passportIssuingCountry: travellerRaw.passportIssuingCountry ?? travellerRaw.passport_issuing_country,
+    emergencyContactName: travellerRaw.emergencyContactName ?? travellerRaw.emergency_contact_name,
+    emergencyContactPhone: travellerRaw.emergencyContactPhone ?? travellerRaw.emergency_contact_phone,
+    mealPreference: travellerRaw.mealPreference ?? travellerRaw.meal_preference,
+    seatPreference: travellerRaw.seatPreference ?? travellerRaw.seat_preference,
+    medicalNotes: travellerRaw.medicalNotes ?? travellerRaw.medical_notes,
+    frequentFlyerNumbers: travellerRaw.frequentFlyerNumbers ?? travellerRaw.frequent_flyer_numbers,
+    createdBy: travellerRaw.createdBy ?? travellerRaw.created_by ?? '',
+    createdAt: travellerRaw.createdAt ?? travellerRaw.created_at ?? '',
+    updatedAt: travellerRaw.updatedAt ?? travellerRaw.updated_at ?? '',
+  } : undefined;
 
   const visaRecords: VisaRecord[] = React.useMemo(() => {
     if (!visaResponse?.data) return [];
@@ -169,9 +192,28 @@ export default function TravellerDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
-        <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
-        <p className="text-muted-foreground">Loading traveller...</p>
+      <div className="flex flex-col h-full">
+        <div className="flex items-center justify-between px-6 py-4 border-b">
+          <div className="flex items-center gap-4">
+            <Skeleton className="h-8 w-8 rounded" />
+            <Skeleton className="h-12 w-12 rounded-full" />
+            <div className="space-y-2">
+              <Skeleton className="h-6 w-48" />
+              <Skeleton className="h-4 w-32" />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Skeleton className="h-9 w-20" />
+            <Skeleton className="h-9 w-20" />
+          </div>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <Skeleton className="h-40 rounded-lg" />
+            <Skeleton className="h-40 rounded-lg" />
+          </div>
+          <Skeleton className="h-24 rounded-lg" />
+        </div>
       </div>
     );
   }
@@ -291,7 +333,14 @@ export default function TravellerDetailPage() {
 
           {/* Visa Applications */}
           <TabsContent value="visa" className="mt-0">
-            <div className="max-w-5xl">
+            <div className="max-w-5xl space-y-4">
+              <div className="flex justify-end">
+                <Button asChild size="sm">
+                  <a href={`/visa/new?travellerId=${travellerId}&travellerName=${encodeURIComponent(traveller.firstName + ' ' + traveller.lastName)}`}>
+                    <Plus className="h-4 w-4 mr-1.5" /> New Visa Application
+                  </a>
+                </Button>
+              </div>
               {visaRecords.length === 0 ? (
                 <Card>
                   <CardContent className="p-8 text-center text-muted-foreground">
@@ -300,6 +349,7 @@ export default function TravellerDetailPage() {
                   </CardContent>
                 </Card>
               ) : (
+                <div>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -328,6 +378,7 @@ export default function TravellerDetailPage() {
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               )}
             </div>
           </TabsContent>

@@ -25,12 +25,26 @@ function toXlsxBuffer(data: Record<string, unknown>[], sheetName: string): Uint8
     return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Uint8Array;
 }
 
-export async function handleExportQueue(batch: MessageBatch<ExportQueueMessage>, env: Env): Promise<void> {
-    const db = drizzle(env.MASTER_DB, { schema });
+function resolveTenantDb(env: Env, tenantId?: string): ReturnType<typeof drizzle> {
+    if (tenantId) {
+        const bindingKey = `TENANT_DB_${tenantId}` as `TENANT_DB_${string}`;
+        const binding = (env as any)[bindingKey];
+        if (binding) return drizzle(binding, { schema });
+    }
+    return drizzle(env.MASTER_DB, { schema });
+}
 
+export async function handleExportQueue(batch: MessageBatch<ExportQueueMessage>, env: Env): Promise<void> {
     for (const msg of batch.messages) {
         try {
             const payload = msg.body;
+            // Resolve tenant DB from the job record
+            const masterDb = drizzle(env.MASTER_DB, { schema });
+            const jobRecord = await masterDb.query.exportJobs.findFirst({
+                where: eq(schema.exportJobs.id, payload.jobId),
+                columns: { tenantId: true }
+            });
+            const db = resolveTenantDb(env, jobRecord?.tenantId || undefined);
             console.log(`Processing Export Job: ${payload.jobId} [${payload.type}]`);
 
             // Mark job as processing
@@ -184,7 +198,8 @@ export async function handleExportQueue(batch: MessageBatch<ExportQueueMessage>,
             console.error(`Error processing export message ${msg.id}:`, error);
 
             if (msg.body?.jobId) {
-                await db.update(schema.exportJobs)
+                const fallbackDb = drizzle(env.MASTER_DB, { schema });
+                await fallbackDb.update(schema.exportJobs)
                     .set({
                         status: 'failed',
                         completedAt: new Date().toISOString(),

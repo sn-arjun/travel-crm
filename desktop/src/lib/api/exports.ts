@@ -37,7 +37,7 @@ export interface ExportFullRequest {
 
 export const exportsApi = {
   contacts: (data?: ExportContactsRequest) =>
-    client.post<Blob>(API_ENDPOINTS.exports.contacts, data, { responseType: 'blob' }),
+    client.get<Blob>(API_ENDPOINTS.exports.contacts, { params: data as unknown as Record<string, string | number | boolean | undefined>, responseType: 'blob' }),
 
   leads: (data?: ExportLeadsRequest) =>
     client.get<Blob>(API_ENDPOINTS.exports.leads, { params: data as unknown as Record<string, string | number | boolean | undefined>, responseType: 'blob' }),

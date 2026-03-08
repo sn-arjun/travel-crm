@@ -347,13 +347,13 @@ async function processVisaPassportForTenant(env: Env, db: D1Database): Promise<v
     // Check visa expiries in 30 days
     const visasExpiring = await db
       .prepare(`
-        SELECT va.id, va.country, t.first_name, t.last_name, l.assigned_to, l.id as lead_id
+        SELECT va.id, va.destination_country as country, t.first_name, t.last_name, l.assigned_to, l.id as lead_id
         FROM visa_applications va
         JOIN travellers t ON va.traveller_id = t.id
         LEFT JOIN leads l ON va.lead_id = l.id
         WHERE va.status = 'approved'
-          AND va.expiry_date <= ?
-          AND va.expiry_date >= date('now')
+          AND va.visa_expiry_date <= ?
+          AND va.visa_expiry_date >= date('now')
       `)
       .bind(in30Days)
       .all<{ id: string; country: string; first_name: string; last_name: string; assigned_to?: string; lead_id?: string }>();
@@ -379,11 +379,11 @@ async function processVisaPassportForTenant(env: Env, db: D1Database): Promise<v
     // Check passport expiries in 6 months
     const passportsExpiring = await db
       .prepare(`
-        SELECT t.id, t.first_name, t.last_name, t.contact_id, t.passport_expiry
+        SELECT t.id, t.first_name, t.last_name, t.contact_id, t.passport_expiry_date as passport_expiry
         FROM travellers t
-        WHERE t.passport_expiry IS NOT NULL
-          AND t.passport_expiry <= ?
-          AND t.passport_expiry >= date('now')
+        WHERE t.passport_expiry_date IS NOT NULL
+          AND t.passport_expiry_date <= ?
+          AND t.passport_expiry_date >= date('now')
       `)
       .bind(in6Months)
       .all<{ id: string; first_name: string; last_name: string; contact_id?: string; passport_expiry: string }>();

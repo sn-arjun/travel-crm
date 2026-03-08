@@ -178,7 +178,8 @@ async function notifyUser(
   title: string,
   message: string,
   refType: string,
-  refId: string
+  refId: string,
+  notifType = 'lead_assigned'
 ) {
   // Create in-app notification
   await db.insert(notifications).values({
@@ -186,7 +187,7 @@ async function notifyUser(
     userId: targetUserId,
     title,
     message,
-    type: 'lead_assigned',
+    type: notifType,
     referenceType: refType,
     referenceId: refId,
   });
@@ -793,6 +794,19 @@ leadRoutes.put(
 
     // Trigger auto follow-up sequences (TICKET-077)
     await triggerFollowUpSequences(tenantDb, db, id, newStatus, userId);
+
+    // Notify assigned salesperson of status change (TICKET-165)
+    if (lead.assignedTo && lead.assignedTo !== userId) {
+      await notifyUser(
+        c, db, tenantDb,
+        lead.assignedTo,
+        'Lead status updated',
+        `${lead.title} moved to ${newStatus.replace(/_/g, ' ')}`,
+        'lead',
+        id,
+        'lead_status_change',
+      );
+    }
 
     // Broadcast real-time update (TICKET-080)
     await broadcastLeadEvent(c, 'lead_status_changed', { id, status: newStatus, updatedBy: userId });

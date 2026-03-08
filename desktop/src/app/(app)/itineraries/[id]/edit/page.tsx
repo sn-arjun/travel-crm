@@ -192,7 +192,19 @@ export default function ItineraryEditPage() {
   const params = useParams();
   const id = params.id as string;
 
-  const [form, setForm] = React.useState<UpdateItineraryRequest>({});
+  const [form, setForm] = React.useState<{
+    title?: string;
+    description?: string;
+    startDate?: string;
+    endDate?: string;
+    destination?: string;
+    budget?: number;
+    status?: string;
+    termsConditions?: string;
+    currency?: string;
+    markupType?: string;
+    markupValue?: number;
+  }>({});
   const [dayItems, setDayItems] = React.useState<DayItem[]>([]);
   const [inclusions, setInclusions] = React.useState<string[]>([]);
   const [exclusions, setExclusions] = React.useState<string[]>([]);
@@ -244,7 +256,7 @@ export default function ItineraryEditPage() {
     }
   }, [itinerary]);
 
-  function updateField(field: keyof UpdateItineraryRequest, value: any) {
+  function updateField(field: string, value: any) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
@@ -340,15 +352,16 @@ export default function ItineraryEditPage() {
       return;
     }
 
-    const payload = {
-      ...form,
-      customFields: {
-        ...(form.customFields ?? {}),
-        dayItems,
-        inclusions,
-        exclusions,
-        terms,
-      },
+    const payload: UpdateItineraryRequest = {
+      title: form.title,
+      notes: form.description,
+      status: form.status as any,
+      currency: form.currency,
+      markupType: form.markupType as any,
+      markupValue: form.markupValue,
+      inclusions,
+      exclusions,
+      termsConditions: terms,
     };
 
     const result = await updateItinerary(payload);

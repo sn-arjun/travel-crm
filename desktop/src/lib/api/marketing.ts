@@ -99,6 +99,19 @@ export interface OptOutRequest {
   reason?: string;
 }
 
+export interface FestivalCampaign {
+  id: string;
+  name: string;
+  festivalName: string;
+  festivalDate: string;
+  daysBefore: number;
+  campaignType: string;
+  isActive: boolean;
+  messageBody?: string;
+  lastRunAt?: string;
+  createdAt: string;
+}
+
 export const marketingApi = {
   segments: {
     list: (params?: {
@@ -203,4 +216,18 @@ export const marketingApi = {
 
   optOut: (data: OptOutRequest) =>
     client.post<ApiResponse<{ message: string }>>(API_ENDPOINTS.marketing.optOut, data),
+
+  festivals: {
+    list: (params?: { page?: number; limit?: number; search?: string }) =>
+      client.get<ApiResponse<PaginatedResponse<FestivalCampaign>>>(API_ENDPOINTS.marketing.festivals, { params }),
+
+    activate: (id: string) =>
+      client.put<ApiResponse<FestivalCampaign>>(`${API_ENDPOINTS.marketing.festivals}/${id}/activate`, {}),
+
+    deactivate: (id: string) =>
+      client.put<ApiResponse<FestivalCampaign>>(`${API_ENDPOINTS.marketing.festivals}/${id}/deactivate`, {}),
+
+    delete: (id: string) =>
+      client.delete<ApiResponse<void>>(`${API_ENDPOINTS.marketing.festivals}/${id}`),
+  },
 };

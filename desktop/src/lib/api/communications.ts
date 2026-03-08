@@ -1,73 +1,82 @@
 import { client, type ApiResponse, type PaginatedResponse } from './client';
 import { API_ENDPOINTS } from './config';
 
+// Aligned with backend sendMessageSchema
 export interface SendCommunicationRequest {
-  to: string[];
+  contact_id: string;
+  channel: 'email' | 'sms' | 'whatsapp';
+  message: string;
   subject?: string;
-  body: string;
-  template?: string;
-  type?: 'email' | 'sms' | 'whatsapp';
-  attachments?: string[];
-  customFields?: Record<string, unknown>;
+  media_url?: string;
+  lead_id?: string;
 }
 
+// Aligned with backend sendTemplateSchema
 export interface SendTemplateRequest {
-  recipientIds: string[];
-  templateId: string;
-  variables?: Record<string, unknown>;
-  type?: 'email' | 'sms' | 'whatsapp';
+  contact_id: string;
+  template_id: string;
+  variables?: Record<string, string>;
+  lead_id?: string;
 }
 
+// Aligned with backend sendDocumentSchema
 export interface SendDocumentRequest {
-  to: string[];
-  documentId: string;
-  message?: string;
-  type?: 'email' | 'sms';
+  contact_id: string;
+  channel: 'whatsapp' | 'email';
+  document_type: 'itinerary' | 'invoice' | 'voucher';
+  document_id: string;
+  caption?: string;
 }
 
+// Aligned with backend bulkSendSchema
 export interface BulkSendRequest {
-  recipients: Array<{
-    id: string;
-    email?: string;
-    phone?: string;
-    name?: string;
-  }>;
+  channel: 'email' | 'sms' | 'whatsapp';
+  contact_ids: string[];
+  template_id?: string;
+  message?: string;
   subject?: string;
-  body: string;
-  type?: 'email' | 'sms' | 'whatsapp';
 }
 
 export interface CommunicationLog {
   id: string;
-  type: 'email' | 'sms' | 'whatsapp' | 'call';
-  recipient: string;
+  channel: 'email' | 'sms' | 'whatsapp' | 'call';
+  type?: 'email' | 'sms' | 'whatsapp' | 'call'; // alias for channel
+  contactId?: string;
+  recipient?: string;
   subject?: string;
-  message: string;
-  status: 'sent' | 'failed' | 'pending';
-  sentAt: string;
+  message?: string;
+  content?: string;
+  status: 'queued' | 'sent' | 'delivered' | 'read' | 'failed';
   direction?: 'inbound' | 'outbound';
+  sentAt: string;
+  sentBy?: string;
+  externalId?: string;
+  errorMessage?: string;
 }
 
 export const communicationsApi = {
   send: (data: SendCommunicationRequest) =>
-    client.post<ApiResponse<{ sent: number; failed: number }>>(API_ENDPOINTS.communications.send, data),
+    client.post<ApiResponse<{ message_id: string; status: string }>>(API_ENDPOINTS.communications.send, data),
 
   sendTemplate: (data: SendTemplateRequest) =>
-    client.post<ApiResponse<{ sent: number; failed: number }>>(API_ENDPOINTS.communications.sendTemplate, data),
+    client.post<ApiResponse<{ message_id: string; status: string }>>(API_ENDPOINTS.communications.sendTemplate, data),
 
   sendDocument: (data: SendDocumentRequest) =>
-    client.post<ApiResponse<{ sent: number; failed: number }>>(API_ENDPOINTS.communications.sendDocument, data),
+    client.post<ApiResponse<{ message_id: string; status: string }>>(API_ENDPOINTS.communications.sendDocument, data),
 
   bulkSend: (data: BulkSendRequest) =>
-    client.post<ApiResponse<{ sent: number; failed: number }>>(API_ENDPOINTS.communications.bulkSend, data),
+    client.post<ApiResponse<{ batch_id: string; queued: number }>>(API_ENDPOINTS.communications.bulkSend, data),
+
+  bulkSendStatus: (batchId: string) =>
+    client.get<ApiResponse<{ batch_id: string; status: string; total: number; sent: number; failed: number }>>(
+      `${API_ENDPOINTS.communications.bulkSend}/${batchId}/status`,
+    ),
 
   getHistory: (params?: {
     page?: number;
     limit?: number;
-    type?: string;
     channel?: string;
     contact_id?: string;
-    recipient?: string;
     status?: string;
     fromDate?: string;
     toDate?: string;
@@ -79,9 +88,14 @@ export const communicationsApi = {
   getLog: (params?: {
     page?: number;
     limit?: number;
-    type?: string;
-    leadId?: string;
+    channel?: string;
+    status?: string;
+    sentBy?: string;
     contactId?: string;
+    leadId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    search?: string;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
   }) =>

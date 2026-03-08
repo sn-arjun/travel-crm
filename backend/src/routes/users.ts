@@ -101,6 +101,48 @@ userRoutes.put(
 );
 
 // ============================================================
+// GET /me/signature — Get email signature
+// ============================================================
+
+userRoutes.get('/me/signature', async (c) => {
+  const userId = c.get('userId');
+  const db = drizzle(c.get('tenantDb'));
+
+  const [user] = await db
+    .select({ emailSignature: users.emailSignature })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  return success(c, { signature: user?.emailSignature ?? '' });
+});
+
+// ============================================================
+// PUT /me/signature — Update email signature
+// ============================================================
+
+const signatureSchema = z.object({
+  signature: z.string().max(10000),
+});
+
+userRoutes.put(
+  '/me/signature',
+  zValidator('json', signatureSchema),
+  async (c) => {
+    const userId = c.get('userId');
+    const { signature } = c.req.valid('json');
+    const db = drizzle(c.get('tenantDb'));
+
+    await db
+      .update(users)
+      .set({ emailSignature: signature, updatedAt: new Date().toISOString() })
+      .where(eq(users.id, userId));
+
+    return success(c, { signature });
+  }
+);
+
+// ============================================================
 // POST /me/avatar — Upload avatar
 // ============================================================
 

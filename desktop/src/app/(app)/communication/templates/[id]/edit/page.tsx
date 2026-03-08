@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -18,110 +19,78 @@ import {
 } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
+import { useApiQuery, useApiMutation } from '@/hooks/use-api';
+import { templatesApi } from '@/lib/api/templates';
 
 type TemplateChannel = 'email' | 'sms' | 'whatsapp';
 
-const categories = [
-  'Welcome',
-  'Follow-up',
-  'Proposal',
-  'Booking Confirmation',
-  'Payment Reminder',
-  'Thank You',
-  'Promotional',
-  'Newsletter',
-  'Custom',
+const templateCategories: { value: string; label: string }[] = [
+  { value: 'greeting', label: 'Greeting / Welcome' },
+  { value: 'follow_up', label: 'Follow-up' },
+  { value: 'quotation', label: 'Quotation / Proposal' },
+  { value: 'booking', label: 'Booking Confirmation' },
+  { value: 'reminder', label: 'Payment Reminder' },
+  { value: 'wish', label: 'Thank You / Wish' },
+  { value: 'offer', label: 'Promotional / Offer' },
+  { value: 'visa', label: 'Visa / Travel Docs' },
 ];
 
 const availableVariables = [
-  { key: '{{name}}', label: 'Contact Name' },
-  { key: '{{firstName}}', label: 'First Name' },
-  { key: '{{email}}', label: 'Email' },
-  { key: '{{phone}}', label: 'Phone' },
-  { key: '{{company}}', label: 'Company' },
-  { key: '{{destination}}', label: 'Destination' },
-  { key: '{{travelDate}}', label: 'Travel Date' },
-  { key: '{{amount}}', label: 'Amount' },
-  { key: '{{bookingRef}}', label: 'Booking Ref' },
-  { key: '{{agentName}}', label: 'Agent Name' },
+  { key: '{customer_name}', label: 'Contact Name' },
+  { key: '{first_name}', label: 'First Name' },
+  { key: '{email}', label: 'Email' },
+  { key: '{phone}', label: 'Phone' },
+  { key: '{destination}', label: 'Destination' },
+  { key: '{travel_date}', label: 'Travel Date' },
+  { key: '{amount}', label: 'Amount' },
+  { key: '{booking_ref}', label: 'Booking Ref' },
+  { key: '{agent_name}', label: 'Agent Name' },
+  { key: '{invoice_number}', label: 'Invoice Number' },
+  { key: '{company_email}', label: 'Company Email' },
 ];
-
-// Mock template data - in production fetched from API
-const mockTemplates: Record<string, {
-  name: string;
-  channel: TemplateChannel;
-  category: string;
-  subject: string;
-  body: string;
-}> = {
-  'welcome-email-1': {
-    name: 'Welcome Email - Standard',
-    channel: 'email',
-    category: 'Welcome',
-    subject: 'Welcome to TravelCRM, {{name}}!',
-    body: 'Dear {{name}},\n\nWelcome to our travel services! We\'re excited to help you plan your perfect trip. Our expert team is ready to assist you with curated travel packages tailored to your preferences.\n\nBest regards,\nTravelCRM Team',
-  },
-  'followup-email-1': {
-    name: 'Follow-up Email - 1st Touch',
-    channel: 'email',
-    category: 'Follow-up',
-    subject: 'Following up on your {{destination}} inquiry',
-    body: 'Dear {{name}},\n\nI hope this email finds you well. I wanted to follow up on your recent inquiry about our {{destination}} package.\n\nI\'d love to discuss your travel dates and budget to create a perfect itinerary for you. Are you available for a quick call this week?\n\nBest regards,\n{{agentName}}',
-  },
-  'welcome-whatsapp-1': {
-    name: 'Welcome - WhatsApp',
-    channel: 'whatsapp',
-    category: 'Welcome',
-    subject: '',
-    body: 'Hi {{firstName}}!\n\nWelcome to our travel services! We\'re thrilled to help you plan your dream vacation.\n\nHow can we assist you today?',
-  },
-  'payment-reminder-sms': {
-    name: 'Payment Reminder SMS',
-    channel: 'sms',
-    category: 'Payment Reminder',
-    subject: '',
-    body: 'Payment reminder: {{amount}} due by {{travelDate}}. Pay now to confirm your {{destination}} booking.',
-  },
-};
 
 export default function EditTemplatePage() {
   const router = useRouter();
   const params = useParams();
-  const templateId = params.id as string;
+  const id = params.id as string;
 
   const [name, setName] = React.useState('');
   const [channel, setChannel] = React.useState<TemplateChannel>('email');
   const [category, setCategory] = React.useState('');
   const [subject, setSubject] = React.useState('');
   const [body, setBody] = React.useState('');
+  const [language, setLanguage] = React.useState('en');
   const [showPreview, setShowPreview] = React.useState(false);
-  const [isSaving, setIsSaving] = React.useState(false);
-  const [isLoading, setIsLoading] = React.useState(true);
+  const [initialized, setInitialized] = React.useState(false);
 
   const bodyRef = React.useRef<HTMLTextAreaElement>(null);
 
-  // Load template data
+  const { data: response, loading: loadingTemplate } = useApiQuery(
+    () => templatesApi.getById(id),
+    [id],
+  );
+
+  const template = response?.data;
+
   React.useEffect(() => {
-    // In production: fetch from API using templateId
-    // e.g., const { data } = await templatesApi.getById(templateId);
-    const mockData = mockTemplates[templateId];
-    if (mockData) {
-      setName(mockData.name);
-      setChannel(mockData.channel);
-      setCategory(mockData.category);
-      setSubject(mockData.subject);
-      setBody(mockData.body);
-    } else {
-      // Fallback for unknown template IDs
-      setName(`Template ${templateId}`);
-      setChannel('email');
-      setCategory('Custom');
-      setSubject('');
-      setBody('');
+    if (template && !initialized) {
+      setName(template.name);
+      setChannel(template.channel as TemplateChannel);
+      setCategory(template.category ?? '');
+      setSubject(template.subject ?? '');
+      setBody(template.content);
+      setLanguage(template.language ?? 'en');
+      setInitialized(true);
     }
-    setIsLoading(false);
-  }, [templateId]);
+  }, [template, initialized]);
+
+  const { mutate: updateTemplate, loading: isSaving } = useApiMutation(
+    (data: Parameters<typeof templatesApi.update>[1]) => templatesApi.update(id, data),
+  );
+
+  const { mutate: deleteTemplate, loading: isDeleting } = useApiMutation(
+    () => templatesApi.delete(id),
+  );
 
   const insertVariable = (variable: string) => {
     const textarea = bodyRef.current;
@@ -141,74 +110,65 @@ export default function EditTemplatePage() {
 
   const getPreviewBody = () => {
     return body
-      .replace(/\{\{name\}\}/g, 'John Doe')
-      .replace(/\{\{firstName\}\}/g, 'John')
-      .replace(/\{\{email\}\}/g, 'john@example.com')
-      .replace(/\{\{phone\}\}/g, '+91 98765 43210')
-      .replace(/\{\{company\}\}/g, 'Acme Corp')
-      .replace(/\{\{destination\}\}/g, 'Maldives')
-      .replace(/\{\{travelDate\}\}/g, '2026-04-15')
-      .replace(/\{\{amount\}\}/g, 'INR 1,50,000')
-      .replace(/\{\{bookingRef\}\}/g, 'TCM-2026-0042')
-      .replace(/\{\{agentName\}\}/g, 'Sarah');
-  };
-
-  const getPreviewSubject = () => {
-    return subject
-      .replace(/\{\{name\}\}/g, 'John Doe')
-      .replace(/\{\{firstName\}\}/g, 'John')
-      .replace(/\{\{destination\}\}/g, 'Maldives')
-      .replace(/\{\{bookingRef\}\}/g, 'TCM-2026-0042');
+      .replace(/\{customer_name\}/g, 'John Doe')
+      .replace(/\{first_name\}/g, 'John')
+      .replace(/\{email\}/g, 'john@example.com')
+      .replace(/\{phone\}/g, '+91 98765 43210')
+      .replace(/\{destination\}/g, 'Maldives')
+      .replace(/\{travel_date\}/g, '2026-04-15')
+      .replace(/\{amount\}/g, 'INR 1,50,000')
+      .replace(/\{booking_ref\}/g, 'TCM-2026-0042')
+      .replace(/\{agent_name\}/g, 'Sarah')
+      .replace(/\{invoice_number\}/g, 'INV-2026-0042')
+      .replace(/\{company_email\}/g, 'support@travelcrm.io');
   };
 
   const handleSave = async () => {
-    if (!name.trim()) {
-      toast.error('Please enter a template name');
-      return;
-    }
-    if (!category) {
-      toast.error('Please select a category');
-      return;
-    }
-    if (!body.trim()) {
-      toast.error('Please enter template content');
-      return;
-    }
-    if (channel === 'email' && !subject.trim()) {
-      toast.error('Please enter an email subject');
-      return;
-    }
+    if (!name.trim()) { toast.error('Please enter a template name'); return; }
+    if (!body.trim()) { toast.error('Please enter template content'); return; }
+    if (channel === 'email' && !subject.trim()) { toast.error('Please enter an email subject'); return; }
 
-    setIsSaving(true);
-    try {
-      // In production: await templatesApi.update(templateId, { name, channel, category, subject, body })
-      await new Promise((resolve) => setTimeout(resolve, 800));
+    const result = await updateTemplate({
+      name,
+      channel,
+      category: category || undefined,
+      subject: channel === 'email' ? subject : undefined,
+      content: body,
+      language,
+    });
+
+    if (result) {
       toast.success('Template updated successfully!');
       router.push('/communication/templates');
-    } catch {
+    } else {
       toast.error('Failed to update template');
-    } finally {
-      setIsSaving(false);
     }
   };
 
   const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this template?')) return;
-
-    try {
-      // In production: await templatesApi.delete(templateId)
-      await new Promise((resolve) => setTimeout(resolve, 500));
+    if (!confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) return;
+    const result = await deleteTemplate(undefined as never);
+    if (result) {
       toast.success('Template deleted');
       router.push('/communication/templates');
-    } catch {
+    } else {
       toast.error('Failed to delete template');
     }
   };
 
-  if (isLoading) {
+  if (loadingTemplate && !initialized) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="flex flex-col h-full">
+        <div className="flex items-center justify-between px-6 py-4 border-b">
+          <Skeleton className="h-7 w-48" />
+          <Skeleton className="h-9 w-32" />
+        </div>
+        <div className="flex-1 p-6">
+          <div className="max-w-4xl mx-auto space-y-6">
+            <Skeleton className="h-48 w-full" />
+            <Skeleton className="h-64 w-full" />
+          </div>
+        </div>
       </div>
     );
   }
@@ -225,11 +185,17 @@ export default function EditTemplatePage() {
             <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
               Edit Template
             </h1>
-            <p className="text-sm text-muted-foreground">{name}</p>
+            <p className="text-sm text-muted-foreground">{name || 'Loading...'}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={handleDelete}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            onClick={handleDelete}
+            disabled={isDeleting}
+          >
             <Trash2 className="h-4 w-4 mr-1.5" />
             Delete
           </Button>
@@ -237,7 +203,7 @@ export default function EditTemplatePage() {
             <Eye className="h-4 w-4 mr-1.5" />
             Preview
           </Button>
-          <Button size="sm" onClick={handleSave} disabled={isSaving}>
+          <Button size="sm" onClick={handleSave} disabled={isSaving || isDeleting}>
             {isSaving ? (
               <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
             ) : (
@@ -254,14 +220,15 @@ export default function EditTemplatePage() {
           <div className="grid grid-cols-3 gap-6">
             {/* Left: Form */}
             <div className="col-span-2 space-y-6">
-              {/* Basic Info */}
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">Template Details</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
-                    <Label className="text-sm mb-1.5 block">Template Name *</Label>
+                    <Label className="text-sm mb-1.5 block">
+                      Template Name <span className="text-destructive">*</span>
+                    </Label>
                     <Input
                       value={name}
                       onChange={(e) => setName(e.target.value)}
@@ -272,7 +239,9 @@ export default function EditTemplatePage() {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-sm mb-1.5 block">Channel *</Label>
+                      <Label className="text-sm mb-1.5 block">
+                        Channel <span className="text-destructive">*</span>
+                      </Label>
                       <Select value={channel} onValueChange={(v) => setChannel(v as TemplateChannel)}>
                         <SelectTrigger className="h-9">
                           <SelectValue />
@@ -298,23 +267,46 @@ export default function EditTemplatePage() {
                     </div>
 
                     <div>
-                      <Label className="text-sm mb-1.5 block">Category *</Label>
+                      <Label className="text-sm mb-1.5 block">Category</Label>
                       <Select value={category} onValueChange={setCategory}>
                         <SelectTrigger className="h-9">
                           <SelectValue placeholder="Select category" />
                         </SelectTrigger>
                         <SelectContent>
-                          {categories.map((cat) => (
-                            <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                          {templateCategories.map((cat) => (
+                            <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
 
+                  <div>
+                    <Label className="text-sm mb-1.5 block">Language</Label>
+                    <Select value={language} onValueChange={setLanguage}>
+                      <SelectTrigger className="h-9 w-40">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="en">English</SelectItem>
+                        <SelectItem value="hi">Hindi</SelectItem>
+                        <SelectItem value="ta">Tamil</SelectItem>
+                        <SelectItem value="te">Telugu</SelectItem>
+                        <SelectItem value="mr">Marathi</SelectItem>
+                        <SelectItem value="gu">Gujarati</SelectItem>
+                        <SelectItem value="ar">Arabic</SelectItem>
+                        <SelectItem value="fr">French</SelectItem>
+                        <SelectItem value="de">German</SelectItem>
+                        <SelectItem value="es">Spanish</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
                   {channel === 'email' && (
                     <div>
-                      <Label className="text-sm mb-1.5 block">Subject *</Label>
+                      <Label className="text-sm mb-1.5 block">
+                        Subject <span className="text-destructive">*</span>
+                      </Label>
                       <Input
                         value={subject}
                         onChange={(e) => setSubject(e.target.value)}
@@ -326,7 +318,6 @@ export default function EditTemplatePage() {
                 </CardContent>
               </Card>
 
-              {/* Body */}
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">Template Content</CardTitle>
@@ -336,7 +327,7 @@ export default function EditTemplatePage() {
                     ref={bodyRef}
                     value={body}
                     onChange={(e) => setBody(e.target.value)}
-                    placeholder={`Write your ${channel} template here...\n\nUse variables like {{name}}, {{destination}} for personalization.`}
+                    placeholder={`Write your ${channel} template here...\n\nUse variables like {customer_name}, {destination} for personalization.`}
                     className="w-full min-h-[280px] rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring font-mono leading-relaxed resize-none"
                   />
                   <div className="flex items-center justify-between mt-2">
@@ -370,7 +361,7 @@ export default function EditTemplatePage() {
                         onClick={() => insertVariable(v.key)}
                         className="w-full flex items-center justify-between px-3 py-2 rounded-md text-left text-sm hover:bg-muted transition-colors"
                       >
-                        <span className="text-muted-foreground">{v.label}</span>
+                        <span className="text-muted-foreground text-xs">{v.label}</span>
                         <code className="text-xs font-mono text-primary">{v.key}</code>
                       </button>
                     ))}
@@ -384,10 +375,10 @@ export default function EditTemplatePage() {
                 </CardHeader>
                 <CardContent>
                   <ul className="text-xs text-muted-foreground space-y-2">
-                    <li>Use variables like <code className="text-primary">{'{{name}}'}</code> for personalization</li>
+                    <li>Use <code className="text-primary">{'{customer_name}'}</code> style variables</li>
                     <li>Keep SMS under 160 chars for single segment</li>
-                    <li>WhatsApp templates may need approval</li>
-                    <li>Preview before saving to check formatting</li>
+                    <li>WhatsApp templates may need Twilio approval</li>
+                    <li>Preview before saving to verify formatting</li>
                   </ul>
                 </CardContent>
               </Card>
@@ -416,7 +407,12 @@ export default function EditTemplatePage() {
             {channel === 'email' && subject && (
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Subject</p>
-                <p className="text-sm font-medium">{getPreviewSubject()}</p>
+                <p className="text-sm font-medium">
+                  {subject
+                    .replace(/\{customer_name\}/g, 'John Doe')
+                    .replace(/\{first_name\}/g, 'John')
+                    .replace(/\{destination\}/g, 'Maldives')}
+                </p>
               </div>
             )}
 
@@ -429,11 +425,12 @@ export default function EditTemplatePage() {
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Variables are shown with sample data. Actual values will be filled at send time.
+              Variables shown with sample data. Actual values filled at send time.
             </p>
           </div>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }

@@ -108,7 +108,7 @@ export default function DashboardPage() {
             {[
               { label: 'Add new lead', href: '/leads' },
               { label: 'Create invoice', href: '/invoices' },
-              { label: 'Schedule event', href: '/planner' },
+              { label: 'Schedule event', href: '/calendar' },
               { label: 'View reports', href: '/reports' },
             ].map(({ label, href }) => (
               <a

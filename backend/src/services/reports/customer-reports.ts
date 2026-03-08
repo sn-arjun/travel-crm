@@ -13,7 +13,7 @@ const customerReports: ReportDefinition[] = [
         dateColumn: 'l.created_at',
         defaultSort: { column: 'booking_count', order: 'desc' },
         baseQuery: `
-      SELECT 
+      SELECT
         c.name as customer_name,
         c.email,
         COUNT(l.id) as booking_count,
@@ -43,7 +43,7 @@ const customerReports: ReportDefinition[] = [
         dateColumn: 'l.created_at',
         defaultSort: { column: 'total_ltv', order: 'desc' },
         baseQuery: `
-      SELECT 
+      SELECT
         c.name as customer_name,
         COUNT(l.id) as total_bookings,
         SUM(l.budget) as total_ltv
@@ -58,6 +58,79 @@ const customerReports: ReportDefinition[] = [
             { name: 'total_bookings', type: 'number' },
             { name: 'total_ltv', type: 'currency' },
         ]
+    },
+    {
+        id: 'birthday_upcoming',
+        name: 'Upcoming Birthdays',
+        category: 'customer',
+        description: 'Customers with birthdays in the next 30 days for personalized outreach.',
+        requiredRole: ['admin', 'manager', 'salesperson'],
+        allowedFilters: [],
+        allowedGroupBy: [],
+        defaultSort: { column: 'days_until_birthday', order: 'asc' },
+        baseQuery: `
+      SELECT
+        c.name as customer_name,
+        c.email,
+        c.phone,
+        c.date_of_birth,
+        CAST(
+          (julianday(date(date('now'), '+0 years',
+            substr(date_of_birth, 5)) < date('now')
+            OR substr(date_of_birth, 5) = strftime('-%m-%d', 'now')
+          ) * 365 +
+          (julianday(date(strftime('%Y', 'now') || substr(date_of_birth, 5))) - julianday('now'))
+          AS INTEGER)
+        as days_until_birthday
+      FROM contacts c
+      WHERE c.is_deleted = 0 AND c.date_of_birth IS NOT NULL
+        AND (
+          strftime('%m-%d', c.date_of_birth) >= strftime('%m-%d', 'now')
+          AND strftime('%m-%d', c.date_of_birth) <= strftime('%m-%d', date('now', '+30 days'))
+        )
+      {ORDER_BY}
+    `,
+        columns: [
+            { name: 'customer_name', type: 'text' },
+            { name: 'email', type: 'text' },
+            { name: 'phone', type: 'text' },
+            { name: 'date_of_birth', type: 'date' },
+            { name: 'days_until_birthday', type: 'number' },
+        ],
+    },
+    {
+        id: 'dormant_customers',
+        name: 'Dormant Customers',
+        category: 'customer',
+        description: 'Customers with no bookings in the last 6 months.',
+        requiredRole: ['admin', 'manager'],
+        allowedFilters: [],
+        allowedGroupBy: [],
+        defaultSort: { column: 'last_booking_date', order: 'asc' },
+        baseQuery: `
+      SELECT
+        c.name as customer_name,
+        c.email,
+        c.phone,
+        MAX(l.created_at) as last_booking_date,
+        COUNT(l.id) as total_past_bookings,
+        CAST(julianday('now') - julianday(MAX(l.created_at)) AS INTEGER) as days_since_last_booking
+      FROM contacts c
+      LEFT JOIN leads l ON c.id = l.contact_id AND l.status = 'won' AND l.is_deleted = 0
+      WHERE c.is_deleted = 0
+      GROUP BY c.id
+      HAVING MAX(l.created_at) IS NULL
+        OR CAST(julianday('now') - julianday(MAX(l.created_at)) AS INTEGER) > 180
+      {ORDER_BY}
+    `,
+        columns: [
+            { name: 'customer_name', type: 'text' },
+            { name: 'email', type: 'text' },
+            { name: 'phone', type: 'text' },
+            { name: 'last_booking_date', type: 'date' },
+            { name: 'total_past_bookings', type: 'number' },
+            { name: 'days_since_last_booking', type: 'number' },
+        ],
     },
 ];
 

@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, Loader2, AlertCircle, CheckCircle2, Circle, Clock, FileText,
-  Edit, Trash2, Globe, Calendar,
+  Edit, Trash2, Globe, Calendar, XCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +13,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { visaApi, type VisaChecklistItem } from '@/lib/api/visa';
 import { toast } from 'sonner';
@@ -72,7 +73,22 @@ export default function VisaDetailPage() {
     (data) => visaApi.updateNotes(visaId, data),
   );
 
-  const visa = visaResponse?.data;
+  // API returns { data: { destination_country, ... } } — normalize snake_case to camelCase
+  const visaRaw = ((visaResponse?.data as any)?.data ?? visaResponse?.data) as any;
+  const visa = visaRaw ? {
+    ...visaRaw,
+    travellerName: visaRaw.travellerName ?? visaRaw.traveller_name ?? '',
+    countryName: visaRaw.countryName ?? visaRaw.destination_country ?? visaRaw.country ?? '',
+    destinationCountry: visaRaw.destinationCountry ?? visaRaw.destination_country ?? visaRaw.country ?? '',
+    visaType: visaRaw.visaType ?? visaRaw.visa_type ?? '',
+    status: visaRaw.status ?? 'not_started',
+    applicationDate: visaRaw.applicationDate ?? visaRaw.applied_date,
+    expiryDate: visaRaw.expiryDate ?? visaRaw.visa_expiry_date ?? visaRaw.expiry_date,
+    travellerId: visaRaw.travellerId ?? visaRaw.traveller_id,
+    passportNumber: visaRaw.passportNumber ?? visaRaw.passport_number,
+    createdAt: visaRaw.createdAt ?? visaRaw.created_at ?? '',
+    updatedAt: visaRaw.updatedAt ?? visaRaw.updated_at ?? '',
+  } : undefined;
   const checklist: VisaChecklistItem[] = React.useMemo(() => {
     const d = checklistResponse?.data;
     return Array.isArray(d) ? d : [];
@@ -117,9 +133,30 @@ export default function VisaDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
-        <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
-        <p className="text-muted-foreground">Loading visa record...</p>
+      <div className="flex flex-col h-full">
+        <div className="flex items-center justify-between px-6 py-4 border-b">
+          <div className="flex items-center gap-4">
+            <Skeleton className="h-8 w-8 rounded" />
+            <div className="space-y-2">
+              <Skeleton className="h-6 w-48" />
+              <Skeleton className="h-4 w-32" />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Skeleton className="h-9 w-20" />
+            <Skeleton className="h-9 w-20" />
+          </div>
+        </div>
+        <div className="grid grid-cols-4 gap-4 px-6 py-4 border-b">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 rounded-lg" />)}
+        </div>
+        <div className="p-6 space-y-4">
+          <Skeleton className="h-10 w-64" />
+          <div className="grid grid-cols-2 gap-4">
+            <Skeleton className="h-40 rounded-lg" />
+            <Skeleton className="h-40 rounded-lg" />
+          </div>
+        </div>
       </div>
     );
   }
@@ -159,7 +196,7 @@ export default function VisaDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => router.push('/visa')}>
+          <Button variant="outline" size="sm" onClick={() => router.push(`/visa/${visaId}/edit`)}>
             <Edit className="h-4 w-4 mr-1.5" /> Edit
           </Button>
           <Button variant="destructive" size="sm" onClick={() => setIsDeleteDialogOpen(true)}>
@@ -167,6 +204,73 @@ export default function VisaDetailPage() {
           </Button>
         </div>
       </div>
+
+      {/* Status Pipeline Stepper */}
+      {(() => {
+        const STEPS = ['not_started', 'documents_collecting', 'applied', 'processing', 'approved'];
+        const STEP_LABELS: Record<string, string> = {
+          not_started: 'Not Started',
+          documents_collecting: 'Collecting Docs',
+          applied: 'Applied',
+          processing: 'Processing',
+          approved: 'Approved',
+        };
+        const currentIdx = STEPS.indexOf(visa.status);
+        const isRejected = visa.status === 'rejected';
+        return (
+          <div className="px-6 py-3 border-b">
+            <div className="flex items-center gap-0">
+              {STEPS.map((step, idx) => (
+                <React.Fragment key={step}>
+                  <div className="flex flex-col items-center">
+                    <div className={cn(
+                      'h-7 w-7 rounded-full border-2 flex items-center justify-center text-xs font-medium',
+                      isRejected && idx <= currentIdx ? 'border-red-500 bg-red-50 text-red-700' :
+                      idx < currentIdx ? 'border-primary bg-primary text-white' :
+                      idx === currentIdx ? 'border-primary bg-primary/10 text-primary' :
+                      'border-muted-foreground/30 bg-background text-muted-foreground'
+                    )}>
+                      {idx < currentIdx && !isRejected ? <CheckCircle2 className="h-4 w-4" /> : idx + 1}
+                    </div>
+                    <span className={cn('text-[10px] mt-1 text-center whitespace-nowrap', idx === currentIdx ? 'text-primary font-medium' : 'text-muted-foreground')}>
+                      {STEP_LABELS[step]}
+                    </span>
+                  </div>
+                  {idx < STEPS.length - 1 && (
+                    <div className={cn('flex-1 h-0.5 mx-1 mb-4', idx < currentIdx && !isRejected ? 'bg-primary' : 'bg-muted')} />
+                  )}
+                </React.Fragment>
+              ))}
+              {isRejected && (
+                <>
+                  <div className="flex-1 h-0.5 mx-1 mb-4 bg-red-200" />
+                  <div className="flex flex-col items-center">
+                    <div className="h-7 w-7 rounded-full border-2 border-red-500 bg-red-50 text-red-700 flex items-center justify-center">
+                      <XCircle className="h-4 w-4" />
+                    </div>
+                    <span className="text-[10px] mt-1 text-red-600 font-medium">Rejected</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Rejection Banner */}
+      {visa.status === 'rejected' && (
+        <div className="px-6 py-3 bg-red-50 border-b border-red-200 dark:bg-red-900/20 dark:border-red-800">
+          <div className="flex items-start gap-2">
+            <XCircle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-red-700">Application Rejected</p>
+              {(visa as any).rejectionReason && (
+                <p className="text-xs text-red-600 mt-0.5">{(visa as any).rejectionReason}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Quick Stats */}
       <div className="grid grid-cols-4 gap-4 px-6 py-4 border-b">

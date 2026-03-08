@@ -10,7 +10,6 @@ import { Separator } from '@/components/ui/separator';
 import { useApiQuery } from '@/hooks/use-api';
 import { invoicesApi } from '@/lib/api/invoices';
 import { paymentsApi } from '@/lib/api/payments';
-import { communicationsApi } from '@/lib/api/communications';
 import { creditNotesApi, debitNotesApi, type CreateCreditNoteRequest, type CreateDebitNoteRequest } from '@/lib/api/credit-notes';
 import type { Invoice } from '@travelcrm/shared';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -19,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SendMessageDialog } from '@/components/communication/send-message-dialog';
 import { toast } from 'sonner';
 
 export default function InvoiceDetailPage() {
@@ -32,7 +32,7 @@ export default function InvoiceDetailPage() {
   const [payReference, setPayReference] = React.useState('');
   const [isPaying, setIsPaying] = React.useState(false);
   const [isCancelling, setIsCancelling] = React.useState(false);
-  const [isSendingReminder, setIsSendingReminder] = React.useState(false);
+  const [reminderDialogOpen, setReminderDialogOpen] = React.useState(false);
 
   // Credit/Debit Note state
   const [creditNoteDialogOpen, setCreditNoteDialogOpen] = React.useState(false);
@@ -45,11 +45,8 @@ export default function InvoiceDetailPage() {
   const [isCreatingNote, setIsCreatingNote] = React.useState(false);
   let noteItemIdCounter = React.useRef(2);
 
-  // Send Invoice state
+  // Send Invoice state — uses SendMessageDialog
   const [sendDialogOpen, setSendDialogOpen] = React.useState(false);
-  const [sendChannel, setSendChannel] = React.useState<'email' | 'whatsapp'>('email');
-  const [sendTo, setSendTo] = React.useState('');
-  const [isSending, setIsSending] = React.useState(false);
 
   // Duplicate state
   const [isDuplicating, setIsDuplicating] = React.useState(false);
@@ -264,28 +261,6 @@ export default function InvoiceDetailPage() {
     }
   };
 
-  const handleSendReminder = async () => {
-    if (!invoice) return;
-    setIsSendingReminder(true);
-    try {
-      const contactEmail = (invoice as any).contactEmail || (invoice as any).contact?.email;
-      if (contactEmail) {
-        await communicationsApi.send({
-          to: [contactEmail],
-          subject: `Payment Reminder: ${invoice.invoiceNumber}`,
-          body: `This is a reminder for invoice ${invoice.invoiceNumber} with total amount ₹${invoice.totalAmount?.toLocaleString('en-IN')}. Due date: ${new Date(invoice.dueDate).toLocaleDateString('en-IN')}. Please arrange payment at your earliest convenience.`,
-          type: 'email',
-        });
-        toast.success('Reminder sent successfully!');
-      } else {
-        toast.error('No contact email found for this invoice');
-      }
-    } catch {
-      toast.error('Failed to send reminder');
-    } finally {
-      setIsSendingReminder(false);
-    }
-  };
 
   const handleCancelInvoice = async () => {
     if (!confirm('Are you sure you want to cancel this invoice? This action cannot be undone.')) return;
@@ -396,25 +371,6 @@ export default function InvoiceDetailPage() {
     }
   };
 
-  const handleSendInvoice = async () => {
-    if (!sendTo.trim()) {
-      toast.error(`Please enter a ${sendChannel === 'email' ? 'email address' : 'phone number'}`);
-      return;
-    }
-    setIsSending(true);
-    try {
-      await invoicesApi.send(invoiceId, { channel: sendChannel, to: sendTo });
-      toast.success(`Invoice sent via ${sendChannel === 'email' ? 'Email' : 'WhatsApp'} successfully!`);
-      setSendDialogOpen(false);
-      setSendTo('');
-      refetch();
-    } catch {
-      toast.error('Failed to send invoice');
-    } finally {
-      setIsSending(false);
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -466,13 +422,7 @@ export default function InvoiceDetailPage() {
             variant="outline"
             size="sm"
             className="gap-2"
-            onClick={() => {
-              const contactEmail = (invoice as any).contactEmail || (invoice as any).contact_email || '';
-              const contactPhone = (invoice as any).contactPhone || (invoice as any).contact_phone || '';
-              setSendTo(contactEmail || contactPhone);
-              setSendChannel(contactEmail ? 'email' : 'whatsapp');
-              setSendDialogOpen(true);
-            }}
+            onClick={() => setSendDialogOpen(true)}
           >
             <Send className="h-4 w-4" />
             Send Invoice
@@ -525,8 +475,8 @@ export default function InvoiceDetailPage() {
                 Create Debit Note
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem disabled={isSendingReminder} onClick={handleSendReminder}>
-                {isSendingReminder ? 'Sending...' : 'Send Reminder'}
+              <DropdownMenuItem onClick={() => setReminderDialogOpen(true)}>
+                Send Reminder
               </DropdownMenuItem>
               <DropdownMenuItem className="text-destructive" disabled={isCancelling} onClick={handleCancelInvoice}>
                 {isCancelling ? 'Cancelling...' : 'Cancel Invoice'}
@@ -574,8 +524,13 @@ export default function InvoiceDetailPage() {
               {invoice.leadId && (
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm text-muted-foreground">Lead ID</p>
-                    <p className="text-sm font-medium">{invoice.leadId}</p>
+                    <p className="text-sm text-muted-foreground">Lead</p>
+                    <a
+                      href={`/leads/${invoice.leadId}`}
+                      className="text-sm font-medium text-indigo-600 hover:underline"
+                    >
+                      {(invoice as any).leadTitle ?? (invoice as any).lead_title ?? invoice.leadId}
+                    </a>
                   </div>
                 </div>
               )}
@@ -604,15 +559,21 @@ export default function InvoiceDetailPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
+                  {/* Line items header */}
+                  <div className="grid grid-cols-[1fr_80px_60px_80px_90px] gap-3 text-xs font-medium text-muted-foreground px-1 pb-1 border-b">
+                    <span>Description</span>
+                    <span>HSN/SAC</span>
+                    <span>Qty</span>
+                    <span>Rate</span>
+                    <span className="text-right">Amount</span>
+                  </div>
                   {(invoice as any).items.map((item: any, idx: number) => (
-                    <div key={idx} className="flex justify-between py-2 border-b last:border-0">
-                      <div>
-                        <p className="text-sm font-medium">{item.description ?? ''}</p>
-                        <p className="text-xs text-muted-foreground">{item.quantity ?? 0} units</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-medium">₹{(item.amount ?? 0).toLocaleString('en-IN')}</p>
-                      </div>
+                    <div key={idx} className="grid grid-cols-[1fr_80px_60px_80px_90px] gap-3 py-2 border-b last:border-0 items-center">
+                      <p className="text-sm font-medium">{item.description ?? ''}</p>
+                      <p className="text-xs text-muted-foreground font-mono">{item.hsnCode ?? item.hsn_code ?? '—'}</p>
+                      <p className="text-sm text-muted-foreground">{item.quantity ?? 0}</p>
+                      <p className="text-sm text-muted-foreground">₹{(item.rate ?? item.unitPrice ?? 0).toLocaleString('en-IN')}</p>
+                      <p className="text-sm font-medium text-right">₹{(item.amount ?? 0).toLocaleString('en-IN')}</p>
                     </div>
                   ))}
                 </div>
@@ -623,31 +584,62 @@ export default function InvoiceDetailPage() {
           {/* Summary */}
           <Card>
             <CardContent className="pt-6">
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-sm">Subtotal</span>
-                  <span className="text-sm font-medium">&#x20B9;{(invoice.totalAmount ?? 0).toLocaleString('en-IN')}</span>
-                </div>
-                {(invoice as any).discount && (
-                  <div className="flex justify-between text-red-600">
-                    <span className="text-sm">Discount</span>
-                    <span className="text-sm font-medium">-&#x20B9;{(invoice as any).discount.toLocaleString('en-IN')}</span>
+              <div className="space-y-2 max-w-xs ml-auto">
+                {/* Subtotal */}
+                {(invoice as any).subtotal != null && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Subtotal</span>
+                    <span className="font-medium">&#x20B9;{((invoice as any).subtotal ?? 0).toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                {/* Discount */}
+                {((invoice as any).discountAmount ?? (invoice as any).discount_amount ?? 0) > 0 && (
+                  <div className="flex justify-between text-sm text-red-600">
+                    <span>Discount</span>
+                    <span className="font-medium">-&#x20B9;{((invoice as any).discountAmount ?? (invoice as any).discount_amount ?? 0).toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                {/* GST breakdown */}
+                {((invoice as any).cgstAmount ?? (invoice as any).cgst_amount ?? 0) > 0 && (
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>CGST ({(invoice as any).cgstRate ?? (invoice as any).cgst_rate ?? 0}%)</span>
+                    <span>&#x20B9;{((invoice as any).cgstAmount ?? (invoice as any).cgst_amount ?? 0).toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                {((invoice as any).sgstAmount ?? (invoice as any).sgst_amount ?? 0) > 0 && (
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>SGST ({(invoice as any).sgstRate ?? (invoice as any).sgst_rate ?? 0}%)</span>
+                    <span>&#x20B9;{((invoice as any).sgstAmount ?? (invoice as any).sgst_amount ?? 0).toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                {((invoice as any).igstAmount ?? (invoice as any).igst_amount ?? 0) > 0 && (
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>IGST ({(invoice as any).igstRate ?? (invoice as any).igst_rate ?? 0}%)</span>
+                    <span>&#x20B9;{((invoice as any).igstAmount ?? (invoice as any).igst_amount ?? 0).toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                {/* Fallback: show total tax if no breakdown */}
+                {((invoice as any).totalTax ?? (invoice as any).total_tax ?? 0) > 0
+                  && !((invoice as any).cgstAmount || (invoice as any).igstAmount) && (
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>Tax</span>
+                    <span>&#x20B9;{((invoice as any).totalTax ?? (invoice as any).total_tax ?? 0).toLocaleString('en-IN')}</span>
                   </div>
                 )}
                 <Separator className="my-2" />
-                <div className="flex justify-between pt-2">
+                <div className="flex justify-between">
                   <span className="text-base font-bold">Total Amount</span>
                   <span className="text-base font-bold">&#x20B9;{(invoice.totalAmount ?? 0).toLocaleString('en-IN')}</span>
                 </div>
                 {(invoice.paidAmount ?? 0) > 0 && (
                   <>
-                    <div className="flex justify-between text-green-600">
-                      <span className="text-sm">Paid</span>
-                      <span className="text-sm font-medium">&#x20B9;{(invoice.paidAmount ?? 0).toLocaleString('en-IN')}</span>
+                    <div className="flex justify-between text-green-600 text-sm">
+                      <span>Paid</span>
+                      <span className="font-medium">&#x20B9;{(invoice.paidAmount ?? 0).toLocaleString('en-IN')}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm font-semibold">Balance Due</span>
-                      <span className="text-sm font-semibold">&#x20B9;{(invoice.balanceDue ?? ((invoice.totalAmount ?? 0) - (invoice.paidAmount ?? 0))).toLocaleString('en-IN')}</span>
+                    <div className="flex justify-between text-sm font-semibold">
+                      <span>Balance Due</span>
+                      <span>&#x20B9;{(invoice.balanceDue ?? ((invoice.totalAmount ?? 0) - (invoice.paidAmount ?? 0))).toLocaleString('en-IN')}</span>
                     </div>
                   </>
                 )}
@@ -766,45 +758,31 @@ export default function InvoiceDetailPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Send Invoice Dialog */}
-      <Dialog open={sendDialogOpen} onOpenChange={setSendDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Send Invoice</DialogTitle>
-            <DialogDescription>
-              Send invoice {invoice?.invoiceNumber} to the client via email or WhatsApp.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Channel</Label>
-              <Select value={sendChannel} onValueChange={(v) => setSendChannel(v as 'email' | 'whatsapp')}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="email">Email</SelectItem>
-                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>{sendChannel === 'email' ? 'Email Address' : 'Phone Number'}</Label>
-              <Input
-                value={sendTo}
-                onChange={(e) => setSendTo(e.target.value)}
-                placeholder={sendChannel === 'email' ? 'client@example.com' : '+91 98765 43210'}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSendDialogOpen(false)} disabled={isSending}>Cancel</Button>
-            <Button onClick={handleSendInvoice} disabled={isSending}>
-              {isSending && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
-              <Send className="h-4 w-4 mr-1.5" />
-              Send
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Send Invoice Dialog — uses SendMessageDialog for consistent UX */}
+      <SendMessageDialog
+        open={sendDialogOpen}
+        onOpenChange={setSendDialogOpen}
+        contact={{
+          id: invoice?.contactId ?? '',
+          name: invoice?.contactName ?? 'Client',
+          email: (invoice as any)?.contactEmail ?? (invoice as any)?.contact_email ?? null,
+          phone: (invoice as any)?.contactPhone ?? (invoice as any)?.contact_phone ?? null,
+        }}
+        defaultChannel="email"
+      />
+
+      {/* Send Reminder Dialog */}
+      <SendMessageDialog
+        open={reminderDialogOpen}
+        onOpenChange={setReminderDialogOpen}
+        contact={{
+          id: invoice?.contactId ?? '',
+          name: invoice?.contactName ?? 'Client',
+          email: (invoice as any)?.contactEmail ?? (invoice as any)?.contact_email ?? null,
+          phone: (invoice as any)?.contactPhone ?? (invoice as any)?.contact_phone ?? null,
+        }}
+        defaultChannel="email"
+      />
 
       {/* Credit Note Dialog */}
       <Dialog open={creditNoteDialogOpen} onOpenChange={(open) => { setCreditNoteDialogOpen(open); if (!open) resetNoteForm(); }}>

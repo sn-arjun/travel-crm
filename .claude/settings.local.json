@@ -38,7 +38,10 @@
       "Bash(find \"C:\\\\Users\\\\Admin\\\\Downloads\\\\pro\\\\CRM\\\\desktop\\\\src\\\\app\\\\\\(app\\)\" -type f -name \"*.tsx\" -o -name \"*.ts\")",
       "Bash(npx playwright:*)",
       "Bash(wc:*)",
-      "Bash(npm ls:*)"
+      "Bash(npm ls:*)",
+      "Bash(claude:*)",
+      "Bash(CLAUDECODE= claude:*)",
+      "Bash(bash:*)"
     ]
   }
 }

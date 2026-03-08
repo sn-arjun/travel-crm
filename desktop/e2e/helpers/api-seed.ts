@@ -2,21 +2,27 @@ import { getAuthToken, API_URL } from './auth';
 
 let token: string | null = null;
 
-async function ensureToken() {
-  if (!token) token = await getAuthToken();
+async function ensureToken(forceRefresh = false) {
+  if (!token || forceRefresh) token = await getAuthToken();
   return token;
 }
 
-async function api(method: string, path: string, body?: any) {
-  const t = await ensureToken();
-  const res = await fetch(`${API_URL}${path}`, {
+export async function api(method: string, path: string, body?: any): Promise<any> {
+  let t = await ensureToken();
+  const makeReq = (tok: string) => fetch(`${API_URL}${path}`, {
     method,
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${t}`,
+      Authorization: `Bearer ${tok}`,
     },
     body: body ? JSON.stringify(body) : undefined,
   });
+  let res = await makeReq(t);
+  // Retry once with a fresh token if we get a 401
+  if (res.status === 401) {
+    t = await ensureToken(true);
+    res = await makeReq(t);
+  }
   return res.json();
 }
 
@@ -122,12 +128,21 @@ export async function seedTask(overrides: Record<string, any> = {}) {
 }
 
 export async function seedTraveller(overrides: Record<string, any> = {}) {
+  const ts = Date.now();
+  const firstName = overrides.firstName ?? overrides.name ?? `E2E Traveller ${ts}`;
+  const lastName = overrides.lastName ?? 'E2E';
   const data = {
-    name: `E2E Traveller ${Date.now()}`,
-    passportNumber: `E2E${Date.now()}`,
-    nationality: 'Indian',
+    firstName,
+    lastName,
+    fullNamePassport: `${firstName} ${lastName}`,
+    passportNumber: overrides.passportNumber ?? `E2E${ts}`.slice(0, 20),
+    nationality: overrides.nationality ?? 'Indian',
     ...overrides,
+    // Ensure required fields always present
+    name: undefined,
   };
+  // Remove helper-only fields
+  delete data.name;
   const res = await api('POST', '/travellers', data);
   return res.data ?? res;
 }
@@ -254,4 +269,33 @@ export async function seedCreditNote(invoiceId: string, overrides: Record<string
   return res.data ?? res;
 }
 
-export { api };
+export async function seedCampaign(overrides: Record<string, any> = {}) {
+  const ts = Date.now();
+  const data: Record<string, any> = {
+    name: `E2E Campaign ${ts}`,
+    type: 'email',
+    status: 'draft',
+    subject: `Campaign Subject ${ts}`,
+    body: `Hello {customer_name}, check out our latest offer!`, // backend uses `body` not `content`
+    segmentFilters: {}, // Must be object, NOT JSON string
+    ...overrides,
+  };
+  const res = await api('POST', '/campaigns', data);
+  return res.data ?? res;
+}
+
+export async function seedEmailTemplate(overrides: Record<string, any> = {}) {
+  const ts = Date.now();
+  const data = {
+    name: `E2E-ETpl-${ts}`,
+    channel: 'email',
+    subject: `Test Subject ${ts}`,
+    content: `Hello {customer_name}, your trip to {destination} is confirmed.`,
+    category: 'booking',
+    language: 'en',
+    ...overrides,
+  };
+  const res = await api('POST', '/templates', data);
+  return res.data ?? res;
+}
+

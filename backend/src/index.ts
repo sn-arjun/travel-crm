@@ -90,6 +90,7 @@ import {
 } from './cron/auto-reminders';
 import { processOverdueTasks } from './cron/overdue-tasks';
 import { processFleetAlerts } from './cron/fleet-alerts';
+import { processCampaignScheduler } from './cron/campaign-scheduler';
 
 const app = new Hono<AppContext>();
 
@@ -329,6 +330,7 @@ export default {
           checkTripReminders(env),
           processOverdueTasks(env),
           processFleetAlerts(env),
+          processCampaignScheduler(env),
           // Reset usage caps
           resetUsageCaps(env.MASTER_DB, 'daily'),
           isMonthStart ? resetUsageCaps(env.MASTER_DB, 'monthly') : Promise.resolve(0),

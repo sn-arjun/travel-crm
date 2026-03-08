@@ -14,11 +14,12 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
-import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+import { useApiMutation } from '@/hooks/use-api';
 import { importsApi, type ImportJob } from '@/lib/api/imports';
 import { toast } from 'sonner';
 
 type Step = 'upload' | 'map' | 'preview' | 'execute';
+type DuplicateStrategy = 'skip' | 'merge' | 'create';
 
 const STEPS: { key: Step; label: string }[] = [
   { key: 'upload', label: 'Upload File' },
@@ -38,6 +39,12 @@ const CONTACT_FIELDS = [
   { value: '__skip', label: '-- Skip --' },
 ];
 
+const DUPLICATE_OPTIONS: { value: DuplicateStrategy; label: string; description: string }[] = [
+  { value: 'skip', label: 'Skip duplicates', description: 'Leave existing contacts unchanged' },
+  { value: 'merge', label: 'Update duplicates', description: 'Overwrite existing contact fields with imported values' },
+  { value: 'create', label: 'Always create', description: 'Create new contact even if a duplicate exists' },
+];
+
 export default function ContactImportPage() {
   const router = useRouter();
   const [step, setStep] = React.useState<Step>('upload');
@@ -46,14 +53,16 @@ export default function ContactImportPage() {
   const [csvHeaders, setCsvHeaders] = React.useState<string[]>([]);
   const [csvPreview, setCsvPreview] = React.useState<string[][]>([]);
   const [mapping, setMapping] = React.useState<Record<string, string>>({});
-  const [skipDuplicates, setSkipDuplicates] = React.useState(true);
+  const [duplicateStrategy, setDuplicateStrategy] = React.useState<DuplicateStrategy>('skip');
+  const [templateDownloading, setTemplateDownloading] = React.useState(false);
+  const [errorDownloading, setErrorDownloading] = React.useState(false);
 
   const { mutate: uploadFile, loading: isUploading } = useApiMutation<File, any>(
     (f) => importsApi.upload({ file: f, type: 'contacts', skipHeader: true }),
   );
 
   const { mutate: executeImport, loading: isExecuting } = useApiMutation<string, any>(
-    (jobId) => importsApi.execute(jobId, { mapping, skipDuplicates }),
+    (jobId) => importsApi.execute(jobId, { mapping, duplicateStrategy }),
   );
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -64,10 +73,14 @@ export default function ContactImportPage() {
       toast.error('Please upload a CSV or XLSX file');
       return;
     }
+    if (f.size > 20 * 1024 * 1024) {
+      toast.error('File size must be under 20MB');
+      return;
+    }
 
     setFile(f);
 
-    // Parse CSV headers for preview
+    // Parse CSV headers client-side for preview while waiting for server
     if (f.name.endsWith('.csv')) {
       const reader = new FileReader();
       reader.onload = (ev) => {
@@ -76,23 +89,7 @@ export default function ContactImportPage() {
         if (lines.length > 0) {
           const headers = lines[0]!.split(',').map((h) => h.trim().replace(/^"|"$/g, ''));
           setCsvHeaders(headers);
-
-          // Auto-map where possible
-          const autoMap: Record<string, string> = {};
-          headers.forEach((h) => {
-            const lower = h.toLowerCase().replace(/[\s_-]/g, '');
-            if (lower.includes('firstname') || lower === 'first') autoMap[h] = 'firstName';
-            else if (lower.includes('lastname') || lower === 'last') autoMap[h] = 'lastName';
-            else if (lower.includes('email')) autoMap[h] = 'email';
-            else if (lower.includes('phone') || lower.includes('mobile')) autoMap[h] = 'phone';
-            else if (lower.includes('type')) autoMap[h] = 'type';
-            else if (lower.includes('tag')) autoMap[h] = 'tags';
-            else if (lower.includes('note')) autoMap[h] = 'notes';
-            else autoMap[h] = '__skip';
-          });
-          setMapping(autoMap);
-
-          // Preview rows
+          autoMap(headers);
           const previewRows = lines.slice(1, 6).map((line) =>
             line.split(',').map((c) => c.trim().replace(/^"|"$/g, ''))
           );
@@ -103,46 +100,109 @@ export default function ContactImportPage() {
     }
   }
 
+  function autoMap(headers: string[]) {
+    const autoMapping: Record<string, string> = {};
+    headers.forEach((h) => {
+      const lower = h.toLowerCase().replace(/[\s_-]/g, '');
+      if (lower.includes('firstname') || lower === 'first') autoMapping[h] = 'firstName';
+      else if (lower.includes('lastname') || lower === 'last') autoMapping[h] = 'lastName';
+      else if (lower.includes('email')) autoMapping[h] = 'email';
+      else if (lower.includes('phone') || lower.includes('mobile')) autoMapping[h] = 'phone';
+      else if (lower.includes('type')) autoMapping[h] = 'type';
+      else if (lower.includes('tag')) autoMapping[h] = 'tags';
+      else if (lower.includes('note')) autoMapping[h] = 'notes';
+      else autoMapping[h] = '__skip';
+    });
+    setMapping(autoMapping);
+  }
+
   async function handleUpload() {
     if (!file) return;
-    const result = await uploadFile(file);
-    if (result) {
-      const job = (result as any)?.data;
-      setImportJob(job);
-      setStep('map');
-      toast.success('File uploaded successfully');
-    } else {
+    try {
+      const result = await uploadFile(file);
+      if (result) {
+        const data = (result as any)?.data;
+        const job = data?.jobId ? data : (result as any)?.data;
+        // Server returns headers/previewData — use them if available
+        if (data?.headers?.length) {
+          setCsvHeaders(data.headers);
+          autoMap(data.headers);
+        }
+        if (data?.previewData?.length) {
+          setCsvPreview(data.previewData.map((row: any) =>
+            Array.isArray(row) ? row : Object.values(row)
+          ));
+        }
+        setImportJob({ id: data?.jobId, status: 'pending', totalRows: data?.totalRows } as any);
+        setStep('map');
+        toast.success('File uploaded successfully');
+      } else {
+        toast.error('Failed to upload file');
+      }
+    } catch {
       toast.error('Failed to upload file');
     }
   }
 
   async function handleExecute() {
     if (!importJob) return;
-    const result = await executeImport(importJob.id);
-    if (result) {
-      setImportJob((result as any)?.data ?? importJob);
-      setStep('execute');
-      toast.success('Import started successfully');
-    } else {
+    try {
+      const result = await executeImport(importJob.id);
+      if (result) {
+        setImportJob((prev) => ({ ...prev!, ...((result as any)?.data ?? {}) }));
+        setStep('execute');
+        toast.success('Import started successfully');
+      } else {
+        toast.error('Failed to start import');
+      }
+    } catch {
       toast.error('Failed to start import');
     }
   }
 
-  function handleDownloadTemplate() {
-    // Trigger template download
-    const headers = 'First Name,Last Name,Email,Phone,Type,Tags,Notes\n';
-    const sample = 'John,Doe,john@example.com,+919876543210,individual,"vip,corporate",Sample note\n';
-    const blob = new Blob([headers + sample], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'contacts_import_template.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success('Template downloaded');
+  async function handleDownloadTemplate() {
+    setTemplateDownloading(true);
+    try {
+      const blob = await importsApi.getTemplate('contacts') as unknown as Blob;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'contacts_import_template.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success('Template downloaded');
+    } catch {
+      toast.error('Failed to download template');
+    } finally {
+      setTemplateDownloading(false);
+    }
+  }
+
+  async function handleDownloadErrors() {
+    if (!importJob) return;
+    setErrorDownloading(true);
+    try {
+      const blob = await importsApi.downloadErrors(importJob.id) as unknown as Blob;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `contacts_errors_${importJob.id}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success('Error report downloaded');
+    } catch {
+      toast.error('Failed to download error report');
+    } finally {
+      setErrorDownloading(false);
+    }
   }
 
   const stepIndex = STEPS.findIndex((s) => s.key === step);
+  const failedRecords = (importJob as any)?.failedRecords ?? (importJob as any)?.failed_records ?? 0;
 
   return (
     <div className="flex flex-col h-full">
@@ -155,8 +215,9 @@ export default function ContactImportPage() {
             Import Contacts
           </h1>
         </div>
-        <Button variant="outline" size="sm" onClick={handleDownloadTemplate}>
-          <Download className="h-4 w-4 mr-1.5" /> Download Template
+        <Button variant="outline" size="sm" onClick={handleDownloadTemplate} disabled={templateDownloading}>
+          {templateDownloading ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Download className="h-4 w-4 mr-1.5" />}
+          Download Template
         </Button>
       </div>
 
@@ -200,7 +261,7 @@ export default function ContactImportPage() {
                     onChange={handleFileChange}
                     className="hidden"
                   />
-                  <p className="text-xs text-muted-foreground mt-2">CSV or XLSX files up to 10MB</p>
+                  <p className="text-xs text-muted-foreground mt-2">CSV or XLSX files up to 20MB</p>
                   {file && (
                     <Badge variant="outline" className="mt-4">
                       {file.name} ({(file.size / 1024).toFixed(1)} KB)
@@ -274,43 +335,60 @@ export default function ContactImportPage() {
                   Preview the first few rows that will be imported.
                 </p>
 
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        {csvHeaders.filter((h) => mapping[h] !== '__skip').map((h) => (
-                          <TableHead key={h} className="text-xs">
-                            {CONTACT_FIELDS.find((f) => f.value === mapping[h])?.label ?? h}
-                          </TableHead>
-                        ))}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {csvPreview.map((row, idx) => (
-                        <TableRow key={idx}>
-                          {csvHeaders.map((h, colIdx) => {
-                            if (mapping[h] === '__skip') return null;
-                            return (
-                              <TableCell key={colIdx} className="text-xs">
-                                {row[colIdx] ?? ''}
-                              </TableCell>
-                            );
-                          })}
+                {csvPreview.length > 0 && (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          {csvHeaders.filter((h) => mapping[h] !== '__skip').map((h) => (
+                            <TableHead key={h} className="text-xs">
+                              {CONTACT_FIELDS.find((f) => f.value === mapping[h])?.label ?? h}
+                            </TableHead>
+                          ))}
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                      </TableHeader>
+                      <TableBody>
+                        {csvPreview.map((row, idx) => (
+                          <TableRow key={idx}>
+                            {csvHeaders.map((h, colIdx) => {
+                              if (mapping[h] === '__skip') return null;
+                              return (
+                                <TableCell key={colIdx} className="text-xs">
+                                  {row[colIdx] ?? ''}
+                                </TableCell>
+                              );
+                            })}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
 
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="skipDuplicates"
-                    checked={skipDuplicates}
-                    onChange={(e) => setSkipDuplicates(e.target.checked)}
-                    className="rounded"
-                  />
-                  <Label htmlFor="skipDuplicates" className="text-sm">Skip duplicate contacts (match by email/phone)</Label>
+                {/* Duplicate Strategy — 3-option radio */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Duplicate handling</Label>
+                  <div className="space-y-2">
+                    {DUPLICATE_OPTIONS.map((opt) => (
+                      <label key={opt.value} className={cn(
+                        'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
+                        duplicateStrategy === opt.value ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50',
+                      )}>
+                        <input
+                          type="radio"
+                          name="duplicateStrategy"
+                          value={opt.value}
+                          checked={duplicateStrategy === opt.value}
+                          onChange={() => setDuplicateStrategy(opt.value)}
+                          className="mt-0.5"
+                        />
+                        <div>
+                          <p className="text-sm font-medium">{opt.label}</p>
+                          <p className="text-xs text-muted-foreground">{opt.description}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="flex justify-between pt-4">
@@ -330,7 +408,7 @@ export default function ContactImportPage() {
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
                   <CheckCircle2 className="h-5 w-5 text-green-600" />
-                  Import Complete
+                  Import Started
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -338,22 +416,41 @@ export default function ContactImportPage() {
                   <div className="grid grid-cols-3 gap-4 text-center">
                     <Card>
                       <CardContent className="p-4">
-                        <p className="text-2xl font-bold">{importJob.totalRecords}</p>
+                        <p className="text-2xl font-bold">{(importJob as any).totalRows ?? (importJob as any).totalRecords ?? 0}</p>
                         <p className="text-xs text-muted-foreground">Total Records</p>
                       </CardContent>
                     </Card>
                     <Card>
                       <CardContent className="p-4">
-                        <p className="text-2xl font-bold text-green-600">{importJob.processedRecords}</p>
+                        <p className="text-2xl font-bold text-green-600">{(importJob as any).processedRecords ?? 0}</p>
                         <p className="text-xs text-muted-foreground">Processed</p>
                       </CardContent>
                     </Card>
                     <Card>
                       <CardContent className="p-4">
-                        <p className="text-2xl font-bold text-red-600">{importJob.failedRecords}</p>
+                        <p className="text-2xl font-bold text-red-600">{failedRecords}</p>
                         <p className="text-xs text-muted-foreground">Failed</p>
                       </CardContent>
                     </Card>
+                  </div>
+                )}
+
+                {failedRecords > 0 && (
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+                    <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400 shrink-0" />
+                    <p className="text-sm text-red-700 dark:text-red-400 flex-1">
+                      {failedRecords} row(s) failed to import.
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 border-red-300 text-red-700 hover:bg-red-100"
+                      onClick={handleDownloadErrors}
+                      disabled={errorDownloading}
+                    >
+                      {errorDownloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                      Download Error Report
+                    </Button>
                   </div>
                 )}
 

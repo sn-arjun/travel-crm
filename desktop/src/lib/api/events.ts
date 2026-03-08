@@ -1,52 +1,88 @@
 import { client, type ApiResponse, type PaginatedResponse } from './client';
 import { API_ENDPOINTS } from './config';
 
+export type EventType =
+  | 'trip_departure'
+  | 'trip_return'
+  | 'meeting'
+  | 'follow_up'
+  | 'deadline'
+  | 'reminder'
+  | 'holiday'
+  | 'call'
+  | 'other';
+
 // CalendarEvent type not in shared package, define locally
 export interface CalendarEvent {
   id: string;
   title: string;
   description?: string;
-  startTime: string;
-  endTime: string;
+  event_type: EventType;
+  type?: EventType; // alias used by UI
+  startTime?: string;
+  endTime?: string;
+  start_at?: string;
+  end_at?: string;
+  all_day?: boolean;
   location?: string;
-  attendees: string[];
-  leadId?: string;
-  type: 'meeting' | 'call' | 'task' | 'other';
-  status?: 'scheduled' | 'completed' | 'cancelled';
+  color?: string;
+  recurrence_rule?: string | null;
+  recurrence_parent_id?: string | null;
+  related_lead_id?: string | null;
+  leadId?: string | null;
+  lead_title?: string | null;
+  related_task_id?: string | null;
+  assigned_to?: string | null;
+  assignee_name?: string | null;
+  created_by: string;
+  createdBy?: string;
+  timezone?: string;
+  is_recurring?: boolean;
+  attendees?: string[];
   customFields?: Record<string, unknown>;
-  createdBy: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  created_at?: string;
+  updatedAt?: string;
+  updated_at?: string;
 }
 
 export interface CreateEventRequest {
   title: string;
   description?: string;
-  startTime: string;
-  endTime: string;
+  event_type?: EventType;
+  type?: EventType;
+  startTime?: string;
+  start_at?: string;
+  endTime?: string;
+  end_at?: string;
+  all_day?: boolean;
   location?: string;
-  attendees?: string[];
-  leadId?: string;
-  type?: 'meeting' | 'call' | 'task' | 'other';
-  customFields?: Record<string, unknown>;
+  color?: string;
+  recurrence_rule?: string;
+  related_lead_id?: string;
+  assigned_to?: string;
+  timezone?: string;
 }
 
 export interface UpdateEventRequest {
   title?: string;
   description?: string;
-  startTime?: string;
-  endTime?: string;
+  event_type?: EventType;
+  start_at?: string;
+  end_at?: string;
+  all_day?: boolean;
   location?: string;
-  attendees?: string[];
-  type?: 'meeting' | 'call' | 'task' | 'other';
-  customFields?: Record<string, unknown>;
+  color?: string;
+  recurrence_rule?: string;
+  related_lead_id?: string;
+  assigned_to?: string;
+  timezone?: string;
+  update_scope?: 'this' | 'this_and_future' | 'all';
 }
 
 export interface RescheduleEventRequest {
-  startTime: string;
-  endTime: string;
-  reason?: string;
-  notifyAttendees?: boolean;
+  start_at: string;
+  end_at?: string;
 }
 
 export const eventsApi = {
@@ -54,11 +90,10 @@ export const eventsApi = {
     page?: number;
     limit?: number;
     search?: string;
-    type?: string;
-    leadId?: string;
+    event_type?: string;
+    related_lead_id?: string;
     start_date?: string;
     end_date?: string;
-    event_type?: string;
     assigned_to?: string;
     view?: string;
     sortBy?: string;
@@ -73,25 +108,24 @@ export const eventsApi = {
     client.post<ApiResponse<CalendarEvent>>(API_ENDPOINTS.events.create, {
       title: data.title,
       description: data.description,
-      event_type: data.type || 'meeting',
-      start_at: data.startTime,
-      end_at: data.endTime,
+      event_type: data.event_type || data.type || 'meeting',
+      start_at: data.start_at || data.startTime,
+      end_at: data.end_at || data.endTime,
+      all_day: data.all_day,
       location: data.location,
+      color: data.color,
+      recurrence_rule: data.recurrence_rule,
+      related_lead_id: data.related_lead_id,
+      assigned_to: data.assigned_to,
+      timezone: data.timezone,
     }),
 
   update: (id: string, data: UpdateEventRequest) =>
-    client.put<ApiResponse<CalendarEvent>>(API_ENDPOINTS.events.byId(id), {
-      title: data.title,
-      description: data.description,
-      event_type: data.type,
-      start_at: data.startTime,
-      end_at: data.endTime,
-      location: data.location,
-    }),
+    client.put<ApiResponse<CalendarEvent>>(API_ENDPOINTS.events.byId(id), data),
 
-  delete: (id: string) =>
+  delete: (id: string, scope?: 'this' | 'all') =>
     client.delete<ApiResponse<void>>(API_ENDPOINTS.events.byId(id)),
 
   reschedule: (id: string, data: RescheduleEventRequest) =>
-    client.post<ApiResponse<CalendarEvent>>(API_ENDPOINTS.events.reschedule(id), data),
+    client.patch<ApiResponse<CalendarEvent>>(API_ENDPOINTS.events.reschedule(id), data),
 };

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Loader2, Save, Plus, Trash2, FileText, Calculator } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,10 +12,13 @@ import { Separator } from '@/components/ui/separator';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
 import { toast } from 'sonner';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { invoicesApi, type InvoiceLineItem, type CreateInvoiceRequest } from '@/lib/api/invoices';
 import { contactsApi } from '@/lib/api/contacts';
+import { leadsApi } from '@/lib/api/leads';
+import { hsnCodesApi } from '@/lib/api/hsn-codes';
 
 interface LineItem {
   id: number;
@@ -34,18 +37,27 @@ function formatCurrency(amount: number, currency: string = 'INR') {
 
 export default function NewInvoicePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
+  // URL param prefill
+  const prefillContactId = searchParams.get('contactId') ?? '';
+  const prefillContactName = searchParams.get('contactName') ?? '';
+  const prefillLeadId = searchParams.get('leadId') ?? '';
+  const prefillLeadTitle = searchParams.get('leadTitle') ?? '';
+
   const [form, setForm] = React.useState({
-    contactId: '',
+    contactId: prefillContactId,
+    contactName: prefillContactName,
+    leadId: prefillLeadId,
     clientName: '',
     clientEmail: '',
     clientPhone: '',
     clientAddress: '',
-    leadTitle: '',
     issueDate: new Date().toISOString().split('T')[0],
     dueDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
     currency: 'INR',
+    invoiceType: 'tax_invoice',
     gstRate: '18',
     discountType: 'percentage' as 'percentage' | 'fixed',
     discountValue: '',
@@ -53,10 +65,36 @@ export default function NewInvoicePage() {
     termsAndConditions: 'Payment due within 30 days of invoice date.\nCancellation charges apply as per company policy.\nGST applicable as per Government regulations.',
   });
 
-  // Fetch contacts for the dropdown
-  const { data: contactsResponse } = useApiQuery(() => contactsApi.list({ limit: 100 }), []);
+  // Contact search state
+  const [contactSearch, setContactSearch] = React.useState(prefillContactName);
+
+  // Lead search state
+  const [leadSearch, setLeadSearch] = React.useState(prefillLeadTitle);
+
+  const { data: contactsResponse } = useApiQuery(
+    () => contactsApi.list({ limit: 20, search: contactSearch || undefined }),
+    [contactSearch],
+  );
   const contactsData = contactsResponse?.data;
   const contacts = Array.isArray(contactsData) ? contactsData : (contactsData?.data ?? []);
+
+  const { data: leadsResponse } = useApiQuery(
+    () => leadsApi.list({ limit: 20, search: leadSearch || undefined }),
+    [leadSearch],
+  );
+  const leadsData = leadsResponse?.data;
+  const leads = Array.isArray(leadsData) ? leadsData : (leadsData?.data ?? []);
+
+  // HSN code search per line item
+  const [hsnSearch, setHsnSearch] = React.useState('');
+  const { data: hsnResponse } = useApiQuery(
+    () => hsnCodesApi.list({ search: hsnSearch || undefined }),
+    [hsnSearch],
+  );
+  const hsnList = (hsnResponse?.data as any) ?? [];
+  const hsnCodes: Array<{ code: string; description: string }> = Array.isArray(hsnList)
+    ? hsnList
+    : (hsnList?.data ?? []);
 
   const [lineItems, setLineItems] = React.useState<LineItem[]>([
     { id: lineIdCounter++, description: '', hsnCode: '', quantity: 1, unitPrice: 0, amount: 0 },
@@ -131,17 +169,19 @@ export default function NewInvoicePage() {
 
       const createRequest: CreateInvoiceRequest = {
         contactId: form.contactId,
+        leadId: form.leadId || undefined,
         dueDate: form.dueDate || undefined,
         items: apiLineItems,
         discountType: form.discountType,
         discountValue: discountAmount > 0 ? discountAmount : undefined,
         notes: form.notes || undefined,
         currency: form.currency,
+        type: form.invoiceType as any,
       };
 
       const result = await createInvoice(createRequest);
       if (result) {
-        toast.success(isDraft ? 'Invoice saved as draft' : 'Invoice created and sent successfully');
+        toast.success(isDraft ? 'Invoice saved as draft' : 'Invoice created successfully');
         router.push('/invoices');
       } else {
         toast.error('Failed to create invoice');
@@ -171,13 +211,38 @@ export default function NewInvoicePage() {
           <Button variant="outline" onClick={(e) => handleSubmit(e, true)} disabled={isSubmitting}>Save as Draft</Button>
           <Button onClick={(e) => handleSubmit(e, false)} disabled={isSubmitting}>
             {isSubmitting ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Save className="h-4 w-4 mr-1.5" />}
-            Create & Send
+            Create Invoice
           </Button>
         </div>
       </div>
 
       <div className="flex-1 overflow-auto p-6">
         <form onSubmit={handleSubmit} className="max-w-4xl mx-auto space-y-6">
+          {/* Invoice Type */}
+          <Card>
+            <CardHeader><CardTitle className="text-base">Invoice Type</CardTitle></CardHeader>
+            <CardContent>
+              <div className="flex gap-4">
+                {[
+                  { value: 'tax_invoice', label: 'Tax Invoice' },
+                  { value: 'proforma', label: 'Proforma Invoice' },
+                ].map((type) => (
+                  <label key={type.value} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="invoiceType"
+                      value={type.value}
+                      checked={form.invoiceType === type.value}
+                      onChange={() => updateField('invoiceType', type.value)}
+                      className="accent-indigo-500"
+                    />
+                    <span className="text-sm font-medium">{type.label}</span>
+                  </label>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Client Info */}
           <Card>
             <CardHeader><CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4" />Client Details</CardTitle></CardHeader>
@@ -185,18 +250,39 @@ export default function NewInvoicePage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Contact <span className="text-destructive">*</span></Label>
-                  <Select value={form.contactId} onValueChange={(v) => updateField('contactId', v)}>
-                    <SelectTrigger><SelectValue placeholder="Select a contact" /></SelectTrigger>
-                    <SelectContent>
-                      {contacts.map((c: any) => (
-                        <SelectItem key={c.id} value={c.id}>{c.name} {c.email ? `(${c.email})` : ''}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Combobox
+                    options={contacts.map((c: any) => ({
+                      value: c.id,
+                      label: `${c.name}${c.email ? ` (${c.email})` : ''}`,
+                    }))}
+                    value={form.contactId}
+                    onValueChange={(v) => {
+                      updateField('contactId', v);
+                      const selected = contacts.find((c: any) => c.id === v);
+                      if (selected) {
+                        updateField('contactName', (selected as any).name ?? '');
+                        if ((selected as any).email) updateField('clientEmail', (selected as any).email);
+                        if ((selected as any).phone) updateField('clientPhone', (selected as any).phone);
+                      }
+                    }}
+                    onSearch={setContactSearch}
+                    placeholder="Search contacts..."
+                    searchPlaceholder="Type to search contacts..."
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="leadTitle">Trip / Lead Reference</Label>
-                  <Input id="leadTitle" placeholder="e.g., Maldives Honeymoon Package" value={form.leadTitle} onChange={(e) => updateField('leadTitle', e.target.value)} />
+                  <Label>Lead / Trip Reference</Label>
+                  <Combobox
+                    options={leads.map((l: any) => ({
+                      value: l.id,
+                      label: l.title ?? l.id,
+                    }))}
+                    value={form.leadId}
+                    onValueChange={(v) => updateField('leadId', v)}
+                    onSearch={setLeadSearch}
+                    placeholder="Search leads..."
+                    searchPlaceholder="Type to search leads..."
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-4">
@@ -238,7 +324,7 @@ export default function NewInvoicePage() {
             </CardHeader>
             <CardContent className="space-y-3">
               {/* Header */}
-              <div className="grid grid-cols-[1fr_100px_80px_120px_120px_32px] gap-2 text-xs font-medium text-muted-foreground px-1">
+              <div className="grid grid-cols-[1fr_140px_80px_120px_120px_32px] gap-2 text-xs font-medium text-muted-foreground px-1">
                 <span>Description</span>
                 <span>HSN/SAC</span>
                 <span>Qty</span>
@@ -247,9 +333,20 @@ export default function NewInvoicePage() {
                 <span />
               </div>
               {lineItems.map((item: any) => (
-                <div key={item.id} className="grid grid-cols-[1fr_100px_80px_120px_120px_32px] gap-2 items-center">
+                <div key={item.id} className="grid grid-cols-[1fr_140px_80px_120px_120px_32px] gap-2 items-center">
                   <Input placeholder="e.g., Flight tickets, Hotel booking..." value={item.description} onChange={(e) => updateLineItem(item.id, 'description', e.target.value)} />
-                  <Input placeholder="HSN/SAC" value={item.hsnCode} onChange={(e) => updateLineItem(item.id, 'hsnCode', e.target.value)} className="text-xs" />
+                  <Combobox
+                    options={hsnCodes.map((h) => ({
+                      value: h.code,
+                      label: `${h.code} — ${h.description}`,
+                    }))}
+                    value={item.hsnCode}
+                    onValueChange={(v) => updateLineItem(item.id, 'hsnCode', v)}
+                    onSearch={setHsnSearch}
+                    placeholder="HSN/SAC"
+                    searchPlaceholder="Search HSN codes..."
+                    className="h-9 text-xs"
+                  />
                   <Input type="number" min={1} value={item.quantity} onChange={(e) => updateLineItem(item.id, 'quantity', parseInt(e.target.value) || 1)} />
                   <Input type="number" min={0} value={item.unitPrice || ''} onChange={(e) => updateLineItem(item.id, 'unitPrice', parseFloat(e.target.value) || 0)} placeholder="0" />
                   <Input value={item.amount.toLocaleString('en-IN')} readOnly className="bg-muted text-right font-medium" />

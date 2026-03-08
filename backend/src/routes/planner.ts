@@ -191,6 +191,44 @@ plannerRoutes.put('/:id', async (c) => {
             return success(c, created);
         }
 
+        if (scope === 'this_and_future' && existing.recurrence_rule) {
+            // Terminate the parent recurrence at the day before the target date
+            const targetDate = body.start_at || existing.start_at;
+            const dayBefore = new Date(new Date(targetDate).getTime() - 86400000).toISOString().split('T')[0];
+            const parentRule = typeof existing.recurrence_rule === 'string'
+                ? JSON.parse(existing.recurrence_rule)
+                : existing.recurrence_rule;
+            const updatedRule = { ...parentRule, until: dayBefore };
+            await db.prepare(
+                'UPDATE events SET recurrence_rule = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+            ).bind(JSON.stringify(updatedRule), existing.id).run();
+
+            // Create new recurring event from target date onward with new settings
+            const newId = crypto.randomUUID();
+            await db.prepare(`
+        INSERT INTO events (id, title, description, event_type, start_at, end_at, all_day,
+          location, color, recurrence_rule, assigned_to, created_by, timezone)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+                newId,
+                body.title || existing.title,
+                body.description !== undefined ? body.description : existing.description,
+                body.event_type || existing.event_type,
+                targetDate,
+                body.end_at !== undefined ? body.end_at : existing.end_at,
+                body.all_day !== undefined ? (body.all_day ? 1 : 0) : existing.all_day,
+                body.location !== undefined ? body.location : existing.location,
+                body.color !== undefined ? body.color : existing.color,
+                existing.recurrence_rule,
+                body.assigned_to || existing.assigned_to,
+                existing.created_by,
+                body.timezone || existing.timezone
+            ).run();
+
+            const created = await db.prepare('SELECT * FROM events WHERE id = ?').bind(newId).first();
+            return success(c, created);
+        }
+
         // Default: update the event directly
         const fields: string[] = [];
         const values: any[] = [];

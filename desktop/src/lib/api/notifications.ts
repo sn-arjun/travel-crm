@@ -5,12 +5,14 @@ import { API_ENDPOINTS } from './config';
 export interface Notification {
   id: string;
   userId: string;
-  type: 'task' | 'lead' | 'invoice' | 'payment' | 'email' | 'sms' | 'system';
+  type: string;
   title: string;
   message: string;
   read: boolean;
   readAt?: string;
   actionUrl?: string;
+  referenceType?: string;
+  referenceId?: string;
   icon?: string;
   metadata?: Record<string, unknown>;
   createdAt: string;
@@ -64,4 +66,7 @@ export const notificationsApi = {
 
   getBadgeCounts: () =>
     client.get<ApiResponse<BadgeCounts>>(API_ENDPOINTS.notifications.badgeCounts),
+
+  announce: (data: { title: string; body: string; targetRole?: string; userIds?: string[] }) =>
+    client.post<ApiResponse<{ sent: number }>>(API_ENDPOINTS.notifications.announce, data),
 };

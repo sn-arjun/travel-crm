@@ -19,6 +19,7 @@ export const users = sqliteTable('users', {
   language: text('language').default('en'),
   inviteStatus: text('invite_status').default('active'), // pending, active
   invitedAt: text('invited_at'),
+  emailSignature: text('email_signature'), // HTML or plain text email signature
   isActive: integer('is_active').default(1),
   lastLoginAt: text('last_login_at'),
   createdAt: text('created_at').default(timestamp),
@@ -51,6 +52,10 @@ export const contacts = sqliteTable('contacts', {
   birthday: text('birthday'),
   anniversary: text('anniversary'),
   preferredLanguage: text('preferred_language').default('en'),
+  dndEnabled: integer('dnd_enabled').default(0), // Do Not Disturb — block SMS to India (+91)
+  optedOut: integer('opted_out').default(0), // 1 = opted out of marketing
+  optedOutAt: text('opted_out_at'),
+  optOutChannel: text('opt_out_channel'), // email, sms, whatsapp, manual
   isDeleted: integer('is_deleted').default(0),
   createdBy: text('created_by').references(() => users.id),
   createdAt: text('created_at').default(timestamp),
@@ -456,6 +461,7 @@ export const vouchers = sqliteTable('vouchers', {
   index('vouchers_itinerary_item_id_idx').on(table.itineraryItemId),
   index('vouchers_type_status_idx').on(table.type, table.status),
   index('vouchers_created_by_idx').on(table.createdBy),
+  index('vouchers_supplier_id_idx').on(table.supplierId),
 ]);
 
 // ============================================================
@@ -619,6 +625,10 @@ export const messageTemplates = sqliteTable('message_templates', {
   category: text('category'), // greeting, follow_up, quotation, booking, reminder, wish, offer, visa
   language: text('language').default('en'),
   isActive: integer('is_active').default(1),
+  isSystem: integer('is_system').default(0), // system-provided template, not user-created
+  whatsappTemplateSid: text('whatsapp_template_sid'), // Twilio WhatsApp template SID
+  whatsappStatus: text('whatsapp_status'), // pending, approved, rejected
+  createdBy: text('created_by').references(() => users.id),
   createdAt: text('created_at').default(timestamp),
 }, (table) => [
   index('msg_templates_channel_idx').on(table.channel),
@@ -633,6 +643,9 @@ export const messageLog = sqliteTable('message_log', {
   templateId: text('template_id').references(() => messageTemplates.id),
   subject: text('subject'),
   content: text('content'),
+  direction: text('direction').default('outgoing'), // outgoing, incoming
+  mediaUrl: text('media_url'), // for media messages (images, documents)
+  metadata: text('metadata'), // JSON: extra info (batch_id, twilio_sid, etc.)
   status: text('status').default('queued'), // queued, sent, delivered, read, failed
   externalId: text('external_id'), // Twilio SID or SendGrid message ID
   errorMessage: text('error_message'),
@@ -646,7 +659,27 @@ export const messageLog = sqliteTable('message_log', {
   index('msg_log_lead_id_idx').on(table.leadId),
   index('msg_log_channel_idx').on(table.channel),
   index('msg_log_status_idx').on(table.status),
+  index('msg_log_direction_idx').on(table.direction),
   index('msg_log_sent_at_idx').on(table.sentAt),
+]);
+
+export const bulkSendBatches = sqliteTable('bulk_send_batches', {
+  id: text('id').primaryKey(),
+  channel: text('channel').notNull(), // whatsapp, sms, email
+  templateId: text('template_id').references(() => messageTemplates.id),
+  message: text('message'), // custom message if no template
+  totalCount: integer('total_count').default(0),
+  sentCount: integer('sent_count').default(0),
+  deliveredCount: integer('delivered_count').default(0),
+  failedCount: integer('failed_count').default(0),
+  status: text('status').default('pending'), // pending, in_progress, completed, failed
+  createdBy: text('created_by').references(() => users.id),
+  createdAt: text('created_at').default(timestamp),
+  completedAt: text('completed_at'),
+}, (table) => [
+  index('bulk_batches_status_idx').on(table.status),
+  index('bulk_batches_channel_idx').on(table.channel),
+  index('bulk_batches_created_by_idx').on(table.createdBy),
 ]);
 
 // ============================================================
@@ -1002,11 +1035,33 @@ export const emailMessageLog = sqliteTable('email_message_log', {
 ]);
 
 // ============================================================
+// EMAIL UNSUBSCRIBES (TICKET-155)
+// ============================================================
+
+export const unsubscribes = sqliteTable('unsubscribes', {
+  id: text('id').primaryKey(),
+  contactId: text('contact_id').references(() => contacts.id),
+  email: text('email').notNull(),
+  channel: text('channel').notNull().default('email'), // email, sms, whatsapp
+  reason: text('reason'), // user_request, spam_complaint, bounce, manual
+  token: text('token'), // JWT or random token for unsubscribe link
+  unsubscribedAt: text('unsubscribed_at').default(timestamp),
+  resubscribedAt: text('resubscribed_at'), // NULL if still unsubscribed
+  createdAt: text('created_at').default(timestamp),
+}, (table) => [
+  index('unsubscribes_email_idx').on(table.email),
+  index('unsubscribes_contact_id_idx').on(table.contactId),
+  index('unsubscribes_channel_idx').on(table.channel),
+  index('unsubscribes_token_idx').on(table.token),
+]);
+
+// ============================================================
 // DATA IMPORT & EXPORT
 // ============================================================
 
 export const importJobs = sqliteTable('import_jobs', {
   id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().default(''),
   importType: text('import_type').notNull(), // contacts, leads, suppliers, rate_cards, travellers
   status: text('status').notNull().default('pending'), // pending, validating, importing, completed, failed, cancelled
   fileName: text('file_name').notNull(),
@@ -1027,6 +1082,7 @@ export const importJobs = sqliteTable('import_jobs', {
 }, (table) => [
   index('import_jobs_created_by_idx').on(table.createdBy),
   index('import_jobs_status_idx').on(table.status),
+  index('import_jobs_tenant_id_idx').on(table.tenantId),
 ]);
 
 export const importErrors = sqliteTable('import_errors', {
@@ -1053,6 +1109,7 @@ export const importTemplates = sqliteTable('import_templates', {
 
 export const exportJobs = sqliteTable('export_jobs', {
   id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().default(''),
   exportType: text('export_type').notNull().default('full'), // full, contacts, leads, etc.
   status: text('status').notNull().default('pending'), // pending, processing, completed, failed
   fileUrl: text('file_url'),
@@ -1065,6 +1122,7 @@ export const exportJobs = sqliteTable('export_jobs', {
   updatedAt: text('updated_at').default(timestamp),
 }, (table) => [
   index('export_jobs_created_by_idx').on(table.createdBy),
+  index('export_jobs_tenant_id_idx').on(table.tenantId),
 ]);
 
 // ============================================================
@@ -1165,6 +1223,7 @@ export const tenantBranding = sqliteTable('tenant_branding', {
   id: text('id').primaryKey(),
   tenantId: text('tenant_id').notNull(),
   logoUrl: text('logo_url'),
+  logoR2Key: text('logo_r2_key'),  // R2 storage key for cleanup
   primaryColor: text('primary_color').default('#1976D2'),
   secondaryColor: text('secondary_color').default('#424242'),
   accentColor: text('accent_color').default('#FF9800'),
@@ -1242,7 +1301,8 @@ export const generatedFlyers = sqliteTable('generated_flyers', {
   r2Key: text('r2_key'),
   url: text('url'),
   thumbnailUrl: text('thumbnail_url'),
-  format: text('format').default('png'),  // png, jpeg, pdf
+  exportFormat: text('export_format').default('png'),  // png, jpeg, pdf
+  sizePreset: text('size_preset'),  // instagram_square, instagram_story, facebook, whatsapp, a4, etc.
   width: integer('width'),
   height: integer('height'),
   fileSize: integer('file_size'),
@@ -1260,11 +1320,62 @@ export const flyerShares = sqliteTable('flyer_shares', {
   flyerId: text('flyer_id').notNull().references(() => generatedFlyers.id, { onDelete: 'cascade' }),
   channel: text('channel').notNull(),  // whatsapp, email, download, link
   recipientInfo: text('recipient_info'),  // phone/email/etc
-  sharedBy: text('shared_by').references(() => users.id),
-  sharedAt: text('shared_at').default(timestamp),
+  contactId: text('contact_id').references(() => contacts.id),  // for per-contact share tracking
+  createdBy: text('created_by').references(() => users.id),
+  createdAt: text('created_at').default(timestamp),
 }, (table) => [
   index('flyer_shares_flyer_id_idx').on(table.flyerId),
   index('flyer_shares_channel_idx').on(table.channel),
+  index('flyer_shares_contact_id_idx').on(table.contactId),
+]);
+
+// ============================================================
+// MARKETING: EMAIL TEMPLATES
+// ============================================================
+
+export const emailTemplates = sqliteTable('email_templates', {
+  id: text('id').primaryKey(),
+  tenantId: text('tenant_id'),
+  name: text('name').notNull(),
+  subject: text('subject').notNull(),
+  htmlBody: text('html_body').notNull(),  // Full HTML content
+  textBody: text('text_body'),  // Plain text fallback
+  category: text('category').default('general'),  // general, promotional, transactional, newsletter
+  isSystem: integer('is_system').default(0),  // 1 = system template (not editable)
+  isDeleted: integer('is_deleted').default(0),
+  createdBy: text('created_by').references(() => users.id),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('email_templates_tenant_id_idx').on(table.tenantId),
+  index('email_templates_category_idx').on(table.category),
+  index('email_templates_is_deleted_idx').on(table.isDeleted),
+]);
+
+// ============================================================
+// MARKETING: FESTIVAL CAMPAIGNS
+// ============================================================
+
+export const festivalCampaigns = sqliteTable('festival_campaigns', {
+  id: text('id').primaryKey(),
+  tenantId: text('tenant_id'),
+  name: text('name').notNull(),  // e.g., "Diwali Offer 2026"
+  festivalName: text('festival_name').notNull(),  // e.g., "Diwali"
+  festivalDate: text('festival_date').notNull(),  // ISO date of the festival
+  daysBefore: integer('days_before').default(3),  // Send N days before festival
+  templateId: text('template_id').references(() => emailTemplates.id),
+  messageBody: text('message_body'),  // For SMS/WhatsApp campaigns
+  campaignType: text('campaign_type').default('whatsapp'),  // whatsapp, sms, email
+  isActive: integer('is_active').default(0),  // 0=inactive, 1=active
+  segmentId: text('segment_id').references(() => contactSegments.id),
+  lastRunAt: text('last_run_at'),
+  createdBy: text('created_by').references(() => users.id),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('festival_campaigns_tenant_id_idx').on(table.tenantId),
+  index('festival_campaigns_festival_date_idx').on(table.festivalDate),
+  index('festival_campaigns_is_active_idx').on(table.isActive),
 ]);
 
 // ============================================================

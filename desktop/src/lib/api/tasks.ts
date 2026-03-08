@@ -6,64 +6,92 @@ export interface Task {
   id: string;
   title: string;
   description?: string;
-  type?: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'cancelled' | 'todo';
+  status: 'todo' | 'in_progress' | 'done';
   priority: 'low' | 'medium' | 'high';
+  category?: 'general' | 'follow_up' | 'documentation' | 'meeting' | 'payment' | 'visa';
   assignedTo?: string;
+  assignee_name?: string;
   dueDate?: string;
-  relatedTo?: string;
+  due_date?: string;
+  relatedLeadId?: string;
   leadId?: string;
-  progress?: number;
+  lead_title?: string;
+  related_lead_id?: string;
+  parentTaskId?: string;
+  parent_task_id?: string;
+  completedAt?: string;
+  completed_at?: string;
+  overdueNotifiedDate?: string;
+  overdue_notified_date?: string;
+  subtaskCount?: number;
+  subtask_count?: number;
+  completedSubtaskCount?: number;
+  completed_subtask_count?: number;
   createdBy: string;
+  created_by?: string;
   createdAt: string;
+  created_at?: string;
   updatedAt: string;
+  updated_at?: string;
 }
 
 export interface CreateTaskRequest {
   title: string;
   description?: string;
   priority?: 'low' | 'medium' | 'high';
-  status?: 'todo' | 'in_progress' | 'completed';
-  dueDate?: string;
+  category?: string;
+  status?: 'todo' | 'in_progress' | 'done';
+  due_date?: string;
   assignedTo?: string;
-  leadId?: string;
-  customFields?: Record<string, unknown>;
+  assigned_to?: string;
+  related_lead_id?: string;
+  parent_task_id?: string;
 }
 
 export interface UpdateTaskRequest {
   title?: string;
   description?: string;
   priority?: 'low' | 'medium' | 'high';
-  status?: 'todo' | 'in_progress' | 'completed';
-  dueDate?: string;
-  assignedTo?: string;
-  customFields?: Record<string, unknown>;
+  category?: string;
+  status?: 'todo' | 'in_progress' | 'done';
+  due_date?: string;
+  assigned_to?: string;
+  related_lead_id?: string;
 }
 
 export interface UpdateTaskStatusRequest {
-  status: 'todo' | 'in_progress' | 'completed' | 'done';
+  status: 'todo' | 'in_progress' | 'done';
 }
 
 export interface Subtask {
   id: string;
   title: string;
-  completed: boolean;
-  order: number;
+  status: 'todo' | 'in_progress' | 'done';
+  assignee_name?: string;
+  due_date?: string;
 }
 
 export interface TaskComment {
   id: string;
   content: string;
   createdAt: string;
+  created_at?: string;
   createdBy: string;
+  created_by?: string;
+  user_name?: string;
   updatedAt: string;
+  updated_at?: string;
 }
 
 export interface TaskDashboardSummary {
   totalTasks: number;
   completedTasks: number;
   overdueTasks: number;
+  today_tasks?: number;
+  overdue_count?: number;
+  completed_today?: number;
   tasksByStatus: Record<string, number>;
+  by_status?: Record<string, number>;
   tasksByPriority: Record<string, number>;
 }
 
@@ -74,8 +102,12 @@ export const tasksApi = {
     search?: string;
     status?: string;
     priority?: string;
+    category?: string;
+    assigned_to?: string;
     assignedTo?: string;
+    related_lead_id?: string;
     leadId?: string;
+    view?: string;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
   }) =>
@@ -101,6 +133,15 @@ export const tasksApi = {
 
   getComments: (id: string, params?: { page?: number; limit?: number }) =>
     client.get<ApiResponse<PaginatedResponse<TaskComment>>>(API_ENDPOINTS.tasks.comments(id), { params }),
+
+  createComment: (taskId: string, content: string) =>
+    client.post<ApiResponse<TaskComment>>(API_ENDPOINTS.tasks.comments(taskId), { content }),
+
+  updateComment: (taskId: string, commentId: string, content: string) =>
+    client.put<ApiResponse<TaskComment>>(`${API_ENDPOINTS.tasks.comments(taskId)}/${commentId}`, { content }),
+
+  deleteComment: (taskId: string, commentId: string) =>
+    client.delete<ApiResponse<void>>(`${API_ENDPOINTS.tasks.comments(taskId)}/${commentId}`),
 
   getDashboardSummary: () =>
     client.get<ApiResponse<TaskDashboardSummary>>(API_ENDPOINTS.tasks.dashboardSummary),

@@ -19,32 +19,33 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { templatesApi } from '@/lib/api/templates';
+import { useApiMutation } from '@/hooks/use-api';
 
 type TemplateChannel = 'email' | 'sms' | 'whatsapp';
 
-const categories = [
-  'Welcome',
-  'Follow-up',
-  'Proposal',
-  'Booking Confirmation',
-  'Payment Reminder',
-  'Thank You',
-  'Promotional',
-  'Newsletter',
-  'Custom',
+const categories: { value: string; label: string }[] = [
+  { value: 'greeting', label: 'Greeting / Welcome' },
+  { value: 'follow_up', label: 'Follow-up' },
+  { value: 'quotation', label: 'Quotation / Proposal' },
+  { value: 'booking', label: 'Booking Confirmation' },
+  { value: 'reminder', label: 'Payment Reminder' },
+  { value: 'wish', label: 'Thank You / Wish' },
+  { value: 'offer', label: 'Promotional / Offer' },
+  { value: 'visa', label: 'Visa / Travel Docs' },
 ];
 
 const availableVariables = [
-  { key: '{{name}}', label: 'Contact Name' },
-  { key: '{{firstName}}', label: 'First Name' },
-  { key: '{{email}}', label: 'Email' },
-  { key: '{{phone}}', label: 'Phone' },
-  { key: '{{company}}', label: 'Company' },
-  { key: '{{destination}}', label: 'Destination' },
-  { key: '{{travelDate}}', label: 'Travel Date' },
-  { key: '{{amount}}', label: 'Amount' },
-  { key: '{{bookingRef}}', label: 'Booking Ref' },
-  { key: '{{agentName}}', label: 'Agent Name' },
+  { key: '{customer_name}', label: 'Contact Name' },
+  { key: '{first_name}', label: 'First Name' },
+  { key: '{email}', label: 'Email' },
+  { key: '{phone}', label: 'Phone' },
+  { key: '{company}', label: 'Company' },
+  { key: '{destination}', label: 'Destination' },
+  { key: '{travel_date}', label: 'Travel Date' },
+  { key: '{amount}', label: 'Amount' },
+  { key: '{booking_ref}', label: 'Booking Ref' },
+  { key: '{agent_name}', label: 'Agent Name' },
 ];
 
 export default function NewTemplatePage() {
@@ -52,10 +53,14 @@ export default function NewTemplatePage() {
   const [name, setName] = React.useState('');
   const [channel, setChannel] = React.useState<TemplateChannel>('email');
   const [category, setCategory] = React.useState('');
+  const [language, setLanguage] = React.useState('en');
   const [subject, setSubject] = React.useState('');
   const [body, setBody] = React.useState('');
   const [showPreview, setShowPreview] = React.useState(false);
-  const [isSaving, setIsSaving] = React.useState(false);
+
+  const { mutate: createTemplate, loading: isSaving } = useApiMutation(
+    (data: Parameters<typeof templatesApi.create>[0]) => templatesApi.create(data),
+  );
 
   const bodyRef = React.useRef<HTMLTextAreaElement>(null);
 
@@ -116,17 +121,19 @@ export default function NewTemplatePage() {
       return;
     }
 
-    setIsSaving(true);
-    try {
-      // In production, this would call an API to save the template
-      // e.g., await templatesApi.create({ name, channel, category, subject, body })
-      await new Promise((resolve) => setTimeout(resolve, 800));
+    const result = await createTemplate({
+      name,
+      channel,
+      category,
+      language,
+      subject: channel === 'email' ? subject : undefined,
+      content: body,
+    });
+    if (result) {
       toast.success('Template saved successfully!');
       router.push('/communication/templates');
-    } catch {
+    } else {
       toast.error('Failed to save template');
-    } finally {
-      setIsSaving(false);
     }
   };
 
@@ -183,7 +190,7 @@ export default function NewTemplatePage() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-3 gap-4">
                     <div>
                       <Label className="text-sm mb-1.5 block">Channel *</Label>
                       <Select value={channel} onValueChange={(v) => setChannel(v as TemplateChannel)}>
@@ -218,8 +225,25 @@ export default function NewTemplatePage() {
                         </SelectTrigger>
                         <SelectContent>
                           {categories.map((cat) => (
-                            <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                            <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
                           ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label className="text-sm mb-1.5 block">Language</Label>
+                      <Select value={language} onValueChange={setLanguage}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="en">English</SelectItem>
+                          <SelectItem value="hi">Hindi</SelectItem>
+                          <SelectItem value="ar">Arabic</SelectItem>
+                          <SelectItem value="fr">French</SelectItem>
+                          <SelectItem value="de">German</SelectItem>
+                          <SelectItem value="es">Spanish</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -249,7 +273,7 @@ export default function NewTemplatePage() {
                     ref={bodyRef}
                     value={body}
                     onChange={(e) => setBody(e.target.value)}
-                    placeholder={`Write your ${channel} template here...\n\nUse variables like {{name}}, {{destination}} for personalization.`}
+                    placeholder={`Write your ${channel} template here...\n\nUse variables like {customer_name}, {destination} for personalization.`}
                     className="w-full min-h-[280px] rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring font-mono leading-relaxed resize-none"
                   />
                   <div className="flex items-center justify-between mt-2">
@@ -297,7 +321,7 @@ export default function NewTemplatePage() {
                 </CardHeader>
                 <CardContent>
                   <ul className="text-xs text-muted-foreground space-y-2">
-                    <li>Use variables like <code className="text-primary">{'{{name}}'}</code> for personalization</li>
+                    <li>Use variables like <code className="text-primary">{'{customer_name}'}</code> for personalization</li>
                     <li>Keep SMS under 160 chars for single segment</li>
                     <li>WhatsApp templates may need approval</li>
                     <li>Preview before saving to check formatting</li>

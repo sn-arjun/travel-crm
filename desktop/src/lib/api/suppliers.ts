@@ -21,16 +21,22 @@ export interface CreateSupplierRequest {
 }
 
 export interface UpdateSupplierRequest {
-  name?: string;
+  companyName?: string;
   category?: string;
   email?: string;
   phone?: string;
   website?: string;
   address?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  postalCode?: string;
+  gstNumber?: string;
+  taxId?: string;
   contactPerson?: string;
   notes?: string;
   isPreferred?: boolean;
-  customFields?: Record<string, unknown>;
+  status?: 'active' | 'inactive';
 }
 
 export interface TogglePreferredRequest {
@@ -58,11 +64,14 @@ export interface SupplierPayment {
 }
 
 export interface SupplierLedger {
+  id: string;
   date: string;
   description: string;
-  debit?: number;
-  credit?: number;
-  balance: number;
+  debitAmount: number;
+  creditAmount: number;
+  runningBalance: number;
+  entryType: string;
+  isReconciled: number;
 }
 
 export interface CategorySummary {
@@ -72,9 +81,10 @@ export interface CategorySummary {
 }
 
 export interface CompareRatesRequest {
-  category: string;
-  serviceType: string;
-  dates?: { from: string; to: string };
+  service_type: string;
+  destination: string;
+  season?: string;
+  date?: string;
 }
 
 export interface RateComparison {
@@ -90,6 +100,7 @@ export const suppliersApi = {
     limit?: number;
     search?: string;
     category?: string;
+    status?: string;
     isPreferred?: boolean;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
@@ -126,6 +137,9 @@ export const suppliersApi = {
   getCategorySummary: () =>
     client.get<ApiResponse<CategorySummary[]>>(API_ENDPOINTS.suppliers.categorySummary),
 
-  compareRates: (data: CompareRatesRequest) =>
-    client.post<ApiResponse<RateComparison[]>>(API_ENDPOINTS.suppliers.compareRates, data),
+  compareRates: (params: CompareRatesRequest) =>
+    client.get<ApiResponse<RateComparison[]>>(API_ENDPOINTS.suppliers.compareRates, { params: params as any }),
+
+  recordPayment: (id: string, data: { amount: number; method: string; reference_number?: string; payment_date: string; notes?: string }) =>
+    client.post<ApiResponse<{ id: string }>>(API_ENDPOINTS.suppliers.payments(id), data),
 };

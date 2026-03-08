@@ -30,7 +30,7 @@ const listTemplateSchema = z.object({
   channel: z.enum(['whatsapp', 'sms', 'email']).optional(),
   category: z.enum(['greeting', 'follow_up', 'quotation', 'booking', 'reminder', 'wish', 'offer', 'visa']).optional(),
   language: z.string().optional(),
-  is_active: z.boolean().optional(),
+  is_active: z.coerce.boolean().optional(),
   search: z.string().optional(),
   page: z.number().int().min(1).optional().default(1),
   limit: z.number().int().min(1).max(100).optional().default(20),
@@ -135,9 +135,9 @@ templateRoutes.get(
         conditions.push(eq(messageTemplates.language, query.language));
       }
 
-      if (query.is_active !== undefined) {
-        conditions.push(eq(messageTemplates.isActive, query.is_active ? 1 : 0));
-      }
+      // Default to showing only active templates; pass is_active=false to include inactive
+      const showActive = query.is_active !== undefined ? query.is_active : true;
+      conditions.push(eq(messageTemplates.isActive, showActive ? 1 : 0));
 
       if (query.search) {
         const searchTerm = `%${query.search}%`;

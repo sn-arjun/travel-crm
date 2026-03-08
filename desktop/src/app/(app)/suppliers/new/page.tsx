@@ -2,27 +2,30 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Loader2, Save, Building2, MapPin, DollarSign, FileText } from 'lucide-react';
+import { ArrowLeft, Loader2, Save, Building2, MapPin, FileText, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { useApiMutation } from '@/hooks/use-api';
 import { suppliersApi } from '@/lib/api/suppliers';
 import { toast } from 'sonner';
 
-const SUPPLIER_TYPE_OPTIONS = [
+const SUPPLIER_CATEGORY_OPTIONS = [
   { value: 'hotel', label: 'Hotel' },
   { value: 'airline', label: 'Airline' },
   { value: 'transport', label: 'Transport' },
-  { value: 'activity', label: 'Activity' },
-  { value: 'visa', label: 'Visa' },
-  { value: 'tour_operator', label: 'Tour Operator' },
-  { value: 'resort', label: 'Resort' },
-  { value: 'ota', label: 'OTA' },
+  { value: 'activity_provider', label: 'Activity Provider' },
+  { value: 'guide', label: 'Guide' },
+  { value: 'visa_agent', label: 'Visa Agent' },
+  { value: 'insurance', label: 'Insurance' },
 ];
+
+const MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
 export default function NewSupplierPage() {
   const router = useRouter();
@@ -32,39 +35,52 @@ export default function NewSupplierPage() {
   );
 
   const [form, setForm] = React.useState({
-    name: '',
+    companyName: '',
     category: 'hotel',
     contactPerson: '',
     phone: '',
+    phoneCountryCode: '+91',
     email: '',
     website: '',
+    street: '',
     city: '',
     state: '',
     country: 'India',
+    postalCode: '',
+    gstNumber: '',
+    taxId: '',
     notes: '',
+    status: 'active' as 'active' | 'inactive',
+    isPreferred: false,
   });
 
-  function updateField(field: string, value: string) {
+  function updateField(field: string, value: any) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.name.trim()) {
+    if (!form.companyName.trim()) {
       toast.error('Company name is required');
       return;
     }
     const result = await createSupplier({
-      companyName: form.name,
-      category: form.category,
+      companyName: form.companyName,
+      category: form.category as any,
       contactPerson: form.contactPerson || undefined,
-      phone: form.phone || undefined,
+      phone: form.phone ? `${form.phoneCountryCode} ${form.phone}` : undefined,
       email: form.email || undefined,
       website: form.website || undefined,
+      address: form.street || undefined,
       city: form.city || undefined,
       state: form.state || undefined,
       country: form.country || undefined,
+      postalCode: form.postalCode || undefined,
+      gstNumber: form.gstNumber || undefined,
+      taxId: form.taxId || undefined,
       notes: form.notes || undefined,
+      status: form.status,
+      isPreferred: form.isPreferred,
     });
     if (result) {
       toast.success('Supplier created successfully');
@@ -103,15 +119,21 @@ export default function NewSupplierPage() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Supplier Name <span className="text-destructive">*</span></Label>
-                  <Input id="name" placeholder="e.g., Taj Hotels" value={(form as any).name} onChange={(e) => updateField('name', e.target.value)} required />
+                  <Label htmlFor="companyName">Supplier Name <span className="text-destructive">*</span></Label>
+                  <Input
+                    id="companyName"
+                    placeholder="e.g., Taj Hotels"
+                    value={form.companyName}
+                    onChange={(e) => updateField('companyName', e.target.value)}
+                    required
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Category <span className="text-destructive">*</span></Label>
                   <Select value={form.category} onValueChange={(v) => updateField('category', v)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {SUPPLIER_TYPE_OPTIONS.map((opt: any) => (
+                      {SUPPLIER_CATEGORY_OPTIONS.map((opt) => (
                         <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                       ))}
                     </SelectContent>
@@ -120,22 +142,68 @@ export default function NewSupplierPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="contactPerson">Contact Person <span className="text-destructive">*</span></Label>
-                  <Input id="contactPerson" placeholder="e.g., Rajesh Kumar" value={(form as any).contactPerson} onChange={(e) => updateField('contactPerson', e.target.value)} required />
+                  <Label htmlFor="contactPerson">Contact Person</Label>
+                  <Input
+                    id="contactPerson"
+                    placeholder="e.g., Rajesh Kumar"
+                    value={form.contactPerson}
+                    onChange={(e) => updateField('contactPerson', e.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Phone <span className="text-destructive">*</span></Label>
-                  <Input id="phone" placeholder="+91 XXXXX XXXXX" value={(form as any).phone} onChange={(e) => updateField('phone', e.target.value)} required />
+                  <Label>Phone</Label>
+                  <PhoneInput
+                    value={form.phone}
+                    onChange={(v) => updateField('phone', v)}
+                    countryCode={form.phoneCountryCode}
+                    onCountryCodeChange={(c) => updateField('phoneCountryCode', c)}
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email <span className="text-destructive">*</span></Label>
-                  <Input id="email" type="email" placeholder="email@example.com" value={(form as any).email} onChange={(e) => updateField('email', e.target.value)} required />
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="email@example.com"
+                    value={form.email}
+                    onChange={(e) => updateField('email', e.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="website">Website</Label>
-                  <Input id="website" type="url" placeholder="https://example.com" value={(form as any).website} onChange={(e) => updateField('website', e.target.value)} />
+                  <Input
+                    id="website"
+                    type="url"
+                    placeholder="https://example.com"
+                    value={form.website}
+                    onChange={(e) => updateField('website', e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <Select value={form.status} onValueChange={(v) => updateField('status', v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="block mb-3">Preferred Supplier</Label>
+                  <div className="flex items-center gap-2 mt-2">
+                    <Switch
+                      checked={form.isPreferred}
+                      onCheckedChange={(v) => updateField('isPreferred', v)}
+                    />
+                    <span className="text-sm text-muted-foreground">
+                      {form.isPreferred ? 'Marked as preferred' : 'Not preferred'}
+                    </span>
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -145,61 +213,68 @@ export default function NewSupplierPage() {
           <Card>
             <CardHeader><CardTitle className="text-base flex items-center gap-2"><MapPin className="h-4 w-4" />Address</CardTitle></CardHeader>
             <CardContent className="space-y-4">
+              {MAPS_API_KEY ? (
+                <p className="text-xs text-muted-foreground">Address autocomplete available</p>
+              ) : null}
               <div className="space-y-2">
                 <Label htmlFor="street">Street Address</Label>
-
-                <Input id="street" placeholder="Street address" value={(form as any).street} onChange={(e) => updateField('street', e.target.value)} />
+                <Input
+                  id="street"
+                  placeholder="Street address"
+                  value={form.street}
+                  onChange={(e) => updateField('street', e.target.value)}
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="city">City</Label>
-                  <Input id="city" placeholder="City" value={(form as any).city} onChange={(e) => updateField('city', e.target.value)} />
+                  <Input id="city" placeholder="City" value={form.city} onChange={(e) => updateField('city', e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="state">State</Label>
-                  <Input id="state" placeholder="State" value={(form as any).state} onChange={(e) => updateField('state', e.target.value)} />
+                  <Input id="state" placeholder="State" value={form.state} onChange={(e) => updateField('state', e.target.value)} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="country">Country</Label>
-                  <Input id="country" value={(form as any).country} onChange={(e) => updateField('country', e.target.value)} />
+                  <Input id="country" value={form.country} onChange={(e) => updateField('country', e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="pincode">PIN Code</Label>
-
-                  <Input id="pincode" placeholder="400001" value={(form as any).pincode} onChange={(e) => updateField('pincode', e.target.value)} />
+                  <Label htmlFor="postalCode">Postal Code</Label>
+                  <Input
+                    id="postalCode"
+                    placeholder="400001"
+                    value={form.postalCode}
+                    onChange={(e) => updateField('postalCode', e.target.value)}
+                  />
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Banking */}
+          {/* Tax & Compliance */}
           <Card>
-            <CardHeader><CardTitle className="text-base flex items-center gap-2"><DollarSign className="h-4 w-4" />Banking Details</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base flex items-center gap-2"><ShieldCheck className="h-4 w-4" />Tax & Compliance</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="bankName">Bank Name</Label>
-
-                  <Input id="bankName" placeholder="Bank name" value={(form as any).bankName} onChange={(e) => updateField('bankName', e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="accountNumber">Account Number</Label>
-
-                  <Input id="accountNumber" placeholder="Account number" value={(form as any).accountNumber} onChange={(e) => updateField('accountNumber', e.target.value)} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="ifscCode">IFSC Code</Label>
-
-                  <Input id="ifscCode" placeholder="IFSC code" value={(form as any).ifscCode} onChange={(e) => updateField('ifscCode', e.target.value)} />
-                </div>
-                <div className="space-y-2">
                   <Label htmlFor="gstNumber">GST Number</Label>
-
-                  <Input id="gstNumber" placeholder="22AAAAA0000A1Z5" value={(form as any).gstNumber} onChange={(e) => updateField('gstNumber', e.target.value)} />
+                  <Input
+                    id="gstNumber"
+                    placeholder="22AAAAA0000A1Z5"
+                    value={form.gstNumber}
+                    onChange={(e) => updateField('gstNumber', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="taxId">Tax ID / PAN</Label>
+                  <Input
+                    id="taxId"
+                    placeholder="AAAAA0000A"
+                    value={form.taxId}
+                    onChange={(e) => updateField('taxId', e.target.value)}
+                  />
                 </div>
               </div>
             </CardContent>
@@ -211,7 +286,7 @@ export default function NewSupplierPage() {
             <CardContent>
               <Textarea
                 placeholder="Any additional notes about this supplier..."
-                value={(form as any).notes}
+                value={form.notes}
                 onChange={(e) => updateField('notes', e.target.value)}
                 rows={3}
               />

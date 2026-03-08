@@ -40,8 +40,9 @@ export interface UploadImportRequest {
 
 export interface ExecuteImportRequest {
   mapping: Record<string, string>;
+  duplicateStrategy?: 'skip' | 'merge' | 'create';
+  /** @deprecated use duplicateStrategy */
   skipDuplicates?: boolean;
-  updateExisting?: boolean;
 }
 
 export const importsApi = {
@@ -58,7 +59,7 @@ export const importsApi = {
   upload: async (data: UploadImportRequest) => {
     const formData = new FormData();
     formData.append('file', data.file);
-    formData.append('type', data.type);
+    formData.append('importType', data.type);
     if (data.mapping) formData.append('mapping', JSON.stringify(data.mapping));
     if (data.skipHeader !== undefined) formData.append('skipHeader', String(data.skipHeader));
 
@@ -66,7 +67,10 @@ export const importsApi = {
   },
 
   execute: (id: string, data: ExecuteImportRequest) =>
-    client.post<ApiResponse<ImportJob>>(API_ENDPOINTS.imports.execute(id), data),
+    client.post<ApiResponse<ImportJob>>(API_ENDPOINTS.imports.execute(id), {
+      columnMapping: data.mapping,
+      duplicateStrategy: data.duplicateStrategy ?? (data.skipDuplicates ? 'skip' : 'create'),
+    }),
 
   getProgress: (id: string) =>
     client.get<ApiResponse<ImportJob>>(API_ENDPOINTS.imports.progress(id)),
@@ -75,5 +79,11 @@ export const importsApi = {
     client.get<ApiResponse<PaginatedResponse<ImportError>>>(API_ENDPOINTS.imports.errors(id), { params }),
 
   getTemplate: (type: string) =>
-    client.get<ApiResponse<ImportTemplate>>(API_ENDPOINTS.imports.templates(type)),
+    client.get<Blob>(API_ENDPOINTS.imports.templates(type), { responseType: 'blob' }),
+
+  downloadErrors: (id: string) =>
+    client.get<Blob>(API_ENDPOINTS.imports.errorsDownload(id), { responseType: 'blob' }),
+
+  cancel: (id: string) =>
+    client.post<ApiResponse<ImportJob>>(API_ENDPOINTS.imports.cancel(id), {}),
 };

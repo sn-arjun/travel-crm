@@ -24,9 +24,24 @@ export async function handleImportQueue(batch: MessageBatch<any>, env: Env): Pro
     }
 }
 
+function resolveTenantDb(env: Env, tenantId?: string): ReturnType<typeof drizzle> {
+    if (tenantId) {
+        const bindingKey = `TENANT_DB_${tenantId}` as `TENANT_DB_${string}`;
+        const binding = (env as any)[bindingKey];
+        if (binding) return drizzle(binding, { schema });
+    }
+    return drizzle(env.MASTER_DB, { schema });
+}
+
 export async function handleImportJob(data: ImportJobMessage, env: Env): Promise<void> {
-    const db = drizzle(env.MASTER_DB, { schema });
+    // Use master DB only to look up the job's tenantId, then switch to tenant DB
+    const masterDb = drizzle(env.MASTER_DB, { schema });
     const jobId = data.jobId;
+    const masterJob = await masterDb.query.importJobs.findFirst({
+        where: eq(schema.importJobs.id, jobId),
+        columns: { tenantId: true }
+    });
+    const db = resolveTenantDb(env, masterJob?.tenantId || undefined);
 
     const job = await db.query.importJobs.findFirst({
         where: eq(schema.importJobs.id, jobId)
@@ -103,7 +118,8 @@ export async function handleImportJob(data: ImportJobMessage, env: Env): Promise
                 validationRes.validData,
                 dupCheck.action,
                 dupCheck.duplicateId,
-                job.createdBy
+                job.createdBy,
+                job.tenantId
             );
 
             if (inserted) {

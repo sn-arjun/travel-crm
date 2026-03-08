@@ -3,12 +3,15 @@
 import * as React from 'react';
 import Link from 'next/link';
 import {
-  ArrowLeft, Download, Filter,
+  ArrowLeft, Download, Filter, AlertCircle, RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area,
@@ -20,76 +23,18 @@ import { reportsApi } from '@/lib/api/reports';
 
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 
-// Fallback/sample data in case API is unavailable
-const getFallbackSalesData = () => {
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const baseRevenue = [1200000, 1450000, 1680000, 1550000, 1920000, 2100000, 2350000, 2200000, 2450000, 2300000, 2550000, 2800000];
-  const projectedRevenue = baseRevenue.slice(0, 9).concat([2600000, 2900000, 3100000]);
-
-  return months.map((month, i) => ({
-    month,
-    revenue: baseRevenue[i] ?? 0,
-    projected: projectedRevenue[i] ?? 0,
-    lastYear: (baseRevenue[i] ?? 0) * 0.82,
-  }));
-};
-
-const getFallbackDestinationData = () => [
-  { name: 'Maldives', revenue: 4200000, sales: 24 },
-  { name: 'Bali', revenue: 3850000, sales: 22 },
-  { name: 'Dubai', revenue: 3650000, sales: 20 },
-  { name: 'Thailand', revenue: 3420000, sales: 19 },
-  { name: 'Europe Tour', revenue: 3200000, sales: 18 },
-  { name: 'Goa', revenue: 2950000, sales: 17 },
-  { name: 'Kashmir', revenue: 2750000, sales: 16 },
-  { name: 'Singapore', revenue: 2400000, sales: 14 },
-  { name: 'Japan', revenue: 2200000, sales: 13 },
-  { name: 'Ladakh', revenue: 1850000, sales: 12 },
-];
-
-const getFallbackSalespersonData = () => [
-  { name: 'Arjun S', sales: 28, revenue: 3500000, target: 3000000 },
-  { name: 'Priya M', sales: 25, revenue: 3200000, target: 3000000 },
-  { name: 'Rahul K', sales: 22, revenue: 2850000, target: 2800000 },
-  { name: 'Sneha D', sales: 20, revenue: 2650000, target: 2800000 },
-  { name: 'Vikram P', sales: 18, revenue: 2400000, target: 2500000 },
-];
-
-const getFallbackTripTypeData = () => [
-  { name: 'Honeymoon', value: 34, revenue: 4250000 },
-  { name: 'Family', value: 28, revenue: 3420000 },
-  { name: 'Business', value: 18, revenue: 2280000 },
-  { name: 'Adventure', value: 15, revenue: 1850000 },
-  { name: 'Group', value: 5, revenue: 800000 },
-];
-
-const getFallbackSourceData = () => [
-  { name: 'Website', value: 35, conversion: 28.5 },
-  { name: 'Referral', value: 28, conversion: 35.2 },
-  { name: 'Social', value: 18, conversion: 22.3 },
-  { name: 'Walk-in', value: 12, conversion: 18.4 },
-  { name: 'Agent', value: 7, conversion: 42.1 },
-];
-
-const getFallbackDealSizeData = () => {
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return months.map((month, i) => ({
-    month,
-    avgSize: 110000 + (i * 5000) + (i % 3) * 8000,
-  }));
-};
-
-const getFallbackWinLossData = () => {
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return months.map((month, i) => ({
-    month,
-    won: 18 + (i % 5),
-    lost: 4 + (i % 3),
-  }));
+const presetMap: Record<string, string> = {
+  '7days': 'this_week',
+  '30days': 'this_month',
+  '90days': 'this_quarter',
+  'thisMonth': 'this_month',
+  'lastMonth': 'last_month',
+  'thisQuarter': 'this_quarter',
+  'thisYear': 'this_year',
 };
 
 // Summary card component
-function SummaryCard({ label, value, subtext, color = 'bg-blue-500' }: { label: string; value: string; subtext?: string; color?: string }) {
+function SummaryCard({ label, value, subtext }: { label: string; value: string; subtext?: string }) {
   return (
     <Card>
       <CardContent className="p-4">
@@ -98,6 +43,42 @@ function SummaryCard({ label, value, subtext, color = 'bg-blue-500' }: { label: 
         {subtext && <p className="text-xs text-muted-foreground">{subtext}</p>}
       </CardContent>
     </Card>
+  );
+}
+
+// KPI skeleton card
+function KPISkeleton() {
+  return (
+    <Card>
+      <CardContent className="p-4 space-y-2">
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-8 w-32" />
+        <Skeleton className="h-3 w-20" />
+      </CardContent>
+    </Card>
+  );
+}
+
+// Error state
+function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 gap-4 text-muted-foreground">
+      <AlertCircle className="h-10 w-10 text-destructive" />
+      <p className="text-sm font-medium text-destructive">{message}</p>
+      <Button variant="outline" size="sm" onClick={onRetry}>
+        <RefreshCw className="h-4 w-4 mr-1.5" />
+        Retry
+      </Button>
+    </div>
+  );
+}
+
+// Empty state
+function EmptyState() {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 gap-2 text-muted-foreground">
+      <p className="text-sm">No data for selected period.</p>
+    </div>
   );
 }
 
@@ -126,74 +107,122 @@ function DateRangeSelector({ value, onChange }: { value: string; onChange: (valu
 
 export default function SalesReportsPage() {
   const [dateRange, setDateRange] = React.useState('30days');
+  const [compareEnabled, setCompareEnabled] = React.useState(false);
+  const [activeTab, setActiveTab] = React.useState('summary');
+  const [retryKey, setRetryKey] = React.useState(0);
 
-  // Fetch sales report data from API
-  const { data: reportData, loading, error } = useApiQuery(
-    async () => {
-      try {
-        const response = await reportsApi.getSalesReport?.({ dateRange }) ??
-          Promise.resolve({
-            summary: {
-              totalRevenue: 0,
-              totalSales: 0,
-              avgRevenue: 0,
-              growth: 0,
-            },
-            sales: getFallbackSalesData(),
-            destinations: getFallbackDestinationData(),
-            salespersons: getFallbackSalespersonData(),
-            tripTypes: getFallbackTripTypeData(),
-            sources: getFallbackSourceData(),
-            dealSizes: getFallbackDealSizeData(),
-            winLoss: getFallbackWinLossData(),
-          });
-        return response;
-      } catch (err) {
-        toast.error('Failed to load sales report. Showing sample data.');
-        return {
-          summary: {
-            totalRevenue: 0,
-            totalSales: 0,
-            avgRevenue: 0,
-            growth: 0,
-          },
-          sales: getFallbackSalesData(),
-          destinations: getFallbackDestinationData(),
-          salespersons: getFallbackSalespersonData(),
-          tripTypes: getFallbackTripTypeData(),
-          sources: getFallbackSourceData(),
-          dealSizes: getFallbackDealSizeData(),
-          winLoss: getFallbackWinLossData(),
-        };
-      }
-    },
-    [dateRange],
+  const currentPreset = presetMap[dateRange] ?? 'this_month';
+  const baseParams = { date_preset: currentPreset, compare: compareEnabled };
+
+  // Summary tab
+  const { data: summaryResp, loading: summaryLoading, error: summaryError } = useApiQuery(
+    () => reportsApi.execute('sales_summary', baseParams),
+    [dateRange, compareEnabled, retryKey],
   );
 
-  // Use fallback data if API is not available
-    // @ts-expect-error
-  const salesData = reportData?.sales ?? getFallbackSalesData();
-    // @ts-expect-error
-  const destinationData = reportData?.destinations ?? getFallbackDestinationData();
-    // @ts-expect-error
-  const salespersonData = reportData?.salespersons ?? getFallbackSalespersonData();
-    // @ts-expect-error
-  const tripTypeData = reportData?.tripTypes ?? getFallbackTripTypeData();
-    // @ts-expect-error
-  const sourceData = reportData?.sources ?? getFallbackSourceData();
-    // @ts-expect-error
-  const dealSizeData = reportData?.dealSizes ?? getFallbackDealSizeData();
-    // @ts-expect-error
-  const winLossData = reportData?.winLoss ?? getFallbackWinLossData();
+  // Destination tab
+  const { data: destResp, loading: destLoading, error: destError } = useApiQuery(
+    () => reportsApi.execute('sales_by_destination', baseParams),
+    [dateRange, compareEnabled, retryKey],
+  );
 
-  const totalRevenue = salesData.reduce((sum: any, d: any) => sum + d.revenue, 0);
-  const avgRevenue = Math.floor(totalRevenue / salesData.length);
-  const totalSales = destinationData.reduce((sum: any, d: any) => sum + d.sales, 0);
+  // Salesperson tab
+  const { data: salesPersonResp, loading: salesPersonLoading, error: salesPersonError } = useApiQuery(
+    () => reportsApi.execute('sales_by_salesperson', baseParams),
+    [dateRange, compareEnabled, retryKey],
+  );
+
+  // Trip Type tab
+  const { data: tripTypeResp, loading: tripTypeLoading, error: tripTypeError } = useApiQuery(
+    () => reportsApi.execute('sales_by_trip_type', baseParams),
+    [dateRange, compareEnabled, retryKey],
+  );
+
+  // Source tab
+  const { data: sourceResp, loading: sourceLoading, error: sourceError } = useApiQuery(
+    () => reportsApi.execute('sales_by_source', baseParams),
+    [dateRange, compareEnabled, retryKey],
+  );
+
+  // Deal Size tab
+  const { data: dealSizeResp, loading: dealSizeLoading, error: dealSizeError } = useApiQuery(
+    () => reportsApi.execute('avg_deal_size', baseParams),
+    [dateRange, compareEnabled, retryKey],
+  );
+
+  // Forecast tab
+  const { data: forecastResp, loading: forecastLoading, error: forecastError } = useApiQuery(
+    () => reportsApi.execute('revenue_forecast', baseParams),
+    [dateRange, compareEnabled, retryKey],
+  );
+
+  // Win/Loss tab
+  const { data: winLossResp, loading: winLossLoading, error: winLossError } = useApiQuery(
+    () => reportsApi.execute('win_loss_analysis', baseParams),
+    [dateRange, compareEnabled, retryKey],
+  );
+
+  const summaryData: any[] = (summaryResp as any)?.data?.data ?? [];
+  const destData: any[] = (destResp as any)?.data?.data ?? [];
+  const salesPersonData: any[] = (salesPersonResp as any)?.data?.data ?? [];
+  const tripTypeData: any[] = (tripTypeResp as any)?.data?.data ?? [];
+  const sourceData: any[] = (sourceResp as any)?.data?.data ?? [];
+  const dealSizeData: any[] = (dealSizeResp as any)?.data?.data ?? [];
+  const forecastData: any[] = (forecastResp as any)?.data?.data ?? [];
+  const winLossData: any[] = (winLossResp as any)?.data?.data ?? [];
+
+  // KPI derivations from summary data
+  const totalRevenue = summaryData.reduce((sum: number, d: any) => sum + (d.total_revenue ?? 0), 0);
+  const totalSalesCount = summaryData.reduce((sum: number, d: any) => sum + (d.total_leads ?? 0), 0);
+  const avgConversionRate = summaryData.length > 0
+    ? (summaryData.reduce((sum: number, d: any) => sum + (d.conversion_rate ?? 0), 0) / summaryData.length).toFixed(1)
+    : '0';
+
+  const growthLabel = compareEnabled
+    ? (() => {
+        const prev = (summaryResp as any)?.data?.previous_period;
+        if (prev && typeof prev === 'object' && 'total_revenue' in prev) {
+          const prevRev = (prev as any).total_revenue ?? 0;
+          if (prevRev > 0) {
+            const pct = (((totalRevenue - prevRev) / prevRev) * 100).toFixed(1);
+            return `${Number(pct) >= 0 ? '+' : ''}${pct}% vs previous period`;
+          }
+        }
+        return '+0% vs previous period';
+      })()
+    : '+0% from previous period';
+
+  const handleExport = async () => {
+    try {
+      const resp = await reportsApi.export('sales_summary', 'excel', { date_preset: currentPreset });
+      const blob = (resp as any)?.data instanceof Blob ? (resp as any).data : new Blob([resp as any]);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sales-report-${currentPreset}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Export downloaded');
+    } catch {
+      toast.error('Failed to export report');
+    }
+  };
+
+  const handleRetry = () => setRetryKey((k) => k + 1);
 
   return (
     <div className="flex flex-col h-full overflow-auto">
       {/* Header */}
       <div className="px-6 py-4 border-b">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-3">
+          <Link href="/reports" className="hover:text-foreground transition-colors">Reports</Link>
+          <span>/</span>
+          <span className="text-foreground font-medium">Sales Reports</span>
+        </div>
+
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <Link href="/reports">
@@ -207,11 +236,7 @@ export default function SalesReportsPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm">
-              <Filter className="h-4 w-4 mr-1.5" />
-              Filter
-            </Button>
-            <Button size="sm" className="bg-primary text-primary-foreground">
+            <Button variant="outline" size="sm" onClick={handleExport}>
               <Download className="h-4 w-4 mr-1.5" />
               Export
             </Button>
@@ -219,57 +244,104 @@ export default function SalesReportsPage() {
         </div>
 
         {/* Quick KPI Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <SummaryCard label="Total Revenue" value={`₹${(totalRevenue / 1000000).toFixed(1)}M`} subtext="12 months" />
-          <SummaryCard label="Total Sales" value={totalSales.toString()} subtext="Bookings made" />
-          <SummaryCard label="Avg Revenue" value={`₹${(avgRevenue / 100000).toFixed(1)}L`} subtext="Per month" />
-          <SummaryCard label="Growth" value="+12.5%" subtext="YoY" />
-        </div>
+        {summaryLoading ? (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <KPISkeleton />
+            <KPISkeleton />
+            <KPISkeleton />
+            <KPISkeleton />
+          </div>
+        ) : summaryError ? (
+          <ErrorState message="Failed to load report" onRetry={handleRetry} />
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <SummaryCard
+              label="Total Revenue"
+              value={totalRevenue >= 100000 ? `\u20B9${(totalRevenue / 100000).toFixed(1)}L` : `\u20B9${totalRevenue.toLocaleString()}`}
+              subtext="Selected period"
+            />
+            <SummaryCard
+              label="Total Sales"
+              value={String(totalSalesCount)}
+              subtext="Bookings made"
+            />
+            <SummaryCard
+              label="Conversion Rate"
+              value={`${avgConversionRate}%`}
+              subtext="Avg across period"
+            />
+            <SummaryCard
+              label="Growth"
+              value={growthLabel.split('%')[0] + '%'}
+              subtext={growthLabel.split('% ').slice(1).join('% ')}
+            />
+          </div>
+        )}
       </div>
 
-      {/* Date Range Filter */}
-      <div className="px-6 py-3 border-b bg-muted/50 flex justify-between items-center">
+      {/* Date Range + Compare Filter */}
+      <div className="px-6 py-3 border-b bg-muted/50 flex flex-wrap justify-between items-center gap-3">
         <DateRangeSelector value={dateRange} onChange={setDateRange} />
+        <div className="flex items-center gap-2">
+          <Switch
+            id="compare-toggle"
+            checked={compareEnabled}
+            onCheckedChange={setCompareEnabled}
+          />
+          <Label htmlFor="compare-toggle" className="text-sm cursor-pointer">
+            Compare with previous period
+          </Label>
+        </div>
       </div>
 
       {/* Main Content - Tabs */}
       <div className="flex-1 p-6 overflow-auto">
-        <Tabs defaultValue="summary" className="w-full">
-          <TabsList className="grid w-full grid-cols-5 lg:grid-cols-9 mb-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-5 lg:grid-cols-8 mb-6">
             <TabsTrigger value="summary">Summary</TabsTrigger>
             <TabsTrigger value="destination">Destination</TabsTrigger>
             <TabsTrigger value="salesperson">Salesperson</TabsTrigger>
             <TabsTrigger value="triptype">Trip Type</TabsTrigger>
             <TabsTrigger value="source">Source</TabsTrigger>
-            <TabsTrigger value="dealsize" className="hidden lg:block">Deal Size</TabsTrigger>
-            <TabsTrigger value="forecast" className="hidden lg:block">Forecast</TabsTrigger>
-            <TabsTrigger value="winloss" className="hidden lg:block">Win/Loss</TabsTrigger>
-            <TabsTrigger value="more" className="lg:hidden">More</TabsTrigger>
+            <TabsTrigger value="dealsize" className="hidden lg:flex">Deal Size</TabsTrigger>
+            <TabsTrigger value="forecast" className="hidden lg:flex">Forecast</TabsTrigger>
+            <TabsTrigger value="winloss" className="hidden lg:flex">Win/Loss</TabsTrigger>
           </TabsList>
 
           {/* Summary Tab */}
           <TabsContent value="summary" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Sales Summary (12 Months)</CardTitle>
+                <CardTitle className="text-base">Sales Summary</CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <AreaChart data={salesData}>
-                    <defs>
-                      <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Tooltip formatter={(value) => `₹${(value as number / 100000).toFixed(1)}L`} />
-                    <Legend />
-                    <Area type="monotone" dataKey="revenue" stroke="#3b82f6" fillOpacity={1} fill="url(#colorRevenue)" name="Revenue" />
-                  </AreaChart>
-                </ResponsiveContainer>
+                {summaryLoading ? (
+                  <Skeleton className="h-[300px] w-full" />
+                ) : summaryError ? (
+                  <ErrorState message="Failed to load report" onRetry={handleRetry} />
+                ) : summaryData.length === 0 ? (
+                  <EmptyState />
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <AreaChart data={summaryData}>
+                      <defs>
+                        <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
+                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis />
+                      <Tooltip formatter={(value) => `\u20B9${((value as number) / 100000).toFixed(1)}L`} />
+                      <Legend />
+                      <Area type="monotone" dataKey="total_revenue" stroke="#3b82f6" fillOpacity={1} fill="url(#colorRevenue)" name="Revenue" />
+                      {compareEnabled && (
+                        <Area type="monotone" dataKey="prev_revenue" stroke="#f59e0b" strokeDasharray="5 5" fill="none" name="Prev Period" />
+                      )}
+                    </AreaChart>
+                  </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -278,18 +350,26 @@ export default function SalesReportsPage() {
           <TabsContent value="destination" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Top 10 Destinations by Revenue</CardTitle>
+                <CardTitle className="text-base">Top Destinations by Revenue</CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={400}>
-                  <BarChart data={destinationData} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" />
-                    <YAxis dataKey="name" type="category" width={100} />
-                    <Tooltip formatter={(value) => `₹${(value as number / 1000000).toFixed(1)}M`} />
-                    <Bar dataKey="revenue" fill="#3b82f6" />
-                  </BarChart>
-                </ResponsiveContainer>
+                {destLoading ? (
+                  <Skeleton className="h-[300px] w-full" />
+                ) : destError ? (
+                  <ErrorState message="Failed to load report" onRetry={handleRetry} />
+                ) : destData.length === 0 ? (
+                  <EmptyState />
+                ) : (
+                  <ResponsiveContainer width="100%" height={400}>
+                    <BarChart data={destData} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis type="number" />
+                      <YAxis dataKey="name" type="category" width={100} />
+                      <Tooltip formatter={(value) => `\u20B9${((value as number) / 1000000).toFixed(1)}M`} />
+                      <Bar dataKey="revenue" fill="#3b82f6" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -301,17 +381,25 @@ export default function SalesReportsPage() {
                 <CardTitle className="text-base">Sales by Salesperson</CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={salespersonData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="revenue" fill="#10b981" name="Revenue (₹)" />
-                    <Bar dataKey="target" fill="#f59e0b" name="Target (₹)" />
-                  </BarChart>
-                </ResponsiveContainer>
+                {salesPersonLoading ? (
+                  <Skeleton className="h-[300px] w-full" />
+                ) : salesPersonError ? (
+                  <ErrorState message="Failed to load report" onRetry={handleRetry} />
+                ) : salesPersonData.length === 0 ? (
+                  <EmptyState />
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={salesPersonData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Bar dataKey="revenue" fill="#10b981" name="Revenue (\u20B9)" />
+                      <Bar dataKey="target" fill="#f59e0b" name="Target (\u20B9)" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -323,25 +411,33 @@ export default function SalesReportsPage() {
                 <CardTitle className="text-base">Sales by Trip Type</CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={tripTypeData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, value }) => `${name} (${value}%)`}
-                      outerRadius={100}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {tripTypeData.map((entry: any, index: any) => (
-                        <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value) => `${value}%`} />
-                  </PieChart>
-                </ResponsiveContainer>
+                {tripTypeLoading ? (
+                  <Skeleton className="h-[300px] w-full" />
+                ) : tripTypeError ? (
+                  <ErrorState message="Failed to load report" onRetry={handleRetry} />
+                ) : tripTypeData.length === 0 ? (
+                  <EmptyState />
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie
+                        data={tripTypeData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, value }) => `${name} (${value}%)`}
+                        outerRadius={100}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {tripTypeData.map((_entry: any, index: any) => (
+                          <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value) => `${value}%`} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -353,25 +449,33 @@ export default function SalesReportsPage() {
                 <CardTitle className="text-base">Sales by Source</CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={sourceData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, value }) => `${name} (${value}%)`}
-                      outerRadius={100}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {sourceData.map((entry: any, index: any) => (
-                        <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value) => `${value}%`} />
-                  </PieChart>
-                </ResponsiveContainer>
+                {sourceLoading ? (
+                  <Skeleton className="h-[300px] w-full" />
+                ) : sourceError ? (
+                  <ErrorState message="Failed to load report" onRetry={handleRetry} />
+                ) : sourceData.length === 0 ? (
+                  <EmptyState />
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie
+                        data={sourceData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, value }) => `${name} (${value}%)`}
+                        outerRadius={100}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {sourceData.map((_entry: any, index: any) => (
+                          <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value) => `${value}%`} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -383,16 +487,24 @@ export default function SalesReportsPage() {
                 <CardTitle className="text-base">Average Deal Size Trend</CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={dealSizeData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Tooltip formatter={(value) => `₹${(value as number / 100000).toFixed(1)}L`} />
-                    <Legend />
-                    <Line type="monotone" dataKey="avgSize" stroke="#8b5cf6" name="Average Size" />
-                  </LineChart>
-                </ResponsiveContainer>
+                {dealSizeLoading ? (
+                  <Skeleton className="h-[300px] w-full" />
+                ) : dealSizeError ? (
+                  <ErrorState message="Failed to load report" onRetry={handleRetry} />
+                ) : dealSizeData.length === 0 ? (
+                  <EmptyState />
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={dealSizeData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis />
+                      <Tooltip formatter={(value) => `\u20B9${((value as number) / 100000).toFixed(1)}L`} />
+                      <Legend />
+                      <Line type="monotone" dataKey="avgSize" stroke="#8b5cf6" name="Average Size" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -404,17 +516,25 @@ export default function SalesReportsPage() {
                 <CardTitle className="text-base">Sales Forecast with Projection</CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <AreaChart data={salesData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Tooltip formatter={(value) => `₹${(value as number / 100000).toFixed(1)}L`} />
-                    <Legend />
-                    <Area type="monotone" dataKey="revenue" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.6} name="Actual" />
-                    <Area type="monotone" dataKey="projected" stroke="#f59e0b" strokeDasharray="5 5" fill="none" name="Projected" />
-                  </AreaChart>
-                </ResponsiveContainer>
+                {forecastLoading ? (
+                  <Skeleton className="h-[300px] w-full" />
+                ) : forecastError ? (
+                  <ErrorState message="Failed to load report" onRetry={handleRetry} />
+                ) : forecastData.length === 0 ? (
+                  <EmptyState />
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <AreaChart data={forecastData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis />
+                      <Tooltip formatter={(value) => `\u20B9${((value as number) / 100000).toFixed(1)}L`} />
+                      <Legend />
+                      <Area type="monotone" dataKey="revenue" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.6} name="Actual" />
+                      <Area type="monotone" dataKey="projected" stroke="#f59e0b" strokeDasharray="5 5" fill="none" name="Projected" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -426,76 +546,27 @@ export default function SalesReportsPage() {
                 <CardTitle className="text-base">Win/Loss Analysis</CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={winLossData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="won" fill="#10b981" name="Won" />
-                    <Bar dataKey="lost" fill="#ef4444" name="Lost" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* More Tab (Mobile) */}
-          <TabsContent value="more" className="space-y-6">
-            <div className="grid grid-cols-1 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Average Deal Size</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={250}>
-                    <LineChart data={dealSizeData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="month" />
-                      <YAxis />
-                      <Tooltip formatter={(value) => `₹${(value as number / 100000).toFixed(1)}L`} />
-                      <Line type="monotone" dataKey="avgSize" stroke="#8b5cf6" />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Forecast</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={250}>
-                    <AreaChart data={salesData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="month" />
-                      <YAxis />
-                      <Tooltip formatter={(value) => `₹${(value as number / 100000).toFixed(1)}L`} />
-                      <Area type="monotone" dataKey="revenue" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.6} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Win/Loss</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={250}>
+                {winLossLoading ? (
+                  <Skeleton className="h-[300px] w-full" />
+                ) : winLossError ? (
+                  <ErrorState message="Failed to load report" onRetry={handleRetry} />
+                ) : winLossData.length === 0 ? (
+                  <EmptyState />
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={winLossData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="month" />
                       <YAxis />
                       <Tooltip />
-                      <Bar dataKey="won" fill="#10b981" />
-                      <Bar dataKey="lost" fill="#ef4444" />
+                      <Legend />
+                      <Bar dataKey="won" fill="#10b981" name="Won" />
+                      <Bar dataKey="lost" fill="#ef4444" name="Lost" />
                     </BarChart>
                   </ResponsiveContainer>
-                </CardContent>
-              </Card>
-            </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>

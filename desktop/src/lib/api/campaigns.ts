@@ -4,11 +4,15 @@ import type { Campaign } from '@travelcrm/shared';
 
 export interface CreateCampaignRequest {
   name: string;
+  subject: string;
+  body?: string;
+  templateId?: string;
+  segmentFilters?: Record<string, unknown>;
+  // Legacy / extra fields (passed through but may be ignored by backend)
   description?: string;
   type?: 'email' | 'sms' | 'social' | 'push';
   status?: 'draft' | 'scheduled' | 'running' | 'paused' | 'completed';
-  subject?: string;
-  content: string;
+  content?: string;
   targetSegment?: string;
   startDate?: string;
   endDate?: string;
@@ -17,10 +21,13 @@ export interface CreateCampaignRequest {
 
 export interface UpdateCampaignRequest {
   name?: string;
+  subject?: string;
+  body?: string;
+  templateId?: string;
+  segmentFilters?: Record<string, unknown>;
   description?: string;
   type?: 'email' | 'sms' | 'social' | 'push';
   status?: 'draft' | 'scheduled' | 'running' | 'paused' | 'completed';
-  subject?: string;
   content?: string;
   targetSegment?: string;
   startDate?: string;
@@ -35,7 +42,8 @@ export interface SendCampaignRequest {
 }
 
 export interface ScheduleCampaignRequest {
-  scheduledFor: string;
+  scheduledFor?: string; // kept for backwards compat
+  scheduledAt?: string;  // backend field name
   timezone?: string;
   recurringPattern?: 'once' | 'daily' | 'weekly' | 'monthly';
 }
@@ -85,4 +93,19 @@ export const campaignsApi = {
 
   cancel: (id: string, data?: { reason?: string }) =>
     client.post<ApiResponse<Campaign>>(API_ENDPOINTS.campaigns.cancel(id), data),
+
+  getRecipients: (id: string, params?: { page?: number; limit?: number }) =>
+    client.get<ApiResponse<PaginatedResponse<CampaignRecipient>>>(API_ENDPOINTS.campaigns.recipients(id), { params }),
 };
+
+export interface CampaignRecipient {
+  id: string;
+  contactId?: string;
+  name: string;
+  email: string;
+  status: string;
+  openedAt?: string | null;
+  clickedAt?: string | null;
+  sentAt?: string;
+  errorMessage?: string;
+}

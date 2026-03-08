@@ -3,14 +3,17 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Loader2, CreditCard, MoreHorizontal } from 'lucide-react';
+import { Plus, CreditCard, Eye, Pencil, Trash2, Loader2, MoreHorizontal } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { useApiQuery } from '@/hooks/use-api';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Skeleton } from '@/components/ui/skeleton';
+import { FilterBar } from '@/components/domain/filter-bar';
+import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
+import { useApiMutation } from '@/hooks/use-api';
 import { client, type ApiResponse, type PaginatedResponse } from '@/lib/api/client';
 import { API_ENDPOINTS } from '@/lib/api/config';
 
@@ -48,76 +51,167 @@ function getRateCardPrice(rc: RateCard): number {
   return rc.sellingPrice ?? rc.rate ?? rc.costPrice ?? 0;
 }
 
+function isExpired(validTo?: string) {
+  if (!validTo) return false;
+  return new Date(validTo).getTime() < Date.now();
+}
+
+function RateCardDrawer({ rateCard, open, onClose, onEdit }: { rateCard: RateCard | null; open: boolean; onClose: () => void; onEdit: () => void }) {
+  if (!rateCard) return null;
+  const price = getRateCardPrice(rateCard);
+  const currency = rateCard.currency === 'USD' ? '$' : '₹';
+  return (
+    <Sheet open={open} onOpenChange={onClose}>
+      <SheetContent className="w-[400px] sm:w-[480px]">
+        <SheetHeader>
+          <SheetTitle>{getRateCardName(rateCard)}</SheetTitle>
+        </SheetHeader>
+        <div className="mt-4 space-y-4">
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="capitalize">{getRateCardCategory(rateCard).replace('_', ' ')}</Badge>
+            {rateCard.isActive === 0 || isExpired(rateCard.validTo) ? (
+              <Badge className="bg-red-100 text-red-900">Expired</Badge>
+            ) : (
+              <Badge className="bg-green-100 text-green-900">Active</Badge>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-muted-foreground">Supplier</p>
+              <p className="font-medium">{rateCard.supplierName ?? 'N/A'}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Rate</p>
+              <p className="font-mono font-semibold">{currency}{price.toLocaleString('en-IN')}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Valid From</p>
+              <p className="font-medium">{rateCard.validFrom ? new Date(rateCard.validFrom).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Valid To</p>
+              <p className="font-medium">{rateCard.validTo ? new Date(rateCard.validTo).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</p>
+            </div>
+          </div>
+          {rateCard.notes && (
+            <div className="text-sm">
+              <p className="text-muted-foreground mb-1">Notes</p>
+              <p>{rateCard.notes}</p>
+            </div>
+          )}
+          <div className="flex gap-2 pt-4 border-t">
+            <Button className="flex-1" onClick={onEdit}><Pencil className="h-4 w-4 mr-1.5" />Edit</Button>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+const CATEGORY_OPTIONS = [
+  { label: 'Hotel', value: 'hotel' },
+  { label: 'Transport', value: 'transport' },
+  { label: 'Activity', value: 'activity' },
+  { label: 'Meal', value: 'meal' },
+  { label: 'Flight', value: 'flight' },
+];
+
 export default function RateCardsPage() {
   const router = useRouter();
   const [search, setSearch] = React.useState('');
-  const [categoryFilter, setCategoryFilter] = React.useState('all');
-  const [page, setPage] = React.useState(1);
+  const [categoryFilter, setCategoryFilter] = React.useState('');
+  const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const [selectedCard, setSelectedCard] = React.useState<RateCard | null>(null);
 
-  const { data: response, loading, error } = useApiQuery(
-    () => client.get<ApiResponse<PaginatedResponse<RateCard>>>(API_ENDPOINTS.rateCards.list, {
-      params: { page, limit: 50, search: search || undefined },
-    }),
-    [page, search],
+  const fetcher = React.useCallback(
+    (page: number, limit: number) =>
+      client.get<ApiResponse<PaginatedResponse<RateCard>>>(API_ENDPOINTS.rateCards.list, {
+        params: {
+          page,
+          limit,
+          search: search || undefined,
+          serviceType: categoryFilter || undefined,
+          isActive: 'true',
+        },
+      }),
+    [search, categoryFilter],
   );
 
-  const rateCards: RateCard[] = React.useMemo(() => {
-    if (!response || !('data' in response)) return [];
-    const data = response.data;
-    return Array.isArray(data) ? data : (data as any)?.data ?? [];
-  }, [response]);
+  const { items: rateCards, loading, loadingMore, hasMore, total, error, sentinelRef, refetch } = useInfiniteScroll<RateCard>({
+    fetcher,
+    limit: 30,
+  });
 
-  const filtered = React.useMemo(() => {
-    if (categoryFilter === 'all') return rateCards;
-    return rateCards.filter((rc) => getRateCardCategory(rc) === categoryFilter);
-  }, [rateCards, categoryFilter]);
+  const { mutate: deleteRateCard } = useApiMutation(
+    (id: string) => client.delete<ApiResponse<void>>(API_ENDPOINTS.rateCards.byId(id)),
+  );
 
-  function isExpired(validTo?: string) {
-    if (!validTo) return false;
-    return new Date(validTo).getTime() < Date.now();
-  }
+  const handleDelete = async (rc: RateCard, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(`Delete "${getRateCardName(rc)}"? This cannot be undone.`)) return;
+    try {
+      await deleteRateCard(rc.id);
+      toast.success('Rate card deleted');
+      if (selectedCard?.id === rc.id) setDrawerOpen(false);
+      refetch();
+    } catch {
+      toast.error('Failed to delete rate card');
+    }
+  };
+
+  const activeFilters = categoryFilter
+    ? [{ id: 'category', label: 'Category', value: CATEGORY_OPTIONS.find(o => o.value === categoryFilter)?.label ?? categoryFilter }]
+    : [];
 
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-6 py-4 border-b">
         <div>
-          <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Rate Cards</h1>
-          <p className="text-sm text-muted-foreground">{filtered.length} rate cards</p>
+          <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
+            Rate Cards {total > 0 && <span className="text-base font-normal text-muted-foreground">({total})</span>}
+          </h1>
+          <p className="text-sm text-muted-foreground">Manage supplier pricing and seasonal rates</p>
         </div>
         <Button asChild>
           <Link href="/rate-cards/new"><Plus className="h-4 w-4 mr-1.5" /> Add Rate Card</Link>
         </Button>
       </div>
 
-      <div className="flex items-center gap-3 px-6 py-3 border-b">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search rate cards..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-9" />
-        </div>
-        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-40 h-9"><SelectValue placeholder="All categories" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Categories</SelectItem>
-            <SelectItem value="hotel">Hotel</SelectItem>
-            <SelectItem value="airline">Airline</SelectItem>
-            <SelectItem value="transport">Transport</SelectItem>
-            <SelectItem value="activity">Activity</SelectItem>
-            <SelectItem value="tour_operator">Tour Operator</SelectItem>
-            <SelectItem value="resort">Resort</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="px-6 py-3 border-b">
+        <FilterBar
+          searchValue={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search rate cards..."
+          activeFilters={activeFilters}
+          onRemoveFilter={() => setCategoryFilter('')}
+          onClearFilters={() => setCategoryFilter('')}
+          actions={
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">All Categories</option>
+              {CATEGORY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          }
+        />
       </div>
 
       {error && (
         <div className="px-6 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800">
-          <p className="text-sm text-amber-800 dark:text-amber-200">Using sample data -- connect to backend for real data</p>
+          <p className="text-sm text-amber-800 dark:text-amber-200">Failed to load rate cards — check backend connection</p>
         </div>
       )}
 
       <div className="flex-1 overflow-auto">
         {loading ? (
-          <div className="flex items-center justify-center h-full">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <div className="p-6 space-y-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
           </div>
         ) : (
           <Table>
@@ -130,15 +224,21 @@ export default function RateCardsPage() {
                 <TableHead>Valid From</TableHead>
                 <TableHead>Valid To</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="w-10" />
+                <TableHead className="w-20" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((rc) => (
-                <TableRow key={rc.id} className="cursor-pointer hover:bg-muted/50" onClick={() => router.push(`/rate-cards/${rc.id}/edit`)}>
+              {rateCards.map((rc) => (
+                <TableRow
+                  key={rc.id}
+                  className="cursor-pointer hover:bg-muted/50 group"
+                  onClick={() => { setSelectedCard(rc); setDrawerOpen(true); }}
+                >
                   <TableCell className="font-medium text-sm">{getRateCardName(rc)}</TableCell>
                   <TableCell className="text-sm">{rc.supplierName ?? 'N/A'}</TableCell>
-                  <TableCell><Badge variant="outline" className="text-xs capitalize">{getRateCardCategory(rc).replace('_', ' ')}</Badge></TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="text-xs capitalize">{getRateCardCategory(rc).replace('_', ' ')}</Badge>
+                  </TableCell>
                   <TableCell className="text-right font-mono text-sm font-semibold">
                     {rc.currency === 'USD' ? '$' : '₹'}{getRateCardPrice(rc).toLocaleString('en-IN')}
                   </TableCell>
@@ -156,30 +256,53 @@ export default function RateCardsPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon-sm" onClick={(e) => e.stopPropagation()}><MoreHorizontal className="h-4 w-4" /></Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => router.push(`/rate-cards/${rc.id}/edit`)}>Edit</DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button variant="ghost" size="icon-sm" onClick={(e) => { e.stopPropagation(); setSelectedCard(rc); setDrawerOpen(true); }}>
+                        <Eye className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon-sm" onClick={(e) => { e.stopPropagation(); router.push(`/rate-cards/${rc.id}/edit`); }}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon-sm" className="text-destructive hover:text-destructive" onClick={(e) => handleDelete(rc, e)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
-              {filtered.length === 0 && !loading && (
+              {rateCards.length === 0 && !loading && (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center py-12">
                     <CreditCard className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">No rate cards found</p>
+                    <p className="text-sm text-muted-foreground">No rate cards found</p>
+                    <Button asChild variant="outline" size="sm" className="mt-3">
+                      <Link href="/rate-cards/new"><Plus className="h-4 w-4 mr-1" /> Add Rate Card</Link>
+                    </Button>
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
         )}
+
+        <div ref={sentinelRef} className="h-4" />
+        {loadingMore && (
+          <div className="flex items-center justify-center py-4">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <span className="ml-2 text-sm text-muted-foreground">Loading more...</span>
+          </div>
+        )}
+        {!hasMore && rateCards.length > 0 && (
+          <p className="text-center text-xs text-muted-foreground py-4">All rate cards loaded</p>
+        )}
       </div>
+
+      <RateCardDrawer
+        rateCard={selectedCard}
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        onEdit={() => { setDrawerOpen(false); router.push(`/rate-cards/${selectedCard?.id}/edit`); }}
+      />
     </div>
   );
 }

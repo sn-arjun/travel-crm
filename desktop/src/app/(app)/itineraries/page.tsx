@@ -3,14 +3,15 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, MapPin, MoreHorizontal, FileText, Copy, Loader2, Trash2, Pencil } from 'lucide-react';
+import { Plus, MapPin, MoreHorizontal, FileText, Copy, Loader2, Trash2, Pencil, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Skeleton } from '@/components/ui/skeleton';
+import { FilterBar } from '@/components/domain/filter-bar';
 import { cn } from '@/lib/utils';
 import { useApiMutation } from '@/hooks/use-api';
 import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
@@ -38,7 +39,9 @@ export default function ItinerariesPage() {
   const canSeeCost = role === 'admin' || role === 'sales_manager' || role === 'manager';
 
   const [search, setSearch] = React.useState('');
-  const [statusFilter, setStatusFilter] = React.useState('all');
+  const [statusFilter, setStatusFilter] = React.useState('');
+  const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const [selectedItinerary, setSelectedItinerary] = React.useState<any>(null);
 
   const fetcher = React.useCallback(
     (page: number, limit: number) =>
@@ -46,7 +49,7 @@ export default function ItinerariesPage() {
         page,
         limit,
         search: search || undefined,
-        status: statusFilter !== 'all' ? statusFilter : undefined,
+        status: statusFilter || undefined,
       }),
     [search, statusFilter],
   );
@@ -106,22 +109,29 @@ export default function ItinerariesPage() {
         </Link>
       </div>
 
-      <div className="flex items-center gap-3 px-6 py-3 border-b">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search itineraries..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-9" />
-        </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-32 h-9"><SelectValue placeholder="All status" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="draft">Draft</SelectItem>
-            <SelectItem value="sent">Sent</SelectItem>
-            <SelectItem value="pending">Pending</SelectItem>
-            <SelectItem value="approved">Approved</SelectItem>
-            <SelectItem value="rejected">Rejected</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="px-6 py-3 border-b">
+        <FilterBar
+          searchValue={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search itineraries..."
+          activeFilters={statusFilter ? [{ id: 'status', label: 'Status', value: statusFilter }] : []}
+          onRemoveFilter={() => setStatusFilter('')}
+          onClearFilters={() => setStatusFilter('')}
+          actions={
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">All Status</option>
+              <option value="draft">Draft</option>
+              <option value="sent">Sent</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          }
+        />
       </div>
 
       {error && (
@@ -134,8 +144,10 @@ export default function ItinerariesPage() {
 
       <div className="flex-1 overflow-auto">
         {loading && (
-          <div className="flex items-center justify-center h-64">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <div className="p-6 space-y-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
           </div>
         )}
 
@@ -164,8 +176,8 @@ export default function ItinerariesPage() {
                 return (
                   <TableRow
                     key={it.id}
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => router.push(`/itineraries/${it.id}`)}
+                    className="cursor-pointer hover:bg-muted/50 group"
+                    onClick={() => { setSelectedItinerary(it); setDrawerOpen(true); }}
                   >
                     <TableCell>
                       <div>
@@ -196,25 +208,30 @@ export default function ItinerariesPage() {
                     )}
                     <TableCell><StatusBadge status={it.status ?? 'draft'} /></TableCell>
                     <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon-sm" onClick={(e) => e.stopPropagation()}><MoreHorizontal className="h-4 w-4" /></Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); router.push(`/itineraries/${it.id}`); }}>
-                            <FileText className="h-3.5 w-3.5 mr-2" />View Details
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); router.push(`/itineraries/${it.id}/edit`); }}>
-                            <Pencil className="h-3.5 w-3.5 mr-2" />Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleClone(it.id); }} disabled={cloneLoading}>
-                            <Copy className="h-3.5 w-3.5 mr-2" />Duplicate
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDelete(it.id); }} disabled={deleteLoading} className="text-red-600">
-                            <Trash2 className="h-3.5 w-3.5 mr-2" />Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button variant="ghost" size="icon-sm" onClick={(e) => { e.stopPropagation(); setSelectedItinerary(it); setDrawerOpen(true); }}>
+                          <Eye className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon-sm" onClick={(e) => { e.stopPropagation(); router.push(`/itineraries/${it.id}/edit`); }}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon-sm" onClick={(e) => e.stopPropagation()}><MoreHorizontal className="h-4 w-4" /></Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); router.push(`/itineraries/${it.id}`); }}>
+                              <FileText className="h-3.5 w-3.5 mr-2" />View Full Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleClone(it.id); }} disabled={cloneLoading}>
+                              <Copy className="h-3.5 w-3.5 mr-2" />Duplicate
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDelete(it.id); }} disabled={deleteLoading} className="text-red-600">
+                              <Trash2 className="h-3.5 w-3.5 mr-2" />Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -246,6 +263,63 @@ export default function ItinerariesPage() {
           <p className="text-center text-xs text-muted-foreground py-4">All itineraries loaded</p>
         )}
       </div>
+
+      {/* Detail Drawer */}
+      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
+        <SheetContent className="w-[420px] sm:w-[500px]">
+          {selectedItinerary && (
+            <>
+              <SheetHeader>
+                <SheetTitle className="pr-6">{selectedItinerary.title}</SheetTitle>
+              </SheetHeader>
+              <div className="mt-4 space-y-4">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <StatusBadge status={selectedItinerary.status ?? 'draft'} />
+                  {selectedItinerary.currency && (
+                    <Badge variant="outline" className="text-xs">{selectedItinerary.currency}</Badge>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Lead</p>
+                    <p className="font-medium">{selectedItinerary.leadTitle || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Client</p>
+                    <p className="font-medium">{selectedItinerary.contactName || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Duration</p>
+                    <p className="font-medium">{(selectedItinerary.daysCount ?? 0)}D/{Math.max(0, (selectedItinerary.daysCount ?? 0) - 1)}N</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Version</p>
+                    <p className="font-medium">v{selectedItinerary.versionNumber ?? 1}</p>
+                  </div>
+                  {canSeeCost && (
+                    <div>
+                      <p className="text-muted-foreground">Cost</p>
+                      <p className="font-mono font-medium">₹{(selectedItinerary.totalCost ?? 0).toLocaleString('en-IN')}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-muted-foreground">Grand Total</p>
+                    <p className="font-mono font-semibold text-green-600">₹{(selectedItinerary.grandTotal ?? selectedItinerary.totalSelling ?? 0).toLocaleString('en-IN')}</p>
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-4 border-t">
+                  <Button className="flex-1" onClick={() => { setDrawerOpen(false); router.push(`/itineraries/${selectedItinerary.id}`); }}>
+                    <FileText className="h-4 w-4 mr-1.5" />Full View
+                  </Button>
+                  <Button variant="outline" onClick={() => { setDrawerOpen(false); router.push(`/itineraries/${selectedItinerary.id}/edit`); }}>
+                    <Pencil className="h-4 w-4 mr-1.5" />Edit
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

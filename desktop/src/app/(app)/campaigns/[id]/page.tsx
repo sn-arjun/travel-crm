@@ -22,8 +22,10 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { campaignsApi, type SendCampaignRequest, type ScheduleCampaignRequest } from '@/lib/api/campaigns';
+import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
+import { campaignsApi, type SendCampaignRequest, type ScheduleCampaignRequest, type CampaignRecipient } from '@/lib/api/campaigns';
 import type { Campaign } from '@travelcrm/shared';
 
 function getStatusColor(status: string) {
@@ -52,17 +54,6 @@ function getChannelIcon(type: string) {
   }
 }
 
-// Mock recipients data for display
-const mockRecipients = [
-  { id: '1', name: 'Rahul Sharma', email: 'rahul@example.com', status: 'delivered', openedAt: '2026-03-05T10:30:00Z', clickedAt: '2026-03-05T11:00:00Z' },
-  { id: '2', name: 'Priya Patel', email: 'priya@example.com', status: 'opened', openedAt: '2026-03-05T09:15:00Z', clickedAt: null },
-  { id: '3', name: 'Amit Kumar', email: 'amit@example.com', status: 'delivered', openedAt: null, clickedAt: null },
-  { id: '4', name: 'Sneha Gupta', email: 'sneha@example.com', status: 'bounced', openedAt: null, clickedAt: null },
-  { id: '5', name: 'Vikram Singh', email: 'vikram@example.com', status: 'delivered', openedAt: '2026-03-05T14:00:00Z', clickedAt: '2026-03-05T14:30:00Z' },
-  { id: '6', name: 'Anita Desai', email: 'anita@example.com', status: 'opened', openedAt: '2026-03-05T08:45:00Z', clickedAt: null },
-  { id: '7', name: 'Rajesh Reddy', email: 'rajesh@example.com', status: 'failed', openedAt: null, clickedAt: null },
-  { id: '8', name: 'Meena Iyer', email: 'meena@example.com', status: 'delivered', openedAt: '2026-03-05T16:20:00Z', clickedAt: '2026-03-05T16:45:00Z' },
-];
 
 function getRecipientStatusBadge(status: string) {
   switch (status) {
@@ -117,6 +108,30 @@ export default function CampaignDetailPage() {
     (data: { reason?: string }) => campaignsApi.cancel(campaignId, data),
   );
 
+  // Infinite scroll for recipients
+  const recipientFetcher = React.useCallback(
+    (page: number, limit: number) => campaignsApi.getRecipients(campaignId, { page, limit }),
+    [campaignId],
+  );
+  const {
+    items: recipients,
+    loading: recipientsLoading,
+    loadingMore: recipientsLoadingMore,
+    total: recipientTotal,
+    sentinelRef: recipientSentinelRef,
+  } = useInfiniteScroll<CampaignRecipient>({
+    fetcher: recipientFetcher,
+    limit: 25,
+  });
+
+  // Auto-refresh every 30s while campaign is sending/running
+  const campaignStatus = (campaign?.status ?? '') as string;
+  React.useEffect(() => {
+    if (campaignStatus !== 'sending' && campaignStatus !== 'running') return;
+    const interval = setInterval(() => { refetch(); }, 30_000);
+    return () => clearInterval(interval);
+  }, [campaignStatus, refetch]);
+
   const handleSendNow = async () => {
     if (!confirm('Are you sure you want to send this campaign now?')) return;
 
@@ -161,8 +176,20 @@ export default function CampaignDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="flex flex-col h-full">
+        <div className="px-6 py-4 border-b flex items-center gap-3">
+          <Skeleton className="h-8 w-8 rounded" />
+          <Skeleton className="h-6 w-64" />
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-6 gap-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-20" />
+            ))}
+          </div>
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-64 w-full" />
+        </div>
       </div>
     );
   }
@@ -356,7 +383,7 @@ export default function CampaignDetailPage() {
             </CardContent>
           </Card>
 
-          {(campaign as any).content && (
+          {((campaign as any).body || (campaign as any).subject) && (
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Content Preview</CardTitle>
@@ -368,53 +395,76 @@ export default function CampaignDetailPage() {
                     <p className="text-sm font-medium">{(campaign as any).subject}</p>
                   </div>
                 )}
-                <div className="rounded-lg border p-3 bg-muted/30 max-h-40 overflow-auto">
-                  <pre className="text-xs whitespace-pre-wrap font-sans">{(campaign as any).content}</pre>
-                </div>
+                {(campaign as any).body && (
+                  <div className="rounded-lg border p-3 bg-muted/30 max-h-40 overflow-auto">
+                    <pre className="text-xs whitespace-pre-wrap font-sans">{(campaign as any).body}</pre>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
         </div>
 
-        {/* Recipients Table */}
+        {/* Recipients Table — with infinite scroll */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <Users className="h-4 w-4" />
-              Recipients ({mockRecipients.length})
+              Recipients ({recipientTotal})
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Opened</TableHead>
-                  <TableHead>Clicked</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {mockRecipients.map((recipient) => (
-                  <TableRow key={recipient.id}>
-                    <TableCell className="text-sm font-medium">{recipient.name}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{recipient.email}</TableCell>
-                    <TableCell>{getRecipientStatusBadge(recipient.status)}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {recipient.openedAt
-                        ? new Date(recipient.openedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-                        : '-'}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {recipient.clickedAt
-                        ? new Date(recipient.clickedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-                        : '-'}
-                    </TableCell>
-                  </TableRow>
+            {recipientsLoading ? (
+              <div className="p-4 space-y-2">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Skeleton key={i} className="h-10 w-full" />
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+            ) : (
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Opened</TableHead>
+                      <TableHead>Clicked</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {recipients.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center text-muted-foreground py-6 text-sm">
+                          No recipient data available yet
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      recipients.map((recipient) => (
+                        <TableRow key={recipient.id}>
+                          <TableCell className="text-sm font-medium">{(recipient as any).name}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{recipient.email}</TableCell>
+                          <TableCell>{getRecipientStatusBadge(recipient.status)}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {(recipient as any).openedAt
+                              ? new Date((recipient as any).openedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+                              : '-'}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {(recipient as any).clickedAt
+                              ? new Date((recipient as any).clickedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+                              : '-'}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+                <div ref={recipientSentinelRef} className="flex items-center justify-center py-3">
+                  {recipientsLoadingMore && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>

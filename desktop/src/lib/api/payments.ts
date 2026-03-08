@@ -34,10 +34,15 @@ export const paymentsApi = {
     limit?: number;
     search?: string;
     paymentMethod?: string;
+    method?: string;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
-  }) =>
-    client.get<ApiResponse<PaginatedResponse<Payment>>>(API_ENDPOINTS.payments.list, { params }),
+  }) => {
+    // Backend expects 'method' not 'paymentMethod'
+    const { paymentMethod, ...rest } = params ?? {};
+    const apiParams = paymentMethod ? { ...rest, method: paymentMethod } : rest;
+    return client.get<ApiResponse<PaginatedResponse<Payment>>>(API_ENDPOINTS.payments.list, { params: apiParams });
+  },
 
   getById: (id: string) =>
     client.get<ApiResponse<Payment>>(API_ENDPOINTS.payments.byId(id)),

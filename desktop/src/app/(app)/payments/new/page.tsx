@@ -2,8 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { ArrowLeft, Loader2, Save, Search, Info } from 'lucide-react';
+import { ArrowLeft, Loader2, Save, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Combobox } from '@/components/ui/combobox';
 import { toast } from 'sonner';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { paymentsApi, type CreatePaymentRequest } from '@/lib/api/payments';
@@ -24,29 +24,32 @@ function formatCurrency(amount: number) {
 export default function NewPaymentPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const [showInvoiceSearch, setShowInvoiceSearch] = React.useState(false);
-  const [invoiceSearch, setInvoiceSearch] = React.useState('');
 
   const [form, setForm] = React.useState({
     amount: '',
     paymentDate: new Date().toISOString().split('T')[0] ?? '',
-    paymentMethod: 'bank_transfer' as 'cash' | 'check' | 'card' | 'transfer' | 'other',
+    paymentMethod: 'bank_transfer',
     reference: '',
     notes: '',
     invoiceId: '',
     isAdvance: false,
     leadId: '',
   });
+
+  // Search states for Combobox
+  const [invoiceSearch, setInvoiceSearch] = React.useState('');
   const [leadSearch, setLeadSearch] = React.useState('');
-  const [showLeadSearch, setShowLeadSearch] = React.useState(false);
+
+  // Selected invoice details (for balance display)
+  const [selectedInvoice, setSelectedInvoice] = React.useState<any>(null);
 
   const { data: invoicesResponse } = useApiQuery(
-    () => invoicesApi.list({ limit: 50, search: invoiceSearch || undefined }),
+    () => invoicesApi.list({ limit: 20, search: invoiceSearch || undefined }),
     [invoiceSearch],
   );
 
   const { data: leadsResponse } = useApiQuery(
-    () => leadsApi.list({ limit: 50, search: leadSearch || undefined }),
+    () => leadsApi.list({ limit: 20, search: leadSearch || undefined }),
     [leadSearch],
   );
 
@@ -57,6 +60,12 @@ export default function NewPaymentPage() {
   function updateField(field: string, value: string | boolean) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
+
+  const invoicesList = invoicesResponse?.data;
+  const invoices = Array.isArray(invoicesList) ? invoicesList : ((invoicesList as any)?.data ?? []);
+
+  const leadsList = leadsResponse?.data;
+  const leads = Array.isArray(leadsList) ? leadsList : ((leadsList as any)?.data ?? []);
 
   function validateForm(): boolean {
     if (!form.amount || parseFloat(form.amount) <= 0) {
@@ -71,12 +80,19 @@ export default function NewPaymentPage() {
       toast.error('Please select an invoice to record payment against');
       return false;
     }
+    // Validate amount vs balance_due
+    if (selectedInvoice && !form.isAdvance) {
+      const balanceDue = selectedInvoice.balanceDue ?? selectedInvoice.balance_due ?? 0;
+      if (balanceDue > 0 && parseFloat(form.amount) > balanceDue) {
+        toast.error(`Amount (${formatCurrency(parseFloat(form.amount))}) exceeds invoice balance due (${formatCurrency(balanceDue)})`);
+        return false;
+      }
+    }
     return true;
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-
     if (!validateForm()) return;
 
     setIsSubmitting(true);
@@ -106,12 +122,6 @@ export default function NewPaymentPage() {
       setIsSubmitting(false);
     }
   }
-
-  const invoicesList = invoicesResponse?.data;
-  const invoices = Array.isArray(invoicesList) ? invoicesList : (invoicesList?.data ?? []);
-
-  const leadsList = leadsResponse?.data;
-  const leads = Array.isArray(leadsList) ? leadsList : (leadsList?.data ?? []);
 
   return (
     <div className="flex flex-col h-full">
@@ -157,6 +167,12 @@ export default function NewPaymentPage() {
                       required
                     />
                   </div>
+                  {/* Balance validation hint */}
+                  {selectedInvoice && (selectedInvoice.balanceDue ?? selectedInvoice.balance_due ?? 0) > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Invoice balance due: <span className="font-medium text-amber-600">{formatCurrency(selectedInvoice.balanceDue ?? selectedInvoice.balance_due ?? 0)}</span>
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="paymentDate">Payment Date <span className="text-destructive">*</span></Label>
@@ -178,9 +194,10 @@ export default function NewPaymentPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="cash">Cash</SelectItem>
-                      <SelectItem value="check">Check</SelectItem>
+                      <SelectItem value="check">Cheque</SelectItem>
                       <SelectItem value="card">Card</SelectItem>
-                      <SelectItem value="transfer">Bank Transfer</SelectItem>
+                      <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                      <SelectItem value="upi">UPI</SelectItem>
                       <SelectItem value="other">Other</SelectItem>
                     </SelectContent>
                   </Select>
@@ -205,7 +222,10 @@ export default function NewPaymentPage() {
                   checked={form.isAdvance}
                   onCheckedChange={(checked) => {
                     updateField('isAdvance', checked);
-                    if (checked) updateField('invoiceId', '');
+                    if (checked) {
+                      updateField('invoiceId', '');
+                      setSelectedInvoice(null);
+                    }
                   }}
                 />
               </div>
@@ -224,115 +244,71 @@ export default function NewPaymentPage() {
               <CardContent className="space-y-4">
                 <p className="text-xs text-muted-foreground">Link this advance payment to a lead for tracking before an invoice is created.</p>
                 <div className="space-y-2">
-                  <Label htmlFor="leadId">Lead</Label>
-                  <div className="relative">
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          placeholder="Search by lead title..."
-                          value={leadSearch}
-                          onChange={(e) => setLeadSearch(e.target.value)}
-                          onFocus={() => setShowLeadSearch(true)}
-                          className="pl-9"
-                        />
-                      </div>
-                    </div>
-                    {showLeadSearch && leadSearch && leads.length > 0 && (
-                      <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-950 border rounded-md shadow-lg z-10 max-h-64 overflow-auto">
-                        {leads.slice(0, 10).map((lead: any) => (
-                          <button
-                            key={lead.id}
-                            type="button"
-                            onClick={() => {
-                              updateField('leadId', lead.id);
-                              setLeadSearch('');
-                              setShowLeadSearch(false);
-                            }}
-                            className="w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-900 border-b last:border-b-0 flex justify-between items-center"
-                          >
-                            <span className="text-sm">{lead.title}</span>
-                            <span className="text-xs text-muted-foreground">{lead.status}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  {form.leadId && (
-                    <div className="bg-slate-50 dark:bg-slate-900/30 rounded-md p-3 text-sm">
-                      <p className="font-medium">Selected Lead</p>
-                      <p className="text-muted-foreground text-xs mt-1">{form.leadId}</p>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="mt-2 h-6 text-xs"
-                        onClick={() => updateField('leadId', '')}
-                      >
-                        Clear Selection
-                      </Button>
-                    </div>
-                  )}
+                  <Label>Lead</Label>
+                  <Combobox
+                    options={leads.map((l: any) => ({
+                      value: l.id,
+                      label: l.title ?? l.id,
+                    }))}
+                    value={form.leadId}
+                    onValueChange={(v) => updateField('leadId', v)}
+                    onSearch={setLeadSearch}
+                    placeholder="Search leads..."
+                    searchPlaceholder="Type to search leads..."
+                  />
                 </div>
               </CardContent>
             </Card>
           )}
 
           {/* Invoice Link */}
-          {!form.isAdvance && <Card>
-            <CardHeader><CardTitle className="text-base">Link to Invoice (Optional)</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="invoiceId">Invoice</Label>
-                <div className="relative">
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        placeholder="Search by invoice number..."
-                        value={invoiceSearch}
-                        onChange={(e) => setInvoiceSearch(e.target.value)}
-                        onFocus={() => setShowInvoiceSearch(true)}
-                        className="pl-9"
-                      />
-                    </div>
-                  </div>
-                  {showInvoiceSearch && invoiceSearch && invoices.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-950 border rounded-md shadow-lg z-10 max-h-64 overflow-auto">
-                      {invoices.slice(0, 10).map((inv: any) => (
-                        <button
-                          key={inv.id}
-                          type="button"
-                          onClick={() => {
-                            updateField('invoiceId', inv.id);
-                            setInvoiceSearch('');
-                            setShowInvoiceSearch(false);
-                          }}
-                          className="w-full text-left px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-900 border-b last:border-b-0 flex justify-between items-center"
-                        >
-                          <span className="font-mono text-sm">{inv.invoiceNumber ?? inv.id}</span>
-                          <span className="text-xs text-muted-foreground">{formatCurrency(inv.totalAmount ?? 0)}</span>
-                        </button>
-                      ))}
+          {!form.isAdvance && (
+            <Card>
+              <CardHeader><CardTitle className="text-base">Link to Invoice <span className="text-destructive">*</span></CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Invoice</Label>
+                  <Combobox
+                    options={invoices.map((inv: any) => ({
+                      value: inv.id,
+                      label: `${inv.invoiceNumber ?? inv.invoice_number ?? inv.id} — ${formatCurrency(inv.totalAmount ?? inv.total ?? 0)}`,
+                    }))}
+                    value={form.invoiceId}
+                    onValueChange={(v) => {
+                      updateField('invoiceId', v);
+                      const inv = invoices.find((i: any) => i.id === v);
+                      setSelectedInvoice(inv ?? null);
+                      // Auto-fill amount with balance_due
+                      if (inv) {
+                        const balance = inv.balanceDue ?? inv.balance_due ?? 0;
+                        if (balance > 0) updateField('amount', String(balance));
+                      }
+                    }}
+                    onSearch={setInvoiceSearch}
+                    placeholder="Search invoices..."
+                    searchPlaceholder="Type invoice number to search..."
+                  />
+                  {/* Selected invoice balance info */}
+                  {selectedInvoice && (
+                    <div className="bg-slate-50 dark:bg-slate-900/30 rounded-md p-3 text-sm space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Invoice Total</span>
+                        <span className="font-medium">{formatCurrency(selectedInvoice.totalAmount ?? selectedInvoice.total ?? 0)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Paid</span>
+                        <span className="font-medium text-green-600">{formatCurrency(selectedInvoice.paidAmount ?? selectedInvoice.paid_amount ?? 0)}</span>
+                      </div>
+                      <div className="flex justify-between border-t pt-1">
+                        <span className="font-semibold">Balance Due</span>
+                        <span className="font-bold text-amber-600">{formatCurrency(selectedInvoice.balanceDue ?? selectedInvoice.balance_due ?? 0)}</span>
+                      </div>
                     </div>
                   )}
                 </div>
-                {form.invoiceId && (
-                  <div className="bg-slate-50 dark:bg-slate-900/30 rounded-md p-3 text-sm">
-                    <p className="font-medium">Selected Invoice</p>
-                    <p className="text-muted-foreground text-xs mt-1">{form.invoiceId}</p>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="mt-2 h-6 text-xs"
-                      onClick={() => updateField('invoiceId', '')}
-                    >
-                      Clear Selection
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Notes */}
           <Card>

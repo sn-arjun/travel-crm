@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { Plus, Truck, Users, MapPin, DollarSign, AlertTriangle, Star, ArrowUpRight, Calendar, Clock, AlertCircle, Loader2 } from 'lucide-react';
+import { Plus, Truck, Users, MapPin, DollarSign, AlertTriangle, Star, ArrowUpRight, Calendar, Clock, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 import { useApiQuery } from '@/hooks/use-api';
 import { fleetApi } from '@/lib/api/fleet';
 import { toast } from 'sonner';
-import { VEHICLE_STATUS_LABELS, DRIVER_STATUS_LABELS, TRIP_STATUS_LABELS, TRIP_STATUS_COLORS, FLEET_TRIP_TYPE_LABELS } from '@travelcrm/shared';
+import { TRIP_STATUS_LABELS, TRIP_STATUS_COLORS } from '@travelcrm/shared';
 
 function formatCurrency(amount: number) {
   if (amount >= 100000) return `₹${(amount / 100000).toFixed(1)}L`;
@@ -48,48 +48,45 @@ function TripStatusBadge({ status }: { status: string }) {
   );
 }
 
+function StarRating({ rating }: { rating: number }) {
+  return (
+    <div className="flex items-center gap-0.5">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <Star key={star} className={cn('h-3 w-3', star <= Math.round(rating) ? 'text-amber-500 fill-amber-500' : 'text-muted-foreground/30')} />
+      ))}
+      <span className="text-xs ml-1 font-medium">{rating.toFixed(1)}</span>
+    </div>
+  );
+}
+
 export default function FleetDashboardPage() {
-  const vehiclesQuery = useApiQuery(
-    () => fleetApi.vehicles.list({ limit: 100 }).then(res => res.data),
-    []
-  );
-
-  const driversQuery = useApiQuery(
-    () => fleetApi.drivers.list({ limit: 100 }).then(res => res.data),
-    []
-  );
-
-  const tripsQuery = useApiQuery(
-    () => fleetApi.trips.list({ limit: 100 }).then(res => res.data),
+  const dashboardQuery = useApiQuery(
+    () => fleetApi.dashboard().then(res => res.data),
     []
   );
 
   React.useEffect(() => {
-    if (vehiclesQuery.error) {
-      toast.error('Failed to load vehicles');
+    if (dashboardQuery.error) {
+      toast.error('Failed to load fleet dashboard');
     }
-    if (driversQuery.error) {
-      toast.error('Failed to load drivers');
-    }
-    if (tripsQuery.error) {
-      toast.error('Failed to load trips');
-    }
-  }, [vehiclesQuery.error, driversQuery.error, tripsQuery.error]);
+  }, [dashboardQuery.error]);
 
-  const vehicles: any[] = Array.isArray(vehiclesQuery.data) ? vehiclesQuery.data : (vehiclesQuery.data?.data ?? []);
-  const drivers: any[] = Array.isArray(driversQuery.data) ? driversQuery.data : (driversQuery.data?.data ?? []);
-  const trips: any[] = Array.isArray(tripsQuery.data) ? tripsQuery.data : (tripsQuery.data?.data ?? []);
+  const dashboard = dashboardQuery.data as any;
 
-  const availableVehicles = vehicles.filter((v: any) => v.status === 'available').length;
-  const activeTrips = trips.filter((t: any) => ['assigned', 'accepted', 'en_route', 'started'].includes(t.status)).length;
-  const revenueMTD = trips.filter((t: any) => t.status === 'completed').reduce((sum: any, t: any) => sum + (t.fare ?? 0), 0);
-  const activeTripsCount = activeTrips;
+  const totalVehicles = dashboard?.totalVehicles ?? 0;
+  const availableVehicles = dashboard?.availableVehicles ?? 0;
+  const totalDrivers = dashboard?.totalDrivers ?? 0;
+  const activeDrivers = dashboard?.activeDrivers ?? 0;
+  const activeTrips = dashboard?.activeTrips ?? 0;
+  const revenueMtd = dashboard?.revenueMtd ?? 0;
+  const activeTripsList: any[] = dashboard?.activeTrips && Array.isArray(dashboard?.activeTrips) ? dashboard.activeTrips : [];
+  const upcomingTrips: any[] = dashboard?.upcomingTrips ?? [];
+  const recentCompleted: any[] = dashboard?.recentCompletedTrips ?? [];
+  const topDrivers: any[] = (dashboard?.topDrivers ?? []).slice(0, 5);
+  const expiringDocumentsCount = dashboard?.expiringDocumentsCount ?? 0;
+  const maintenanceDueCount = dashboard?.maintenanceDueCount ?? 0;
 
-  const activeTripsList = trips.filter((t: any) => ['assigned', 'accepted', 'en_route', 'started'].includes(t.status));
-  const upcomingTrips = trips.filter((t: any) => t.status === 'assigned').slice(0, 5);
-  const topDrivers = [...drivers].sort((a: any, b: any) => (b.experience ?? 0) - (a.experience ?? 0)).slice(0, 5);
-
-  const isLoading = vehiclesQuery.loading || driversQuery.loading || tripsQuery.loading;
+  const isLoading = dashboardQuery.loading;
 
   return (
     <div className="flex flex-col h-full overflow-auto">
@@ -113,81 +110,130 @@ export default function FleetDashboardPage() {
           </div>
         ) : (
           <>
+            {/* Alerts Banner */}
+            {(expiringDocumentsCount > 0 || maintenanceDueCount > 0) && (
+              <div className="flex items-center gap-3 p-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20">
+                <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
+                <div className="flex-1 text-sm text-amber-800 dark:text-amber-300">
+                  {expiringDocumentsCount > 0 && <span><strong>{expiringDocumentsCount}</strong> expiring documents</span>}
+                  {expiringDocumentsCount > 0 && maintenanceDueCount > 0 && ' · '}
+                  {maintenanceDueCount > 0 && <span><strong>{maintenanceDueCount}</strong> vehicles due for maintenance</span>}
+                </div>
+                <Button variant="outline" size="sm" asChild className="border-amber-400 text-amber-700 hover:bg-amber-100">
+                  <Link href="/fleet/alerts">View Alerts</Link>
+                </Button>
+              </div>
+            )}
+
             {/* Stats */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <Link href="/fleet/vehicles">
-                <StatCard title="Total Vehicles" value={vehicles.length} icon={Truck} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" subtitle={`${availableVehicles} available`} />
+                <StatCard title="Total Vehicles" value={totalVehicles} icon={Truck} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" subtitle={`${availableVehicles} available`} />
               </Link>
               <Link href="/fleet/drivers">
-                <StatCard title="Total Drivers" value={drivers.length} icon={Users} color="bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400" subtitle={`${drivers.filter(d => d.status === 'active').length} active`} />
+                <StatCard title="Total Drivers" value={totalDrivers} icon={Users} color="bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400" subtitle={`${activeDrivers} active`} />
               </Link>
               <Link href="/fleet/trips">
-                <StatCard title="Active Trips" value={activeTripsCount} icon={MapPin} color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" />
+                <StatCard title="Active Trips" value={typeof activeTrips === 'number' ? activeTrips : activeTripsList.length} icon={MapPin} color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" />
               </Link>
-              <StatCard title="Revenue (MTD)" value={formatCurrency(revenueMTD)} icon={DollarSign} color="bg-primary/10 text-primary" />
+              <StatCard title="Revenue (MTD)" value={formatCurrency(revenueMtd)} icon={DollarSign} color="bg-primary/10 text-primary" />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Active Trips */}
+              {/* Active / Upcoming Trips */}
               <div className="lg:col-span-2 space-y-6">
-                <Card>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-sm font-semibold">Active Trips</CardTitle>
-                      <Link href="/fleet/trips" className="text-xs text-primary hover:underline flex items-center gap-0.5">View all <ArrowUpRight className="h-3 w-3" /></Link>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    {activeTripsList.slice(0, 6).map((trip: any) => (
-                      <div key={trip.id} className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors cursor-pointer">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <p className="text-sm font-medium truncate">Trip #{trip.id.slice(0, 8)}</p>
-                            <TripStatusBadge status={trip.status} />
-                          </div>
-                          <p className="text-xs text-muted-foreground truncate">{trip.startLocation || 'TBD'} → {trip.endLocation || 'TBD'}</p>
-                          <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
-                            <span className="flex items-center gap-1"><Truck className="h-3 w-3" />{trip.vehicleId}</span>
-                            <span className="flex items-center gap-1"><Users className="h-3 w-3" />{trip.driverName || trip.driverId}</span>
-                            <span className="flex items-center gap-1"><Calendar className="h-3 w-3" />{(trip.startTime || '').split('T')[0] || '—'}</span>
-                          </div>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="text-sm font-medium">₹{(trip.fare ?? 0).toLocaleString('en-IN')}</p>
-                          <p className="text-[11px] text-muted-foreground">{trip.distance ?? 0}km</p>
-                        </div>
+                {/* Active Trips */}
+                {activeTripsList.length > 0 && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm font-semibold">Active Trips</CardTitle>
+                        <Link href="/fleet/trips" className="text-xs text-primary hover:underline flex items-center gap-0.5">View all <ArrowUpRight className="h-3 w-3" /></Link>
                       </div>
-                    ))}
-                    {activeTripsList.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">No active trips</p>}
-                  </CardContent>
-                </Card>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {activeTripsList.slice(0, 6).map((trip: any) => (
+                        <Link key={trip.id} href={`/fleet/trips/${trip.id}`}>
+                          <div className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors cursor-pointer">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <p className="text-sm font-medium truncate">Trip #{trip.id.slice(0, 8)}</p>
+                                <TripStatusBadge status={trip.status} />
+                              </div>
+                              <p className="text-xs text-muted-foreground truncate">{trip.startLocation || 'TBD'} → {trip.endLocation || 'TBD'}</p>
+                              <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">
+                                <span className="flex items-center gap-1"><Truck className="h-3 w-3" />{trip.vehicleRegistration || trip.vehicleId}</span>
+                                <span className="flex items-center gap-1"><Users className="h-3 w-3" />{trip.driverName || trip.driverId}</span>
+                                <span className="flex items-center gap-1"><Calendar className="h-3 w-3" />{(trip.startTime || '').split('T')[0] || '—'}</span>
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-sm font-medium">₹{(trip.fare ?? 0).toLocaleString('en-IN')}</p>
+                              <p className="text-[11px] text-muted-foreground">{trip.distance ?? 0}km</p>
+                            </div>
+                          </div>
+                        </Link>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
 
                 {/* Upcoming Trips */}
                 <Card>
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-semibold">Upcoming Trips</CardTitle>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm font-semibold">Upcoming Trips</CardTitle>
+                      <Link href="/fleet/trips" className="text-xs text-primary hover:underline flex items-center gap-0.5">View all <ArrowUpRight className="h-3 w-3" /></Link>
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-2">
-                    {upcomingTrips.map((trip: any) => (
-                      <div key={trip.id} className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50">
-                        <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center"><Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" /></div>
-                          <div>
-                            <p className="text-sm font-medium">Trip #{trip.id.slice(0, 8)}</p>
-                            <p className="text-xs text-muted-foreground">{trip.startLocation || 'TBD'} → {trip.endLocation || 'TBD'}</p>
+                    {upcomingTrips.slice(0, 5).map((trip: any) => (
+                      <Link key={trip.id} href={`/fleet/trips/${trip.id}`}>
+                        <div className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 cursor-pointer">
+                          <div className="flex items-center gap-3">
+                            <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center"><Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" /></div>
+                            <div>
+                              <p className="text-sm font-medium">Trip #{trip.id.slice(0, 8)}</p>
+                              <p className="text-xs text-muted-foreground">{trip.startLocation || 'TBD'} → {trip.endLocation || 'TBD'}</p>
+                            </div>
                           </div>
+                          <span className="text-xs text-muted-foreground">{(trip.startTime || '').split('T')[0] || '—'}</span>
                         </div>
-                        <span className="text-xs text-muted-foreground">{(trip.startTime || '').split('T')[0] || '—'}</span>
-                      </div>
+                      </Link>
                     ))}
                     {upcomingTrips.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">No upcoming trips</p>}
                   </CardContent>
                 </Card>
+
+                {/* Recent Completed Trips */}
+                {recentCompleted.length > 0 && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm font-semibold">Recently Completed</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {recentCompleted.slice(0, 5).map((trip: any) => (
+                        <Link key={trip.id} href={`/fleet/trips/${trip.id}`}>
+                          <div className="flex items-center justify-between p-2 rounded-md hover:bg-muted/50 cursor-pointer">
+                            <div>
+                              <p className="text-sm font-medium">Trip #{trip.id.slice(0, 8)}</p>
+                              <p className="text-xs text-muted-foreground">{trip.startLocation || 'TBD'} → {trip.endLocation || 'TBD'}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm font-semibold text-green-600">₹{(trip.actualCost || trip.fare || 0).toLocaleString('en-IN')}</p>
+                              <p className="text-xs text-muted-foreground">{(trip.startTime || '').split('T')[0] || '—'}</p>
+                            </div>
+                          </div>
+                        </Link>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
               </div>
 
               {/* Right column */}
               <div className="space-y-6">
-                {/* System Status */}
+                {/* Fleet Status */}
                 <Card>
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between w-full">
@@ -197,21 +243,25 @@ export default function FleetDashboardPage() {
                   </CardHeader>
                   <CardContent className="space-y-2">
                     <div className="flex justify-between items-center">
-                      <span className="text-xs text-muted-foreground">Vehicles on Trip</span>
-                      <span className="text-sm font-medium">{vehicles.filter((v: any) => v.status === 'on_trip').length}</span>
+                      <span className="text-xs text-muted-foreground">Available</span>
+                      <span className="text-sm font-medium text-green-600">{availableVehicles}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-muted-foreground">On Trip</span>
+                      <span className="text-sm font-medium text-blue-600">{dashboard?.vehiclesOnTrip ?? 0}</span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-xs text-muted-foreground">Drivers Active</span>
-                      <span className="text-sm font-medium">{drivers.filter((d: any) => d.status === 'active').length}</span>
+                      <span className="text-sm font-medium">{activeDrivers}</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-xs text-muted-foreground">Trips in Progress</span>
-                      <span className="text-sm font-medium">{trips.filter((t: any) => ['en_route', 'started'].includes(t.status)).length}</span>
+                      <span className="text-xs text-muted-foreground">Drivers On Trip</span>
+                      <span className="text-sm font-medium">{dashboard?.driversOnTrip ?? 0}</span>
                     </div>
                   </CardContent>
                 </Card>
 
-                {/* Top Drivers */}
+                {/* Top Drivers (sorted by rating) */}
                 <Card>
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
@@ -221,16 +271,19 @@ export default function FleetDashboardPage() {
                   </CardHeader>
                   <CardContent className="space-y-2">
                     {topDrivers.length > 0 ? topDrivers.map((driver, rank) => (
-                      <div key={driver.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50">
-                        <span className="text-xs font-bold text-muted-foreground w-4">#{rank + 1}</span>
-                        <Avatar className="h-8 w-8"><AvatarFallback className="text-[10px]">{(driver.name || 'U').split(' ').map((n: string) => n[0]).join('').slice(0, 2)}</AvatarFallback></Avatar>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{driver.name}</p>
-                          <div className="flex items-center gap-1">
-                            <span className="text-xs text-muted-foreground">{driver.experience ?? 0} yrs exp</span>
+                      <Link key={driver.id} href={`/fleet/drivers/${driver.id}`}>
+                        <div className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50 cursor-pointer">
+                          <span className="text-xs font-bold text-muted-foreground w-4">#{rank + 1}</span>
+                          <Avatar className="h-8 w-8"><AvatarFallback className="text-[10px]">{(driver.name || 'U').split(' ').map((n: string) => n[0]).join('').slice(0, 2)}</AvatarFallback></Avatar>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{driver.name}</p>
+                            <StarRating rating={driver.rating ?? 0} />
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-xs text-muted-foreground">{driver.totalTrips ?? 0} trips</p>
                           </div>
                         </div>
-                      </div>
+                      </Link>
                     )) : (
                       <p className="text-sm text-muted-foreground text-center py-4">No drivers available</p>
                     )}

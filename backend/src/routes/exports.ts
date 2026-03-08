@@ -80,8 +80,10 @@ exportRoutes.post('/invoices/bulk-pdf', async (c) => {
 
     const now = new Date().toISOString();
     const jobId = crypto.randomUUID();
+    const tenantId = c.get('tenantId') || '';
     await db.insert(schema.exportJobs).values({
         id: jobId,
+        tenantId,
         exportType: 'invoices',
         status: 'pending',
         createdBy: userId,
@@ -111,8 +113,10 @@ exportRoutes.post('/full', async (c) => {
 
     const now = new Date().toISOString();
     const jobId = crypto.randomUUID();
+    const tenantId = c.get('tenantId') || '';
     await db.insert(schema.exportJobs).values({
         id: jobId,
+        tenantId,
         exportType: 'tenant_full',
         status: 'pending',
         createdBy: userId,

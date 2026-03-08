@@ -4,7 +4,7 @@ export const createTravellerSchema = z.object({
     contactId: z.string().optional().or(z.literal('')),
     firstName: z.string().min(1, 'First name is required'),
     lastName: z.string().min(1, 'Last name is required'),
-    fullNamePassport: z.string().min(1, 'Name on passport is required'),
+    fullNamePassport: z.string().optional().or(z.literal('')),
     dateOfBirth: z.string().optional(),
     gender: z.enum(['male', 'female', 'other']).optional(),
     nationality: z.string().optional(),

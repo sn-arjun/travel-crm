@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Save, ChevronRight, Loader2 } from 'lucide-react';
+import { ArrowLeft, Save, ChevronRight, Loader2, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,235 +10,368 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
+import { Combobox } from '@/components/ui/combobox';
 import { vouchersApi, type UpdateVoucherRequest } from '@/lib/api/vouchers';
-import { leadsApi } from '@/lib/api/leads';
+import { suppliersApi } from '@/lib/api/suppliers';
+
+// ─── Same form shape as new page ─────────────────────────────────────────────
+type VoucherType = 'hotel' | 'transport' | 'flight' | 'activity';
+interface Passenger { name: string; pnr: string; }
+interface Guest { name: string; }
 
 interface FormState {
-  // Step 1: Type Selection
-  voucherType: 'hotel' | 'transport' | 'flight' | 'activity' | '';
-
-  // Hotel specific
+  voucherType: VoucherType | '';
+  supplierId: string;
+  supplierLabel: string;
+  title: string;
+  language: string;
+  notes: string;
+  // Hotel
   hotelName: string;
   hotelAddress: string;
-  checkInDate: string;
-  checkOutDate: string;
+  checkIn: string;
+  checkOut: string;
   roomType: string;
+  roomCount: string;
   mealPlan: string;
   specialRequests: string;
-
-  // Transport specific
+  confirmationNumber: string;
+  emergencyContact: string;
+  guests: Guest[];
+  // Transport
   vehicleType: string;
   driverName: string;
+  driverPhone: string;
   pickupLocation: string;
-  dropLocation: string;
-  pickupDate: string;
   pickupTime: string;
-
-  // Flight specific
+  pickupMapsLink: string;
+  dropLocation: string;
+  dropMapsLink: string;
+  route: string;
+  sightseeing: string[];
+  terms: string;
+  // Flight
   airline: string;
   flightNumber: string;
-  pnr: string;
-  departureDate: string;
-  departureTime: string;
   departureAirport: string;
+  departureTime: string;
+  departureTerminal: string;
   arrivalAirport: string;
-  flightClass: string;
-  baggage: string;
-
-  // Activity specific
+  arrivalTime: string;
+  arrivalTerminal: string;
+  pnr: string;
+  baggageAllowance: string;
+  seatNumbers: string;
+  travelClass: string;
+  mealPreference: string;
+  passengers: Passenger[];
+  // Activity
   activityName: string;
-  activityLocation: string;
-  activityDate: string;
-  activityTime: string;
+  dateTime: string;
+  meetingPoint: string;
+  meetingPointMapsLink: string;
   duration: string;
-  inclusions: string;
-
-  // Common fields
-  leadId: string;
-  title: string;
-  guestName: string;
-  guestEmail: string;
-  guestPhone: string;
-  guestSpecialRequirements: string;
+  whatToBring: string[];
+  inclusions: string[];
+  emergencyContactActivity: string;
+  operatorContact: string;
 }
 
-const initialFormState: FormState = {
+const emptyForm: FormState = {
   voucherType: '',
-  hotelName: '',
-  hotelAddress: '',
-  checkInDate: '',
-  checkOutDate: '',
-  roomType: '',
-  mealPlan: '',
-  specialRequests: '',
-  vehicleType: '',
-  driverName: '',
-  pickupLocation: '',
-  dropLocation: '',
-  pickupDate: '',
-  pickupTime: '',
-  airline: '',
-  flightNumber: '',
-  pnr: '',
-  departureDate: '',
-  departureTime: '',
-  departureAirport: '',
-  arrivalAirport: '',
-  flightClass: '',
-  baggage: '',
-  activityName: '',
-  activityLocation: '',
-  activityDate: '',
-  activityTime: '',
-  duration: '',
-  inclusions: '',
-  leadId: '',
+  supplierId: '',
+  supplierLabel: '',
   title: '',
-  guestName: '',
-  guestEmail: '',
-  guestPhone: '',
-  guestSpecialRequirements: '',
+  language: 'en',
+  notes: '',
+  hotelName: '', hotelAddress: '', checkIn: '', checkOut: '',
+  roomType: 'Deluxe', roomCount: '1', mealPlan: 'EP',
+  specialRequests: '', confirmationNumber: '', emergencyContact: '',
+  guests: [{ name: '' }],
+  vehicleType: '', driverName: '', driverPhone: '',
+  pickupLocation: '', pickupTime: '', pickupMapsLink: '',
+  dropLocation: '', dropMapsLink: '', route: '',
+  sightseeing: [], terms: '',
+  airline: '', flightNumber: '',
+  departureAirport: '', departureTime: '', departureTerminal: '',
+  arrivalAirport: '', arrivalTime: '', arrivalTerminal: '',
+  pnr: '', baggageAllowance: '', seatNumbers: '',
+  travelClass: 'economy', mealPreference: '',
+  passengers: [{ name: '', pnr: '' }],
+  activityName: '', dateTime: '', meetingPoint: '', meetingPointMapsLink: '',
+  duration: '', whatToBring: [], inclusions: [],
+  emergencyContactActivity: '', operatorContact: '',
 };
 
+// ── Chip editor (same as new page) ────────────────────────────────────────────
+function ChipEditor({
+  label, chips, onChange, suggestions = [], placeholder = 'Type and press Enter...',
+}: {
+  label: string; chips: string[]; onChange: (chips: string[]) => void;
+  suggestions?: string[]; placeholder?: string;
+}) {
+  const [input, setInput] = React.useState('');
+  const add = (val: string) => {
+    const t = val.trim();
+    if (t && !chips.includes(t)) onChange([...chips, t]);
+    setInput('');
+  };
+  const remove = (chip: string) => onChange(chips.filter((c) => c !== chip));
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <div className="flex flex-wrap gap-1.5 p-2 border rounded-md min-h-[40px]">
+        {chips.map((chip) => (
+          <Badge key={chip} variant="secondary" className="gap-1 text-xs">
+            {chip}
+            <button type="button" onClick={() => remove(chip)} className="hover:text-destructive"><X className="h-3 w-3" /></button>
+          </Badge>
+        ))}
+        <Input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); add(input); }
+            if (e.key === 'Backspace' && !input && chips.length > 0) { const last = chips[chips.length - 1]; if (last) remove(last); }
+          }}
+          placeholder={placeholder}
+          className="border-none shadow-none h-6 p-0 text-sm flex-1 min-w-[120px] focus-visible:ring-0"
+        />
+      </div>
+      {suggestions.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {suggestions.filter((s) => !chips.includes(s)).map((s) => (
+            <button key={s} type="button" onClick={() => add(s)}
+              className="text-xs text-muted-foreground bg-muted hover:bg-muted/80 px-2 py-0.5 rounded-full">
+              + {s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main edit page ─────────────────────────────────────────────────────────────
 export default function EditVoucherPage() {
   const router = useRouter();
   const params = useParams();
   const id = params.id as string;
-  const [form, setForm] = React.useState<FormState>(initialFormState);
+
+  const [form, setForm] = React.useState<FormState>(emptyForm);
   const [currentStep, setCurrentStep] = React.useState(1);
   const [formInitialized, setFormInitialized] = React.useState(false);
+
+  // Supplier search
+  const [supplierSearch, setSupplierSearch] = React.useState('');
+  const [supplierOptions, setSupplierOptions] = React.useState<{ value: string; label: string }[]>([]);
 
   const { data: voucherResponse, loading: voucherLoading } = useApiQuery(
     () => vouchersApi.getById(id),
     [id],
   );
 
-  const updateMutation = useApiMutation<UpdateVoucherRequest, any>((data) => vouchersApi.update(id, data));
-
-  const leadsQuery = useApiQuery(
-    () => leadsApi.list({ limit: 100 }),
-    [],
+  const updateMutation = useApiMutation<UpdateVoucherRequest, any>((data) =>
+    vouchersApi.update(id, data),
   );
-  const leadsList: any[] = React.useMemo(() => {
-    const data = leadsQuery.data?.data;
-    return Array.isArray(data) ? data : (data?.data ?? []);
-  }, [leadsQuery.data]);
 
-  // Pre-fill form when voucher data loads
+  // Pre-fill form from loaded voucher
   React.useEffect(() => {
     if (formInitialized) return;
-    const voucher = voucherResponse?.data ?? (voucherResponse as any)?.data?.data;
-    if (!voucher) return;
+    const raw = (voucherResponse as any)?.data ?? (voucherResponse as any)?.data?.data;
+    if (!raw) return;
 
-    const cf = voucher.customFields ?? {};
-    const details = cf.details ?? cf ?? {};
-
+    const d = raw.details ?? {};
     setForm({
-      voucherType: (cf.type as string) || (details.type as string) || '',
-      hotelName: details.hotelName || '',
-      hotelAddress: details.hotelAddress || '',
-      checkInDate: details.checkInDate || '',
-      checkOutDate: details.checkOutDate || '',
-      roomType: details.roomType || '',
-      mealPlan: details.mealPlan || '',
-      specialRequests: details.specialRequests || '',
-      vehicleType: details.vehicleType || '',
-      driverName: details.driverName || '',
-      pickupLocation: details.pickupLocation || '',
-      dropLocation: details.dropLocation || '',
-      pickupDate: details.pickupDate || '',
-      pickupTime: details.pickupTime || '',
-      airline: details.airline || '',
-      flightNumber: details.flightNumber || '',
-      pnr: details.pnr || '',
-      departureDate: details.departureDate || '',
-      departureTime: details.departureTime || '',
-      departureAirport: details.departureAirport || '',
-      arrivalAirport: details.arrivalAirport || '',
-      flightClass: details.flightClass || '',
-      baggage: details.baggage || '',
-      activityName: details.activityName || '',
-      activityLocation: details.activityLocation || '',
-      activityDate: details.activityDate || '',
-      activityTime: details.activityTime || '',
-      duration: details.duration || '',
-      inclusions: details.inclusions || '',
-      leadId: voucher.leadId || '',
-      title: (cf.title as string) || '',
-      guestName: (details.guestName as string) || (cf.guestName as string) || '',
-      guestEmail: (details.guestEmail as string) || (cf.guestEmail as string) || '',
-      guestPhone: (details.guestPhone as string) || (cf.guestPhone as string) || '',
-      guestSpecialRequirements: (details.guestSpecialRequirements as string) || voucher.notes || '',
+      voucherType: raw.type ?? '',
+      supplierId: raw.supplierId ?? '',
+      supplierLabel: raw.supplierName ?? '',
+      title: raw.title ?? '',
+      language: raw.language ?? 'en',
+      notes: raw.notes ?? '',
+      // Hotel
+      hotelName: d.hotelName ?? '',
+      hotelAddress: d.hotelAddress ?? '',
+      checkIn: d.checkIn ?? '',
+      checkOut: d.checkOut ?? '',
+      roomType: d.roomType ?? 'Deluxe',
+      roomCount: String(d.roomCount ?? 1),
+      mealPlan: d.mealPlan ?? 'EP',
+      specialRequests: d.specialRequests ?? '',
+      confirmationNumber: d.confirmationNumber ?? '',
+      emergencyContact: d.emergencyContact ?? '',
+      guests: d.guestNames?.length > 0 ? d.guestNames.map((n: string) => ({ name: n })) : [{ name: '' }],
+      // Transport
+      vehicleType: d.vehicleType ?? '',
+      driverName: d.driverName ?? '',
+      driverPhone: d.driverPhone ?? '',
+      pickupLocation: d.pickupLocation ?? '',
+      pickupTime: d.pickupTime ?? '',
+      pickupMapsLink: d.pickupMapsLink ?? '',
+      dropLocation: d.dropLocation ?? '',
+      dropMapsLink: d.dropMapsLink ?? '',
+      route: d.route ?? '',
+      sightseeing: d.sightseeing ?? [],
+      terms: d.terms ?? '',
+      // Flight
+      airline: d.airline ?? '',
+      flightNumber: d.flightNumber ?? '',
+      departureAirport: d.departureAirport ?? '',
+      departureTime: d.departureTime ?? '',
+      departureTerminal: d.departureTerminal ?? '',
+      arrivalAirport: d.arrivalAirport ?? '',
+      arrivalTime: d.arrivalTime ?? '',
+      arrivalTerminal: d.arrivalTerminal ?? '',
+      pnr: d.pnr ?? '',
+      baggageAllowance: d.baggageAllowance ?? '',
+      seatNumbers: d.seatNumbers ?? '',
+      travelClass: d.travelClass ?? 'economy',
+      mealPreference: d.mealPreference ?? '',
+      passengers: d.passengers?.length > 0 ? d.passengers : [{ name: '', pnr: '' }],
+      // Activity
+      activityName: d.activityName ?? '',
+      dateTime: d.dateTime ?? '',
+      meetingPoint: d.meetingPoint ?? '',
+      meetingPointMapsLink: d.meetingPointMapsLink ?? '',
+      duration: d.duration ?? '',
+      whatToBring: d.whatToBring ?? [],
+      inclusions: d.inclusions ?? [],
+      emergencyContactActivity: d.emergencyContact ?? '',
+      operatorContact: d.operatorContact ?? '',
     });
     setFormInitialized(true);
   }, [voucherResponse, formInitialized]);
 
-  const updateField = (field: keyof FormState, value: string) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
+  // Load suppliers when type known
+  React.useEffect(() => {
+    const typeToCategory: Record<string, string> = {
+      hotel: 'hotel', transport: 'transport', flight: 'airline', activity: 'activity_provider',
+    };
+    const category = form.voucherType ? typeToCategory[form.voucherType] : undefined;
+    suppliersApi.list({ limit: 50, search: supplierSearch || undefined, category } as any).then((res) => {
+      const data = (res as any)?.data;
+      const items = Array.isArray(data) ? data : (data?.data ?? []);
+      setSupplierOptions(items.map((s: any) => ({ value: s.id, label: s.companyName ?? s.name ?? s.id })));
+    }).catch(() => {});
+  }, [supplierSearch, form.voucherType]);
+
+  const setField = <K extends keyof FormState>(k: K, v: FormState[K]) =>
+    setForm((prev) => ({ ...prev, [k]: v }));
+
+  // Guest helpers
+  const addGuest = () => setField('guests', [...form.guests, { name: '' }]);
+  const updateGuest = (i: number, name: string) => {
+    const next = [...form.guests]; next[i] = { name }; setField('guests', next);
   };
+  const removeGuest = (i: number) => setField('guests', form.guests.filter((_, idx) => idx !== i));
 
-  const isStep1Valid = form.voucherType !== '';
-  const isStep2Valid =
-    form.voucherType === 'hotel'
-      ? form.hotelName.trim() !== '' && form.checkInDate && form.checkOutDate
-      : form.voucherType === 'transport'
-        ? form.vehicleType && form.pickupLocation && form.dropLocation && form.pickupDate
-        : form.voucherType === 'flight'
-          ? form.airline && form.pnr && form.departureAirport && form.arrivalAirport && form.departureDate
-          : form.voucherType === 'activity'
-            ? form.activityName && form.activityLocation && form.activityDate
-            : false;
-  const isStep3Valid = form.guestName.trim() !== '' && form.guestEmail && form.guestPhone;
+  // Passenger helpers
+  const addPassenger = () => setField('passengers', [...form.passengers, { name: '', pnr: '' }]);
+  const updatePassenger = (i: number, field: keyof Passenger, val: string) => {
+    const next = [...form.passengers];
+    const cur = next[i] ?? { name: '', pnr: '' };
+    next[i] = { ...cur, [field]: val } as Passenger;
+    setField('passengers', next);
+  };
+  const removePassenger = (i: number) => setField('passengers', form.passengers.filter((_, idx) => idx !== i));
 
-  const stepValid = [isStep1Valid, isStep2Valid, isStep3Valid, true];
+  // Step validation
+  const step1Valid = form.voucherType !== '';
+  const step2Valid = (() => {
+    switch (form.voucherType) {
+      case 'hotel': return form.hotelName.trim() !== '' && !!form.checkIn && !!form.checkOut && form.guests.some((g) => g.name.trim() !== '');
+      case 'transport': return form.vehicleType !== '' && form.pickupLocation.trim() !== '' && form.dropLocation.trim() !== '' && !!form.pickupTime;
+      case 'flight': return form.airline.trim() !== '' && form.departureAirport.trim() !== '' && form.arrivalAirport.trim() !== '' && !!form.departureTime && !!form.arrivalTime && form.passengers.some((p) => p.name.trim() !== '');
+      case 'activity': return form.activityName.trim() !== '' && form.meetingPoint.trim() !== '' && !!form.dateTime;
+      default: return false;
+    }
+  })();
+  const step3Valid = true; // optional fields
+  const stepValid = [step1Valid, step2Valid, step3Valid, true];
+
+  // Build details object (type-specific, correct field names)
+  function buildDetails(): Record<string, any> {
+    switch (form.voucherType) {
+      case 'hotel':
+        return {
+          guestNames: form.guests.map((g) => g.name).filter(Boolean),
+          hotelName: form.hotelName,
+          hotelAddress: form.hotelAddress || undefined,
+          checkIn: form.checkIn,
+          checkOut: form.checkOut,
+          roomType: form.roomType,
+          roomCount: parseInt(form.roomCount, 10) || 1,
+          mealPlan: form.mealPlan,
+          specialRequests: form.specialRequests || undefined,
+          confirmationNumber: form.confirmationNumber || undefined,
+          emergencyContact: form.emergencyContact || undefined,
+        };
+      case 'transport':
+        return {
+          vehicleType: form.vehicleType,
+          driverName: form.driverName || undefined,
+          driverPhone: form.driverPhone || undefined,
+          pickupLocation: form.pickupLocation,
+          pickupTime: form.pickupTime,
+          pickupMapsLink: form.pickupMapsLink || undefined,
+          dropLocation: form.dropLocation,
+          dropMapsLink: form.dropMapsLink || undefined,
+          route: form.route || undefined,
+          sightseeing: form.sightseeing.length > 0 ? form.sightseeing : undefined,
+          terms: form.terms || undefined,
+        };
+      case 'flight':
+        return {
+          airline: form.airline,
+          flightNumber: form.flightNumber,
+          departureAirport: form.departureAirport,
+          departureTime: form.departureTime,
+          departureTerminal: form.departureTerminal || undefined,
+          arrivalAirport: form.arrivalAirport,
+          arrivalTime: form.arrivalTime,
+          arrivalTerminal: form.arrivalTerminal || undefined,
+          passengers: form.passengers.filter((p) => p.name.trim() !== ''),
+          pnr: form.pnr || undefined,
+          baggageAllowance: form.baggageAllowance || undefined,
+          seatNumbers: form.seatNumbers || undefined,
+          travelClass: form.travelClass,
+          mealPreference: form.mealPreference || undefined,
+        };
+      case 'activity':
+        return {
+          activityName: form.activityName,
+          dateTime: form.dateTime,
+          meetingPoint: form.meetingPoint,
+          meetingPointMapsLink: form.meetingPointMapsLink || undefined,
+          duration: form.duration || undefined,
+          whatToBring: form.whatToBring.length > 0 ? form.whatToBring : undefined,
+          inclusions: form.inclusions.length > 0 ? form.inclusions : undefined,
+          emergencyContact: form.emergencyContactActivity || undefined,
+          operatorContact: form.operatorContact || undefined,
+        };
+      default: return {};
+    }
+  }
 
   async function handleSave() {
     if (!form.voucherType) {
-      toast.error('Please select a voucher type');
+      toast.error('Voucher type is required');
       return;
     }
 
-    const titleStr = form.title.trim() ||
-      (form.voucherType === 'hotel' ? `Hotel - ${form.hotelName}` :
-       form.voucherType === 'flight' ? `Flight - ${form.airline}` :
-       form.voucherType === 'activity' ? `Activity - ${form.activityName}` :
-       `Transport - ${form.pickupLocation} to ${form.dropLocation}`);
-
-    const voucherData: UpdateVoucherRequest = {
-      customFields: {
-        type: form.voucherType,
-        title: titleStr,
-        guestName: form.guestName,
-        guestEmail: form.guestEmail,
-        guestPhone: form.guestPhone,
-        guestSpecialRequirements: form.guestSpecialRequirements,
-        details: {
-          guestName: form.guestName,
-          guestEmail: form.guestEmail,
-          guestPhone: form.guestPhone,
-          guestSpecialRequirements: form.guestSpecialRequirements,
-          hotelName: form.hotelName, hotelAddress: form.hotelAddress,
-          checkInDate: form.checkInDate, checkOutDate: form.checkOutDate,
-          roomType: form.roomType, mealPlan: form.mealPlan, specialRequests: form.specialRequests,
-          vehicleType: form.vehicleType, driverName: form.driverName,
-          pickupLocation: form.pickupLocation, dropLocation: form.dropLocation,
-          pickupDate: form.pickupDate, pickupTime: form.pickupTime,
-          airline: form.airline, flightNumber: form.flightNumber, pnr: form.pnr,
-          departureDate: form.departureDate, departureTime: form.departureTime,
-          departureAirport: form.departureAirport, arrivalAirport: form.arrivalAirport,
-          flightClass: form.flightClass, baggage: form.baggage,
-          activityName: form.activityName, activityLocation: form.activityLocation,
-          activityDate: form.activityDate, activityTime: form.activityTime,
-          duration: form.duration, inclusions: form.inclusions,
-        },
-      },
-      notes: form.guestSpecialRequirements || undefined,
+    const updateData: UpdateVoucherRequest = {
+      title: form.title.trim() || undefined,
+      supplierId: form.supplierId || undefined,
+      details: buildDetails(),
+      language: form.language,
+      notes: form.notes || undefined,
     };
 
-    const result = await updateMutation.mutate(voucherData);
-    if (result) {
+    const result = await updateMutation.mutate(updateData);
+    if (result !== undefined) {
       toast.success('Voucher updated successfully!');
       router.push(`/vouchers/${id}`);
     } else {
@@ -263,7 +396,9 @@ export default function EditVoucherPage() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Edit Voucher</h1>
+            <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
+              Edit Voucher
+            </h1>
             <p className="text-sm text-muted-foreground">Step {currentStep} of 4</p>
           </div>
         </div>
@@ -276,85 +411,73 @@ export default function EditVoucherPage() {
         </div>
       </div>
 
-      {/* Progress Bar */}
+      {/* Step progress */}
       <div className="px-6 py-4 border-b">
         <div className="flex items-center justify-between mb-2">
           {Array.from({ length: 4 }, (_, i) => (
             <React.Fragment key={i}>
               <button
-                onClick={() => setCurrentStep(i + 1)}
+                onClick={() => { if (i === 0 || stepValid[i - 1]) setCurrentStep(i + 1); }}
                 className={cn(
-                  'h-10 w-10 rounded-full flex items-center justify-center font-semibold transition-colors',
-                  stepValid[i]
-                    ? 'bg-primary text-primary-foreground cursor-pointer'
-                    : 'bg-muted text-muted-foreground',
+                  'h-9 w-9 rounded-full flex items-center justify-center font-semibold text-sm transition-colors',
+                  i < currentStep - 1 ? 'bg-primary text-primary-foreground' :
+                  i === currentStep - 1 ? 'bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2' :
+                  'bg-muted text-muted-foreground',
                 )}
               >
                 {i + 1}
               </button>
               {i < 3 && (
-                <div
-                  className={cn(
-                    'flex-1 h-1 mx-2 transition-colors',
-                    stepValid[i] ? 'bg-primary' : 'bg-muted',
-                  )}
-                />
+                <div className={cn('flex-1 h-0.5 mx-2', i < currentStep - 1 ? 'bg-primary' : 'bg-muted')} />
               )}
             </React.Fragment>
           ))}
         </div>
         <div className="flex justify-between text-xs text-muted-foreground">
-          <span>Type</span>
-          <span>Details</span>
-          <span>Guest Info</span>
-          <span>Review</span>
+          <span>Type</span><span>Details</span><span>Options</span><span>Review</span>
         </div>
       </div>
 
-      {/* Content Area */}
+      {/* Content */}
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-2xl mx-auto space-y-4">
-          {/* Step 1: Type Selection */}
+
+          {/* STEP 1 — Type (read-only for edit, can't change type) */}
           {currentStep === 1 && (
             <Card>
-              <CardHeader>
-                <CardTitle>Select Voucher Type</CardTitle>
-              </CardHeader>
+              <CardHeader><CardTitle>Voucher Type</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 {[
                   { value: 'hotel', label: 'Hotel Voucher', desc: 'Hotel accommodation details' },
                   { value: 'transport', label: 'Transport Voucher', desc: 'Vehicle hire & transfers' },
                   { value: 'flight', label: 'Flight Voucher', desc: 'Flight booking details' },
                   { value: 'activity', label: 'Activity Voucher', desc: 'Tours & activities' },
-                ].map((type: any) => (
+                ].map((t) => (
                   <label
-                    key={type.value}
+                    key={t.value}
                     className={cn(
-                      'flex items-start gap-4 p-4 rounded-lg border cursor-pointer transition-all',
-                      form.voucherType === type.value
-                        ? 'border-primary bg-primary/5'
-                        : 'hover:bg-muted/50',
+                      'flex items-start gap-4 p-4 rounded-lg border',
+                      form.voucherType === t.value ? 'border-primary bg-primary/5' : 'opacity-40',
                     )}
                   >
                     <input
-                      type="radio"
-                      name="voucherType"
-                      value={type.value}
-                      checked={form.voucherType === type.value}
-                      onChange={(e) => updateField('voucherType', e.target.value as any)}
-                      className="h-5 w-5 mt-0.5"
+                      type="radio" name="voucherType" value={t.value}
+                      checked={form.voucherType === t.value}
+                      readOnly
+                      className="h-4 w-4 mt-0.5"
                     />
-                    <div className="flex-1">
-                      <p className="font-medium text-sm">{type.label}</p>
-                      <p className="text-xs text-muted-foreground">{type.desc}</p>
+                    <div>
+                      <p className="font-medium text-sm">{t.label}</p>
+                      <p className="text-xs text-muted-foreground">{t.desc}</p>
                     </div>
                   </label>
                 ))}
+                <p className="text-xs text-muted-foreground italic">Voucher type cannot be changed after creation.</p>
               </CardContent>
             </Card>
           )}
 
-          {/* Step 2: Type-Specific Details */}
+          {/* STEP 2 — Type-specific details */}
           {currentStep === 2 && (
             <Card>
               <CardHeader>
@@ -366,266 +489,351 @@ export default function EditVoucherPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Hotel */}
+                {/* HOTEL */}
                 {form.voucherType === 'hotel' && (
                   <>
                     <div className="space-y-2">
-                      <Label htmlFor="hotelName">Hotel Name *</Label>
-                      <Input id="hotelName" value={form.hotelName} onChange={(e) => updateField('hotelName', e.target.value)} placeholder="e.g., Taj Hotels" />
+                      <Label>Hotel Name <span className="text-destructive">*</span></Label>
+                      <Input value={form.hotelName} onChange={(e) => setField('hotelName', e.target.value)} placeholder="e.g., Taj Hotels" />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="hotelAddress">Address</Label>
-                      <Input id="hotelAddress" value={form.hotelAddress} onChange={(e) => updateField('hotelAddress', e.target.value)} placeholder="Hotel address" />
+                      <Label>Address</Label>
+                      <Input value={form.hotelAddress} onChange={(e) => setField('hotelAddress', e.target.value)} placeholder="Hotel address" />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="checkInDate">Check-in Date *</Label>
-                        <Input id="checkInDate" type="date" value={form.checkInDate} onChange={(e) => updateField('checkInDate', e.target.value)} />
+                        <Label>Check-in <span className="text-destructive">*</span></Label>
+                        <Input type="date" value={form.checkIn} onChange={(e) => setField('checkIn', e.target.value)} />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="checkOutDate">Check-out Date *</Label>
-                        <Input id="checkOutDate" type="date" value={form.checkOutDate} onChange={(e) => updateField('checkOutDate', e.target.value)} />
+                        <Label>Check-out <span className="text-destructive">*</span></Label>
+                        <Input type="date" value={form.checkOut} onChange={(e) => setField('checkOut', e.target.value)} />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-3 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="roomType">Room Type</Label>
-                        <Select value={form.roomType} onValueChange={(v) => updateField('roomType', v)}>
-                          <SelectTrigger id="roomType"><SelectValue placeholder="Select room type" /></SelectTrigger>
+                        <Label>Room Type</Label>
+                        <Select value={form.roomType} onValueChange={(v) => setField('roomType', v)}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="standard">Standard</SelectItem>
-                            <SelectItem value="deluxe">Deluxe</SelectItem>
-                            <SelectItem value="suite">Suite</SelectItem>
+                            {['Standard', 'Deluxe', 'Super Deluxe', 'Suite', 'Premium', 'Executive', 'Villa', 'Cottage', 'Custom'].map((r) => (
+                              <SelectItem key={r} value={r}>{r}</SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="mealPlan">Meal Plan</Label>
-                        <Select value={form.mealPlan} onValueChange={(v) => updateField('mealPlan', v)}>
-                          <SelectTrigger id="mealPlan"><SelectValue placeholder="Select meal plan" /></SelectTrigger>
+                        <Label>Room Count</Label>
+                        <Input type="number" min={1} value={form.roomCount} onChange={(e) => setField('roomCount', e.target.value)} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Meal Plan</Label>
+                        <Select value={form.mealPlan} onValueChange={(v) => setField('mealPlan', v)}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="cp">CP (Room Only)</SelectItem>
-                            <SelectItem value="map">MAP (Half Board)</SelectItem>
-                            <SelectItem value="ap">AP (Full Board)</SelectItem>
+                            <SelectItem value="EP">EP — Room Only</SelectItem>
+                            <SelectItem value="CP">CP — Continental (Breakfast)</SelectItem>
+                            <SelectItem value="MAP">MAP — Half Board</SelectItem>
+                            <SelectItem value="AP">AP — Full Board</SelectItem>
+                            <SelectItem value="AI">AI — All Inclusive</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
                     </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Confirmation Number</Label>
+                        <Input value={form.confirmationNumber} onChange={(e) => setField('confirmationNumber', e.target.value)} placeholder="Hotel confirmation #" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Emergency Contact</Label>
+                        <Input value={form.emergencyContact} onChange={(e) => setField('emergencyContact', e.target.value)} placeholder="+91 XXXXX XXXXX" />
+                      </div>
+                    </div>
                     <div className="space-y-2">
-                      <Label htmlFor="specialRequests">Special Requests</Label>
-                      <Textarea id="specialRequests" value={form.specialRequests} onChange={(e) => updateField('specialRequests', e.target.value)} placeholder="e.g., High floor, near elevator..." rows={3} />
+                      <Label>Guest Names <span className="text-destructive">*</span></Label>
+                      <div className="space-y-2">
+                        {form.guests.map((g, i) => (
+                          <div key={i} className="flex items-center gap-2">
+                            <Input value={g.name} onChange={(e) => updateGuest(i, e.target.value)} placeholder={`Guest ${i + 1} full name`} className="flex-1" />
+                            {form.guests.length > 1 && (
+                              <Button type="button" variant="ghost" size="icon-sm" onClick={() => removeGuest(i)}><X className="h-4 w-4" /></Button>
+                            )}
+                          </div>
+                        ))}
+                        <Button type="button" variant="outline" size="sm" onClick={addGuest}><Plus className="h-3.5 w-3.5 mr-1" /> Add Guest</Button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Special Requests</Label>
+                      <Textarea value={form.specialRequests} onChange={(e) => setField('specialRequests', e.target.value)} rows={2} />
                     </div>
                   </>
                 )}
 
-                {/* Transport */}
+                {/* TRANSPORT */}
                 {form.voucherType === 'transport' && (
                   <>
                     <div className="space-y-2">
-                      <Label htmlFor="vehicleType">Vehicle Type *</Label>
-                      <Select value={form.vehicleType} onValueChange={(v) => updateField('vehicleType', v)}>
-                        <SelectTrigger id="vehicleType"><SelectValue placeholder="Select vehicle" /></SelectTrigger>
+                      <Label>Vehicle Type <span className="text-destructive">*</span></Label>
+                      <Select value={form.vehicleType} onValueChange={(v) => setField('vehicleType', v)}>
+                        <SelectTrigger><SelectValue placeholder="Select vehicle" /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="sedan">Sedan</SelectItem>
-                          <SelectItem value="suv">SUV</SelectItem>
-                          <SelectItem value="tempo">Tempo</SelectItem>
-                          <SelectItem value="bus">Bus</SelectItem>
+                          {['Sedan', 'SUV', 'Innova', 'Tempo Traveller (12-seater)', 'Mini Bus (20-seater)', 'Luxury Coach', 'Bus', 'Custom'].map((v) => (
+                            <SelectItem key={v} value={v}>{v}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Driver Name</Label>
+                        <Input value={form.driverName} onChange={(e) => setField('driverName', e.target.value)} placeholder="Driver name" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Driver Phone</Label>
+                        <Input value={form.driverPhone} onChange={(e) => setField('driverPhone', e.target.value)} placeholder="+91 XXXXX XXXXX" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Pickup Location <span className="text-destructive">*</span></Label>
+                        <Input value={form.pickupLocation} onChange={(e) => setField('pickupLocation', e.target.value)} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Pickup Maps Link</Label>
+                        <Input value={form.pickupMapsLink} onChange={(e) => setField('pickupMapsLink', e.target.value)} placeholder="https://..." />
+                      </div>
+                    </div>
                     <div className="space-y-2">
-                      <Label htmlFor="driverName">Driver Name</Label>
-                      <Input id="driverName" value={form.driverName} onChange={(e) => updateField('driverName', e.target.value)} placeholder="Driver name" />
+                      <Label>Pickup Date &amp; Time <span className="text-destructive">*</span></Label>
+                      <Input type="datetime-local" value={form.pickupTime} onChange={(e) => setField('pickupTime', e.target.value)} />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="pickupLocation">Pickup Location *</Label>
-                        <Input id="pickupLocation" value={form.pickupLocation} onChange={(e) => updateField('pickupLocation', e.target.value)} placeholder="Pickup location" />
+                        <Label>Drop Location <span className="text-destructive">*</span></Label>
+                        <Input value={form.dropLocation} onChange={(e) => setField('dropLocation', e.target.value)} />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="dropLocation">Drop Location *</Label>
-                        <Input id="dropLocation" value={form.dropLocation} onChange={(e) => updateField('dropLocation', e.target.value)} placeholder="Drop location" />
+                        <Label>Drop Maps Link</Label>
+                        <Input value={form.dropMapsLink} onChange={(e) => setField('dropMapsLink', e.target.value)} placeholder="https://..." />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="pickupDate">Pickup Date *</Label>
-                        <Input id="pickupDate" type="date" value={form.pickupDate} onChange={(e) => updateField('pickupDate', e.target.value)} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="pickupTime">Pickup Time</Label>
-                        <Input id="pickupTime" type="time" value={form.pickupTime} onChange={(e) => updateField('pickupTime', e.target.value)} />
-                      </div>
+                    <div className="space-y-2">
+                      <Label>Route / Itinerary Summary</Label>
+                      <Textarea value={form.route} onChange={(e) => setField('route', e.target.value)} rows={2} />
+                    </div>
+                    <ChipEditor label="Sightseeing" chips={form.sightseeing} onChange={(c) => setField('sightseeing', c)} />
+                    <div className="space-y-2">
+                      <Label>Terms &amp; Conditions</Label>
+                      <Textarea value={form.terms} onChange={(e) => setField('terms', e.target.value)} rows={2} />
                     </div>
                   </>
                 )}
 
-                {/* Flight */}
+                {/* FLIGHT */}
                 {form.voucherType === 'flight' && (
                   <>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="airline">Airline *</Label>
-                        <Input id="airline" value={form.airline} onChange={(e) => updateField('airline', e.target.value)} placeholder="e.g., Air India" />
+                        <Label>Airline <span className="text-destructive">*</span></Label>
+                        <Input value={form.airline} onChange={(e) => setField('airline', e.target.value)} />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="pnr">PNR *</Label>
-                        <Input id="pnr" value={form.pnr} onChange={(e) => updateField('pnr', e.target.value)} placeholder="Booking reference" />
+                        <Label>Flight Number <span className="text-destructive">*</span></Label>
+                        <Input value={form.flightNumber} onChange={(e) => setField('flightNumber', e.target.value)} />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>From Airport <span className="text-destructive">*</span></Label>
+                        <Input value={form.departureAirport} onChange={(e) => setField('departureAirport', e.target.value)} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Departure Terminal</Label>
+                        <Input value={form.departureTerminal} onChange={(e) => setField('departureTerminal', e.target.value)} placeholder="T2" />
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="flightNumber">Flight Number</Label>
-                      <Input id="flightNumber" value={form.flightNumber} onChange={(e) => updateField('flightNumber', e.target.value)} placeholder="e.g., AI101" />
+                      <Label>Departure Date &amp; Time <span className="text-destructive">*</span></Label>
+                      <Input type="datetime-local" value={form.departureTime} onChange={(e) => setField('departureTime', e.target.value)} />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="departureAirport">From Airport *</Label>
-                        <Input id="departureAirport" value={form.departureAirport} onChange={(e) => updateField('departureAirport', e.target.value)} placeholder="e.g., BOM (Mumbai)" />
+                        <Label>To Airport <span className="text-destructive">*</span></Label>
+                        <Input value={form.arrivalAirport} onChange={(e) => setField('arrivalAirport', e.target.value)} />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="arrivalAirport">To Airport *</Label>
-                        <Input id="arrivalAirport" value={form.arrivalAirport} onChange={(e) => updateField('arrivalAirport', e.target.value)} placeholder="e.g., DEL (Delhi)" />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="departureDate">Departure Date *</Label>
-                        <Input id="departureDate" type="date" value={form.departureDate} onChange={(e) => updateField('departureDate', e.target.value)} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="departureTime">Departure Time</Label>
-                        <Input id="departureTime" type="time" value={form.departureTime} onChange={(e) => updateField('departureTime', e.target.value)} />
+                        <Label>Arrival Terminal</Label>
+                        <Input value={form.arrivalTerminal} onChange={(e) => setField('arrivalTerminal', e.target.value)} placeholder="T3" />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Arrival Date &amp; Time <span className="text-destructive">*</span></Label>
+                      <Input type="datetime-local" value={form.arrivalTime} onChange={(e) => setField('arrivalTime', e.target.value)} />
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="flightClass">Class</Label>
-                        <Select value={form.flightClass} onValueChange={(v) => updateField('flightClass', v)}>
-                          <SelectTrigger id="flightClass"><SelectValue placeholder="Select class" /></SelectTrigger>
+                        <Label>Travel Class</Label>
+                        <Select value={form.travelClass} onValueChange={(v) => setField('travelClass', v)}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="economy">Economy</SelectItem>
+                            <SelectItem value="premium_economy">Premium Economy</SelectItem>
                             <SelectItem value="business">Business</SelectItem>
                             <SelectItem value="first">First</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="baggage">Baggage</Label>
-                        <Input id="baggage" value={form.baggage} onChange={(e) => updateField('baggage', e.target.value)} placeholder="e.g., 20kg + 7kg" />
+                        <Label>Baggage Allowance</Label>
+                        <Input value={form.baggageAllowance} onChange={(e) => setField('baggageAllowance', e.target.value)} placeholder="20kg + 7kg" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Seat Numbers</Label>
+                        <Input value={form.seatNumbers} onChange={(e) => setField('seatNumbers', e.target.value)} placeholder="12A, 12B" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>PNR</Label>
+                        <Input value={form.pnr} onChange={(e) => setField('pnr', e.target.value)} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Meal Preference</Label>
+                        <Input value={form.mealPreference} onChange={(e) => setField('mealPreference', e.target.value)} placeholder="Vegetarian" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Passengers <span className="text-destructive">*</span></Label>
+                      <div className="space-y-2">
+                        {form.passengers.map((p, i) => (
+                          <div key={i} className="flex items-center gap-2">
+                            <Input value={p.name} onChange={(e) => updatePassenger(i, 'name', e.target.value)} placeholder={`Passenger ${i + 1}`} className="flex-1" />
+                            <Input value={p.pnr} onChange={(e) => updatePassenger(i, 'pnr', e.target.value)} placeholder="PNR" className="w-28" />
+                            {form.passengers.length > 1 && (
+                              <Button type="button" variant="ghost" size="icon-sm" onClick={() => removePassenger(i)}><X className="h-4 w-4" /></Button>
+                            )}
+                          </div>
+                        ))}
+                        <Button type="button" variant="outline" size="sm" onClick={addPassenger}><Plus className="h-3.5 w-3.5 mr-1" /> Add Passenger</Button>
                       </div>
                     </div>
                   </>
                 )}
 
-                {/* Activity */}
+                {/* ACTIVITY */}
                 {form.voucherType === 'activity' && (
                   <>
                     <div className="space-y-2">
-                      <Label htmlFor="activityName">Activity Name *</Label>
-                      <Input id="activityName" value={form.activityName} onChange={(e) => updateField('activityName', e.target.value)} placeholder="e.g., Scuba Diving" />
+                      <Label>Activity Name <span className="text-destructive">*</span></Label>
+                      <Input value={form.activityName} onChange={(e) => setField('activityName', e.target.value)} placeholder="e.g., Scuba Diving" />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="activityLocation">Location *</Label>
-                      <Input id="activityLocation" value={form.activityLocation} onChange={(e) => updateField('activityLocation', e.target.value)} placeholder="Activity location" />
+                      <Label>Date &amp; Time <span className="text-destructive">*</span></Label>
+                      <Input type="datetime-local" value={form.dateTime} onChange={(e) => setField('dateTime', e.target.value)} />
                     </div>
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="activityDate">Date *</Label>
-                        <Input id="activityDate" type="date" value={form.activityDate} onChange={(e) => updateField('activityDate', e.target.value)} />
+                        <Label>Meeting Point <span className="text-destructive">*</span></Label>
+                        <Input value={form.meetingPoint} onChange={(e) => setField('meetingPoint', e.target.value)} />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="activityTime">Time</Label>
-                        <Input id="activityTime" type="time" value={form.activityTime} onChange={(e) => updateField('activityTime', e.target.value)} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="duration">Duration *</Label>
-                        <Input id="duration" value={form.duration} onChange={(e) => updateField('duration', e.target.value)} placeholder="e.g., 4 hours" />
+                        <Label>Meeting Point Maps Link</Label>
+                        <Input value={form.meetingPointMapsLink} onChange={(e) => setField('meetingPointMapsLink', e.target.value)} placeholder="https://..." />
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="inclusions">Inclusions</Label>
-                      <Textarea id="inclusions" value={form.inclusions} onChange={(e) => updateField('inclusions', e.target.value)} placeholder="What is included in this activity..." rows={3} />
+                      <Label>Duration</Label>
+                      <Input value={form.duration} onChange={(e) => setField('duration', e.target.value)} placeholder="e.g., 4 hours" />
                     </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Operator Contact</Label>
+                        <Input value={form.operatorContact} onChange={(e) => setField('operatorContact', e.target.value)} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Emergency Contact</Label>
+                        <Input value={form.emergencyContactActivity} onChange={(e) => setField('emergencyContactActivity', e.target.value)} />
+                      </div>
+                    </div>
+                    <ChipEditor label="Inclusions" chips={form.inclusions} onChange={(c) => setField('inclusions', c)}
+                      suggestions={['Snorkeling gear', 'Instructor', 'Lunch', 'Transport', 'Insurance']} />
+                    <ChipEditor label="What to Bring" chips={form.whatToBring} onChange={(c) => setField('whatToBring', c)}
+                      suggestions={['Sunscreen', 'Swimwear', 'Towel', 'Water bottle', 'ID proof']} />
                   </>
                 )}
               </CardContent>
             </Card>
           )}
 
-          {/* Step 3: Guest Information */}
+          {/* STEP 3 — Options */}
           {currentStep === 3 && (
             <Card>
-              <CardHeader>
-                <CardTitle>Guest & Lead Information</CardTitle>
-              </CardHeader>
+              <CardHeader><CardTitle>Voucher Options</CardTitle></CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                {form.voucherType && (
                   <div className="space-y-2">
-                    <Label htmlFor="leadId">Lead</Label>
-                    <Select value={form.leadId} onValueChange={(v) => updateField('leadId', v)}>
-                      <SelectTrigger><SelectValue placeholder="Select a lead" /></SelectTrigger>
-                      <SelectContent>
-                        {leadsList.map((lead: any) => (
-                          <SelectItem key={lead.id} value={lead.id}>
-                            {lead.title || lead.name || lead.id.slice(0, 8)} {lead.contactName ? `— ${lead.contactName}` : ''}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label>Supplier (optional)</Label>
+                    <Combobox
+                      options={supplierOptions}
+                      value={form.supplierId}
+                      onValueChange={(v) => {
+                        const label = supplierOptions.find((o) => o.value === v)?.label ?? '';
+                        setField('supplierId', v);
+                        setField('supplierLabel', label);
+                      }}
+                      onSearch={setSupplierSearch}
+                      placeholder="Search suppliers..."
+                      emptyText="No suppliers found"
+                    />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="title">Voucher Title</Label>
-                    <Input id="title" value={form.title} onChange={(e) => updateField('title', e.target.value)} placeholder="Auto-generated if empty" />
-                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label>Voucher Title</Label>
+                  <Input value={form.title} onChange={(e) => setField('title', e.target.value)} placeholder="Auto-generated if empty" />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="guestName">Guest Name *</Label>
-                  <Input id="guestName" value={form.guestName} onChange={(e) => updateField('guestName', e.target.value)} placeholder="Full name" />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="guestEmail">Email *</Label>
-                    <Input id="guestEmail" type="email" value={form.guestEmail} onChange={(e) => updateField('guestEmail', e.target.value)} placeholder="guest@example.com" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="guestPhone">Phone *</Label>
-                    <Input id="guestPhone" value={form.guestPhone} onChange={(e) => updateField('guestPhone', e.target.value)} placeholder="+91 XXXXX XXXXX" />
-                  </div>
+                  <Label>Language</Label>
+                  <Select value={form.language} onValueChange={(v) => setField('language', v)}>
+                    <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="en">English</SelectItem>
+                      <SelectItem value="hi">Hindi</SelectItem>
+                      <SelectItem value="ar">Arabic</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="guestSpecialRequirements">Special Requirements</Label>
-                  <Textarea id="guestSpecialRequirements" value={form.guestSpecialRequirements} onChange={(e) => updateField('guestSpecialRequirements', e.target.value)} placeholder="Any special needs or preferences..." rows={4} />
+                  <Label>Notes</Label>
+                  <Textarea value={form.notes} onChange={(e) => setField('notes', e.target.value)} rows={3} />
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {/* Step 4: Review */}
+          {/* STEP 4 — Review */}
           {currentStep === 4 && (
             <Card>
-              <CardHeader>
-                <CardTitle>Review & Confirm</CardTitle>
-              </CardHeader>
+              <CardHeader><CardTitle>Review &amp; Save</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
                   <p className="text-sm text-blue-700 dark:text-blue-400">
-                    <strong>Summary:</strong> Your {form.voucherType?.charAt(0).toUpperCase() + form.voucherType?.slice(1)} voucher for{' '}
-                    <strong>{form.guestName}</strong> will be updated. You can send it via email or WhatsApp after saving.
+                    Review your changes below and click <strong>Save Changes</strong> to update the voucher.
+                    Only <strong>draft</strong> vouchers can be edited.
                   </p>
                 </div>
-                <div className="space-y-3 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Voucher Type:</span>
-                    <span className="font-medium">{form.voucherType?.toUpperCase()}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Guest Name:</span>
-                    <span className="font-medium">{form.guestName || '-'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Contact:</span>
-                    <span className="font-medium">{form.guestEmail}</span>
-                  </div>
+                <div className="space-y-2 text-sm">
+                  {[
+                    ['Type', form.voucherType?.toUpperCase()],
+                    ['Supplier', form.supplierLabel || '—'],
+                    ['Language', form.language?.toUpperCase()],
+                  ].map(([k, v]) => (
+                    <div key={k} className="flex justify-between border-b pb-1 last:border-0">
+                      <span className="text-muted-foreground">{k}:</span>
+                      <span className="font-medium">{v}</span>
+                    </div>
+                  ))}
                 </div>
               </CardContent>
             </Card>
@@ -633,22 +841,14 @@ export default function EditVoucherPage() {
         </div>
       </div>
 
-      {/* Footer Navigation */}
+      {/* Footer nav */}
       <div className="border-t px-6 py-4 bg-background flex items-center justify-between">
-        <div />
+        <Button variant="outline" onClick={() => setCurrentStep((s) => Math.max(1, s - 1))} disabled={currentStep === 1 || updateMutation.loading}>
+          Previous
+        </Button>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setCurrentStep(Math.max(1, currentStep - 1))}
-            disabled={currentStep === 1 || updateMutation.loading}
-          >
-            Previous
-          </Button>
           {currentStep < 4 ? (
-            <Button
-              onClick={() => setCurrentStep(currentStep + 1)}
-              disabled={!stepValid[currentStep - 1]}
-            >
+            <Button onClick={() => setCurrentStep((s) => s + 1)} disabled={!stepValid[currentStep - 1]}>
               Next <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
           ) : (

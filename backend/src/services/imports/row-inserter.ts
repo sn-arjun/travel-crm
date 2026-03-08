@@ -1,7 +1,3 @@
-import { eq } from 'drizzle-orm';
-import { DrizzleD1Database } from 'drizzle-orm/d1';
-import * as schema from '../../db/tenant-schema';
-
 export class RowInserter {
     public async insertRow(
         db: DrizzleD1Database<typeof schema>,
@@ -9,7 +5,8 @@ export class RowInserter {
         validData: any,
         duplicateAction: 'create' | 'merge' | 'skip',
         duplicateId?: string,
-        userId?: string
+        userId?: string,
+        tenantId?: string
     ): Promise<boolean> {
         if (duplicateAction === 'skip' && duplicateId) {
             return false; // Skipped
@@ -22,11 +19,14 @@ export class RowInserter {
             switch (importType) {
                 case 'contacts': {
                     const contactName = [validData.firstName, validData.lastName].filter(Boolean).join(' ');
+                    // Normalize: lowercase email, strip phone formatting
+                    const normalizedEmail = validData.email ? validData.email.toLowerCase().trim() : null;
+                    const normalizedPhone = validData.phone ? validData.phone.replace(/[\s\-\(\)\.]/g, '') : null;
                     if (duplicateAction === 'merge' && duplicateId) {
                         await db.update(schema.contacts)
                             .set({
                                 name: contactName,
-                                phone: validData.phone || null,
+                                phone: normalizedPhone,
                                 company: validData.company || null,
                                 tags: validData.tags || null,
                                 updatedAt: now
@@ -36,10 +36,11 @@ export class RowInserter {
                         await db.insert(schema.contacts).values({
                             id: crypto.randomUUID(),
                             name: contactName,
-                            email: validData.email || null,
-                            phone: validData.phone || null,
+                            email: normalizedEmail,
+                            phone: normalizedPhone,
                             company: validData.company || null,
                             type: 'customer',
+                            source: 'import',
                             tags: validData.tags || null,
                             createdBy,
                             createdAt: now,
@@ -55,30 +56,49 @@ export class RowInserter {
                             .set({
                                 title: validData.title,
                                 budget: validData.value ? Number(validData.value) : null,
-                                status: validData.status,
+                                status: validData.status || 'new',
                                 updatedAt: now
                             })
                             .where(eq(schema.leads.id, duplicateId));
                     } else {
-                        const contactName = [validData.firstName, validData.lastName].filter(Boolean).join(' ');
-                        const contactId = crypto.randomUUID();
-                        await db.insert(schema.contacts).values({
-                            id: contactId,
-                            name: contactName,
-                            email: validData.email || null,
-                            phone: validData.phone || null,
-                            type: 'customer',
-                            createdBy,
-                            createdAt: now,
-                            updatedAt: now
-                        });
+                        // Try to resolve existing contact by email or phone before creating new one
+                        const normalizedEmail = validData.email ? validData.email.toLowerCase().trim() : null;
+                        const normalizedPhone = validData.phone ? validData.phone.replace(/[\s\-\(\)\.]/g, '') : null;
+                        let contactId: string | null = null;
+
+                        if (normalizedEmail || normalizedPhone) {
+                            const existing = await db.query.contacts.findFirst({
+                                where: normalizedEmail
+                                    ? eq(schema.contacts.email, normalizedEmail)
+                                    : eq(schema.contacts.phone, normalizedPhone!),
+                                columns: { id: true }
+                            });
+                            contactId = existing?.id ?? null;
+                        }
+
+                        if (!contactId) {
+                            const contactName = [validData.firstName, validData.lastName].filter(Boolean).join(' ');
+                            contactId = crypto.randomUUID();
+                            await db.insert(schema.contacts).values({
+                                id: contactId,
+                                name: contactName,
+                                email: normalizedEmail,
+                                phone: normalizedPhone,
+                                type: 'customer',
+                                source: 'import',
+                                createdBy,
+                                createdAt: now,
+                                updatedAt: now
+                            });
+                        }
 
                         await db.insert(schema.leads).values({
                             id: crypto.randomUUID(),
                             contactId,
                             title: validData.title,
                             budget: validData.value ? Number(validData.value) : null,
-                            status: validData.status,
+                            status: 'new',
+                            source: 'import',
                             createdBy,
                             createdAt: now,
                             updatedAt: now
@@ -88,12 +108,14 @@ export class RowInserter {
                 }
 
                 case 'suppliers': {
+                    const normalizedEmail = validData.email ? validData.email.toLowerCase().trim() : null;
+                    const normalizedPhone = validData.phone ? validData.phone.replace(/[\s\-\(\)\.]/g, '') : null;
                     if (duplicateAction === 'merge' && duplicateId) {
                         await db.update(schema.suppliers)
                             .set({
                                 companyName: validData.name,
                                 category: validData.category,
-                                phone: validData.phone || null,
+                                phone: normalizedPhone,
                                 country: validData.country || null,
                                 city: validData.city || null,
                                 updatedAt: now
@@ -104,8 +126,8 @@ export class RowInserter {
                             id: crypto.randomUUID(),
                             companyName: validData.name,
                             category: validData.category,
-                            email: validData.email || null,
-                            phone: validData.phone || null,
+                            email: normalizedEmail,
+                            phone: normalizedPhone,
                             country: validData.country || null,
                             city: validData.city || null,
                             createdBy,
@@ -118,18 +140,49 @@ export class RowInserter {
                 }
 
                 case 'rate_cards': {
-                    await db.insert(schema.rateCards).values({
-                        id: crypto.randomUUID(),
-                        supplierId: validData.supplierName, // The UI/mapping should ensure this maps to a valid supplier ID ideally
-                        serviceType: validData.serviceType,
-                        name: `${validData.serviceType} Rate`, // Fallback name since required
-                        costPrice: Number(validData.costPrice),
-                        currency: validData.currency,
-                        createdBy,
-                        createdAt: now,
-                        updatedAt: now,
-                        isActive: 1
-                    });
+                    // Resolve supplier by company_name to get the actual supplier ID
+                    let supplierId: string | null = null;
+                    if (validData.supplierName) {
+                        const supplier = await db.query.suppliers.findFirst({
+                            where: eq(schema.suppliers.companyName, validData.supplierName),
+                            columns: { id: true }
+                        });
+                        supplierId = supplier?.id ?? null;
+                    }
+
+                    if (!supplierId) {
+                        throw new Error(`Supplier not found: "${validData.supplierName}". Please ensure the supplier exists before importing rate cards.`);
+                    }
+
+                    if (duplicateAction === 'merge' && duplicateId) {
+                        await db.update(schema.rateCards)
+                            .set({
+                                serviceType: validData.serviceType,
+                                costPrice: Number(validData.costPrice),
+                                sellPrice: validData.sellPrice ? Number(validData.sellPrice) : null,
+                                currency: validData.currency || 'INR',
+                                validFrom: validData.seasonStart || validData.validFrom || null,
+                                validTo: validData.seasonEnd || validData.validTo || null,
+                                updatedAt: now
+                            })
+                            .where(eq(schema.rateCards.id, duplicateId));
+                    } else {
+                        await db.insert(schema.rateCards).values({
+                            id: crypto.randomUUID(),
+                            supplierId,
+                            serviceType: validData.serviceType,
+                            name: validData.name || `${validData.serviceType} Rate`,
+                            costPrice: Number(validData.costPrice),
+                            sellPrice: validData.sellPrice ? Number(validData.sellPrice) : null,
+                            currency: validData.currency || 'INR',
+                            validFrom: validData.seasonStart || validData.validFrom || null,
+                            validTo: validData.seasonEnd || validData.validTo || null,
+                            createdBy,
+                            createdAt: now,
+                            updatedAt: now,
+                            isActive: 1
+                        });
+                    }
                     break;
                 }
 
@@ -144,9 +197,24 @@ export class RowInserter {
                             })
                             .where(eq(schema.travellers.id, duplicateId));
                     } else {
+                        // Try to link to existing contact by passport or name+DOB
+                        let contactId: string | null = null;
+                        if (validData.email || validData.phone) {
+                            const normalizedEmail = validData.email ? validData.email.toLowerCase().trim() : null;
+                            const normalizedPhone = validData.phone ? validData.phone.replace(/[\s\-\(\)\.]/g, '') : null;
+                            const existingContact = await db.query.contacts.findFirst({
+                                where: normalizedEmail
+                                    ? eq(schema.contacts.email, normalizedEmail)
+                                    : eq(schema.contacts.phone, normalizedPhone!),
+                                columns: { id: true }
+                            });
+                            contactId = existingContact?.id ?? null;
+                        }
+
                         await db.insert(schema.travellers).values({
                             id: crypto.randomUUID(),
-                            tenantId: 'default', // Fallback for script context
+                            tenantId: tenantId || 'default',
+                            contactId: contactId || null,
                             firstName: validData.firstName,
                             lastName: validData.lastName || 'Unknown',
                             fullNamePassport: `${validData.firstName} ${validData.lastName || ''}`.trim(),

@@ -32,7 +32,7 @@ supplierRouter.get('/', zValidator('query', supplierListSchema), async (c) => {
     const { page, limit, category, status, search, sort_by, sort_order, is_preferred } = c.req.valid('query');
     const offset = (page - 1) * limit;
 
-    let query = 'SELECT * FROM suppliers WHERE is_active = 1';
+    let query = 'SELECT * FROM suppliers WHERE is_deleted = 0';
     const params: any[] = [];
 
     if (category) { query += ' AND category = ?'; params.push(category); }
@@ -53,7 +53,7 @@ supplierRouter.get('/', zValidator('query', supplierListSchema), async (c) => {
     const results = await db.prepare(query).bind(...params).all();
 
     // Get total count
-    let countQuery = 'SELECT COUNT(*) as count FROM suppliers WHERE is_active = 1';
+    let countQuery = 'SELECT COUNT(*) as count FROM suppliers WHERE is_deleted = 0';
     const countParams: any[] = [];
     if (category) { countQuery += ' AND category = ?'; countParams.push(category); }
     if (status) { countQuery += ' AND status = ?'; countParams.push(status); }
@@ -85,7 +85,7 @@ supplierRouter.get('/', zValidator('query', supplierListSchema), async (c) => {
 supplierRouter.get('/categories/summary', async (c) => {
     const db = c.get('tenantDb');
     const results = await db.prepare(
-        'SELECT category, COUNT(*) as count FROM suppliers WHERE is_active = 1 GROUP BY category'
+        'SELECT category, COUNT(*) as count FROM suppliers WHERE is_deleted = 0 GROUP BY category'
     ).all();
 
     const summary: Record<string, number> = {};
@@ -105,7 +105,7 @@ supplierRouter.get('/compare-rates', zValidator('query', compareRatesSchema), as
     FROM rate_cards rc
     JOIN suppliers s ON rc.supplier_id = s.id
     WHERE rc.service_type = ? AND rc.destination = ? 
-      AND rc.is_active = 1 AND s.is_active = 1
+      AND rc.is_active = 1 AND s.is_deleted = 0
   `;
     const params: any[] = [service_type, destination];
 
@@ -122,7 +122,7 @@ supplierRouter.get('/:id', async (c) => {
     const db = c.get('tenantDb');
     const id = c.req.param('id');
 
-    const supplier = await db.prepare('SELECT * FROM suppliers WHERE id = ? AND is_active = 1').bind(id).first();
+    const supplier = await db.prepare('SELECT * FROM suppliers WHERE id = ? AND is_deleted = 0').bind(id).first();
     if (!supplier) return c.json({ error: 'Supplier not found' }, 404);
 
     // Aggregate stats
@@ -198,7 +198,7 @@ supplierRouter.put('/:id', zValidator('json', updateSupplierSchema), async (c) =
 supplierRouter.delete('/:id', async (c) => {
     const db = c.get('tenantDb');
     const id = c.req.param('id');
-    await db.prepare('UPDATE suppliers SET is_active = 0, updated_at = ? WHERE id = ?').bind(new Date().toISOString(), id).run();
+    await db.prepare('UPDATE suppliers SET is_deleted = 1, updated_at = ? WHERE id = ?').bind(new Date().toISOString(), id).run();
     return c.json({ success: true });
 });
 

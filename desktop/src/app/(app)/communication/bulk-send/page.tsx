@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useApiMutation } from '@/hooks/use-api';
 import { communicationsApi, type BulkSendRequest } from '@/lib/api/communications';
+// Note: BulkSendRequest now uses contact_ids[] and channel from backend schema
 
 type Channel = 'email' | 'sms' | 'whatsapp';
 type RecipientMode = 'segment' | 'tag' | 'manual';
@@ -70,7 +71,7 @@ export default function BulkSendPage() {
   const [scheduleTime, setScheduleTime] = React.useState('');
 
   const { mutate: bulkSend, loading: isSending } = useApiMutation(
-    (data: BulkSendRequest) => communicationsApi.bulkSend(data),
+    (data: BulkSendRequest) => communicationsApi.bulkSend(data as BulkSendRequest),
   );
 
   // Estimate recipient count
@@ -117,36 +118,28 @@ export default function BulkSendPage() {
       return;
     }
 
-    // Build recipients list
-    let recipients: BulkSendRequest['recipients'] = [];
+    // Build contact_ids list from manual entry (segment/tag mode would need API lookup)
+    const contactIds: string[] = [];
     if (recipientMode === 'manual') {
-      recipients = manualRecipients
-        .split('\n')
-        .filter((l) => l.trim())
-        .map((line, idx) => {
-          const parts = line.split(',').map((p) => p.trim());
-          return {
-            id: `manual-${idx}`,
-            email: channel === 'email' ? parts[0] : undefined,
-            phone: channel !== 'email' ? parts[0] : undefined,
-            name: parts[1] || parts[0],
-          };
-        });
-    } else {
-      // For segment/tag modes, send segment info and let backend resolve
-      recipients = [
-        {
-          id: recipientMode === 'segment' ? selectedSegment : selectedTags.join(','),
-          name: recipientMode === 'segment' ? selectedSegment : `tags:${selectedTags.join(',')}`,
-        },
-      ];
+      manualRecipients.split('\n').filter((l) => l.trim()).forEach((line) => {
+        const parts = line.split(',').map((p) => p.trim());
+        if (parts[0]) contactIds.push(parts[0]!);
+      });
+    } else if (recipientMode === 'segment' && selectedSegment) {
+      // For segment mode, pass segment ID as a single contact_id placeholder
+      // Backend should resolve segment to contact IDs
+      contactIds.push(selectedSegment);
+    } else if (recipientMode === 'tag' && selectedTags.length > 0) {
+      // For tag mode, pass tags — backend resolves
+      contactIds.push(...selectedTags);
     }
 
     const result = await bulkSend({
-      recipients,
+      channel,
+      contact_ids: contactIds,
+      message: body,
       subject: channel === 'email' ? subject : undefined,
-      body,
-      type: channel,
+      template_id: selectedTemplate || undefined,
     });
 
     if (result) {

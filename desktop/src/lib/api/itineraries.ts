@@ -52,18 +52,20 @@ export interface CreateItineraryRequest {
 
 export interface UpdateItineraryRequest {
   title?: string;
-  description?: string;
-  startDate?: string;
-  endDate?: string;
-  destination?: string;
-  budget?: number;
-  status?: 'draft' | 'pending' | 'approved' | 'sent';
-  customFields?: Record<string, unknown>;
+  validityDate?: string;
+  notes?: string;
+  inclusions?: string[];
+  exclusions?: string[];
+  termsConditions?: string;
+  currency?: string;
+  markupType?: 'percentage' | 'fixed';
+  markupValue?: number;
+  status?: 'draft' | 'pending' | 'approved' | 'sent' | 'rejected';
+  days?: ItineraryDay[];
 }
 
 export interface CloneItineraryRequest {
-  title?: string;
-  cloneItems?: boolean;
+  targetLeadId?: string;
 }
 
 export interface NewVersionRequest {
@@ -79,9 +81,10 @@ export interface ItineraryVersion {
 }
 
 export interface SendItineraryRequest {
-  to: string[];
+  channel: 'email' | 'whatsapp';
+  to: string;
+  subject?: string;
   message?: string;
-  attachPdf?: boolean;
 }
 
 export interface ShareLinkRequest {

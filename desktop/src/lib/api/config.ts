@@ -166,6 +166,10 @@ export const API_ENDPOINTS = {
     byId: (id: string) => `/vouchers/${id}`,
     send: (id: string) => `/vouchers/${id}/send`,
     pdf: (id: string) => `/vouchers/${id}/pdf`,
+    status: (id: string) => `/vouchers/${id}/status`,
+    byLead: (leadId: string) => `/vouchers/by-lead/${leadId}`,
+    bulkSend: '/vouchers/bulk-send',
+    fromItineraryItem: '/vouchers/from-itinerary-item',
   },
   // Visa & Travellers
   visa: {
@@ -212,6 +216,22 @@ export const API_ENDPOINTS = {
     history: '/communications/history',
     log: '/communications/log',
   },
+  // Message Templates
+  templates: {
+    list: '/templates',
+    create: '/templates',
+    byId: (id: string) => `/templates/${id}`,
+    update: (id: string) => `/templates/${id}`,
+    delete: (id: string) => `/templates/${id}`,
+    duplicate: (id: string) => `/templates/${id}/duplicate`,
+  },
+  // Quick Replies
+  quickReplies: {
+    list: '/settings/quick-replies',
+    create: '/settings/quick-replies',
+    byId: (id: string) => `/settings/quick-replies/${id}`,
+    delete: (id: string) => `/settings/quick-replies/${id}`,
+  },
   // Campaigns
   campaigns: {
     list: '/campaigns',
@@ -220,6 +240,7 @@ export const API_ENDPOINTS = {
     send: (id: string) => `/campaigns/${id}/send`,
     schedule: (id: string) => `/campaigns/${id}/schedule`,
     cancel: (id: string) => `/campaigns/${id}/cancel`,
+    recipients: (id: string) => `/campaigns/${id}/recipients`,
   },
   // Marketing
   marketing: {
@@ -230,6 +251,7 @@ export const API_ENDPOINTS = {
     images: '/marketing/images',
     socialContent: '/marketing/social-content',
     optOut: '/marketing/opt-out',
+    festivals: '/marketing/festivals',
   },
   // Notifications
   notifications: {
@@ -239,6 +261,7 @@ export const API_ENDPOINTS = {
     read: (id: string) => `/notifications/${id}/read`,
     delete: (id: string) => `/notifications/${id}`,
     badgeCounts: '/notifications/badge-counts',
+    announce: '/notifications/announce',
   },
   // Imports/Exports
   imports: {
@@ -247,7 +270,9 @@ export const API_ENDPOINTS = {
     execute: (id: string) => `/imports/${id}/execute`,
     progress: (id: string) => `/imports/${id}/progress`,
     errors: (id: string) => `/imports/${id}/errors`,
+    errorsDownload: (id: string) => `/imports/${id}/errors/download`,
     templates: (type: string) => `/imports/templates/${type}`,
+    cancel: (id: string) => `/imports/${id}/cancel`,
   },
   exports: {
     contacts: '/exports/contacts',
@@ -334,6 +359,7 @@ export const API_ENDPOINTS = {
     routingRules: '/settings/routing-rules',
     followUpSequences: '/settings/follow-up-sequences',
     invoiceDefaults: '/settings/invoice-defaults',
+    itineraryDefaults: '/settings/itinerary-defaults',
     numbering: '/settings/numbering',
   },
   // Bookmarks & Notes

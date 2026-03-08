@@ -8,6 +8,7 @@ import { generateInvoiceNumber } from '../services/numbering';
 import { calculateInvoiceTotals, detectTaxType } from '../services/tax-calculator';
 import { logActivity } from '../utils/activity-logger';
 import { drizzle } from 'drizzle-orm/d1';
+import { notifications } from '../db/tenant-schema';
 
 const invoiceRoutes = new Hono<AppContext>();
 
@@ -313,10 +314,35 @@ invoiceRoutes.post('/', zValidator('json', createInvoiceSchema), async (c) => {
     }
 
     // Log activity
-    await logActivity(drizzle(tenantDb), {
+    const db = drizzle(tenantDb);
+    await logActivity(db, {
       userId, action: 'invoice_created', entityType: 'invoice', entityId: invoiceId,
       details: JSON.stringify({ invoiceNumber, contactId: data.contactId }),
     });
+
+    // Notify lead owner if invoice is linked to a lead (TICKET-166)
+    if (data.leadId) {
+      try {
+        const lead = await tenantDb
+          .prepare('SELECT assigned_to, created_by FROM leads WHERE id = ? AND is_deleted = 0')
+          .bind(data.leadId)
+          .first<{ assigned_to: string | null; created_by: string }>();
+        const notifyId = lead?.assigned_to ?? lead?.created_by;
+        if (notifyId && notifyId !== userId) {
+          await db.insert(notifications).values({
+            id: generateId(),
+            userId: notifyId,
+            title: 'Invoice created',
+            message: `Invoice ${invoiceNumber} for ₹${totals.total.toLocaleString('en-IN')} has been created`,
+            type: 'invoice_overdue',
+            referenceType: 'invoice',
+            referenceId: invoiceId,
+          });
+        }
+      } catch (_) {
+        // Non-critical
+      }
+    }
 
     return created(c, {
       id: invoiceId,

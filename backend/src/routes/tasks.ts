@@ -21,7 +21,7 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 taskRoutes.get('/', async (c) => {
     try {
         const { status, priority, category, assigned_to, related_lead_id,
-            due_date_from, due_date_to, overdue, view, page, limit: lim } = c.req.query();
+            due_date_from, due_date_to, overdue, view, page, limit: lim, search } = c.req.query();
         const userId = c.get('userId');
         const role = c.get('role');
         const db = c.get('tenantDb');
@@ -43,6 +43,7 @@ taskRoutes.get('/', async (c) => {
             params.push(userId);
         }
 
+        if (search) { query += ' AND t.title LIKE ?'; params.push(`%${search}%`); }
         if (status) { query += ' AND t.status = ?'; params.push(status); }
         if (priority) { query += ' AND t.priority = ?'; params.push(priority); }
         if (category) { query += ' AND t.category = ?'; params.push(category); }
@@ -147,6 +148,22 @@ taskRoutes.post('/', async (c) => {
       WHERE t.id = ?
     `).bind(taskId).first();
 
+        // Notify assignee if different from creator
+        const assigneeId = body.assigned_to || userId;
+        if (assigneeId !== userId) {
+            const notifId = crypto.randomUUID();
+            await db.prepare(`
+        INSERT INTO notifications (id, user_id, type, title, body, data, is_read)
+        VALUES (?, ?, 'task_assigned', ?, ?, ?, 0)
+      `).bind(
+                notifId,
+                assigneeId,
+                'New Task Assigned',
+                `You have been assigned: ${body.title}`,
+                JSON.stringify({ task_id: taskId })
+            ).run().catch(() => { /* notifications table may not exist in older tenants */ });
+        }
+
         return c.json({ data: created }, 201);
     } catch (e: any) {
         console.error('Task create error:', e);
@@ -217,6 +234,32 @@ taskRoutes.put('/:id', async (c) => {
       FROM tasks t LEFT JOIN users u ON t.assigned_to = u.id
       WHERE t.id = ?
     `).bind(id).first();
+
+        // Notify on reassignment
+        if (body.assigned_to && body.assigned_to !== existing.assigned_to) {
+            const taskTitle = body.title || existing.title;
+            // Notify new assignee
+            const notifNew = crypto.randomUUID();
+            await db.prepare(`
+        INSERT INTO notifications (id, user_id, type, title, body, data, is_read)
+        VALUES (?, ?, 'task_assigned', ?, ?, ?, 0)
+      `).bind(notifNew, body.assigned_to, 'Task Assigned to You',
+                `You have been assigned: ${taskTitle}`,
+                JSON.stringify({ task_id: id })
+            ).run().catch(() => { /* ignore */ });
+
+            // Notify old assignee if they had the task
+            if (existing.assigned_to && existing.assigned_to !== userId) {
+                const notifOld = crypto.randomUUID();
+                await db.prepare(`
+          INSERT INTO notifications (id, user_id, type, title, body, data, is_read)
+          VALUES (?, ?, 'task_reassigned', ?, ?, ?, 0)
+        `).bind(notifOld, existing.assigned_to, 'Task Reassigned',
+                    `Task "${taskTitle}" has been reassigned`,
+                    JSON.stringify({ task_id: id })
+                ).run().catch(() => { /* ignore */ });
+            }
+        }
 
         return success(c, updated);
     } catch (e: any) {

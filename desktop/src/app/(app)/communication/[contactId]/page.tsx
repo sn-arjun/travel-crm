@@ -3,30 +3,34 @@
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
-  ArrowLeft, Mail, MessageSquare, Phone, Send, Loader2,
-  User, Clock, ChevronDown, Paperclip,
+  ArrowLeft, Mail, MessageSquare, Phone, Send, Loader2, FileText,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { communicationsApi, type CommunicationLog, type SendCommunicationRequest } from '@/lib/api/communications';
+import { contactsApi } from '@/lib/api/contacts';
+import { templatesApi, type MessageTemplate } from '@/lib/api/templates';
 
 function getInitials(name: string) {
   return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
 }
 
-function getChannelIcon(type: string) {
-  switch (type) {
+function getChannelIcon(channel: string) {
+  switch (channel) {
     case 'email': return <Mail className="h-3.5 w-3.5 text-blue-500" />;
     case 'sms': return <Phone className="h-3.5 w-3.5 text-green-500" />;
     case 'whatsapp': return <MessageSquare className="h-3.5 w-3.5 text-emerald-500" />;
@@ -39,10 +43,14 @@ function getStatusBadge(status: string) {
   switch (status) {
     case 'sent':
       return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px]">Sent</Badge>;
+    case 'delivered':
+      return <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-[10px]">Delivered</Badge>;
+    case 'read':
+      return <Badge className="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 text-[10px]">Read</Badge>;
     case 'failed':
       return <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 text-[10px]">Failed</Badge>;
-    case 'pending':
-      return <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[10px]">Pending</Badge>;
+    case 'queued':
+      return <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[10px]">Queued</Badge>;
     default:
       return <Badge variant="outline" className="text-[10px]">{status}</Badge>;
   }
@@ -57,30 +65,52 @@ export default function ContactCommunicationHubPage() {
   const [composeChannel, setComposeChannel] = React.useState<'email' | 'sms' | 'whatsapp'>('email');
   const [composeMessage, setComposeMessage] = React.useState('');
   const [composeSubject, setComposeSubject] = React.useState('');
+  const [showTemplatePicker, setShowTemplatePicker] = React.useState(false);
+  const [templateSearch, setTemplateSearch] = React.useState('');
+
+  const messageListRef = React.useRef<HTMLDivElement>(null);
+
+  // Fetch real contact info
+  const { data: contactResponse, loading: loadingContact } = useApiQuery(
+    () => contactsApi.getById(contactId),
+    [contactId],
+  );
+  const contact = contactResponse?.data;
 
   // Fetch communication log for this contact
   const { data: logResponse, loading, error, refetch } = useApiQuery(
-    () => communicationsApi.getLog({
-      contactId,
-      type: channelFilter !== 'all' ? channelFilter : undefined,
+    () => communicationsApi.getHistory({
+      contact_id: contactId,
+      channel: channelFilter !== 'all' ? channelFilter : undefined,
       sortBy: 'sentAt',
-      sortOrder: 'desc',
+      sortOrder: 'asc',
     }),
     [contactId, channelFilter],
   );
 
   const logs = (logResponse?.data?.data ?? []) as CommunicationLog[];
 
+  // Fetch templates for template picker
+  const { data: templatesResponse } = useApiQuery(
+    () => templatesApi.list({
+      channel: composeChannel,
+      search: templateSearch || undefined,
+      is_active: 1,
+    }),
+    [composeChannel, templateSearch],
+  );
+  const templates: MessageTemplate[] = (templatesResponse?.data?.data ?? templatesResponse?.data ?? []) as MessageTemplate[];
+
   const { mutate: sendMessage, loading: isSending } = useApiMutation(
     (data: SendCommunicationRequest) => communicationsApi.send(data),
   );
 
-  // Mock contact info - in production fetched from contacts API
-  const contactInfo = React.useMemo(() => ({
-    name: logs[0]?.recipient || `Contact ${contactId.slice(0, 8)}`,
-    email: 'contact@example.com',
-    phone: '+91 98765 43210',
-  }), [logs, contactId]);
+  // Auto-scroll to bottom when new messages arrive
+  React.useEffect(() => {
+    if (messageListRef.current) {
+      messageListRef.current.scrollTop = messageListRef.current.scrollHeight;
+    }
+  }, [logs]);
 
   const handleSend = async () => {
     if (!composeMessage.trim()) {
@@ -93,10 +123,10 @@ export default function ContactCommunicationHubPage() {
     }
 
     const result = await sendMessage({
-      to: [composeChannel === 'email' ? contactInfo.email : contactInfo.phone],
+      contact_id: contactId,
+      channel: composeChannel,
+      message: composeMessage,
       subject: composeChannel === 'email' ? composeSubject : undefined,
-      body: composeMessage,
-      type: composeChannel,
     });
 
     if (result) {
@@ -109,6 +139,20 @@ export default function ContactCommunicationHubPage() {
     }
   };
 
+  const handleApplyTemplate = (tpl: MessageTemplate) => {
+    setComposeMessage(tpl.content);
+    if (tpl.subject) setComposeSubject(tpl.subject);
+    setShowTemplatePicker(false);
+    toast.success(`Template "${tpl.name}" applied`);
+  };
+
+  const contactName = contact?.name ?? `Contact ${contactId.slice(0, 8)}`;
+  const contactEmail = contact?.email ?? '';
+  const contactPhone = contact?.phone ?? '';
+
+  const smsChars = composeMessage.length;
+  const smsSegments = composeChannel === 'sms' ? Math.ceil(smsChars / 160) : 0;
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -117,51 +161,59 @@ export default function ContactCommunicationHubPage() {
           <Button variant="ghost" size="icon-sm" onClick={() => router.back()}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <Avatar className="h-10 w-10">
-            <AvatarFallback className="text-sm">{getInitials(contactInfo.name)}</AvatarFallback>
-          </Avatar>
-          <div>
-            <h1 className="text-lg font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-              {contactInfo.name}
-            </h1>
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <span>{contactInfo.email}</span>
-              <span>{contactInfo.phone}</span>
+          {loadingContact ? (
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-10 w-10 rounded-full" />
+              <div className="space-y-1">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-3 w-48" />
+              </div>
             </div>
-          </div>
+          ) : (
+            <>
+              <Avatar className="h-10 w-10">
+                <AvatarFallback className="text-sm">{getInitials(contactName)}</AvatarFallback>
+              </Avatar>
+              <div>
+                <h1 className="text-lg font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
+                  {contactName}
+                </h1>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  {contactEmail && <span>{contactEmail}</span>}
+                  {contactPhone && <span>{contactPhone}</span>}
+                </div>
+              </div>
+            </>
+          )}
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="text-xs">
-            {logs.length} messages
-          </Badge>
-        </div>
+        <Badge variant="outline" className="text-xs">
+          {logs.length} messages
+        </Badge>
       </div>
 
       {/* Channel Filter */}
       <div className="px-6 py-2 border-b">
         <Tabs value={channelFilter} onValueChange={setChannelFilter}>
           <TabsList className="bg-transparent border-b-0 p-0">
-            <TabsTrigger value="all" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary">
-              All
-            </TabsTrigger>
-            <TabsTrigger value="email" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary">
-              <Mail className="h-3.5 w-3.5 mr-1.5" /> Email
-            </TabsTrigger>
-            <TabsTrigger value="sms" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary">
-              <Phone className="h-3.5 w-3.5 mr-1.5" /> SMS
-            </TabsTrigger>
-            <TabsTrigger value="whatsapp" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary">
-              <MessageSquare className="h-3.5 w-3.5 mr-1.5" /> WhatsApp
-            </TabsTrigger>
-            <TabsTrigger value="call" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary">
-              <Phone className="h-3.5 w-3.5 mr-1.5" /> Calls
-            </TabsTrigger>
+            {(['all', 'email', 'sms', 'whatsapp', 'call'] as const).map((ch) => (
+              <TabsTrigger
+                key={ch}
+                value={ch}
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary capitalize"
+              >
+                {ch === 'email' && <Mail className="h-3.5 w-3.5 mr-1.5" />}
+                {ch === 'sms' && <Phone className="h-3.5 w-3.5 mr-1.5" />}
+                {ch === 'whatsapp' && <MessageSquare className="h-3.5 w-3.5 mr-1.5" />}
+                {ch === 'call' && <Phone className="h-3.5 w-3.5 mr-1.5" />}
+                {ch === 'all' ? 'All' : ch === 'sms' ? 'SMS' : ch.charAt(0).toUpperCase() + ch.slice(1)}
+              </TabsTrigger>
+            ))}
           </TabsList>
         </Tabs>
       </div>
 
       {/* Message Timeline */}
-      <div className="flex-1 overflow-auto p-6">
+      <div ref={messageListRef} className="flex-1 overflow-auto p-6">
         {loading ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -181,45 +233,36 @@ export default function ContactCommunicationHubPage() {
             {logs.map((log) => {
               const isOutbound = log.direction !== 'inbound';
               const sentDate = new Date(log.sentAt);
+              const channel = log.channel ?? log.type ?? 'email';
 
               return (
                 <div
                   key={log.id}
-                  className={cn(
-                    'flex gap-3',
-                    isOutbound ? 'flex-row-reverse' : '',
-                  )}
+                  className={cn('flex gap-3', isOutbound ? 'flex-row-reverse' : '')}
                 >
                   {!isOutbound && (
                     <Avatar className="h-8 w-8 shrink-0">
-                      <AvatarFallback className="text-xs">{getInitials(contactInfo.name)}</AvatarFallback>
+                      <AvatarFallback className="text-xs">{getInitials(contactName)}</AvatarFallback>
                     </Avatar>
                   )}
 
-                  <div className={cn('max-w-md', isOutbound ? 'items-end' : '')}>
+                  <div className={cn('max-w-md flex flex-col', isOutbound ? 'items-end' : 'items-start')}>
                     <div
                       className={cn(
                         'rounded-lg px-4 py-3',
-                        isOutbound
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted',
+                        isOutbound ? 'bg-primary text-primary-foreground' : 'bg-muted',
                       )}
                     >
-                      {/* Channel indicator */}
-                      <div className={cn(
-                        'flex items-center gap-1.5 mb-1',
-                        isOutbound ? 'justify-end' : '',
-                      )}>
-                        {getChannelIcon(log.type)}
+                      <div className={cn('flex items-center gap-1.5 mb-1', isOutbound ? 'justify-end' : '')}>
+                        {getChannelIcon(channel)}
                         <span className={cn(
                           'text-[10px] uppercase font-medium',
                           isOutbound ? 'text-primary-foreground/70' : 'text-muted-foreground',
                         )}>
-                          {log.type}
+                          {channel}
                         </span>
                       </div>
 
-                      {/* Subject for emails */}
                       {log.subject && (
                         <p className={cn(
                           'text-xs font-semibold mb-1',
@@ -229,29 +272,18 @@ export default function ContactCommunicationHubPage() {
                         </p>
                       )}
 
-                      {/* Message body */}
                       <p className={cn(
                         'text-sm whitespace-pre-wrap',
                         isOutbound ? 'text-primary-foreground' : 'text-foreground',
                       )}>
-                        {log.message}
+                        {log.message ?? log.content}
                       </p>
                     </div>
 
-                    {/* Timestamp and status */}
-                    <div className={cn(
-                      'flex items-center gap-2 mt-1',
-                      isOutbound ? 'justify-end' : '',
-                    )}>
+                    <div className={cn('flex items-center gap-2 mt-1', isOutbound ? 'justify-end' : '')}>
                       <span className="text-[10px] text-muted-foreground">
-                        {sentDate.toLocaleDateString('en-IN', {
-                          day: 'numeric',
-                          month: 'short',
-                        })}{' '}
-                        {sentDate.toLocaleTimeString('en-IN', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
+                        {sentDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}{' '}
+                        {sentDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                       </span>
                       {isOutbound && getStatusBadge(log.status)}
                     </div>
@@ -315,7 +347,16 @@ export default function ContactCommunicationHubPage() {
                 }
               }}
             />
-            <Button size="sm" onClick={handleSend} disabled={isSending}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9"
+              title="Use template"
+              onClick={() => setShowTemplatePicker(true)}
+            >
+              <FileText className="h-4 w-4" />
+            </Button>
+            <Button size="sm" onClick={handleSend} disabled={isSending} className="h-9">
               {isSending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
@@ -323,8 +364,60 @@ export default function ContactCommunicationHubPage() {
               )}
             </Button>
           </div>
+
+          {/* SMS character counter */}
+          {composeChannel === 'sms' && (
+            <p className="text-xs text-muted-foreground">
+              {smsChars} characters
+              {smsChars > 0 && (
+                <span className={cn('ml-2', smsChars > 160 ? 'text-amber-600' : 'text-muted-foreground')}>
+                  ({smsSegments} segment{smsSegments !== 1 ? 's' : ''})
+                </span>
+              )}
+            </p>
+          )}
         </div>
       </div>
+
+      {/* Template Picker Dialog */}
+      <Dialog open={showTemplatePicker} onOpenChange={setShowTemplatePicker}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Choose Template</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input
+              placeholder="Search templates..."
+              value={templateSearch}
+              onChange={(e) => setTemplateSearch(e.target.value)}
+              className="h-9"
+            />
+            <div className="max-h-80 overflow-y-auto space-y-2">
+              {templates.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No {composeChannel} templates found
+                </p>
+              ) : (
+                templates.map((tpl) => (
+                  <button
+                    key={tpl.id}
+                    onClick={() => handleApplyTemplate(tpl)}
+                    className="w-full text-left p-3 rounded-lg border hover:bg-muted transition-colors"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-sm font-medium">{tpl.name}</p>
+                      {tpl.category && (
+                        <Badge variant="secondary" className="text-[10px]">{tpl.category}</Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground line-clamp-2">{tpl.content}</p>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

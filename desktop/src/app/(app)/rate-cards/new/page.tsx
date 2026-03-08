@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { client, type ApiResponse } from '@/lib/api/client';
 import { API_ENDPOINTS } from '@/lib/api/config';
@@ -39,15 +40,18 @@ export default function NewRateCardPage() {
     notes: '',
   });
 
+  const [supplierSearch, setSupplierSearch] = React.useState('');
+
   const { data: suppliersResponse } = useApiQuery(
-    () => suppliersApi.list({ page: 1, limit: 200 }),
-    [],
+    () => suppliersApi.list({ page: 1, limit: 100, search: supplierSearch || undefined }),
+    [supplierSearch],
   );
 
-  const suppliers = React.useMemo(() => {
+  const supplierOptions = React.useMemo(() => {
     if (!suppliersResponse?.data) return [];
     const data = suppliersResponse.data;
-    return Array.isArray(data) ? data : (data as any)?.data ?? [];
+    const items: any[] = Array.isArray(data) ? data : (data as any)?.data ?? [];
+    return items.map((s: any) => ({ value: s.id, label: s.name ?? s.companyName ?? s.id }));
   }, [suppliersResponse]);
 
   const { mutate: createRateCard, loading: isSaving } = useApiMutation<CreateRateCardRequest, any>(
@@ -72,7 +76,19 @@ export default function NewRateCardPage() {
       return;
     }
 
-    const result = await createRateCard(form);
+    // Map frontend fields to backend schema
+    const payload = {
+      name: form.serviceName,
+      serviceType: form.category as 'hotel' | 'transport' | 'activity' | 'meal' | 'flight',
+      costPrice: form.rate,
+      sellingPrice: form.rate,
+      supplierId: form.supplierId,
+      currency: form.currency,
+      validFrom: form.validFrom || undefined,
+      validTo: form.validTo || undefined,
+      description: form.notes,
+    };
+    const result = await createRateCard(payload as any);
     if (result) {
       toast.success('Rate card created successfully');
       router.push('/rate-cards');
@@ -122,26 +138,24 @@ export default function NewRateCardPage() {
                   <SelectTrigger id="category"><SelectValue placeholder="Select category" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="hotel">Hotel</SelectItem>
-                    <SelectItem value="airline">Airline</SelectItem>
                     <SelectItem value="transport">Transport</SelectItem>
                     <SelectItem value="activity">Activity</SelectItem>
-                    <SelectItem value="tour_operator">Tour Operator</SelectItem>
-                    <SelectItem value="resort">Resort</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
+                    <SelectItem value="meal">Meal</SelectItem>
+                    <SelectItem value="flight">Flight</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="supplier">Supplier</Label>
-                <Select value={form.supplierId ?? ''} onValueChange={(v) => updateField('supplierId', v || undefined)}>
-                  <SelectTrigger id="supplier"><SelectValue placeholder="Select supplier (optional)" /></SelectTrigger>
-                  <SelectContent>
-                    {suppliers.map((s: any) => (
-                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Supplier</Label>
+                <Combobox
+                  options={supplierOptions}
+                  value={form.supplierId ?? ''}
+                  onValueChange={(v) => updateField('supplierId', v || undefined)}
+                  onSearch={setSupplierSearch}
+                  placeholder="Select supplier (optional)"
+                  searchPlaceholder="Search suppliers..."
+                />
               </div>
             </CardContent>
           </Card>

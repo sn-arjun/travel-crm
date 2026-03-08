@@ -3,264 +3,228 @@
 import * as React from 'react';
 import Link from 'next/link';
 import {
-  ArrowLeft, Calendar, DollarSign, Target, Zap,
+  ArrowLeft, AlertCircle, RefreshCw,
 } from 'lucide-react';
-import { toast } from 'sonner';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from 'recharts';
 import { Button } from '@/components/ui/button';
+import {
+  Card, CardContent, CardHeader, CardTitle,
+} from '@/components/ui/card';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
-import { cn } from '@/lib/utils';
-import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS } from '@travelcrm/shared';
-import { useApiQuery } from '@/hooks/use-api';
+import { Skeleton } from '@/components/ui/skeleton';
 import { reportsApi } from '@/lib/api/reports';
 
-const REF_DATE = Date.now();
+const presetMap: Record<string, string> = {
+  '7days': 'this_week',
+  '30days': 'this_month',
+  '90days': 'this_quarter',
+  thisMonth: 'this_month',
+  lastMonth: 'last_month',
+  thisQuarter: 'this_quarter',
+  thisYear: 'this_year',
+};
 
 function formatCurrency(amount: number) {
   if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(1)}Cr`;
   if (amount >= 100000) return `₹${(amount / 100000).toFixed(1)}L`;
   if (amount >= 1000) return `₹${(amount / 1000).toFixed(0)}K`;
-  return `₹${amount}`;
+  return `₹${amount.toLocaleString('en-IN')}`;
 }
-
-interface StageData {
-  status: string;
-  count: number;
-  totalValue: number;
-  previousCount?: number;
-}
-
-const getFallbackPipelineStages = (): StageData[] => [
-    { status: 'new', count: 24, totalValue: 2400000, previousCount: 20 },
-    { status: 'contacted', count: 18, totalValue: 1800000, previousCount: 22 },
-    { status: 'qualified', count: 12, totalValue: 1500000, previousCount: 14 },
-    { status: 'proposal_sent', count: 8, totalValue: 1200000, previousCount: 10 },
-    { status: 'negotiation', count: 5, totalValue: 900000, previousCount: 6 },
-    { status: 'won', count: 3, totalValue: 750000, previousCount: 2 },
-];
 
 export default function PipelineReportPage() {
   const [dateRange, setDateRange] = React.useState('30days');
+  const [rows, setRows] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [retryKey, setRetryKey] = React.useState(0);
 
-  // Fetch pipeline report data from API
-  const { data: reportData, loading, error } = useApiQuery(
-    async () => {
-      try {
-        const response = await reportsApi.getRevenueReport?.({ dateRange }) ??
-          Promise.resolve({
-            stages: getFallbackPipelineStages(),
-          });
-        return response;
-      } catch (err) {
-        toast.error('Failed to load pipeline report. Showing sample data.');
-        return {
-          stages: getFallbackPipelineStages(),
-        };
-      }
-    },
-    [dateRange],
-  );
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
 
-    // @ts-expect-error
-  const stages = reportData?.stages ?? getFallbackPipelineStages();
+    reportsApi.execute('pipeline_summary', { date_preset: presetMap[dateRange] ?? 'this_month' })
+      .then((res: any) => {
+        if (cancelled) return;
+        setRows((res?.data?.data ?? []) as any[]);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setError('Failed to load pipeline report');
+        setLoading(false);
+      });
 
-  // Calculate conversion rates between stages
-  const conversionRates = [
-    { from: 'New', to: 'Contacted', rate: ((stages[1]!.count / stages[0]!.count) * 100).toFixed(1) },
-    { from: 'Contacted', to: 'Qualified', rate: ((stages[2]!.count / stages[1]!.count) * 100).toFixed(1) },
-    { from: 'Qualified', to: 'Proposal Sent', rate: ((stages[3]!.count / stages[2]!.count) * 100).toFixed(1) },
-    { from: 'Proposal Sent', to: 'Negotiation', rate: ((stages[4]!.count / stages[3]!.count) * 100).toFixed(1) },
-    { from: 'Negotiation', to: 'Won', rate: ((stages[5]!.count / stages[4]!.count) * 100).toFixed(1) },
-  ];
+    return () => { cancelled = true; };
+  }, [dateRange, retryKey]);
 
-  const totalPipelineValue = stages.reduce((sum: any, stage: any) => sum + stage.totalValue, 0);
-  const totalLeads = stages.reduce((sum: any, stage: any) => sum + stage.count, 0);
-  const avgDealSize = totalLeads > 0 ? totalPipelineValue / totalLeads : 0;
-  const wonDeals = stages[5]!.count;
-  const closedDeals = wonDeals; // Using won as closed deals
-  const openDeals = totalLeads - wonDeals;
-  const winRate = totalLeads > 0 ? ((closedDeals / totalLeads) * 100).toFixed(1) : '0';
-  const avgSalesCycle = 45; // Mock value in days
+  const totalActiveLeads = rows.reduce((s, r) => s + (r.lead_count ?? 0), 0);
+  const totalPipelineValue = rows.reduce((s, r) => s + (r.total_budget_potential ?? 0), 0);
+  const avgDaysInStage =
+    rows.length > 0
+      ? (rows.reduce((s, r) => s + (r.avg_days_in_stage ?? 0), 0) / rows.length).toFixed(1)
+      : '0';
 
-  const maxValue = Math.max(...stages.map((s: any) => s.totalValue));
+  const chartData = rows.map((r) => ({
+    status: (r.status ?? '').replace(/_/g, ' '),
+    Leads: r.lead_count ?? 0,
+  }));
 
   return (
     <div className="flex flex-col h-full overflow-auto">
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-4">
-          <Link href="/reports">
-            <Button variant="ghost" size="sm" className="gap-1.5">
-              <ArrowLeft className="h-4 w-4" />
-              Back
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Pipeline Report</h1>
-            <p className="text-sm text-muted-foreground">Sales funnel analysis and conversion metrics</p>
-          </div>
+        <div className="flex items-center gap-3">
+          <nav className="flex items-center gap-1 text-sm text-muted-foreground">
+            <Link href="/reports" className="hover:text-foreground transition-colors">Reports</Link>
+            <span>/</span>
+            <span className="text-foreground font-medium">Pipeline Report</span>
+          </nav>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="gap-1.5">
-            <Calendar className="h-4 w-4" />
-            {dateRange === '7days' ? 'Last 7 Days' : dateRange === '30days' ? 'Last 30 Days' : dateRange === '90days' ? 'Last 90 Days' : 'Last 30 Days'}
-          </Button>
-        </div>
+        <Select value={dateRange} onValueChange={setDateRange}>
+          <SelectTrigger className="w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="7days">Last 7 Days</SelectItem>
+            <SelectItem value="30days">Last 30 Days</SelectItem>
+            <SelectItem value="90days">Last 90 Days</SelectItem>
+            <SelectItem value="thisMonth">This Month</SelectItem>
+            <SelectItem value="lastMonth">Last Month</SelectItem>
+            <SelectItem value="thisQuarter">This Quarter</SelectItem>
+            <SelectItem value="thisYear">This Year</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Title */}
+      <div className="px-6 py-3 border-b">
+        <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
+          Pipeline Report
+        </h1>
+        <p className="text-sm text-muted-foreground">Sales pipeline summary and lead stages</p>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
-        <div className="space-y-6">
-          {/* Stats Row */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="flex-1 p-6 overflow-auto">
+        {loading ? (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {[...Array(3)].map((_, i) => (
+                <Card key={i}><CardContent className="pt-4 space-y-2"><Skeleton className="h-4 w-24" /><Skeleton className="h-8 w-20" /></CardContent></Card>
+              ))}
+            </div>
+            <Skeleton className="h-[300px] w-full" />
+            <Skeleton className="h-[200px] w-full" />
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center h-[300px] gap-3">
+            <AlertCircle className="h-8 w-8 text-destructive" />
+            <p className="text-sm text-muted-foreground">Failed to load pipeline report</p>
+            <Button size="sm" variant="outline" onClick={() => setRetryKey((k) => k + 1)}>
+              <RefreshCw className="h-4 w-4 mr-1.5" />
+              Retry
+            </Button>
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="flex items-center justify-center h-[300px]">
+            <p className="text-sm text-muted-foreground">No data for selected period</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* KPI Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Active Leads</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{totalActiveLeads}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Across all stages</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Pipeline Value</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{formatCurrency(totalPipelineValue)}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Budget potential</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Avg Days In Stage</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{avgDaysInStage}d</div>
+                  <p className="text-xs text-muted-foreground mt-1">Average across stages</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Bar Chart */}
             <Card>
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Total Pipeline Value</p>
-                    <p className="text-2xl font-bold">{formatCurrency(totalPipelineValue)}</p>
-                  </div>
-                  <DollarSign className="h-5 w-5 text-primary opacity-50" />
-                </div>
+              <CardHeader>
+                <CardTitle>Lead Count by Status</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={chartData} margin={{ top: 5, right: 30, left: 0, bottom: 40 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="status" angle={-30} textAnchor="end" height={60} />
+                    <YAxis />
+                    <Tooltip />
+                    <Bar dataKey="Leads" fill="#3b82f6" />
+                  </BarChart>
+                </ResponsiveContainer>
               </CardContent>
             </Card>
 
+            {/* Pipeline Stages Table */}
             <Card>
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Avg Deal Size</p>
-                    <p className="text-2xl font-bold">{formatCurrency(avgDealSize)}</p>
-                  </div>
-                  <Target className="h-5 w-5 text-primary opacity-50" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Win Rate</p>
-                    <p className="text-2xl font-bold">{winRate}%</p>
-                  </div>
-                  <Zap className="h-5 w-5 text-primary opacity-50" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Avg Sales Cycle</p>
-                    <p className="text-2xl font-bold">{avgSalesCycle}d</p>
-                  </div>
-                  <Calendar className="h-5 w-5 text-primary opacity-50" />
-                </div>
+              <CardHeader>
+                <CardTitle>Pipeline Stages</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Lead Count</TableHead>
+                      <TableHead className="text-right">Budget Potential</TableHead>
+                      <TableHead className="text-right">Avg Days in Stage</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.map((row, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs capitalize">
+                            {(row.status ?? '').replace(/_/g, ' ')}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-semibold">{row.lead_count ?? 0}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(row.total_budget_potential ?? 0)}</TableCell>
+                        <TableCell className="text-right">
+                          {row.avg_days_in_stage != null ? `${Number(row.avg_days_in_stage).toFixed(1)}d` : '—'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </CardContent>
             </Card>
           </div>
-
-          {/* Pipeline Funnel */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold">Sales Funnel</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {stages.map((stage: any) => {
-                const label = LEAD_STATUS_LABELS[stage.status as keyof typeof LEAD_STATUS_LABELS] || stage.status;
-                const color = LEAD_STATUS_COLORS[stage.status as keyof typeof LEAD_STATUS_COLORS] || '#6B7280';
-                const pct = maxValue > 0 ? (stage.totalValue / maxValue) * 100 : 0;
-
-                return (
-                  <div key={stage.status} className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium text-sm">{label}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">{stage.count} leads</span>
-                        <Badge variant="secondary" className="text-xs">{formatCurrency(stage.totalValue)}</Badge>
-                      </div>
-                    </div>
-                    <div className="h-8 rounded-lg bg-muted overflow-hidden flex items-center">
-                      <div
-                        className="h-full rounded-lg transition-all duration-500 flex items-center justify-end pr-3"
-                        style={{
-                          width: `${pct}%`,
-                          backgroundColor: color,
-                        }}
-                      >
-                        {pct > 15 && (
-                          <span className="text-xs font-semibold text-white">{pct.toFixed(0)}%</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </CardContent>
-          </Card>
-
-          {/* Conversion Rates */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold">Conversion Rates</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                {conversionRates.map((conversion, idx) => (
-                  <div key={idx} className="p-3 rounded-lg bg-muted/50 border">
-                    <p className="text-xs text-muted-foreground mb-2">{conversion.from} → {conversion.to}</p>
-                    <p className="text-2xl font-bold text-primary">{conversion.rate}%</p>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Stage Breakdown Table */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold">Detailed Breakdown</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-3 px-3 font-semibold text-xs text-muted-foreground">Stage</th>
-                      <th className="text-right py-3 px-3 font-semibold text-xs text-muted-foreground">Leads</th>
-                      <th className="text-right py-3 px-3 font-semibold text-xs text-muted-foreground">Value</th>
-                      <th className="text-right py-3 px-3 font-semibold text-xs text-muted-foreground">% of Total</th>
-                      <th className="text-right py-3 px-3 font-semibold text-xs text-muted-foreground">vs Last Period</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {stages.map((stage: any) => {
-                      const label = LEAD_STATUS_LABELS[stage.status as keyof typeof LEAD_STATUS_LABELS] || stage.status;
-                      const pctOfTotal = totalPipelineValue > 0 ? ((stage.totalValue / totalPipelineValue) * 100).toFixed(1) : '0';
-                      const change = stage.previousCount ? stage.count - stage.previousCount : 0;
-                      const changeLabel = change > 0 ? `+${change}` : change === 0 ? '—' : `${change}`;
-
-                      return (
-                        <tr key={stage.status} className="border-b hover:bg-muted/50 transition-colors">
-                          <td className="py-3 px-3 font-medium">{label}</td>
-                          <td className="text-right py-3 px-3">{stage.count}</td>
-                          <td className="text-right py-3 px-3">{formatCurrency(stage.totalValue)}</td>
-                          <td className="text-right py-3 px-3">{pctOfTotal}%</td>
-                          <td className={cn('text-right py-3 px-3 font-medium', change > 0 ? 'text-green-600' : change < 0 ? 'text-red-600' : 'text-muted-foreground')}>
-                            {changeLabel}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        )}
       </div>
     </div>
   );

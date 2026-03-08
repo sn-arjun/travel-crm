@@ -67,8 +67,10 @@ importRoutes.post('/upload', async (c) => {
 
         // Create tracking record
         const jobId = crypto.randomUUID();
+        const tenantId = c.get('tenantId') || '';
         await db.insert(schema.importJobs).values({
             id: jobId,
+            tenantId,
             importType,
             fileName: uploadedFile.name,
             fileUrl: fileKey,
@@ -166,12 +168,20 @@ importRoutes.get('/:id/errors/download', async (c) => {
     const db = drizzle(c.get('tenantDb') as any, { schema });
     const jobId = c.req.param('id');
 
+    // Resolve import type for filename
+    const job = await db.query.importJobs.findFirst({
+        where: eq(schema.importJobs.id, jobId),
+        columns: { importType: true }
+    });
+
     const errors = await db.query.importErrors.findMany({
         where: eq(schema.importErrors.importJobId, jobId),
+        limit: 10000, // Max 10,000 rows per spec
     });
 
     if (errors.length === 0) {
-        return error(c, 'No errors found for this job', 404);
+        // Return 204 No Content per spec instead of 404
+        return c.body(null, 204);
     }
 
     try {
@@ -197,17 +207,39 @@ importRoutes.get('/:id/errors/download', async (c) => {
 
         const ws = XLSX.utils.json_to_sheet(errorData);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Errors');
+        XLSX.utils.book_append_sheet(wb, ws, 'Failed Rows'); // Per spec sheet name
 
         const u8: Uint8Array = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+        const importType = job?.importType ?? 'import';
 
         c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        c.header('Content-Disposition', `attachment; filename="import_errors_${jobId}.xlsx"`);
+        c.header('Content-Disposition', `attachment; filename="${importType}_errors_${jobId}.xlsx"`);
 
         return c.body(u8.buffer as ArrayBuffer);
     } catch (err: any) {
         return error(c, err.message || 'Failed to generate error file', 500);
     }
+});
+
+// POST /api/v1/imports/:id/cancel - Cancel an in-progress import
+importRoutes.post('/:id/cancel', async (c) => {
+    const db = drizzle(c.get('tenantDb') as any, { schema });
+    const jobId = c.req.param('id');
+
+    const job = await db.query.importJobs.findFirst({
+        where: eq(schema.importJobs.id, jobId)
+    });
+
+    if (!job) return error(c, 'Import job not found', 404);
+    if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
+        return error(c, `Cannot cancel a job with status '${job.status}'`, 400);
+    }
+
+    await db.update(schema.importJobs)
+        .set({ status: 'cancelled', updatedAt: new Date().toISOString() })
+        .where(eq(schema.importJobs.id, jobId));
+
+    return success(c, { message: 'Import cancelled', jobId });
 });
 
 // GET /api/v1/imports/templates/:type - Get template file

@@ -37,6 +37,7 @@ import {
   Palette,
   CalendarClock,
   Plane,
+  Send,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarStore } from '@/stores/sidebar-store';
@@ -47,12 +48,13 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { notificationsApi } from '@/lib/api/notifications';
 
 interface NavItem {
   title: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
-  badge?: string | number;
+  badgeKey?: 'unread_notifications' | 'pending_tasks' | 'overdue_followups' | 'overdue_invoices';
 }
 
 interface NavGroup {
@@ -66,13 +68,13 @@ const navigation: NavGroup[] = [
     items: [
       { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
       { title: 'Calendar', href: '/calendar', icon: Calendar },
-      { title: 'Tasks', href: '/tasks', icon: CheckSquare },
+      { title: 'Tasks', href: '/tasks', icon: CheckSquare, badgeKey: 'pending_tasks' },
     ],
   },
   {
     label: 'CRM',
     items: [
-      { title: 'Leads', href: '/leads', icon: Briefcase },
+      { title: 'Leads', href: '/leads', icon: Briefcase, badgeKey: 'overdue_followups' },
       { title: 'Contacts', href: '/contacts', icon: Users },
       { title: 'Accounts', href: '/accounts', icon: Building2 },
     ],
@@ -84,6 +86,7 @@ const navigation: NavGroup[] = [
       { title: 'Itineraries', href: '/itineraries', icon: Map },
       { title: 'Rate Cards', href: '/rate-cards', icon: Tag },
       { title: 'Suppliers', href: '/suppliers', icon: PackageSearch },
+      { title: 'Rate Comparison', href: '/suppliers/compare', icon: BarChart3 },
       { title: 'Visa & Travellers', href: '/visa', icon: Stamp },
       { title: 'Vouchers', href: '/vouchers', icon: ClipboardList },
     ],
@@ -91,8 +94,10 @@ const navigation: NavGroup[] = [
   {
     label: 'Revenue',
     items: [
-      { title: 'Invoices', href: '/invoices', icon: Receipt },
+      { title: 'Invoices', href: '/invoices', icon: Receipt, badgeKey: 'overdue_invoices' },
       { title: 'Payments', href: '/payments', icon: CreditCard },
+      { title: 'Credit Notes', href: '/credit-notes', icon: FileText },
+      { title: 'Debit Notes', href: '/debit-notes', icon: FileText },
     ],
   },
   {
@@ -101,7 +106,7 @@ const navigation: NavGroup[] = [
       { title: 'Inbox', href: '/communication', icon: Inbox },
       { title: 'Call Log', href: '/communication/calls', icon: Phone },
       { title: 'Templates', href: '/communication/templates', icon: MessageSquare },
-      { title: 'Campaigns', href: '/campaigns', icon: Megaphone },
+      { title: 'Bulk Send', href: '/communication/bulk-send', icon: Send },
     ],
   },
   {
@@ -110,16 +115,20 @@ const navigation: NavGroup[] = [
       { title: 'Reports', href: '/reports', icon: BarChart3 },
       { title: 'AI Assistant', href: '/ai', icon: Sparkles },
       { title: 'Chatbot', href: '/chatbot', icon: Bot },
-      { title: 'Notifications', href: '/notifications', icon: Bell, badge: 7 },
+      { title: 'Notifications', href: '/notifications', icon: Bell, badgeKey: 'unread_notifications' },
       { title: 'Documents', href: '/documents', icon: FileText },
     ],
   },
   {
     label: 'Marketing',
     items: [
-      { title: 'Flyers', href: '/marketing/flyers', icon: Palette },
+      { title: 'Dashboard', href: '/marketing', icon: LayoutDashboard },
+      { title: 'Campaigns', href: '/campaigns', icon: Megaphone },
       { title: 'Segments', href: '/marketing/segments', icon: Users },
+      { title: 'Flyers', href: '/marketing/flyers', icon: Palette },
       { title: 'Branding', href: '/marketing/branding', icon: Palette },
+      { title: 'Festival Offers', href: '/marketing/festivals', icon: CalendarClock },
+      { title: 'Opted-Out', href: '/marketing/opted-out', icon: UserCheck },
       { title: 'Social Content', href: '/marketing/social', icon: Megaphone },
     ],
   },
@@ -127,6 +136,7 @@ const navigation: NavGroup[] = [
     label: 'Tools',
     items: [
       { title: 'Follow-ups', href: '/follow-ups', icon: CalendarClock },
+      { title: 'Import / Export', href: '/import', icon: Upload },
       { title: 'Bookmarks', href: '/bookmarks', icon: Bookmark },
     ],
   },
@@ -137,9 +147,49 @@ const bottomNav: NavItem[] = [
   { title: 'Settings', href: '/settings', icon: Settings },
 ];
 
-function NavItemLink({ item, isCollapsed }: { item: NavItem; isCollapsed: boolean }) {
+interface BadgeCounts {
+  unread_notifications: number;
+  pending_tasks: number;
+  overdue_followups: number;
+  overdue_invoices: number;
+}
+
+function useBadgeCounts() {
+  const [counts, setCounts] = React.useState<BadgeCounts | null>(null);
+
+  const fetchCounts = React.useCallback(async () => {
+    try {
+      const res = await notificationsApi.getBadgeCounts();
+      if (res && 'data' in res && res.data) {
+        const data = res.data as any;
+        setCounts({
+          unread_notifications: data.unread_notifications ?? data.notifications ?? 0,
+          pending_tasks: data.pending_tasks ?? data.tasks ?? 0,
+          overdue_followups: data.overdue_followups ?? data.followUps ?? 0,
+          overdue_invoices: data.overdue_invoices ?? 0,
+        });
+      }
+    } catch {
+      // Non-critical
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchCounts();
+    // Refresh every 90 seconds
+    const interval = setInterval(fetchCounts, 90_000);
+    return () => clearInterval(interval);
+  }, [fetchCounts]);
+
+  return counts;
+}
+
+function NavItemLink({ item, isCollapsed, badgeCounts }: { item: NavItem; isCollapsed: boolean; badgeCounts: BadgeCounts | null }) {
   const pathname = usePathname();
   const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
+
+  const badge = item.badgeKey && badgeCounts ? (badgeCounts[item.badgeKey] ?? 0) : 0;
+  const badgeDisplay = badge > 0 ? (badge > 99 ? '99+' : badge) : null;
 
   const linkContent = (
     <Link
@@ -163,9 +213,9 @@ function NavItemLink({ item, isCollapsed }: { item: NavItem; isCollapsed: boolea
       {!isCollapsed && (
         <>
           <span className="truncate">{item.title}</span>
-          {item.badge && (
+          {badgeDisplay && (
             <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-white animate-pop-in">
-              {item.badge}
+              {badgeDisplay}
             </span>
           )}
         </>
@@ -179,9 +229,9 @@ function NavItemLink({ item, isCollapsed }: { item: NavItem; isCollapsed: boolea
         <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
         <TooltipContent side="right" className="flex items-center gap-2">
           {item.title}
-          {item.badge && (
+          {badgeDisplay && (
             <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-white">
-              {item.badge}
+              {badgeDisplay}
             </span>
           )}
         </TooltipContent>
@@ -194,6 +244,7 @@ function NavItemLink({ item, isCollapsed }: { item: NavItem; isCollapsed: boolea
 
 export function Sidebar() {
   const { isCollapsed, toggle } = useSidebarStore();
+  const badgeCounts = useBadgeCounts();
 
   return (
     <TooltipProvider>
@@ -228,7 +279,7 @@ export function Sidebar() {
                 )}
                 <div className="space-y-0.5">
                   {group.items.map((item: any) => (
-                    <NavItemLink key={item.href} item={item} isCollapsed={isCollapsed} />
+                    <NavItemLink key={item.href} item={item} isCollapsed={isCollapsed} badgeCounts={badgeCounts} />
                   ))}
                 </div>
               </div>
@@ -239,7 +290,7 @@ export function Sidebar() {
         {/* Bottom Nav */}
         <div className="border-t border-sidebar-border px-3 py-3 space-y-0.5">
           {bottomNav.map((item: any) => (
-            <NavItemLink key={item.href} item={item} isCollapsed={isCollapsed} />
+            <NavItemLink key={item.href} item={item} isCollapsed={isCollapsed} badgeCounts={badgeCounts} />
           ))}
         </div>
 

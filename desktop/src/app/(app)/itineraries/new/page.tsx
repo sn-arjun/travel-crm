@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
+import { Combobox } from '@/components/ui/combobox';
 import { cn } from '@/lib/utils';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { itinerariesApi, type CreateItineraryRequest } from '@/lib/api/itineraries';
@@ -203,8 +204,6 @@ export default function ItineraryBuilderPage() {
   const [destination, setDestination] = React.useState('');
   const [leadId, setLeadId] = React.useState('');
   const [leadSearch, setLeadSearch] = React.useState('');
-  const [leadDropdownOpen, setLeadDropdownOpen] = React.useState(false);
-  const [selectedLeadLabel, setSelectedLeadLabel] = React.useState('');
   const [startDate, setStartDate] = React.useState('');
   const [endDate, setEndDate] = React.useState('');
   const [version, setVersion] = React.useState<'v1' | 'v2' | 'v3'>('v1');
@@ -222,6 +221,8 @@ export default function ItineraryBuilderPage() {
   const [inclusionInput, setInclusionInput] = React.useState('');
   const [exclusions, setExclusions] = React.useState<Inclusion[]>([]);
   const [exclusionInput, setExclusionInput] = React.useState('');
+  const [termsConditions, setTermsConditions] = React.useState('');
+  const [loadingDefaults, setLoadingDefaults] = React.useState(false);
 
   // Lead search query
   const { data: leadsResponse } = useApiQuery(
@@ -385,6 +386,26 @@ export default function ItineraryBuilderPage() {
     setExclusions((prev) => prev.filter((exc: any) => exc.id !== id));
   }
 
+  async function loadDefaults() {
+    setLoadingDefaults(true);
+    try {
+      const res = await client.get<ApiResponse<any>>(API_ENDPOINTS.settings.itineraryDefaults);
+      const defaults = (res as any)?.data ?? res;
+      if (defaults?.defaultTerms) setTermsConditions(defaults.defaultTerms);
+      if (defaults?.defaultInclusions && Array.isArray(defaults.defaultInclusions)) {
+        setInclusions(defaults.defaultInclusions.map((text: string) => ({ id: generateId(), text })));
+      }
+      if (defaults?.defaultExclusions && Array.isArray(defaults.defaultExclusions)) {
+        setExclusions(defaults.defaultExclusions.map((text: string) => ({ id: generateId(), text })));
+      }
+      toast.success('Defaults loaded from settings');
+    } catch {
+      toast.error('Failed to load defaults');
+    } finally {
+      setLoadingDefaults(false);
+    }
+  }
+
   // Task 2G: open rate card picker for an activity
   function openRateCardPicker(dayId: string, activityId: string, activityType: string) {
     setRateCardPickerTarget({ dayId, activityId, activityType });
@@ -469,6 +490,7 @@ export default function ItineraryBuilderPage() {
         notes: description.trim() || undefined,
         inclusions: inclusions.map(i => i.text),
         exclusions: exclusions.map(e => e.text),
+        termsConditions: termsConditions.trim() || undefined,
         currency,
         markupType: 'percentage',
         markupValue: parseFloat(markupPercent) || 0,
@@ -673,7 +695,7 @@ export default function ItineraryBuilderPage() {
       </div>
 
       {/* Builder */}
-      <div className="flex-1 overflow-auto p-6" onClick={() => setLeadDropdownOpen(false)}>
+      <div className="flex-1 overflow-auto p-6">
         <div className="max-w-4xl mx-auto space-y-4">
           {/* Basic Info Section */}
           <Card>
@@ -690,52 +712,17 @@ export default function ItineraryBuilderPage() {
                     className="h-8 text-sm"
                   />
                 </div>
-                <div className="space-y-1 relative">
-                  <Label htmlFor="lead" className="text-xs">Link to Lead</Label>
-                  <div className="relative">
-                    <Input
-                      id="lead"
-                      value={leadDropdownOpen ? leadSearch : selectedLeadLabel}
-                      onChange={(e) => { setLeadSearch(e.target.value); setLeadDropdownOpen(true); }}
-                      onFocus={() => setLeadDropdownOpen(true)}
-                      placeholder="Search leads by name..."
-                      className="h-8 text-sm"
-                      autoComplete="off"
-                    />
-                    {leadId && (
-                      <button
-                        type="button"
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                        onClick={() => { setLeadId(''); setSelectedLeadLabel(''); setLeadSearch(''); }}
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                  {leadDropdownOpen && leadOptions.length > 0 && (
-                    <div className="absolute z-50 top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto rounded-md border bg-popover shadow-md">
-                      {leadOptions.map((opt: any) => (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-accent truncate"
-                          onClick={() => {
-                            setLeadId(opt.id);
-                            setSelectedLeadLabel(opt.label);
-                            setLeadSearch('');
-                            setLeadDropdownOpen(false);
-                          }}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {leadDropdownOpen && leadSearch && leadOptions.length === 0 && (
-                    <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-md border bg-popover shadow-md px-3 py-2 text-sm text-muted-foreground">
-                      No leads found
-                    </div>
-                  )}
+                <div className="space-y-1">
+                  <Label className="text-xs">Link to Lead <span className="text-red-500">*</span></Label>
+                  <Combobox
+                    options={leadOptions.map((o: any) => ({ value: o.id, label: o.label }))}
+                    value={leadId}
+                    onValueChange={setLeadId}
+                    onSearch={setLeadSearch}
+                    placeholder="Search leads by name..."
+                    searchPlaceholder="Search leads..."
+                    emptyText="No leads found"
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -958,6 +945,28 @@ export default function ItineraryBuilderPage() {
                 />
                 <Button size="sm" onClick={addExclusion}><Plus className="h-3 w-3" /></Button>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Terms & Conditions */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">Terms & Conditions</CardTitle>
+                <Button variant="outline" size="sm" onClick={loadDefaults} disabled={loadingDefaults} className="h-7 text-xs gap-1.5">
+                  {loadingDefaults ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                  Load from Settings
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Textarea
+                value={termsConditions}
+                onChange={(e) => setTermsConditions(e.target.value)}
+                placeholder="Enter terms and conditions, or click 'Load from Settings' to use tenant defaults..."
+                rows={6}
+                className="text-sm resize-none"
+              />
             </CardContent>
           </Card>
 

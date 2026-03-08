@@ -12,26 +12,121 @@ import { getChecklistTemplate } from '../db/seed/visa-checklist-templates';
 const visaRouter = new Hono<AppContext>();
 visaRouter.use('*', authMiddleware);
 
+// Dashboard stats
+visaRouter.get('/dashboard', async (c) => {
+    try {
+        const db = c.get('tenantDb');
+        const tenantId = c.get('tenantId');
+        const today = new Date().toISOString().substring(0, 10);
+        const in30Days = new Date(Date.now() + 30 * 86400000).toISOString().substring(0, 10);
+
+        const all = await db.prepare('SELECT status, destination_country, visa_expiry_date FROM visa_applications WHERE tenant_id = ? AND is_deleted = 0')
+            .bind(tenantId).all<{ status: string; destination_country: string; visa_expiry_date?: string }>();
+
+        const rows = all.results;
+        const statusCounts: Record<string, number> = {};
+        for (const r of rows) {
+            statusCounts[r.status] = (statusCounts[r.status] ?? 0) + 1;
+        }
+
+        const expiringSoon = rows.filter((r) =>
+            r.visa_expiry_date && r.visa_expiry_date >= today && r.visa_expiry_date <= in30Days
+        ).length;
+
+        const byCountry = rows.reduce<Record<string, number>>((acc, r) => {
+            if (r.destination_country) acc[r.destination_country] = (acc[r.destination_country] ?? 0) + 1;
+            return acc;
+        }, {});
+
+        return c.json({
+            data: {
+                total: rows.length,
+                statusCounts,
+                expiringSoon,
+                byCountry,
+            },
+        });
+    } catch (e: any) {
+        console.error('Visa dashboard error:', e.message);
+        return c.json({ data: { total: 0, statusCounts: {}, expiringSoon: 0, byCountry: {} } });
+    }
+});
+
+// Missing documents report
+visaRouter.get('/missing-documents', async (c) => {
+    try {
+        const db = c.get('tenantDb');
+        const tenantId = c.get('tenantId');
+
+        const results = await db.prepare(`
+            SELECT va.id, va.destination_country, va.status, va.traveller_id,
+                   COUNT(vci.id) as total_required,
+                   SUM(CASE WHEN vci.is_received = 1 THEN 1 ELSE 0 END) as received
+            FROM visa_applications va
+            JOIN visa_checklist_items vci ON vci.visa_application_id = va.id AND vci.is_required = 1
+            WHERE va.tenant_id = ? AND va.is_deleted = 0
+              AND va.status = 'documents_collecting'
+            GROUP BY va.id
+            HAVING received < total_required
+        `).bind(tenantId).all();
+
+        return c.json({ data: results.results });
+    } catch (e: any) {
+        return c.json({ data: [] });
+    }
+});
+
 visaRouter.get('/', async (c) => {
     try {
         const db = c.get('tenantDb');
         const tenantId = c.get('tenantId');
         const leadId = c.req.query('lead_id');
+        const travellerId = c.req.query('traveller_id');
         const status = c.req.query('status');
+        const search = c.req.query('search');
+        const destinationCountry = c.req.query('destination_country');
+        const page = parseInt(c.req.query('page') ?? '1', 10);
+        const limit = Math.min(parseInt(c.req.query('limit') ?? '20', 10), 100);
+        const offset = (page - 1) * limit;
+        const sortBy = c.req.query('sort_by') ?? 'created_at';
+        const sortOrder = c.req.query('sort_order') === 'asc' ? 'ASC' : 'DESC';
+        const allowedSort: Record<string, string> = {
+            created_at: 'created_at',
+            destination_country: 'destination_country',
+            status: 'status',
+            expected_date: 'expected_date',
+        };
+        const orderCol = allowedSort[sortBy] ?? 'created_at';
 
         let query = 'SELECT * FROM visa_applications WHERE tenant_id = ? AND is_deleted = 0';
         const params: any[] = [tenantId];
 
         if (leadId) { query += ' AND lead_id = ?'; params.push(leadId); }
+        if (travellerId) { query += ' AND traveller_id = ?'; params.push(travellerId); }
         if (status) { query += ' AND status = ?'; params.push(status); }
+        if (destinationCountry) { query += ' AND destination_country = ?'; params.push(destinationCountry); }
+        if (search) {
+            query += ' AND destination_country LIKE ?';
+            params.push(`%${search}%`);
+        }
 
-        query += ' ORDER BY created_at DESC';
+        const countQuery = query.replace('SELECT *', 'SELECT COUNT(*) as total');
+        const countResult = await db.prepare(countQuery).bind(...params).first<{ total: number }>();
+        const total = countResult?.total ?? 0;
+
+        query += ` ORDER BY ${orderCol} ${sortOrder} LIMIT ? OFFSET ?`;
+        params.push(limit, offset);
 
         const results = await db.prepare(query).bind(...params).all();
-        return c.json({ data: results.results });
+        return c.json({
+            data: {
+                data: results.results,
+                pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+            },
+        });
     } catch (e: any) {
         console.error('Visa list error:', e.message);
-        return c.json({ data: [] });
+        return c.json({ data: { data: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 0 } } });
     }
 });
 
@@ -45,12 +140,12 @@ visaRouter.post('/', zValidator('json', createVisaApplicationSchema), async (c) 
 
     await db.prepare(`
     INSERT INTO visa_applications (
-      id, tenant_id, traveller_id, lead_id, destination_country, visa_type,
+      id, tenant_id, traveller_id, lead_id, country, destination_country, visa_type,
       status, expected_date, created_by, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
         id, tenantId, body.travellerId, body.leadId || null, body.destinationCountry,
-        body.visaType, body.status || 'not_started', body.expectedDate || null,
+        body.destinationCountry, body.visaType, body.status || 'not_started', body.expectedDate || null,
         userId, now, now
     ).run();
 
@@ -129,6 +224,80 @@ visaRouter.put('/:id', zValidator('json', updateVisaApplicationSchema), async (c
     const updated = await db.prepare('SELECT * FROM visa_applications WHERE id = ? AND tenant_id = ?')
         .bind(id, tenantId).first();
 
+    return c.json({ data: updated });
+});
+
+// Status transition with validation
+visaRouter.put('/:id/status', async (c) => {
+    const db = c.get('tenantDb');
+    const tenantId = c.get('tenantId');
+    const userId = c.get('userId');
+    const id = c.req.param('id');
+    const body = await c.req.json<{
+        status: string;
+        visaNumber?: string;
+        visaIssueDate?: string;
+        visaExpiryDate?: string;
+        rejectionReason?: string;
+    }>();
+    const now = new Date().toISOString();
+
+    const validTransitions: Record<string, string[]> = {
+        not_started: ['documents_collecting'],
+        documents_collecting: ['applied'],
+        applied: ['processing', 'rejected'],
+        processing: ['approved', 'rejected'],
+        approved: [],
+        rejected: [],
+    };
+
+    const current = await db.prepare('SELECT status FROM visa_applications WHERE id = ? AND tenant_id = ? AND is_deleted = 0')
+        .bind(id, tenantId).first<{ status: string }>();
+
+    if (!current) return c.json({ error: 'Visa application not found' }, 404);
+
+    const allowed = validTransitions[current.status] ?? [];
+    if (!allowed.includes(body.status)) {
+        return c.json({ error: `Cannot transition from ${current.status} to ${body.status}` }, 422);
+    }
+
+    if (body.status === 'approved' && (!body.visaNumber || !body.visaIssueDate || !body.visaExpiryDate)) {
+        return c.json({ error: 'visa_number, visa_issue_date, and visa_expiry_date are required for approval' }, 422);
+    }
+    if (body.status === 'rejected' && !body.rejectionReason) {
+        return c.json({ error: 'rejection_reason is required when rejecting' }, 422);
+    }
+
+    const updates: string[] = ['status = ?', 'updated_at = ?'];
+    const params: any[] = [body.status, now];
+
+    if (body.status === 'approved') {
+        updates.push('visa_number = ?', 'visa_issue_date = ?', 'visa_expiry_date = ?');
+        params.push(body.visaNumber, body.visaIssueDate, body.visaExpiryDate);
+    }
+    if (body.status === 'rejected') {
+        updates.push('rejection_reason = ?');
+        params.push(body.rejectionReason);
+    }
+
+    params.push(id, tenantId);
+    await db.prepare(`UPDATE visa_applications SET ${updates.join(', ')} WHERE id = ? AND tenant_id = ?`)
+        .bind(...params).run();
+
+    // Auto-generate system note
+    try {
+        await db.prepare(`
+            INSERT INTO visa_notes (id, tenant_id, visa_application_id, content, created_by, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+            crypto.randomUUID(), tenantId, id,
+            `Status changed from ${current.status} to ${body.status}`,
+            userId, now, now
+        ).run();
+    } catch { /* ignore */ }
+
+    const updated = await db.prepare('SELECT * FROM visa_applications WHERE id = ? AND tenant_id = ?')
+        .bind(id, tenantId).first();
     return c.json({ data: updated });
 });
 
