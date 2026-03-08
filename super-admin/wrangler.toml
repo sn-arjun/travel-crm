@@ -1,0 +1,21 @@
+name = "travelcrm-super-admin"
+compatibility_date = "2026-02-20"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = ".vercel/output/static"
+
+[[d1_databases]]
+binding = "MASTER_DB"
+database_name = "travelcrm-master"
+database_id = "a0000000-0000-0000-0000-000000000001"
+
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "travelcrm-assets"
+
+[vars]
+ENVIRONMENT = "production"
+JWT_SECRET = "change-this-to-a-real-secret-in-production"
+SUPER_ADMIN_EMAIL = "admin@travelcrm.com"
+SUPER_ADMIN_PASSWORD = "SuperAdmin@123"
+CF_ACCOUNT_ID = ""
+CF_API_TOKEN = ""

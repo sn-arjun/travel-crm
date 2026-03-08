@@ -116,6 +116,40 @@ import '../features/fleet/presentation/screens/trip_detail_screen.dart';
 import '../features/fleet/presentation/screens/fleet_alerts_screen.dart';
 import '../features/fleet/presentation/screens/vehicle_rate_card_list_screen.dart';
 import '../features/fleet/presentation/screens/vehicle_rate_card_form_screen.dart';
+import '../features/bookmarks/presentation/bookmarks_screen.dart';
+import '../features/calls/presentation/screens/call_log_screen.dart';
+import '../features/calls/presentation/screens/call_detail_screen.dart';
+import '../features/calls/presentation/screens/call_analytics_screen.dart';
+import '../features/calls/presentation/screens/dial_pad_screen.dart';
+import '../features/calls/presentation/screens/in_call_screen.dart';
+import '../features/calls/presentation/screens/number_management_screen.dart';
+import '../features/calls/presentation/screens/voip_settings_screen.dart';
+import '../features/calls/presentation/screens/transcript_view_screen.dart';
+import '../features/calls/presentation/screens/transcript_search_screen.dart';
+import '../features/calls/presentation/screens/extraction_list_screen.dart';
+import '../features/calls/presentation/screens/extraction_detail_screen.dart';
+import '../features/calls/presentation/screens/ai_usage_screen.dart';
+import '../features/ai_assistant/presentation/screens/ai_hub_screen.dart';
+import '../features/ai_assistant/presentation/screens/ai_lead_creation_screen.dart';
+import '../features/ai_assistant/presentation/screens/ai_itinerary_screen.dart';
+import '../features/ai_assistant/presentation/screens/ai_compose_screen.dart';
+import '../features/ai_assistant/presentation/screens/ai_search_screen.dart';
+import '../features/ai_assistant/presentation/screens/ai_insights_screen.dart';
+import '../features/ai_assistant/presentation/screens/lead_score_screen.dart';
+import '../features/ai_assistant/presentation/screens/document_ocr_screen.dart';
+import '../features/ai_assistant/presentation/screens/smart_followups_screen.dart';
+import '../features/ai_assistant/presentation/screens/bi_dashboard_screen.dart';
+import '../features/ai_assistant/presentation/screens/bi_briefings_screen.dart';
+import '../features/ai_assistant/presentation/screens/bi_briefing_detail_screen.dart';
+import '../features/ai_assistant/presentation/screens/bi_health_score_screen.dart';
+import '../features/ai_assistant/presentation/screens/bi_team_screen.dart';
+import '../features/ai_assistant/presentation/screens/bi_segments_screen.dart';
+import '../features/ai_assistant/presentation/screens/bi_destinations_screen.dart';
+import '../features/ai_assistant/presentation/screens/bi_usage_screen.dart';
+import '../features/chatbot/presentation/screens/chatbot_config_screen.dart';
+import '../features/chatbot/presentation/screens/chatbot_conversations_screen.dart';
+import '../features/chatbot/presentation/screens/chatbot_conversation_detail_screen.dart';
+import '../features/chatbot/presentation/screens/chatbot_analytics_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authProvider);
@@ -786,6 +820,171 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
+          // --- Calls & VoIP ---
+          GoRoute(
+            path: '/calls',
+            builder: (context, state) => const CallLogScreen(),
+            routes: [
+              GoRoute(
+                path: 'dial',
+                builder: (context, state) => const DialPadScreen(),
+              ),
+              GoRoute(
+                path: 'analytics',
+                redirect: (context, state) {
+                  final role = ref.read(authProvider).user?.role;
+                  if (role != 'admin' && role != 'sales_manager') return '/calls';
+                  return null;
+                },
+                builder: (context, state) => const CallAnalyticsScreen(),
+              ),
+              GoRoute(
+                path: 'in-call/:id',
+                builder: (context, state) {
+                  final extra = state.extra as Map<String, dynamic>? ?? {};
+                  return InCallScreen(
+                    callLogId: state.pathParameters['id']!,
+                    phoneNumber: extra['phoneNumber'] as String? ?? '',
+                    contactName: extra['contactName'] as String?,
+                    isInbound: extra['isInbound'] as bool? ?? false,
+                  );
+                },
+              ),
+              GoRoute(
+                path: 'transcript/:callLogId',
+                builder: (context, state) => TranscriptViewScreen(
+                  callLogId: state.pathParameters['callLogId']!,
+                ),
+              ),
+              GoRoute(
+                path: 'transcripts/search',
+                builder: (context, state) => const TranscriptSearchScreen(),
+              ),
+              GoRoute(
+                path: 'extractions',
+                builder: (context, state) => const ExtractionListScreen(),
+              ),
+              GoRoute(
+                path: 'extractions/:id',
+                builder: (context, state) => ExtractionDetailScreen(
+                  extractionId: state.pathParameters['id']!,
+                ),
+              ),
+              GoRoute(
+                path: ':id',
+                builder: (context, state) => CallDetailScreen(
+                  callId: state.pathParameters['id']!,
+                ),
+              ),
+            ],
+          ),
+          // --- AI Assistant ---
+          GoRoute(
+            path: '/ai',
+            builder: (context, state) => const AiHubScreen(),
+            routes: [
+              GoRoute(
+                path: 'lead-creation',
+                builder: (context, state) => const AiLeadCreationScreen(),
+              ),
+              GoRoute(
+                path: 'itinerary',
+                builder: (context, state) => const AiItineraryScreen(),
+              ),
+              GoRoute(
+                path: 'compose',
+                builder: (context, state) => const AiComposeScreen(),
+              ),
+              GoRoute(
+                path: 'search',
+                builder: (context, state) => const AiSearchScreen(),
+              ),
+              GoRoute(
+                path: 'insights',
+                builder: (context, state) => const AiInsightsScreen(),
+              ),
+              GoRoute(
+                path: 'lead-score/:leadId',
+                builder: (context, state) => LeadScoreScreen(leadId: state.pathParameters['leadId']!),
+              ),
+              GoRoute(
+                path: 'document-ocr',
+                builder: (context, state) => const DocumentOcrScreen(),
+              ),
+              GoRoute(
+                path: 'smart-followups',
+                builder: (context, state) => const SmartFollowupsScreen(),
+              ),
+              GoRoute(
+                path: 'bi',
+                builder: (context, state) => const BiDashboardScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'briefings',
+                    builder: (context, state) => const BiBriefingsScreen(),
+                    routes: [
+                      GoRoute(
+                        path: ':id',
+                        builder: (context, state) => BiBriefingDetailScreen(
+                          briefingId: state.pathParameters['id']!,
+                        ),
+                      ),
+                    ],
+                  ),
+                  GoRoute(
+                    path: 'health-score',
+                    builder: (context, state) => const BiHealthScoreScreen(),
+                  ),
+                  GoRoute(
+                    path: 'team',
+                    builder: (context, state) => const BiTeamScreen(),
+                  ),
+                  GoRoute(
+                    path: 'segments',
+                    builder: (context, state) => const BiSegmentsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'destinations',
+                    builder: (context, state) => const BiDestinationsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'lead-roi',
+                    builder: (context, state) => const BiDestinationsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'usage',
+                    builder: (context, state) => const BiUsageScreen(),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          // --- Chatbot ---
+          GoRoute(
+            path: '/chatbot',
+            builder: (context, state) => const ChatbotConversationsScreen(),
+            routes: [
+              GoRoute(
+                path: 'config',
+                builder: (context, state) => const ChatbotConfigScreen(),
+              ),
+              GoRoute(
+                path: 'analytics',
+                builder: (context, state) => const ChatbotAnalyticsScreen(),
+              ),
+              GoRoute(
+                path: 'conversations/:id',
+                builder: (context, state) => ChatbotConversationDetailScreen(
+                  conversationId: state.pathParameters['id']!,
+                ),
+              ),
+            ],
+          ),
+          // --- Bookmarks ---
+          GoRoute(
+            path: '/bookmarks',
+            builder: (context, state) => const BookmarksScreen(),
+          ),
           GoRoute(
             path: '/settings',
             builder: (context, state) => const SettingsScreen(),
@@ -831,6 +1030,33 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: 'export-history',
                 builder: (context, state) => const DataExportScreen(),
+              ),
+              GoRoute(
+                path: 'voip',
+                redirect: (context, state) {
+                  final role = ref.read(authProvider).user?.role;
+                  if (role != 'admin') return '/dashboard';
+                  return null;
+                },
+                builder: (context, state) => const VoipSettingsScreen(),
+              ),
+              GoRoute(
+                path: 'phone-numbers',
+                redirect: (context, state) {
+                  final role = ref.read(authProvider).user?.role;
+                  if (role != 'admin') return '/dashboard';
+                  return null;
+                },
+                builder: (context, state) => const NumberManagementScreen(),
+              ),
+              GoRoute(
+                path: 'ai-usage',
+                redirect: (context, state) {
+                  final role = ref.read(authProvider).user?.role;
+                  if (role != 'admin') return '/dashboard';
+                  return null;
+                },
+                builder: (context, state) => const AiUsageScreen(),
               ),
             ],
           ),
@@ -920,6 +1146,9 @@ String _titleFromLocation(String location) {
     '/marketing/branding': 'Branding Settings',
     '/marketing/my-flyers': 'My Flyers',
     '/marketing/editor': 'Flyer Editor',
+    '/calls': 'Call Logs',
+    '/calls/dial': 'Dial Pad',
+    '/calls/analytics': 'Call Analytics',
     '/fleet': 'Fleet Dashboard',
     '/fleet/vehicles': 'Vehicles',
     '/fleet/vehicles/new': 'Add Vehicle',
@@ -944,9 +1173,46 @@ String _titleFromLocation(String location) {
     '/settings/import-history': 'Import History',
     '/settings/data-export': 'Data Export',
     '/settings/export-history': 'Export History',
+    '/settings/voip': 'VoIP Settings',
+    '/settings/phone-numbers': 'Phone Numbers',
+    '/settings/ai-usage': 'AI Usage',
+    '/calls/transcripts/search': 'Search Transcripts',
+    '/calls/extractions': 'AI Extractions',
+    '/ai': 'AI Assistant',
+    '/ai/lead-creation': 'AI Lead Creation',
+    '/ai/itinerary': 'AI Itinerary Generator',
+    '/ai/compose': 'AI Message Composer',
+    '/ai/search': 'Ask Your CRM',
+    '/ai/insights': 'AI Insights',
+    '/ai/document-ocr': 'Document OCR',
+    '/ai/smart-followups': 'Smart Follow-ups',
+    '/ai/bi': 'Business Intelligence',
+    '/ai/bi/briefings': 'AI Briefings',
+    '/ai/bi/health-score': 'Business Health',
+    '/ai/bi/team': 'Team Intelligence',
+    '/ai/bi/segments': 'Customer Segments',
+    '/ai/bi/destinations': 'Destinations & Lead ROI',
+    '/ai/bi/lead-roi': 'Lead Source ROI',
+    '/ai/bi/usage': 'AI Usage & Costs',
+    '/chatbot': 'Chatbot Conversations',
+    '/chatbot/config': 'Chatbot Settings',
+    '/chatbot/analytics': 'Chatbot Analytics',
   };
   final exact = titles[location];
   if (exact != null) return exact;
+
+  // Dynamic route titles — AI
+  if (location.startsWith('/ai/lead-score/')) return 'Lead Score';
+
+  // Dynamic route titles — BI
+  if (location.startsWith('/ai/bi/briefings/')) return 'Briefing Detail';
+
+  // Dynamic route titles — Chatbot
+  if (location.startsWith('/chatbot/conversations/')) return 'Conversation Detail';
+
+  // Dynamic route titles — Calls
+  if (location.startsWith('/calls/transcript/')) return 'Call Transcript';
+  if (location.startsWith('/calls/extractions/')) return 'Extraction Review';
 
   // Dynamic route titles
   if (location.startsWith('/itineraries/') && location.endsWith('/edit')) {
@@ -1012,6 +1278,7 @@ String _titleFromLocation(String location) {
     return 'Edit Rate Card';
   }
   if (location.startsWith('/fleet/rate-cards/')) return 'Rate Card Details';
+  if (location.startsWith('/calls/')) return 'Call Details';
 
   return 'TravelCRM Pro';
 }

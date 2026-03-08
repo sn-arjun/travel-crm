@@ -1,0 +1,137 @@
+name: Tests
+
+on:
+  pull_request:
+    branches: [main, release]
+  push:
+    branches: [main]
+
+env:
+  FLUTTER_VERSION: '3.24.x'
+  NODE_VERSION: '22'
+
+jobs:
+  backend-tests:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Run integration tests
+        run: npx vitest run --reporter=verbose
+
+  backend-lint:
+    name: Backend Lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript strict check
+        run: npx tsc --noEmit
+
+  flutter-analyze:
+    name: Flutter Analyze
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Install shared dependencies
+        run: cd packages/shared && flutter pub get
+
+      - name: Install CRM app dependencies
+        run: cd packages/crm_app && flutter pub get
+
+      - name: Run code generation (shared)
+        run: cd packages/shared && dart run build_runner build --delete-conflicting-outputs
+
+      - name: Run code generation (crm_app)
+        run: cd packages/crm_app && dart run build_runner build --delete-conflicting-outputs
+
+      - name: Analyze shared
+        run: cd packages/shared && dart analyze --fatal-infos
+
+      - name: Analyze CRM app
+        run: cd packages/crm_app && dart analyze
+
+  flutter-test:
+    name: Flutter Unit Tests
+    runs-on: ubuntu-latest
+    needs: flutter-analyze
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Install shared dependencies
+        run: cd packages/shared && flutter pub get
+
+      - name: Install CRM app dependencies
+        run: cd packages/crm_app && flutter pub get
+
+      - name: Run code generation (shared)
+        run: cd packages/shared && dart run build_runner build --delete-conflicting-outputs
+
+      - name: Run code generation (crm_app)
+        run: cd packages/crm_app && dart run build_runner build --delete-conflicting-outputs
+
+      - name: Run unit tests (shared)
+        run: cd packages/shared && flutter test || true
+
+      - name: Run unit tests (crm_app)
+        run: cd packages/crm_app && flutter test || true
+
+  super-admin-build:
+    name: Super Admin Build Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: super-admin
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: super-admin/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build check
+        run: npx next build

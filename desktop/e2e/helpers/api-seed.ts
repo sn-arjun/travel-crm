@@ -1,0 +1,257 @@
+import { getAuthToken, API_URL } from './auth';
+
+let token: string | null = null;
+
+async function ensureToken() {
+  if (!token) token = await getAuthToken();
+  return token;
+}
+
+async function api(method: string, path: string, body?: any) {
+  const t = await ensureToken();
+  const res = await fetch(`${API_URL}${path}`, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${t}`,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return res.json();
+}
+
+export async function seedContact(overrides: Record<string, any> = {}) {
+  const data = {
+    name: `E2E Contact ${Date.now()}`,
+    email: `e2e-${Date.now()}@test.com`,
+    phone: `+919${Math.floor(100000000 + Math.random() * 900000000)}`,
+    type: 'customer',
+    ...overrides,
+  };
+  const res = await api('POST', '/contacts', data);
+  return res.data ?? res;
+}
+
+export async function seedLead(contactId: string, overrides: Record<string, any> = {}) {
+  const data = {
+    contactId,
+    title: `E2E Lead ${Date.now()}`,
+    destinations: ['Bali'],
+    travelDate: new Date().toISOString().split('T')[0],
+    tripType: 'domestic',
+    source: 'website',
+    ...overrides,
+  };
+  const res = await api('POST', '/leads', data);
+  return res.data ?? res;
+}
+
+export async function seedItinerary(leadId: string, overrides: Record<string, any> = {}) {
+  const data = {
+    leadId,
+    title: `E2E Itinerary ${Date.now()}`,
+    currency: 'INR',
+    days: [
+      {
+        dayNumber: 1,
+        title: 'Arrival',
+        items: [
+          { type: 'hotel', title: 'Hotel Stay', costPrice: 5000, sellingPrice: 7000, quantity: 1, sortOrder: 0 },
+        ],
+      },
+    ],
+    ...overrides,
+  };
+  const res = await api('POST', '/itineraries', data);
+  return res.data ?? res;
+}
+
+export async function seedInvoice(contactId: string, overrides: Record<string, any> = {}) {
+  const data = {
+    contactId,
+    items: [
+      { description: 'E2E Test Item', quantity: 1, rate: 10000, taxRate: 18 },
+    ],
+    ...overrides,
+  };
+  const res = await api('POST', '/invoices', data);
+  return res.data ?? res;
+}
+
+export async function seedSupplier(overrides: Record<string, any> = {}) {
+  const data = {
+    companyName: `E2E Supplier ${Date.now()}`,
+    category: 'hotel',
+    email: `supplier-${Date.now()}@test.com`,
+    phone: `+919${Math.floor(100000000 + Math.random() * 900000000)}`,
+    ...overrides,
+  };
+  const res = await api('POST', '/suppliers', data);
+  return res.data ?? res;
+}
+
+export async function seedVoucher(leadId: string, overrides: Record<string, any> = {}) {
+  const data = {
+    leadId,
+    type: 'hotel',
+    title: `E2E Hotel Voucher ${Date.now()}`,
+    details: {
+      guestNames: ['E2E Guest'],
+      hotelName: 'E2E Hotel',
+      checkIn: new Date().toISOString().split('T')[0],
+      checkOut: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
+      roomType: 'standard',
+      roomCount: 1,
+      mealPlan: 'EP',
+    },
+    ...overrides,
+  };
+  const res = await api('POST', '/vouchers', data);
+  return res.data ?? res;
+}
+
+export async function seedTask(overrides: Record<string, any> = {}) {
+  const data = {
+    title: `E2E Task ${Date.now()}`,
+    status: 'todo',
+    priority: 'medium',
+    ...overrides,
+  };
+  const res = await api('POST', '/tasks', data);
+  return res.data ?? res;
+}
+
+export async function seedTraveller(overrides: Record<string, any> = {}) {
+  const data = {
+    name: `E2E Traveller ${Date.now()}`,
+    passportNumber: `E2E${Date.now()}`,
+    nationality: 'Indian',
+    ...overrides,
+  };
+  const res = await api('POST', '/travellers', data);
+  return res.data ?? res;
+}
+
+export async function seedVehicle(overrides: Record<string, any> = {}) {
+  const data = {
+    registrationNumber: `E2E-${Date.now().toString(36).toUpperCase()}`,
+    type: 'sedan',
+    make: 'Toyota',
+    model: 'Camry',
+    seatingCapacity: 4,
+    ...overrides,
+  };
+  const res = await api('POST', '/fleet/vehicles', data);
+  return res.data ?? res;
+}
+
+export async function seedDriver(overrides: Record<string, any> = {}) {
+  const data = {
+    name: `E2E Driver ${Date.now()}`,
+    phone: `+919${Math.floor(100000000 + Math.random() * 900000000)}`,
+    licenseNumber: `DL-${Date.now()}`,
+    ...overrides,
+  };
+  const res = await api('POST', '/fleet/drivers', data);
+  return res.data ?? res;
+}
+
+export async function seedStickyNote(overrides: Record<string, any> = {}) {
+  const data = {
+    content: `E2E Note ${Date.now()}`,
+    color: 'yellow',
+    ...overrides,
+  };
+  const res = await api('POST', '/sticky-notes', data);
+  return res.data ?? res;
+}
+
+export async function seedBookmark(entityType: string, entityId: string) {
+  const res = await api('POST', '/bookmarks', { entityType, entityId });
+  return res.data ?? res;
+}
+
+export async function seedRateCard(overrides: Record<string, any> = {}) {
+  const data = {
+    name: `E2E Rate Card ${Date.now()}`,
+    serviceType: 'hotel',
+    destination: 'Bali',
+    season: 'peak',
+    costPrice: 5000,
+    sellingPrice: 7500,
+    currency: 'INR',
+    unit: 'per_person',
+    validFrom: new Date().toISOString().split('T')[0],
+    validTo: new Date(Date.now() + 86400000 * 365).toISOString().split('T')[0],
+    isActive: 1,
+    ...overrides,
+  };
+  const res = await api('POST', '/rate-cards', data);
+  return res.data ?? res;
+}
+
+export async function seedItineraryTemplate(overrides: Record<string, any> = {}) {
+  const data = {
+    title: `E2E Template ${Date.now()}`,
+    destination: 'Bali',
+    durationDays: 3,
+    category: 'beach',
+    templateData: JSON.stringify({
+      days: [
+        {
+          dayNumber: 1,
+          title: 'Arrival Day',
+          items: [
+            { type: 'hotel', title: 'Beach Resort', costPrice: 5000, sellingPrice: 7000, quantity: 1, sortOrder: 0 },
+          ],
+        },
+        {
+          dayNumber: 2,
+          title: 'Sightseeing',
+          items: [
+            { type: 'activity', title: 'Temple Tour', costPrice: 2000, sellingPrice: 3500, quantity: 1, sortOrder: 0 },
+          ],
+        },
+        {
+          dayNumber: 3,
+          title: 'Departure',
+          items: [
+            { type: 'transport', title: 'Airport Transfer', costPrice: 1000, sellingPrice: 1500, quantity: 1, sortOrder: 0 },
+          ],
+        },
+      ],
+      inclusions: ['Breakfast', 'Airport transfers'],
+      exclusions: ['Visa fees', 'Personal expenses'],
+      termsConditions: 'Standard terms apply.',
+    }),
+    ...overrides,
+  };
+  const res = await api('POST', '/itinerary-templates', data);
+  return res.data ?? res;
+}
+
+export async function seedPayment(invoiceId: string, overrides: Record<string, any> = {}) {
+  const data = {
+    invoiceId,
+    amount: 5000,
+    date: new Date().toISOString().split('T')[0],
+    method: 'transfer',
+    reference: `TEST-PAY-${Date.now()}`,
+    ...overrides,
+  };
+  const res = await api('POST', '/payments', data);
+  return res.data ?? res;
+}
+
+export async function seedCreditNote(invoiceId: string, overrides: Record<string, any> = {}) {
+  const data = {
+    invoiceId,
+    reason: 'Test credit note',
+    items: [{ description: 'Test refund', quantity: 1, rate: 1000 }],
+    ...overrides,
+  };
+  const res = await api('POST', '/credit-notes', data);
+  return res.data ?? res;
+}
+
+export { api };

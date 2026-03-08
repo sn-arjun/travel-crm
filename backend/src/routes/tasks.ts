@@ -11,9 +11,9 @@ const taskRoutes = new Hono<AppContext>();
 // ─── Valid status transitions ───────────────────────────────
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
-    'todo': ['in_progress'],
+    'todo': ['in_progress', 'done'],
     'in_progress': ['done', 'todo'],
-    'done': ['in_progress'], // re-open
+    'done': ['in_progress', 'todo'],
 };
 
 // ─── List Tasks ─────────────────────────────────────────────

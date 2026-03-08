@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
   phone TEXT,
   name TEXT NOT NULL,
   password_hash TEXT NOT NULL,
-  role TEXT NOT NULL, -- admin, sales_manager, salesperson, operations, accountant, view_only
+  role TEXT NOT NULL,
   avatar_url TEXT,
   department TEXT,
   language TEXT DEFAULT 'en',
@@ -34,15 +34,15 @@ CREATE TABLE IF NOT EXISTS contacts (
   email TEXT,
   phone TEXT,
   company TEXT,
-  type TEXT NOT NULL, -- customer, supplier, agent, partner
+  type TEXT NOT NULL,
   address TEXT,
   city TEXT,
   state TEXT,
   country TEXT,
   postal_code TEXT,
-  tags TEXT,          -- JSON array
+  tags TEXT,
   notes TEXT,
-  source TEXT,        -- manual, website, referral, ad, facebook, google
+  source TEXT,
   birthday TEXT,
   anniversary TEXT,
   preferred_language TEXT DEFAULT 'en',
@@ -69,10 +69,10 @@ CREATE TABLE IF NOT EXISTS suppliers (
   address TEXT,
   city TEXT,
   country TEXT,
-  category TEXT, -- hotel, transport, airline, activity, guide, visa_agent, insurance
+  category TEXT,
   gst_number TEXT,
   pan_number TEXT,
-  bank_details TEXT, -- JSON
+  bank_details TEXT,
   rating REAL,
   notes TEXT,
   is_active INTEGER DEFAULT 1,
@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS leads (
   id TEXT PRIMARY KEY,
   contact_id TEXT NOT NULL REFERENCES contacts(id),
   title TEXT NOT NULL,
-  destination TEXT,   -- JSON array as text
+  destination TEXT,
   travel_date TEXT,
   return_date TEXT,
   pax_adults INTEGER DEFAULT 1,
@@ -98,16 +98,16 @@ CREATE TABLE IF NOT EXISTS leads (
   pax_infants INTEGER DEFAULT 0,
   budget REAL,
   currency TEXT DEFAULT 'INR',
-  trip_type TEXT,     -- domestic, international, honeymoon, family, group, corporate, adventure, pilgrimage
-  source TEXT,        -- manual, website, facebook, google, referral, walkin
-  status TEXT NOT NULL DEFAULT 'new', -- new, contacted, requirement_gathered, proposal_sent, negotiation, booking_confirmed, completed, lost
-  priority TEXT DEFAULT 'warm',       -- hot, warm, cold
+  trip_type TEXT,
+  source TEXT,
+  status TEXT NOT NULL DEFAULT 'new',
+  priority TEXT DEFAULT 'warm',
   assigned_to TEXT REFERENCES users(id),
   lost_reason TEXT,
   passport_available INTEGER DEFAULT 0,
-  travel_class TEXT,  -- economy, premium_economy, business, first
-  hotel_preference TEXT, -- budget, standard, premium, luxury
-  meal_preference TEXT,  -- veg, non_veg, vegan, jain, halal
+  travel_class TEXT,
+  hotel_preference TEXT,
+  meal_preference TEXT,
   special_requirements TEXT,
   notes TEXT,
   created_by TEXT REFERENCES users(id),
@@ -129,9 +129,9 @@ CREATE INDEX IF NOT EXISTS leads_created_by_idx ON leads(created_by);
 CREATE TABLE IF NOT EXISTS lead_activities (
   id TEXT PRIMARY KEY,
   lead_id TEXT NOT NULL REFERENCES leads(id),
-  type TEXT NOT NULL, -- note, call, email, whatsapp, sms, status_change, assignment, follow_up
+  type TEXT NOT NULL,
   content TEXT,
-  metadata TEXT,      -- JSON (old_status, new_status, etc.)
+  metadata TEXT,
   created_by TEXT REFERENCES users(id),
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
@@ -145,10 +145,10 @@ CREATE TABLE IF NOT EXISTS follow_ups (
   id TEXT PRIMARY KEY,
   lead_id TEXT NOT NULL REFERENCES leads(id),
   scheduled_at TEXT NOT NULL,
-  type TEXT NOT NULL, -- call, email, whatsapp, visit
+  type TEXT NOT NULL,
   notes TEXT,
   outcome TEXT,
-  status TEXT NOT NULL DEFAULT 'pending', -- pending, completed, missed
+  status TEXT NOT NULL DEFAULT 'pending',
   completed_at TEXT,
   created_by TEXT REFERENCES users(id),
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
@@ -165,7 +165,7 @@ CREATE TABLE IF NOT EXISTS itineraries (
   lead_id TEXT NOT NULL REFERENCES leads(id),
   title TEXT NOT NULL,
   version INTEGER DEFAULT 1,
-  status TEXT DEFAULT 'draft', -- draft, sent, approved, rejected
+  status TEXT DEFAULT 'draft',
   inclusions TEXT,
   exclusions TEXT,
   terms_and_conditions TEXT,
@@ -173,7 +173,7 @@ CREATE TABLE IF NOT EXISTS itineraries (
   total_cost REAL DEFAULT 0,
   total_selling_price REAL DEFAULT 0,
   currency TEXT DEFAULT 'INR',
-  markup_type TEXT,  -- percentage, fixed
+  markup_type TEXT,
   markup_value REAL,
   is_template INTEGER DEFAULT 0,
   template_name TEXT,
@@ -200,7 +200,7 @@ CREATE INDEX IF NOT EXISTS itinerary_days_itinerary_id_idx ON itinerary_days(iti
 CREATE TABLE IF NOT EXISTS itinerary_items (
   id TEXT PRIMARY KEY,
   day_id TEXT NOT NULL REFERENCES itinerary_days(id) ON DELETE CASCADE,
-  type TEXT NOT NULL, -- hotel, transport, activity, meal, flight, sightseeing
+  type TEXT NOT NULL,
   title TEXT NOT NULL,
   description TEXT,
   supplier_id TEXT REFERENCES suppliers(id),
@@ -221,19 +221,19 @@ CREATE INDEX IF NOT EXISTS itinerary_items_supplier_id_idx ON itinerary_items(su
 CREATE TABLE IF NOT EXISTS rate_cards (
   id TEXT PRIMARY KEY,
   supplier_id TEXT REFERENCES suppliers(id),
-  service_type TEXT NOT NULL, -- hotel, transport, activity, flight, meal, guide
+  service_type TEXT NOT NULL,
   destination TEXT,
   name TEXT NOT NULL,
   description TEXT,
-  season TEXT,        -- peak, off_peak, shoulder
+  season TEXT,
   cost REAL NOT NULL,
   selling_price REAL,
   currency TEXT DEFAULT 'INR',
-  unit TEXT,          -- per_person, per_room, per_vehicle, per_day
+  unit TEXT,
   valid_from TEXT,
   valid_to TEXT,
   child_price_percent REAL,
-  group_discount_json TEXT, -- JSON: [{min_pax, discount_percent}]
+  group_discount_json TEXT,
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
   updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
@@ -249,13 +249,13 @@ CREATE TABLE IF NOT EXISTS invoices (
   lead_id TEXT REFERENCES leads(id),
   contact_id TEXT NOT NULL REFERENCES contacts(id),
   invoice_number TEXT NOT NULL,
-  type TEXT NOT NULL DEFAULT 'tax_invoice', -- tax_invoice, proforma, receipt, credit_note, debit_note
+  type TEXT NOT NULL DEFAULT 'tax_invoice',
   subtotal REAL NOT NULL DEFAULT 0,
-  discount_type TEXT,   -- percentage, fixed
+  discount_type TEXT,
   discount_value REAL,
   discount_amount REAL DEFAULT 0,
   taxable_amount REAL DEFAULT 0,
-  tax_type TEXT,        -- gst, vat, none
+  tax_type TEXT,
   cgst REAL DEFAULT 0,
   sgst REAL DEFAULT 0,
   igst REAL DEFAULT 0,
@@ -263,12 +263,12 @@ CREATE TABLE IF NOT EXISTS invoices (
   total_tax REAL DEFAULT 0,
   total REAL NOT NULL DEFAULT 0,
   currency TEXT DEFAULT 'INR',
-  status TEXT DEFAULT 'draft', -- draft, sent, paid, partially_paid, overdue, cancelled
+  status TEXT DEFAULT 'draft',
   due_date TEXT,
   paid_amount REAL DEFAULT 0,
   balance_due REAL DEFAULT 0,
   notes TEXT,
-  bank_details TEXT,    -- JSON
+  bank_details TEXT,
   payment_link TEXT,
   created_by TEXT REFERENCES users(id),
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
@@ -307,9 +307,9 @@ CREATE TABLE IF NOT EXISTS payments (
   supplier_id TEXT REFERENCES suppliers(id),
   amount REAL NOT NULL,
   currency TEXT DEFAULT 'INR',
-  method TEXT,        -- cash, bank_transfer, upi, card, cheque, online
-  reference TEXT,     -- transaction ID, cheque number
-  type TEXT NOT NULL DEFAULT 'incoming', -- incoming, outgoing
+  method TEXT,
+  reference TEXT,
+  type TEXT NOT NULL DEFAULT 'incoming',
   date TEXT NOT NULL,
   notes TEXT,
   receipt_url TEXT,
@@ -327,10 +327,10 @@ CREATE INDEX IF NOT EXISTS payments_date_idx ON payments(date);
 CREATE TABLE IF NOT EXISTS vouchers (
   id TEXT PRIMARY KEY,
   lead_id TEXT NOT NULL REFERENCES leads(id),
-  type TEXT NOT NULL, -- hotel, transport, flight, activity
+  type TEXT NOT NULL,
   supplier_id TEXT REFERENCES suppliers(id),
-  details_json TEXT,  -- type-specific JSON
-  status TEXT DEFAULT 'draft', -- draft, sent, confirmed
+  details_json TEXT,
+  status TEXT DEFAULT 'draft',
   created_by TEXT REFERENCES users(id),
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
   updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
@@ -347,7 +347,7 @@ CREATE TABLE IF NOT EXISTS travellers (
   first_name TEXT NOT NULL,
   last_name TEXT NOT NULL,
   date_of_birth TEXT,
-  gender TEXT,        -- male, female, other
+  gender TEXT,
   nationality TEXT,
   passport_number TEXT,
   passport_expiry TEXT,
@@ -369,8 +369,8 @@ CREATE TABLE IF NOT EXISTS visa_applications (
   traveller_id TEXT NOT NULL REFERENCES travellers(id),
   lead_id TEXT REFERENCES leads(id),
   country TEXT NOT NULL,
-  visa_type TEXT,     -- tourist, business, transit, student
-  status TEXT DEFAULT 'not_started', -- not_started, documents_collecting, applied, processing, approved, rejected
+  visa_type TEXT,
+  status TEXT DEFAULT 'not_started',
   applied_date TEXT,
   result_date TEXT,
   expiry_date TEXT,
@@ -398,12 +398,12 @@ CREATE INDEX IF NOT EXISTS visa_checklist_visa_app_id_idx ON visa_checklist_item
 
 CREATE TABLE IF NOT EXISTS message_templates (
   id TEXT PRIMARY KEY,
-  channel TEXT NOT NULL,  -- whatsapp, sms, email
+  channel TEXT NOT NULL,
   name TEXT NOT NULL,
   subject TEXT,
   content TEXT NOT NULL,
-  variables TEXT,     -- JSON array of variable names
-  category TEXT,      -- greeting, follow_up, quotation, booking, reminder, wish, offer, visa
+  variables TEXT,
+  category TEXT,
   language TEXT DEFAULT 'en',
   is_active INTEGER DEFAULT 1,
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
@@ -419,7 +419,7 @@ CREATE TABLE IF NOT EXISTS message_log (
   template_id TEXT REFERENCES message_templates(id),
   subject TEXT,
   content TEXT,
-  status TEXT DEFAULT 'queued', -- queued, sent, delivered, read, failed
+  status TEXT DEFAULT 'queued',
   external_id TEXT,
   error_message TEXT,
   sent_by TEXT REFERENCES users(id),
@@ -443,9 +443,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   assigned_to TEXT REFERENCES users(id),
   assigned_by TEXT REFERENCES users(id),
   due_date TEXT,
-  priority TEXT DEFAULT 'medium', -- low, medium, high, urgent
-  status TEXT DEFAULT 'todo',     -- todo, in_progress, done
-  category TEXT, -- follow_up, voucher_creation, payment_collection, document_collection, visa_processing, general
+  priority TEXT DEFAULT 'medium',
+  status TEXT DEFAULT 'todo',
+  category TEXT,
   related_lead_id TEXT REFERENCES leads(id),
   parent_task_id TEXT,
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
@@ -466,10 +466,10 @@ CREATE TABLE IF NOT EXISTS events (
   start_date TEXT NOT NULL,
   end_date TEXT,
   all_day INTEGER DEFAULT 0,
-  type TEXT,          -- trip, meeting, follow_up, deadline, reminder, holiday
+  type TEXT,
   color TEXT,
   related_id TEXT,
-  related_type TEXT,  -- lead, task, contact
+  related_type TEXT,
   assigned_to TEXT REFERENCES users(id),
   is_recurring INTEGER DEFAULT 0,
   recurrence_rule TEXT,
@@ -485,14 +485,14 @@ CREATE INDEX IF NOT EXISTS events_assigned_to_idx ON events(assigned_to);
 CREATE TABLE IF NOT EXISTS vehicles (
   id TEXT PRIMARY KEY,
   registration_no TEXT NOT NULL,
-  type TEXT NOT NULL, -- sedan, suv, muv, tempo_traveller, mini_bus, bus, luxury_coach
+  type TEXT NOT NULL,
   make TEXT,
   model TEXT,
   year INTEGER,
   capacity INTEGER,
   color TEXT,
   photo_url TEXT,
-  status TEXT DEFAULT 'available', -- available, on_trip, maintenance, out_of_service
+  status TEXT DEFAULT 'available',
   insurance_expiry TEXT,
   permit_expiry TEXT,
   pollution_expiry TEXT,
@@ -514,7 +514,7 @@ CREATE TABLE IF NOT EXISTS drivers (
   license_number TEXT,
   license_expiry TEXT,
   address TEXT,
-  status TEXT DEFAULT 'active', -- active, on_trip, off_duty, on_leave
+  status TEXT DEFAULT 'active',
   rating REAL,
   total_trips INTEGER DEFAULT 0,
   password_hash TEXT,
@@ -539,7 +539,7 @@ CREATE TABLE IF NOT EXISTS trip_assignments (
   drop_lng REAL,
   start_time TEXT,
   end_time TEXT,
-  status TEXT DEFAULT 'assigned', -- assigned, accepted, rejected, en_route, started, completed, cancelled
+  status TEXT DEFAULT 'assigned',
   check_in_time TEXT,
   check_in_lat REAL,
   check_in_lng REAL,
@@ -571,7 +571,7 @@ CREATE INDEX IF NOT EXISTS trip_assignments_start_time_idx ON trip_assignments(s
 CREATE TABLE IF NOT EXISTS bookmarks (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id),
-  type TEXT NOT NULL, -- lead, contact, invoice, itinerary
+  type TEXT NOT NULL,
   reference_id TEXT NOT NULL,
   title TEXT,
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
@@ -596,8 +596,8 @@ CREATE TABLE IF NOT EXISTS documents (
   file_url TEXT NOT NULL,
   file_size INTEGER,
   mime_type TEXT,
-  type TEXT,          -- passport, visa, id, contract, invoice, voucher, photo, other
-  related_to TEXT,    -- contact, lead, traveller, supplier, visa_application
+  type TEXT,
+  related_to TEXT,
   related_id TEXT,
   uploaded_by TEXT REFERENCES users(id),
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
@@ -613,8 +613,8 @@ CREATE TABLE IF NOT EXISTS notifications (
   user_id TEXT NOT NULL REFERENCES users(id),
   title TEXT NOT NULL,
   message TEXT,
-  type TEXT,          -- lead_assigned, follow_up_reminder, payment_received, task_assigned, birthday, system
-  reference_type TEXT, -- lead, contact, invoice, task
+  type TEXT,
+  reference_type TEXT,
   reference_id TEXT,
   is_read INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
@@ -627,7 +627,7 @@ CREATE TABLE IF NOT EXISTS push_tokens (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id),
   fcm_token TEXT NOT NULL,
-  device_type TEXT,   -- android, ios, web
+  device_type TEXT,
   device_name TEXT,
   is_active INTEGER DEFAULT 1,
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
@@ -654,10 +654,10 @@ CREATE INDEX IF NOT EXISTS report_snapshots_generated_at_idx ON report_snapshots
 CREATE TABLE IF NOT EXISTS activity_logs (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id),
-  action TEXT NOT NULL, -- login, logout, create, update, delete, export, import, send_message
+  action TEXT NOT NULL,
   entity_type TEXT NOT NULL,
   entity_id TEXT,
-  details TEXT,         -- JSON
+  details TEXT,
   ip_address TEXT,
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
@@ -679,7 +679,7 @@ CREATE TABLE IF NOT EXISTS login_history (
   os TEXT,
   device TEXT,
   user_agent TEXT,
-  status TEXT NOT NULL, -- success, failed, locked
+  status TEXT NOT NULL,
   failure_reason TEXT,
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );

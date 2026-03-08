@@ -1,0 +1,128 @@
+name: Release Build
+
+on:
+  push:
+    branches: [release]
+  workflow_dispatch:
+
+env:
+  FLUTTER_VERSION: '3.24.x'
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/crm_app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run code generation
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Build Android App Bundle
+        run: flutter build appbundle --release
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-release
+          path: packages/crm_app/build/app/outputs/bundle/release/
+
+  build-ios:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: packages/crm_app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run code generation
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Build iOS
+        run: flutter build ipa --release --no-codesign
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-release
+          path: packages/crm_app/build/ios/ipa/
+
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: packages/crm_app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run code generation
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Build Windows
+        run: flutter build windows --release
+
+      - name: Create MSIX
+        run: dart run msix:create
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: packages/crm_app/build/windows/x64/runner/Release/
+
+  build-web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/crm_app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run code generation
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Build Web
+        run: flutter build web --release --web-renderer canvaskit
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-release
+          path: packages/crm_app/build/web/

@@ -14,6 +14,7 @@ import '../data/contact_state.dart';
 import 'widgets/contact_type_badge.dart';
 import 'widgets/language_badge.dart';
 import 'widgets/source_badge.dart';
+import 'widgets/share_dialog.dart';
 import 'widgets/tag_chips.dart';
 import '../../visa/data/models/traveller.dart';
 import '../../visa/data/repositories/traveller_repository.dart';
@@ -156,8 +157,15 @@ class _ContactDetailScreenState extends ConsumerState<ContactDetailScreen>
   }
 
   void _showShareDialog(BuildContext context) {
-    // Placeholder — will be implemented in Wave 4
-    AppSnackbar.info(context, 'Share feature coming soon');
+    final state = ref.read(contactDetailProvider(widget.contactId));
+    final contact = state.contact;
+    if (contact == null) return;
+
+    ContactShareDialog.show(
+      context,
+      contactId: widget.contactId,
+      contactName: contact.name,
+    );
   }
 }
 

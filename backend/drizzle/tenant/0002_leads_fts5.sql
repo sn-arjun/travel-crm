@@ -28,8 +28,8 @@ END;
 CREATE TABLE IF NOT EXISTS follow_up_sequences (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  trigger_status TEXT NOT NULL,   -- lead status that triggers this sequence
-  steps TEXT NOT NULL,            -- JSON: [{day, type, notes, template_id?}]
+  trigger_status TEXT NOT NULL,
+  steps TEXT NOT NULL,
   is_active INTEGER DEFAULT 1,
   created_by TEXT REFERENCES users(id),
   created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),

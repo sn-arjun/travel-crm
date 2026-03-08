@@ -1,0 +1,38 @@
+
+ RUN  v2.1.8 C:/Users/Admin/Downloads/pro/CRM/backend
+
+Using vars defined in .dev.vars
+[vpw:inf] Starting isolated runtimes for vitest.config.ts...
+[mf:wrn] The latest compatibility date supported by the installed Cloudflare Workers Runtime is "2024-10-18",
+but you've requested "2026-02-20". Falling back to "2024-10-18"...
+ ❯ test/api.test.ts (2 tests | 2 skipped) 267ms
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/api.test.ts > API Integration Tests
+Error: D1_ERROR: no such column: terms_and_conditions at offset 316: SQLITE_ERROR
+ ❯ D1DatabaseSessionAlwaysPrimary._sendOrThrow cloudflare-internal:d1-api:129:19
+ ❯ D1DatabaseSessionAlwaysPrimary.batch cloudflare-internal:d1-api:81:23
+ ❯ Module.applyD1Migrations node_modules/@cloudflare/vitest-pool-workers/dist/worker/lib/cloudflare/test-internal.mjs:46:5
+ ❯ test/api.test.ts:10:5
+      8|     beforeAll(async () => {
+      9|         // Run database migrations first
+     10|         await applyD1Migrations(testEnv.MASTER_DB, testEnv.TEST_MIGRAT…
+       |     ^
+     11| 
+     12|         // Attempt to reset the database and seed it before tests
+
+Caused by: Error: no such column: terms_and_conditions at offset 316: SQLITE_ERROR
+ ❯ D1DatabaseSessionAlwaysPrimary._sendOrThrow cloudflare-internal:d1-api:130:24
+ ❯ D1DatabaseSessionAlwaysPrimary.batch cloudflare-internal:d1-api:81:23
+ ❯ Module.applyD1Migrations node_modules/@cloudflare/vitest-pool-workers/dist/worker/lib/cloudflare/test-internal.mjs:46:5
+ ❯ test/api.test.ts:10:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  2 skipped (2)
+   Start at  01:41:01
+   Duration  5.60s (transform 906ms, setup 0ms, collect 3.09s, tests 267ms, environment 0ms, prepare 691ms)
+
+[vpw:dbg] Shutting down runtimes...

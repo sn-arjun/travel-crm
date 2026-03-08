@@ -154,6 +154,42 @@ invoiceRoutes.get('/', async (c) => {
 });
 
 // ============================================================
+// GET /summary — Invoice summary statistics
+// ============================================================
+
+invoiceRoutes.get('/summary', async (c) => {
+  const tenantDb = c.get('tenantDb');
+
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const monthStart = today.substring(0, 7) + '-01';
+
+    const result = await tenantDb
+      .prepare(`
+        SELECT
+          COALESCE(SUM(CASE WHEN status IN ('sent', 'partially_paid', 'overdue') THEN balance_due ELSE 0 END), 0) as outstanding,
+          COALESCE(SUM(CASE WHEN status IN ('sent', 'partially_paid', 'overdue') AND due_date < ? THEN balance_due ELSE 0 END), 0) as overdue,
+          COALESCE(SUM(CASE WHEN status = 'paid' AND DATE(updated_at) >= DATE(?) THEN total ELSE 0 END), 0) as paid_this_month,
+          COALESCE(SUM(CASE WHEN DATE(created_at) >= DATE(?) THEN total ELSE 0 END), 0) as invoiced_this_month
+        FROM invoices
+        WHERE type IN ('tax_invoice', 'proforma') AND status != 'cancelled'
+      `)
+      .bind(today, monthStart, monthStart)
+      .first<Record<string, number>>();
+
+    return success(c, {
+      outstanding: result?.outstanding || 0,
+      overdue: result?.overdue || 0,
+      paidThisMonth: result?.paid_this_month || 0,
+      invoicedThisMonth: result?.invoiced_this_month || 0,
+    });
+  } catch (err) {
+    console.error('Error fetching invoice summary:', err);
+    return error(c, 'Failed to fetch invoice summary', 500);
+  }
+});
+
+// ============================================================
 // POST / — Create invoice
 // ============================================================
 
@@ -585,7 +621,7 @@ invoiceRoutes.post('/:id/void', async (c) => {
     const now = new Date().toISOString();
     await tenantDb
       .prepare('UPDATE invoices SET status = ?1, updated_at = ?2 WHERE id = ?3')
-      .bind('cancelled', now, invoiceId)
+      .bind('void', now, invoiceId)
       .run();
 
     await logActivity(drizzle(tenantDb), {
@@ -593,7 +629,7 @@ invoiceRoutes.post('/:id/void', async (c) => {
       details: JSON.stringify({ invoiceNumber: invoice.invoice_number }),
     });
 
-    return success(c, { id: invoiceId, status: 'cancelled' });
+    return success(c, { id: invoiceId, status: 'void' });
   } catch (err) {
     console.error('Error voiding invoice:', err);
     return error(c, 'Failed to void invoice', 500);
@@ -731,6 +767,235 @@ invoiceRoutes.post('/:id/duplicate', async (c) => {
   } catch (err) {
     console.error('Error duplicating invoice:', err);
     return error(c, 'Failed to duplicate invoice', 500);
+  }
+});
+
+// ============================================================
+// POST /:id/send — Send invoice via email or WhatsApp
+// ============================================================
+
+const sendInvoiceSchema = z.object({
+  channel: z.enum(['email', 'whatsapp']),
+  to: z.string().min(1),
+});
+
+invoiceRoutes.post('/:id/send', zValidator('json', sendInvoiceSchema), async (c) => {
+  const tenantDb = c.get('tenantDb');
+  const userId = c.get('userId');
+  const invoiceId = c.req.param('id');
+  const data = c.req.valid('json');
+
+  try {
+    const invoice = await tenantDb
+      .prepare(
+        `SELECT i.id, i.invoice_number, i.status, i.total, i.due_date, i.currency,
+                c.name as contact_name, c.email as contact_email, c.phone as contact_phone
+         FROM invoices i
+         LEFT JOIN contacts c ON i.contact_id = c.id
+         WHERE i.id = ?1`
+      )
+      .bind(invoiceId)
+      .first<Record<string, unknown>>();
+
+    if (!invoice) {
+      return notFound(c, 'Invoice');
+    }
+
+    // Update status to 'sent' if currently draft
+    const now = new Date().toISOString();
+    if (invoice.status === 'draft') {
+      await tenantDb
+        .prepare('UPDATE invoices SET status = ?1, updated_at = ?2 WHERE id = ?3')
+        .bind('sent', now, invoiceId)
+        .run();
+    }
+
+    // Log activity
+    await logActivity(drizzle(tenantDb), {
+      userId,
+      action: 'invoice_sent',
+      entityType: 'invoice',
+      entityId: invoiceId,
+      details: JSON.stringify({ channel: data.channel, to: data.to, invoiceNumber: invoice.invoice_number }),
+    });
+
+    return success(c, {
+      id: invoiceId,
+      invoiceNumber: invoice.invoice_number,
+      status: invoice.status === 'draft' ? 'sent' : invoice.status,
+      channel: data.channel,
+      to: data.to,
+      sentAt: now,
+    });
+  } catch (err) {
+    console.error('Error sending invoice:', err);
+    return error(c, 'Failed to send invoice', 500);
+  }
+});
+
+// ============================================================
+// POST /from-itinerary — Generate invoice from itinerary
+// ============================================================
+
+const fromItinerarySchema = z.object({
+  itineraryId: z.string().min(1),
+});
+
+invoiceRoutes.post('/from-itinerary', zValidator('json', fromItinerarySchema), async (c) => {
+  const tenantDb = c.get('tenantDb');
+  const userId = c.get('userId');
+  const role = c.get('role');
+
+  if (!checkInvoicePermission(role)) {
+    return forbidden(c, 'Only admin, sales_manager, or accountant can create invoices');
+  }
+
+  const { itineraryId } = c.req.valid('json');
+
+  try {
+    // Check if invoice already exists for this itinerary
+    const existing = await tenantDb
+      .prepare('SELECT id, invoice_number FROM invoices WHERE lead_id = (SELECT lead_id FROM itineraries WHERE id = ?1) AND notes LIKE ?2')
+      .bind(itineraryId, `%${itineraryId}%`)
+      .first<{ id: string; invoice_number: string }>();
+
+    // Fetch itinerary with lead context
+    const itinerary = await tenantDb
+      .prepare('SELECT i.*, l.contact_id FROM itineraries i JOIN leads l ON i.lead_id = l.id WHERE i.id = ?1')
+      .bind(itineraryId)
+      .first<Record<string, any>>();
+
+    if (!itinerary) {
+      return notFound(c, 'Itinerary');
+    }
+
+    // Fetch itinerary days and items
+    const days = await tenantDb
+      .prepare('SELECT * FROM itinerary_days WHERE itinerary_id = ?1 ORDER BY day_number')
+      .bind(itineraryId)
+      .all<Record<string, any>>();
+
+    // HSN code mapping
+    const hsnCodes: Record<string, string> = {
+      hotel: '996311',
+      accommodation: '996311',
+      transport: '996411',
+      vehicle: '996411',
+      activity: '998551',
+      sightseeing: '998551',
+      meal: '996331',
+      food: '996331',
+      flight: '997221',
+      visa: '997121',
+    };
+
+    const invoiceItems: Array<{ description: string; hsnCode: string; quantity: number; rate: number; discountPercent: number; taxRate: number }> = [];
+
+    for (const day of (days.results || [])) {
+      const items = await tenantDb
+        .prepare('SELECT * FROM itinerary_items WHERE day_id = ?1 ORDER BY sort_order')
+        .bind(day.id)
+        .all<Record<string, any>>();
+
+      for (const item of (items.results || [])) {
+        const itemType = ((item.type as string) || 'activity').toLowerCase();
+        invoiceItems.push({
+          description: `Day ${day.day_number}: ${item.title || item.description || itemType}`,
+          hsnCode: hsnCodes[itemType] || '999799',
+          quantity: (item.quantity as number) || 1,
+          rate: (item.selling_price as number) || (item.cost as number) || 0,
+          discountPercent: 0,
+          taxRate: 18,
+        });
+      }
+    }
+
+    if (invoiceItems.length === 0) {
+      return error(c, 'No items found in itinerary to generate invoice', 400);
+    }
+
+    // Get company state for GST calculation
+    const companyStateResult = await tenantDb
+      .prepare("SELECT value FROM settings WHERE key = 'company_state'")
+      .first<{ value: string }>();
+    const companyState = companyStateResult?.value;
+
+    const contact = await tenantDb
+      .prepare('SELECT id, name, state FROM contacts WHERE id = ?1')
+      .bind(itinerary.contact_id)
+      .first<{ id: string; name: string; state: string | null }>();
+
+    if (!contact) {
+      return notFound(c, 'Contact');
+    }
+
+    const taxType = detectTaxType(companyState, contact.state);
+    const totals = calculateInvoiceTotals(invoiceItems, undefined, 0, taxType);
+    const { invoiceNumber } = await generateInvoiceNumber(tenantDb, 'tax_invoice');
+
+    const invoiceId = generateId();
+    const now = new Date().toISOString();
+
+    await tenantDb
+      .prepare(
+        `INSERT INTO invoices (
+          id, contact_id, lead_id, invoice_number, type, subtotal,
+          taxable_amount, tax_type, cgst, sgst, igst, vat_amount, total_tax, total,
+          currency, status, paid_amount, balance_due, notes,
+          created_by, created_at, updated_at
+        ) VALUES (
+          ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
+          ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22
+        )`
+      )
+      .bind(
+        invoiceId, itinerary.contact_id, itinerary.lead_id, invoiceNumber, 'tax_invoice',
+        totals.subtotal, totals.taxableAmount, 'gst', totals.cgst, totals.sgst,
+        totals.igst, totals.vatAmount, totals.totalTax, totals.total,
+        'INR', 'draft', 0, totals.total,
+        JSON.stringify({ generatedFromItinerary: itineraryId }),
+        userId, now, now
+      )
+      .run();
+
+    // Create line items
+    for (let i = 0; i < invoiceItems.length; i++) {
+      const item = invoiceItems[i];
+      const itemSubtotal = item.rate * item.quantity;
+      const itemTax = (itemSubtotal * item.taxRate) / 100;
+      const itemTotal = itemSubtotal + itemTax;
+
+      await tenantDb
+        .prepare(
+          `INSERT INTO invoice_items (
+            id, invoice_id, description, hsn_code, quantity, rate,
+            discount_percent, taxable_amount, tax_rate, tax_amount, amount, sort_order
+          ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)`
+        )
+        .bind(
+          generateId(), invoiceId, item.description, item.hsnCode,
+          item.quantity, item.rate, 0, itemSubtotal, item.taxRate, itemTax, itemTotal, i
+        )
+        .run();
+    }
+
+    await logActivity(drizzle(tenantDb), {
+      userId, action: 'invoice_from_itinerary', entityType: 'invoice', entityId: invoiceId,
+      details: JSON.stringify({ invoiceNumber, itineraryId }),
+    });
+
+    return created(c, {
+      id: invoiceId,
+      invoiceNumber,
+      itineraryId,
+      existingInvoice: existing ? { id: existing.id, invoiceNumber: existing.invoice_number } : null,
+      status: 'draft',
+      total: totals.total,
+      itemCount: invoiceItems.length,
+    });
+  } catch (err) {
+    console.error('Error generating invoice from itinerary:', err);
+    return error(c, 'Failed to generate invoice from itinerary', 500);
   }
 });
 

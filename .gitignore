@@ -76,6 +76,7 @@ terraform.rc
 .env
 .env.local
 .env.*.local
+.dev.vars
 *.pem
 *.key
 
@@ -99,4 +100,4 @@ desktop.ini
 # Coverage
 coverage/
 *.lcov
-*.log
+.log

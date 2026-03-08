@@ -67,8 +67,8 @@ abstract class AppLocalizations {
 
   final String localeName;
 
-  static AppLocalizations? of(BuildContext context) {
-    return Localizations.of<AppLocalizations>(context, AppLocalizations);
+  static AppLocalizations of(BuildContext context) {
+    return Localizations.of<AppLocalizations>(context, AppLocalizations)!;
   }
 
   static const LocalizationsDelegate<AppLocalizations> delegate =
@@ -110,17 +110,17 @@ abstract class AppLocalizations {
   /// **'Dashboard'**
   String get navDashboard;
 
-  /// No description provided for @navContacts.
-  ///
-  /// In en, this message translates to:
-  /// **'Contacts'**
-  String get navContacts;
-
   /// No description provided for @navLeads.
   ///
   /// In en, this message translates to:
   /// **'Leads'**
   String get navLeads;
+
+  /// No description provided for @navContacts.
+  ///
+  /// In en, this message translates to:
+  /// **'Contacts'**
+  String get navContacts;
 
   /// No description provided for @navItineraries.
   ///
@@ -134,29 +134,11 @@ abstract class AppLocalizations {
   /// **'Invoices'**
   String get navInvoices;
 
-  /// No description provided for @navVouchers.
+  /// No description provided for @navCalendar.
   ///
   /// In en, this message translates to:
-  /// **'Vouchers'**
-  String get navVouchers;
-
-  /// No description provided for @navSuppliers.
-  ///
-  /// In en, this message translates to:
-  /// **'Suppliers'**
-  String get navSuppliers;
-
-  /// No description provided for @navVisa.
-  ///
-  /// In en, this message translates to:
-  /// **'Visa & Travellers'**
-  String get navVisa;
-
-  /// No description provided for @navPlanner.
-  ///
-  /// In en, this message translates to:
-  /// **'Planner'**
-  String get navPlanner;
+  /// **'Calendar'**
+  String get navCalendar;
 
   /// No description provided for @navTasks.
   ///
@@ -170,11 +152,35 @@ abstract class AppLocalizations {
   /// **'Reports'**
   String get navReports;
 
-  /// No description provided for @navMarketing.
+  /// No description provided for @navSettings.
   ///
   /// In en, this message translates to:
-  /// **'Marketing'**
-  String get navMarketing;
+  /// **'Settings'**
+  String get navSettings;
+
+  /// No description provided for @navCommunications.
+  ///
+  /// In en, this message translates to:
+  /// **'Communications'**
+  String get navCommunications;
+
+  /// No description provided for @navVouchers.
+  ///
+  /// In en, this message translates to:
+  /// **'Vouchers'**
+  String get navVouchers;
+
+  /// No description provided for @navVisa.
+  ///
+  /// In en, this message translates to:
+  /// **'Visa & Travellers'**
+  String get navVisa;
+
+  /// No description provided for @navPlanner.
+  ///
+  /// In en, this message translates to:
+  /// **'Planner'**
+  String get navPlanner;
 
   /// No description provided for @navFleet.
   ///
@@ -182,443 +188,29 @@ abstract class AppLocalizations {
   /// **'Fleet'**
   String get navFleet;
 
-  /// No description provided for @navSettings.
+  /// No description provided for @navMarketing.
   ///
   /// In en, this message translates to:
-  /// **'Settings'**
-  String get navSettings;
+  /// **'Marketing'**
+  String get navMarketing;
 
-  /// No description provided for @loginTitle.
+  /// No description provided for @navSuppliers.
   ///
   /// In en, this message translates to:
-  /// **'Sign In'**
-  String get loginTitle;
+  /// **'Suppliers'**
+  String get navSuppliers;
 
-  /// No description provided for @loginEmail.
+  /// No description provided for @navBookmarks.
   ///
   /// In en, this message translates to:
-  /// **'Email Address'**
-  String get loginEmail;
+  /// **'Bookmarks'**
+  String get navBookmarks;
 
-  /// No description provided for @loginPassword.
+  /// No description provided for @navNotifications.
   ///
   /// In en, this message translates to:
-  /// **'Password'**
-  String get loginPassword;
-
-  /// No description provided for @loginPhone.
-  ///
-  /// In en, this message translates to:
-  /// **'Phone Number'**
-  String get loginPhone;
-
-  /// No description provided for @loginOtp.
-  ///
-  /// In en, this message translates to:
-  /// **'Enter OTP'**
-  String get loginOtp;
-
-  /// No description provided for @loginButton.
-  ///
-  /// In en, this message translates to:
-  /// **'Sign In'**
-  String get loginButton;
-
-  /// No description provided for @loginForgotPassword.
-  ///
-  /// In en, this message translates to:
-  /// **'Forgot Password?'**
-  String get loginForgotPassword;
-
-  /// No description provided for @loginWithOtp.
-  ///
-  /// In en, this message translates to:
-  /// **'Sign in with OTP'**
-  String get loginWithOtp;
-
-  /// No description provided for @loginWithPassword.
-  ///
-  /// In en, this message translates to:
-  /// **'Sign in with Password'**
-  String get loginWithPassword;
-
-  /// No description provided for @commonSave.
-  ///
-  /// In en, this message translates to:
-  /// **'Save'**
-  String get commonSave;
-
-  /// No description provided for @commonCancel.
-  ///
-  /// In en, this message translates to:
-  /// **'Cancel'**
-  String get commonCancel;
-
-  /// No description provided for @commonDelete.
-  ///
-  /// In en, this message translates to:
-  /// **'Delete'**
-  String get commonDelete;
-
-  /// No description provided for @commonEdit.
-  ///
-  /// In en, this message translates to:
-  /// **'Edit'**
-  String get commonEdit;
-
-  /// No description provided for @commonCreate.
-  ///
-  /// In en, this message translates to:
-  /// **'Create'**
-  String get commonCreate;
-
-  /// No description provided for @commonSearch.
-  ///
-  /// In en, this message translates to:
-  /// **'Search...'**
-  String get commonSearch;
-
-  /// No description provided for @commonFilter.
-  ///
-  /// In en, this message translates to:
-  /// **'Filter'**
-  String get commonFilter;
-
-  /// No description provided for @commonExport.
-  ///
-  /// In en, this message translates to:
-  /// **'Export'**
-  String get commonExport;
-
-  /// No description provided for @commonImport.
-  ///
-  /// In en, this message translates to:
-  /// **'Import'**
-  String get commonImport;
-
-  /// No description provided for @commonRefresh.
-  ///
-  /// In en, this message translates to:
-  /// **'Refresh'**
-  String get commonRefresh;
-
-  /// No description provided for @commonBack.
-  ///
-  /// In en, this message translates to:
-  /// **'Back'**
-  String get commonBack;
-
-  /// No description provided for @commonClose.
-  ///
-  /// In en, this message translates to:
-  /// **'Close'**
-  String get commonClose;
-
-  /// No description provided for @commonConfirm.
-  ///
-  /// In en, this message translates to:
-  /// **'Confirm'**
-  String get commonConfirm;
-
-  /// No description provided for @commonYes.
-  ///
-  /// In en, this message translates to:
-  /// **'Yes'**
-  String get commonYes;
-
-  /// No description provided for @commonNo.
-  ///
-  /// In en, this message translates to:
-  /// **'No'**
-  String get commonNo;
-
-  /// No description provided for @commonAll.
-  ///
-  /// In en, this message translates to:
-  /// **'All'**
-  String get commonAll;
-
-  /// No description provided for @commonNone.
-  ///
-  /// In en, this message translates to:
-  /// **'None'**
-  String get commonNone;
-
-  /// No description provided for @commonLoading.
-  ///
-  /// In en, this message translates to:
-  /// **'Loading...'**
-  String get commonLoading;
-
-  /// No description provided for @commonNoData.
-  ///
-  /// In en, this message translates to:
-  /// **'No data found'**
-  String get commonNoData;
-
-  /// No description provided for @commonError.
-  ///
-  /// In en, this message translates to:
-  /// **'Something went wrong'**
-  String get commonError;
-
-  /// No description provided for @commonRetry.
-  ///
-  /// In en, this message translates to:
-  /// **'Retry'**
-  String get commonRetry;
-
-  /// No description provided for @commonSuccess.
-  ///
-  /// In en, this message translates to:
-  /// **'Success'**
-  String get commonSuccess;
-
-  /// No description provided for @commonCopied.
-  ///
-  /// In en, this message translates to:
-  /// **'Copied to clipboard'**
-  String get commonCopied;
-
-  /// No description provided for @commonRequired.
-  ///
-  /// In en, this message translates to:
-  /// **'Required'**
-  String get commonRequired;
-
-  /// No description provided for @commonOptional.
-  ///
-  /// In en, this message translates to:
-  /// **'Optional'**
-  String get commonOptional;
-
-  /// No description provided for @commonActions.
-  ///
-  /// In en, this message translates to:
-  /// **'Actions'**
-  String get commonActions;
-
-  /// No description provided for @commonViewAll.
-  ///
-  /// In en, this message translates to:
-  /// **'View All'**
-  String get commonViewAll;
-
-  /// No description provided for @commonShowMore.
-  ///
-  /// In en, this message translates to:
-  /// **'Show More'**
-  String get commonShowMore;
-
-  /// No description provided for @commonShowLess.
-  ///
-  /// In en, this message translates to:
-  /// **'Show Less'**
-  String get commonShowLess;
-
-  /// No description provided for @contactsTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Contacts'**
-  String get contactsTitle;
-
-  /// No description provided for @contactsAdd.
-  ///
-  /// In en, this message translates to:
-  /// **'Add Contact'**
-  String get contactsAdd;
-
-  /// No description provided for @contactName.
-  ///
-  /// In en, this message translates to:
-  /// **'Name'**
-  String get contactName;
-
-  /// No description provided for @contactEmail.
-  ///
-  /// In en, this message translates to:
-  /// **'Email'**
-  String get contactEmail;
-
-  /// No description provided for @contactPhone.
-  ///
-  /// In en, this message translates to:
-  /// **'Phone'**
-  String get contactPhone;
-
-  /// No description provided for @contactCompany.
-  ///
-  /// In en, this message translates to:
-  /// **'Company'**
-  String get contactCompany;
-
-  /// No description provided for @contactType.
-  ///
-  /// In en, this message translates to:
-  /// **'Type'**
-  String get contactType;
-
-  /// No description provided for @contactTypeCustomer.
-  ///
-  /// In en, this message translates to:
-  /// **'Customer'**
-  String get contactTypeCustomer;
-
-  /// No description provided for @contactTypeSupplier.
-  ///
-  /// In en, this message translates to:
-  /// **'Supplier'**
-  String get contactTypeSupplier;
-
-  /// No description provided for @contactTypeAgent.
-  ///
-  /// In en, this message translates to:
-  /// **'Agent'**
-  String get contactTypeAgent;
-
-  /// No description provided for @contactTypePartner.
-  ///
-  /// In en, this message translates to:
-  /// **'Partner'**
-  String get contactTypePartner;
-
-  /// No description provided for @contactTags.
-  ///
-  /// In en, this message translates to:
-  /// **'Tags'**
-  String get contactTags;
-
-  /// No description provided for @contactSource.
-  ///
-  /// In en, this message translates to:
-  /// **'Source'**
-  String get contactSource;
-
-  /// No description provided for @contactNotes.
-  ///
-  /// In en, this message translates to:
-  /// **'Notes'**
-  String get contactNotes;
-
-  /// No description provided for @contactCity.
-  ///
-  /// In en, this message translates to:
-  /// **'City'**
-  String get contactCity;
-
-  /// No description provided for @contactCountry.
-  ///
-  /// In en, this message translates to:
-  /// **'Country'**
-  String get contactCountry;
-
-  /// No description provided for @contactBirthday.
-  ///
-  /// In en, this message translates to:
-  /// **'Birthday'**
-  String get contactBirthday;
-
-  /// No description provided for @contactAnniversary.
-  ///
-  /// In en, this message translates to:
-  /// **'Anniversary'**
-  String get contactAnniversary;
-
-  /// No description provided for @leadsTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Leads'**
-  String get leadsTitle;
-
-  /// No description provided for @leadsAdd.
-  ///
-  /// In en, this message translates to:
-  /// **'Add Lead'**
-  String get leadsAdd;
-
-  /// No description provided for @leadTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Title'**
-  String get leadTitle;
-
-  /// No description provided for @leadDestination.
-  ///
-  /// In en, this message translates to:
-  /// **'Destination'**
-  String get leadDestination;
-
-  /// No description provided for @leadTravelDate.
-  ///
-  /// In en, this message translates to:
-  /// **'Travel Date'**
-  String get leadTravelDate;
-
-  /// No description provided for @leadReturnDate.
-  ///
-  /// In en, this message translates to:
-  /// **'Return Date'**
-  String get leadReturnDate;
-
-  /// No description provided for @leadPaxAdults.
-  ///
-  /// In en, this message translates to:
-  /// **'Adults'**
-  String get leadPaxAdults;
-
-  /// No description provided for @leadPaxChildren.
-  ///
-  /// In en, this message translates to:
-  /// **'Children'**
-  String get leadPaxChildren;
-
-  /// No description provided for @leadPaxInfants.
-  ///
-  /// In en, this message translates to:
-  /// **'Infants'**
-  String get leadPaxInfants;
-
-  /// No description provided for @leadBudget.
-  ///
-  /// In en, this message translates to:
-  /// **'Budget'**
-  String get leadBudget;
-
-  /// No description provided for @leadTripType.
-  ///
-  /// In en, this message translates to:
-  /// **'Trip Type'**
-  String get leadTripType;
-
-  /// No description provided for @leadSource.
-  ///
-  /// In en, this message translates to:
-  /// **'Source'**
-  String get leadSource;
-
-  /// No description provided for @leadStatus.
-  ///
-  /// In en, this message translates to:
-  /// **'Status'**
-  String get leadStatus;
-
-  /// No description provided for @leadPriority.
-  ///
-  /// In en, this message translates to:
-  /// **'Priority'**
-  String get leadPriority;
-
-  /// No description provided for @leadAssignedTo.
-  ///
-  /// In en, this message translates to:
-  /// **'Assigned To'**
-  String get leadAssignedTo;
-
-  /// No description provided for @leadNotes.
-  ///
-  /// In en, this message translates to:
-  /// **'Notes'**
-  String get leadNotes;
+  /// **'Notifications'**
+  String get navNotifications;
 
   /// No description provided for @leadStatusNew.
   ///
@@ -686,17 +278,881 @@ abstract class AppLocalizations {
   /// **'Cold'**
   String get leadPriorityCold;
 
-  /// No description provided for @invoiceTitle.
+  /// No description provided for @invoiceStatusDraft.
   ///
   /// In en, this message translates to:
-  /// **'Invoices'**
-  String get invoiceTitle;
+  /// **'Draft'**
+  String get invoiceStatusDraft;
 
-  /// No description provided for @invoiceAdd.
+  /// No description provided for @invoiceStatusSent.
   ///
   /// In en, this message translates to:
-  /// **'Create Invoice'**
-  String get invoiceAdd;
+  /// **'Sent'**
+  String get invoiceStatusSent;
+
+  /// No description provided for @invoiceStatusPartiallyPaid.
+  ///
+  /// In en, this message translates to:
+  /// **'Partially Paid'**
+  String get invoiceStatusPartiallyPaid;
+
+  /// No description provided for @invoiceStatusPaid.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid'**
+  String get invoiceStatusPaid;
+
+  /// No description provided for @invoiceStatusOverdue.
+  ///
+  /// In en, this message translates to:
+  /// **'Overdue'**
+  String get invoiceStatusOverdue;
+
+  /// No description provided for @invoiceStatusVoid.
+  ///
+  /// In en, this message translates to:
+  /// **'Void'**
+  String get invoiceStatusVoid;
+
+  /// No description provided for @invoiceStatusCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancelled'**
+  String get invoiceStatusCancelled;
+
+  /// No description provided for @commonSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get commonSave;
+
+  /// No description provided for @commonCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get commonCancel;
+
+  /// No description provided for @commonDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get commonDelete;
+
+  /// No description provided for @commonEdit.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get commonEdit;
+
+  /// No description provided for @commonSearch.
+  ///
+  /// In en, this message translates to:
+  /// **'Search'**
+  String get commonSearch;
+
+  /// No description provided for @commonFilter.
+  ///
+  /// In en, this message translates to:
+  /// **'Filter'**
+  String get commonFilter;
+
+  /// No description provided for @commonLoading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading...'**
+  String get commonLoading;
+
+  /// No description provided for @commonRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get commonRetry;
+
+  /// No description provided for @commonConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm'**
+  String get commonConfirm;
+
+  /// No description provided for @commonClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get commonClose;
+
+  /// No description provided for @commonAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add'**
+  String get commonAdd;
+
+  /// No description provided for @commonCreate.
+  ///
+  /// In en, this message translates to:
+  /// **'Create'**
+  String get commonCreate;
+
+  /// No description provided for @commonUpdate.
+  ///
+  /// In en, this message translates to:
+  /// **'Update'**
+  String get commonUpdate;
+
+  /// No description provided for @commonSubmit.
+  ///
+  /// In en, this message translates to:
+  /// **'Submit'**
+  String get commonSubmit;
+
+  /// No description provided for @commonBack.
+  ///
+  /// In en, this message translates to:
+  /// **'Back'**
+  String get commonBack;
+
+  /// No description provided for @commonNext.
+  ///
+  /// In en, this message translates to:
+  /// **'Next'**
+  String get commonNext;
+
+  /// No description provided for @commonDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get commonDone;
+
+  /// No description provided for @commonClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear'**
+  String get commonClear;
+
+  /// No description provided for @commonAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get commonAll;
+
+  /// No description provided for @commonNone.
+  ///
+  /// In en, this message translates to:
+  /// **'None'**
+  String get commonNone;
+
+  /// No description provided for @commonYes.
+  ///
+  /// In en, this message translates to:
+  /// **'Yes'**
+  String get commonYes;
+
+  /// No description provided for @commonNo.
+  ///
+  /// In en, this message translates to:
+  /// **'No'**
+  String get commonNo;
+
+  /// No description provided for @commonOk.
+  ///
+  /// In en, this message translates to:
+  /// **'OK'**
+  String get commonOk;
+
+  /// No description provided for @commonApply.
+  ///
+  /// In en, this message translates to:
+  /// **'Apply'**
+  String get commonApply;
+
+  /// No description provided for @commonReset.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset'**
+  String get commonReset;
+
+  /// No description provided for @commonRefresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh'**
+  String get commonRefresh;
+
+  /// No description provided for @commonShare.
+  ///
+  /// In en, this message translates to:
+  /// **'Share'**
+  String get commonShare;
+
+  /// No description provided for @commonDownload.
+  ///
+  /// In en, this message translates to:
+  /// **'Download'**
+  String get commonDownload;
+
+  /// No description provided for @commonUpload.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload'**
+  String get commonUpload;
+
+  /// No description provided for @commonExport.
+  ///
+  /// In en, this message translates to:
+  /// **'Export'**
+  String get commonExport;
+
+  /// No description provided for @commonImport.
+  ///
+  /// In en, this message translates to:
+  /// **'Import'**
+  String get commonImport;
+
+  /// No description provided for @commonMore.
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get commonMore;
+
+  /// No description provided for @commonView.
+  ///
+  /// In en, this message translates to:
+  /// **'View'**
+  String get commonView;
+
+  /// No description provided for @commonCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy'**
+  String get commonCopy;
+
+  /// No description provided for @commonSend.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get commonSend;
+
+  /// No description provided for @commonSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved'**
+  String get commonSaved;
+
+  /// No description provided for @commonDeleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Deleted'**
+  String get commonDeleted;
+
+  /// No description provided for @commonNoData.
+  ///
+  /// In en, this message translates to:
+  /// **'No data found'**
+  String get commonNoData;
+
+  /// No description provided for @commonError.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong'**
+  String get commonError;
+
+  /// No description provided for @commonSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Success'**
+  String get commonSuccess;
+
+  /// No description provided for @commonCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied to clipboard'**
+  String get commonCopied;
+
+  /// No description provided for @commonRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Required'**
+  String get commonRequired;
+
+  /// No description provided for @commonOptional.
+  ///
+  /// In en, this message translates to:
+  /// **'Optional'**
+  String get commonOptional;
+
+  /// No description provided for @commonActions.
+  ///
+  /// In en, this message translates to:
+  /// **'Actions'**
+  String get commonActions;
+
+  /// No description provided for @commonViewAll.
+  ///
+  /// In en, this message translates to:
+  /// **'View All'**
+  String get commonViewAll;
+
+  /// No description provided for @commonShowMore.
+  ///
+  /// In en, this message translates to:
+  /// **'Show More'**
+  String get commonShowMore;
+
+  /// No description provided for @commonShowLess.
+  ///
+  /// In en, this message translates to:
+  /// **'Show Less'**
+  String get commonShowLess;
+
+  /// No description provided for @formFieldRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'This field is required'**
+  String get formFieldRequired;
+
+  /// No description provided for @formFieldInvalidEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter a valid email address'**
+  String get formFieldInvalidEmail;
+
+  /// No description provided for @formFieldInvalidPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter a valid phone number'**
+  String get formFieldInvalidPhone;
+
+  /// No description provided for @formFieldTooLong.
+  ///
+  /// In en, this message translates to:
+  /// **'This field is too long'**
+  String get formFieldTooLong;
+
+  /// No description provided for @formFieldMinLength.
+  ///
+  /// In en, this message translates to:
+  /// **'Minimum {min} characters required'**
+  String formFieldMinLength(int min);
+
+  /// No description provided for @errorNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'Network error. Please check your connection.'**
+  String get errorNetwork;
+
+  /// No description provided for @errorServer.
+  ///
+  /// In en, this message translates to:
+  /// **'Server error. Please try again later.'**
+  String get errorServer;
+
+  /// No description provided for @errorUnauthorized.
+  ///
+  /// In en, this message translates to:
+  /// **'Session expired. Please log in again.'**
+  String get errorUnauthorized;
+
+  /// No description provided for @errorForbidden.
+  ///
+  /// In en, this message translates to:
+  /// **'You don\'t have permission to perform this action.'**
+  String get errorForbidden;
+
+  /// No description provided for @errorNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'The requested item was not found.'**
+  String get errorNotFound;
+
+  /// No description provided for @errorTimeout.
+  ///
+  /// In en, this message translates to:
+  /// **'Request timed out. Please try again.'**
+  String get errorTimeout;
+
+  /// No description provided for @errorGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong. Please try again.'**
+  String get errorGeneric;
+
+  /// No description provided for @loginTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign In'**
+  String get loginTitle;
+
+  /// No description provided for @loginEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Email Address'**
+  String get loginEmail;
+
+  /// No description provided for @loginPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Password'**
+  String get loginPassword;
+
+  /// No description provided for @loginPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone Number'**
+  String get loginPhone;
+
+  /// No description provided for @loginOtp.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter OTP'**
+  String get loginOtp;
+
+  /// No description provided for @loginButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign In'**
+  String get loginButton;
+
+  /// No description provided for @loginForgotPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Forgot Password?'**
+  String get loginForgotPassword;
+
+  /// No description provided for @loginWithOtp.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in with OTP'**
+  String get loginWithOtp;
+
+  /// No description provided for @loginWithPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in with Password'**
+  String get loginWithPassword;
+
+  /// No description provided for @authLogin.
+  ///
+  /// In en, this message translates to:
+  /// **'Log In'**
+  String get authLogin;
+
+  /// No description provided for @authLogout.
+  ///
+  /// In en, this message translates to:
+  /// **'Log Out'**
+  String get authLogout;
+
+  /// No description provided for @authEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get authEmail;
+
+  /// No description provided for @authPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Password'**
+  String get authPassword;
+
+  /// No description provided for @authForgotPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Forgot Password?'**
+  String get authForgotPassword;
+
+  /// No description provided for @authRememberMe.
+  ///
+  /// In en, this message translates to:
+  /// **'Remember Me'**
+  String get authRememberMe;
+
+  /// No description provided for @authLoginWithOtp.
+  ///
+  /// In en, this message translates to:
+  /// **'Login with OTP'**
+  String get authLoginWithOtp;
+
+  /// No description provided for @authSendOtp.
+  ///
+  /// In en, this message translates to:
+  /// **'Send OTP'**
+  String get authSendOtp;
+
+  /// No description provided for @authVerifyOtp.
+  ///
+  /// In en, this message translates to:
+  /// **'Verify OTP'**
+  String get authVerifyOtp;
+
+  /// No description provided for @authResetPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset Password'**
+  String get authResetPassword;
+
+  /// No description provided for @authNewPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'New Password'**
+  String get authNewPassword;
+
+  /// No description provided for @authConfirmPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm Password'**
+  String get authConfirmPassword;
+
+  /// No description provided for @dashboardWelcome.
+  ///
+  /// In en, this message translates to:
+  /// **'Welcome back, {name}!'**
+  String dashboardWelcome(String name);
+
+  /// No description provided for @dashboardTotalLeads.
+  ///
+  /// In en, this message translates to:
+  /// **'Total Leads'**
+  String get dashboardTotalLeads;
+
+  /// No description provided for @dashboardActiveLeads.
+  ///
+  /// In en, this message translates to:
+  /// **'Active Leads'**
+  String get dashboardActiveLeads;
+
+  /// No description provided for @dashboardRevenue.
+  ///
+  /// In en, this message translates to:
+  /// **'Revenue'**
+  String get dashboardRevenue;
+
+  /// No description provided for @dashboardConversion.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversion Rate'**
+  String get dashboardConversion;
+
+  /// No description provided for @dashboardTodaysFollowups.
+  ///
+  /// In en, this message translates to:
+  /// **'Today\'s Follow-ups'**
+  String get dashboardTodaysFollowups;
+
+  /// No description provided for @dashboardRecentActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent Activity'**
+  String get dashboardRecentActivity;
+
+  /// No description provided for @dashboardQuickActions.
+  ///
+  /// In en, this message translates to:
+  /// **'Quick Actions'**
+  String get dashboardQuickActions;
+
+  /// No description provided for @leadTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Title'**
+  String get leadTitle;
+
+  /// No description provided for @leadDestination.
+  ///
+  /// In en, this message translates to:
+  /// **'Destination'**
+  String get leadDestination;
+
+  /// No description provided for @leadTravelDates.
+  ///
+  /// In en, this message translates to:
+  /// **'Travel Dates'**
+  String get leadTravelDates;
+
+  /// No description provided for @leadTravelDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Travel Date'**
+  String get leadTravelDate;
+
+  /// No description provided for @leadReturnDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Return Date'**
+  String get leadReturnDate;
+
+  /// No description provided for @leadPaxAdults.
+  ///
+  /// In en, this message translates to:
+  /// **'Adults'**
+  String get leadPaxAdults;
+
+  /// No description provided for @leadPaxChildren.
+  ///
+  /// In en, this message translates to:
+  /// **'Children'**
+  String get leadPaxChildren;
+
+  /// No description provided for @leadPaxInfants.
+  ///
+  /// In en, this message translates to:
+  /// **'Infants'**
+  String get leadPaxInfants;
+
+  /// No description provided for @leadTripType.
+  ///
+  /// In en, this message translates to:
+  /// **'Trip Type'**
+  String get leadTripType;
+
+  /// No description provided for @leadBudget.
+  ///
+  /// In en, this message translates to:
+  /// **'Budget'**
+  String get leadBudget;
+
+  /// No description provided for @leadSource.
+  ///
+  /// In en, this message translates to:
+  /// **'Source'**
+  String get leadSource;
+
+  /// No description provided for @leadStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'Status'**
+  String get leadStatus;
+
+  /// No description provided for @leadPriority.
+  ///
+  /// In en, this message translates to:
+  /// **'Priority'**
+  String get leadPriority;
+
+  /// No description provided for @leadAssignedTo.
+  ///
+  /// In en, this message translates to:
+  /// **'Assigned To'**
+  String get leadAssignedTo;
+
+  /// No description provided for @leadNotes.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes'**
+  String get leadNotes;
+
+  /// No description provided for @leadCreateNew.
+  ///
+  /// In en, this message translates to:
+  /// **'Create New Lead'**
+  String get leadCreateNew;
+
+  /// No description provided for @leadEditLead.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit Lead'**
+  String get leadEditLead;
+
+  /// No description provided for @leadDeleteConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Are you sure you want to delete this lead?'**
+  String get leadDeleteConfirm;
+
+  /// No description provided for @leadNoLeadsFound.
+  ///
+  /// In en, this message translates to:
+  /// **'No leads found'**
+  String get leadNoLeadsFound;
+
+  /// No description provided for @leadsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Leads'**
+  String get leadsTitle;
+
+  /// No description provided for @leadsAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Lead'**
+  String get leadsAdd;
+
+  /// No description provided for @leadPipeline.
+  ///
+  /// In en, this message translates to:
+  /// **'Pipeline'**
+  String get leadPipeline;
+
+  /// No description provided for @leadFollowups.
+  ///
+  /// In en, this message translates to:
+  /// **'Follow-ups'**
+  String get leadFollowups;
+
+  /// No description provided for @leadTimeline.
+  ///
+  /// In en, this message translates to:
+  /// **'Timeline'**
+  String get leadTimeline;
+
+  /// No description provided for @contactName.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get contactName;
+
+  /// No description provided for @contactEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get contactEmail;
+
+  /// No description provided for @contactPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone'**
+  String get contactPhone;
+
+  /// No description provided for @contactCompany.
+  ///
+  /// In en, this message translates to:
+  /// **'Company'**
+  String get contactCompany;
+
+  /// No description provided for @contactType.
+  ///
+  /// In en, this message translates to:
+  /// **'Type'**
+  String get contactType;
+
+  /// No description provided for @contactAddress.
+  ///
+  /// In en, this message translates to:
+  /// **'Address'**
+  String get contactAddress;
+
+  /// No description provided for @contactCity.
+  ///
+  /// In en, this message translates to:
+  /// **'City'**
+  String get contactCity;
+
+  /// No description provided for @contactCountry.
+  ///
+  /// In en, this message translates to:
+  /// **'Country'**
+  String get contactCountry;
+
+  /// No description provided for @contactCreateNew.
+  ///
+  /// In en, this message translates to:
+  /// **'Create New Contact'**
+  String get contactCreateNew;
+
+  /// No description provided for @contactEditContact.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit Contact'**
+  String get contactEditContact;
+
+  /// No description provided for @contactDeleteConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Are you sure you want to delete this contact?'**
+  String get contactDeleteConfirm;
+
+  /// No description provided for @contactNoContactsFound.
+  ///
+  /// In en, this message translates to:
+  /// **'No contacts found'**
+  String get contactNoContactsFound;
+
+  /// No description provided for @contactsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Contacts'**
+  String get contactsTitle;
+
+  /// No description provided for @contactsAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Contact'**
+  String get contactsAdd;
+
+  /// No description provided for @contactTypeCustomer.
+  ///
+  /// In en, this message translates to:
+  /// **'Customer'**
+  String get contactTypeCustomer;
+
+  /// No description provided for @contactTypeSupplier.
+  ///
+  /// In en, this message translates to:
+  /// **'Supplier'**
+  String get contactTypeSupplier;
+
+  /// No description provided for @contactTypeAgent.
+  ///
+  /// In en, this message translates to:
+  /// **'Agent'**
+  String get contactTypeAgent;
+
+  /// No description provided for @contactTypePartner.
+  ///
+  /// In en, this message translates to:
+  /// **'Partner'**
+  String get contactTypePartner;
+
+  /// No description provided for @contactTags.
+  ///
+  /// In en, this message translates to:
+  /// **'Tags'**
+  String get contactTags;
+
+  /// No description provided for @contactSource.
+  ///
+  /// In en, this message translates to:
+  /// **'Source'**
+  String get contactSource;
+
+  /// No description provided for @contactNotes.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes'**
+  String get contactNotes;
+
+  /// No description provided for @contactBirthday.
+  ///
+  /// In en, this message translates to:
+  /// **'Birthday'**
+  String get contactBirthday;
+
+  /// No description provided for @contactAnniversary.
+  ///
+  /// In en, this message translates to:
+  /// **'Anniversary'**
+  String get contactAnniversary;
+
+  /// No description provided for @itineraryTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Title'**
+  String get itineraryTitle;
+
+  /// No description provided for @itineraryDays.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 day} other{{count} days}}'**
+  String itineraryDays(int count);
+
+  /// No description provided for @itineraryCreateNew.
+  ///
+  /// In en, this message translates to:
+  /// **'Create New Itinerary'**
+  String get itineraryCreateNew;
+
+  /// No description provided for @itineraryNoItinerariesFound.
+  ///
+  /// In en, this message translates to:
+  /// **'No itineraries found'**
+  String get itineraryNoItinerariesFound;
 
   /// No description provided for @invoiceNumber.
   ///
@@ -707,7 +1163,7 @@ abstract class AppLocalizations {
   /// No description provided for @invoiceDate.
   ///
   /// In en, this message translates to:
-  /// **'Date'**
+  /// **'Invoice Date'**
   String get invoiceDate;
 
   /// No description provided for @invoiceDueDate.
@@ -716,11 +1172,11 @@ abstract class AppLocalizations {
   /// **'Due Date'**
   String get invoiceDueDate;
 
-  /// No description provided for @invoiceSubtotal.
+  /// No description provided for @invoiceAmount.
   ///
   /// In en, this message translates to:
-  /// **'Subtotal'**
-  String get invoiceSubtotal;
+  /// **'Amount'**
+  String get invoiceAmount;
 
   /// No description provided for @invoiceTax.
   ///
@@ -733,6 +1189,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Total'**
   String get invoiceTotal;
+
+  /// No description provided for @invoiceCreateNew.
+  ///
+  /// In en, this message translates to:
+  /// **'Create New Invoice'**
+  String get invoiceCreateNew;
+
+  /// No description provided for @invoiceNoInvoicesFound.
+  ///
+  /// In en, this message translates to:
+  /// **'No invoices found'**
+  String get invoiceNoInvoicesFound;
+
+  /// No description provided for @invoiceTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Invoices'**
+  String get invoiceTitle;
+
+  /// No description provided for @invoiceAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Create Invoice'**
+  String get invoiceAdd;
+
+  /// No description provided for @invoiceSubtotal.
+  ///
+  /// In en, this message translates to:
+  /// **'Subtotal'**
+  String get invoiceSubtotal;
 
   /// No description provided for @invoiceStatus.
   ///
@@ -752,22 +1238,22 @@ abstract class AppLocalizations {
   /// **'Balance Due'**
   String get invoiceBalance;
 
-  /// No description provided for @settingsTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Settings'**
-  String get settingsTitle;
-
   /// No description provided for @settingsProfile.
   ///
   /// In en, this message translates to:
   /// **'Profile'**
   String get settingsProfile;
 
+  /// No description provided for @settingsTeam.
+  ///
+  /// In en, this message translates to:
+  /// **'Team Management'**
+  String get settingsTeam;
+
   /// No description provided for @settingsCompany.
   ///
   /// In en, this message translates to:
-  /// **'Company'**
+  /// **'Company Settings'**
   String get settingsCompany;
 
   /// No description provided for @settingsLanguage.
@@ -776,23 +1262,71 @@ abstract class AppLocalizations {
   /// **'Language'**
   String get settingsLanguage;
 
+  /// No description provided for @settingsNotifications.
+  ///
+  /// In en, this message translates to:
+  /// **'Notification Preferences'**
+  String get settingsNotifications;
+
+  /// No description provided for @settingsSecurity.
+  ///
+  /// In en, this message translates to:
+  /// **'Security'**
+  String get settingsSecurity;
+
+  /// No description provided for @settingsSessions.
+  ///
+  /// In en, this message translates to:
+  /// **'Active Sessions'**
+  String get settingsSessions;
+
+  /// No description provided for @settingsLoginHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Login History'**
+  String get settingsLoginHistory;
+
+  /// No description provided for @settingsDataExport.
+  ///
+  /// In en, this message translates to:
+  /// **'Data Export'**
+  String get settingsDataExport;
+
+  /// No description provided for @settingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get settingsTitle;
+
   /// No description provided for @settingsTheme.
   ///
   /// In en, this message translates to:
   /// **'Theme'**
   String get settingsTheme;
 
-  /// No description provided for @settingsNotifications.
-  ///
-  /// In en, this message translates to:
-  /// **'Notifications'**
-  String get settingsNotifications;
-
   /// No description provided for @settingsLogout.
   ///
   /// In en, this message translates to:
   /// **'Logout'**
   String get settingsLogout;
+
+  /// No description provided for @offlineMode.
+  ///
+  /// In en, this message translates to:
+  /// **'You are offline'**
+  String get offlineMode;
+
+  /// No description provided for @offlineSyncing.
+  ///
+  /// In en, this message translates to:
+  /// **'Syncing changes...'**
+  String get offlineSyncing;
+
+  /// No description provided for @offlinePendingActions.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 pending action} other{{count} pending actions}}'**
+  String offlinePendingActions(int count);
 
   /// No description provided for @deleteConfirmTitle.
   ///
@@ -803,7 +1337,7 @@ abstract class AppLocalizations {
   /// No description provided for @deleteConfirmMessage.
   ///
   /// In en, this message translates to:
-  /// **'Are you sure you want to delete this? This action cannot be undone.'**
+  /// **'This action cannot be undone.'**
   String get deleteConfirmMessage;
 
   /// No description provided for @paginationShowing.
@@ -817,6 +1351,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =0{No items} =1{1 item} other{{count} items}}'**
   String itemsCount(int count);
+
+  /// No description provided for @leadsCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No leads} =1{1 lead} other{{count} leads}}'**
+  String leadsCount(int count);
+
+  /// No description provided for @contactsCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No contacts} =1{1 contact} other{{count} contacts}}'**
+  String contactsCount(int count);
 }
 
 class _AppLocalizationsDelegate

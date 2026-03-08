@@ -9,6 +9,7 @@ import '../../../core/widgets/forms/app_dropdown.dart';
 import '../../../core/widgets/forms/app_text_field.dart';
 import '../../../core/widgets/layout/app_section_card.dart';
 import '../data/contact_provider.dart';
+import 'widgets/custom_fields_form.dart';
 import 'widgets/tag_chips.dart';
 
 class ContactFormScreen extends ConsumerStatefulWidget {
@@ -45,6 +46,7 @@ class _ContactFormScreenState extends ConsumerState<ContactFormScreen> {
   String? _source;
   String _language = 'en';
   List<String> _tags = [];
+  Map<String, dynamic> _customFieldValues = {};
 
   // Duplicate warning
   bool _hasDuplicate = false;
@@ -80,6 +82,7 @@ class _ContactFormScreenState extends ConsumerState<ContactFormScreen> {
         _source = contact.source;
         _language = contact.preferredLanguage;
         _tags = List.from(contact.tags);
+        _customFieldValues = Map.from(contact.customFields ?? {});
         _loaded = true;
       });
     } catch (e) {
@@ -130,6 +133,7 @@ class _ContactFormScreenState extends ConsumerState<ContactFormScreen> {
       if (_source != null) 'source': _source,
       if (_birthdayCtrl.text.trim().isNotEmpty) 'birthday': _birthdayCtrl.text.trim(),
       if (_anniversaryCtrl.text.trim().isNotEmpty) 'anniversary': _anniversaryCtrl.text.trim(),
+      if (_customFieldValues.isNotEmpty) 'customFields': _customFieldValues,
     };
 
     try {
@@ -197,6 +201,7 @@ class _ContactFormScreenState extends ConsumerState<ContactFormScreen> {
     }
 
     final allTags = ref.watch(contactTagsProvider);
+    final customFieldDefs = ref.watch(contactCustomFieldDefsProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -417,6 +422,19 @@ class _ContactFormScreenState extends ConsumerState<ContactFormScreen> {
                     ),
                   ),
                   const SizedBox(height: AppTheme.spacingMd),
+
+                  // Custom Fields
+                  if (customFieldDefs.valueOrNull?.isNotEmpty == true)
+                    AppSectionCard(
+                      title: 'Custom Fields',
+                      child: CustomFieldsFormSection(
+                        fieldDefs: customFieldDefs.valueOrNull!,
+                        values: _customFieldValues,
+                        onChanged: (v) => setState(() => _customFieldValues = v),
+                      ),
+                    ),
+                  if (customFieldDefs.valueOrNull?.isNotEmpty == true)
+                    const SizedBox(height: AppTheme.spacingMd),
 
                   // Notes
                   AppSectionCard(

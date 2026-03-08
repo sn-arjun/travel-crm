@@ -41,6 +41,22 @@ export 'models/vehicle_model.dart';
 export 'models/driver_model.dart';
 export 'models/trip_assignment_model.dart';
 export 'models/vehicle_rate_card_model.dart';
+export 'models/document_model.dart';
+export 'models/bookmark_model.dart';
+export 'models/voip_settings_model.dart';
+export 'models/call_log_model.dart';
+export 'models/call_analytics_model.dart';
+export 'models/twilio_number_model.dart';
+export 'models/voip_number_model.dart';
+export 'models/call_transcript_model.dart';
+export 'models/ai_extraction_model.dart';
+export 'models/ai_conversation_model.dart';
+export 'models/ai_intelligence_model.dart';
+export 'models/chatbot_model.dart';
+export 'models/business_intelligence_model.dart';
+export 'models/whatsapp_campaign_model.dart';
+export 'models/social_content_model.dart';
+export 'models/marketing_suggestion_model.dart';
 
 // Utils
 export 'utils/date_utils.dart';

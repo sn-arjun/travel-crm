@@ -1,0 +1,67 @@
+// Client & Config
+export { client, type ApiError, type ApiResponse, type PaginatedResponse } from './client';
+export { API_BASE_URL, API_ENDPOINTS } from './config';
+
+// API Modules
+export * from './auth';
+export * from './users';
+export * from './contacts';
+export * from './leads';
+export * from './itineraries';
+export * from './invoices';
+export * from './credit-notes';
+export * from './hsn-codes';
+export * from './payments';
+export * from './suppliers';
+export * from './tasks';
+export * from './events';
+export * from './follow-ups';
+export * from './documents';
+export * from './vouchers';
+export * from './visa';
+export * from './fleet';
+export * from './communications';
+export * from './campaigns';
+export * from './marketing';
+export * from './notifications';
+export * from './imports';
+export * from './exports';
+export * from './reports';
+export * from './ai';
+export * from './voip';
+export * from './chatbot';
+export * from './settings';
+export * from './bookmarks';
+export * from './sticky-notes';
+
+// Singleton API instances
+export { authApi } from './auth';
+export { usersApi } from './users';
+export { contactsApi } from './contacts';
+export { leadsApi } from './leads';
+export { itinerariesApi } from './itineraries';
+export { invoicesApi } from './invoices';
+export { creditNotesApi, debitNotesApi } from './credit-notes';
+export { hsnCodesApi } from './hsn-codes';
+export { paymentsApi } from './payments';
+export { suppliersApi } from './suppliers';
+export { tasksApi } from './tasks';
+export { eventsApi } from './events';
+export { followUpsApi } from './follow-ups';
+export { documentsApi } from './documents';
+export { vouchersApi } from './vouchers';
+export { visaApi, travellersApi } from './visa';
+export { fleetApi } from './fleet';
+export { communicationsApi } from './communications';
+export { campaignsApi } from './campaigns';
+export { marketingApi } from './marketing';
+export { notificationsApi } from './notifications';
+export { importsApi } from './imports';
+export { exportsApi } from './exports';
+export { reportsApi } from './reports';
+export { aiApi } from './ai';
+export { voipApi } from './voip';
+export { chatbotApi } from './chatbot';
+export { settingsApi } from './settings';
+export { bookmarksApi } from './bookmarks';
+export { stickyNotesApi } from './sticky-notes';

@@ -56,7 +56,7 @@ const bulkSendSchema = z.object({
 });
 
 const historyFilterSchema = z.object({
-  contact_id: z.string().min(1),
+  contact_id: z.string().min(1).optional(),
   channel: z.enum(['whatsapp', 'sms', 'email']).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),
   offset: z.coerce.number().int().min(0).optional().default(0),
@@ -548,7 +548,10 @@ communicationRoutes.get(
 
     try {
       // Build query conditions
-      const conditions = [eq(messageLog.contactId, query.contact_id)];
+      const conditions: any[] = [];
+      if (query.contact_id) {
+        conditions.push(eq(messageLog.contactId, query.contact_id));
+      }
       if (query.channel) {
         conditions.push(eq(messageLog.channel, query.channel));
       }
@@ -557,7 +560,7 @@ communicationRoutes.get(
       const messages = await db
         .select()
         .from(messageLog)
-        .where(and(...conditions))
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
         .orderBy(desc(messageLog.createdAt))
         .limit(query.limit)
         .offset(query.offset);

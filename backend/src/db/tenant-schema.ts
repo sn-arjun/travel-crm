@@ -141,6 +141,9 @@ export const leads = sqliteTable('leads', {
   hotelPreference: text('hotel_preference'), // budget, standard, premium, luxury
   mealPreference: text('meal_preference'), // veg, non_veg, vegan, jain, halal
   specialRequirements: text('special_requirements'),
+  estimatedValue: real('estimated_value'),
+  probability: integer('probability'),
+  expectedCloseDate: text('expected_close_date'),
   notes: text('notes'),
   isDeleted: integer('is_deleted').default(0),
   createdBy: text('created_by').references(() => users.id),
@@ -783,25 +786,25 @@ export const taskComments = sqliteTable('task_comments', {
 export const bookmarks = sqliteTable('bookmarks', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id),
-  type: text('type').notNull(), // lead, contact, invoice, itinerary
-  referenceId: text('reference_id').notNull(),
-  title: text('title'),
+  entityType: text('entity_type').notNull(), // lead, contact, itinerary, invoice
+  entityId: text('entity_id').notNull(),
   createdAt: text('created_at').default(timestamp),
 }, (table) => [
+  uniqueIndex('bookmarks_user_entity_idx').on(table.userId, table.entityType, table.entityId),
   index('bookmarks_user_id_idx').on(table.userId),
 ]);
 
 export const stickyNotes = sqliteTable('sticky_notes', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id),
-  content: text('content'),
-  color: text('color').default('#FFFDE7'),
-  positionX: real('position_x').default(0),
-  positionY: real('position_y').default(0),
+  content: text('content').notNull(),
+  color: text('color').default('yellow'), // yellow, blue, green, pink, purple
+  isPinned: integer('is_pinned').default(0),
   createdAt: text('created_at').default(timestamp),
   updatedAt: text('updated_at').default(timestamp),
 }, (table) => [
   index('sticky_notes_user_id_idx').on(table.userId),
+  index('sticky_notes_pinned_idx').on(table.isPinned),
 ]);
 
 export const documents = sqliteTable('documents', {
@@ -811,14 +814,19 @@ export const documents = sqliteTable('documents', {
   fileSize: integer('file_size'),
   mimeType: text('mime_type'),
   type: text('type'), // passport, visa, id, contract, invoice, voucher, photo, other
-  relatedTo: text('related_to'), // contact, lead, traveller, supplier, visa_application
+  category: text('category').default('other'), // passport, visa, invoice, itinerary, voucher, contract, photo, other
+  relatedTo: text('related_to'), // contact, lead, traveller, supplier, visa_application, invoice, voucher, general
   relatedId: text('related_id'),
+  description: text('description'),
   uploadedBy: text('uploaded_by').references(() => users.id),
+  isDeleted: integer('is_deleted').default(0),
   createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
 }, (table) => [
   index('documents_related_idx').on(table.relatedTo, table.relatedId),
   index('documents_type_idx').on(table.type),
   index('documents_uploaded_by_idx').on(table.uploadedBy),
+  index('documents_is_deleted_idx').on(table.isDeleted),
 ]);
 
 export const notifications = sqliteTable('notifications', {
@@ -1594,5 +1602,682 @@ export const reminderLog = sqliteTable('reminder_log', {
 }, (table) => [
   index('reminder_log_entity_idx').on(table.entityType, table.entityId),
   index('reminder_log_sent_date_idx').on(table.sentDate),
+]);
+
+// ============================================================
+// VOIP SETTINGS (TICKET-367)
+// ============================================================
+
+export const voipSettings = sqliteTable('voip_settings', {
+  id: text('id').primaryKey(),
+  // Provider discriminator
+  voipProvider: text('voip_provider').default('twilio'), // twilio, plivo
+  // Generic provider credentials (preferred)
+  providerAccountId: text('provider_account_id'),
+  providerAuthToken: text('provider_auth_token'),
+  providerApiKeyId: text('provider_api_key_id'),
+  providerApiKeySecret: text('provider_api_key_secret'),
+  providerAppId: text('provider_app_id'),
+  // Legacy Twilio-specific (backward compat)
+  twilioAccountSid: text('twilio_account_sid'),
+  twilioAuthToken: text('twilio_auth_token'),
+  twilioApiKeySid: text('twilio_api_key_sid'),
+  twilioApiKeySecret: text('twilio_api_key_secret'),
+  twilioTwimlAppSid: text('twilio_twiml_app_sid'),
+  // Common settings
+  defaultCallerId: text('default_caller_id'),
+  recordingPolicy: text('recording_policy').default('all'), // all, inbound, outbound, none
+  ivrEnabled: integer('ivr_enabled').default(0),
+  ivrConfig: text('ivr_config'), // JSON
+  businessHoursEnabled: integer('business_hours_enabled').default(0),
+  businessHours: text('business_hours'), // JSON
+  voicemailEnabled: integer('voicemail_enabled').default(1),
+  voicemailGreetingUrl: text('voicemail_greeting_url'),
+  maxRingDuration: integer('max_ring_duration').default(30),
+  routingStrategy: text('routing_strategy').default('assigned'), // assigned, round_robin, least_recent
+  autoCreateLeadMissedCall: integer('auto_create_lead_missed_call').default(1),
+  recordingRetentionDays: integer('recording_retention_days').default(90),
+  recordingStorageBytes: integer('recording_storage_bytes').default(0),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+});
+
+// ============================================================
+// CALL LOGS (TICKET-370)
+// ============================================================
+
+export const callLogs = sqliteTable('call_logs', {
+  id: text('id').primaryKey(),
+  contactId: text('contact_id').references(() => contacts.id, { onDelete: 'set null' }),
+  leadId: text('lead_id').references(() => leads.id, { onDelete: 'set null' }),
+  direction: text('direction').notNull(), // inbound, outbound
+  fromNumber: text('from_number').notNull(),
+  toNumber: text('to_number').notNull(),
+  durationSeconds: integer('duration_seconds').default(0),
+  status: text('status').notNull().default('initiated'), // initiated, ringing, in-progress, completed, busy, no-answer, canceled, failed
+  outcome: text('outcome'), // interested, not_interested, follow_up_needed, wrong_number, no_answer, voicemail
+  twilioCallSid: text('twilio_call_sid'), // legacy — use providerCallId for new code
+  providerCallId: text('provider_call_id'),
+  recordingUrl: text('recording_url'),
+  recordingR2Key: text('recording_r2_key'),
+  recordingDuration: integer('recording_duration'),
+  notes: text('notes'),
+  ivrPath: text('ivr_path'), // JSON array of IVR digits pressed
+  routedTo: text('routed_to').references(() => users.id, { onDelete: 'set null' }),
+  answeredBy: text('answered_by').references(() => users.id, { onDelete: 'set null' }),
+  createdBy: text('created_by').references(() => users.id).notNull(),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('call_logs_contact_id_idx').on(table.contactId),
+  index('call_logs_lead_id_idx').on(table.leadId),
+  index('call_logs_created_by_idx').on(table.createdBy),
+  index('call_logs_created_at_idx').on(table.createdAt),
+  index('call_logs_status_idx').on(table.status),
+  uniqueIndex('call_logs_twilio_sid_idx').on(table.twilioCallSid),
+  index('call_logs_provider_call_id_idx').on(table.providerCallId),
+]);
+
+// ============================================================
+// TWILIO NUMBERS (TICKET-390)
+// ============================================================
+
+export const twilioNumbers = sqliteTable('twilio_numbers', {
+  id: text('id').primaryKey(),
+  phoneNumber: text('phone_number').notNull(),
+  friendlyName: text('friendly_name'),
+  twilioSid: text('twilio_sid').notNull(),
+  assignedTo: text('assigned_to').references(() => users.id, { onDelete: 'set null' }),
+  purpose: text('purpose').default('general'), // general, inbound, outbound, marketing
+  isDefault: integer('is_default').default(0),
+  monthlyCost: real('monthly_cost').default(0),
+  capabilities: text('capabilities'), // JSON: {voice, sms, mms}
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  uniqueIndex('twilio_numbers_phone_idx').on(table.phoneNumber),
+  uniqueIndex('twilio_numbers_sid_idx').on(table.twilioSid),
+  index('twilio_numbers_assigned_to_idx').on(table.assignedTo),
+  index('twilio_numbers_is_default_idx').on(table.isDefault),
+]);
+
+// ============================================================
+// VOIP NUMBERS — Generic (replaces twilio_numbers)
+// ============================================================
+
+export const voipNumbers = sqliteTable('voip_numbers', {
+  id: text('id').primaryKey(),
+  phoneNumber: text('phone_number').notNull(),
+  friendlyName: text('friendly_name'),
+  providerNumberId: text('provider_number_id').notNull(),
+  provider: text('provider').default('twilio'), // twilio, plivo
+  assignedTo: text('assigned_to').references(() => users.id, { onDelete: 'set null' }),
+  purpose: text('purpose').default('general'), // general, inbound, outbound, marketing
+  isDefault: integer('is_default').default(0),
+  monthlyCost: real('monthly_cost').default(0),
+  capabilities: text('capabilities'), // JSON: {voice, sms, mms}
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  uniqueIndex('voip_numbers_phone_idx').on(table.phoneNumber),
+  index('voip_numbers_provider_idx').on(table.provider),
+  index('voip_numbers_assigned_to_idx').on(table.assignedTo),
+  index('voip_numbers_is_default_idx').on(table.isDefault),
+]);
+
+// ============================================================
+// CALL TRANSCRIPTS (TICKET-392)
+// ============================================================
+
+export const callTranscripts = sqliteTable('call_transcripts', {
+  id: text('id').primaryKey(),
+  callLogId: text('call_log_id').notNull().references(() => callLogs.id, { onDelete: 'cascade' }),
+  fullTranscript: text('full_transcript').notNull(),
+  speakerSegments: text('speaker_segments'), // JSON: [{speaker, text, start, end, confidence}]
+  language: text('language').default('en'),
+  confidence: real('confidence').default(0),
+  wordCount: integer('word_count').default(0),
+  durationSeconds: real('duration_seconds').default(0),
+  transcriptionModel: text('transcription_model').default('deepgram-nova-2'),
+  isEdited: integer('is_edited').default(0),
+  editedBy: text('edited_by').references(() => users.id, { onDelete: 'set null' }),
+  editedAt: text('edited_at'),
+  createdAt: text('created_at').default(timestamp),
+}, (table) => [
+  uniqueIndex('call_transcripts_call_log_id_idx').on(table.callLogId),
+  index('call_transcripts_language_idx').on(table.language),
+  index('call_transcripts_created_at_idx').on(table.createdAt),
+]);
+
+// ============================================================
+// AI CALL EXTRACTIONS (TICKET-398)
+// ============================================================
+
+export const aiCallExtractions = sqliteTable('ai_call_extractions', {
+  id: text('id').primaryKey(),
+  callLogId: text('call_log_id').notNull().references(() => callLogs.id, { onDelete: 'cascade' }),
+  transcriptId: text('transcript_id').references(() => callTranscripts.id, { onDelete: 'set null' }),
+  // Extracted lead data
+  destination: text('destination'),
+  travelDates: text('travel_dates'), // JSON: {from, to, flexible}
+  paxCount: integer('pax_count'),
+  paxDetails: text('pax_details'), // JSON: {adults, children, infants}
+  budget: real('budget'),
+  budgetCurrency: text('budget_currency').default('INR'),
+  preferences: text('preferences'), // JSON array
+  tripType: text('trip_type'), // honeymoon, family, adventure, business, etc.
+  hotelPreference: text('hotel_preference'), // budget, mid-range, luxury
+  mealPreference: text('meal_preference'),
+  specialRequests: text('special_requests'),
+  // AI analysis
+  summary: text('summary'), // 3-5 bullet points
+  keyTopics: text('key_topics'), // JSON array of topic strings
+  actionItems: text('action_items'), // JSON: [{text, assignee?, dueDate?, completed}]
+  sentiment: text('sentiment'), // positive, neutral, negative, urgent
+  sentimentScore: real('sentiment_score'), // -1.0 to 1.0
+  dealLikelihood: real('deal_likelihood'), // 0.0 to 1.0
+  likelihoodSignals: text('likelihood_signals'), // JSON array
+  coachingHints: text('coaching_hints'), // JSON array
+  // Confidence and status
+  overallConfidence: real('overall_confidence').default(0),
+  fieldConfidences: text('field_confidences'), // JSON: {destination: 0.9, budget: 0.7, ...}
+  status: text('status').default('pending'), // pending, confirmed, rejected
+  reviewedBy: text('reviewed_by').references(() => users.id, { onDelete: 'set null' }),
+  reviewedAt: text('reviewed_at'),
+  // Link to created/updated entities
+  createdLeadId: text('created_lead_id').references(() => leads.id, { onDelete: 'set null' }),
+  createdContactId: text('created_contact_id').references(() => contacts.id, { onDelete: 'set null' }),
+  modelUsed: text('model_used').default('claude-haiku-4-20250514'),
+  tokensUsed: integer('tokens_used').default(0),
+  costEstimate: real('cost_estimate').default(0),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  uniqueIndex('ai_extractions_call_log_id_idx').on(table.callLogId),
+  index('ai_extractions_status_idx').on(table.status),
+  index('ai_extractions_sentiment_idx').on(table.sentiment),
+  index('ai_extractions_created_at_idx').on(table.createdAt),
+]);
+
+// ============================================================
+// AI USAGE LOG (TICKET-411)
+// ============================================================
+
+export const aiUsageLog = sqliteTable('ai_usage_log', {
+  id: text('id').primaryKey(),
+  taskType: text('task_type').notNull(), // transcription, extraction, summary, sentiment, coaching, deal_likelihood
+  modelName: text('model_name').notNull(),
+  inputTokens: integer('input_tokens').default(0),
+  outputTokens: integer('output_tokens').default(0),
+  costEstimate: real('cost_estimate').default(0),
+  callLogId: text('call_log_id').references(() => callLogs.id, { onDelete: 'set null' }),
+  durationMs: integer('duration_ms').default(0),
+  success: integer('success').default(1),
+  errorMessage: text('error_message'),
+  createdAt: text('created_at').default(timestamp),
+}, (table) => [
+  index('ai_usage_log_task_type_idx').on(table.taskType),
+  index('ai_usage_log_created_at_idx').on(table.createdAt),
+  index('ai_usage_log_call_log_id_idx').on(table.callLogId),
+]);
+
+// ============================================================
+// AI CONVERSATIONS (TICKET-412)
+// ============================================================
+
+export const aiConversations = sqliteTable('ai_conversations', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  title: text('title'),
+  feature: text('feature').notNull(), // lead_creation, itinerary_gen, invoice_gen, communication, search, general
+  entityType: text('entity_type'), // lead, itinerary, invoice, contact
+  entityId: text('entity_id'),
+  messages: text('messages').notNull(), // JSON: [{role, content, timestamp}]
+  totalInputTokens: integer('total_input_tokens').default(0),
+  totalOutputTokens: integer('total_output_tokens').default(0),
+  totalCost: real('total_cost').default(0),
+  modelUsed: text('model_used'),
+  isActive: integer('is_active').default(1),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('ai_conversations_user_id_idx').on(table.userId),
+  index('ai_conversations_feature_idx').on(table.feature),
+  index('ai_conversations_entity_idx').on(table.entityType, table.entityId),
+  index('ai_conversations_created_at_idx').on(table.createdAt),
+  index('ai_conversations_is_active_idx').on(table.isActive),
+]);
+
+// ============================================================
+// AI GENERATED CONTENT (TICKET-413)
+// ============================================================
+
+export const aiGeneratedContent = sqliteTable('ai_generated_content', {
+  id: text('id').primaryKey(),
+  conversationId: text('conversation_id').references(() => aiConversations.id, { onDelete: 'set null' }),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  contentType: text('content_type').notNull(), // lead_extraction, itinerary, invoice, message, summary, email
+  prompt: text('prompt').notNull(),
+  rawOutput: text('raw_output'),
+  structuredOutput: text('structured_output'), // JSON — parsed result
+  entityType: text('entity_type'), // lead, itinerary, invoice, contact, follow_up
+  entityId: text('entity_id'), // ID of created entity
+  status: text('status').default('draft'), // draft, accepted, rejected, applied
+  feedback: text('feedback'), // positive, negative, null
+  feedbackNotes: text('feedback_notes'),
+  modelUsed: text('model_used'),
+  inputTokens: integer('input_tokens').default(0),
+  outputTokens: integer('output_tokens').default(0),
+  costEstimate: real('cost_estimate').default(0),
+  durationMs: integer('duration_ms').default(0),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('ai_generated_content_conversation_id_idx').on(table.conversationId),
+  index('ai_generated_content_user_id_idx').on(table.userId),
+  index('ai_generated_content_content_type_idx').on(table.contentType),
+  index('ai_generated_content_entity_idx').on(table.entityType, table.entityId),
+  index('ai_generated_content_status_idx').on(table.status),
+  index('ai_generated_content_created_at_idx').on(table.createdAt),
+]);
+
+// ============================================================
+// AI NL QUERIES
+// ============================================================
+
+export const aiNlQueries = sqliteTable('ai_nl_queries', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  conversationId: text('conversation_id'),
+  query: text('query').notNull(), // natural language question
+  generatedSql: text('generated_sql'), // SQL generated by AI
+  queryResult: text('query_result'), // JSON result
+  aiNarrative: text('ai_narrative'), // AI's natural language answer
+  entityTypes: text('entity_types'), // JSON array of entity types queried
+  modelUsed: text('model_used'),
+  inputTokens: integer('input_tokens').default(0),
+  outputTokens: integer('output_tokens').default(0),
+  costEstimate: real('cost_estimate').default(0),
+  durationMs: integer('duration_ms').default(0),
+  status: text('status').default('completed'), // completed, error, refused
+  errorMessage: text('error_message'),
+  createdAt: text('created_at').default(timestamp),
+}, (table) => [
+  index('ai_nl_queries_user_id_idx').on(table.userId),
+  index('ai_nl_queries_conversation_id_idx').on(table.conversationId),
+  index('ai_nl_queries_created_at_idx').on(table.createdAt),
+]);
+
+// ============================================================
+// AI INSIGHTS & RECOMMENDATIONS
+// ============================================================
+
+export const aiInsights = sqliteTable('ai_insights', {
+  id: text('id').primaryKey(),
+  userId: text('user_id'), // null = company-wide
+  insightType: text('insight_type').notNull(), // customer_summary, trend, anomaly, prediction, briefing
+  entityType: text('entity_type'), // lead, contact, destination, team
+  entityId: text('entity_id'),
+  title: text('title').notNull(),
+  summary: text('summary').notNull(),
+  data: text('data'), // JSON structured insight data
+  confidence: real('confidence'), // 0.0 - 1.0
+  priority: text('priority').default('medium'), // low, medium, high, urgent
+  actionable: integer('actionable').default(0), // boolean
+  actionTaken: integer('action_taken').default(0), // boolean
+  dismissedAt: text('dismissed_at'),
+  expiresAt: text('expires_at'),
+  modelUsed: text('model_used'),
+  costEstimate: real('cost_estimate').default(0),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('ai_insights_user_id_idx').on(table.userId),
+  index('ai_insights_insight_type_idx').on(table.insightType),
+  index('ai_insights_entity_idx').on(table.entityType, table.entityId),
+  index('ai_insights_priority_idx').on(table.priority),
+  index('ai_insights_created_at_idx').on(table.createdAt),
+]);
+
+export const aiRecommendations = sqliteTable('ai_recommendations', {
+  id: text('id').primaryKey(),
+  userId: text('user_id'),
+  recommendationType: text('recommendation_type').notNull(), // upsell, re_engage, prioritize, pricing, channel, timing
+  entityType: text('entity_type'),
+  entityId: text('entity_id'),
+  title: text('title').notNull(),
+  description: text('description').notNull(),
+  reasoning: text('reasoning'), // AI reasoning
+  impactScore: real('impact_score'), // 0.0-1.0
+  confidenceScore: real('confidence_score'), // 0.0-1.0
+  actionUrl: text('action_url'), // deep link for action
+  status: text('status').default('active'), // active, dismissed, acted_on, expired
+  dismissedAt: text('dismissed_at'),
+  actedOnAt: text('acted_on_at'),
+  expiresAt: text('expires_at'),
+  modelUsed: text('model_used'),
+  costEstimate: real('cost_estimate').default(0),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('ai_recommendations_user_id_idx').on(table.userId),
+  index('ai_recommendations_type_idx').on(table.recommendationType),
+  index('ai_recommendations_entity_idx').on(table.entityType, table.entityId),
+  index('ai_recommendations_status_idx').on(table.status),
+  index('ai_recommendations_created_at_idx').on(table.createdAt),
+]);
+
+// ============================================================
+// AI LEAD SCORING
+// ============================================================
+
+export const aiLeadScores = sqliteTable('ai_lead_scores', {
+  id: text('id').primaryKey(),
+  leadId: text('lead_id').notNull(),
+  score: integer('score').notNull(), // 0-100
+  category: text('category').notNull(), // hot, warm, cold
+  signals: text('signals'), // JSON array of signal contributions
+  breakdown: text('breakdown'), // JSON { engagement: 25, budget: 20, ... }
+  previousScore: integer('previous_score'),
+  scoreChange: integer('score_change'),
+  triggerEvent: text('trigger_event'), // what caused recalculation
+  modelUsed: text('model_used'),
+  costEstimate: real('cost_estimate').default(0),
+  calculatedAt: text('calculated_at').default(timestamp),
+  createdAt: text('created_at').default(timestamp),
+}, (table) => [
+  index('ai_lead_scores_lead_id_idx').on(table.leadId),
+  index('ai_lead_scores_score_idx').on(table.score),
+  index('ai_lead_scores_category_idx').on(table.category),
+  index('ai_lead_scores_calculated_at_idx').on(table.calculatedAt),
+]);
+
+// ============================================================
+// AI DOCUMENT OCR
+// ============================================================
+
+export const aiDocumentScans = sqliteTable('ai_document_scans', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  documentType: text('document_type').notNull(), // passport, visa_document, supplier_invoice, business_card
+  imageUrl: text('image_url'), // R2 URL
+  extractedData: text('extracted_data'), // JSON structured extraction
+  confidence: real('confidence'), // 0.0-1.0
+  entityType: text('entity_type'), // traveller, contact, invoice
+  entityId: text('entity_id'), // linked entity if created
+  status: text('status').default('pending'), // pending, reviewed, applied, rejected
+  modelUsed: text('model_used'),
+  inputTokens: integer('input_tokens').default(0),
+  outputTokens: integer('output_tokens').default(0),
+  costEstimate: real('cost_estimate').default(0),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('ai_document_scans_user_id_idx').on(table.userId),
+  index('ai_document_scans_document_type_idx').on(table.documentType),
+  index('ai_document_scans_entity_idx').on(table.entityType, table.entityId),
+  index('ai_document_scans_status_idx').on(table.status),
+  index('ai_document_scans_created_at_idx').on(table.createdAt),
+]);
+
+// ============================================================
+// AI SMART FOLLOW-UPS
+// ============================================================
+
+export const aiFollowUpSuggestions = sqliteTable('ai_followup_suggestions', {
+  id: text('id').primaryKey(),
+  userId: text('user_id'),
+  leadId: text('lead_id'),
+  contactId: text('contact_id'),
+  suggestedChannel: text('suggested_channel'), // whatsapp, email, call
+  suggestedTiming: text('suggested_timing'), // ISO timestamp
+  timingReasoning: text('timing_reasoning'), // why this time
+  channelReasoning: text('channel_reasoning'), // why this channel
+  messageContent: text('message_content'), // AI-drafted message
+  escalationLevel: integer('escalation_level').default(0), // 0=normal, 1=urgent, 2=manager escalation
+  isWinBack: integer('is_win_back').default(0), // boolean
+  confidenceScore: real('confidence_score'),
+  status: text('status').default('pending'), // pending, sent, dismissed, expired
+  sentAt: text('sent_at'),
+  dismissedAt: text('dismissed_at'),
+  modelUsed: text('model_used'),
+  costEstimate: real('cost_estimate').default(0),
+  createdAt: text('created_at').default(timestamp),
+}, (table) => [
+  index('ai_followup_suggestions_user_id_idx').on(table.userId),
+  index('ai_followup_suggestions_lead_id_idx').on(table.leadId),
+  index('ai_followup_suggestions_contact_id_idx').on(table.contactId),
+  index('ai_followup_suggestions_status_idx').on(table.status),
+  index('ai_followup_suggestions_created_at_idx').on(table.createdAt),
+]);
+
+// ============================================================
+// CHATBOT (M25)
+// ============================================================
+
+export const chatbotConfig = sqliteTable('chatbot_config', {
+  id: text('id').primaryKey(),
+  channel: text('channel').notNull(), // website, whatsapp
+  enabled: integer('enabled').default(1), // boolean
+  greeting: text('greeting'),
+  businessHoursStart: text('business_hours_start'), // "09:00"
+  businessHoursEnd: text('business_hours_end'), // "18:00"
+  businessDays: text('business_days'), // JSON array [1,2,3,4,5]
+  afterHoursMessage: text('after_hours_message'),
+  qualificationQuestions: text('qualification_questions'), // JSON array
+  faqEntries: text('faq_entries'), // JSON array of { question, answer }
+  brandingColor: text('branding_color'),
+  brandingLogo: text('branding_logo'),
+  maxAutoReplies: integer('max_auto_replies').default(10),
+  handoffThreshold: integer('handoff_threshold').default(5), // after N messages, offer handoff
+  systemPrompt: text('system_prompt'), // custom instructions for AI
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('chatbot_config_channel_idx').on(table.channel),
+]);
+
+export const chatbotConversations = sqliteTable('chatbot_conversations', {
+  id: text('id').primaryKey(),
+  channel: text('channel').notNull(), // website, whatsapp
+  visitorId: text('visitor_id'), // cookie-based or phone number
+  visitorName: text('visitor_name'),
+  visitorEmail: text('visitor_email'),
+  visitorPhone: text('visitor_phone'),
+  language: text('language').default('en'),
+  messages: text('messages'), // JSON array of { role, content, timestamp }
+  status: text('status').default('active'), // active, handed_off, closed, qualified
+  assignedUserId: text('assigned_user_id'), // if handed off
+  leadId: text('lead_id'), // if lead was created
+  contactId: text('contact_id'), // if matched to existing contact
+  qualificationData: text('qualification_data'), // JSON extracted intent
+  sentiment: text('sentiment'), // positive, neutral, negative
+  messageCount: integer('message_count').default(0),
+  botMessageCount: integer('bot_message_count').default(0),
+  humanMessageCount: integer('human_message_count').default(0),
+  totalTokens: integer('total_tokens').default(0),
+  totalCost: real('total_cost').default(0),
+  lastMessageAt: text('last_message_at'),
+  closedAt: text('closed_at'),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('chatbot_conversations_channel_idx').on(table.channel),
+  index('chatbot_conversations_visitor_id_idx').on(table.visitorId),
+  index('chatbot_conversations_status_idx').on(table.status),
+  index('chatbot_conversations_assigned_user_idx').on(table.assignedUserId),
+  index('chatbot_conversations_lead_id_idx').on(table.leadId),
+  index('chatbot_conversations_created_at_idx').on(table.createdAt),
+]);
+
+// ============================================================
+// AI BUSINESS INTELLIGENCE (M26)
+// ============================================================
+
+export const aiBriefings = sqliteTable('ai_briefings', {
+  id: text('id').primaryKey(),
+  userId: text('user_id'), // null = company-wide
+  briefingType: text('briefing_type').notNull(), // daily, weekly, monthly
+  title: text('title').notNull(),
+  content: text('content').notNull(), // JSON: sections array
+  metrics: text('metrics'), // JSON: key metric values
+  highlights: text('highlights'), // JSON: notable items
+  period: text('period').notNull(), // e.g. "2026-02-28" or "2026-W09" or "2026-02"
+  delivered: integer('delivered').default(0),
+  deliveredVia: text('delivered_via'), // push, email, in_app
+  readAt: text('read_at'),
+  modelUsed: text('model_used'),
+  costEstimate: real('cost_estimate').default(0),
+  createdAt: text('created_at').default(timestamp),
+}, (table) => [
+  index('ai_briefings_user_id_idx').on(table.userId),
+  index('ai_briefings_type_idx').on(table.briefingType),
+  index('ai_briefings_period_idx').on(table.period),
+  index('ai_briefings_created_at_idx').on(table.createdAt),
+]);
+
+export const aiBusinessHealthScores = sqliteTable('ai_business_health_scores', {
+  id: text('id').primaryKey(),
+  overallScore: integer('overall_score').notNull(), // 0-100
+  revenueScore: integer('revenue_score'),
+  pipelineScore: integer('pipeline_score'),
+  customerScore: integer('customer_score'),
+  teamScore: integer('team_score'),
+  operationsScore: integer('operations_score'),
+  breakdown: text('breakdown'), // JSON: detailed scoring
+  trends: text('trends'), // JSON: score changes
+  alerts: text('alerts'), // JSON: critical items
+  recommendations: text('recommendations'), // JSON: top recommendations
+  previousScore: integer('previous_score'),
+  scoreChange: integer('score_change'),
+  modelUsed: text('model_used'),
+  costEstimate: real('cost_estimate').default(0),
+  calculatedAt: text('calculated_at').default(timestamp),
+  createdAt: text('created_at').default(timestamp),
+}, (table) => [
+  index('ai_health_scores_calculated_at_idx').on(table.calculatedAt),
+  index('ai_health_scores_overall_idx').on(table.overallScore),
+]);
+
+export const aiCustomerSegments = sqliteTable('ai_customer_segments', {
+  id: text('id').primaryKey(),
+  contactId: text('contact_id').notNull(),
+  segment: text('segment').notNull(), // vip, high_potential, churn_risk, seasonal, dormant, new
+  confidence: real('confidence'), // 0.0-1.0
+  signals: text('signals'), // JSON: factors contributing
+  lifetimeValue: real('lifetime_value'),
+  churnRisk: real('churn_risk'), // 0.0-1.0
+  nextTripPrediction: text('next_trip_prediction'), // predicted next booking date
+  preferredDestinations: text('preferred_destinations'), // JSON: top destinations
+  preferredChannel: text('preferred_channel'), // whatsapp, email, call
+  lastCalculatedAt: text('last_calculated_at'),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('ai_customer_segments_contact_id_idx').on(table.contactId),
+  index('ai_customer_segments_segment_idx').on(table.segment),
+  index('ai_customer_segments_churn_risk_idx').on(table.churnRisk),
+]);
+
+// ============================================================
+// WHATSAPP CAMPAIGNS (M25)
+// ============================================================
+
+export const whatsappCampaigns = sqliteTable('whatsapp_campaigns', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  status: text('status').notNull().default('draft'), // draft, scheduled, sending, sent, paused, cancelled
+  templateName: text('template_name'),
+  templateContent: text('template_content').notNull(),
+  templateVariables: text('template_variables'), // JSON
+  audienceFilter: text('audience_filter'), // JSON
+  totalRecipients: integer('total_recipients').default(0),
+  sentCount: integer('sent_count').default(0),
+  deliveredCount: integer('delivered_count').default(0),
+  readCount: integer('read_count').default(0),
+  failedCount: integer('failed_count').default(0),
+  optedOutCount: integer('opted_out_count').default(0),
+  scheduledAt: text('scheduled_at'),
+  startedAt: text('started_at'),
+  completedAt: text('completed_at'),
+  createdBy: text('created_by').references(() => users.id),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('whatsapp_campaigns_status_idx').on(table.status),
+  index('whatsapp_campaigns_created_by_idx').on(table.createdBy),
+  index('whatsapp_campaigns_created_at_idx').on(table.createdAt),
+]);
+
+export const whatsappCampaignRecipients = sqliteTable('whatsapp_campaign_recipients', {
+  id: text('id').primaryKey(),
+  campaignId: text('campaign_id').notNull().references(() => whatsappCampaigns.id, { onDelete: 'cascade' }),
+  contactId: text('contact_id').references(() => contacts.id),
+  phone: text('phone').notNull(),
+  name: text('name'),
+  status: text('status').notNull().default('pending'), // pending, sent, delivered, read, failed, opted_out
+  providerMessageId: text('provider_message_id'),
+  errorMessage: text('error_message'),
+  sentAt: text('sent_at'),
+  deliveredAt: text('delivered_at'),
+  readAt: text('read_at'),
+  createdAt: text('created_at').default(timestamp),
+}, (table) => [
+  index('wa_recipients_campaign_idx').on(table.campaignId),
+  index('wa_recipients_status_idx').on(table.status),
+  index('wa_recipients_phone_idx').on(table.phone),
+]);
+
+// ============================================================
+// AI SOCIAL CONTENT & MARKETING SUGGESTIONS (M26)
+// ============================================================
+
+export const aiSocialContent = sqliteTable('ai_social_content', {
+  id: text('id').primaryKey(),
+  contentType: text('content_type').notNull(), // instagram_post, facebook_post, linkedin_post, twitter_post, blog_outline
+  platform: text('platform').notNull(), // instagram, facebook, linkedin, twitter, blog
+  topic: text('topic').notNull(),
+  prompt: text('prompt'),
+  generatedText: text('generated_text').notNull(),
+  hashtags: text('hashtags'), // JSON array
+  mediaSuggestions: text('media_suggestions'), // JSON array
+  cta: text('cta'),
+  tone: text('tone').default('professional'),
+  language: text('language').default('en'),
+  status: text('status').default('draft'), // draft, approved, published, archived
+  modelUsed: text('model_used'),
+  tokensUsed: integer('tokens_used').default(0),
+  costEstimate: real('cost_estimate').default(0),
+  createdBy: text('created_by').references(() => users.id),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('ai_social_content_platform_idx').on(table.platform),
+  index('ai_social_content_status_idx').on(table.status),
+  index('ai_social_content_created_by_idx').on(table.createdBy),
+  index('ai_social_content_created_at_idx').on(table.createdAt),
+]);
+
+export const aiMarketingSuggestions = sqliteTable('ai_marketing_suggestions', {
+  id: text('id').primaryKey(),
+  suggestionType: text('suggestion_type').notNull(), // campaign_idea, content_calendar, trending_topic, seasonal_offer, reengagement
+  title: text('title').notNull(),
+  description: text('description').notNull(),
+  details: text('details'), // JSON
+  priority: text('priority').default('medium'), // low, medium, high, urgent
+  status: text('status').default('pending'), // pending, accepted, dismissed
+  targetSegment: text('target_segment'),
+  estimatedImpact: text('estimated_impact'),
+  basis: text('basis'),
+  modelUsed: text('model_used'),
+  tokensUsed: integer('tokens_used').default(0),
+  costEstimate: real('cost_estimate').default(0),
+  createdBy: text('created_by').references(() => users.id),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('ai_mkt_suggestions_type_idx').on(table.suggestionType),
+  index('ai_mkt_suggestions_status_idx').on(table.status),
+  index('ai_mkt_suggestions_priority_idx').on(table.priority),
 ]);
 

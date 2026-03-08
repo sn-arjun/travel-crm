@@ -1,21 +1,88 @@
-# TravelCRM Pro — Terraform Variables
-# Copy this file to terraform.tfvars and fill in your values
-# NEVER commit terraform.tfvars to git (it's in .gitignore)
+# TravelCRM Pro — Single Source of Truth for ALL Configuration
+# Copy this file to terraform.tfvars and fill in your values.
+# NEVER commit terraform.tfvars to git (it's in .gitignore).
+#
+# After filling in values:
+#   cd terraform && terraform init && terraform apply
+#   cd .. && npm run infra:sync   # generates .dev.vars + wrangler IDs
+#   npm run secrets:push           # pushes secrets to Cloudflare Workers
 
-# Project
+# ─── Project ─────────────────────────────────────────────────
+
 project_name = "travelcrm"
 domain       = "yourdomain.com"
+environment  = "production"
 
-# Oracle Cloud
+# ─── Oracle Cloud (Always Free ARM) ─────────────────────────
+
 oci_tenancy_ocid     = "ocid1.tenancy.oc1..aaaa..."
 oci_user_ocid        = "ocid1.user.oc1..aaaa..."
 oci_fingerprint      = "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"
 oci_private_key      = "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
 oci_compartment_ocid = "ocid1.compartment.oc1..aaaa..."
 oci_region           = "ap-mumbai-1"
-oci_image_id         = "ocid1.image.oc1.ap-mumbai-1..aaaa..."  # Ubuntu 22.04 ARM
+oci_image_id         = "ocid1.image.oc1.ap-mumbai-1..aaaa..."
 ssh_public_key       = "ssh-rsa AAAA... your-key"
 
-# Cloudflare
+# ─── Cloudflare ──────────────────────────────────────────────
+
 cloudflare_account_id = "your-account-id"
 cloudflare_api_token  = "your-api-token"
+
+# ─── Application Secrets ────────────────────────────────────
+
+jwt_secret         = "change-this-min-32-chars-production-secret"
+jwt_refresh_secret = "change-this-min-32-chars-refresh-secret"
+app_url            = "https://yourdomain.com"
+
+# ─── Twilio (SMS + WhatsApp + Voice + OTP) ──────────────────
+# Sign up: https://console.twilio.com
+# Cost: ~$0.013/min outbound voice, ~$1/mo per number, $0.0079/SMS
+
+twilio_account_sid          = "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+twilio_auth_token           = "your-twilio-auth-token"
+twilio_verify_service_sid   = "VAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+twilio_sms_from_number      = "+1234567890"
+twilio_whatsapp_from_number = "whatsapp:+14155238886"
+
+# ─── Plivo (Alternative VoIP — 78% cheaper for India) ────────
+# Sign up: https://console.plivo.com ($0.0074/min India local, INR 250/mo per number)
+# Use this instead of Twilio for lower costs. Set voip_provider = 'plivo' in VoIP settings.
+
+plivo_auth_id               = ""
+plivo_auth_token            = ""
+plivo_sms_from_number       = ""
+plivo_whatsapp_from_number  = ""
+
+# ─── SendGrid (Email) ───────────────────────────────────────
+# Sign up: https://sendgrid.com (100 emails/day free)
+
+sendgrid_api_key    = "SG.xxxxxxxxxxxxxxxxxxxx"
+sendgrid_from_email = "noreply@yourdomain.com"
+
+# ─── Firebase (Push Notifications) ──────────────────────────
+# Console: https://console.firebase.google.com
+
+fcm_server_key = "your-fcm-server-key"
+
+# ─── Deepgram (Audio Transcription) ─────────────────────────
+# Sign up: https://console.deepgram.com ($200 free credit)
+# Cost: Nova-2 $0.0043/min
+
+deepgram_api_key = "your-deepgram-api-key"
+
+# ─── Anthropic Claude (AI) ──────────────────────────────────
+# Sign up: https://console.anthropic.com
+# Cost: Haiku $0.25/MTok input, $1.25/MTok output
+
+anthropic_api_key = "sk-ant-xxxxxxxxxxxxx"
+
+# ─── Google Maps (Optional) ─────────────────────────────────
+# Console: https://console.cloud.google.com/apis
+
+google_maps_api_key = ""
+
+# ─── Super Admin Portal ────────────────────────────────────
+
+super_admin_email    = "admin@yourdomain.com"
+super_admin_password = "YourSecurePassword123!"

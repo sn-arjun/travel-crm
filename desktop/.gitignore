@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# Electron
+electron/dist/
+release/
+
+# Build
+dist/
+
+# Storybook
+storybook-static/
+
+# Testing
+coverage/
+playwright-report/
+
+# Environment
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.log
+*.tsbuildinfo
+next-env.d.ts
+e2e/.auth/

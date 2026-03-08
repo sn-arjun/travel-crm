@@ -84,7 +84,7 @@ dead_letter_queue = "travelcrm-import-dlq"
 [[queues.consumers]]
 queue = "travelcrm-export-queue"
 max_batch_size = 1
-max_batch_timeout = 60
+max_batch_timeout = 30
 max_retries = 3
 dead_letter_queue = "travelcrm-export-dlq"
 

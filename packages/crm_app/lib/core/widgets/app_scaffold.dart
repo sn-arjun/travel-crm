@@ -42,6 +42,9 @@ const List<SidebarMenuItem> kMenuItems = [
   SidebarMenuItem(label: 'Tasks', icon: Icons.task_alt_outlined, route: '/tasks'),
   SidebarMenuItem(label: 'Reports', icon: Icons.bar_chart_outlined, route: '/reports', roles: ['admin', 'sales_manager']),
   SidebarMenuItem(label: 'Marketing', icon: Icons.campaign_outlined, route: '/marketing', roles: ['admin', 'sales_manager']),
+  SidebarMenuItem(label: 'Calls', icon: Icons.phone_outlined, route: '/calls'),
+  SidebarMenuItem(label: 'AI Assistant', icon: Icons.auto_awesome_outlined, route: '/ai'),
+  SidebarMenuItem(label: 'Chatbot', icon: Icons.smart_toy_outlined, route: '/chatbot'),
   SidebarMenuItem(label: 'Fleet', icon: Icons.directions_car_outlined, route: '/fleet', roles: ['admin']),
   SidebarMenuItem(label: 'Settings', icon: Icons.settings_outlined, route: '/settings'),
 ];

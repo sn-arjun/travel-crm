@@ -1,0 +1,122 @@
+src/index.ts(39,30): error TS2307: Cannot find module './routes/departments' or its corresponding type declarations.
+src/index.ts(40,27): error TS2307: Cannot find module './routes/profile' or its corresponding type declarations.
+src/index.ts(41,26): error TS2307: Cannot find module './routes/branches' or its corresponding type declarations.
+src/index.ts(42,32): error TS2307: Cannot find module './routes/lead-activities' or its corresponding type declarations.
+src/index.ts(43,29): error TS2307: Cannot find module './routes/dashboard' or its corresponding type declarations.
+src/index.ts(44,30): error TS2307: Cannot find module './routes/email-inbox' or its corresponding type declarations.
+src/index.ts(45,27): error TS2307: Cannot find module './routes/vehicles' or its corresponding type declarations.
+src/routes/communications.ts(202,48): error TS2345: Argument of type 'DrizzleD1Database<Record<string, never>> & { $client: D1Database; }' is not assignable to parameter of type 'D1Database'.
+  Type 'DrizzleD1Database<Record<string, never>> & { $client: D1Database; }' is missing the following properties from type 'D1Database': prepare, exec, withSession, dump
+src/routes/communications.ts(465,50): error TS2345: Argument of type 'DrizzleD1Database<Record<string, never>> & { $client: D1Database; }' is not assignable to parameter of type 'D1Database'.
+  Type 'DrizzleD1Database<Record<string, never>> & { $client: D1Database; }' is missing the following properties from type 'D1Database': prepare, exec, withSession, dump
+src/routes/credit-notes.ts(165,41): error TS2554: Expected 2 arguments, but got 5.
+src/routes/credit-notes.ts(318,41): error TS2554: Expected 2 arguments, but got 5.
+src/routes/credit-notes.ts(444,41): error TS2554: Expected 2 arguments, but got 5.
+src/routes/credit-notes.ts(591,41): error TS2554: Expected 2 arguments, but got 5.
+src/routes/follow-ups.ts(94,22): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(key: "userId" | "tenantId" | "role" | "clientIp" | "tenantDb" | "userName" | "jwtPayload"): string | TokenPayload | D1Database', gave the following error.
+    Argument of type '"userRole"' is not assignable to parameter of type '"userId" | "tenantId" | "role" | "clientIp" | "tenantDb" | "userName" | "jwtPayload"'.
+  Overload 2 of 2, '(key: "secureHeadersNonce"): string | undefined', gave the following error.
+    Argument of type '"userRole"' is not assignable to parameter of type '"secureHeadersNonce"'.
+src/routes/follow-ups.ts(99,72): error TS2345: Argument of type 'string | TokenPayload | D1Database' is not assignable to parameter of type 'string'.
+  Type 'TokenPayload' is not assignable to type 'string'.
+src/routes/follow-ups.ts(144,32): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(value: { id: string | SQL<unknown> | Placeholder<string, any>; type: string | SQL<unknown> | Placeholder<string, any>; leadId: string | SQL<unknown> | Placeholder<string, any>; ... 6 more ...; completedAt?: string | ... 3 more ... | undefined; }): SQLiteInsertBase<...>', gave the following error.
+    Object literal may only specify known properties, and 'updatedAt' does not exist in type '{ id: string | SQL<unknown> | Placeholder<string, any>; type: string | SQL<unknown> | Placeholder<string, any>; leadId: string | SQL<unknown> | Placeholder<string, any>; ... 6 more ...; completedAt?: string | ... 3 more ... | undefined; }'.
+  Overload 2 of 2, '(values: { id: string | SQL<unknown> | Placeholder<string, any>; type: string | SQL<unknown> | Placeholder<string, any>; leadId: string | SQL<unknown> | Placeholder<string, any>; ... 6 more ...; completedAt?: string | ... 3 more ... | undefined; }[]): SQLiteInsertBase<...>', gave the following error.
+    Object literal may only specify known properties, and 'id' does not exist in type '{ id: string | SQL<unknown> | Placeholder<string, any>; type: string | SQL<unknown> | Placeholder<string, any>; leadId: string | SQL<unknown> | Placeholder<string, any>; ... 6 more ...; completedAt?: string | ... 3 more ... | undefined; }[]'.
+src/routes/follow-ups.ts(188,24): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(key: "userId" | "tenantId" | "role" | "clientIp" | "tenantDb" | "userName" | "jwtPayload"): string | TokenPayload | D1Database', gave the following error.
+    Argument of type '"userRole"' is not assignable to parameter of type '"userId" | "tenantId" | "role" | "clientIp" | "tenantDb" | "userName" | "jwtPayload"'.
+  Overload 2 of 2, '(key: "secureHeadersNonce"): string | undefined', gave the following error.
+    Argument of type '"userRole"' is not assignable to parameter of type '"secureHeadersNonce"'.
+src/routes/follow-ups.ts(194,47): error TS2353: Object literal may only specify known properties, and 'updatedAt' does not exist in type '{ id?: string | SQL<unknown> | SQLiteColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}> | undefined; type?: string | SQL<...> | SQLiteColumn<...> | undefined; ... 7 more ...; completedAt?: string | ... 3 more ... | undefined; }'.
+src/routes/follow-ups.ts(238,7): error TS2353: Object literal may only specify known properties, and 'outcomeNotes' does not exist in type '{ id?: string | SQL<unknown> | SQLiteColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}> | undefined; type?: string | SQL<...> | SQLiteColumn<...> | undefined; ... 7 more ...; completedAt?: string | ... 3 more ... | undefined; }'.
+src/routes/follow-ups.ts(274,22): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(key: "userId" | "tenantId" | "role" | "clientIp" | "tenantDb" | "userName" | "jwtPayload"): string | TokenPayload | D1Database', gave the following error.
+    Argument of type '"userRole"' is not assignable to parameter of type '"userId" | "tenantId" | "role" | "clientIp" | "tenantDb" | "userName" | "jwtPayload"'.
+  Overload 2 of 2, '(key: "secureHeadersNonce"): string | undefined', gave the following error.
+    Argument of type '"userRole"' is not assignable to parameter of type '"secureHeadersNonce"'.
+src/routes/invoices.ts(279,41): error TS2554: Expected 2 arguments, but got 5.
+src/routes/invoices.ts(480,41): error TS2554: Expected 2 arguments, but got 5.
+src/routes/invoices.ts(521,41): error TS2554: Expected 2 arguments, but got 5.
+src/routes/invoices.ts(562,41): error TS2554: Expected 2 arguments, but got 5.
+src/routes/invoices.ts(691,41): error TS2554: Expected 2 arguments, but got 5.
+src/routes/leads.ts(146,28): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(key: never): never', gave the following error.
+    Argument of type '"tenantId"' is not assignable to parameter of type 'never'.
+  Overload 2 of 2, '(key: "secureHeadersNonce"): string | undefined', gave the following error.
+    Argument of type '"tenantId"' is not assignable to parameter of type '"secureHeadersNonce"'.
+src/routes/leads.ts(147,20): error TS18048: 'c.env' is possibly 'undefined'.
+src/routes/leads.ts(147,26): error TS2339: Property 'REALTIME' does not exist on type 'object'.
+src/routes/leads.ts(148,18): error TS18048: 'c.env' is possibly 'undefined'.
+src/routes/leads.ts(148,24): error TS2339: Property 'REALTIME' does not exist on type 'object'.
+src/routes/leads.ts(188,11): error TS18048: 'c.env' is possibly 'undefined'.
+src/routes/leads.ts(188,17): error TS2339: Property 'PUSH_NOTIFICATION_QUEUE' does not exist on type 'object'.
+src/routes/leads.ts(597,24): error TS2345: Argument of type 'Context<AppContext, "/", DefaultInput<"json", { contactId: string; title: string; destinations: string[]; travelDate: string; tripType: "domestic" | "international" | "honeymoon" | "family" | "group" | "corporate" | "adventure" | "pilgrimage"; ... 14 more ...; specialRequirements?: string | ... 1 more ... | undefine...' is not assignable to parameter of type 'Context<Env, string, {}>'.
+  Types of property 'set' are incompatible.
+    Type 'Set<AppContext>' is not assignable to type 'Set<Env>'.
+      Type 'Env' is not assignable to type 'AppContext'.
+        Types of property 'Bindings' are incompatible.
+          Type 'object | undefined' is not assignable to type 'Env'.
+            Type 'undefined' is not assignable to type 'Env'.
+src/routes/leads.ts(601,30): error TS2345: Argument of type 'Context<AppContext, "/", DefaultInput<"json", { contactId: string; title: string; destinations: string[]; travelDate: string; tripType: "domestic" | "international" | "honeymoon" | "family" | "group" | "corporate" | "adventure" | "pilgrimage"; ... 14 more ...; specialRequirements?: string | ... 1 more ... | undefine...' is not assignable to parameter of type 'Context<Env, string, {}>'.
+  Types of property 'set' are incompatible.
+    Type 'Set<AppContext>' is not assignable to type 'Set<Env>'.
+      Type 'Env' is not assignable to type 'AppContext'.
+        Types of property 'Bindings' are incompatible.
+          Type 'object | undefined' is not assignable to type 'Env'.
+            Type 'undefined' is not assignable to type 'Env'.
+src/routes/leads.ts(776,30): error TS2345: Argument of type 'Context<AppContext, "/:id/status", DefaultInput<"json", { status: "new" | "completed" | "contacted" | "requirement_gathered" | "proposal_sent" | "negotiation" | "booking_confirmed" | "lost"; lostReason?: string | ... 1 more ... | undefined; notes?: string | ... 1 more ... | undefined; }, { ...; }>>' is not assignable to parameter of type 'Context<Env, string, {}>'.
+  Types of property 'set' are incompatible.
+    Type 'Set<AppContext>' is not assignable to type 'Set<Env>'.
+      Type 'Env' is not assignable to type 'AppContext'.
+        Types of property 'Bindings' are incompatible.
+          Type 'object | undefined' is not assignable to type 'Env'.
+            Type 'undefined' is not assignable to type 'Env'.
+src/routes/leads.ts(854,22): error TS2345: Argument of type 'Context<AppContext, "/:id/assign", DefaultInput<"json", { assignedTo: string; notes?: string | undefined; }, { assignedTo: string; notes?: string | undefined; }>>' is not assignable to parameter of type 'Context<Env, string, {}>'.
+  Types of property 'set' are incompatible.
+    Type 'Set<AppContext>' is not assignable to type 'Set<Env>'.
+      Type 'Env' is not assignable to type 'AppContext'.
+        Types of property 'Bindings' are incompatible.
+          Type 'object | undefined' is not assignable to type 'Env'.
+            Type 'undefined' is not assignable to type 'Env'.
+src/routes/leads.ts(857,30): error TS2345: Argument of type 'Context<AppContext, "/:id/assign", DefaultInput<"json", { assignedTo: string; notes?: string | undefined; }, { assignedTo: string; notes?: string | undefined; }>>' is not assignable to parameter of type 'Context<Env, string, {}>'.
+  Types of property 'set' are incompatible.
+    Type 'Set<AppContext>' is not assignable to type 'Set<Env>'.
+      Type 'Env' is not assignable to type 'AppContext'.
+        Types of property 'Bindings' are incompatible.
+          Type 'object | undefined' is not assignable to type 'Env'.
+            Type 'undefined' is not assignable to type 'Env'.
+src/routes/payments.ts(130,41): error TS2554: Expected 2 arguments, but got 5.
+src/routes/payments.ts(338,41): error TS2554: Expected 2 arguments, but got 5.
+src/routes/payments.ts(433,41): error TS2554: Expected 2 arguments, but got 5.
+src/routes/reports.ts(2,10): error TS2305: Module '"../middleware/auth"' has no exported member 'requireAuth'.
+src/routes/reports.ts(15,32): error TS2339: Property 'getAvailableReports' does not exist on type 'ReportEngine'.
+src/routes/reports.ts(16,17): error TS2554: Expected 2-3 arguments, but got 1.
+src/routes/reports.ts(39,39): error TS2339: Property 'executeReport' does not exist on type 'ReportEngine'.
+src/routes/reports.ts(50,19): error TS2554: Expected 2-3 arguments, but got 1.
+src/routes/reports.ts(55,19): error TS2554: Expected 2-4 arguments, but got 1.
+src/routes/reports.ts(80,39): error TS2339: Property 'executeReport' does not exist on type 'ReportEngine'.
+src/routes/reports.ts(91,36): error TS2339: Property 'getAvailableReports' does not exist on type 'ReportEngine'.
+src/routes/reports.ts(91,63): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/routes/reports.ts(98,21): error TS2769: No overload matches this call.
+  The last overload gave the following error.
+    Argument of type 'Buffer<ArrayBufferLike>' is not assignable to parameter of type 'null'.
+src/routes/reports.ts(103,21): error TS2769: No overload matches this call.
+  The last overload gave the following error.
+    Argument of type 'Buffer<ArrayBufferLike>' is not assignable to parameter of type 'null'.
+src/routes/reports.ts(105,21): error TS2554: Expected 2-4 arguments, but got 1.
+src/routes/reports.ts(108,19): error TS2554: Expected 2-4 arguments, but got 1.
+src/services/follow-up-reminders.ts(28,25): error TS2352: Conversion of type 'Env' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'Env'.
+src/validators/supplier.ts(25,63): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(def: number): ZodDefault<ZodPipe<ZodString, ZodTransform<number, string>>>', gave the following error.
+    Argument of type 'string' is not assignable to parameter of type 'number'.
+  Overload 2 of 2, '(def: () => number): ZodDefault<ZodPipe<ZodString, ZodTransform<number, string>>>', gave the following error.
+    Argument of type 'string' is not assignable to parameter of type '() => number'.
+src/validators/supplier.ts(26,64): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(def: number): ZodDefault<ZodPipe<ZodString, ZodTransform<number, string>>>', gave the following error.
+    Argument of type 'string' is not assignable to parameter of type 'number'.
+  Overload 2 of 2, '(def: () => number): ZodDefault<ZodPipe<ZodString, ZodTransform<number, string>>>', gave the following error.
+    Argument of type 'string' is not assignable to parameter of type '() => number'.

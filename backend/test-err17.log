@@ -1,0 +1,99 @@
+
+ RUN  v2.1.8 C:/Users/Admin/Downloads/pro/CRM/backend
+
+Using vars defined in .dev.vars
+[vpw:inf] Starting isolated runtimes for vitest.config.ts...
+[mf:wrn] The latest compatibility date supported by the installed Cloudflare Workers Runtime is "2024-10-18",
+but you've requested "2026-02-20". Falling back to "2024-10-18"...
+stdout | test/api.test.ts > API Integration Tests
+<-- POST /api/v1/test/reset
+
+stderr | test/api.test.ts > API Integration Tests
+Error deleting from activities: Failed query: DELETE FROM activities
+params: 
+Error deleting from hotel_voucher_details: Failed query: DELETE FROM hotel_voucher_details
+params: 
+Error deleting from transport_voucher_details: Failed query: DELETE FROM transport_voucher_details
+params: 
+Error deleting from flight_voucher_details: Failed query: DELETE FROM flight_voucher_details
+params: 
+Error deleting from activity_voucher_details: Failed query: DELETE FROM activity_voucher_details
+params: 
+Error deleting from reconciliations: Failed query: DELETE FROM reconciliations
+params: 
+Error deleting from supplier_ledger: Failed query: DELETE FROM supplier_ledger
+params: 
+Error deleting from supplier_documents: Failed query: DELETE FROM supplier_documents
+params: 
+Error deleting from visa_documents: Failed query: DELETE FROM visa_documents
+params: 
+Error deleting from visa_notes: Failed query: DELETE FROM visa_notes
+params: 
+Error deleting from traveller_documents: Failed query: DELETE FROM traveller_documents
+params: 
+Error deleting from expiry_alerts_log: Failed query: DELETE FROM expiry_alerts_log
+params: 
+
+stdout | test/api.test.ts > API Integration Tests
+--> POST /api/v1/test/reset [32m200[0m 238ms
+
+stdout | test/api.test.ts > API Integration Tests > Authentication API > Should login test admin user
+<-- POST /api/v1/auth/login
+--> POST /api/v1/auth/login [33m400[0m 3ms
+
+stdout | test/api.test.ts > API Integration Tests > Authentication API > Should reject invalid credentials
+<-- POST /api/v1/auth/login
+--> POST /api/v1/auth/login [33m400[0m 1ms
+
+ ❯ test/api.test.ts (2 tests | 2 failed) 468ms
+   × API Integration Tests > Authentication API > Should login test admin user 11ms
+     → expected 400 to be 200 // Object.is equality
+   × API Integration Tests > Authentication API > Should reject invalid credentials 6ms
+     → expected 400 to be 401 // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/api.test.ts > API Integration Tests > Authentication API > Should login test admin user
+AssertionError: expected 400 to be 200 // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 200[39m
+[31m+ 400[39m
+
+ ❯ test/api.test.ts:35:48
+     34|                     email: 'admin@e2e.test',
+     35|                     password: 'password123'
+     36|                 }),
+       |   ^
+     37|             });
+     38| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  test/api.test.ts > API Integration Tests > Authentication API > Should reject invalid credentials
+AssertionError: expected 400 to be 401 // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 401[39m
+[31m+ 400[39m
+
+ ❯ test/api.test.ts:52:48
+     50|             const loginReq = new Request('http://localhost/api/v1/auth…
+     51|                 method: 'POST',
+     52|                 headers: { 'Content-Type': 'application/json' },
+       |                                                ^
+     53|                 body: JSON.stringify({
+     54|                     email: 'admin@e2e.test',
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+ Test Files  1 failed (1)
+      Tests  2 failed (2)
+   Start at  01:43:01
+   Duration  4.77s (transform 670ms, setup 0ms, collect 2.24s, tests 468ms, environment 0ms, prepare 605ms)
+
+[vpw:dbg] Shutting down runtimes...

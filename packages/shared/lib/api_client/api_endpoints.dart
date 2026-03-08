@@ -265,6 +265,21 @@ class ApiEndpoints {
   static const String files = '$_base/files';
   static const String fileUpload = '$_base/files/upload';
 
+  // Bookmarks
+  static const String bookmarks = '$_base/bookmarks';
+  static const String bookmarkCheck = '$_base/bookmarks/check';
+  static String bookmark(String id) => '$_base/bookmarks/$id';
+
+  // Sticky Notes
+  static const String stickyNotes = '$_base/sticky-notes';
+  static String stickyNote(String id) => '$_base/sticky-notes/$id';
+
+  // Documents
+  static const String documents = '$_base/documents';
+  static const String documentUpload = '$_base/documents/upload';
+  static String document(String id) => '$_base/documents/$id';
+  static String documentDownload(String id) => '$_base/documents/$id/download';
+
   // Notifications
   static const String notifications = '$_base/notifications';
   static const String notificationsReadAll = '$_base/notifications/read-all';
@@ -319,6 +334,150 @@ class ApiEndpoints {
   static const String marketingOptOut = '$_base/marketing/opt-out';
   static String marketingOptOutContact(String contactId) => '$_base/marketing/opt-out/$contactId';
   static String marketingOptInContact(String contactId) => '$_base/marketing/opt-out/$contactId/opt-in';
+
+  // ── VoIP ──────────────────────────────────────────────────
+  static const String voipSettings = '$_base/voip/settings';
+  static const String voipTestConnection = '$_base/voip/test-connection';
+  static const String voipToken = '$_base/voip/token';
+  static const String voipCallerInfo = '$_base/voip/caller-info';
+  static const String voipNumbers = '$_base/voip/numbers';
+  static const String voipNumbersSearch = '$_base/voip/numbers/search';
+  static const String voipNumbersPurchase = '$_base/voip/numbers/purchase';
+  static String voipNumber(String id) => '$_base/voip/numbers/$id';
+
+  // ── Calls ────────────────────────────────────────────────
+  static const String calls = '$_base/calls';
+  static String call(String id) => '$_base/calls/$id';
+  static const String callOutbound = '$_base/calls/outbound';
+  static String callTransfer(String id) => '$_base/calls/$id/transfer';
+  static String callEnd(String id) => '$_base/calls/$id/end';
+  static const String callAnalytics = '$_base/calls/analytics';
+  static const String callMissed = '$_base/calls/missed';
+  static String callMissedMarkReturned(String id) => '$_base/calls/missed/$id/mark-returned';
+  static String callActions(String id) => '$_base/calls/$id/actions';
+
+  // ── Transcripts ──────────────────────────────────────────────
+  static const String transcripts = '$_base/transcripts';
+  static String transcript(String callLogId) => '$_base/transcripts/$callLogId';
+
+  // ── AI Extractions ──────────────────────────────────────────
+  static const String aiExtractions = '$_base/ai/extractions';
+  static const String aiExtractionsPendingCount = '$_base/ai/extractions/pending-count';
+  static String aiExtraction(String id) => '$_base/ai/extractions/$id';
+  static String aiExtractionConfirm(String id) => '$_base/ai/extractions/$id/confirm';
+  static String aiExtractionReject(String id) => '$_base/ai/extractions/$id/reject';
+  static const String aiUsageSummary = '$_base/ai/extractions/usage/summary';
+  static String aiExtractionCreateItinerary(String id) => '$_base/ai/extractions/$id/create-itinerary';
+  static String aiExtractionCreateInvoice(String id) => '$_base/ai/extractions/$id/create-invoice';
+  static String aiExtractionScheduleFollowup(String id) => '$_base/ai/extractions/$id/schedule-followup';
+
+  // ── AI Assistant ──────────────────────────────────────────
+  static const String aiConversations = '$_base/ai/conversations';
+  static String aiConversation(String id) => '$_base/ai/conversations/$id';
+  static const String aiExtractLead = '$_base/ai/extract-lead';
+  static const String aiParseWhatsapp = '$_base/ai/parse-whatsapp';
+  static const String aiParseEmail = '$_base/ai/parse-email';
+  static const String aiScanBusinessCard = '$_base/ai/scan-business-card';
+  static const String aiParseBulkLeads = '$_base/ai/parse-bulk-leads';
+  static const String aiGenerateItinerary = '$_base/ai/generate-itinerary';
+  static const String aiEnrichItinerary = '$_base/ai/enrich-itinerary';
+  static const String aiGenerateInvoice = '$_base/ai/generate-invoice';
+  static const String aiComposeMessage = '$_base/ai/compose-message';
+  static const String aiSuggestReplies = '$_base/ai/suggest-replies';
+  static const String aiGenerated = '$_base/ai/generated';
+  static String aiGeneratedItem(String id) => '$_base/ai/generated/$id';
+  static String aiGeneratedFeedback(String id) => '$_base/ai/generated/$id/feedback';
+  static String aiGeneratedAccept(String id) => '$_base/ai/generated/$id/accept';
+  static String aiGeneratedReject(String id) => '$_base/ai/generated/$id/reject';
+
+  // ── AI Intelligence (M24) ─────────────────────────────────
+  static const String aiNlQuery = '$_base/ai/intelligence/nl-query';
+  static const String aiNlQueries = '$_base/ai/intelligence/nl-queries';
+  static const String aiInsights = '$_base/ai/intelligence/insights';
+  static String aiInsight(String id) => '$_base/ai/intelligence/insights/$id';
+  static String aiInsightDismiss(String id) => '$_base/ai/intelligence/insights/$id/dismiss';
+  static String aiInsightAction(String id) => '$_base/ai/intelligence/insights/$id/action';
+  static String aiCustomerInsight(String contactId) => '$_base/ai/intelligence/insights/customer/$contactId';
+  static const String aiPredictions = '$_base/ai/intelligence/insights/predictions';
+  static const String aiTrends = '$_base/ai/intelligence/insights/trends';
+  static const String aiRecommendations = '$_base/ai/intelligence/recommendations';
+  static String aiRecommendationDismiss(String id) => '$_base/ai/intelligence/recommendations/$id/dismiss';
+  static String aiRecommendationAct(String id) => '$_base/ai/intelligence/recommendations/$id/act';
+  static String aiLeadScore(String leadId) => '$_base/ai/intelligence/lead-score/$leadId';
+  static String aiLeadScoreHistory(String leadId) => '$_base/ai/intelligence/lead-score/$leadId/history';
+  static const String aiLeadScoresBulk = '$_base/ai/intelligence/lead-scores/bulk';
+  static const String aiOcrPassport = '$_base/ai/intelligence/ocr/passport';
+  static const String aiOcrVisaClassify = '$_base/ai/intelligence/ocr/visa-classify';
+  static const String aiOcrSupplierInvoice = '$_base/ai/intelligence/ocr/supplier-invoice';
+  static const String aiDocumentScans = '$_base/ai/intelligence/document-scans';
+  static String aiDocumentScan(String id) => '$_base/ai/intelligence/document-scans/$id';
+  static String aiDocumentScanApply(String id) => '$_base/ai/intelligence/document-scans/$id/apply';
+  static String aiDocumentScanReject(String id) => '$_base/ai/intelligence/document-scans/$id/reject';
+  static String aiSmartFollowup(String leadId) => '$_base/ai/intelligence/smart-followup/$leadId';
+  static const String aiSmartFollowups = '$_base/ai/intelligence/smart-followups';
+  static String aiSmartFollowupSend(String id) => '$_base/ai/intelligence/smart-followups/$id/send';
+  static String aiSmartFollowupDismiss(String id) => '$_base/ai/intelligence/smart-followups/$id/dismiss';
+
+  // ── Chatbot (M25) ─────────────────────────────────────────
+  static const String chatbotConfigs = '$_base/chatbot/config';
+  static String chatbotConfig(String channel) => '$_base/chatbot/config/$channel';
+  static const String chatbotConversations = '$_base/chatbot/conversations';
+  static String chatbotConversation(String id) => '$_base/chatbot/conversations/$id';
+  static String chatbotConversationReply(String id) => '$_base/chatbot/conversations/$id/reply';
+  static String chatbotConversationHandoff(String id) => '$_base/chatbot/conversations/$id/handoff';
+  static String chatbotConversationClose(String id) => '$_base/chatbot/conversations/$id/close';
+  static String chatbotConversationCreateLead(String id) => '$_base/chatbot/conversations/$id/create-lead';
+  static const String chatbotAnalytics = '$_base/chatbot/analytics';
+
+  // ── Business Intelligence (M26) ────────────────────────────
+  static const String biBriefings = '$_base/ai/bi/briefings';
+  static const String biBriefingsGenerate = '$_base/ai/bi/briefings/generate';
+  static String biBriefing(String id) => '$_base/ai/bi/briefings/$id';
+
+  static const String biHealthScore = '$_base/ai/bi/health-score';
+  static const String biHealthScoreCalculate = '$_base/ai/bi/health-score/calculate';
+  static const String biHealthScoreHistory = '$_base/ai/bi/health-score/history';
+
+  static const String biDestinationProfitability = '$_base/ai/bi/destination-profitability';
+  static const String biSeasonalDemand = '$_base/ai/bi/seasonal-demand';
+  static String biCustomerLtv(String contactId) => '$_base/ai/bi/customer-ltv/$contactId';
+  static const String biCashFlowForecast = '$_base/ai/bi/cash-flow-forecast';
+
+  static const String biTeamPerformance = '$_base/ai/bi/team-performance';
+  static const String biWorkloadAnalysis = '$_base/ai/bi/workload-analysis';
+
+  static const String biCustomerSegmentsCalculate = '$_base/ai/bi/customer-segments/calculate';
+  static const String biCustomerSegments = '$_base/ai/bi/customer-segments';
+
+  static const String biTrendingDestinations = '$_base/ai/bi/trending-destinations';
+  static const String biLostDealAnalysis = '$_base/ai/bi/lost-deal-analysis';
+  static const String biLeadSourceRoi = '$_base/ai/bi/lead-source-roi';
+
+  static const String biRecommendationsGenerate = '$_base/ai/bi/recommendations/generate';
+
+  static const String biUsage = '$_base/ai/bi/usage';
+  static const String biRevenuePulse = '$_base/ai/bi/revenue-pulse';
+
+  // ── WhatsApp Campaigns ─────────────────────────────────────
+  static const String whatsappCampaigns = '$_base/whatsapp-campaigns';
+  static String whatsappCampaign(String id) => '$_base/whatsapp-campaigns/$id';
+  static String whatsappCampaignSend(String id) => '$_base/whatsapp-campaigns/$id/send';
+  static String whatsappCampaignPause(String id) => '$_base/whatsapp-campaigns/$id/pause';
+  static String whatsappCampaignCancel(String id) => '$_base/whatsapp-campaigns/$id/cancel';
+  static String whatsappCampaignRecipients(String id) => '$_base/whatsapp-campaigns/$id/recipients';
+  static String whatsappCampaignAnalytics(String id) => '$_base/whatsapp-campaigns/$id/analytics';
+
+  // ── AI Social Content ─────────────────────────────────────
+  static const String socialContent = '$_base/marketing/social-content';
+  static const String socialContentGenerate = '$_base/marketing/social-content/generate';
+  static const String socialContentGenerateBatch = '$_base/marketing/social-content/generate-batch';
+  static String socialContentItem(String id) => '$_base/marketing/social-content/$id';
+
+  // ── AI Marketing Suggestions ──────────────────────────────
+  static const String marketingSuggestions = '$_base/marketing/suggestions';
+  static const String marketingSuggestionsGenerate = '$_base/marketing/suggestions/generate';
+  static String marketingSuggestionAccept(String id) => '$_base/marketing/suggestions/$id/accept';
+  static String marketingSuggestionDismiss(String id) => '$_base/marketing/suggestions/$id/dismiss';
 
   // ── Driver App ──────────────────────────────────────────────
   static const String driverLogin = '$_base/driver/login';

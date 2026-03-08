@@ -310,4 +310,223 @@ settingsRoutes.delete('/follow-up-sequences/:id', rbac(['admin']), async (c) => 
   return success(c, { message: 'Sequence deleted' });
 });
 
+// ============================================================
+// GET /itinerary-defaults — Get itinerary default settings (TICKET-089)
+// ============================================================
+
+settingsRoutes.get('/itinerary-defaults', async (c) => {
+  const db = drizzle(c.get('tenantDb'));
+
+  const [row] = await db
+    .select()
+    .from(settings)
+    .where(eq(settings.key, 'itinerary_defaults'))
+    .limit(1);
+
+  const defaults = row?.value
+    ? JSON.parse(row.value)
+    : {
+        defaultCurrency: 'INR',
+        defaultTerms: '',
+        defaultInclusions: [],
+        defaultExclusions: [],
+        validityDays: 7,
+        childPricePercent: 50,
+        groupDiscountThreshold: 10,
+        groupDiscountPercent: 5,
+      };
+
+  return success(c, defaults);
+});
+
+// ============================================================
+// PUT /itinerary-defaults — Update itinerary default settings (TICKET-089)
+// ============================================================
+
+const itineraryDefaultsSchema = z.object({
+  defaultCurrency: z.string().min(1).max(10).optional(),
+  defaultTerms: z.string().optional(),
+  defaultInclusions: z.array(z.string()).optional(),
+  defaultExclusions: z.array(z.string()).optional(),
+  validityDays: z.number().int().min(1).max(365).optional(),
+  childPricePercent: z.number().min(0).max(100).optional(),
+  groupDiscountThreshold: z.number().int().min(1).optional(),
+  groupDiscountPercent: z.number().min(0).max(100).optional(),
+});
+
+settingsRoutes.put(
+  '/itinerary-defaults',
+  rbac(['admin']),
+  zValidator('json', itineraryDefaultsSchema),
+  async (c) => {
+    const db = drizzle(c.get('tenantDb'));
+    const userId = c.get('userId');
+    const body = c.req.valid('json');
+    const now = new Date().toISOString();
+    const value = JSON.stringify(body);
+
+    const [existing] = await db
+      .select()
+      .from(settings)
+      .where(eq(settings.key, 'itinerary_defaults'))
+      .limit(1);
+
+    if (existing) {
+      await db
+        .update(settings)
+        .set({ value, updatedBy: userId, updatedAt: now })
+        .where(eq(settings.key, 'itinerary_defaults'));
+    } else {
+      await db.insert(settings).values({
+        key: 'itinerary_defaults',
+        value,
+        updatedBy: userId,
+        updatedAt: now,
+      });
+    }
+
+    await logActivity(db, {
+      userId,
+      action: 'update_settings',
+      entityType: 'settings',
+      details: JSON.stringify({ key: 'itinerary_defaults' }),
+      ipAddress: c.get('clientIp'),
+    });
+
+    return success(c, { message: 'Itinerary defaults updated', defaults: body });
+  }
+);
+
+// ============================================================
+// GET /invoice-defaults — Get invoice default settings (TICKET-126)
+// ============================================================
+
+settingsRoutes.get('/invoice-defaults', async (c) => {
+  const db = drizzle(c.get('tenantDb'));
+
+  const keys = [
+    'bank_details', 'default_payment_terms', 'default_due_days',
+    'default_tax_type', 'default_tax_rate', 'gstin', 'company_state',
+    'company_name', 'company_address', 'company_phone', 'company_email',
+    'tax_system', 'upi_id',
+  ];
+
+  const rows = await db.select().from(settings);
+  const result: Record<string, any> = {};
+
+  for (const row of rows) {
+    if (keys.includes(row.key)) {
+      try {
+        result[row.key] = JSON.parse(row.value || 'null');
+      } catch {
+        result[row.key] = row.value;
+      }
+    }
+  }
+
+  // Defaults
+  if (!result.default_due_days) result.default_due_days = 30;
+  if (!result.default_tax_type) result.default_tax_type = 'gst';
+  if (!result.default_tax_rate) result.default_tax_rate = 18;
+  if (!result.tax_system) result.tax_system = 'gst';
+
+  return success(c, result);
+});
+
+// ============================================================
+// PUT /invoice-defaults — Update invoice defaults (TICKET-126)
+// ============================================================
+
+const invoiceDefaultsSchema = z.object({
+  bank_details: z.record(z.string(), z.any()).optional(),
+  default_payment_terms: z.string().optional(),
+  default_due_days: z.number().int().min(1).max(365).optional(),
+  default_tax_type: z.enum(['gst', 'vat', 'sales_tax', 'none']).optional(),
+  default_tax_rate: z.number().min(0).max(100).optional(),
+  gstin: z.string().optional(),
+  company_state: z.string().optional(),
+  tax_system: z.enum(['gst', 'vat', 'sales_tax', 'none']).optional(),
+  upi_id: z.string().optional(),
+});
+
+settingsRoutes.put(
+  '/invoice-defaults',
+  rbac(['admin']),
+  zValidator('json', invoiceDefaultsSchema),
+  async (c) => {
+    const db = drizzle(c.get('tenantDb'));
+    const userId = c.get('userId');
+    const body = c.req.valid('json');
+    const now = new Date().toISOString();
+
+    for (const [key, value] of Object.entries(body)) {
+      if (value === undefined) continue;
+      const strValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+
+      const [existing] = await db.select().from(settings).where(eq(settings.key, key)).limit(1);
+      if (existing) {
+        await db.update(settings).set({ value: strValue, updatedBy: userId, updatedAt: now }).where(eq(settings.key, key));
+      } else {
+        await db.insert(settings).values({ key, value: strValue, updatedBy: userId, updatedAt: now });
+      }
+    }
+
+    await logActivity(db, {
+      userId,
+      action: 'update_settings',
+      entityType: 'settings',
+      details: JSON.stringify({ key: 'invoice_defaults', keys: Object.keys(body) }),
+      ipAddress: c.get('clientIp'),
+    });
+
+    return success(c, { message: 'Invoice defaults updated' });
+  }
+);
+
+// ============================================================
+// GET /numbering — Get auto-numbering config (TICKET-106)
+// ============================================================
+
+settingsRoutes.get('/numbering', async (c) => {
+  const tenantDb = c.get('tenantDb');
+  try {
+    const result = await tenantDb.prepare(`SELECT * FROM settings WHERE key = 'numbering_config'`).first();
+    const defaults = {
+      invoice_prefix: 'INV',
+      proforma_prefix: 'PI',
+      receipt_prefix: 'RCP',
+      credit_note_prefix: 'CN',
+      debit_note_prefix: 'DN',
+      voucher_prefix: 'VCH',
+      fy_start_month: 4,
+      reset_yearly: true,
+    };
+    if (result?.value) {
+      try { return success(c, { ...defaults, ...JSON.parse(result.value as string) }); } catch {}
+    }
+    return success(c, defaults);
+  } catch (err: any) {
+    return error(c, err.message || 'Failed to fetch numbering config', 500);
+  }
+});
+
+// ============================================================
+// PUT /numbering — Update auto-numbering config (TICKET-106)
+// ============================================================
+
+settingsRoutes.put('/numbering', async (c) => {
+  const tenantDb = c.get('tenantDb');
+  const body = await c.req.json();
+  try {
+    const value = JSON.stringify(body);
+    await tenantDb.prepare(
+      `INSERT INTO settings (key, value, updated_at) VALUES ('numbering_config', ?, datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+    ).bind(value).run();
+    return success(c, body);
+  } catch (err: any) {
+    return error(c, err.message || 'Failed to update numbering config', 500);
+  }
+});
+
 export default settingsRoutes;

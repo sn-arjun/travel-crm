@@ -1,0 +1,14 @@
+# TravelCRM Pro — robots.txt
+User-agent: *
+Allow: /
+
+# Sitemaps
+Sitemap: https://travelcrm.pro/sitemap.xml
+
+# Block admin paths
+Disallow: /admin/
+Disallow: /api/
+Disallow: /_next/
+
+# Crawl-delay for polite bots
+Crawl-delay: 1

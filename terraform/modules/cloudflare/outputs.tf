@@ -23,6 +23,11 @@ output "kv_sessions_id" {
   value       = cloudflare_workers_kv_namespace.sessions.id
 }
 
+output "kv_report_cache_id" {
+  description = "KV Report Cache Namespace ID"
+  value       = cloudflare_workers_kv_namespace.report_cache.id
+}
+
 output "pages_crm_url" {
   description = "CRM Web App Pages URL"
   value       = cloudflare_pages_project.crm_web.subdomain

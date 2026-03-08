@@ -6,6 +6,8 @@ import { handleWpProvisionJob, type WpProvisionJob } from './wp-provision-queue'
 import { handleImportQueue } from './import-queue';
 import { handleExportQueue } from './export-queue';
 import { handleCampaignQueue } from './campaign-queue';
+import { handleAIExtractionQueue } from './ai-extraction-queue';
+import { processWhatsAppCampaign } from './whatsapp-campaign-queue';
 
 export interface QueueMessage {
   type: 'email' | 'sms' | 'push' | 'wp-provision' | 'import' | 'export_invoices' | 'export_full' | 'whatsapp_campaign' | 'sms_campaign' | 'email_campaign';
@@ -32,7 +34,26 @@ export async function handleQueue(
   }
 
   if (batch.queue === 'travelcrm-campaign-queue' || batch.queue.includes('campaign')) {
+    // Check if any messages are the new whatsapp_campaign type
+    for (const msg of batch.messages) {
+      const body = msg.body as any;
+      if (body.type === 'whatsapp_campaign') {
+        try {
+          await processWhatsAppCampaign(body, env);
+          msg.ack();
+        } catch (err) {
+          console.error('WhatsApp campaign queue failed:', err);
+          msg.retry();
+        }
+        return;
+      }
+    }
     await handleCampaignQueue(batch as any, env);
+    return;
+  }
+
+  if (batch.queue.includes('ai-extraction') && !batch.queue.includes('dlq')) {
+    await handleAIExtractionQueue(batch as any, env);
     return;
   }
 

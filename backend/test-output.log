@@ -1,0 +1,81 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.8 [39m[90mC:/Users/Admin/Downloads/pro/CRM/backend[39m
+
+Using vars defined in .dev.vars
+[vpw:debug] Adding `enable_nodejs_tty_module` compatibility flag during tests as this feature is needed to support the Vitest runner.
+[vpw:debug] Adding `enable_nodejs_fs_module` compatibility flag during tests as this feature is needed to support the Vitest runner.
+[vpw:debug] Adding `enable_nodejs_http_modules` compatibility flag during tests as this feature is needed to support the Vitest runner.
+[vpw:debug] Adding `enable_nodejs_perf_hooks_module` compatibility flag during tests as this feature is needed to support the Vitest runner.
+[vpw:info] Starting isolated runtimes for vitest.config.ts...
+Error running worker: TypeError: this.snapshotClient.startCurrentRun is not a function
+    at WorkersTestRunner.onBeforeRunSuite (C:/Users/Admin/Downloads/pro/CRM/backend/node_modules/vitest/dist/runners.js:220:33)
+    at WorkersTestRunner.onBeforeRunSuite (C:/Users/Admin/Downloads/pro/CRM/backend/node_modules/@cloudflare/vitest-pool-workers/dist/worker/lib/cloudflare/test-runner.mjs:164:18)
+    at runSuite (C:/Users/Admin/Downloads/pro/CRM/backend/node_modules/@vitest/runner/dist/chunk-hooks.js:1683:2)
+    at runFiles (C:/Users/Admin/Downloads/pro/CRM/backend/node_modules/@vitest/runner/dist/chunk-hooks.js:1787:3)
+    at startTests (C:/Users/Admin/Downloads/pro/CRM/backend/node_modules/@vitest/runner/dist/chunk-hooks.js:1820:3)
+    at C:/Users/Admin/Downloads/pro/CRM/backend/node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:126:11
+    at withEnv (C:/Users/Admin/Downloads/pro/CRM/backend/node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:90:5)
+    at run (C:/Users/Admin/Downloads/pro/CRM/backend/node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:112:3)
+    at runBaseTests (C:/Users/Admin/Downloads/pro/CRM/backend/node_modules/vitest/dist/chunks/base.BZZh4cSm.js:29:3)
+    at execute (C:/Users/Admin/Downloads/pro/CRM/backend/node_modules/vitest/dist/worker.js:127:5)
+
+[31m⎯⎯⎯⎯⎯⎯[1m[7m Failed Suites 1 [27m[22m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[31m[1m[7m FAIL [27m[22m[39m test/api.test.ts[2m [ test/api.test.ts ][22m
+[31m[1mReferenceError[22m: testApp is not defined[39m
+[36m [2m❯[22m src/routes/test.ts:[2m9:1[22m[39m
+    [90m  7| [39m
+    [90m  8| [39m[90m/**
+    [90m  9| [39m * CAUTION: This endpoint COMPLETELY DESTROYS the current database and…
+    [90m   | [39m[31m^[39m
+    [90m 10| [39m * It is aggressively protected and only accessible when running in sp…
+    [90m 11| [39m */[39m
+[90m [2m❯[22m src/index.ts:[2m38:32[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯[1m[7m Unhandled Errors [27m[22m⎯⎯⎯⎯⎯⎯[39m
+[31m[1m
+Vitest caught 2 unhandled errors during the test run.
+This might cause false positive tests. Resolve unhandled errors to make sure your tests are not affected.[22m[39m
+
+[31m⎯⎯⎯⎯[1m[7m Unhandled Rejection [27m[22m⎯⎯⎯⎯⎯[39m
+[31m[1mTypeError[22m: this.snapshotClient.startCurrentRun is not a function[39m
+[90m [2m❯[22m WorkersTestRunner.onBeforeRunSuite node_modules/vitest/dist/runners.js:[2m220:33[22m[39m
+[90m [2m❯[22m WorkersTestRunner.onBeforeRunSuite node_modules/@cloudflare/vitest-pool-workers/dist/worker/lib/cloudflare/test-runner.mjs:[2m164:18[22m[39m
+[90m [2m❯[22m runSuite node_modules/@vitest/runner/dist/chunk-hooks.js:[2m1683:2[22m[39m
+[90m [2m❯[22m runFiles node_modules/@vitest/runner/dist/chunk-hooks.js:[2m1787:3[22m[39m
+[90m [2m❯[22m startTests node_modules/@vitest/runner/dist/chunk-hooks.js:[2m1820:3[22m[39m
+[90m [2m❯[22m node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:[2m126:11[22m[39m
+[90m [2m❯[22m withEnv node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:[2m90:5[22m[39m
+[90m [2m❯[22m run node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:[2m112:3[22m[39m
+[90m [2m❯[22m runBaseTests node_modules/vitest/dist/chunks/base.BZZh4cSm.js:[2m29:3[22m[39m
+[90m [2m❯[22m execute node_modules/vitest/dist/worker.js:[2m127:5[22m[39m
+
+[31mThis error originated in "[1mtest/api.test.ts[22m" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.[39m
+[31mThe latest test that might've caused the error is "[1mtest/api.test.ts[22m". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.[39m
+
+[31m⎯⎯⎯⎯⎯⎯[1m[7m Unhandled Error [27m[22m⎯⎯⎯⎯⎯⎯⎯[39m
+[31m[1mTypeError[22m: this.snapshotClient.startCurrentRun is not a function[39m
+[90m [2m❯[22m WorkersTestRunner.onBeforeRunSuite node_modules/vitest/dist/runners.js:[2m220:33[22m[39m
+[90m [2m❯[22m WorkersTestRunner.onBeforeRunSuite node_modules/@cloudflare/vitest-pool-workers/dist/worker/lib/cloudflare/test-runner.mjs:[2m164:18[22m[39m
+[90m [2m❯[22m runSuite node_modules/@vitest/runner/dist/chunk-hooks.js:[2m1683:2[22m[39m
+[90m [2m❯[22m runFiles node_modules/@vitest/runner/dist/chunk-hooks.js:[2m1787:3[22m[39m
+[90m [2m❯[22m startTests node_modules/@vitest/runner/dist/chunk-hooks.js:[2m1820:3[22m[39m
+[90m [2m❯[22m node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:[2m126:11[22m[39m
+[90m [2m❯[22m withEnv node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:[2m90:5[22m[39m
+[90m [2m❯[22m run node_modules/vitest/dist/chunks/runBaseTests.3qpJUEJM.js:[2m112:3[22m[39m
+[90m [2m❯[22m runBaseTests node_modules/vitest/dist/chunks/base.BZZh4cSm.js:[2m29:3[22m[39m
+[90m [2m❯[22m execute node_modules/vitest/dist/worker.js:[2m127:5[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[39m
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [2mno tests[22m
+[2m     Errors [22m [1m[31m2 errors[39m[22m
+[2m   Start at [22m 00:52:34
+[2m   Duration [22m 3.31s[2m (transform 445ms, setup 0ms, collect 0ms, tests 0ms, environment 0ms, prepare 246ms)[22m
+
+[vpw:debug] Shutting down runtimes...

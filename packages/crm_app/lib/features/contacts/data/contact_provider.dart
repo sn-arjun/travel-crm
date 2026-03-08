@@ -266,3 +266,8 @@ final upcomingOccasionsProvider =
     FutureProvider.family<List<UpcomingOccasion>, int>((ref, days) {
   return ref.read(contactRepositoryProvider).getUpcomingOccasions(days: days);
 });
+
+final contactCustomFieldDefsProvider =
+    FutureProvider<List<Map<String, dynamic>>>((ref) {
+  return ref.read(contactRepositoryProvider).getCustomFieldDefs();
+});

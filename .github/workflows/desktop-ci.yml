@@ -1,0 +1,116 @@
+name: Desktop CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'desktop/**'
+      - 'packages/shared-ts/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'packages/shared-ts/**'
+
+jobs:
+  lint-typecheck:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared-ts
+        run: npm run build --prefix packages/shared-ts
+
+      - name: Lint desktop
+        run: npm run lint --prefix desktop
+
+      - name: Typecheck desktop
+        run: npm run typecheck --prefix desktop
+
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: lint-typecheck
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared-ts
+        run: npm run build --prefix packages/shared-ts
+
+      - name: Run tests
+        run: npm run test --prefix desktop
+
+  build:
+    name: Build Desktop App
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared-ts
+        run: npm run build --prefix packages/shared-ts
+
+      - name: Build Next.js
+        run: npm run build --prefix desktop
+        env:
+          NODE_ENV: production
+
+  build-electron:
+    name: Build Electron (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared-ts
+        run: npm run build --prefix packages/shared-ts
+
+      - name: Build Electron app
+        run: npm run build:desktop --prefix desktop
+        env:
+          NODE_ENV: production
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: desktop/release/*
+          retention-days: 7

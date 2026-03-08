@@ -1,10 +1,51 @@
 import type { Env } from '../types';
+import type { MessagingProvider, MessageResult } from './voip-provider';
 
 interface TwilioSendResult {
   success: boolean;
   sid?: string;
   error?: string;
 }
+
+// ── MessagingProvider implementation ────────────────────────
+
+export class TwilioMessagingProvider implements MessagingProvider {
+  readonly providerName = 'twilio' as const;
+
+  constructor(private env: Env) {}
+
+  async sendSms(to: string, message: string): Promise<MessageResult> {
+    const result = await sendSms(this.env, to, message);
+    return {
+      providerMessageId: result.sid || '',
+      status: result.success ? 'sent' : 'failed',
+      to,
+      channel: 'sms',
+    };
+  }
+
+  async sendWhatsApp(to: string, message: string, mediaUrl?: string): Promise<MessageResult> {
+    const result = await sendWhatsApp(this.env, to, message, mediaUrl);
+    return {
+      providerMessageId: result.sid || '',
+      status: result.success ? 'sent' : 'failed',
+      to,
+      channel: 'whatsapp',
+    };
+  }
+
+  async sendWhatsAppTemplate(to: string, templateId: string, variables: Record<string, string>): Promise<MessageResult> {
+    const result = await sendWhatsAppTemplate(this.env, to, templateId, variables);
+    return {
+      providerMessageId: result.sid || '',
+      status: result.success ? 'sent' : 'failed',
+      to,
+      channel: 'whatsapp',
+    };
+  }
+}
+
+// ── Standalone functions (kept for backward compat) ─────────
 
 /**
  * Send WhatsApp message via Twilio API.

@@ -56,6 +56,16 @@ testApp.post('/reset', async (c) => {
 
         await db.run(sql`INSERT INTO tenant_users (id, tenant_id, email, user_id, role, is_active, created_at) VALUES ('22222222-2222-2222-2222-222222222222', ${tenantId}, 'admin@e2e.test', '11111111-1111-1111-1111-111111111111', 'admin', 1, datetime('now'))`);
 
+        // Seed salesperson user for RBAC testing
+        const spPassword = await bcrypt.hash('password123', 10);
+        await db.run(sql`INSERT INTO users (id, email, password_hash, role, name, is_active, language, created_at, updated_at) VALUES ('33333333-3333-3333-3333-333333333333', 'sales@e2e.test', ${spPassword}, 'salesperson', 'E2E Salesperson', 1, 'en', datetime('now'), datetime('now'))`);
+        await db.run(sql`INSERT INTO tenant_users (id, tenant_id, email, user_id, role, is_active, created_at) VALUES ('44444444-4444-4444-4444-444444444444', ${tenantId}, 'sales@e2e.test', '33333333-3333-3333-3333-333333333333', 'salesperson', 1, datetime('now'))`);
+
+        // Seed view_only user for RBAC testing
+        const voPassword = await bcrypt.hash('password123', 10);
+        await db.run(sql`INSERT INTO users (id, email, password_hash, role, name, is_active, language, created_at, updated_at) VALUES ('55555555-5555-5555-5555-555555555555', 'viewer@e2e.test', ${voPassword}, 'view_only', 'E2E Viewer', 1, 'en', datetime('now'), datetime('now'))`);
+        await db.run(sql`INSERT INTO tenant_users (id, tenant_id, email, user_id, role, is_active, created_at) VALUES ('66666666-6666-6666-6666-666666666666', ${tenantId}, 'viewer@e2e.test', '55555555-5555-5555-5555-555555555555', 'view_only', 1, datetime('now'))`);
+
         return c.json({ success: true, message: 'Test database reset and seeded successfully' });
     } catch (error: any) {
         console.error("Reset endpoint caught error:", error?.message, error?.cause);

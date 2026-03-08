@@ -1,0 +1,15 @@
+Analyzing voucher_list_screen.dart...
+
+  error - voucher_list_screen.dart:341:7 - Expected to find ';'. - expected_token
+  error - voucher_list_screen.dart:341:8 - Expected an identifier. - missing_identifier
+  error - voucher_list_screen.dart:341:8 - Expected to find ';'. - expected_token
+  error - voucher_list_screen.dart:341:8 - Unexpected text ';'. Try removing the text. - unexpected_token
+  error - voucher_list_screen.dart:342:5 - Expected an identifier. - missing_identifier
+  error - voucher_list_screen.dart:342:5 - Unexpected text ';'. Try removing the text. - unexpected_token
+warning - voucher_list_screen.dart:11:8 - Unused import: '../../../../core/widgets/layout/app_section_card.dart'. Try removing the import directive. - unused_import
+warning - voucher_list_screen.dart:341:8 - Dead code. Try removing the code, or fixing the code before it so that it can be reached. - dead_code
+   info - voucher_list_screen.dart:291:32 - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss. Try replacing the use of the deprecated member with the replacement. - deprecated_member_use
+   info - voucher_list_screen.dart:292:51 - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss. Try replacing the use of the deprecated member with the replacement. - deprecated_member_use
+   info - voucher_list_screen.dart:342:6 - Unnecessary empty statement. Try removing the empty statement or restructuring the code. - empty_statements
+
+11 issues found.

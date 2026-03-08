@@ -52,6 +52,11 @@ dependencies:
   pdf: ^3.11.1
   printing: ^5.13.3
 
+  # Offline storage
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  connectivity_plus: ^6.1.4
+
   # Utils
   uuid: ^4.5.1
   url_launcher: ^6.3.1
@@ -75,3 +80,12 @@ dev_dependencies:
 flutter:
   generate: true
   uses-material-design: true
+
+msix_config:
+  display_name: TravelCRM Pro
+  publisher_display_name: TravelCRM
+  identity_name: com.travelcrm.pro
+  msix_version: 1.0.0.0
+  logo_path: assets/icons/app_icon.png
+  capabilities: internetClient, microphone, webcam
+  languages: en-us, hi-in

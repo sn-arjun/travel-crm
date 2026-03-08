@@ -9,6 +9,9 @@ import { handleQueue, type QueueMessage } from './queues/index';
 import { RealtimeRoom } from './durable-objects/realtime';
 import { authMiddleware } from './middleware/auth';
 import { tenantMiddleware } from './middleware/tenant';
+import { requireFeature } from './middleware/feature-gate';
+import { checkUsageCap } from './middleware/usage-cap';
+import { resetUsageCaps } from './middleware/usage-cap';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import activityLogRoutes from './routes/activity-logs';
@@ -30,8 +33,12 @@ import communicationRoutes from './routes/communications';
 import messageTemplateRoutes from './routes/templates';
 import campaignRoutes from './routes/campaigns';
 import webhookRoutes from './routes/webhooks';
+import leadWebhookRoutes from './routes/webhook';
 import pushTokenRoutes from './routes/push-tokens';
 import preferencesRoutes from './routes/notification-preferences';
+import documentRoutes from './routes/documents';
+import bookmarkRoutes from './routes/bookmarks';
+import stickyNoteRoutes from './routes/sticky-notes';
 import voucherRoutes from './routes/vouchers';
 import supplierRoutes from './routes/suppliers';
 import travellerRoutes from './routes/travellers';
@@ -58,7 +65,21 @@ import mktCampaignRoutes from './routes/marketing/campaigns';
 import mktFlyerRoutes from './routes/marketing/flyers';
 import mktOptOutRoutes from './routes/marketing/opt-out';
 import fleetRoutes from './routes/fleet';
+import voipRoutes from './routes/voip';
+import callRoutes from './routes/calls';
+import voipCallbackRoutes from './routes/voip-callbacks';
+import transcriptRoutes from './routes/transcripts';
+import aiExtractionRoutes from './routes/ai-extractions';
+import aiAssistantRoutes from './routes/ai-assistant';
+import aiIntelligenceRoutes from './routes/ai-intelligence';
+import chatbotRoutes from './routes/chatbot';
+import businessIntelligenceRoutes from './routes/business-intelligence';
+import whatsappCampaignRoutes from './routes/whatsapp-campaigns';
+import socialContentRoutes from './routes/social-content';
+import marketingSuggestionRoutes from './routes/marketing-suggestions';
 import driverRoutes from './routes/driver';
+import publicRoutes from './routes/public';
+import hsnCodeRoutes from './routes/hsn-codes';
 import { checkFollowUpReminders } from './services/follow-up-reminders';
 import {
   checkBirthdayAnniversary,
@@ -94,6 +115,7 @@ app.use(
   cors({
     origin: [
       'http://localhost:3000',
+      'http://localhost:3100',
       'http://localhost:8080',
       'https://*.pages.dev',
     ],
@@ -124,6 +146,12 @@ app.get('/api/health', healthHandler);
 
 app.route('/api/v1/webhooks', webhookRoutes);
 app.route('/api/webhooks', webhookRoutes);
+app.route('/api/v1', leadWebhookRoutes);
+app.route('/api', leadWebhookRoutes);
+
+// --- VoIP Callback Routes (public, Twilio signature validated) ---
+app.route('/api/v1/voip', voipCallbackRoutes);
+app.route('/api/voip', voipCallbackRoutes);
 
 // --- Testing Routes (Protected internally by TEST_MODE flag) ---
 app.route('/api/v1/test', testRoutes);
@@ -133,12 +161,42 @@ app.route('/api/test', testRoutes);
 app.route('/api/v1/driver', driverRoutes);
 app.route('/api/driver', driverRoutes);
 
+// --- Public Quotation Routes (no auth required) ---
+app.route('/api/v1/public', publicRoutes);
+app.route('/api/public', publicRoutes);
+
 // --- Auth & Tenant Middleware (both /api/v1/* and /api/*) ---
 
 app.use('/api/v1/*', authMiddleware);
 app.use('/api/v1/*', tenantMiddleware);
 app.use('/api/*', authMiddleware);
 app.use('/api/*', tenantMiddleware);
+
+// --- Feature Gates & Usage Caps ---
+
+// VoIP
+for (const prefix of ['/api/v1', '/api']) {
+  app.use(`${prefix}/voip/*`, requireFeature('voip_calling'));
+  app.use(`${prefix}/calls/*`, requireFeature('voip_calling'));
+}
+
+// AI features
+for (const prefix of ['/api/v1', '/api']) {
+  app.use(`${prefix}/ai/extractions/*`, requireFeature('ai_extraction'));
+  app.use(`${prefix}/ai/intelligence/*`, requireFeature('ai_intelligence'));
+  app.use(`${prefix}/chatbot/*`, requireFeature('ai_chatbot'));
+}
+
+// WhatsApp campaigns
+for (const prefix of ['/api/v1', '/api']) {
+  app.use(`${prefix}/whatsapp-campaigns/*`, requireFeature('whatsapp_campaigns'));
+}
+
+// AI assistant — feature gate + usage cap
+for (const prefix of ['/api/v1', '/api']) {
+  app.use(`${prefix}/ai/*`, requireFeature('ai_assistant'));
+  app.use(`${prefix}/ai/*`, checkUsageCap('ai_actions_per_day'));
+}
 
 // --- Route Registration (dual mount: /api/v1/ and /api/) ---
 
@@ -168,6 +226,9 @@ const routeMounts: Array<[string, typeof authRoutes]> = [
   ['campaigns', campaignRoutes],
   ['push-tokens', pushTokenRoutes],
   ['notification-preferences', preferencesRoutes],
+  ['documents', documentRoutes],
+  ['bookmarks', bookmarkRoutes],
+  ['sticky-notes', stickyNoteRoutes],
   ['vouchers', voucherRoutes],
   ['suppliers', supplierRoutes],
   ['travellers', travellerRoutes],
@@ -184,6 +245,18 @@ const routeMounts: Array<[string, typeof authRoutes]> = [
   ['marketing/flyers', mktFlyerRoutes],
   ['marketing/opt-out', mktOptOutRoutes],
   ['fleet', fleetRoutes],
+  ['voip', voipRoutes],
+  ['calls', callRoutes],
+  ['transcripts', transcriptRoutes],
+  ['ai/extractions', aiExtractionRoutes],
+  ['ai', aiAssistantRoutes],
+  ['ai/intelligence', aiIntelligenceRoutes],
+  ['chatbot', chatbotRoutes],
+  ['ai/bi', businessIntelligenceRoutes],
+  ['whatsapp-campaigns', whatsappCampaignRoutes],
+  ['marketing/social-content', socialContentRoutes],
+  ['marketing/suggestions', marketingSuggestionRoutes],
+  ['hsn-codes', hsnCodeRoutes],
 ];
 
 for (const [path, handler] of routeMounts) {
@@ -242,6 +315,10 @@ export default {
       // Run appropriate handler based on cron time
       // In production, you would map specific cron expressions to handlers
       // For now, run all checks (they handle their own filtering)
+      // Check if it's midnight (reset daily caps) or 1st of month (reset monthly caps)
+      const now = new Date();
+      const isMonthStart = now.getUTCDate() === 1;
+
       ctx.waitUntil(
         Promise.all([
           checkFollowUpReminders(env),
@@ -252,6 +329,9 @@ export default {
           checkTripReminders(env),
           processOverdueTasks(env),
           processFleetAlerts(env),
+          // Reset usage caps
+          resetUsageCaps(env.MASTER_DB, 'daily'),
+          isMonthStart ? resetUsageCaps(env.MASTER_DB, 'monthly') : Promise.resolve(0),
         ])
       );
     }

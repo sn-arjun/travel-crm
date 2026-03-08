@@ -3,6 +3,7 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, desc, and, like, sql, count, isNull } from 'drizzle-orm';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import type { AppContext } from '../types';
 import {
   itineraries,
@@ -897,6 +898,168 @@ itineraryRoutes.delete('/:id/share-link', requirePermission('itineraries', 'edit
   ).bind(id).run();
 
   return success(c, { message: 'Share link revoked' });
+});
+
+// ============================================================
+// GET /:id/pdf — Generate quotation PDF (TICKET-097)
+// ============================================================
+
+itineraryRoutes.get('/:id/pdf', requirePermission('itineraries', 'view'), async (c) => {
+  const db = drizzle(c.get('tenantDb'));
+  const id = c.req.param('id');
+
+  // Reuse the existing helper to get full itinerary data
+  const full = await getFullItinerary(db, id);
+  if (!full) return notFound(c, 'Itinerary');
+
+  const itin = full;
+  const daysData = full.days;
+
+  const pdfDoc = await PDFDocument.create();
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  const pageWidth = 595; // A4 portrait
+  const pageHeight = 842;
+  const margin = 50;
+  let page = pdfDoc.addPage([pageWidth, pageHeight]);
+  let y = pageHeight - margin;
+
+  const drawText = (text: string, x: number, yPos: number, options?: { font?: any; size?: number; color?: any }) => {
+    page.drawText(text, {
+      x,
+      y: yPos,
+      font: options?.font || font,
+      size: options?.size || 10,
+      color: options?.color || rgb(0, 0, 0),
+    });
+  };
+
+  const checkPageBreak = (needed: number) => {
+    if (y - needed < margin) {
+      page = pdfDoc.addPage([pageWidth, pageHeight]);
+      y = pageHeight - margin;
+    }
+  };
+
+  // Title
+  drawText('TRAVEL QUOTATION', margin, y, { font: boldFont, size: 18, color: rgb(0.1, 0.3, 0.6) });
+  y -= 25;
+
+  // Itinerary info
+  drawText(`${itin.title}`, margin, y, { font: boldFont, size: 14 });
+  y -= 18;
+  drawText(`Status: ${(itin.status || 'draft').toUpperCase()} | Version: V${itin.version || 1}`, margin, y, { size: 9, color: rgb(0.4, 0.4, 0.4) });
+  y -= 14;
+  if (itin.validityDate) {
+    drawText(`Valid until: ${itin.validityDate}`, margin, y, { size: 9, color: rgb(0.4, 0.4, 0.4) });
+    y -= 14;
+  }
+  drawText(`Currency: ${itin.currency || 'INR'}`, margin, y, { size: 9, color: rgb(0.4, 0.4, 0.4) });
+  y -= 25;
+
+  // Separator
+  page.drawLine({ start: { x: margin, y }, end: { x: pageWidth - margin, y }, thickness: 1, color: rgb(0.8, 0.8, 0.8) });
+  y -= 20;
+
+  // Days
+  for (const day of daysData) {
+    checkPageBreak(80);
+    drawText(`Day ${day.dayNumber}: ${day.title || ''} ${day.city ? '-- ' + day.city : ''}`, margin, y, { font: boldFont, size: 12, color: rgb(0.1, 0.3, 0.6) });
+    y -= 16;
+
+    if (day.description) {
+      const desc = day.description.replace(/<[^>]*>/g, '').substring(0, 200);
+      drawText(desc, margin + 10, y, { size: 9, color: rgb(0.3, 0.3, 0.3) });
+      y -= 14;
+    }
+
+    for (const item of day.items) {
+      checkPageBreak(30);
+      const typeLabel: Record<string, string> = { hotel: '[Hotel]', transport: '[Transport]', activity: '[Activity]', meal: '[Meal]', flight: '[Flight]' };
+      const label = typeLabel[item.type] || '[*]';
+      drawText(`${label} ${item.title || item.type}`, margin + 15, y, { size: 10 });
+      const price = `${itin.currency || 'INR'} ${(item.sellingPrice || 0).toFixed(2)}`;
+      const priceWidth = font.widthOfTextAtSize(price, 10);
+      drawText(price, pageWidth - margin - priceWidth, y, { size: 10 });
+      y -= 14;
+      if (item.description) {
+        drawText(item.description.substring(0, 100), margin + 25, y, { size: 8, color: rgb(0.5, 0.5, 0.5) });
+        y -= 12;
+      }
+    }
+    y -= 10;
+  }
+
+  // Pricing Summary
+  checkPageBreak(80);
+  page.drawLine({ start: { x: margin, y }, end: { x: pageWidth - margin, y }, thickness: 1, color: rgb(0.8, 0.8, 0.8) });
+  y -= 20;
+  drawText('PRICING SUMMARY', margin, y, { font: boldFont, size: 12, color: rgb(0.1, 0.3, 0.6) });
+  y -= 18;
+  const summaryX = pageWidth - margin - 120;
+  drawText('Subtotal:', margin + 10, y, { size: 10 });
+  drawText(`${itin.currency || 'INR'} ${(itin.totalSelling || 0).toFixed(2)}`, summaryX, y, { size: 10 });
+  y -= 14;
+  drawText('Tax:', margin + 10, y, { size: 10 });
+  drawText(`${itin.currency || 'INR'} ${(itin.totalTax || 0).toFixed(2)}`, summaryX, y, { size: 10 });
+  y -= 14;
+  drawText('Grand Total:', margin + 10, y, { font: boldFont, size: 11 });
+  drawText(`${itin.currency || 'INR'} ${(itin.grandTotal || 0).toFixed(2)}`, summaryX, y, { font: boldFont, size: 11, color: rgb(0.1, 0.5, 0.1) });
+  y -= 25;
+
+  // Inclusions
+  const inclusions: string[] = Array.isArray(itin.inclusions) ? itin.inclusions : [];
+  if (inclusions.length > 0) {
+    checkPageBreak(30 + inclusions.length * 14);
+    drawText('INCLUSIONS', margin, y, { font: boldFont, size: 11, color: rgb(0.1, 0.3, 0.6) });
+    y -= 16;
+    for (const inc of inclusions) {
+      drawText(`+ ${inc}`, margin + 10, y, { size: 9, color: rgb(0.1, 0.5, 0.1) });
+      y -= 13;
+    }
+    y -= 8;
+  }
+
+  // Exclusions
+  const exclusions: string[] = Array.isArray(itin.exclusions) ? itin.exclusions : [];
+  if (exclusions.length > 0) {
+    checkPageBreak(30 + exclusions.length * 14);
+    drawText('EXCLUSIONS', margin, y, { font: boldFont, size: 11, color: rgb(0.1, 0.3, 0.6) });
+    y -= 16;
+    for (const exc of exclusions) {
+      drawText(`x ${exc}`, margin + 10, y, { size: 9, color: rgb(0.7, 0.1, 0.1) });
+      y -= 13;
+    }
+    y -= 8;
+  }
+
+  // Terms & Conditions
+  if (itin.termsConditions) {
+    checkPageBreak(60);
+    drawText('TERMS & CONDITIONS', margin, y, { font: boldFont, size: 11, color: rgb(0.1, 0.3, 0.6) });
+    y -= 16;
+    const terms = itin.termsConditions.replace(/<[^>]*>/g, '');
+    const lines = terms.match(/.{1,90}/g) || [];
+    for (const line of lines.slice(0, 10)) {
+      checkPageBreak(14);
+      drawText(line, margin + 10, y, { size: 8, color: rgb(0.3, 0.3, 0.3) });
+      y -= 12;
+    }
+  }
+
+  // Footer
+  checkPageBreak(30);
+  y -= 10;
+  drawText('Generated by TravelCRM Pro', margin, y, { size: 7, color: rgb(0.6, 0.6, 0.6) });
+
+  const pdfBytes = await pdfDoc.save();
+  return new Response(pdfBytes, {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="quotation-${itin.title?.replace(/[^a-zA-Z0-9]/g, '-') || id}.pdf"`,
+    },
+  });
 });
 
 export default itineraryRoutes;

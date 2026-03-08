@@ -49,13 +49,17 @@ const createLeadSchema = z.object({
   hotelPreference: z.enum(['budget', 'standard', 'premium', 'luxury']).optional().nullable(),
   mealPreference: z.enum(['veg', 'non_veg', 'vegan', 'jain', 'halal']).optional().nullable(),
   specialRequirements: z.string().optional().nullable(),
+  estimatedValue: z.number().optional().nullable(),
+  probability: z.number().int().min(0).max(100).optional().nullable(),
+  expectedCloseDate: z.string().optional().nullable(),
 });
 
 const updateLeadSchema = createLeadSchema.partial();
 
 const statusChangeSchema = z.object({
-  status: z.enum(['new', 'contacted', 'requirement_gathered', 'proposal_sent', 'negotiation', 'booking_confirmed', 'completed', 'lost']),
+  status: z.enum(['new', 'contacted', 'qualified', 'requirement_gathered', 'proposal_sent', 'negotiation', 'won', 'booking_confirmed', 'completed', 'lost', 'on_hold']),
   lostReason: z.string().optional().nullable(),
+  reason: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
 });
 
@@ -102,10 +106,14 @@ function parseLead(row: Record<string, unknown>) {
     }
   } catch (_) { }
 
+  const assignedToName = (row.assigned_to_name ?? row.assignedToName ?? null) as string | null;
+
   return {
     id: row.id,
     contactId: row.contact_id ?? row.contactId,
     contactName: row.contact_name ?? row.contactName ?? null,
+    contactPhone: row.contact_phone ?? row.contactPhone ?? null,
+    contactEmail: row.contact_email ?? row.contactEmail ?? null,
     title: row.title,
     destinations,
     destination: undefined, // keep undefined so Flutter's JsonKey(name:'destination') still works — we send destinations instead
@@ -121,13 +129,17 @@ function parseLead(row: Record<string, unknown>) {
     status: row.status ?? 'new',
     priority: row.priority ?? null,
     assignedTo: row.assigned_to ?? row.assignedTo ?? null,
-    assignedToName: row.assigned_to_name ?? row.assignedToName ?? null,
+    assignedToName,
+    assignedUser: assignedToName ? { name: assignedToName } : null,
     lostReason: row.lost_reason ?? row.lostReason ?? null,
     passportAvailable: !!(row.passport_available ?? row.passportAvailable),
     travelClass: row.travel_class ?? row.travelClass ?? null,
     hotelPreference: row.hotel_preference ?? row.hotelPreference ?? null,
     mealPreference: row.meal_preference ?? row.mealPreference ?? null,
     specialRequirements: row.special_requirements ?? row.specialRequirements ?? null,
+    estimatedValue: row.estimated_value ?? row.estimatedValue ?? null,
+    probability: row.probability ?? null,
+    expectedCloseDate: row.expected_close_date ?? row.expectedCloseDate ?? null,
     notes: row.notes ?? null,
     createdBy: row.created_by ?? row.createdBy ?? null,
     createdByName: row.created_by_name ?? row.createdByName ?? null,
@@ -307,7 +319,7 @@ leadRoutes.get('/', requirePermission('leads', 'view'), async (c) => {
     const [rows, stageSummary] = await Promise.all([
       tenantDb
         .prepare(`
-          SELECT l.*, c.name as contact_name,
+          SELECT l.*, c.name as contact_name, c.phone as contact_phone, c.email as contact_email,
                  u.name as assigned_to_name, cb.name as created_by_name
           FROM leads l
           LEFT JOIN contacts c ON l.contact_id = c.id
@@ -359,7 +371,7 @@ leadRoutes.get('/', requirePermission('leads', 'view'), async (c) => {
   const [rows, countRow] = await Promise.all([
     tenantDb
       .prepare(`
-        SELECT l.*, c.name as contact_name,
+        SELECT l.*, c.name as contact_name, c.phone as contact_phone, c.email as contact_email,
                u.name as assigned_to_name, cb.name as created_by_name
         FROM leads l
         LEFT JOIN contacts c ON l.contact_id = c.id
@@ -435,7 +447,7 @@ leadRoutes.get('/unassigned', requirePermission('leads', 'view'), async (c) => {
 
   const rows = await tenantDb
     .prepare(`
-      SELECT l.*, c.name as contact_name
+      SELECT l.*, c.name as contact_name, c.phone as contact_phone, c.email as contact_email
       FROM leads l
       LEFT JOIN contacts c ON l.contact_id = c.id
       WHERE l.is_deleted = 0 AND l.assigned_to IS NULL
@@ -585,6 +597,9 @@ leadRoutes.post(
       hotelPreference: body.hotelPreference ?? null,
       mealPreference: body.mealPreference ?? null,
       specialRequirements: body.specialRequirements ?? null,
+      estimatedValue: body.estimatedValue ?? null,
+      probability: body.probability ?? null,
+      expectedCloseDate: body.expectedCloseDate ?? null,
       createdBy: userId,
       createdAt: now,
       updatedAt: now,
@@ -654,8 +669,10 @@ leadRoutes.put(
     const now = new Date().toISOString();
     const updates: Partial<typeof leads.$inferInsert> = { updatedAt: now };
 
+    if (body.contactId !== undefined) updates.contactId = body.contactId;
     if (body.title !== undefined) updates.title = body.title;
     if (body.destinations !== undefined) updates.destination = JSON.stringify(body.destinations);
+    if (body.assignedTo !== undefined) updates.assignedTo = body.assignedTo ?? null;
     if (body.travelDate !== undefined) updates.travelDate = body.travelDate;
     if (body.returnDate !== undefined) updates.returnDate = body.returnDate ?? null;
     if (body.paxAdults !== undefined) updates.paxAdults = body.paxAdults;
@@ -681,6 +698,9 @@ leadRoutes.put(
     if (body.hotelPreference !== undefined) updates.hotelPreference = body.hotelPreference ?? null;
     if (body.mealPreference !== undefined) updates.mealPreference = body.mealPreference ?? null;
     if (body.specialRequirements !== undefined) updates.specialRequirements = body.specialRequirements ?? null;
+    if (body.estimatedValue !== undefined) updates.estimatedValue = body.estimatedValue ?? null;
+    if (body.probability !== undefined) updates.probability = body.probability ?? null;
+    if (body.expectedCloseDate !== undefined) updates.expectedCloseDate = body.expectedCloseDate ?? null;
 
     await db.update(leads).set(updates).where(eq(leads.id, id));
     await logActivity(db, { userId, action: 'update', entityType: 'lead', entityId: id, ipAddress: c.get('clientIp') });
@@ -722,7 +742,8 @@ leadRoutes.put(
   zValidator('json', statusChangeSchema),
   async (c) => {
     const { id } = c.req.param();
-    const { status: newStatus, lostReason, notes } = c.req.valid('json');
+    const { status: newStatus, lostReason, reason, notes } = c.req.valid('json');
+    const resolvedLostReason = lostReason || reason || null;
     const tenantDb = c.get('tenantDb');
     const db = drizzle(tenantDb);
     const userId = c.get('userId');
@@ -748,7 +769,7 @@ leadRoutes.put(
       }
     }
 
-    if (newStatus === 'lost' && !lostReason) {
+    if (newStatus === 'lost' && !resolvedLostReason) {
       return error(c, 'Lost reason is required', 400);
     }
 
@@ -757,7 +778,7 @@ leadRoutes.put(
       status: newStatus,
       updatedAt: now,
     };
-    if (newStatus === 'lost') updates.lostReason = lostReason ?? null;
+    if (newStatus === 'lost') updates.lostReason = resolvedLostReason;
 
     await db.update(leads).set(updates).where(eq(leads.id, id));
 

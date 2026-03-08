@@ -20,8 +20,8 @@ CREATE TABLE IF NOT EXISTS contact_custom_field_defs (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   label TEXT NOT NULL,
-  field_type TEXT NOT NULL, -- text, number, date, select, multi_select, boolean
-  options TEXT, -- JSON array for select/multi_select
+  field_type TEXT NOT NULL,
+  options TEXT,
   is_required INTEGER DEFAULT 0,
   sort_order INTEGER DEFAULT 0,
   created_by TEXT REFERENCES users(id),

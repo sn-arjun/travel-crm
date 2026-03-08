@@ -113,16 +113,31 @@ contactRoutes.get('/', requirePermission('contacts', 'view'), async (c) => {
   if (languageFilter) conditions.push(eq(contacts.preferredLanguage, languageFilter));
   if (tagFilter) conditions.push(like(contacts.tags, `%"${tagFilter}"%`));
 
-  // FTS5 search
+  // FTS5 search with LIKE fallback
   if (search) {
-    const ftsResults = await db.all<{ id: string }>(
-      sql`SELECT c.id FROM contacts c JOIN contacts_fts fts ON c.rowid = fts.rowid WHERE contacts_fts MATCH ${search + '*'} AND c.is_deleted = 0`
-    );
-    const ftsIds = ftsResults.map((r) => r.id);
-    if (ftsIds.length === 0) {
-      return paginated(c, [], 0, page, limit);
+    let ftsIds: string[] = [];
+    try {
+      const ftsResults = await db.all<{ id: string }>(
+        sql`SELECT c.id FROM contacts c JOIN contacts_fts fts ON c.rowid = fts.rowid WHERE contacts_fts MATCH ${search + '*'} AND c.is_deleted = 0`
+      );
+      ftsIds = ftsResults.map((r) => r.id);
+    } catch {
+      // FTS may not be populated; fall through to LIKE
     }
-    conditions.push(inArray(contacts.id, ftsIds));
+    if (ftsIds.length > 0) {
+      conditions.push(inArray(contacts.id, ftsIds));
+    } else {
+      // Fallback: LIKE search on name, email, phone, company
+      const pattern = `%${search}%`;
+      conditions.push(
+        or(
+          like(contacts.name, pattern),
+          like(contacts.email, pattern),
+          like(contacts.phone, pattern),
+          like(contacts.company, pattern),
+        )!
+      );
+    }
   }
 
   const where = and(...conditions);

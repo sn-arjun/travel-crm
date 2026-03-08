@@ -46,8 +46,20 @@ notificationsRoutes.get('/', async (c) => {
       .all(),
   ]);
 
+  const items = (listResult.results ?? []).map((n: any) => ({
+    id: n.id,
+    userId: n.user_id,
+    title: n.title,
+    message: n.message,
+    type: n.type,
+    referenceType: n.reference_type,
+    referenceId: n.reference_id,
+    read: n.is_read === 1,
+    createdAt: n.created_at,
+  }));
+
   return success(c, {
-    items: listResult.results ?? [],
+    items,
     total: countResult?.total ?? 0,
     page,
     limit,
@@ -58,7 +70,7 @@ notificationsRoutes.get('/', async (c) => {
 // PUT /api/v1/notifications/read-all — mark all as read
 // ============================================================
 
-notificationsRoutes.put('/read-all', async (c) => {
+notificationsRoutes.post('/read-all', async (c) => {
   const tenantDb = c.get('tenantDb');
   const userId = c.get('userId');
 
@@ -74,7 +86,7 @@ notificationsRoutes.put('/read-all', async (c) => {
 // PUT /api/v1/notifications/:id/read — mark one as read
 // ============================================================
 
-notificationsRoutes.put('/:id/read', async (c) => {
+notificationsRoutes.post('/:id/read', async (c) => {
   const tenantDb = c.get('tenantDb');
   const userId = c.get('userId');
   const id = c.req.param('id');

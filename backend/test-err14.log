@@ -1,0 +1,71 @@
+
+ RUN  v2.1.8 C:/Users/Admin/Downloads/pro/CRM/backend
+
+Using vars defined in .dev.vars
+[vpw:inf] Starting isolated runtimes for vitest.config.ts...
+[mf:wrn] The latest compatibility date supported by the installed Cloudflare Workers Runtime is "2024-10-18",
+but you've requested "2026-02-20". Falling back to "2024-10-18"...
+stdout | test/api.test.ts > API Integration Tests
+<-- POST /api/v1/test/reset
+
+stderr | test/api.test.ts > API Integration Tests
+Error deleting from activities: Failed query: DELETE FROM activities
+params: 
+Error deleting from hotel_voucher_details: Failed query: DELETE FROM hotel_voucher_details
+params: 
+Error deleting from transport_voucher_details: Failed query: DELETE FROM transport_voucher_details
+params: 
+Error deleting from flight_voucher_details: Failed query: DELETE FROM flight_voucher_details
+params: 
+Error deleting from activity_voucher_details: Failed query: DELETE FROM activity_voucher_details
+params: 
+Error deleting from supplier_documents: Failed query: DELETE FROM supplier_documents
+params: 
+Error deleting from supplier_ledger: Failed query: DELETE FROM supplier_ledger
+params: 
+Error deleting from reconciliations: Failed query: DELETE FROM reconciliations
+params: 
+Error deleting from traveller_documents: Failed query: DELETE FROM traveller_documents
+params: 
+Error deleting from visa_documents: Failed query: DELETE FROM visa_documents
+params: 
+Error deleting from visa_notes: Failed query: DELETE FROM visa_notes
+params: 
+Error deleting from expiry_alerts_log: Failed query: DELETE FROM expiry_alerts_log
+params: 
+
+stdout | test/api.test.ts > API Integration Tests
+--> POST /api/v1/test/reset [31m500[0m 172ms
+
+stderr | test/api.test.ts > API Integration Tests
+Reset failed: {"error":"Failed query: INSERT INTO users (id, email, password_hash, role, name, is_active, language, invite_status, created_at, updated_at) VALUES ('11111111-1111-1111-1111-111111111111', 'admin@e2e.test', ?, 'admin', 'E2E Admin', 1, 'en', 'active', datetime('now'), datetime('now'))\nparams: $2b$10$zFcJbh2u/j2OKzXaTxv1/u1bSyahG6PpwkBpBFKKC403sq6sEbcG2"}
+
+ ❯ test/api.test.ts (2 tests | 2 skipped) 271ms
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/api.test.ts > API Integration Tests
+AssertionError: expected 500 to be 200 // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 200[39m
+[31m+ 500[39m
+
+ ❯ test/api.test.ts:20:46
+     19|         const res = await worker.fetch(resetReq, testEnv, ctx);
+     20|         await waitOnExecutionContext(ctx);
+     21| 
+       |  ^
+     22|         if (res.status !== 200) {
+     23|             console.error('Reset failed:', await res.text());
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  2 skipped (2)
+   Start at  01:31:46
+   Duration  3.23s (transform 521ms, setup 0ms, collect 1.59s, tests 271ms, environment 0ms, prepare 339ms)
+
+[vpw:dbg] Shutting down runtimes...

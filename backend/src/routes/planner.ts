@@ -109,7 +109,7 @@ plannerRoutes.post('/', async (c) => {
             return error(c, 'title, event_type, and start_at are required', 400);
         }
 
-        const validTypes = ['trip_departure', 'trip_return', 'meeting', 'follow_up', 'deadline', 'reminder', 'holiday'];
+        const validTypes = ['trip_departure', 'trip_return', 'meeting', 'follow_up', 'deadline', 'reminder', 'holiday', 'call', 'task', 'other'];
         if (!validTypes.includes(body.event_type)) {
             return error(c, `Invalid event_type. Must be one of: ${validTypes.join(', ')}`, 400);
         }

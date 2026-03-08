@@ -1,0 +1,260 @@
+'use client';
+
+import * as React from 'react';
+import {
+  ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Skeleton } from '@/components/ui/skeleton';
+
+export interface Column<T> {
+  key: string;
+  header: string;
+  cell?: (row: T, index: number) => React.ReactNode;
+  sortable?: boolean;
+  width?: string;
+  align?: 'left' | 'center' | 'right';
+}
+
+interface DataTableProps<T> {
+  columns: Column<T>[];
+  data: T[];
+  loading?: boolean;
+  selectable?: boolean;
+  selectedRows?: Set<string>;
+  onSelectRows?: (rows: Set<string>) => void;
+  getRowId?: (row: T) => string;
+  sortColumn?: string;
+  sortDirection?: 'asc' | 'desc';
+  onSort?: (column: string) => void;
+  page?: number;
+  pageSize?: number;
+  totalItems?: number;
+  onPageChange?: (page: number) => void;
+  onPageSizeChange?: (size: number) => void;
+  emptyMessage?: string;
+  className?: string;
+  onRowClick?: (row: T) => void;
+  stickyHeader?: boolean;
+}
+
+export function DataTable<T extends Record<string, unknown>>({
+  columns,
+  data,
+  loading,
+  selectable,
+  selectedRows = new Set(),
+  onSelectRows,
+  getRowId = (row) => String(row.id),
+  sortColumn,
+  sortDirection,
+  onSort,
+  page = 1,
+  pageSize = 20,
+  totalItems,
+  onPageChange,
+  onPageSizeChange,
+  emptyMessage = 'No data found',
+  className,
+  onRowClick,
+  stickyHeader = true,
+}: DataTableProps<T>) {
+  const allSelected = data.length > 0 && data.every((row) => selectedRows.has(getRowId(row)));
+  const someSelected = data.some((row) => selectedRows.has(getRowId(row)));
+
+  const handleSelectAll = () => {
+    if (!onSelectRows) return;
+    if (allSelected) {
+      onSelectRows(new Set());
+    } else {
+      onSelectRows(new Set(data.map((row: any) => getRowId(row))));
+    }
+  };
+
+  const handleSelectRow = (rowId: string) => {
+    if (!onSelectRows) return;
+    const next = new Set(selectedRows);
+    if (next.has(rowId)) {
+      next.delete(rowId);
+    } else {
+      next.add(rowId);
+    }
+    onSelectRows(next);
+  };
+
+  const totalPages = totalItems ? Math.ceil(totalItems / pageSize) : 1;
+
+  return (
+    <div className={cn('rounded-[var(--radius-card)] border border-[var(--color-border-default)] bg-[var(--color-bg-card)] overflow-hidden animate-fade-in', className)}>
+      <div className="overflow-auto">
+        <table className="w-full text-sm">
+          <thead className={cn(stickyHeader && 'sticky top-0 z-10')}>
+            <tr className="border-b border-[var(--color-divider)] bg-[var(--color-bg-muted)]/50">
+              {selectable && (
+                <th className="w-12 px-4 py-3" aria-label="Select all rows">
+                  <Checkbox
+                    checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+                    onCheckedChange={handleSelectAll}
+                    aria-label="Select all rows"
+                  />
+                </th>
+              )}
+              {columns.map((col: any) => (
+                <th
+                  key={col.key}
+                  className={cn(
+                    'px-4 py-3 text-left font-medium text-[var(--color-text-muted)] whitespace-nowrap',
+                    col.align === 'center' && 'text-center',
+                    col.align === 'right' && 'text-right',
+                    col.sortable && 'cursor-pointer select-none hover:text-[var(--color-text-primary)] transition-colors',
+                  )}
+                  style={{ width: col.width }}
+                  onClick={() => col.sortable && onSort?.(col.key)}
+                  aria-label={col.sortable ? `Sort by ${col.header}` : undefined}
+                  role={col.sortable ? 'button' : undefined}
+                >
+                  <div className={cn('flex items-center gap-1', col.align === 'right' && 'justify-end')}>
+                    {col.header}
+                    {col.sortable && (
+                      <span className="ml-1">
+                        {sortColumn === col.key ? (
+                          sortDirection === 'asc' ? (
+                            <ChevronUp className="h-3.5 w-3.5 text-primary-500" />
+                          ) : (
+                            <ChevronDown className="h-3.5 w-3.5 text-primary-500" />
+                          )
+                        ) : (
+                          <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />
+                        )}
+                      </span>
+                    )}
+                  </div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {loading
+              ? Array.from({ length: 5 }).map((_, i) => (
+                  <tr key={i} className="border-b border-[var(--color-divider)]">
+                    {selectable && (
+                      <td className="px-4 py-3">
+                        <Skeleton className="h-4 w-4" />
+                      </td>
+                    )}
+                    {columns.map((col: any) => (
+                      <td key={col.key} className="px-4 py-3">
+                        <Skeleton className="h-4 w-full max-w-[200px]" />
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              : data.length === 0
+                ? (
+                    <tr>
+                      <td colSpan={columns.length + (selectable ? 1 : 0)} className="px-4 py-12 text-center text-[var(--color-text-muted)]">
+                        {emptyMessage}
+                      </td>
+                    </tr>
+                  )
+                : data.map((row, idx) => {
+                    const rowId = getRowId(row);
+                    const isSelected = selectedRows.has(rowId);
+                    return (
+                      <tr
+                        key={rowId}
+                        onClick={() => onRowClick?.(row)}
+                        className={cn(
+                          'border-b border-[var(--color-divider)] transition-colors',
+                          'hover:bg-[var(--color-bg-muted)]/50',
+                          isSelected && 'bg-primary-50/50 dark:bg-primary-950/20',
+                          onRowClick && 'cursor-pointer',
+                          'animate-fade-in',
+                        )}
+                        style={{ animationDelay: `${idx * 20}ms`, animationFillMode: 'both' }}
+                      >
+                        {selectable && (
+                          <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                            <Checkbox checked={isSelected} onCheckedChange={() => handleSelectRow(rowId)} aria-label={`Select row ${rowId}`} />
+                          </td>
+                        )}
+                        {columns.map((col: any) => (
+                          <td
+                            key={col.key}
+                            className={cn(
+                              'px-4 py-3',
+                              col.align === 'center' && 'text-center',
+                              col.align === 'right' && 'text-right tabular-nums',
+                            )}
+                          >
+                            {col.cell ? col.cell(row, idx) : String(row[col.key] ?? '')}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination */}
+      {(totalItems !== undefined || onPageSizeChange) && (
+        <div className="flex items-center justify-between border-t border-[var(--color-divider)] px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
+            {selectedRows.size > 0 && (
+              <span className="font-medium text-primary-500 animate-pop-in">{selectedRows.size} selected</span>
+            )}
+            {totalItems !== undefined && (
+              <span>{totalItems} total</span>
+            )}
+          </div>
+          <div className="flex items-center gap-4">
+            {onPageSizeChange && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[var(--color-text-muted)]">Rows:</span>
+                <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
+                  <SelectTrigger className="h-8 w-16 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[10, 20, 50, 100].map((size: any) => (
+                      <SelectItem key={size} value={String(size)}>{size}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {onPageChange && (
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-[var(--color-text-muted)] mr-2">
+                  Page {page} of {totalPages}
+                </span>
+                <Button variant="outline" size="icon-sm" onClick={() => onPageChange(1)} disabled={page <= 1}>
+                  <ChevronsLeft className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant="outline" size="icon-sm" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant="outline" size="icon-sm" onClick={() => onPageChange(page + 1)} disabled={page >= totalPages}>
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant="outline" size="icon-sm" onClick={() => onPageChange(totalPages)} disabled={page >= totalPages}>
+                  <ChevronsRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

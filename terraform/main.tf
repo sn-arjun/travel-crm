@@ -21,4 +21,5 @@ module "cloudflare" {
   cloudflare_api_token  = var.cloudflare_api_token
   zone_name             = var.domain
   oci_instance_ip       = module.oracle_cloud.instance_public_ip
+  project_name          = var.project_name
 }

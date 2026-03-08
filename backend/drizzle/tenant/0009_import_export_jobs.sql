@@ -56,8 +56,8 @@ CREATE TABLE `export_jobs` (
 	FOREIGN KEY (`created_by`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `import_templates_import_type_unique` ON `import_templates` (`import_type`);--> statement-breakpoint
-CREATE INDEX `import_jobs_created_by_idx` ON `import_jobs` (`created_by`);--> statement-breakpoint
-CREATE INDEX `import_jobs_status_idx` ON `import_jobs` (`status`);--> statement-breakpoint
-CREATE INDEX `import_errors_job_id_idx` ON `import_errors` (`import_job_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `import_templates_import_type_unique` ON `import_templates` (`import_type`);
+CREATE INDEX `import_jobs_created_by_idx` ON `import_jobs` (`created_by`);
+CREATE INDEX `import_jobs_status_idx` ON `import_jobs` (`status`);
+CREATE INDEX `import_errors_job_id_idx` ON `import_errors` (`import_job_id`);
 CREATE INDEX `export_jobs_created_by_idx` ON `export_jobs` (`created_by`);

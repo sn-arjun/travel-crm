@@ -1,9 +1,9 @@
-# --- Cloudflare Pages Projects ---
+# ─── Cloudflare Pages Projects ───────────────────────────────
 
 # CRM Flutter Web App
 resource "cloudflare_pages_project" "crm_web" {
   account_id        = var.cloudflare_account_id
-  name              = "travelcrm-web"
+  name              = "${var.project_name}-web"
   production_branch = "main"
 
   build_config {
@@ -28,7 +28,7 @@ resource "cloudflare_pages_project" "crm_web" {
 # Super Admin Next.js Portal
 resource "cloudflare_pages_project" "admin" {
   account_id        = var.cloudflare_account_id
-  name              = "travelcrm-admin"
+  name              = "${var.project_name}-admin"
   production_branch = "main"
 
   build_config {

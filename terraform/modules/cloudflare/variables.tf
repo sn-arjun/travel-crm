@@ -18,3 +18,9 @@ variable "oci_instance_ip" {
   description = "Public IP of the Oracle Cloud instance (for wildcard DNS)"
   type        = string
 }
+
+variable "project_name" {
+  description = "Project name for resource naming"
+  type        = string
+  default     = "travelcrm"
+}

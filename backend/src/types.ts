@@ -21,22 +21,38 @@ export interface Env {
   IMPORT_QUEUE: Queue;
   EXPORT_QUEUE: Queue;
   CAMPAIGN_QUEUE: Queue;
+  AI_EXTRACTION_QUEUE: Queue;
+  AI_EXTRACTION_DLQ: Queue;
+  NOTIFICATION_QUEUE: Queue;
 
   // Durable Objects
   REALTIME: DurableObjectNamespace;
 
+  // AI Bindings
+  AI: Ai;
+
   // Environment Variables (Secrets)
   JWT_SECRET: string;
   JWT_REFRESH_SECRET: string;
+  // Twilio (legacy default provider)
   TWILIO_ACCOUNT_SID: string;
   TWILIO_AUTH_TOKEN: string;
   TWILIO_VERIFY_SERVICE_SID: string;
   TWILIO_SMS_FROM_NUMBER: string;
   TWILIO_WHATSAPP_FROM_NUMBER: string;
+  // Plivo (alternative provider — 78% cheaper for India)
+  PLIVO_AUTH_ID?: string;
+  PLIVO_AUTH_TOKEN?: string;
+  PLIVO_SMS_FROM_NUMBER?: string;
+  PLIVO_WHATSAPP_FROM_NUMBER?: string;
   SENDGRID_API_KEY: string;
   FCM_SERVER_KEY: string;
+  DEEPGRAM_API_KEY: string;
+  ANTHROPIC_API_KEY: string;
   GOOGLE_MAPS_API_KEY?: string;
   TEST_MODE?: string;
+  CF_ACCOUNT_ID?: string;
+  CF_API_TOKEN?: string;
 
   // Dynamic tenant D1 bindings — resolved at runtime
   [key: `TENANT_DB_${string}`]: D1Database;
