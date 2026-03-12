@@ -115,6 +115,10 @@ queue = "travelcrm-campaign-dlq"
 [triggers]
 crons = ["*/5 * * * *"]
 
+# --- Workers AI ---
+[ai]
+binding = "AI"
+
 # --- Durable Objects ---
 [durable_objects]
 bindings = [
