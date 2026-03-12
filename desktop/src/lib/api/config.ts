@@ -178,6 +178,9 @@ export const API_ENDPOINTS = {
     byId: (id: string) => `/visa/${id}`,
     checklist: (id: string, itemId: string) => `/visa/${id}/checklist/${itemId}`,
     notes: (id: string) => `/visa/${id}/notes`,
+    documents: (id: string) => `/visa/${id}/documents`,
+    documentDownload: (id: string, docId: string) => `/visa/${id}/documents/${docId}/download`,
+    documentDelete: (id: string, docId: string) => `/visa/${id}/documents/${docId}`,
   },
   travellers: {
     list: '/travellers',
@@ -326,6 +329,13 @@ export const API_ENDPOINTS = {
       lostDealAnalysis: '/ai/bi/lost-deal-analysis',
       leadSourceRoi: '/ai/bi/lead-source-roi',
       revenuePulse: '/ai/bi/revenue-pulse',
+    },
+    settings: {
+      root: '/ai/settings',
+      features: '/ai/settings/features',
+      usage: '/ai/settings/usage',
+      provider: '/ai/settings/provider',
+      featureCheck: (key: string) => `/ai/settings/features/check/${key}`,
     },
   },
   // VoIP

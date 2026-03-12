@@ -211,6 +211,62 @@ export interface RevenuePulseData {
   }>;
 }
 
+// AI Settings types
+export interface AiFeatureFlag {
+  key: string;
+  enabled: boolean;
+  tier: 'pro' | 'enterprise';
+  overridden: boolean;
+}
+
+export interface UsageCap {
+  key: string;
+  limit: number;
+  used: number;
+  remaining: number;
+  resetPeriod: 'daily' | 'monthly';
+  lastResetAt: string;
+  percentUsed: number;
+  isExhausted: boolean;
+}
+
+export interface AiUsageSummary {
+  totalRequests: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCost: number;
+  avgDurationMs: number;
+}
+
+export interface AiProviderStatus {
+  anthropic: boolean;
+  cloudflare: boolean;
+  defaultProvider: 'cloudflare' | 'anthropic';
+}
+
+export interface AiSettingsData {
+  plan: string;
+  aiFeatures: AiFeatureFlag[];
+  usageCaps: Record<string, Omit<UsageCap, 'key' | 'isExhausted'>>;
+  usageSummary: AiUsageSummary;
+  provider: AiProviderStatus;
+}
+
+export interface UsageBreakdown {
+  taskType: string;
+  modelName: string;
+  requestCount: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCost: number;
+}
+
+export interface UsageData {
+  quotas: UsageCap[];
+  breakdown: UsageBreakdown[];
+  dailyTrend: Array<{ day: string; requests: number; cost: number }>;
+}
+
 export const aiApi = {
   conversations: {
     list: (params?: { page?: number; limit?: number }) =>
@@ -300,5 +356,28 @@ export const aiApi = {
 
     getRevenuePulse: () =>
       client.get<ApiResponse<RevenuePulseData>>(API_ENDPOINTS.ai.bi.revenuePulse),
+  },
+
+  settings: {
+    get: () =>
+      client.get<ApiResponse<AiSettingsData>>(API_ENDPOINTS.ai.settings.root),
+
+    updateFeatures: (features: Record<string, boolean>) =>
+      client.put<ApiResponse<{ updated: Record<string, boolean>; denied?: string[] }>>(
+        API_ENDPOINTS.ai.settings.features, { features },
+      ),
+
+    getUsage: () =>
+      client.get<ApiResponse<UsageData>>(API_ENDPOINTS.ai.settings.usage),
+
+    getProvider: () =>
+      client.get<ApiResponse<AiProviderStatus & { taskRouting: Record<string, string> }>>(
+        API_ENDPOINTS.ai.settings.provider,
+      ),
+
+    checkFeature: (featureKey: string) =>
+      client.get<ApiResponse<{ featureKey: string; enabled: boolean; plan: string }>>(
+        API_ENDPOINTS.ai.settings.featureCheck(featureKey),
+      ),
   },
 };

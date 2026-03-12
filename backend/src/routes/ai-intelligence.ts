@@ -10,6 +10,7 @@ import type { AppContext } from '../types';
 import { success, error } from '../utils/response';
 import { generateId } from '../utils/uuid';
 import { AIRouter } from '../services/ai-router';
+import { incrementUsage } from '../middleware/usage-cap';
 
 const app = new Hono<AppContext>();
 
@@ -377,6 +378,7 @@ app.post('/lead-scores/bulk', async (c) => {
 app.post('/ocr/passport', async (c) => {
   const db = c.get('tenantDb');
   const userId = c.get('userId');
+  const env = c.env;
   const body = await c.req.json();
   const parsed = z.object({
     imageBase64: z.string().min(100),
@@ -384,49 +386,34 @@ app.post('/ocr/passport', async (c) => {
   }).safeParse(body);
   if (!parsed.success) return error(c, 'Invalid input', 400);
 
-  // Use Claude Vision directly
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': c.env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: parsed.data.imageBase64 } },
-          { type: 'text', text: `Extract passport data from this image. Return JSON: { "fullName": "...", "surname": "...", "givenNames": "...", "passportNumber": "...", "nationality": "...", "dateOfBirth": "YYYY-MM-DD", "sex": "M|F", "placeOfBirth": "...", "dateOfIssue": "YYYY-MM-DD", "dateOfExpiry": "YYYY-MM-DD", "issuingAuthority": "...", "mrz": "..." }` },
-        ],
-      }],
-    }),
-  });
+  const router = new AIRouter(env);
+  const textPrompt = `Extract passport data from this image. Return JSON: { "fullName": "...", "surname": "...", "givenNames": "...", "passportNumber": "...", "nationality": "...", "dateOfBirth": "YYYY-MM-DD", "sex": "M|F", "placeOfBirth": "...", "dateOfIssue": "YYYY-MM-DD", "dateOfExpiry": "YYYY-MM-DD", "issuingAuthority": "...", "mrz": "..." }`;
 
-  const data = await response.json() as any;
-  const text = data.content?.[0]?.text || '';
-  const inputTokens = data.usage?.input_tokens || 0;
-  const outputTokens = data.usage?.output_tokens || 0;
-  const cost = inputTokens * 0.0000008 + outputTokens * 0.000004;
+  const result = await router.routeVision('passport_ocr', parsed.data.imageBase64, 'image/jpeg', textPrompt);
 
   let extracted: any = {};
-  try { extracted = JSON.parse(text); } catch { extracted = { rawText: text }; }
+  try {
+    const jsonMatch = result.result.match(/\{[\s\S]*\}/);
+    if (jsonMatch) extracted = JSON.parse(jsonMatch[0]);
+  } catch { extracted = { rawText: result.result }; }
 
   const id = generateId();
   await db.prepare(`
     INSERT INTO ai_document_scans (id, user_id, document_type, image_url, extracted_data, confidence, entity_type, status, model_used, input_tokens, output_tokens, cost_estimate)
-    VALUES (?, ?, 'passport', ?, ?, 0.85, 'traveller', 'pending', 'claude-haiku-4-5-20251001', ?, ?, ?)
-  `).bind(id, userId, parsed.data.imageUrl || null, JSON.stringify(extracted), inputTokens, outputTokens, cost).run();
+    VALUES (?, ?, 'passport', ?, ?, 0.85, 'traveller', 'pending', ?, ?, ?, ?)
+  `).bind(id, userId, parsed.data.imageUrl || null, JSON.stringify(extracted), result.model, result.inputTokens, result.outputTokens, result.cost).run();
 
-  return c.json({ success: true, data: { id, extracted, model: 'claude-haiku-4-5-20251001', cost } });
+  await router.logUsage(db, 'passport_ocr', result.model, result.inputTokens, result.outputTokens, result.cost);
+  await incrementUsage(env.MASTER_DB, c.get('tenantId'), 'ai_actions_per_day');
+
+  return c.json({ success: true, data: { id, extracted, model: result.model, provider: result.provider, cost: result.cost } });
 });
 
 // Visa document classification
 app.post('/ocr/visa-classify', async (c) => {
   const db = c.get('tenantDb');
   const userId = c.get('userId');
+  const env = c.env;
   const body = await c.req.json();
   const parsed = z.object({
     images: z.array(z.object({
@@ -436,45 +423,30 @@ app.post('/ocr/visa-classify', async (c) => {
   }).safeParse(body);
   if (!parsed.success) return error(c, 'Invalid input', 400);
 
+  const router = new AIRouter(env);
   const classifications: any[] = [];
-  for (const img of parsed.data.images) {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': c.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 512,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: img.imageBase64 } },
-            { type: 'text', text: `Classify this document for visa application. Return JSON: { "category": "passport_copy|photo|bank_statement|employment_letter|hotel_booking|flight_booking|travel_insurance|invitation_letter|other", "confidence": 0.0-1.0, "description": "...", "extractedInfo": { ... } }` },
-          ],
-        }],
-      }),
-    });
 
-    const data = await response.json() as any;
-    const text = data.content?.[0]?.text || '';
-    const inputTokens = data.usage?.input_tokens || 0;
-    const outputTokens = data.usage?.output_tokens || 0;
-    const cost = inputTokens * 0.0000008 + outputTokens * 0.000004;
+  for (const img of parsed.data.images) {
+    const textPrompt = `Classify this document for visa application. Return JSON: { "category": "passport_copy|photo|bank_statement|employment_letter|hotel_booking|flight_booking|travel_insurance|invitation_letter|other", "confidence": 0.0-1.0, "description": "...", "extractedInfo": { ... } }`;
+
+    const result = await router.routeVision('visa_classification', img.imageBase64, 'image/jpeg', textPrompt);
 
     let classified: any = {};
-    try { classified = JSON.parse(text); } catch { classified = { category: 'other', description: text }; }
+    try {
+      const jsonMatch = result.result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) classified = JSON.parse(jsonMatch[0]);
+    } catch { classified = { category: 'other', description: result.result }; }
 
     const id = generateId();
     await db.prepare(`
       INSERT INTO ai_document_scans (id, user_id, document_type, extracted_data, confidence, status, model_used, input_tokens, output_tokens, cost_estimate)
-      VALUES (?, ?, 'visa_document', ?, ?, 'pending', 'claude-haiku-4-5-20251001', ?, ?, ?)
-    `).bind(id, userId, JSON.stringify(classified), classified.confidence || 0.7, inputTokens, outputTokens, cost).run();
+      VALUES (?, ?, 'visa_document', ?, ?, 'pending', ?, ?, ?, ?)
+    `).bind(id, userId, JSON.stringify(classified), classified.confidence || 0.7, result.model, result.inputTokens, result.outputTokens, result.cost).run();
 
     classifications.push({ id, fileName: img.fileName, ...classified });
   }
+
+  await incrementUsage(env.MASTER_DB, c.get('tenantId'), 'ai_actions_per_day');
 
   return c.json({ success: true, data: classifications });
 });
@@ -483,6 +455,7 @@ app.post('/ocr/visa-classify', async (c) => {
 app.post('/ocr/supplier-invoice', async (c) => {
   const db = c.get('tenantDb');
   const userId = c.get('userId');
+  const env = c.env;
   const body = await c.req.json();
   const parsed = z.object({
     imageBase64: z.string().min(100),
@@ -490,42 +463,27 @@ app.post('/ocr/supplier-invoice', async (c) => {
   }).safeParse(body);
   if (!parsed.success) return error(c, 'Invalid input', 400);
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': c.env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 2048,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: parsed.data.imageBase64 } },
-          { type: 'text', text: `Extract invoice data from this supplier invoice image. Return JSON: { "supplierName": "...", "invoiceNumber": "...", "invoiceDate": "YYYY-MM-DD", "dueDate": "YYYY-MM-DD", "currency": "INR", "lineItems": [{ "description": "...", "quantity": number, "unitPrice": number, "amount": number, "hsnCode": "..." }], "subtotal": number, "taxAmount": number, "totalAmount": number, "gstNumber": "...", "panNumber": "..." }` },
-        ],
-      }],
-    }),
-  });
+  const router = new AIRouter(env);
+  const textPrompt = `Extract invoice data from this supplier invoice image. Return JSON: { "supplierName": "...", "invoiceNumber": "...", "invoiceDate": "YYYY-MM-DD", "dueDate": "YYYY-MM-DD", "currency": "INR", "lineItems": [{ "description": "...", "quantity": number, "unitPrice": number, "amount": number, "hsnCode": "..." }], "subtotal": number, "taxAmount": number, "totalAmount": number, "gstNumber": "...", "panNumber": "..." }`;
 
-  const data = await response.json() as any;
-  const text = data.content?.[0]?.text || '';
-  const inputTokens = data.usage?.input_tokens || 0;
-  const outputTokens = data.usage?.output_tokens || 0;
-  const cost = inputTokens * 0.0000008 + outputTokens * 0.000004;
+  const result = await router.routeVision('supplier_invoice_ocr', parsed.data.imageBase64, 'image/jpeg', textPrompt);
 
   let extracted: any = {};
-  try { extracted = JSON.parse(text); } catch { extracted = { rawText: text }; }
+  try {
+    const jsonMatch = result.result.match(/\{[\s\S]*\}/);
+    if (jsonMatch) extracted = JSON.parse(jsonMatch[0]);
+  } catch { extracted = { rawText: result.result }; }
 
   const id = generateId();
   await db.prepare(`
     INSERT INTO ai_document_scans (id, user_id, document_type, image_url, extracted_data, confidence, entity_type, status, model_used, input_tokens, output_tokens, cost_estimate)
-    VALUES (?, ?, 'supplier_invoice', ?, ?, 0.8, 'invoice', 'pending', 'claude-haiku-4-5-20251001', ?, ?, ?)
-  `).bind(id, userId, parsed.data.imageUrl || null, JSON.stringify(extracted), inputTokens, outputTokens, cost).run();
+    VALUES (?, ?, 'supplier_invoice', ?, ?, 0.8, 'invoice', 'pending', ?, ?, ?, ?)
+  `).bind(id, userId, parsed.data.imageUrl || null, JSON.stringify(extracted), result.model, result.inputTokens, result.outputTokens, result.cost).run();
 
-  return c.json({ success: true, data: { id, extracted, model: 'claude-haiku-4-5-20251001', cost } });
+  await router.logUsage(db, 'supplier_invoice_ocr', result.model, result.inputTokens, result.outputTokens, result.cost);
+  await incrementUsage(env.MASTER_DB, c.get('tenantId'), 'ai_actions_per_day');
+
+  return c.json({ success: true, data: { id, extracted, model: result.model, provider: result.provider, cost: result.cost } });
 });
 
 // Get document scans

@@ -12,6 +12,7 @@ import type { AppContext } from '../types';
 import { success, error, notFound, paginated } from '../utils/response';
 import { generateId } from '../utils/uuid';
 import { AIRouter } from '../services/ai-router';
+import { incrementUsage } from '../middleware/usage-cap';
 
 const aiRoutes = new Hono<AppContext>();
 
@@ -183,11 +184,14 @@ Only include fields you can confidently extract. Set others to null.`;
 
   await router.logUsage(db, 'lead_extraction', result.model, result.inputTokens, result.outputTokens, result.cost, undefined, durationMs);
 
+  await incrementUsage(env.MASTER_DB, c.get('tenantId'), 'ai_actions_per_day');
+
   return success(c, {
     contentId,
     extracted,
     source: source || 'freeform',
     model: result.model,
+    provider: result.provider,
     cost: result.cost,
   });
 });
@@ -229,7 +233,9 @@ Return as JSON with the same schema as a lead extraction. Handle forwarded messa
 
   await router.logUsage(db, 'whatsapp_parse', result.model, result.inputTokens, result.outputTokens, result.cost, undefined, durationMs);
 
-  return success(c, { contentId, extracted, source: 'whatsapp', model: result.model, cost: result.cost });
+  await incrementUsage(env.MASTER_DB, c.get('tenantId'), 'ai_actions_per_day');
+
+  return success(c, { contentId, extracted, source: 'whatsapp', model: result.model, provider: result.provider, cost: result.cost });
 });
 
 // ── Parse email (TICKET-417) ─────────────────────────────
@@ -270,7 +276,9 @@ Return as JSON with: name, phone, email, destination, travelDates, paxCount, bud
 
   await router.logUsage(db, 'email_parse', result.model, result.inputTokens, result.outputTokens, result.cost, undefined, durationMs);
 
-  return success(c, { contentId, extracted, source: 'email', model: result.model, cost: result.cost });
+  await incrementUsage(env.MASTER_DB, c.get('tenantId'), 'ai_actions_per_day');
+
+  return success(c, { contentId, extracted, source: 'email', model: result.model, provider: result.provider, cost: result.cost });
 });
 
 // ── Business card OCR (TICKET-418) — requires base64 image ───
@@ -282,31 +290,13 @@ aiRoutes.post('/scan-business-card', zValidator('json', z.object({
   const db = c.get('tenantDb');
   const env = c.env;
   const userId = c.get('userId');
+  const tenantId = c.get('tenantId');
   const { image, mimeType } = c.req.valid('json');
 
   const startTime = Date.now();
+  const router = new AIRouter(env);
 
-  // Use Claude Vision for OCR
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      messages: [{
-        role: 'user',
-        content: [
-          {
-            type: 'image',
-            source: { type: 'base64', media_type: mimeType, data: image },
-          },
-          {
-            type: 'text',
-            text: `Extract contact information from this business card. Return as JSON:
+  const textPrompt = `Extract contact information from this business card. Return as JSON:
 {
   "name": "full name",
   "company": "company name",
@@ -316,42 +306,32 @@ aiRoutes.post('/scan-business-card', zValidator('json', z.object({
   "website": "website",
   "address": "full address",
   "confidence": 0.0_to_1.0
-}`,
-          },
-        ],
-      }],
-    }),
-  });
+}`;
 
-  const apiResult = await response.json() as any;
+  const result = await router.routeVision('business_card_ocr', image, mimeType, textPrompt);
   const durationMs = Date.now() - startTime;
-  const content = apiResult.content?.[0]?.text || '';
 
   let extracted: any = {};
   try {
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    const jsonMatch = result.result.match(/\{[\s\S]*\}/);
     if (jsonMatch) extracted = JSON.parse(jsonMatch[0]);
   } catch {
-    extracted = { error: 'Failed to parse', raw: content };
+    extracted = { error: 'Failed to parse', raw: result.result };
   }
-
-  const inputTokens = apiResult.usage?.input_tokens || 0;
-  const outputTokens = apiResult.usage?.output_tokens || 0;
-  const cost = (inputTokens * 0.80 + outputTokens * 4.00) / 1_000_000;
 
   const contentId = generateId();
   await db.prepare(`
     INSERT INTO ai_generated_content (id, user_id, content_type, prompt, raw_output, structured_output, status, model_used, input_tokens, output_tokens, cost_estimate, duration_ms)
-    VALUES (?, ?, 'business_card_ocr', '[image]', ?, ?, 'draft', 'claude-haiku-4-5-20251001', ?, ?, ?, ?)
+    VALUES (?, ?, 'business_card_ocr', '[image]', ?, ?, 'draft', ?, ?, ?, ?, ?)
   `).bind(
-    contentId, userId, content, JSON.stringify(extracted),
-    inputTokens, outputTokens, cost, durationMs,
+    contentId, userId, result.result, JSON.stringify(extracted),
+    result.model, result.inputTokens, result.outputTokens, result.cost, durationMs,
   ).run();
 
-  const router = new AIRouter(env);
-  await router.logUsage(db, 'business_card_ocr', 'claude-haiku-4-5-20251001', inputTokens, outputTokens, cost, undefined, durationMs);
+  await router.logUsage(db, 'business_card_ocr', result.model, result.inputTokens, result.outputTokens, result.cost, undefined, durationMs);
+  await incrementUsage(env.MASTER_DB, tenantId, 'ai_actions_per_day');
 
-  return success(c, { contentId, extracted, model: 'claude-haiku-4-5-20251001', cost });
+  return success(c, { contentId, extracted, model: result.model, provider: result.provider, cost: result.cost });
 });
 
 // ── Bulk lead parsing (TICKET-420) ─────────────────────────
@@ -395,7 +375,9 @@ Extract each inquiry as a separate lead. Return as JSON array:
 
   await router.logUsage(db, 'bulk_lead_extraction', result.model, result.inputTokens, result.outputTokens, result.cost, undefined, durationMs);
 
-  return success(c, { contentId, leads: extracted, count: extracted.length, model: result.model, cost: result.cost });
+  await incrementUsage(env.MASTER_DB, c.get('tenantId'), 'ai_actions_per_day');
+
+  return success(c, { contentId, leads: extracted, count: extracted.length, model: result.model, provider: result.provider, cost: result.cost });
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -525,11 +507,14 @@ Return as JSON:
 
   await router.logUsage(db, 'itinerary_generation', result.model, result.inputTokens, result.outputTokens, result.cost, undefined, durationMs);
 
+  await incrementUsage(env.MASTER_DB, c.get('tenantId'), 'ai_actions_per_day');
+
   return success(c, {
     contentId,
     conversationId,
     itinerary,
     model: result.model,
+    provider: result.provider,
     cost: result.cost,
   });
 });
@@ -574,7 +559,9 @@ Return the same JSON structure but with enriched descriptions, added restaurant 
 
   await router.logUsage(db, 'itinerary_enrichment', result.model, result.inputTokens, result.outputTokens, result.cost, undefined, durationMs);
 
-  return success(c, { contentId, itinerary: enriched, model: result.model, cost: result.cost });
+  await incrementUsage(env.MASTER_DB, c.get('tenantId'), 'ai_actions_per_day');
+
+  return success(c, { contentId, itinerary: enriched, model: result.model, provider: result.provider, cost: result.cost });
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -634,7 +621,9 @@ Return as JSON:
 
   await router.logUsage(db, 'invoice_generation', result.model, result.inputTokens, result.outputTokens, result.cost, undefined, durationMs);
 
-  return success(c, { contentId, invoice, model: result.model, cost: result.cost });
+  await incrementUsage(env.MASTER_DB, c.get('tenantId'), 'ai_actions_per_day');
+
+  return success(c, { contentId, invoice, model: result.model, provider: result.provider, cost: result.cost });
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -709,7 +698,9 @@ Return as JSON:
 
   await router.logUsage(db, 'communication_compose', result.model, result.inputTokens, result.outputTokens, result.cost, undefined, durationMs);
 
-  return success(c, { contentId, message, channel: body.channel, model: result.model, cost: result.cost });
+  await incrementUsage(env.MASTER_DB, c.get('tenantId'), 'ai_actions_per_day');
+
+  return success(c, { contentId, message, channel: body.channel, model: result.model, provider: result.provider, cost: result.cost });
 });
 
 // ── Smart reply suggestions (TICKET-432) ──────────────────
@@ -744,7 +735,9 @@ Keep replies concise and professional.`;
 
   await router.logUsage(db, 'smart_reply', result.model, result.inputTokens, result.outputTokens, result.cost, undefined, durationMs);
 
-  return success(c, { suggestions, model: result.model, cost: result.cost });
+  await incrementUsage(env.MASTER_DB, c.get('tenantId'), 'ai_actions_per_day');
+
+  return success(c, { suggestions, model: result.model, provider: result.provider, cost: result.cost });
 });
 
 // ═══════════════════════════════════════════════════════════

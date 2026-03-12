@@ -74,6 +74,7 @@ import aiAssistantRoutes from './routes/ai-assistant';
 import aiIntelligenceRoutes from './routes/ai-intelligence';
 import chatbotRoutes from './routes/chatbot';
 import businessIntelligenceRoutes from './routes/business-intelligence';
+import aiSettingsRoutes from './routes/ai-settings';
 import whatsappCampaignRoutes from './routes/whatsapp-campaigns';
 import socialContentRoutes from './routes/social-content';
 import marketingSuggestionRoutes from './routes/marketing-suggestions';
@@ -254,6 +255,7 @@ const routeMounts: Array<[string, typeof authRoutes]> = [
   ['ai/intelligence', aiIntelligenceRoutes],
   ['chatbot', chatbotRoutes],
   ['ai/bi', businessIntelligenceRoutes],
+  ['ai/settings', aiSettingsRoutes],
   ['whatsapp-campaigns', whatsappCampaignRoutes],
   ['marketing/social-content', socialContentRoutes],
   ['marketing/suggestions', marketingSuggestionRoutes],

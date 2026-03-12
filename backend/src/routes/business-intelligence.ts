@@ -11,6 +11,7 @@ import type { AppContext } from '../types';
 import { success, error, paginated, notFound } from '../utils/response';
 import { generateId } from '../utils/uuid';
 import { AIRouter, type AITask } from '../services/ai-router';
+import { incrementUsage } from '../middleware/usage-cap';
 
 const app = new Hono<AppContext>();
 
@@ -42,7 +43,7 @@ app.post('/briefings/generate', async (c) => {
     db.prepare(`SELECT COUNT(*) as c FROM leads WHERE created_at >= ?`).bind(since).first<{ c: number }>(),
     db.prepare(`SELECT COUNT(*) as c FROM leads WHERE status = 'won' AND updated_at >= ?`).bind(since).first<{ c: number }>(),
     db.prepare(`SELECT COUNT(*) as c FROM leads WHERE status = 'lost' AND updated_at >= ?`).bind(since).first<{ c: number }>(),
-    db.prepare(`SELECT COALESCE(SUM(total_amount), 0) as t FROM invoices WHERE status = 'paid' AND payment_date >= ?`).bind(since).first<{ t: number }>(),
+    db.prepare(`SELECT COALESCE(SUM(total), 0) as t FROM invoices WHERE status = 'paid' AND updated_at >= ?`).bind(since).first<{ t: number }>(),
     db.prepare(`SELECT COUNT(*) as c FROM follow_ups WHERE status = 'pending' AND scheduled_at <= ?`).bind(now.toISOString()).first<{ c: number }>(),
     db.prepare(`SELECT COUNT(*) as c FROM contacts WHERE created_at >= ?`).bind(since).first<{ c: number }>(),
   ]);
@@ -82,8 +83,8 @@ app.post('/briefings/generate', async (c) => {
     .bind(usageId, taskType, aiResult.model, aiResult.inputTokens, aiResult.outputTokens, aiResult.cost)
     .run();
 
-  const briefing = await db.prepare(`SELECT * FROM ai_briefings WHERE id = ?`).bind(id).first();
-  return success(c, briefing);
+  const briefing = await db.prepare(`SELECT * FROM ai_briefings WHERE id = ?`).bind(id).first() as any;
+  return success(c, { ...briefing, type: briefing?.briefing_type });
 });
 
 // List briefings
@@ -138,13 +139,13 @@ app.post('/health-score/calculate', async (c) => {
 
   // Gather data for scoring
   const [revenue, prevRevenue, leads, wonLeads, contacts, overdueFollowUps, paidInvoices, overdueInvoices] = await Promise.all([
-    db.prepare(`SELECT COALESCE(SUM(total_amount), 0) as t FROM invoices WHERE status = 'paid' AND payment_date >= ?`).bind(last30).first<{ t: number }>(),
-    db.prepare(`SELECT COALESCE(SUM(total_amount), 0) as t FROM invoices WHERE status = 'paid' AND payment_date >= ? AND payment_date < ?`).bind(prev30, last30).first<{ t: number }>(),
+    db.prepare(`SELECT COALESCE(SUM(total), 0) as t FROM invoices WHERE status = 'paid' AND updated_at >= ?`).bind(last30).first<{ t: number }>(),
+    db.prepare(`SELECT COALESCE(SUM(total), 0) as t FROM invoices WHERE status = 'paid' AND updated_at >= ? AND updated_at < ?`).bind(prev30, last30).first<{ t: number }>(),
     db.prepare(`SELECT COUNT(*) as c FROM leads WHERE created_at >= ?`).bind(last30).first<{ c: number }>(),
     db.prepare(`SELECT COUNT(*) as c FROM leads WHERE status = 'won' AND updated_at >= ?`).bind(last30).first<{ c: number }>(),
     db.prepare(`SELECT COUNT(*) as c FROM contacts WHERE created_at >= ?`).bind(last30).first<{ c: number }>(),
     db.prepare(`SELECT COUNT(*) as c FROM follow_ups WHERE status = 'pending' AND scheduled_at < ?`).bind(now.toISOString()).first<{ c: number }>(),
-    db.prepare(`SELECT COUNT(*) as c FROM invoices WHERE status = 'paid' AND payment_date >= ?`).bind(last30).first<{ c: number }>(),
+    db.prepare(`SELECT COUNT(*) as c FROM invoices WHERE status = 'paid' AND updated_at >= ?`).bind(last30).first<{ c: number }>(),
     db.prepare(`SELECT COUNT(*) as c FROM invoices WHERE status = 'sent' AND due_date < ?`).bind(now.toISOString().substring(0, 10)).first<{ c: number }>(),
   ]);
 
@@ -190,7 +191,7 @@ app.post('/health-score/calculate', async (c) => {
 app.get('/health-score', async (c) => {
   const db = c.get('tenantDb');
   const score = await db.prepare(`SELECT * FROM ai_business_health_scores ORDER BY calculated_at DESC LIMIT 1`).first();
-  if (!score) return success(c, null);
+  if (!score) return success(c, { overallScore: 0, status: 'no_data', lastCalculated: null });
   return success(c, score);
 });
 
@@ -287,7 +288,7 @@ app.post('/customer-ltv/:contactId', async (c) => {
   if (!contact) return notFound(c, 'Contact');
 
   const leads = await db.prepare(`SELECT status, estimated_value, created_at FROM leads WHERE contact_id = ? ORDER BY created_at`).bind(contactId).all();
-  const invoices = await db.prepare(`SELECT total_amount, status, created_at FROM invoices WHERE contact_id = ? ORDER BY created_at`).bind(contactId).all();
+  const invoices = await db.prepare(`SELECT total, status, created_at FROM invoices WHERE contact_id = ? ORDER BY created_at`).bind(contactId).all();
 
   const router = new AIRouter(env);
   const prompt = `Calculate customer lifetime value for this travel agency customer. Contact: ${JSON.stringify({ name: contact.name, email: contact.email, created_at: contact.created_at })}. Leads: ${JSON.stringify(leads.results || [])}. Invoices: ${JSON.stringify(invoices.results || [])}. Output JSON: { lifetimeValue, predictedNextValue, frequency, recency, monetaryValue, segment, prediction: string, confidence: 0.0-1.0 }`;
@@ -318,14 +319,14 @@ app.get('/cash-flow-forecast', async (c) => {
   `).all();
 
   const pendingInvoices = await db.prepare(`
-    SELECT COALESCE(SUM(total_amount - COALESCE(amount_paid, 0)), 0) as receivable,
+    SELECT COALESCE(SUM(total - COALESCE(paid_amount, 0)), 0) as receivable,
       COUNT(*) as count
     FROM invoices WHERE status IN ('sent', 'partially_paid')
   `).first<{ receivable: number; count: number }>();
 
   const recentPayments = await db.prepare(`
-    SELECT strftime('%Y-%m', payment_date) as month, SUM(total_amount) as amount
-    FROM invoices WHERE status = 'paid' AND payment_date >= datetime('now', '-6 months')
+    SELECT strftime('%Y-%m', updated_at) as month, SUM(total) as amount
+    FROM invoices WHERE status = 'paid' AND updated_at >= datetime('now', '-6 months')
     GROUP BY month ORDER BY month
   `).all();
 
@@ -533,25 +534,25 @@ app.get('/lost-deal-analysis', async (c) => {
   const env = c.env;
 
   const lostLeads = await db.prepare(`
-    SELECT destination, source, loss_reason, estimated_value, pax, created_at, updated_at
+    SELECT destination, source, lost_reason, estimated_value, pax_adults, created_at, updated_at
     FROM leads WHERE status = 'lost'
     ORDER BY updated_at DESC LIMIT 50
   `).all();
 
   const byReason = await db.prepare(`
-    SELECT loss_reason, COUNT(*) as count, COALESCE(SUM(estimated_value), 0) as lost_value
-    FROM leads WHERE status = 'lost' AND loss_reason IS NOT NULL
-    GROUP BY loss_reason ORDER BY count DESC
+    SELECT lost_reason, COUNT(*) as count, COALESCE(SUM(estimated_value), 0) as lost_value
+    FROM leads WHERE status = 'lost' AND lost_reason IS NOT NULL
+    GROUP BY lost_reason ORDER BY count DESC
   `).all();
 
-  const byStage = await db.prepare(`
-    SELECT stage, COUNT(*) as count
-    FROM leads WHERE status = 'lost' AND stage IS NOT NULL
-    GROUP BY stage ORDER BY count DESC
+  const byStatus = await db.prepare(`
+    SELECT status, COUNT(*) as count
+    FROM leads WHERE status IN ('lost', 'cancelled', 'completed')
+    GROUP BY status ORDER BY count DESC
   `).all();
 
   const router = new AIRouter(env);
-  const prompt = `Analyze lost deals for a travel agency. By reason: ${JSON.stringify(byReason.results || [])}. By stage: ${JSON.stringify(byStage.results || [])}. Recent lost: ${JSON.stringify((lostLeads.results || []).slice(0, 20))}. Output JSON: { patterns: [string], topReasons: [{ reason, count, lostValue, actionItem }], stageDropoffs: [{ stage, count, suggestion }], recoverable: number, recommendations: [string] }`;
+  const prompt = `Analyze lost deals for a travel agency. By reason: ${JSON.stringify(byReason.results || [])}. By status breakdown: ${JSON.stringify(byStatus.results || [])}. Recent lost: ${JSON.stringify((lostLeads.results || []).slice(0, 20))}. Output JSON: { patterns: [string], topReasons: [{ reason, count, lostValue, actionItem }], stageDropoffs: [{ stage, count, suggestion }], recoverable: number, recommendations: [string] }`;
   const aiResult = await router.route('lost_deal_analysis', prompt, 'You are a sales strategy analyst. Identify patterns in lost deals and suggest recovery actions. Always respond with valid JSON.');
 
   let parsed;
@@ -561,7 +562,7 @@ app.get('/lost-deal-analysis', async (c) => {
     parsed = { patterns: [], topReasons: byReason.results || [], recommendations: [] };
   }
 
-  return success(c, { ...parsed, rawByReason: byReason.results || [], rawByStage: byStage.results || [], model: aiResult.model, cost: aiResult.cost });
+  return success(c, { ...parsed, rawByReason: byReason.results || [], rawByStatus: byStatus.results || [], model: aiResult.model, cost: aiResult.cost });
 });
 
 // ============================================================
@@ -678,8 +679,8 @@ app.get('/revenue-pulse', async (c) => {
   const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().substring(0, 7);
 
   const [currentRevenue, lastRevenue, pipelineValue, avgDealSize] = await Promise.all([
-    db.prepare(`SELECT COALESCE(SUM(total_amount), 0) as t FROM invoices WHERE status = 'paid' AND strftime('%Y-%m', payment_date) = ?`).bind(thisMonth).first<{ t: number }>(),
-    db.prepare(`SELECT COALESCE(SUM(total_amount), 0) as t FROM invoices WHERE status = 'paid' AND strftime('%Y-%m', payment_date) = ?`).bind(lastMonth).first<{ t: number }>(),
+    db.prepare(`SELECT COALESCE(SUM(total), 0) as t FROM invoices WHERE status = 'paid' AND strftime('%Y-%m', updated_at) = ?`).bind(thisMonth).first<{ t: number }>(),
+    db.prepare(`SELECT COALESCE(SUM(total), 0) as t FROM invoices WHERE status = 'paid' AND strftime('%Y-%m', updated_at) = ?`).bind(lastMonth).first<{ t: number }>(),
     db.prepare(`SELECT COALESCE(SUM(estimated_value), 0) as t FROM leads WHERE status NOT IN ('won', 'lost', 'closed')`).first<{ t: number }>(),
     db.prepare(`SELECT COALESCE(AVG(estimated_value), 0) as t FROM leads WHERE status = 'won' AND updated_at >= datetime('now', '-3 months')`).first<{ t: number }>(),
   ]);
