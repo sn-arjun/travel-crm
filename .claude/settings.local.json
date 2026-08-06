@@ -41,7 +41,15 @@
       "Bash(npm ls:*)",
       "Bash(claude:*)",
       "Bash(CLAUDECODE= claude:*)",
-      "Bash(bash:*)"
+      "Bash(bash:*)",
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(ls -la /c/Users/Admin/Downloads/pro/CRM/desktop/src/app/\\\\\\(app\\\\\\)/fleet/)",
+      "Bash(ls:*)",
+      "Bash(head:*)",
+      "Bash(ls \"C:/Users/Admin/Downloads/pro/CRM/desktop/src/app/\\(app\\)/settings/\")",
+      "Bash(grep -n \"drawer\\\\|Drawer\\\\|Documents\" /c/Users/Admin/Downloads/pro/CRM/desktop/src/app/\\\\\\(app\\\\\\)/leads/\\\\[id\\\\]/page.tsx | head -30)",
+      "Bash(grep -n \"router.push\\\\|router.replace\" desktop/src/app/\\\\\\(app\\\\\\)/tasks/\\\\[id\\\\]/page.tsx)"
     ]
   }
 }

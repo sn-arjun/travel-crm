@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Plus, DollarSign, MoreHorizontal, AlertCircle, CheckCircle2, Clock, Loader2, Trash2, FileText } from 'lucide-react';
+import { Plus, DollarSign, MoreHorizontal, AlertCircle, CheckCircle2, Clock, Loader2, Trash2, FileText, Receipt } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -18,6 +18,7 @@ import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
 import { FilterBar } from '@/components/domain/filter-bar';
 import { paymentsApi } from '@/lib/api/payments';
 import { invoicesApi } from '@/lib/api/invoices';
+import { PaymentReceipt } from '@/components/domain/payment-receipt';
 
 
 function formatCurrency(amount: number) {
@@ -45,6 +46,8 @@ export default function PaymentsPage() {
   const router = useRouter();
   const [search, setSearch] = React.useState('');
   const [methodFilter, setMethodFilter] = React.useState('all');
+
+  const [receiptPayment, setReceiptPayment] = React.useState<any>(null);
 
   const { mutate: deletePayment } = useApiMutation(
     (id: string) => paymentsApi.delete(id),
@@ -279,6 +282,11 @@ export default function PaymentsPage() {
                             </Link>
                           </DropdownMenuItem>
                           <DropdownMenuItem
+                            onClick={(e) => { e.stopPropagation(); setReceiptPayment(payment); }}
+                          >
+                            <Receipt className="h-3.5 w-3.5 mr-2" />Download Receipt
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
                             onClick={(e) => { e.stopPropagation(); handleDeletePayment(payment.id); }}
                             className="text-destructive"
                           >
@@ -301,6 +309,14 @@ export default function PaymentsPage() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Payment Receipt Overlay */}
+      {receiptPayment && (
+        <PaymentReceipt
+          payment={receiptPayment}
+          onClose={() => setReceiptPayment(null)}
+        />
       )}
     </div>
   );

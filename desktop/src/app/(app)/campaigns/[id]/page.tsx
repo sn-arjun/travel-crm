@@ -27,6 +27,7 @@ import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
 import { campaignsApi, type SendCampaignRequest, type ScheduleCampaignRequest, type CampaignRecipient } from '@/lib/api/campaigns';
 import type { Campaign } from '@travelcrm/shared';
+import { useRealtimeEvent, useRealtimeConnected } from '@/hooks/use-realtime-event';
 
 function getStatusColor(status: string) {
   switch (status) {
@@ -124,13 +125,22 @@ export default function CampaignDetailPage() {
     limit: 25,
   });
 
-  // Auto-refresh every 30s while campaign is sending/running
+  // Real-time updates via WebSocket
   const campaignStatus = (campaign?.status ?? '') as string;
+  useRealtimeEvent(['campaign:progress', 'campaign:completed', 'campaign:failed'], (data) => {
+    if (data?.campaignId === campaignId) {
+      refetch();
+    }
+  });
+
+  // Fallback: poll every 30s only if WS disconnected and campaign is active
+  const wsConnected = useRealtimeConnected();
   React.useEffect(() => {
+    if (wsConnected) return;
     if (campaignStatus !== 'sending' && campaignStatus !== 'running') return;
     const interval = setInterval(() => { refetch(); }, 30_000);
     return () => clearInterval(interval);
-  }, [campaignStatus, refetch]);
+  }, [wsConnected, campaignStatus, refetch]);
 
   const handleSendNow = async () => {
     if (!confirm('Are you sure you want to send this campaign now?')) return;

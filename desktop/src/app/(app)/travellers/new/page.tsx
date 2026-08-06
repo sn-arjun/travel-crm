@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useApiMutation } from '@/hooks/use-api';
 import { travellersApi, type CreateTravellerRequest } from '@/lib/api/visa';
 import { Combobox } from '@/components/ui/combobox';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { toast } from 'sonner';
 
 // Common countries list for nationality combobox
@@ -214,11 +215,9 @@ export default function NewTravellerPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="phone">Phone</Label>
-                  <Input
-                    id="phone"
+                  <PhoneInput
                     value={form.phone ?? ''}
-                    onChange={(e) => updateField('phone', e.target.value)}
-                    placeholder="+91 98765 43210"
+                    onChange={(value) => updateField('phone', value)}
                   />
                 </div>
               </div>

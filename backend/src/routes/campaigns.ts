@@ -8,6 +8,7 @@ import { generateId } from '../utils/uuid';
 import { logActivity } from '../utils/activity-logger';
 import { resolveSegment, type SegmentFilter } from '../services/segment-resolver';
 import { success, created, paginated, error, notFound } from '../utils/response';
+import { broadcastToTenant } from '../utils/realtime';
 
 const campaignRoutes = new Hono<AppContext>();
 
@@ -302,6 +303,15 @@ campaignRoutes.post(
         entityId: campaignId,
         details: JSON.stringify({ queuedCount, failureCount }),
       });
+
+      // Broadcast real-time event
+      try {
+        const tenantId = c.get('tenantId');
+        await broadcastToTenant(c.env, tenantId, {
+          type: 'campaign:progress',
+          data: { campaignId, status: 'sending', queuedCount, totalContacts: contactIds.length },
+        });
+      } catch {}
 
       return success(c, {
         message: `Campaign sent to ${queuedCount} recipients`,

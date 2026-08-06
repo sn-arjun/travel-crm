@@ -978,6 +978,23 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Email Signature */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Email Signature</CardTitle>
+                  <CardDescription>Configure the signature appended to outbound emails</CardDescription>
+                </div>
+                <Link href="/settings/email-signature">
+                  <Button variant="outline" size="sm">
+                    Configure Signature <ArrowUpRight className="h-3 w-3 ml-1" />
+                  </Button>
+                </Link>
+              </div>
+            </CardHeader>
+          </Card>
         </TabsContent>
 
         {/* Users/Roles Tab */}

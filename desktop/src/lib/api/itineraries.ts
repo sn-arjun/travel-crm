@@ -60,7 +60,7 @@ export interface UpdateItineraryRequest {
   currency?: string;
   markupType?: 'percentage' | 'fixed';
   markupValue?: number;
-  status?: 'draft' | 'pending' | 'approved' | 'sent' | 'rejected';
+  status?: 'draft' | 'sent' | 'approved' | 'rejected' | 'expired';
   days?: ItineraryDay[];
 }
 

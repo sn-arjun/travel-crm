@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { PhoneInput } from '@/components/ui/phone-input';
+import { AddressAutocomplete, type AddressParts } from '@/components/ui/address-autocomplete';
 import { useApiMutation } from '@/hooks/use-api';
 import { suppliersApi } from '@/lib/api/suppliers';
 import { toast } from 'sonner';
@@ -213,17 +214,29 @@ export default function NewSupplierPage() {
           <Card>
             <CardHeader><CardTitle className="text-base flex items-center gap-2"><MapPin className="h-4 w-4" />Address</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              {MAPS_API_KEY ? (
-                <p className="text-xs text-muted-foreground">Address autocomplete available</p>
-              ) : null}
               <div className="space-y-2">
                 <Label htmlFor="street">Street Address</Label>
-                <Input
-                  id="street"
-                  placeholder="Street address"
-                  value={form.street}
-                  onChange={(e) => updateField('street', e.target.value)}
-                />
+                {MAPS_API_KEY ? (
+                  <AddressAutocomplete
+                    value={form.street}
+                    onChange={(value: string) => updateField('street', value)}
+                    onAddressSelect={(parts: AddressParts) => {
+                      updateField('street', parts.address);
+                      updateField('city', parts.city);
+                      updateField('state', parts.state);
+                      updateField('country', parts.country);
+                      updateField('postalCode', parts.postalCode);
+                    }}
+                    placeholder="Start typing an address..."
+                  />
+                ) : (
+                  <Input
+                    id="street"
+                    placeholder="Street address"
+                    value={form.street}
+                    onChange={(e) => updateField('street', e.target.value)}
+                  />
+                )}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">

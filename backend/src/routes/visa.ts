@@ -8,6 +8,7 @@ import {
     visaChecklistStatusSchema
 } from '../validators/visa';
 import { getChecklistTemplate } from '../db/seed/visa-checklist-templates';
+import { broadcastToTenant } from '../utils/realtime';
 
 const visaRouter = new Hono<AppContext>();
 visaRouter.use('*', authMiddleware);
@@ -296,6 +297,14 @@ visaRouter.put('/:id/status', async (c) => {
         ).run();
     } catch { /* ignore */ }
 
+    // Broadcast real-time event
+    try {
+        await broadcastToTenant(c.env, tenantId, {
+            type: 'visa:status_changed',
+            data: { visaId: id, oldStatus: current.status, newStatus: body.status },
+        });
+    } catch {}
+
     const updated = await db.prepare('SELECT * FROM visa_applications WHERE id = ? AND tenant_id = ?')
         .bind(id, tenantId).first();
     return c.json({ data: updated });
@@ -358,6 +367,156 @@ visaRouter.put('/:id/checklist/:itemId', zValidator('json', visaChecklistStatusS
     }
 
     return c.json({ success: true, allRequiredReceived });
+});
+
+// ============================================================
+// POST /:id/documents — Upload a document for a visa application
+// ============================================================
+
+visaRouter.post('/:id/documents', async (c) => {
+    const db = c.get('tenantDb');
+    const tenantId = c.get('tenantId');
+    const userId = c.get('userId');
+    const visaId = c.req.param('id');
+
+    // Verify visa application exists
+    const visa = await db.prepare(
+        'SELECT id FROM visa_applications WHERE id = ? AND tenant_id = ? AND is_deleted = 0'
+    ).bind(visaId, tenantId).first();
+
+    if (!visa) return c.json({ error: 'Visa application not found' }, 404);
+
+    const formData = await c.req.formData();
+    const file = formData.get('file') as File | null;
+    const documentType = (formData.get('document_type') as string) || 'other';
+
+    if (!file) {
+        return c.json({ error: 'No file provided' }, 400);
+    }
+
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSize) {
+        return c.json({ error: 'File too large. Maximum 10MB' }, 400);
+    }
+
+    const allowedTypes = [
+        'application/pdf',
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ];
+    if (!allowedTypes.includes(file.type)) {
+        return c.json({ error: 'File type not allowed. Accepted: PDF, JPEG, PNG, WebP, DOCX' }, 400);
+    }
+
+    const docId = crypto.randomUUID();
+    const ext = file.name.split('.').pop() || 'bin';
+    const r2Key = `tenants/${tenantId}/visa/${visaId}/${docId}.${ext}`;
+
+    // Upload to R2
+    await c.env.FILE_STORAGE.put(r2Key, file.stream(), {
+        httpMetadata: { contentType: file.type },
+        customMetadata: { tenantId, visaApplicationId: visaId, uploadedBy: userId },
+    });
+
+    const now = new Date().toISOString();
+    await db.prepare(`
+        INSERT INTO visa_documents (id, tenant_id, visa_application_id, document_type, file_name, file_url, file_size, mime_type, uploaded_by, created_at, is_deleted)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+    `).bind(
+        docId, tenantId, visaId, documentType, file.name, r2Key, file.size, file.type, userId, now
+    ).run();
+
+    return c.json({
+        data: {
+            id: docId,
+            visaApplicationId: visaId,
+            documentType,
+            fileName: file.name,
+            fileUrl: r2Key,
+            fileSize: file.size,
+            mimeType: file.type,
+            uploadedBy: userId,
+            createdAt: now,
+        },
+    }, 201);
+});
+
+// ============================================================
+// GET /:id/documents — List documents for a visa application
+// ============================================================
+
+visaRouter.get('/:id/documents', async (c) => {
+    const db = c.get('tenantDb');
+    const tenantId = c.get('tenantId');
+    const visaId = c.req.param('id');
+
+    const results = await db.prepare(`
+        SELECT vd.*, u.name as uploader_name
+        FROM visa_documents vd
+        LEFT JOIN users u ON vd.uploaded_by = u.id
+        WHERE vd.visa_application_id = ? AND vd.tenant_id = ? AND vd.is_deleted = 0
+        ORDER BY vd.created_at DESC
+    `).bind(visaId, tenantId).all();
+
+    return c.json({ data: results.results || [] });
+});
+
+// ============================================================
+// GET /:id/documents/:docId/download — Download a visa document from R2
+// ============================================================
+
+visaRouter.get('/:id/documents/:docId/download', async (c) => {
+    const db = c.get('tenantDb');
+    const tenantId = c.get('tenantId');
+    const docId = c.req.param('docId');
+
+    const doc = await db.prepare(
+        'SELECT file_url, file_name, mime_type FROM visa_documents WHERE id = ? AND tenant_id = ? AND is_deleted = 0'
+    ).bind(docId, tenantId).first<{ file_url: string; file_name: string; mime_type: string }>();
+
+    if (!doc) {
+        return c.json({ error: 'Document not found' }, 404);
+    }
+
+    const object = await c.env.FILE_STORAGE.get(doc.file_url);
+    if (!object) {
+        return c.json({ error: 'File not found in storage' }, 404);
+    }
+
+    return new Response(object.body as ReadableStream, {
+        headers: {
+            'Content-Type': doc.mime_type || 'application/octet-stream',
+            'Content-Disposition': `attachment; filename="${doc.file_name}"`,
+            'Cache-Control': 'private, max-age=3600',
+        },
+    });
+});
+
+// ============================================================
+// DELETE /:id/documents/:docId — Soft delete a visa document
+// ============================================================
+
+visaRouter.delete('/:id/documents/:docId', async (c) => {
+    const db = c.get('tenantDb');
+    const tenantId = c.get('tenantId');
+    const visaId = c.req.param('id');
+    const docId = c.req.param('docId');
+
+    const doc = await db.prepare(
+        'SELECT id FROM visa_documents WHERE id = ? AND visa_application_id = ? AND tenant_id = ? AND is_deleted = 0'
+    ).bind(docId, visaId, tenantId).first();
+
+    if (!doc) {
+        return c.json({ error: 'Document not found' }, 404);
+    }
+
+    await db.prepare(
+        'UPDATE visa_documents SET is_deleted = 1 WHERE id = ? AND tenant_id = ?'
+    ).bind(docId, tenantId).run();
+
+    return c.json({ success: true });
 });
 
 // Add Timeline Note

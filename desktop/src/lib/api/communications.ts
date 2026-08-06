@@ -6,7 +6,6 @@ export interface SendCommunicationRequest {
   contact_id: string;
   channel: 'email' | 'sms' | 'whatsapp';
   message: string;
-  subject?: string;
   media_url?: string;
   lead_id?: string;
 }
@@ -22,7 +21,7 @@ export interface SendTemplateRequest {
 // Aligned with backend sendDocumentSchema
 export interface SendDocumentRequest {
   contact_id: string;
-  channel: 'whatsapp' | 'email';
+  channel: 'whatsapp' | 'sms' | 'email';
   document_type: 'itinerary' | 'invoice' | 'voucher';
   document_id: string;
   caption?: string;
@@ -34,7 +33,6 @@ export interface BulkSendRequest {
   contact_ids: string[];
   template_id?: string;
   message?: string;
-  subject?: string;
 }
 
 export interface CommunicationLog {
@@ -65,7 +63,7 @@ export const communicationsApi = {
     client.post<ApiResponse<{ message_id: string; status: string }>>(API_ENDPOINTS.communications.sendDocument, data),
 
   bulkSend: (data: BulkSendRequest) =>
-    client.post<ApiResponse<{ batch_id: string; queued: number }>>(API_ENDPOINTS.communications.bulkSend, data),
+    client.post<ApiResponse<{ batch_id: string; total_messages: number; status: string }>>(API_ENDPOINTS.communications.bulkSend, data),
 
   bulkSendStatus: (batchId: string) =>
     client.get<ApiResponse<{ batch_id: string; status: string; total: number; sent: number; failed: number }>>(

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Plus, Eye, Pencil, Trash2, AlertCircle, Loader2,
-  CheckCircle2, Clock, FileText,
+  CheckCircle2, Clock, FileText, LayoutGrid, List, Calendar,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -60,6 +60,117 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+/* ── Kanban Column Definitions ── */
+const KANBAN_COLUMNS = [
+  { id: 'not_started', title: 'Not Started', color: 'bg-slate-100 dark:bg-slate-800' },
+  { id: 'documents_collecting', title: 'Documents Collecting', color: 'bg-purple-100 dark:bg-purple-900/30' },
+  { id: 'applied', title: 'Under Review', color: 'bg-blue-100 dark:bg-blue-900/30' },
+  { id: 'approved', title: 'Approved', color: 'bg-green-100 dark:bg-green-900/30' },
+  { id: 'rejected', title: 'Rejected', color: 'bg-red-100 dark:bg-red-900/30' },
+] as const;
+
+/* ── Visa Kanban Card ── */
+function VisaKanbanCard({
+  visa,
+  onView,
+  onEdit,
+  onDelete,
+}: {
+  visa: VisaRecord;
+  onView: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const dueDate = visa.expiryDate ? new Date(visa.expiryDate) : null;
+  const isExpiring = dueDate && dueDate.getTime() - Date.now() < 30 * 86400000 && dueDate.getTime() > Date.now();
+  const isExpired = dueDate && dueDate < new Date();
+
+  return (
+    <Card className="hover:shadow-md transition-shadow group cursor-pointer" onClick={onView}>
+      <CardContent className="p-4 space-y-2.5">
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="font-semibold text-sm leading-snug flex-1">{visa.travellerName}</h3>
+          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            <Button variant="ghost" size="icon-sm" onClick={(e) => { e.stopPropagation(); onEdit(); }} title="Edit">
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon-sm" className="text-destructive hover:text-destructive" onClick={(e) => { e.stopPropagation(); onDelete(); }} title="Delete">
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+
+        <p className="text-xs text-muted-foreground">{visa.countryName}</p>
+
+        {visa.visaType && (
+          <Badge variant="outline" className="text-[10px]">{visa.visaType}</Badge>
+        )}
+
+        <div className="flex items-center justify-between">
+          <StatusBadge status={visa.status} />
+          {dueDate && (
+            <div className={cn(
+              'flex items-center gap-1 text-[11px]',
+              isExpired ? 'text-red-600 font-medium' : isExpiring ? 'text-amber-600' : 'text-muted-foreground',
+            )}>
+              <Calendar className="h-3 w-3" />
+              <span>
+                {isExpired ? 'Expired' : dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+              </span>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ── Visa Kanban Column ── */
+function VisaKanbanColumn({
+  title,
+  statusId,
+  visas,
+  onView,
+  onEdit,
+  onDelete,
+}: {
+  title: string;
+  statusId: string;
+  visas: VisaRecord[];
+  onView: (v: VisaRecord) => void;
+  onEdit: (v: VisaRecord) => void;
+  onDelete: (v: VisaRecord) => void;
+}) {
+  const columnVisas = visas.filter((v) => v.status === statusId);
+
+  return (
+    <div className="flex flex-col flex-1 min-w-[260px] bg-muted/30 rounded-lg p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="font-semibold text-sm">{title}</h2>
+        <Badge variant="secondary" className="text-xs">{columnVisas.length}</Badge>
+      </div>
+      <div className="flex-1 space-y-3 overflow-y-auto pr-1">
+        {columnVisas.length > 0 ? (
+          columnVisas.map((visa) => (
+            <VisaKanbanCard
+              key={visa.id}
+              visa={visa}
+              onView={() => onView(visa)}
+              onEdit={() => onEdit(visa)}
+              onDelete={() => onDelete(visa)}
+            />
+          ))
+        ) : (
+          <div className="flex flex-col items-center justify-center h-24 gap-2 text-muted-foreground">
+            <FileText className="h-6 w-6 opacity-30" />
+            <p className="text-xs">No applications</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function VisaTrackingPage() {
   const router = useRouter();
   const [search, setSearch] = React.useState('');
@@ -67,6 +178,7 @@ export default function VisaTrackingPage() {
   const [statusFilter, setStatusFilter] = React.useState('all');
   const [selectedVisa, setSelectedVisa] = React.useState<VisaRecord | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<VisaRecord | null>(null);
+  const [layoutView, setLayoutView] = React.useState<'table' | 'kanban'>('table');
 
   React.useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 350);
@@ -126,9 +238,34 @@ export default function VisaTrackingPage() {
           <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Visa Tracking</h1>
           <p className="text-sm text-muted-foreground">{total} applications</p>
         </div>
-        <Button asChild>
-          <Link href="/visa/new"><Plus className="h-4 w-4 mr-1.5" />New Application</Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Table / Kanban toggle */}
+          <div className="flex rounded-md border overflow-hidden">
+            <button
+              className={cn(
+                'px-2.5 py-1.5 transition-colors',
+                layoutView === 'table' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground',
+              )}
+              onClick={() => setLayoutView('table')}
+              title="Table View"
+            >
+              <List className="h-4 w-4" />
+            </button>
+            <button
+              className={cn(
+                'px-2.5 py-1.5 transition-colors',
+                layoutView === 'kanban' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground',
+              )}
+              onClick={() => setLayoutView('kanban')}
+              title="Kanban View"
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+          </div>
+          <Button asChild>
+            <Link href="/visa/new"><Plus className="h-4 w-4 mr-1.5" />New Application</Link>
+          </Button>
+        </div>
       </div>
 
       {/* Quick stats */}
@@ -191,7 +328,7 @@ export default function VisaTrackingPage() {
       </div>
 
       {/* Loading skeleton */}
-      {loading && (
+      {loading && layoutView === 'table' && (
         <div className="flex-1 overflow-auto">
           <Table>
             <TableHeader>
@@ -220,7 +357,31 @@ export default function VisaTrackingPage() {
         </div>
       )}
 
-      {!loading && (
+      {loading && layoutView === 'kanban' && (
+        <div className="flex gap-4 h-full overflow-x-auto p-6">
+          {KANBAN_COLUMNS.map((col) => (
+            <div key={col.id} className="flex flex-col flex-1 min-w-[260px] bg-muted/30 rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-5 w-8 rounded-full" />
+              </div>
+              {[1, 2].map((i) => (
+                <div key={i} className="rounded-lg border bg-card p-4 space-y-2">
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-3 w-1/2" />
+                  <div className="flex justify-between">
+                    <Skeleton className="h-5 w-16 rounded-full" />
+                    <Skeleton className="h-3 w-12" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Table View */}
+      {!loading && layoutView === 'table' && (
         <div className="flex-1 overflow-auto">
           {visaApplications.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full gap-3 text-center py-16">
@@ -296,6 +457,46 @@ export default function VisaTrackingPage() {
           )}
 
           <div ref={sentinelRef} className="h-4" />
+          {loadingMore && (
+            <div className="flex justify-center py-4">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Kanban View */}
+      {!loading && layoutView === 'kanban' && (
+        <div className="flex-1 overflow-hidden">
+          {visaApplications.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full gap-3 text-center py-16">
+              <FileText className="h-12 w-12 text-muted-foreground/40" />
+              <div>
+                <p className="text-base font-medium">No visa applications found</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {debouncedSearch || statusFilter !== 'all' ? 'Try adjusting your filters' : 'Create your first visa application'}
+                </p>
+              </div>
+              {!debouncedSearch && statusFilter === 'all' && (
+                <Button asChild><Link href="/visa/new"><Plus className="h-4 w-4 mr-1.5" />New Application</Link></Button>
+              )}
+            </div>
+          ) : (
+            <div className="flex gap-4 h-full overflow-x-auto p-6">
+              {KANBAN_COLUMNS.map((col) => (
+                <VisaKanbanColumn
+                  key={col.id}
+                  title={col.title}
+                  statusId={col.id}
+                  visas={visaApplications}
+                  onView={(v) => setSelectedVisa(v)}
+                  onEdit={(v) => router.push(`/visa/${v.id}`)}
+                  onDelete={(v) => setDeleteTarget(v)}
+                />
+              ))}
+            </div>
+          )}
+          <div ref={sentinelRef} className="h-1" />
           {loadingMore && (
             <div className="flex justify-center py-4">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />

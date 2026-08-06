@@ -39,6 +39,7 @@ import { toast } from 'sonner';
 import { exportsApi, type ExportJob } from '@/lib/api/exports';
 import { cn } from '@/lib/utils';
 import { useApiQuery } from '@/hooks/use-api';
+import { useRealtimeEvent, useRealtimeConnected } from '@/hooks/use-realtime-event';
 
 const statusConfig: Record<string, { label: string; icon: any; className: string }> = {
   pending: { label: 'Pending', icon: Clock, className: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400' },
@@ -99,24 +100,36 @@ export default function ExportSettingsPage() {
 
   const hasProcessing = allJobs.some(j => j.status === 'processing');
 
-  // Auto-poll while jobs are processing
-  React.useEffect(() => {
-    if (hasProcessing) {
-      pollRef.current = setInterval(async () => {
-        const processingJobs = allJobs.filter(j => j.status === 'processing');
-        for (const job of processingJobs) {
-          try {
-            const res = await exportsApi.getJobStatus(job.id) as any;
-            const updated = res?.data ?? res;
-            setExtraJobs(prev => prev.map(j => j.id === updated.id ? { ...j, ...updated } : j));
-          } catch { /* ignore */ }
-        }
-      }, 3000);
-    } else {
-      if (pollRef.current) clearInterval(pollRef.current);
+  // Real-time export updates via WebSocket
+  useRealtimeEvent(['export:completed', 'export:failed', 'export:progress'], (data) => {
+    if (data?.jobId) {
+      setExtraJobs(prev => prev.map(j => j.id === data.jobId ? { ...j, ...data, status: data.status } : j));
+      // Also refetch full job list to get file URLs
+      if (data.status === 'completed' || data.status === 'failed') {
+        refetchJobs();
+      }
     }
+  });
+
+  // Fallback: poll only when WS is disconnected and jobs are processing
+  const wsConnected = useRealtimeConnected();
+  React.useEffect(() => {
+    if (wsConnected || !hasProcessing) {
+      if (pollRef.current) clearInterval(pollRef.current);
+      return;
+    }
+    pollRef.current = setInterval(async () => {
+      const processingJobs = allJobs.filter(j => j.status === 'processing');
+      for (const job of processingJobs) {
+        try {
+          const res = await exportsApi.getJobStatus(job.id) as any;
+          const updated = res?.data ?? res;
+          setExtraJobs(prev => prev.map(j => j.id === updated.id ? { ...j, ...updated } : j));
+        } catch { /* ignore */ }
+      }
+    }, 3000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [hasProcessing, allJobs]);
+  }, [wsConnected, hasProcessing, allJobs]);
 
   function downloadBlob(blob: Blob, filename: string) {
     const url = URL.createObjectURL(blob);

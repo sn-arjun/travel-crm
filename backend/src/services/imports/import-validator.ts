@@ -30,10 +30,15 @@ export const ImportSchemas = {
     rate_cards: z.object({
         supplierName: z.string().min(1, 'Supplier name is required (or ID)'),
         serviceType: z.string().min(1, 'Service type is required'),
-        seasonStart: z.string().optional(), // ISO date
-        seasonEnd: z.string().optional(), // ISO date
-        currency: z.string().min(3, 'Currency code requires 3 chars').max(3),
+        name: z.string().optional(),
         costPrice: z.number().or(z.string().regex(/^\d+(\.\d{1,2})?$/, 'Must be a number')),
+        sellPrice: z.number().or(z.string().regex(/^\d+(\.\d{1,2})?$/, 'Must be a number')).optional(),
+        sellingPrice: z.number().or(z.string().regex(/^\d+(\.\d{1,2})?$/, 'Must be a number')).optional(),
+        currency: z.string().min(3, 'Currency code requires 3 chars').max(3).optional().default('INR'),
+        seasonStart: z.string().optional(),
+        seasonEnd: z.string().optional(),
+        validFrom: z.string().optional(),
+        validTo: z.string().optional(),
     }),
     travellers: z.object({
         firstName: z.string().min(1, 'First name is required'),

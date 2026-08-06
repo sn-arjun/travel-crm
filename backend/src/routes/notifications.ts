@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { AppContext } from '../types';
 import { success, notFound, error, forbidden, created } from '../utils/response';
 import { generateId } from '../utils/uuid';
+import { broadcastToTenant } from '../utils/realtime';
 
 const notificationsRoutes = new Hono<AppContext>();
 
@@ -79,6 +80,15 @@ notificationsRoutes.post('/read-all', async (c) => {
     .bind(userId)
     .run();
 
+  // Broadcast badge update
+  try {
+    const tenantId = c.get('tenantId');
+    await broadcastToTenant(c.env, tenantId, {
+      type: 'notification:read',
+      data: { userId },
+    }, { targetUserId: userId });
+  } catch {}
+
   return success(c, { message: 'All notifications marked as read' });
 });
 
@@ -102,6 +112,15 @@ notificationsRoutes.post('/:id/read', async (c) => {
     .prepare(`UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?`)
     .bind(id, userId)
     .run();
+
+  // Broadcast badge update
+  try {
+    const tenantId = c.get('tenantId');
+    await broadcastToTenant(c.env, tenantId, {
+      type: 'notification:read',
+      data: { notificationId: id, userId },
+    }, { targetUserId: userId });
+  } catch {}
 
   return success(c, { id });
 });
@@ -278,6 +297,15 @@ notificationsRoutes.post('/announce', async (c) => {
           },
         },
       });
+
+      // Push real-time notification
+      try {
+        const tenantId = c.get('tenantId');
+        await broadcastToTenant(c.env, tenantId, {
+          type: 'notification:new',
+          data: { notification: { id: notifId, title: body.title, message: body.body, type: 'announcement' } },
+        }, { targetUserId: targetUserId });
+      } catch {}
     }
 
     return created(c, {

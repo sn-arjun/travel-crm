@@ -228,12 +228,34 @@ export default function NewVoucherPage() {
     const prefillLeadId = searchParams.get('leadId') ?? '';
     const prefillLeadName = searchParams.get('leadName') ?? '';
     const prefillType = (searchParams.get('type') as VoucherType) ?? '';
-    return {
+    const prefillTitle = searchParams.get('title') ?? '';
+    const prefillHotelName = searchParams.get('hotelName') ?? '';
+    const prefillLocation = searchParams.get('location') ?? '';
+
+    const base = {
       ...defaultForm,
       leadId: prefillLeadId,
       leadLabel: prefillLeadName,
       voucherType: prefillType,
     };
+
+    // Pre-fill title from URL params
+    if (prefillTitle) {
+      base.title = prefillTitle;
+    }
+
+    // Pre-fill type-specific fields from itinerary context
+    if (prefillType === 'hotel' && prefillHotelName) {
+      base.hotelName = prefillHotelName;
+      if (prefillLocation) base.hotelAddress = prefillLocation;
+    } else if (prefillType === 'transport') {
+      if (prefillLocation) base.pickupLocation = prefillLocation;
+    } else if (prefillType === 'activity') {
+      if (prefillTitle) base.activityName = prefillTitle;
+      if (prefillLocation) base.meetingPoint = prefillLocation;
+    }
+
+    return base;
   });
 
   const [currentStep, setCurrentStep] = React.useState(

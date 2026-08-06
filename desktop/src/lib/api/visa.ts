@@ -88,6 +88,19 @@ export interface UpdateTravellerRequest {
   customFields?: Record<string, unknown>;
 }
 
+export interface VisaDocument {
+  id: string;
+  visa_application_id: string;
+  document_type: string;
+  file_name: string;
+  file_url: string;
+  file_size: number;
+  mime_type: string;
+  uploaded_by: string;
+  uploader_name?: string;
+  created_at: string;
+}
+
 export const visaApi = {
   list: (params?: {
     page?: number;
@@ -123,6 +136,23 @@ export const visaApi = {
 
   updateNotes: (id: string, data: { notes: string }) =>
     client.put<ApiResponse<{ notes: string }>>(API_ENDPOINTS.visa.notes(id), data),
+
+  // Document management
+  getDocuments: (id: string) =>
+    client.get<ApiResponse<VisaDocument[]>>(API_ENDPOINTS.visa.documents(id)),
+
+  uploadDocument: async (id: string, file: File, documentType: string = 'other') => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('document_type', documentType);
+    return client.post<ApiResponse<VisaDocument>>(API_ENDPOINTS.visa.documents(id), formData as any);
+  },
+
+  downloadDocument: (visaId: string, docId: string) =>
+    client.get<Blob>(API_ENDPOINTS.visa.documentDownload(visaId, docId), { responseType: 'blob' }),
+
+  deleteDocument: (visaId: string, docId: string) =>
+    client.delete<ApiResponse<void>>(API_ENDPOINTS.visa.documentDelete(visaId, docId)),
 };
 
 export const travellersApi = {

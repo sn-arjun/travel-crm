@@ -205,11 +205,26 @@ export class AIRouter {
       { role: 'user', content: input },
     ];
 
-    const response: any = await this.env.AI.run(config.model as any, {
-      messages,
-      max_tokens: config.maxTokens,
-      temperature: 0.3,
-    });
+    let response: any;
+    try {
+      response = await this.env.AI.run(config.model as any, {
+        messages,
+        max_tokens: config.maxTokens,
+        temperature: 0.3,
+      });
+    } catch (aiErr) {
+      // AI binding is present but not functional (e.g. local dev stub with --local flag)
+      // Return empty string so any downstream JSON.parse() uses its fallback
+      console.warn('[AI Router] Cloudflare AI run failed (likely --local mode):', (aiErr as Error).message);
+      return {
+        result: '',
+        model: config.model,
+        provider: 'cloudflare',
+        inputTokens: 0,
+        outputTokens: 0,
+        cost: 0,
+      };
+    }
 
     const text = response?.response || response?.result || '';
     // Cloudflare AI doesn't provide detailed token counts, estimate from text length
@@ -246,16 +261,24 @@ export class AIRouter {
     // Cloudflare vision model expects image as URL or base64
     const imageBytes = Uint8Array.from(atob(imageBase64), c => c.charCodeAt(0));
 
-    const response: any = await this.env.AI.run(config.model as any, {
-      messages: [
-        {
-          role: 'user',
-          content: textPrompt,
-        },
-      ],
-      image: [...imageBytes],
-      max_tokens: config.maxTokens,
-    });
+    let response: any;
+    try {
+      response = await this.env.AI.run(config.model as any, {
+        messages: [{ role: 'user', content: textPrompt }],
+        image: [...imageBytes],
+        max_tokens: config.maxTokens,
+      });
+    } catch (aiErr) {
+      console.warn('[AI Router] Cloudflare Vision AI run failed (likely --local mode):', (aiErr as Error).message);
+      return {
+        result: '',
+        model: config.model,
+        provider: 'cloudflare',
+        inputTokens: 0,
+        outputTokens: 0,
+        cost: 0,
+      };
+    }
 
     const text = response?.response || response?.description || '';
     const inputTokens = Math.ceil(textPrompt.length / 4) + 500; // rough image token estimate

@@ -46,14 +46,14 @@ export interface UpdateVoucherStatusRequest {
 }
 
 export interface SendVoucherRequest {
-  channel: 'email' | 'whatsapp' | 'both';
+  channel: 'email' | 'whatsapp' | 'sms' | 'both';
   to: string;
 }
 
 export interface BulkSendVoucherRequest {
   leadId: string;
   voucherIds: string[];
-  channel: 'email' | 'whatsapp';
+  channel: 'email' | 'whatsapp' | 'both';
   to: string;
 }
 

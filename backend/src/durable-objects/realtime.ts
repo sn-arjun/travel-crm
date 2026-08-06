@@ -40,9 +40,18 @@ export class RealtimeRoom {
 
     // HTTP broadcast endpoint (called by Workers to push events)
     if (request.method === 'POST' && url.pathname === '/broadcast') {
-      const event = (await request.json()) as BroadcastEvent;
-      this.broadcast(event);
+      const event = (await request.json()) as BroadcastEvent & { excludeUserId?: string };
+      this.broadcast(event, event.excludeUserId);
       return new Response(JSON.stringify({ success: true, clients: this.sessions.size }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // HTTP send-to-user endpoint (called by Workers to push events to specific user)
+    if (request.method === 'POST' && url.pathname === '/send-to-user') {
+      const body = (await request.json()) as BroadcastEvent & { targetUserId: string };
+      this.sendToUser(body.targetUserId, body);
+      return new Response(JSON.stringify({ success: true }), {
         headers: { 'Content-Type': 'application/json' },
       });
     }

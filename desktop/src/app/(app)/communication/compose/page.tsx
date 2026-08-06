@@ -207,8 +207,7 @@ export default function ComposeEmailPage() {
     const result = await sendEmail({
       contact_id: firstRecipient.id,
       channel: 'email',
-      message: body,
-      subject,
+      message: subject ? `[Subject: ${subject}]\n${body}` : body,
       lead_id: prefillLeadId ?? undefined,
     });
 

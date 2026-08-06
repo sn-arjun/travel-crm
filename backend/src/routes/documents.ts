@@ -28,8 +28,11 @@ documentRoutes.post('/upload', async (c) => {
 
   const formData = await c.req.formData();
   const file = formData.get('file') as File | null;
-  const entityType = (formData.get('entity_type') as string) || 'general';
-  const entityId = (formData.get('entity_id') as string) || '';
+  // Support frontend aliases: leadId → entity_type=lead, itineraryId → entity_type=itinerary
+  const leadId = formData.get('leadId') as string | null;
+  const itineraryId = formData.get('itineraryId') as string | null;
+  const entityType = leadId ? 'lead' : itineraryId ? 'itinerary' : ((formData.get('entity_type') as string) || 'general');
+  const entityId = leadId || itineraryId || ((formData.get('entity_id') as string) || '');
   const category = (formData.get('category') as string) || 'other';
   const description = (formData.get('description') as string) || '';
 
@@ -87,6 +90,9 @@ documentRoutes.get('/', async (c) => {
   const db = c.get('tenantDb');
   const entityType = c.req.query('entity_type');
   const entityId = c.req.query('entity_id');
+  // Support frontend aliases: leadId, itineraryId map to entity_type + entity_id
+  const leadId = c.req.query('leadId');
+  const itineraryId = c.req.query('itineraryId');
   const category = c.req.query('category');
   const page = parseInt(c.req.query('page') || '1');
   const limit = parseInt(c.req.query('limit') || '50');
@@ -95,13 +101,21 @@ documentRoutes.get('/', async (c) => {
   let where = 'WHERE d.is_deleted = 0';
   const params: string[] = [];
 
-  if (entityType) {
-    where += ' AND d.related_to = ?';
-    params.push(entityType);
-  }
-  if (entityId) {
-    where += ' AND d.related_id = ?';
-    params.push(entityId);
+  if (leadId) {
+    where += ' AND d.related_to = ? AND d.related_id = ?';
+    params.push('lead', leadId);
+  } else if (itineraryId) {
+    where += ' AND d.related_to = ? AND d.related_id = ?';
+    params.push('itinerary', itineraryId);
+  } else {
+    if (entityType) {
+      where += ' AND d.related_to = ?';
+      params.push(entityType);
+    }
+    if (entityId) {
+      where += ' AND d.related_id = ?';
+      params.push(entityId);
+    }
   }
   if (category) {
     where += ' AND d.category = ?';

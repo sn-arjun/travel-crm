@@ -92,7 +92,7 @@ If the question can't be answered with a query, return { "sql": null, "explanati
 
     return c.json({
       success: true,
-      data: { id, query, sql: generatedSql, result: queryResult, narrative, entityTypes, model: result.model, cost: result.cost, durationMs },
+      data: { id, query, sql: generatedSql, result: queryResult, narrative, entityTypes, model: result.model, cost: result.cost, durationMs, provider: result.provider },
     });
   } catch (e: any) {
     await db.prepare(`
@@ -289,8 +289,6 @@ app.post('/lead-score/:leadId', async (c) => {
   if (!lead) return error(c, 'Lead not found', 404);
 
   const followUps = await db.prepare(`SELECT * FROM follow_ups WHERE lead_id = ? ORDER BY created_at DESC LIMIT 20`).bind(leadId).all();
-  const notes = await db.prepare(`SELECT * FROM notes WHERE entity_type = 'lead' AND entity_id = ? LIMIT 10`).bind(leadId).all();
-
   const prevScore = await db.prepare(`SELECT * FROM ai_lead_scores WHERE lead_id = ? ORDER BY calculated_at DESC LIMIT 1`).bind(leadId).first();
 
   const fuResults = followUps.results || [];
@@ -300,7 +298,7 @@ app.post('/lead-score/:leadId', async (c) => {
   const router = new AIRouter(c.env);
   const result = await router.route(
     'lead_scoring',
-    JSON.stringify({ lead, followUps: fuResults.length, completedFollowUps: completedFu, noteCount: (notes.results || []).length, daysSinceCreation: daysSince }),
+    JSON.stringify({ lead, followUps: fuResults.length, completedFollowUps: completedFu, noteCount: 0, daysSinceCreation: daysSince }),
     `Score this lead from 0-100 based on conversion likelihood. Analyze: response speed, budget indicators, engagement level, destination demand, travel dates proximity, pax count, follow-up responses.
 
 Return JSON: {
@@ -312,7 +310,17 @@ Return JSON: {
   );
 
   let scoreData: any = {};
-  try { scoreData = JSON.parse(result.result); } catch { scoreData = { score: 50, category: 'warm' }; }
+  try {
+    const jsonMatch = result.result.match(/\{[\s\S]*\}/);
+    scoreData = JSON.parse(jsonMatch ? jsonMatch[0] : result.result);
+  } catch {
+    scoreData = {};
+  }
+  // Ensure required fields always present
+  if (typeof scoreData.score !== 'number') scoreData.score = 50;
+  if (!scoreData.category) scoreData.category = 'warm';
+  if (!scoreData.signals) scoreData.signals = [];
+  if (!scoreData.breakdown) scoreData.breakdown = { engagement: 50, budget: 50, timing: 50, intent: 50, responsiveness: 50 };
 
   const id = generateId();
   const prevScoreVal = prevScore ? (prevScore as any).score : null;
@@ -333,7 +341,7 @@ Return JSON: {
     data: {
       id, leadId, score: scoreData.score, category: scoreData.category,
       signals: scoreData.signals, breakdown: scoreData.breakdown,
-      previousScore: prevScoreVal, scoreChange, model: result.model, cost: result.cost,
+      previousScore: prevScoreVal, scoreChange, model: result.model, cost: result.cost, provider: result.provider,
     },
   });
 });
@@ -564,7 +572,17 @@ app.post('/smart-followup/:leadId', async (c) => {
   );
 
   let suggestion: any = {};
-  try { suggestion = JSON.parse(result.result); } catch { suggestion = { messageContent: result.result }; }
+  try {
+    const jsonMatch = result.result.match(/\{[\s\S]*\}/);
+    suggestion = JSON.parse(jsonMatch ? jsonMatch[0] : result.result);
+  } catch {
+    suggestion = {};
+  }
+  // Ensure required fields always present
+  if (!suggestion.suggestedChannel) suggestion.suggestedChannel = 'whatsapp';
+  if (!suggestion.suggestedTiming) suggestion.suggestedTiming = new Date(Date.now() + 86400000).toISOString();
+  if (!suggestion.messageContent) suggestion.messageContent = result.result || '';
+  if (typeof suggestion.confidence !== 'number') suggestion.confidence = 0.7;
 
   const id = generateId();
   await db.prepare(`
@@ -583,7 +601,7 @@ app.post('/smart-followup/:leadId', async (c) => {
     result.model, result.cost,
   ).run();
 
-  return c.json({ success: true, data: { id, ...suggestion, model: result.model, cost: result.cost } });
+  return c.json({ success: true, data: { id, ...suggestion, model: result.model, cost: result.cost, provider: result.provider } });
 });
 
 // Get follow-up suggestions
@@ -626,7 +644,7 @@ app.post('/insights/trends', async (c) => {
   const recentLeads = await db.prepare(`SELECT COUNT(*) as count FROM leads WHERE created_at >= ?`).bind(thirtyDaysAgo).first<{ count: number }>();
   const prevLeads = await db.prepare(`SELECT COUNT(*) as count FROM leads WHERE created_at >= ? AND created_at < ?`).bind(sixtyDaysAgo, thirtyDaysAgo).first<{ count: number }>();
   const recentWon = await db.prepare(`SELECT COUNT(*) as count FROM leads WHERE status = 'won' AND updated_at >= ?`).bind(thirtyDaysAgo).first<{ count: number }>();
-  const recentRevenue = await db.prepare(`SELECT COALESCE(SUM(total_amount), 0) as total FROM invoices WHERE status = 'paid' AND created_at >= ?`).bind(thirtyDaysAgo).first<{ total: number }>();
+  const recentRevenue = await db.prepare(`SELECT COALESCE(SUM(total), 0) as total FROM invoices WHERE status = 'paid' AND created_at >= ?`).bind(thirtyDaysAgo).first<{ total: number }>();
 
   const router = new AIRouter(c.env);
   const result = await router.route(
@@ -661,7 +679,7 @@ app.post('/insights/trends', async (c) => {
     ).run();
   }
 
-  return c.json({ success: true, data: { ...trendData, model: result.model, cost: result.cost } });
+  return c.json({ success: true, data: { ...trendData, model: result.model, cost: result.cost, provider: result.provider } });
 });
 
 export default app;

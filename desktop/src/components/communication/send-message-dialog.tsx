@@ -145,8 +145,7 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel 
       await communicationsApi.send({
         contact_id: contact.id,
         channel,
-        message: body,
-        subject: channel === 'email' ? subject : undefined,
+        message: channel === 'email' && subject ? `[Subject: ${subject}]\n${body}` : body,
       });
       toast.success(`${channel === 'email' ? 'Email' : channel === 'whatsapp' ? 'WhatsApp message' : 'SMS'} sent via Communication Hub`);
       onOpenChange(false);

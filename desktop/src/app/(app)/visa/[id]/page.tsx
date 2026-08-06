@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, Loader2, AlertCircle, CheckCircle2, Circle, Clock, FileText,
-  Edit, Trash2, Globe, Calendar, XCircle,
+  Edit, Trash2, Globe, Calendar, XCircle, Upload, Download, File, Image, X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,7 +15,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { visaApi, type VisaChecklistItem } from '@/lib/api/visa';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Progress } from '@/components/ui/progress';
+import { visaApi, type VisaChecklistItem, type VisaDocument } from '@/lib/api/visa';
 import { toast } from 'sonner';
 
 function getStatusColor(status: string) {
@@ -60,6 +62,27 @@ export default function VisaDetailPage() {
     () => visaApi.getNotes(visaId),
     [visaId],
   );
+
+  const { data: documentsResponse, refetch: refetchDocuments } = useApiQuery(
+    () => visaApi.getDocuments(visaId),
+    [visaId],
+  );
+
+  const [isUploading, setIsUploading] = React.useState(false);
+  const [uploadProgress, setUploadProgress] = React.useState(0);
+  const [selectedDocType, setSelectedDocType] = React.useState('other');
+  const [deletingDocId, setDeletingDocId] = React.useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const documents: VisaDocument[] = React.useMemo(() => {
+    const d = documentsResponse?.data;
+    if (Array.isArray(d)) return d;
+    if (d && typeof d === 'object' && 'data' in (d as any)) {
+      const inner = (d as any).data;
+      return Array.isArray(inner) ? inner : [];
+    }
+    return [];
+  }, [documentsResponse]);
 
   const { mutate: deleteVisa, loading: isDeleting } = useApiMutation<string, any>(
     () => visaApi.delete(visaId),
@@ -130,6 +153,122 @@ export default function VisaDetailPage() {
       toast.error('Failed to save notes');
     }
   }
+
+  async function handleFileUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file size (10MB max)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('File too large. Maximum size is 10MB.');
+      return;
+    }
+
+    // Validate file type
+    const allowedTypes = [
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('File type not allowed. Accepted: PDF, JPEG, PNG, WebP, DOCX');
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadProgress(0);
+
+    // Simulate progress since we can't track actual upload progress with fetch
+    const progressInterval = setInterval(() => {
+      setUploadProgress((prev) => {
+        if (prev >= 90) return prev;
+        return prev + Math.random() * 15;
+      });
+    }, 200);
+
+    try {
+      const result = await visaApi.uploadDocument(visaId, file, selectedDocType);
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+
+      if (result) {
+        toast.success('Document uploaded successfully');
+        refetchDocuments();
+      } else {
+        toast.error('Failed to upload document');
+      }
+    } catch (err: any) {
+      clearInterval(progressInterval);
+      toast.error(err?.message || 'Failed to upload document');
+    } finally {
+      setTimeout(() => {
+        setIsUploading(false);
+        setUploadProgress(0);
+      }, 500);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  }
+
+  async function handleDownloadDocument(doc: VisaDocument) {
+    try {
+      const blob = await visaApi.downloadDocument(visaId, doc.id);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.file_name;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch {
+      toast.error('Failed to download document');
+    }
+  }
+
+  async function handleDeleteDocument(docId: string) {
+    setDeletingDocId(docId);
+    try {
+      await visaApi.deleteDocument(visaId, docId);
+      toast.success('Document deleted');
+      refetchDocuments();
+    } catch {
+      toast.error('Failed to delete document');
+    } finally {
+      setDeletingDocId(null);
+    }
+  }
+
+  function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function getFileIcon(mimeType: string) {
+    if (mimeType?.startsWith('image/')) return <Image className="h-5 w-5 text-blue-500" />;
+    if (mimeType === 'application/pdf') return <FileText className="h-5 w-5 text-red-500" />;
+    return <File className="h-5 w-5 text-gray-500" />;
+  }
+
+  const DOCUMENT_TYPES = [
+    { value: 'passport', label: 'Passport Copy' },
+    { value: 'photo', label: 'Passport Photo' },
+    { value: 'application_form', label: 'Application Form' },
+    { value: 'bank_statement', label: 'Bank Statement' },
+    { value: 'cover_letter', label: 'Cover Letter' },
+    { value: 'invitation_letter', label: 'Invitation Letter' },
+    { value: 'travel_insurance', label: 'Travel Insurance' },
+    { value: 'hotel_booking', label: 'Hotel Booking' },
+    { value: 'flight_itinerary', label: 'Flight Itinerary' },
+    { value: 'employment_letter', label: 'Employment Letter' },
+    { value: 'itr', label: 'ITR / Tax Returns' },
+    { value: 'other', label: 'Other' },
+  ];
 
   if (loading) {
     return (
@@ -314,6 +453,7 @@ export default function VisaDetailPage() {
           <TabsList>
             <TabsTrigger value="details">Details</TabsTrigger>
             <TabsTrigger value="checklist">Checklist ({completedCount}/{checklist.length})</TabsTrigger>
+            <TabsTrigger value="documents">Documents ({documents.length})</TabsTrigger>
             <TabsTrigger value="notes">Notes</TabsTrigger>
             <TabsTrigger value="timeline">Timeline</TabsTrigger>
           </TabsList>
@@ -425,6 +565,136 @@ export default function VisaDetailPage() {
                       </CardContent>
                     </Card>
                   ))}
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* Documents */}
+          <TabsContent value="documents" className="mt-0">
+            <div className="max-w-3xl space-y-4">
+              {/* Upload Section */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Upload Document</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
+                    <div className="flex-1 min-w-0">
+                      <label className="text-sm font-medium text-muted-foreground mb-1.5 block">Document Type</label>
+                      <Select value={selectedDocType} onValueChange={setSelectedDocType}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DOCUMENT_TYPES.map((dt) => (
+                            <SelectItem key={dt.value} value={dt.value}>{dt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png,.webp,.docx"
+                        onChange={handleFileUpload}
+                        className="hidden"
+                        disabled={isUploading}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploading}
+                      >
+                        {isUploading ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                        ) : (
+                          <Upload className="h-4 w-4 mr-1.5" />
+                        )}
+                        {isUploading ? 'Uploading...' : 'Choose File'}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Upload Progress */}
+                  {isUploading && (
+                    <div className="mt-3 space-y-1">
+                      <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-primary rounded-full transition-all duration-300"
+                          style={{ width: `${uploadProgress}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground text-right">{Math.round(uploadProgress)}%</p>
+                    </div>
+                  )}
+
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Accepted formats: PDF, JPEG, PNG, WebP, DOCX. Maximum size: 10MB.
+                  </p>
+                </CardContent>
+              </Card>
+
+              {/* Documents List */}
+              {documents.length === 0 ? (
+                <Card>
+                  <CardContent className="p-8 text-center text-muted-foreground">
+                    <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No documents uploaded yet</p>
+                    <p className="text-xs mt-1">Upload passport copies, application forms, and other required documents.</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="space-y-2">
+                  {documents.map((doc) => {
+                    const docTypeLabel = DOCUMENT_TYPES.find((dt) => dt.value === doc.document_type)?.label || doc.document_type || 'Other';
+                    return (
+                      <Card key={doc.id} className="hover:shadow-sm transition-shadow">
+                        <CardContent className="p-4 flex items-center gap-3">
+                          <div className="shrink-0">
+                            {getFileIcon(doc.mime_type)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{doc.file_name}</p>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0">{docTypeLabel}</Badge>
+                              <span>{formatFileSize(doc.file_size)}</span>
+                              {doc.uploader_name && <span>by {doc.uploader_name}</span>}
+                              <span>
+                                {new Date(doc.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => handleDownloadDocument(doc)}
+                              title="Download"
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => handleDeleteDocument(doc.id)}
+                              disabled={deletingDocId === doc.id}
+                              title="Delete"
+                              className="text-destructive hover:text-destructive"
+                            >
+                              {deletingDocId === doc.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                 </div>
               )}
             </div>

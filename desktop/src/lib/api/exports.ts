@@ -20,6 +20,7 @@ export interface ExportLeadsRequest {
   filters?: Record<string, unknown>;
   format?: 'csv' | 'xlsx';
   includeFields?: string[];
+  ids?: string;
 }
 
 export interface ExportInvoicesPdfRequest {

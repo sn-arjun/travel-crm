@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { Plus, Truck, Users, MapPin, DollarSign, AlertTriangle, Star, ArrowUpRight, Calendar, Clock, Loader2 } from 'lucide-react';
+import { Plus, Truck, Users, MapPin, DollarSign, AlertTriangle, Star, ArrowUpRight, Calendar, Clock, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -56,6 +56,216 @@ function StarRating({ rating }: { rating: number }) {
       ))}
       <span className="text-xs ml-1 font-medium">{rating.toFixed(1)}</span>
     </div>
+  );
+}
+
+// ── Vehicle Availability Calendar ─────────────────────────────────────────────
+function VehicleAvailabilityCalendar() {
+  const [startDate, setStartDate] = React.useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - d.getDay()); // start of this week (Sunday)
+    return d.toISOString().split('T')[0]!;
+  });
+  const [availabilityData, setAvailabilityData] = React.useState<Record<string, Array<{ date: string; status: string; tripId?: string }>>>({});
+  const [vehicles, setVehicles] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
+
+  const numDays = 14; // Show 2 weeks
+
+  const dates = React.useMemo(() => {
+    const result: string[] = [];
+    const start = new Date(startDate);
+    for (let i = 0; i < numDays; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      result.push(d.toISOString().split('T')[0]!);
+    }
+    return result;
+  }, [startDate]);
+
+  const endDate = dates[dates.length - 1] ?? startDate;
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+
+    Promise.all([
+      fleetApi.vehicles.list({ limit: 50 }).catch(() => null),
+      fleetApi.vehicles.getAvailability({ from: startDate, to: endDate }).catch(() => null),
+    ]).then(([vehiclesRes, availRes]) => {
+      if (cancelled) return;
+
+      // Parse vehicles
+      const vData = vehiclesRes?.data;
+      const vItems = Array.isArray(vData) ? vData : (vData as any)?.data ?? [];
+      setVehicles(vItems);
+
+      // Parse availability - may come as Record<vehicleId, availability[]> or empty
+      const rawAvail = (availRes as any)?.data ?? availRes ?? {};
+      const availMap: Record<string, Array<{ date: string; status: string; tripId?: string }>> = {};
+
+      if (typeof rawAvail === 'object' && !Array.isArray(rawAvail)) {
+        for (const [vehicleId, entries] of Object.entries(rawAvail)) {
+          if (Array.isArray(entries)) {
+            availMap[vehicleId] = entries;
+          }
+        }
+      }
+
+      // For vehicles without explicit availability data, use their current status
+      for (const v of vItems) {
+        if (!availMap[v.id]) {
+          availMap[v.id] = dates.map((date) => ({
+            date,
+            status: v.status === 'maintenance' ? 'maintenance' : v.status === 'on_trip' ? 'on_trip' : 'available',
+          }));
+        }
+      }
+
+      setAvailabilityData(availMap);
+      setLoading(false);
+    });
+
+    return () => { cancelled = true; };
+  }, [startDate, endDate, dates]);
+
+  const shiftDates = (direction: number) => {
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + direction * 7);
+    setStartDate(d.toISOString().split('T')[0]!);
+  };
+
+  const getStatusForDate = (vehicleId: string, date: string): string => {
+    const entries = availabilityData[vehicleId];
+    if (!entries) return 'available';
+    const entry = entries.find((e) => e.date === date);
+    return entry?.status ?? 'available';
+  };
+
+  const statusColors: Record<string, { bg: string; label: string }> = {
+    available: { bg: 'bg-green-200 dark:bg-green-800/40', label: 'Available' },
+    on_trip: { bg: 'bg-red-200 dark:bg-red-800/40', label: 'On Trip' },
+    maintenance: { bg: 'bg-gray-300 dark:bg-gray-700/50', label: 'Maintenance' },
+    inactive: { bg: 'bg-gray-200 dark:bg-gray-800/30', label: 'Inactive' },
+  };
+
+  const today = new Date().toISOString().split('T')[0];
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Calendar className="h-4 w-4" />
+            Vehicle Availability
+          </CardTitle>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon-sm" onClick={() => shiftDates(-1)}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs h-7"
+              onClick={() => {
+                const d = new Date();
+                d.setDate(d.getDate() - d.getDay());
+                setStartDate(d.toISOString().split('T')[0]!);
+              }}
+            >
+              Today
+            </Button>
+            <Button variant="ghost" size="icon-sm" onClick={() => shiftDates(1)}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : vehicles.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6">No vehicles to display</p>
+        ) : (
+          <>
+            {/* Legend */}
+            <div className="flex items-center gap-4 mb-3">
+              {Object.entries(statusColors).map(([key, { bg, label }]) => (
+                <div key={key} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <div className={cn('h-3 w-3 rounded-sm', bg)} />
+                  {label}
+                </div>
+              ))}
+            </div>
+
+            {/* Calendar grid */}
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-xs">
+                <thead>
+                  <tr>
+                    <th className="text-left py-1.5 px-2 font-medium text-muted-foreground sticky left-0 bg-background z-10 min-w-[140px]">
+                      Vehicle
+                    </th>
+                    {dates.map((date) => {
+                      const d = new Date(date);
+                      const isToday = date === today;
+                      const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+                      return (
+                        <th
+                          key={date}
+                          className={cn(
+                            'text-center py-1.5 px-0.5 font-medium min-w-[36px]',
+                            isToday ? 'text-primary' : isWeekend ? 'text-muted-foreground/60' : 'text-muted-foreground',
+                          )}
+                        >
+                          <div className="text-[10px]">{d.toLocaleDateString('en-IN', { weekday: 'short' }).slice(0, 2)}</div>
+                          <div className={cn('text-xs', isToday && 'bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center mx-auto')}>
+                            {d.getDate()}
+                          </div>
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {vehicles.slice(0, 20).map((vehicle: any) => (
+                    <tr key={vehicle.id} className="border-t border-border/50">
+                      <td className="py-1 px-2 sticky left-0 bg-background z-10">
+                        <Link href={`/fleet/vehicles/${vehicle.id}`} className="hover:underline">
+                          <span className="font-mono font-medium text-[11px]">{vehicle.registrationNumber}</span>
+                          <span className="text-muted-foreground ml-1.5 text-[10px]">{vehicle.make} {vehicle.model}</span>
+                        </Link>
+                      </td>
+                      {dates.map((date) => {
+                        const status = getStatusForDate(vehicle.id, date);
+                        const { bg, label } = statusColors[status] ?? statusColors.available!;
+                        return (
+                          <td key={date} className="py-1 px-0.5">
+                            <div
+                              className={cn('h-6 rounded-sm', bg)}
+                              title={`${vehicle.registrationNumber}: ${label} on ${date}`}
+                            />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {vehicles.length > 20 && (
+              <p className="text-xs text-muted-foreground text-center mt-2">
+                Showing 20 of {vehicles.length} vehicles.{' '}
+                <Link href="/fleet/vehicles" className="text-primary hover:underline">View all</Link>
+              </p>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -291,6 +501,9 @@ export default function FleetDashboardPage() {
                 </Card>
               </div>
             </div>
+
+            {/* Vehicle Availability Calendar */}
+            <VehicleAvailabilityCalendar />
           </>
         )}
       </div>

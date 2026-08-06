@@ -164,11 +164,14 @@ app.post('/health-score/calculate', async (c) => {
   const prompt = `Analyze these travel agency CRM metrics for the last 30 days and output a business health score. Metrics: ${JSON.stringify(metrics)}. Output JSON: { overallScore: 0-100, revenueScore: 0-100, pipelineScore: 0-100, customerScore: 0-100, teamScore: 0-100, operationsScore: 0-100, alerts: [string], recommendations: [string], trends: { revenue: "up"|"down"|"stable", pipeline: "up"|"down"|"stable" } }`;
   const aiResult = await router.route('business_health_score', prompt, 'You are a business health analyst. Score each dimension 0-100. Be data-driven. Always respond with valid JSON.');
 
+  const fallbackScore = { overallScore: 50, revenueScore: 50, pipelineScore: 50, customerScore: 50, teamScore: 50, operationsScore: 50, alerts: [], recommendations: [], trends: {} };
   let parsed;
   try {
-    parsed = JSON.parse(aiResult.result);
+    const p = JSON.parse(aiResult.result);
+    // Validate required field; fall back if AI returned a stub or incomplete response
+    parsed = (typeof p.overallScore === 'number') ? p : fallbackScore;
   } catch {
-    parsed = { overallScore: 50, revenueScore: 50, pipelineScore: 50, customerScore: 50, teamScore: 50, operationsScore: 50, alerts: [], recommendations: [], trends: {} };
+    parsed = fallbackScore;
   }
 
   const prevScore = await db.prepare(`SELECT overall_score FROM ai_business_health_scores ORDER BY calculated_at DESC LIMIT 1`).first<{ overall_score: number }>();
@@ -184,15 +187,51 @@ app.post('/health-score/calculate', async (c) => {
     .bind(usageId, 'business_health_score', aiResult.model, aiResult.inputTokens, aiResult.outputTokens, aiResult.cost)
     .run();
 
-  const score = await db.prepare(`SELECT * FROM ai_business_health_scores WHERE id = ?`).bind(id).first();
-  return success(c, score);
+  const score = await db.prepare(`SELECT * FROM ai_business_health_scores WHERE id = ?`).bind(id).first<Record<string, any>>();
+  if (!score) return success(c, { overallScore: parsed.overallScore, ...parsed, provider: aiResult.provider });
+  return success(c, {
+    id: score.id,
+    overallScore: score.overall_score,
+    revenueScore: score.revenue_score,
+    pipelineScore: score.pipeline_score,
+    customerScore: score.customer_score,
+    teamScore: score.team_score,
+    operationsScore: score.operations_score,
+    breakdown: score.breakdown,
+    trends: score.trends,
+    alerts: score.alerts,
+    recommendations: score.recommendations,
+    previousScore: score.previous_score,
+    scoreChange: score.score_change,
+    modelUsed: score.model_used,
+    costEstimate: score.cost_estimate,
+    calculatedAt: score.calculated_at,
+    provider: aiResult.provider,
+  });
 });
 
 app.get('/health-score', async (c) => {
   const db = c.get('tenantDb');
-  const score = await db.prepare(`SELECT * FROM ai_business_health_scores ORDER BY calculated_at DESC LIMIT 1`).first();
+  const score = await db.prepare(`SELECT * FROM ai_business_health_scores ORDER BY calculated_at DESC LIMIT 1`).first<Record<string, any>>();
   if (!score) return success(c, { overallScore: 0, status: 'no_data', lastCalculated: null });
-  return success(c, score);
+  return success(c, {
+    id: score.id,
+    overallScore: score.overall_score,
+    revenueScore: score.revenue_score,
+    pipelineScore: score.pipeline_score,
+    customerScore: score.customer_score,
+    teamScore: score.team_score,
+    operationsScore: score.operations_score,
+    breakdown: score.breakdown,
+    trends: score.trends,
+    alerts: score.alerts,
+    recommendations: score.recommendations,
+    previousScore: score.previous_score,
+    scoreChange: score.score_change,
+    modelUsed: score.model_used,
+    costEstimate: score.cost_estimate,
+    calculatedAt: score.calculated_at,
+  });
 });
 
 app.get('/health-score/history', async (c) => {
@@ -233,7 +272,7 @@ app.get('/destination-profitability', async (c) => {
     parsed = { destinations: destinations.results || [], insights: [] };
   }
 
-  return success(c, { ...parsed, rawData: destinations.results || [], model: aiResult.model, cost: aiResult.cost });
+  return success(c, { ...parsed, rawData: destinations.results || [], model: aiResult.model, cost: aiResult.cost, provider: aiResult.provider });
 });
 
 // ============================================================
@@ -272,7 +311,7 @@ app.get('/seasonal-demand', async (c) => {
     parsed = { peakMonths: [], slowMonths: [], forecast: [], recommendations: [] };
   }
 
-  return success(c, { ...parsed, model: aiResult.model, cost: aiResult.cost });
+  return success(c, { ...parsed, model: aiResult.model, cost: aiResult.cost, provider: aiResult.provider });
 });
 
 // ============================================================
@@ -341,7 +380,7 @@ app.get('/cash-flow-forecast', async (c) => {
     parsed = { forecast: [], riskFactors: [], recommendations: [] };
   }
 
-  return success(c, { ...parsed, model: aiResult.model, cost: aiResult.cost });
+  return success(c, { ...parsed, model: aiResult.model, cost: aiResult.cost, provider: aiResult.provider });
 });
 
 // ============================================================
@@ -377,7 +416,7 @@ app.get('/team-performance', async (c) => {
     parsed = { rankings: [], insights: [] };
   }
 
-  return success(c, { ...parsed, rawData: teamStats.results || [], model: aiResult.model, cost: aiResult.cost });
+  return success(c, { ...parsed, rawData: teamStats.results || [], model: aiResult.model, cost: aiResult.cost, provider: aiResult.provider });
 });
 
 // ============================================================
@@ -562,7 +601,7 @@ app.get('/lost-deal-analysis', async (c) => {
     parsed = { patterns: [], topReasons: byReason.results || [], recommendations: [] };
   }
 
-  return success(c, { ...parsed, rawByReason: byReason.results || [], rawByStatus: byStatus.results || [], model: aiResult.model, cost: aiResult.cost });
+  return success(c, { ...parsed, rawByReason: byReason.results || [], rawByStatus: byStatus.results || [], model: aiResult.model, cost: aiResult.cost, provider: aiResult.provider });
 });
 
 // ============================================================
@@ -609,7 +648,7 @@ app.post('/recommendations/generate', async (c) => {
 
   // Gather high-level metrics
   const [overdueFollowUps, hotLeads, staleLeads, overdueInvoices] = await Promise.all([
-    db.prepare(`SELECT COUNT(*) as c FROM follow_ups WHERE user_id = ? AND status = 'pending' AND scheduled_at < ?`).bind(userId, new Date().toISOString()).first<{ c: number }>(),
+    db.prepare(`SELECT COUNT(*) as c FROM follow_ups WHERE created_by = ? AND status = 'pending' AND scheduled_at < ?`).bind(userId, new Date().toISOString()).first<{ c: number }>(),
     db.prepare(`SELECT COUNT(*) as c FROM leads WHERE assigned_to = ? AND status NOT IN ('won', 'lost', 'closed') AND estimated_value > 100000`).bind(userId).first<{ c: number }>(),
     db.prepare(`SELECT COUNT(*) as c FROM leads WHERE assigned_to = ? AND status NOT IN ('won', 'lost', 'closed') AND updated_at < ?`).bind(userId, new Date(Date.now() - 7 * 86400000).toISOString()).first<{ c: number }>(),
     db.prepare(`SELECT COUNT(*) as c FROM invoices WHERE created_by = ? AND status = 'sent' AND due_date < ?`).bind(userId, new Date().toISOString().substring(0, 10)).first<{ c: number }>(),
@@ -642,7 +681,7 @@ app.post('/recommendations/generate', async (c) => {
       .run();
   }
 
-  return success(c, { generated: (parsed.recommendations || []).length, model: aiResult.model, cost: aiResult.cost });
+  return success(c, { generated: (parsed.recommendations || []).length, model: aiResult.model, cost: aiResult.cost, provider: aiResult.provider });
 });
 
 // ============================================================

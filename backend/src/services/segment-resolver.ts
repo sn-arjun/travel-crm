@@ -31,7 +31,7 @@ export async function resolveSegment(
   let query = `
     SELECT DISTINCT c.id
     FROM contacts c
-    WHERE c.is_deleted = 0
+    WHERE c.is_deleted = 0 AND (c.opted_out = 0 OR c.opted_out IS NULL)
   `;
 
   const params: any[] = [];

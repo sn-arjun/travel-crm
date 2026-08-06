@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Skeleton } from '@/components/ui/skeleton';
 import { FilterBar } from '@/components/domain/filter-bar';
 import { cn } from '@/lib/utils';
 import { useFleetStore } from '@/stores/fleet-store';
@@ -154,8 +155,24 @@ export default function DriversPage() {
 
       <div className="flex-1 overflow-auto p-6">
         {loading ? (
-          <div className="flex items-center justify-center h-64 gap-2 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" /><span>Loading drivers...</span>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Card key={i}>
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <Skeleton className="h-10 w-10 rounded-full" />
+                    <div className="flex-1 space-y-1.5">
+                      <Skeleton className="h-4 w-28" />
+                      <Skeleton className="h-3 w-20" />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Skeleton className="h-5 w-14 rounded-full" />
+                    <Skeleton className="h-5 w-20 rounded-full" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         ) : drivers.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 gap-3 text-muted-foreground">

@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { FilterBar } from '@/components/domain/filter-bar';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { useFleetStore } from '@/stores/fleet-store';
 import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
@@ -138,8 +139,19 @@ export default function TripsPage() {
 
       <div className="flex-1 overflow-auto">
         {loading ? (
-          <div className="flex items-center justify-center h-64 gap-2 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" /><span>Loading trips...</span>
+          <div className="space-y-3 p-6">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Card key={i}>
+                <CardContent className="p-4 flex items-center gap-4">
+                  <Skeleton className="h-8 w-8 rounded" />
+                  <div className="flex-1 space-y-1.5">
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-3 w-56" />
+                  </div>
+                  <Skeleton className="h-5 w-20 rounded-full" />
+                </CardContent>
+              </Card>
+            ))}
           </div>
         ) : tripView === 'kanban' ? (
           <div className="flex gap-4 p-6 overflow-x-auto">

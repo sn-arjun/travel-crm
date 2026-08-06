@@ -15,6 +15,7 @@ import {
 import { Combobox } from '@/components/ui/combobox';
 import { toast } from 'sonner';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
+import { useUnsavedChanges } from '@/hooks/use-unsaved-changes';
 import { invoicesApi, type InvoiceLineItem, type CreateInvoiceRequest } from '@/lib/api/invoices';
 import { contactsApi } from '@/lib/api/contacts';
 import { leadsApi } from '@/lib/api/leads';
@@ -39,6 +40,10 @@ export default function NewInvoicePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [isDirty, setIsDirty] = React.useState(false);
+
+  // Warn user when navigating away with unsaved changes
+  useUnsavedChanges(isDirty);
 
   // URL param prefill
   const prefillContactId = searchParams.get('contactId') ?? '';
@@ -106,6 +111,7 @@ export default function NewInvoicePage() {
 
   function updateField(field: string, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
+    setIsDirty(true);
   }
 
   function updateLineItem(id: number, field: keyof LineItem, value: string | number) {
@@ -115,14 +121,17 @@ export default function NewInvoicePage() {
       updated.amount = updated.quantity * updated.unitPrice;
       return updated;
     }));
+    setIsDirty(true);
   }
 
   function addLineItem() {
     setLineItems((prev) => [...prev, { id: lineIdCounter++, description: '', hsnCode: '', quantity: 1, unitPrice: 0, amount: 0 }]);
+    setIsDirty(true);
   }
 
   function removeLineItem(id: number) {
     setLineItems((prev) => prev.length > 1 ? prev.filter((item: any) => item.id !== id) : prev);
+    setIsDirty(true);
   }
 
   const subtotal = lineItems.reduce((sum: any, item: any) => sum + item.amount, 0);
@@ -181,6 +190,7 @@ export default function NewInvoicePage() {
 
       const result = await createInvoice(createRequest);
       if (result) {
+        setIsDirty(false);
         toast.success(isDraft ? 'Invoice saved as draft' : 'Invoice created successfully');
         router.push('/invoices');
       } else {

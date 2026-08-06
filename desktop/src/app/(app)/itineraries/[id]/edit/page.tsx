@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
-  ArrowLeft, Loader2, Save, Plus, Trash2, GripVertical, MapPin, Calendar, ImagePlus, X,
+  ArrowLeft, Loader2, Save, Plus, Trash2, GripVertical, MapPin, Calendar, ImagePlus, X, Check, AlertCircle, FileText,
 } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -21,6 +21,7 @@ import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { itinerariesApi, type UpdateItineraryRequest } from '@/lib/api/itineraries';
 import { client, type ApiResponse } from '@/lib/api/client';
 import { API_ENDPOINTS } from '@/lib/api/config';
+import { useUnsavedChanges } from '@/hooks/use-unsaved-changes';
 import type { Itinerary } from '@travelcrm/shared';
 import { toast } from 'sonner';
 
@@ -55,6 +56,7 @@ function SortableDayCard({
   removeDayItem,
   onUploadImages,
   onRemoveImage,
+  onCreateVoucher,
 }: {
   item: DayItem;
   index: number;
@@ -62,6 +64,7 @@ function SortableDayCard({
   removeDayItem: (index: number) => void;
   onUploadImages: (index: number, files: FileList) => void;
   onRemoveImage: (index: number, imgIndex: number) => void;
+  onCreateVoucher?: (item: DayItem) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, position: 'relative' as const };
@@ -77,9 +80,23 @@ function SortableDayCard({
             </button>
             <Badge variant="outline" className="text-xs">Day {item.dayNumber}</Badge>
           </div>
-          <Button variant="ghost" size="icon-sm" onClick={() => removeDayItem(index)}>
-            <Trash2 className="h-4 w-4 text-destructive" />
-          </Button>
+          <div className="flex items-center gap-1">
+            {onCreateVoucher && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs gap-1 text-primary hover:text-primary"
+                onClick={() => onCreateVoucher(item)}
+                title="Create voucher from this day"
+              >
+                <FileText className="h-3.5 w-3.5" />
+                Create Voucher
+              </Button>
+            )}
+            <Button variant="ghost" size="icon-sm" onClick={() => removeDayItem(index)}>
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -224,6 +241,43 @@ export default function ItineraryEditPage() {
     (data) => itinerariesApi.update(id, data),
   );
 
+  // Auto-save state
+  const [isDirty, setIsDirty] = React.useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = React.useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [lastSavedAt, setLastSavedAt] = React.useState<Date | null>(null);
+  const autoSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isInitializedRef = React.useRef(false);
+
+  // Warn user when navigating away with unsaved changes
+  useUnsavedChanges(isDirty);
+
+  // Mark form dirty and schedule auto-save
+  const markDirty = React.useCallback(() => {
+    if (!isInitializedRef.current) return;
+    setIsDirty(true);
+    setAutoSaveStatus('idle');
+
+    // Clear existing auto-save timer
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+
+    // Schedule auto-save after 30 seconds of inactivity
+    autoSaveTimerRef.current = setTimeout(() => {
+      // Trigger auto-save via a custom event so the save logic can read current state
+      window.dispatchEvent(new CustomEvent('itinerary-auto-save'));
+    }, 30000);
+  }, []);
+
+  // Cleanup timer on unmount
+  React.useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, []);
+
   // DnD sensors
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -253,11 +307,14 @@ export default function ItineraryEditPage() {
       setInclusions(itin.inclusions ?? []);
       setExclusions(itin.exclusions ?? []);
       setTerms(itin.terms ?? itin.termsAndConditions ?? '');
+      // Allow dirty tracking after initial data load
+      setTimeout(() => { isInitializedRef.current = true; }, 100);
     }
   }, [itinerary]);
 
   function updateField(field: string, value: any) {
     setForm((prev) => ({ ...prev, [field]: value }));
+    markDirty();
   }
 
   function addDayItem() {
@@ -272,6 +329,7 @@ export default function ItineraryEditPage() {
       accommodation: '',
       images: [],
     }]);
+    markDirty();
   }
 
   function handleDragEnd(event: DragEndEvent) {
@@ -289,6 +347,7 @@ export default function ItineraryEditPage() {
       // Recalculate dayNumbers
       return reordered.map((item, i) => ({ ...item, dayNumber: i + 1 }));
     });
+    markDirty();
   }
 
   async function uploadDayImages(dayIndex: number, files: FileList) {
@@ -328,31 +387,30 @@ export default function ItineraryEditPage() {
 
   function updateDayItem(index: number, field: keyof DayItem, value: any) {
     setDayItems((prev) => prev.map((item, i) => i === index ? { ...item, [field]: value } : item));
+    markDirty();
   }
 
   function removeDayItem(index: number) {
     setDayItems((prev) => prev.filter((_, i) => i !== index));
+    markDirty();
   }
 
   function addInclusion() {
     if (!newInclusion.trim()) return;
     setInclusions((prev) => [...prev, newInclusion.trim()]);
     setNewInclusion('');
+    markDirty();
   }
 
   function addExclusion() {
     if (!newExclusion.trim()) return;
     setExclusions((prev) => [...prev, newExclusion.trim()]);
     setNewExclusion('');
+    markDirty();
   }
 
-  async function handleSave() {
-    if (!form.title?.trim()) {
-      toast.error('Title is required');
-      return;
-    }
-
-    const payload: UpdateItineraryRequest = {
+  function buildPayload(): UpdateItineraryRequest {
+    return {
       title: form.title,
       notes: form.description,
       status: form.status as any,
@@ -363,15 +421,58 @@ export default function ItineraryEditPage() {
       exclusions,
       termsConditions: terms,
     };
+  }
 
-    const result = await updateItinerary(payload);
+  function validateForm(): boolean {
+    return !!(form.title?.trim());
+  }
+
+  async function handleSave() {
+    if (!validateForm()) {
+      toast.error('Title is required');
+      return;
+    }
+
+    const result = await updateItinerary(buildPayload());
     if (result) {
+      setIsDirty(false);
+      setAutoSaveStatus('saved');
+      setLastSavedAt(new Date());
       toast.success('Itinerary updated successfully');
       router.push(`/itineraries/${id}`);
     } else {
       toast.error('Failed to update itinerary');
     }
   }
+
+  async function handleAutoSave() {
+    if (!isDirty || isSaving) return;
+    if (!validateForm()) {
+      setAutoSaveStatus('error');
+      return;
+    }
+
+    setAutoSaveStatus('saving');
+    try {
+      const result = await updateItinerary(buildPayload());
+      if (result) {
+        setIsDirty(false);
+        setAutoSaveStatus('saved');
+        setLastSavedAt(new Date());
+      } else {
+        setAutoSaveStatus('error');
+      }
+    } catch {
+      setAutoSaveStatus('error');
+    }
+  }
+
+  // Listen for auto-save events
+  React.useEffect(() => {
+    const handler = () => handleAutoSave();
+    window.addEventListener('itinerary-auto-save', handler);
+    return () => window.removeEventListener('itinerary-auto-save', handler);
+  });
 
   if (loading) {
     return (
@@ -402,7 +503,31 @@ export default function ItineraryEditPage() {
             Edit Itinerary
           </h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {/* Auto-save status indicator */}
+          {autoSaveStatus === 'saving' && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground animate-pulse">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <span>Saving...</span>
+            </div>
+          )}
+          {autoSaveStatus === 'saved' && lastSavedAt && (
+            <div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
+              <Check className="h-3.5 w-3.5" />
+              <span>Auto-saved at {lastSavedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+          )}
+          {autoSaveStatus === 'error' && (
+            <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+              <AlertCircle className="h-3.5 w-3.5" />
+              <span>Auto-save failed</span>
+            </div>
+          )}
+          {isDirty && autoSaveStatus === 'idle' && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span>Unsaved changes</span>
+            </div>
+          )}
           <Button variant="outline" onClick={() => router.back()} disabled={isSaving}>Cancel</Button>
           <Button onClick={handleSave} disabled={isSaving}>
             {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Save className="h-4 w-4 mr-1.5" />}
@@ -486,9 +611,10 @@ export default function ItineraryEditPage() {
                     <SelectTrigger id="status"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="draft">Draft</SelectItem>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="approved">Approved</SelectItem>
                       <SelectItem value="sent">Sent</SelectItem>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="rejected">Rejected</SelectItem>
+                      <SelectItem value="expired">Expired</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -521,6 +647,25 @@ export default function ItineraryEditPage() {
                       removeDayItem={removeDayItem}
                       onUploadImages={uploadDayImages}
                       onRemoveImage={removeDayImage}
+                      onCreateVoucher={(dayItem) => {
+                        const itin = itinerary as any;
+                        const leadId = itin?.leadId || itin?.lead_id || '';
+                        // Determine voucher type based on day content
+                        let voucherType = 'hotel';
+                        if (dayItem.accommodation) voucherType = 'hotel';
+                        else if (dayItem.title?.toLowerCase().includes('transport') || dayItem.title?.toLowerCase().includes('transfer')) voucherType = 'transport';
+                        else if (dayItem.title?.toLowerCase().includes('flight')) voucherType = 'flight';
+                        else if (dayItem.title?.toLowerCase().includes('activity') || dayItem.title?.toLowerCase().includes('tour')) voucherType = 'activity';
+
+                        const params = new URLSearchParams();
+                        if (dayItem.id) params.set('itineraryItemId', dayItem.id);
+                        params.set('type', voucherType);
+                        if (leadId) params.set('leadId', leadId);
+                        if (dayItem.title) params.set('title', dayItem.title);
+                        if (dayItem.accommodation) params.set('hotelName', dayItem.accommodation);
+                        if (dayItem.location) params.set('location', dayItem.location);
+                        router.push(`/vouchers/new?${params.toString()}`);
+                      }}
                     />
                   ))}
                 </SortableContext>

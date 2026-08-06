@@ -159,7 +159,7 @@ export class RowInserter {
                             .set({
                                 serviceType: validData.serviceType,
                                 costPrice: Number(validData.costPrice),
-                                sellPrice: validData.sellPrice ? Number(validData.sellPrice) : null,
+                                sellingPrice: (validData.sellingPrice || validData.sellPrice) ? Number(validData.sellingPrice || validData.sellPrice) : null,
                                 currency: validData.currency || 'INR',
                                 validFrom: validData.seasonStart || validData.validFrom || null,
                                 validTo: validData.seasonEnd || validData.validTo || null,
@@ -173,7 +173,7 @@ export class RowInserter {
                             serviceType: validData.serviceType,
                             name: validData.name || `${validData.serviceType} Rate`,
                             costPrice: Number(validData.costPrice),
-                            sellPrice: validData.sellPrice ? Number(validData.sellPrice) : null,
+                            sellingPrice: (validData.sellingPrice || validData.sellPrice) ? Number(validData.sellingPrice || validData.sellPrice) : null,
                             currency: validData.currency || 'INR',
                             validFrom: validData.seasonStart || validData.validFrom || null,
                             validTo: validData.seasonEnd || validData.validTo || null,

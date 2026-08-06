@@ -99,6 +99,21 @@ export interface OptOutRequest {
   reason?: string;
 }
 
+export interface OptedOutContact {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  optedOut: number;
+  optedOutAt?: string;
+  optOutChannel?: string;
+  optOutReason?: string;
+}
+
+export interface ResubscribeRequest {
+  contactId: string;
+}
+
 export interface FestivalCampaign {
   id: string;
   name: string;
@@ -216,6 +231,26 @@ export const marketingApi = {
 
   optOut: (data: OptOutRequest) =>
     client.post<ApiResponse<{ message: string }>>(API_ENDPOINTS.marketing.optOut, data),
+
+  optedOut: {
+    list: (params?: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      channel?: string;
+    }) =>
+      client.get<ApiResponse<PaginatedResponse<OptedOutContact>>>('/contacts', {
+        params: { ...params, opted_out: true },
+      }),
+
+    resubscribe: (contactId: string) =>
+      client.put<ApiResponse<{ message: string }>>(`/contacts/${contactId}`, {
+        optedOut: 0,
+        optedOutAt: null,
+        optOutChannel: null,
+        optOutReason: null,
+      }),
+  },
 
   festivals: {
     list: (params?: { page?: number; limit?: number; search?: string }) =>

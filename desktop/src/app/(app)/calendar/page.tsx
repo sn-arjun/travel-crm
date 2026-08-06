@@ -29,6 +29,8 @@ import Link from 'next/link';
 
 const REF_DATE = Date.now();
 
+type ViewMode = 'month' | 'week' | 'day';
+
 // ─── Event type config ───
 const EVENT_TYPES: {
   value: EventType;
@@ -65,7 +67,48 @@ function normalizeEvent(e: any): CalendarEvent & { startTime: string; endTime: s
   };
 }
 
-// ─── Calendar Grid ───
+// ─── Helpers ───
+const HOUR_START = 7;  // 7 AM
+const HOUR_END = 21;   // 9 PM
+const HOURS = Array.from({ length: HOUR_END - HOUR_START + 1 }, (_, i) => HOUR_START + i);
+
+function formatHour(hour: number): string {
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const h = hour % 12 || 12;
+  return `${h} ${ampm}`;
+}
+
+function formatDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function getWeekDays(date: Date): Date[] {
+  const day = date.getDay(); // 0=Sun
+  const start = new Date(date);
+  start.setDate(start.getDate() - day); // go to Sunday
+  const days: Date[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    days.push(d);
+  }
+  return days;
+}
+
+function getEventHourPosition(event: ReturnType<typeof normalizeEvent>) {
+  if (event.all_day || !event.startTime) return null;
+  const start = new Date(event.startTime);
+  const end = event.endTime ? new Date(event.endTime) : new Date(start.getTime() + 60 * 60 * 1000);
+  const startHour = start.getHours() + start.getMinutes() / 60;
+  const endHour = end.getHours() + end.getMinutes() / 60;
+  // Clamp to visible range
+  const top = Math.max(startHour - HOUR_START, 0);
+  const bottom = Math.min(endHour - HOUR_START, HOUR_END - HOUR_START + 1);
+  const height = Math.max(bottom - top, 0.5); // minimum 30min height
+  return { top, height };
+}
+
+// ─── Calendar Grid (Month View) ───
 function CalendarGrid({
   year, month, onDateSelect, events, selectedDate,
 }: {
@@ -150,6 +193,306 @@ function CalendarGrid({
           })}
         </div>
       ))}
+    </div>
+  );
+}
+
+// ─── Week View ───
+function WeekView({
+  currentDate, events, onEventClick, onDateSelect, selectedDate,
+}: {
+  currentDate: Date;
+  events: ReturnType<typeof normalizeEvent>[];
+  onEventClick: (event: ReturnType<typeof normalizeEvent>) => void;
+  onDateSelect: (date: string) => void;
+  selectedDate: string | null;
+}) {
+  const weekDays = getWeekDays(currentDate);
+  const todayStr = new Date(REF_DATE).toISOString().split('T')[0];
+  const ROW_HEIGHT = 60; // px per hour
+
+  const getEventsForDay = (dayStr: string) =>
+    events.filter((e) => (e.startTime || '').split('T')[0] === dayStr);
+
+  const getAllDayEvents = (dayStr: string) =>
+    events.filter((e) => e.all_day && (e.startTime || '').split('T')[0] === dayStr);
+
+  return (
+    <div className="border rounded-lg overflow-hidden flex flex-col">
+      {/* Day headers */}
+      <div className="grid grid-cols-[60px_repeat(7,1fr)] bg-muted border-b">
+        <div className="p-2 border-r" />
+        {weekDays.map((day) => {
+          const dayStr = formatDateStr(day);
+          const isToday = dayStr === todayStr;
+          return (
+            <div
+              key={dayStr}
+              className={cn(
+                'p-2 text-center border-r last:border-r-0 cursor-pointer hover:bg-muted/80 transition-colors',
+                isToday && 'bg-primary/10',
+              )}
+              onClick={() => onDateSelect(dayStr)}
+            >
+              <div className="text-[10px] font-medium text-muted-foreground uppercase">
+                {day.toLocaleDateString('en-US', { weekday: 'short' })}
+              </div>
+              <div className={cn(
+                'inline-flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold mt-0.5',
+                isToday && 'bg-primary text-primary-foreground',
+              )}>
+                {day.getDate()}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* All-day events row */}
+      {weekDays.some((day) => getAllDayEvents(formatDateStr(day)).length > 0) && (
+        <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b bg-muted/30">
+          <div className="p-1 border-r text-[10px] text-muted-foreground text-right pr-2 pt-2">
+            All Day
+          </div>
+          {weekDays.map((day) => {
+            const dayStr = formatDateStr(day);
+            const allDayEvts = getAllDayEvents(dayStr);
+            return (
+              <div key={dayStr} className="p-1 border-r last:border-r-0 min-h-[28px]">
+                {allDayEvts.map((event) => {
+                  const cfg = getTypeConfig(event.type);
+                  return (
+                    <div
+                      key={event.id}
+                      className={cn('text-[10px] px-1.5 py-0.5 rounded truncate cursor-pointer mb-0.5', cfg.bg)}
+                      title={event.title}
+                      onClick={() => onEventClick(event)}
+                    >
+                      {event.title}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Time grid */}
+      <div className="flex-1 overflow-auto">
+        <div className="relative grid grid-cols-[60px_repeat(7,1fr)]" style={{ minHeight: HOURS.length * ROW_HEIGHT }}>
+          {/* Time labels */}
+          <div className="border-r">
+            {HOURS.map((hour) => (
+              <div
+                key={hour}
+                className="border-b last:border-b-0 text-[10px] text-muted-foreground text-right pr-2 pt-1"
+                style={{ height: ROW_HEIGHT }}
+              >
+                {formatHour(hour)}
+              </div>
+            ))}
+          </div>
+
+          {/* Day columns */}
+          {weekDays.map((day) => {
+            const dayStr = formatDateStr(day);
+            const isToday = dayStr === todayStr;
+            const dayEvents = getEventsForDay(dayStr).filter((e) => !e.all_day);
+
+            return (
+              <div
+                key={dayStr}
+                className={cn('relative border-r last:border-r-0', isToday && 'bg-primary/[0.02] dark:bg-primary/[0.04]')}
+              >
+                {/* Hour grid lines */}
+                {HOURS.map((hour) => (
+                  <div
+                    key={hour}
+                    className="border-b last:border-b-0 hover:bg-muted/30 transition-colors cursor-pointer"
+                    style={{ height: ROW_HEIGHT }}
+                    onClick={() => onDateSelect(dayStr)}
+                  />
+                ))}
+
+                {/* Events positioned absolutely */}
+                {dayEvents.map((event) => {
+                  const pos = getEventHourPosition(event);
+                  if (!pos) return null;
+                  const cfg = getTypeConfig(event.type);
+                  return (
+                    <div
+                      key={event.id}
+                      className={cn(
+                        'absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 overflow-hidden cursor-pointer',
+                        'border-l-2 shadow-sm hover:shadow-md transition-shadow',
+                        cfg.bg,
+                      )}
+                      style={{
+                        top: pos.top * ROW_HEIGHT,
+                        height: Math.max(pos.height * ROW_HEIGHT - 2, 20),
+                        borderLeftColor: cfg.dot.replace('bg-', '').includes('blue') ? '#3b82f6'
+                          : cfg.dot.replace('bg-', '').includes('purple') ? '#a855f7'
+                          : cfg.dot.replace('bg-', '').includes('amber') ? '#f59e0b'
+                          : cfg.dot.replace('bg-', '').includes('red') ? '#ef4444'
+                          : cfg.dot.replace('bg-', '').includes('green') ? '#22c55e'
+                          : cfg.dot.replace('bg-', '').includes('cyan') ? '#06b6d4'
+                          : cfg.dot.replace('bg-', '').includes('orange') ? '#f97316'
+                          : cfg.dot.replace('bg-', '').includes('teal') ? '#14b8a6'
+                          : '#9ca3af',
+                      }}
+                      title={`${event.title}\n${new Date(event.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} - ${event.endTime ? new Date(event.endTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ''}`}
+                      onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
+                    >
+                      <div className="text-[10px] font-semibold truncate leading-tight">
+                        {event.title}
+                      </div>
+                      {pos.height * ROW_HEIGHT > 30 && (
+                        <div className="text-[9px] opacity-75 truncate">
+                          {new Date(event.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                          {event.endTime && ` - ${new Date(event.endTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Day View ───
+function DayView({
+  currentDate, events, onEventClick, onDateSelect,
+}: {
+  currentDate: Date;
+  events: ReturnType<typeof normalizeEvent>[];
+  onEventClick: (event: ReturnType<typeof normalizeEvent>) => void;
+  onDateSelect: (date: string) => void;
+}) {
+  const dayStr = formatDateStr(currentDate);
+  const todayStr = new Date(REF_DATE).toISOString().split('T')[0];
+  const isToday = dayStr === todayStr;
+  const ROW_HEIGHT = 64; // px per hour
+
+  const dayEvents = events.filter((e) => (e.startTime || '').split('T')[0] === dayStr);
+  const allDayEvents = dayEvents.filter((e) => e.all_day);
+  const timedEvents = dayEvents.filter((e) => !e.all_day);
+
+  return (
+    <div className="border rounded-lg overflow-hidden flex flex-col">
+      {/* Day header */}
+      <div className="bg-muted border-b p-3 text-center">
+        <div className="text-xs font-medium text-muted-foreground uppercase">
+          {currentDate.toLocaleDateString('en-US', { weekday: 'long' })}
+        </div>
+        <div className={cn(
+          'inline-flex h-10 w-10 items-center justify-center rounded-full text-lg font-bold mt-1',
+          isToday && 'bg-primary text-primary-foreground',
+        )}>
+          {currentDate.getDate()}
+        </div>
+        <div className="text-xs text-muted-foreground mt-0.5">
+          {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+        </div>
+      </div>
+
+      {/* All-day events */}
+      {allDayEvents.length > 0 && (
+        <div className="border-b bg-muted/30 p-2 space-y-1">
+          <div className="text-[10px] text-muted-foreground font-medium mb-1">All Day</div>
+          {allDayEvents.map((event) => {
+            const cfg = getTypeConfig(event.type);
+            return (
+              <div
+                key={event.id}
+                className={cn('text-xs px-2 py-1 rounded cursor-pointer', cfg.bg)}
+                onClick={() => onEventClick(event)}
+              >
+                {event.title}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Time grid */}
+      <div className="flex-1 overflow-auto">
+        <div className="relative grid grid-cols-[60px_1fr]" style={{ minHeight: HOURS.length * ROW_HEIGHT }}>
+          {/* Time labels */}
+          <div className="border-r">
+            {HOURS.map((hour) => (
+              <div
+                key={hour}
+                className="border-b last:border-b-0 text-[11px] text-muted-foreground text-right pr-2 pt-1"
+                style={{ height: ROW_HEIGHT }}
+              >
+                {formatHour(hour)}
+              </div>
+            ))}
+          </div>
+
+          {/* Event column */}
+          <div className={cn('relative', isToday && 'bg-primary/[0.02] dark:bg-primary/[0.04]')}>
+            {/* Hour grid lines */}
+            {HOURS.map((hour) => (
+              <div
+                key={hour}
+                className="border-b last:border-b-0 hover:bg-muted/30 transition-colors cursor-pointer"
+                style={{ height: ROW_HEIGHT }}
+                onClick={() => onDateSelect(dayStr)}
+              />
+            ))}
+
+            {/* Events */}
+            {timedEvents.map((event) => {
+              const pos = getEventHourPosition(event);
+              if (!pos) return null;
+              const cfg = getTypeConfig(event.type);
+              return (
+                <div
+                  key={event.id}
+                  className={cn(
+                    'absolute left-1 right-1 rounded-md px-3 py-1.5 overflow-hidden cursor-pointer',
+                    'border-l-3 shadow-sm hover:shadow-md transition-shadow',
+                    cfg.bg,
+                  )}
+                  style={{
+                    top: pos.top * ROW_HEIGHT,
+                    height: Math.max(pos.height * ROW_HEIGHT - 2, 24),
+                    borderLeftColor: cfg.dot.replace('bg-', '').includes('blue') ? '#3b82f6'
+                      : cfg.dot.replace('bg-', '').includes('purple') ? '#a855f7'
+                      : cfg.dot.replace('bg-', '').includes('amber') ? '#f59e0b'
+                      : cfg.dot.replace('bg-', '').includes('red') ? '#ef4444'
+                      : cfg.dot.replace('bg-', '').includes('green') ? '#22c55e'
+                      : cfg.dot.replace('bg-', '').includes('cyan') ? '#06b6d4'
+                      : cfg.dot.replace('bg-', '').includes('orange') ? '#f97316'
+                      : cfg.dot.replace('bg-', '').includes('teal') ? '#14b8a6'
+                      : '#9ca3af',
+                  }}
+                  title={event.title}
+                  onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
+                >
+                  <div className="text-xs font-semibold truncate">{event.title}</div>
+                  {pos.height * ROW_HEIGHT > 36 && (
+                    <div className="text-[10px] opacity-75 mt-0.5">
+                      {new Date(event.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                      {event.endTime && ` - ${new Date(event.endTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`}
+                    </div>
+                  )}
+                  {pos.height * ROW_HEIGHT > 56 && event.location && (
+                    <div className="text-[10px] opacity-60 mt-0.5 truncate">{event.location}</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -321,6 +664,7 @@ export default function CalendarPage() {
   const [currentDate, setCurrentDate] = React.useState(new Date(REF_DATE));
   const [selectedDate, setSelectedDate] = React.useState<string | null>(null);
   const [calendarView, setCalendarView] = React.useState<'my' | 'team'>('my');
+  const [viewMode, setViewMode] = React.useState<ViewMode>('month');
   const [createOpen, setCreateOpen] = React.useState(false);
   const [editEvent, setEditEvent] = React.useState<(CalendarEvent & { startTime: string; endTime: string; type: EventType }) | null>(null);
   const [editOpen, setEditOpen] = React.useState(false);
@@ -331,12 +675,33 @@ export default function CalendarPage() {
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
 
-  const monthStart = new Date(year, month, 1).toISOString();
-  const monthEnd = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
+  // ─── Date range based on view mode ───
+  const { rangeStart, rangeEnd } = React.useMemo(() => {
+    if (viewMode === 'month') {
+      return {
+        rangeStart: new Date(year, month, 1).toISOString(),
+        rangeEnd: new Date(year, month + 1, 0, 23, 59, 59).toISOString(),
+      };
+    }
+    if (viewMode === 'week') {
+      const weekDays = getWeekDays(currentDate);
+      const wStart = weekDays[0]!;
+      const wEnd = weekDays[6]!;
+      return {
+        rangeStart: new Date(wStart.getFullYear(), wStart.getMonth(), wStart.getDate()).toISOString(),
+        rangeEnd: new Date(wEnd.getFullYear(), wEnd.getMonth(), wEnd.getDate(), 23, 59, 59).toISOString(),
+      };
+    }
+    // day
+    return {
+      rangeStart: new Date(year, month, currentDate.getDate()).toISOString(),
+      rangeEnd: new Date(year, month, currentDate.getDate(), 23, 59, 59).toISOString(),
+    };
+  }, [viewMode, year, month, currentDate]);
 
   const { data: eventsResp, loading, error, refetch } = useApiQuery(
-    () => eventsApi.list({ start_date: monthStart, end_date: monthEnd, view: calendarView }),
-    [year, month, calendarView],
+    () => eventsApi.list({ start_date: rangeStart, end_date: rangeEnd, view: calendarView }),
+    [rangeStart, rangeEnd, calendarView],
   );
 
   const { data: leadsResp } = useApiQuery(
@@ -360,15 +725,63 @@ export default function CalendarPage() {
     [rawEvents],
   );
 
-  const handlePrevMonth = () => { setCurrentDate(new Date(year, month - 1, 1)); setSelectedDate(null); };
-  const handleNextMonth = () => { setCurrentDate(new Date(year, month + 1, 1)); setSelectedDate(null); };
-  const handleToday = () => { setCurrentDate(new Date(REF_DATE)); setSelectedDate(new Date(REF_DATE).toISOString().split('T')[0] ?? null); };
+  // ─── View-aware navigation ───
+  const handlePrev = () => {
+    if (viewMode === 'month') {
+      setCurrentDate(new Date(year, month - 1, 1));
+    } else if (viewMode === 'week') {
+      const d = new Date(currentDate);
+      d.setDate(d.getDate() - 7);
+      setCurrentDate(d);
+    } else {
+      const d = new Date(currentDate);
+      d.setDate(d.getDate() - 1);
+      setCurrentDate(d);
+    }
+    setSelectedDate(null);
+  };
+
+  const handleNext = () => {
+    if (viewMode === 'month') {
+      setCurrentDate(new Date(year, month + 1, 1));
+    } else if (viewMode === 'week') {
+      const d = new Date(currentDate);
+      d.setDate(d.getDate() + 7);
+      setCurrentDate(d);
+    } else {
+      const d = new Date(currentDate);
+      d.setDate(d.getDate() + 1);
+      setCurrentDate(d);
+    }
+    setSelectedDate(null);
+  };
+
+  const handleToday = () => {
+    setCurrentDate(new Date(REF_DATE));
+    setSelectedDate(new Date(REF_DATE).toISOString().split('T')[0] ?? null);
+  };
 
   const selectedDateEvents = selectedDate
     ? events.filter((e) => (e.startTime || '').split('T')[0] === selectedDate)
     : [];
 
-  const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  // ─── View-aware header label ───
+  const headerLabel = React.useMemo(() => {
+    if (viewMode === 'month') {
+      return currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    }
+    if (viewMode === 'week') {
+      const weekDays = getWeekDays(currentDate);
+      const start = weekDays[0]!;
+      const end = weekDays[6]!;
+      if (start.getMonth() === end.getMonth()) {
+        return `${start.toLocaleDateString('en-US', { month: 'short' })} ${start.getDate()} - ${end.getDate()}, ${end.getFullYear()}`;
+      }
+      return `${start.toLocaleDateString('en-US', { month: 'short' })} ${start.getDate()} - ${end.toLocaleDateString('en-US', { month: 'short' })} ${end.getDate()}, ${end.getFullYear()}`;
+    }
+    // day
+    return currentDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  }, [viewMode, currentDate]);
 
   const buildEventPayload = (form: EventFormData, date: string) => {
     const startAt = form.allDay
@@ -430,6 +843,14 @@ export default function CalendarPage() {
     setEditOpen(true);
   };
 
+  const handleEventClick = (event: typeof events[number]) => {
+    // Set selected date to the event's date and open side panel
+    const eventDate = (event.startTime || '').split('T')[0];
+    if (eventDate) {
+      setSelectedDate(eventDate);
+    }
+  };
+
   const handleUpdateEvent = async () => {
     if (!editEvent || !editFormData.title) {
       toast.error('Title is required');
@@ -480,15 +901,30 @@ export default function CalendarPage() {
                 <Users className="h-3 w-3" /> Team
               </button>
             </div>
+            {/* View mode toggle: Month | Week | Day */}
+            <div className="flex rounded-md border overflow-hidden text-xs font-medium">
+              {(['month', 'week', 'day'] as ViewMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  className={cn(
+                    'px-3 py-1.5 transition-colors capitalize',
+                    viewMode === mode ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
+                  )}
+                  onClick={() => setViewMode(mode)}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={handleToday}>Today</Button>
-            <Button variant="ghost" size="icon-sm" onClick={handlePrevMonth}>
+            <Button variant="ghost" size="icon-sm" onClick={handlePrev}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <div className="text-sm font-medium min-w-[130px] text-center">{monthName}</div>
-            <Button variant="ghost" size="icon-sm" onClick={handleNextMonth}>
+            <div className="text-sm font-medium min-w-[130px] text-center">{headerLabel}</div>
+            <Button variant="ghost" size="icon-sm" onClick={handleNext}>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
@@ -518,13 +954,32 @@ export default function CalendarPage() {
           </div>
         )}
 
-        {/* Calendar Grid */}
-        {!loading && !error && (
+        {/* Calendar Views */}
+        {!loading && !error && viewMode === 'month' && (
           <CalendarGrid
             year={year} month={month}
             onDateSelect={setSelectedDate}
             events={events}
             selectedDate={selectedDate}
+          />
+        )}
+
+        {!loading && !error && viewMode === 'week' && (
+          <WeekView
+            currentDate={currentDate}
+            events={events}
+            onEventClick={handleEventClick}
+            onDateSelect={setSelectedDate}
+            selectedDate={selectedDate}
+          />
+        )}
+
+        {!loading && !error && viewMode === 'day' && (
+          <DayView
+            currentDate={currentDate}
+            events={events}
+            onEventClick={handleEventClick}
+            onDateSelect={(date) => setSelectedDate(date)}
           />
         )}
       </div>

@@ -56,6 +56,7 @@ export const contacts = sqliteTable('contacts', {
   optedOut: integer('opted_out').default(0), // 1 = opted out of marketing
   optedOutAt: text('opted_out_at'),
   optOutChannel: text('opt_out_channel'), // email, sms, whatsapp, manual
+  optOutReason: text('opt_out_reason'), // user-provided reason for opting out
   isDeleted: integer('is_deleted').default(0),
   createdBy: text('created_by').references(() => users.id),
   createdAt: text('created_at').default(timestamp),

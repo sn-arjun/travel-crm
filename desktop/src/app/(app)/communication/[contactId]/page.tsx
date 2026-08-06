@@ -125,8 +125,7 @@ export default function ContactCommunicationHubPage() {
     const result = await sendMessage({
       contact_id: contactId,
       channel: composeChannel,
-      message: composeMessage,
-      subject: composeChannel === 'email' ? composeSubject : undefined,
+      message: composeChannel === 'email' && composeSubject ? `[Subject: ${composeSubject}]\n${composeMessage}` : composeMessage,
     });
 
     if (result) {

@@ -7,6 +7,7 @@ import { generateId } from '../utils/uuid';
 import { success, created, paginated, error, notFound, forbidden } from '../utils/response';
 import { logActivity } from '../utils/activity-logger';
 import { notifications } from '../db/tenant-schema';
+import { broadcastToTenant } from '../utils/realtime';
 
 const paymentRoutes = new Hono<AppContext>();
 
@@ -158,6 +159,21 @@ paymentRoutes.post('/', zValidator('json', recordPaymentSchema), async (c) => {
     } catch (_) {
       // Non-critical
     }
+
+    // Broadcast real-time events
+    try {
+      const tenantId = c.get('tenantId');
+      await broadcastToTenant(c.env, tenantId, {
+        type: 'payment:received',
+        data: { paymentId, invoiceId: data.invoiceId, amount: data.amount, invoiceStatus: newStatus },
+      });
+      if (invoice.status !== newStatus) {
+        await broadcastToTenant(c.env, tenantId, {
+          type: 'invoice:status_changed',
+          data: { invoiceId: data.invoiceId, oldStatus: invoice.status, newStatus },
+        });
+      }
+    } catch {}
 
     return created(c, {
       id: paymentId,

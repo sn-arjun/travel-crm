@@ -267,6 +267,79 @@ class HttpClient {
 }
 
 // ============================================================================
+// Proactive token refresh
+// ============================================================================
+
+let refreshInterval: ReturnType<typeof setInterval> | null = null;
+
+function startTokenRefreshTimer() {
+  if (refreshInterval) return;
+
+  // Check every 60 seconds if the access token needs refreshing
+  refreshInterval = setInterval(async () => {
+    const store = useAuthStore.getState();
+    if (!store.accessToken || !store.refreshToken) return;
+
+    try {
+      // Decode the JWT payload to check expiration
+      const parts = store.accessToken.split('.');
+      if (parts.length !== 3 || !parts[1]) return;
+      const payload = JSON.parse(atob(parts[1] as string));
+      const exp = payload.exp;
+      if (!exp) return;
+
+      // Refresh if token expires within 2 minutes
+      const now = Math.floor(Date.now() / 1000);
+      if (exp - now < 120) {
+        const response = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken: store.refreshToken }),
+        });
+
+        if (response.ok) {
+          const data = (await response.json()) as {
+            data?: { accessToken?: string; refreshToken?: string };
+          };
+          if (data.data?.accessToken && data.data?.refreshToken) {
+            store.setTokens(data.data.accessToken, data.data.refreshToken);
+          }
+        } else {
+          // Refresh failed — token may be expired/revoked, force logout
+          store.logout();
+          if (typeof window !== 'undefined') {
+            window.location.href = '/login';
+          }
+        }
+      }
+    } catch {
+      // Silently ignore — will retry next interval
+    }
+  }, 60_000);
+}
+
+function stopTokenRefreshTimer() {
+  if (refreshInterval) {
+    clearInterval(refreshInterval);
+    refreshInterval = null;
+  }
+}
+
+// Start the refresh timer when the module loads (client-side only)
+if (typeof window !== 'undefined') {
+  startTokenRefreshTimer();
+
+  // Listen for auth state changes to start/stop the timer
+  useAuthStore.subscribe((state) => {
+    if (state.isAuthenticated && state.refreshToken) {
+      startTokenRefreshTimer();
+    } else {
+      stopTokenRefreshTimer();
+    }
+  });
+}
+
+// ============================================================================
 // Singleton instance
 // ============================================================================
 

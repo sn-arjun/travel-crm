@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Plus, DollarSign, MoreHorizontal, Download, Send, AlertCircle, CheckCircle2, Clock, FileText, Loader2, Trash2, CheckSquare, Square, X } from 'lucide-react';
+import { Plus, DollarSign, MoreHorizontal, Download, Send, AlertCircle, CheckCircle2, Clock, FileText, Loader2, Trash2, CheckSquare, Square, X, Eye, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -337,7 +337,7 @@ export default function InvoicesPage() {
                   <TableHead>Paid</TableHead>
                   <TableHead>Balance</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="w-10" />
+                  <TableHead className="w-36" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -346,7 +346,7 @@ export default function InvoicesPage() {
                   const invNum = inv.invoiceNumber ?? '—';
                   const isSelected = selectedIds.has(inv.id);
                   return (
-                    <TableRow key={inv.id} className={cn('cursor-pointer', isSelected && 'bg-primary/5')} onClick={() => router.push(`/invoices/${inv.id}`)}>
+                    <TableRow key={inv.id} className={cn('cursor-pointer group', isSelected && 'bg-primary/5')} onClick={() => router.push(`/invoices/${inv.id}`)}>
                       <TableCell onClick={(e) => { e.stopPropagation(); toggleSelect(inv.id); }}>
                         <div className="flex items-center justify-center text-muted-foreground hover:text-foreground">
                           {isSelected ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4" />}
@@ -365,29 +365,47 @@ export default function InvoicesPage() {
                       <TableCell className={cn('text-sm font-medium', balance > 0 ? 'text-amber-600' : 'text-green-600')}>{formatCurrency(balance)}</TableCell>
                       <TableCell><StatusBadge status={inv.status} /></TableCell>
                       <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="icon-sm"><MoreHorizontal className="h-4 w-4" /></Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem asChild>
-                              <Link href={`/invoices/${inv.id}`}><FileText className="h-3.5 w-3.5 mr-2" />View Details</Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                              <Link href={`/invoices/${inv.id}?tab=payments`}><DollarSign className="h-3.5 w-3.5 mr-2" />Record Payment</Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDownloadPdf(inv); }}>
-                              <Download className="h-3.5 w-3.5 mr-2" />Download PDF
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => { e.stopPropagation(); handleDeleteInvoice(inv.id); }}
-                              disabled={isDeleting}
-                              className="text-destructive"
-                            >
-                              <Trash2 className="h-3.5 w-3.5 mr-2" />Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={(e) => { e.stopPropagation(); router.push(`/invoices/${inv.id}`); }}
+                            title="View"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={(e) => { e.stopPropagation(); handleDownloadPdf(inv); }}
+                            title="Download PDF"
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className="text-destructive hover:text-destructive"
+                            onClick={(e) => { e.stopPropagation(); handleDeleteInvoice(inv.id); }}
+                            disabled={isDeleting}
+                            title="Delete"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                              <Button variant="ghost" size="icon-sm"><MoreHorizontal className="h-4 w-4" /></Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem asChild>
+                                <Link href={`/invoices/${inv.id}?tab=payments`}><DollarSign className="h-3.5 w-3.5 mr-2" />Record Payment</Link>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem asChild>
+                                <Link href={`/invoices/${inv.id}`}><FileText className="h-3.5 w-3.5 mr-2" />View Details</Link>
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );

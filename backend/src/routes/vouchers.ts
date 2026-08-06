@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import type { AppContext } from '../types';
 import { generateId } from '../utils/uuid';
 import { success, created, paginated, error, notFound, forbidden } from '../utils/response';
@@ -469,6 +470,373 @@ function mapItemToVoucherDetails(type: string, item: any, details: any): Record<
       return details;
   }
 }
+
+// ============================================================
+// GET /:id/pdf — Generate printable PDF for a voucher
+// ============================================================
+
+voucherRoutes.get('/:id/pdf', async (c) => {
+  const tenantDb = c.get('tenantDb');
+  const role = c.get('role');
+  const voucherId = c.req.param('id');
+
+  if (!checkPermission(role, 'view')) {
+    return forbidden(c, 'You do not have permission to view vouchers');
+  }
+
+  try {
+    const voucher = await tenantDb
+      .prepare(`
+        SELECT v.*,
+               l.title as lead_name, l.contact_id,
+               s.company_name as supplier_name
+        FROM vouchers v
+        LEFT JOIN leads l ON v.lead_id = l.id
+        LEFT JOIN suppliers s ON v.supplier_id = s.id
+        WHERE v.id = ?1 AND v.is_deleted = 0
+      `)
+      .bind(voucherId)
+      .first<Record<string, any>>();
+
+    if (!voucher) return notFound(c, 'Voucher');
+
+    const details = voucher.details_json ? JSON.parse(voucher.details_json) : {};
+    const voucherType = (voucher.type as string) || 'general';
+    const typeLabel = voucherType.charAt(0).toUpperCase() + voucherType.slice(1);
+
+    // Build PDF using pdf-lib
+    const pdfDoc = await PDFDocument.create();
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+    // A4 Portrait
+    const pageWidth = 595;
+    const pageHeight = 842;
+    const margin = 50;
+    const usableWidth = pageWidth - margin * 2;
+
+    let page = pdfDoc.addPage([pageWidth, pageHeight]);
+    let y = pageHeight - margin;
+
+    // Helper: add new page if near bottom
+    const ensureSpace = (needed: number) => {
+      if (y - needed < margin + 30) {
+        page = pdfDoc.addPage([pageWidth, pageHeight]);
+        y = pageHeight - margin;
+      }
+    };
+
+    // Helper: draw a horizontal line
+    const drawLine = (yPos: number) => {
+      page.drawLine({
+        start: { x: margin, y: yPos },
+        end: { x: pageWidth - margin, y: yPos },
+        thickness: 0.5,
+        color: rgb(0.8, 0.8, 0.8),
+      });
+    };
+
+    // Helper: draw label-value pair
+    const drawField = (label: string, value: string, indent: number = 0) => {
+      ensureSpace(18);
+      page.drawText(label, {
+        x: margin + indent,
+        y,
+        size: 9,
+        font: boldFont,
+        color: rgb(0.4, 0.4, 0.4),
+      });
+      const labelWidth = boldFont.widthOfTextAtSize(label, 9);
+      page.drawText(value || '--', {
+        x: margin + indent + labelWidth + 8,
+        y,
+        size: 9,
+        font,
+        color: rgb(0.15, 0.15, 0.15),
+      });
+      y -= 16;
+    };
+
+    // ====== Header Section ======
+    // Accent bar
+    page.drawRectangle({
+      x: 0,
+      y: pageHeight - 6,
+      width: pageWidth,
+      height: 6,
+      color: rgb(0.12, 0.25, 0.52),
+    });
+
+    // Company name
+    page.drawText('TravelCRM Pro', {
+      x: margin,
+      y,
+      size: 10,
+      font: boldFont,
+      color: rgb(0.12, 0.25, 0.52),
+    });
+    y -= 24;
+
+    // Voucher title
+    page.drawText(`${typeLabel} Voucher`, {
+      x: margin,
+      y,
+      size: 20,
+      font: boldFont,
+      color: rgb(0.1, 0.1, 0.1),
+    });
+    y -= 14;
+
+    // Voucher subtitle
+    page.drawText(voucher.title || '', {
+      x: margin,
+      y,
+      size: 11,
+      font,
+      color: rgb(0.3, 0.3, 0.3),
+    });
+    y -= 10;
+
+    // Status badge
+    const statusText = ((voucher.status as string) || 'draft').toUpperCase();
+    const statusColors: Record<string, [number, number, number]> = {
+      draft: [0.6, 0.6, 0.6],
+      sent: [0.1, 0.5, 0.8],
+      confirmed: [0.15, 0.65, 0.3],
+    };
+    const statusColor = statusColors[voucher.status as string] ?? [0.6, 0.6, 0.6];
+    page.drawText(statusText, {
+      x: pageWidth - margin - boldFont.widthOfTextAtSize(statusText, 9),
+      y: y + 24,
+      size: 9,
+      font: boldFont,
+      color: rgb(statusColor[0], statusColor[1], statusColor[2]),
+    });
+
+    y -= 8;
+    drawLine(y);
+    y -= 16;
+
+    // ====== General Info ======
+    page.drawText('BOOKING INFORMATION', {
+      x: margin,
+      y,
+      size: 10,
+      font: boldFont,
+      color: rgb(0.12, 0.25, 0.52),
+    });
+    y -= 18;
+
+    drawField('Voucher ID:', voucherId);
+    drawField('Type:', typeLabel);
+    if (voucher.lead_name) drawField('Lead:', voucher.lead_name as string);
+    if (voucher.supplier_name) drawField('Supplier:', voucher.supplier_name as string);
+    if (voucher.language) drawField('Language:', (voucher.language as string).toUpperCase());
+    if (voucher.created_at) drawField('Created:', new Date(voucher.created_at as string).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }));
+    if (voucher.sent_at) drawField('Sent:', new Date(voucher.sent_at as string).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }));
+    if (voucher.confirmed_at) drawField('Confirmed:', new Date(voucher.confirmed_at as string).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }));
+
+    y -= 8;
+    drawLine(y);
+    y -= 16;
+
+    // ====== Type-Specific Details ======
+    const sectionTitle = `${typeLabel.toUpperCase()} DETAILS`;
+    page.drawText(sectionTitle, {
+      x: margin,
+      y,
+      size: 10,
+      font: boldFont,
+      color: rgb(0.12, 0.25, 0.52),
+    });
+    y -= 18;
+
+    // Render details based on voucher type
+    if (voucherType === 'hotel') {
+      if (details.hotelName) drawField('Hotel:', details.hotelName);
+      if (details.hotelAddress) drawField('Address:', details.hotelAddress);
+      if (details.checkIn) drawField('Check-In:', details.checkIn);
+      if (details.checkOut) drawField('Check-Out:', details.checkOut);
+      if (details.roomType) drawField('Room Type:', details.roomType);
+      if (details.roomCount) drawField('Rooms:', String(details.roomCount));
+      if (details.mealPlan) drawField('Meal Plan:', details.mealPlan);
+      if (details.confirmationNumber) drawField('Confirmation #:', details.confirmationNumber);
+      if (details.guestNames && details.guestNames.length > 0) {
+        drawField('Guests:', details.guestNames.join(', '));
+      }
+      if (details.specialRequests) drawField('Special Requests:', details.specialRequests);
+      if (details.emergencyContact) drawField('Emergency Contact:', details.emergencyContact);
+    } else if (voucherType === 'transport') {
+      if (details.vehicleType) drawField('Vehicle:', details.vehicleType);
+      if (details.driverName) drawField('Driver:', details.driverName);
+      if (details.driverPhone) drawField('Driver Phone:', details.driverPhone);
+      if (details.pickupLocation) drawField('Pickup:', details.pickupLocation);
+      if (details.pickupTime) drawField('Pickup Time:', details.pickupTime);
+      if (details.dropLocation) drawField('Drop:', details.dropLocation);
+      if (details.route) drawField('Route:', details.route);
+      if (details.sightseeing && details.sightseeing.length > 0) {
+        drawField('Sightseeing:', details.sightseeing.join(', '));
+      }
+      if (details.terms) drawField('Terms:', details.terms);
+    } else if (voucherType === 'flight') {
+      if (details.airline) drawField('Airline:', details.airline);
+      if (details.flightNumber) drawField('Flight:', details.flightNumber);
+      if (details.travelClass) drawField('Class:', details.travelClass);
+      if (details.departureAirport) drawField('Departure:', `${details.departureAirport}${details.departureTerminal ? ' (T' + details.departureTerminal + ')' : ''}`);
+      if (details.departureTime) drawField('Departure Time:', details.departureTime);
+      if (details.arrivalAirport) drawField('Arrival:', `${details.arrivalAirport}${details.arrivalTerminal ? ' (T' + details.arrivalTerminal + ')' : ''}`);
+      if (details.arrivalTime) drawField('Arrival Time:', details.arrivalTime);
+      if (details.pnr) drawField('PNR:', details.pnr);
+      if (details.baggageAllowance) drawField('Baggage:', details.baggageAllowance);
+      if (details.seatNumbers) drawField('Seats:', details.seatNumbers);
+      if (details.mealPreference) drawField('Meal Pref:', details.mealPreference);
+      if (details.passengers && details.passengers.length > 0) {
+        ensureSpace(18);
+        page.drawText('Passengers:', {
+          x: margin,
+          y,
+          size: 9,
+          font: boldFont,
+          color: rgb(0.4, 0.4, 0.4),
+        });
+        y -= 16;
+        for (const pax of details.passengers) {
+          ensureSpace(16);
+          const paxText = pax.pnr ? `${pax.name} (PNR: ${pax.pnr})` : pax.name;
+          page.drawText(`  - ${paxText}`, {
+            x: margin + 10,
+            y,
+            size: 9,
+            font,
+            color: rgb(0.2, 0.2, 0.2),
+          });
+          y -= 14;
+        }
+      }
+    } else if (voucherType === 'activity') {
+      if (details.activityName) drawField('Activity:', details.activityName);
+      if (details.dateTime) drawField('Date/Time:', details.dateTime);
+      if (details.meetingPoint) drawField('Meeting Point:', details.meetingPoint);
+      if (details.duration) drawField('Duration:', details.duration);
+      if (details.operatorContact) drawField('Operator:', details.operatorContact);
+      if (details.emergencyContact) drawField('Emergency:', details.emergencyContact);
+      if (details.inclusions && details.inclusions.length > 0) {
+        drawField('Inclusions:', details.inclusions.join(', '));
+      }
+      if (details.whatToBring && details.whatToBring.length > 0) {
+        drawField('What to Bring:', details.whatToBring.join(', '));
+      }
+    } else {
+      // Generic: render all key-value pairs
+      for (const [key, value] of Object.entries(details)) {
+        if (value !== null && value !== undefined && value !== '') {
+          const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase()) + ':';
+          const val = typeof value === 'object' ? JSON.stringify(value) : String(value);
+          drawField(label, val);
+        }
+      }
+    }
+
+    // ====== Notes Section ======
+    if (voucher.notes) {
+      y -= 8;
+      drawLine(y);
+      y -= 16;
+      ensureSpace(40);
+
+      page.drawText('NOTES', {
+        x: margin,
+        y,
+        size: 10,
+        font: boldFont,
+        color: rgb(0.12, 0.25, 0.52),
+      });
+      y -= 16;
+
+      // Wrap notes text
+      const notesText = voucher.notes as string;
+      const maxLineWidth = usableWidth - 10;
+      const words = notesText.split(' ');
+      let currentLine = '';
+      for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        if (font.widthOfTextAtSize(testLine, 9) > maxLineWidth) {
+          ensureSpace(14);
+          page.drawText(currentLine, {
+            x: margin,
+            y,
+            size: 9,
+            font,
+            color: rgb(0.25, 0.25, 0.25),
+          });
+          y -= 14;
+          currentLine = word;
+        } else {
+          currentLine = testLine;
+        }
+      }
+      if (currentLine) {
+        ensureSpace(14);
+        page.drawText(currentLine, {
+          x: margin,
+          y,
+          size: 9,
+          font,
+          color: rgb(0.25, 0.25, 0.25),
+        });
+        y -= 14;
+      }
+    }
+
+    // ====== Footer on all pages ======
+    const pageCount = pdfDoc.getPageCount();
+    for (let i = 0; i < pageCount; i++) {
+      const pg = pdfDoc.getPage(i);
+      // Bottom line
+      pg.drawLine({
+        start: { x: margin, y: 35 },
+        end: { x: pageWidth - margin, y: 35 },
+        thickness: 0.5,
+        color: rgb(0.8, 0.8, 0.8),
+      });
+      pg.drawText('TravelCRM Pro', {
+        x: margin,
+        y: 22,
+        size: 7,
+        font: boldFont,
+        color: rgb(0.5, 0.5, 0.5),
+      });
+      pg.drawText(`Generated ${new Date().toISOString().split('T')[0]}`, {
+        x: margin + 70,
+        y: 22,
+        size: 7,
+        font,
+        color: rgb(0.5, 0.5, 0.5),
+      });
+      pg.drawText(`Page ${i + 1} of ${pageCount}`, {
+        x: pageWidth - margin - 60,
+        y: 22,
+        size: 7,
+        font,
+        color: rgb(0.5, 0.5, 0.5),
+      });
+    }
+
+    const pdfBytes = await pdfDoc.save();
+    const fileName = `voucher-${voucherType}-${voucherId.slice(0, 8)}.pdf`;
+
+    return new Response(pdfBytes, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="${fileName}"`,
+        'Cache-Control': 'private, max-age=60',
+      },
+    });
+  } catch (err) {
+    console.error('Error generating voucher PDF:', err);
+    return error(c, 'Failed to generate voucher PDF', 500);
+  }
+});
 
 // ============================================================
 // GET /:id — Get single voucher with relations

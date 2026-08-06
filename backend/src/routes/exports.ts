@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import type { AppContext } from '../types';
 import * as schema from '../db/tenant-schema';
@@ -32,7 +32,9 @@ exportRoutes.get('/leads', async (c) => {
     const tenantDb = c.get('tenantDb') as any;
     const db = drizzle(tenantDb, { schema });
 
-    const leads = await db.select({
+    const idsParam = c.req.query('ids');
+
+    let query = db.select({
         id: schema.leads.id,
         title: schema.leads.title,
         status: schema.leads.status,
@@ -43,6 +45,16 @@ exportRoutes.get('/leads', async (c) => {
         contactPhone: schema.contacts.phone,
     }).from(schema.leads)
         .leftJoin(schema.contacts, eq(schema.leads.contactId, schema.contacts.id));
+
+    // Filter by specific IDs if provided (for selected export)
+    if (idsParam) {
+        const ids = idsParam.split(',').map(id => id.trim()).filter(Boolean);
+        if (ids.length > 0) {
+            query = query.where(inArray(schema.leads.id, ids)) as any;
+        }
+    }
+
+    const leads = await query;
 
     const flatData = leads.map(l => ({
         ID: l.id,
@@ -94,7 +106,8 @@ exportRoutes.post('/invoices/bulk-pdf', async (c) => {
     await c.env.EXPORT_QUEUE.send({
         type: 'export_invoices',
         jobId,
-        invoiceIds
+        invoiceIds,
+        tenantId
     });
 
     // Return the full job object so Flutter can parse it as ExportJobModel
@@ -126,7 +139,8 @@ exportRoutes.post('/full', async (c) => {
 
     await c.env.EXPORT_QUEUE.send({
         type: 'export_full',
-        jobId
+        jobId,
+        tenantId
     });
 
     // Return the full job object so Flutter can parse it as ExportJobModel

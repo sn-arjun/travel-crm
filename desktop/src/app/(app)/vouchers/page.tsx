@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Plus, Eye, Pencil, Trash2, Send, FileText } from 'lucide-react';
+import { Plus, Eye, Pencil, Trash2, Send, FileText, CheckSquare, Square, Loader2 as Spinner } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -20,7 +20,10 @@ import { FilterBar } from '@/components/domain/filter-bar';
 import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
 import { cn } from '@/lib/utils';
 import { useApiMutation } from '@/hooks/use-api';
-import { vouchersApi, type Voucher } from '@/lib/api/vouchers';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { vouchersApi, type Voucher, type BulkSendVoucherRequest } from '@/lib/api/vouchers';
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
@@ -59,6 +62,7 @@ function SkeletonRows() {
     <>
       {Array.from({ length: 6 }).map((_, i) => (
         <TableRow key={i}>
+          <TableCell><Skeleton className="h-4 w-4" /></TableCell>
           <TableCell><Skeleton className="h-4 w-32" /></TableCell>
           <TableCell><Skeleton className="h-5 w-16" /></TableCell>
           <TableCell><Skeleton className="h-4 w-24" /></TableCell>
@@ -216,6 +220,22 @@ export default function VouchersPage() {
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [deleteTarget, setDeleteTarget] = React.useState<Voucher | null>(null);
 
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
+  const [bulkSendDialogOpen, setBulkSendDialogOpen] = React.useState(false);
+  const [bulkSendChannel, setBulkSendChannel] = React.useState<'email' | 'whatsapp' | 'both'>('email');
+  const [bulkSendTo, setBulkSendTo] = React.useState('');
+  const [isBulkSending, setIsBulkSending] = React.useState(false);
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   // Debounce search
   React.useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
@@ -236,6 +256,49 @@ export default function VouchersPage() {
 
   const { items: vouchers, loading, loadingMore, hasMore, total, error, sentinelRef, refetch } =
     useInfiniteScroll<Voucher>({ fetcher: fetchVouchers, limit: 25 });
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === vouchers.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(vouchers.map((v) => v.id)));
+    }
+  };
+
+  const selectedVouchers = vouchers.filter((v) => selectedIds.has(v.id));
+  const selectedLeadIds = [...new Set(selectedVouchers.map((v) => v.leadId).filter(Boolean))];
+
+  const handleBulkSend = async () => {
+    if (selectedIds.size === 0) return;
+    if (!bulkSendTo.trim()) {
+      toast.error('Please enter a recipient email or phone number');
+      return;
+    }
+    setIsBulkSending(true);
+    try {
+      for (const leadId of selectedLeadIds) {
+        const voucherIds = selectedVouchers
+          .filter((v) => v.leadId === leadId)
+          .map((v) => v.id);
+        if (voucherIds.length === 0) continue;
+        await vouchersApi.bulkSend({
+          leadId,
+          voucherIds,
+          channel: bulkSendChannel,
+          to: bulkSendTo.trim(),
+        });
+      }
+      toast.success(`${selectedIds.size} voucher(s) sent successfully`);
+      setBulkSendDialogOpen(false);
+      setSelectedIds(new Set());
+      setBulkSendTo('');
+      refetch();
+    } catch {
+      toast.error('Failed to send vouchers');
+    } finally {
+      setIsBulkSending(false);
+    }
+  };
 
   // Stat counts
   const stats = React.useMemo(() => {
@@ -287,9 +350,30 @@ export default function VouchersPage() {
           </h1>
           <p className="text-sm text-muted-foreground">Manage hotel, transport, flight & activity vouchers</p>
         </div>
-        <Link href="/vouchers/new">
-          <Button><Plus className="h-4 w-4 mr-1.5" /> New Voucher</Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          {selectedIds.size > 0 && (
+            <Button
+              variant="outline"
+              onClick={() => setBulkSendDialogOpen(true)}
+              className="gap-1.5"
+            >
+              <Send className="h-4 w-4" />
+              Bulk Send ({selectedIds.size})
+            </Button>
+          )}
+          {selectedIds.size > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedIds(new Set())}
+            >
+              Clear Selection
+            </Button>
+          )}
+          <Link href="/vouchers/new">
+            <Button><Plus className="h-4 w-4 mr-1.5" /> New Voucher</Button>
+          </Link>
+        </div>
       </div>
 
       {/* Stat Cards */}
@@ -353,6 +437,13 @@ export default function VouchersPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={vouchers.length > 0 && selectedIds.size === vouchers.length}
+                  onCheckedChange={toggleSelectAll}
+                  aria-label="Select all"
+                />
+              </TableHead>
               <TableHead>Title</TableHead>
               <TableHead>Type</TableHead>
               <TableHead>Lead</TableHead>
@@ -367,7 +458,7 @@ export default function VouchersPage() {
 
             {!loading && vouchers.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="py-20 text-center">
+                <TableCell colSpan={8} className="py-20 text-center">
                   <div className="flex flex-col items-center gap-2">
                     <FileText className="h-10 w-10 text-muted-foreground/40" />
                     <p className="text-muted-foreground font-medium">No vouchers found</p>
@@ -383,9 +474,16 @@ export default function VouchersPage() {
             {vouchers.map((voucher) => (
               <TableRow
                 key={voucher.id}
-                className="cursor-pointer group"
+                className={cn('cursor-pointer group', selectedIds.has(voucher.id) && 'bg-primary/5')}
                 onClick={() => openDrawer(voucher)}
               >
+                <TableCell onClick={(e) => e.stopPropagation()}>
+                  <Checkbox
+                    checked={selectedIds.has(voucher.id)}
+                    onCheckedChange={() => toggleSelection(voucher.id)}
+                    aria-label={`Select ${voucher.title}`}
+                  />
+                </TableCell>
                 <TableCell className="font-medium text-sm max-w-[200px] truncate">{voucher.title}</TableCell>
                 <TableCell><TypeBadge type={voucher.type} /></TableCell>
                 <TableCell className="text-sm text-muted-foreground">{voucher.leadName ?? '—'}</TableCell>
@@ -434,7 +532,7 @@ export default function VouchersPage() {
 
             {loadingMore && (
               <TableRow>
-                <TableCell colSpan={7} className="py-4 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={8} className="py-4 text-center text-sm text-muted-foreground">
                   Loading more vouchers…
                 </TableCell>
               </TableRow>
@@ -477,6 +575,68 @@ export default function VouchersPage() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Send Dialog */}
+      <Dialog open={bulkSendDialogOpen} onOpenChange={setBulkSendDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Bulk Send Vouchers</DialogTitle>
+            <DialogDescription>
+              Send {selectedIds.size} selected voucher{selectedIds.size !== 1 ? 's' : ''} to the recipient.
+              {selectedLeadIds.length > 1 && (
+                <span className="block mt-1 text-amber-600">
+                  Note: Selected vouchers span {selectedLeadIds.length} different leads.
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Channel</Label>
+              <Select value={bulkSendChannel} onValueChange={(v) => setBulkSendChannel(v as 'email' | 'whatsapp' | 'both')}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="email">Email</SelectItem>
+                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                  <SelectItem value="both">Both (Email + WhatsApp)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>
+                {bulkSendChannel === 'whatsapp' ? 'Phone Number' : bulkSendChannel === 'both' ? 'Email / Phone' : 'Email Address'}
+              </Label>
+              <Input
+                value={bulkSendTo}
+                onChange={(e) => setBulkSendTo(e.target.value)}
+                placeholder={bulkSendChannel === 'whatsapp' ? '+91 98765 43210' : 'client@example.com'}
+              />
+            </div>
+            <div className="bg-muted/50 rounded-lg p-3">
+              <p className="text-xs font-medium text-muted-foreground mb-2">Selected Vouchers:</p>
+              <div className="space-y-1 max-h-32 overflow-auto">
+                {selectedVouchers.map((v) => (
+                  <div key={v.id} className="flex items-center gap-2 text-xs">
+                    <TypeBadge type={v.type} />
+                    <span className="truncate">{v.title}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkSendDialogOpen(false)} disabled={isBulkSending}>
+              Cancel
+            </Button>
+            <Button onClick={handleBulkSend} disabled={isBulkSending || selectedIds.size === 0}>
+              {isBulkSending && <Spinner className="h-4 w-4 animate-spin mr-1.5" />}
+              Send {selectedIds.size} Voucher{selectedIds.size !== 1 ? 's' : ''}
             </Button>
           </DialogFooter>
         </DialogContent>

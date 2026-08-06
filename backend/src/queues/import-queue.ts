@@ -6,9 +6,11 @@ import { FileParser } from '../services/imports/file-parser';
 import { ImportValidator } from '../services/imports/import-validator';
 import { DuplicateDetector, type DuplicateStrategy } from '../services/imports/duplicate-detector';
 import { RowInserter } from '../services/imports/row-inserter';
+import { broadcastToTenant } from '../utils/realtime';
 
 export interface ImportJobMessage {
     jobId: string;
+    tenantId?: string;
 }
 
 export async function handleImportQueue(batch: MessageBatch<any>, env: Env): Promise<void> {
@@ -34,14 +36,9 @@ function resolveTenantDb(env: Env, tenantId?: string): ReturnType<typeof drizzle
 }
 
 export async function handleImportJob(data: ImportJobMessage, env: Env): Promise<void> {
-    // Use master DB only to look up the job's tenantId, then switch to tenant DB
-    const masterDb = drizzle(env.MASTER_DB, { schema });
     const jobId = data.jobId;
-    const masterJob = await masterDb.query.importJobs.findFirst({
-        where: eq(schema.importJobs.id, jobId),
-        columns: { tenantId: true }
-    });
-    const db = resolveTenantDb(env, masterJob?.tenantId || undefined);
+    // Use tenantId from the queue message to resolve the correct tenant DB
+    const db = resolveTenantDb(env, data.tenantId || undefined);
 
     const job = await db.query.importJobs.findFirst({
         where: eq(schema.importJobs.id, jobId)
@@ -133,6 +130,11 @@ export async function handleImportJob(data: ImportJobMessage, env: Env): Promise
                 await db.update(schema.importJobs)
                     .set({ processedRows: i + 1 })
                     .where(eq(schema.importJobs.id, jobId));
+                // Broadcast progress
+                await broadcastToTenant(env, data.tenantId || 'default', {
+                    type: 'import:progress',
+                    data: { jobId, processed: i + 1, total: parsedData.length, status: 'importing' },
+                });
             }
         }
 
@@ -149,6 +151,12 @@ export async function handleImportJob(data: ImportJobMessage, env: Env): Promise
             })
             .where(eq(schema.importJobs.id, jobId));
 
+        // Broadcast completion
+        await broadcastToTenant(env, data.tenantId || 'default', {
+            type: 'import:completed',
+            data: { jobId, total: parsedData.length, successCount, errorCount, duplicateCount, status: 'completed' },
+        });
+
     } catch (error: any) {
         console.error(`Import job ${jobId} failed completely:`, error);
         await db.update(schema.importJobs)
@@ -158,6 +166,12 @@ export async function handleImportJob(data: ImportJobMessage, env: Env): Promise
                 // Cannot reliably set error count here if it fails critically before parsing finishes
             })
             .where(eq(schema.importJobs.id, jobId));
+
+        // Broadcast failure
+        await broadcastToTenant(env, data.tenantId || 'default', {
+            type: 'import:failed',
+            data: { jobId, status: 'failed', error: error.message || 'Import failed' },
+        });
 
         // Optionally create a general error row
         await db.insert(schema.importErrors).values({

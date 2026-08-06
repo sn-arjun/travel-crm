@@ -3,16 +3,19 @@ import { eq, inArray } from 'drizzle-orm';
 import * as schema from '../db/tenant-schema';
 import * as XLSX from 'xlsx';
 import type { Env } from '../types';
+import { broadcastToTenant } from '../utils/realtime';
 
 export interface ExportInvoicesMessage {
     type: 'export_invoices';
     jobId: string;
     invoiceIds: string[];
+    tenantId?: string;
 }
 
 export interface ExportFullMessage {
     type: 'export_full';
     jobId: string;
+    tenantId?: string;
 }
 
 export type ExportQueueMessage = ExportInvoicesMessage | ExportFullMessage;
@@ -38,13 +41,8 @@ export async function handleExportQueue(batch: MessageBatch<ExportQueueMessage>,
     for (const msg of batch.messages) {
         try {
             const payload = msg.body;
-            // Resolve tenant DB from the job record
-            const masterDb = drizzle(env.MASTER_DB, { schema });
-            const jobRecord = await masterDb.query.exportJobs.findFirst({
-                where: eq(schema.exportJobs.id, payload.jobId),
-                columns: { tenantId: true }
-            });
-            const db = resolveTenantDb(env, jobRecord?.tenantId || undefined);
+            // Resolve tenant DB from the queue message's tenantId
+            const db = resolveTenantDb(env, payload.tenantId || undefined);
             console.log(`Processing Export Job: ${payload.jobId} [${payload.type}]`);
 
             // Mark job as processing
@@ -192,13 +190,19 @@ export async function handleExportQueue(batch: MessageBatch<ExportQueueMessage>,
                 })
                 .where(eq(schema.exportJobs.id, payload.jobId));
 
+            // Broadcast completion
+            await broadcastToTenant(env, payload.tenantId || 'default', {
+                type: 'export:completed',
+                data: { jobId: payload.jobId, status: 'completed', fileUrl: r2Key, recordCounts },
+            });
+
             msg.ack();
             console.log(`Completed Export Job: ${payload.jobId}`);
         } catch (error) {
             console.error(`Error processing export message ${msg.id}:`, error);
 
             if (msg.body?.jobId) {
-                const fallbackDb = drizzle(env.MASTER_DB, { schema });
+                const fallbackDb = resolveTenantDb(env, msg.body?.tenantId || undefined);
                 await fallbackDb.update(schema.exportJobs)
                     .set({
                         status: 'failed',
@@ -206,6 +210,13 @@ export async function handleExportQueue(batch: MessageBatch<ExportQueueMessage>,
                         updatedAt: new Date().toISOString()
                     })
                     .where(eq(schema.exportJobs.id, msg.body.jobId));
+            }
+            // Broadcast failure
+            if (msg.body?.tenantId) {
+                await broadcastToTenant(env, msg.body.tenantId, {
+                    type: 'export:failed',
+                    data: { jobId: msg.body.jobId, status: 'failed' },
+                });
             }
             msg.retry();
         }

@@ -5,6 +5,7 @@
 import { Hono } from 'hono';
 import type { AppContext } from '../types';
 import { success, error } from '../utils/response';
+import { broadcastToTenant } from '../utils/realtime';
 
 const taskRoutes = new Hono<AppContext>();
 
@@ -164,6 +165,15 @@ taskRoutes.post('/', async (c) => {
             ).run().catch(() => { /* notifications table may not exist in older tenants */ });
         }
 
+        // Broadcast real-time event
+        try {
+            const tenantId = c.get('tenantId');
+            await broadcastToTenant(c.env, tenantId, {
+                type: 'task:assigned',
+                data: { taskId, task: created, assigneeId: assigneeId },
+            });
+        } catch {}
+
         return c.json({ data: created }, 201);
     } catch (e: any) {
         console.error('Task create error:', e);
@@ -261,6 +271,23 @@ taskRoutes.put('/:id', async (c) => {
             }
         }
 
+        // Broadcast real-time event
+        try {
+            const tenantId = c.get('tenantId');
+            if (body.status && body.status !== existing.status) {
+                await broadcastToTenant(c.env, tenantId, {
+                    type: 'task:status_changed',
+                    data: { taskId: id, oldStatus: existing.status, newStatus: body.status, task: updated },
+                });
+            }
+            if (body.assigned_to && body.assigned_to !== existing.assigned_to) {
+                await broadcastToTenant(c.env, tenantId, {
+                    type: 'task:assigned',
+                    data: { taskId: id, task: updated, assigneeId: body.assigned_to },
+                });
+            }
+        } catch {}
+
         return success(c, updated);
     } catch (e: any) {
         return error(c, e.message || 'Failed to update task', 500);
@@ -301,7 +328,18 @@ taskRoutes.patch('/:id/status', async (c) => {
             ).bind(id).run();
         }
 
-        return success(c, { id, status, completed_at: completedAt });
+        const updated = { id, status, completed_at: completedAt };
+
+        // Broadcast real-time event
+        try {
+            const tenantId = c.get('tenantId');
+            await broadcastToTenant(c.env, tenantId, {
+                type: status === 'done' ? 'task:completed' : 'task:status_changed',
+                data: { taskId: id, oldStatus: task.status, newStatus: status, task: updated },
+            });
+        } catch {}
+
+        return success(c, updated);
     } catch (e: any) {
         return error(c, e.message || 'Failed to update task status', 500);
     }
@@ -365,6 +403,18 @@ taskRoutes.post('/:taskId/comments', async (c) => {
             return error(c, 'Content required, max 2000 characters', 400);
         }
 
+        // Ensure task_comments table exists (may be missing in older tenant DBs)
+        await db.prepare(`
+      CREATE TABLE IF NOT EXISTS task_comments (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+        updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+      )
+    `).run();
+
         const id = crypto.randomUUID();
         await db.prepare(`
       INSERT INTO task_comments (id, task_id, user_id, content)
@@ -387,6 +437,18 @@ taskRoutes.get('/:taskId/comments', async (c) => {
     try {
         const { taskId } = c.req.param();
         const db = c.get('tenantDb');
+
+        // Ensure task_comments table exists (may be missing in older tenant DBs)
+        await db.prepare(`
+      CREATE TABLE IF NOT EXISTS task_comments (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+        updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+      )
+    `).run();
 
         const result = await db.prepare(`
       SELECT tc.*, u.name as user_name, u.avatar_url

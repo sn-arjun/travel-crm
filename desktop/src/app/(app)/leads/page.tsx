@@ -96,6 +96,22 @@ function LeadDetailPanel({ leadId, onClose }: { leadId: string; onClose: () => v
   const [fuSaving, setFuSaving] = React.useState(false);
   const { data: fuResponse, refetch: refetchFu } = useApiQuery(() => leadsApi.getFollowUps(leadId), [leadId]);
   const { data: activitiesResponse } = useApiQuery(() => leadsApi.getActivities(leadId), [leadId]);
+  const { data: drawerDocsResponse, loading: drawerDocsLoading } = useApiQuery(
+    () => import('@/lib/api/documents').then(m => m.documentsApi.list({ leadId })),
+    [leadId],
+  );
+  const drawerDocs: any[] = React.useMemo(() => {
+    const raw = (drawerDocsResponse as any)?.data?.data ?? (drawerDocsResponse as any)?.data ?? [];
+    return Array.isArray(raw) ? raw : [];
+  }, [drawerDocsResponse]);
+  const { data: drawerItinerariesResponse, loading: drawerItinerariesLoading } = useApiQuery(
+    () => import('@/lib/api/itineraries').then(m => m.itinerariesApi.list({ leadId })),
+    [leadId],
+  );
+  const drawerItineraries: any[] = React.useMemo(() => {
+    const raw = (drawerItinerariesResponse as any)?.data?.data ?? (drawerItinerariesResponse as any)?.data ?? [];
+    return Array.isArray(raw) ? raw : [];
+  }, [drawerItinerariesResponse]);
 
   if (loading) {
     return (
@@ -316,20 +332,68 @@ function LeadDetailPanel({ leadId, onClose }: { leadId: string; onClose: () => v
 
           {/* Itineraries Tab */}
           <TabsContent value="itineraries" className="mt-0">
-            <div className="text-center py-8">
-              <Briefcase className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">No itineraries linked yet</p>
-              <Button variant="outline" size="sm" className="mt-3"><Plus className="h-3.5 w-3.5 mr-1" />Create Itinerary</Button>
-            </div>
+            {drawerItinerariesLoading ? (
+              <div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+            ) : drawerItineraries.length === 0 ? (
+              <div className="text-center py-8">
+                <Briefcase className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">No itineraries linked yet</p>
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => router.push(`/itineraries/new?leadId=${leadData.id}&leadTitle=${encodeURIComponent(leadData.title || '')}`)}><Plus className="h-3.5 w-3.5 mr-1" />Create Itinerary</Button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-muted-foreground">{drawerItineraries.length} itinerar{drawerItineraries.length === 1 ? 'y' : 'ies'}</span>
+                  <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => router.push(`/itineraries/new?leadId=${leadData.id}&leadTitle=${encodeURIComponent(leadData.title || '')}`)}><Plus className="h-3 w-3 mr-1" /> New</Button>
+                </div>
+                {drawerItineraries.map((itin: any) => (
+                  <div key={itin.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50 cursor-pointer" onClick={() => router.push(`/itineraries/${itin.id}/edit`)}>
+                    <Briefcase className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{itin.title || 'Untitled'}</p>
+                      <p className="text-xs text-muted-foreground">{itin.status || '—'} · v{itin.version || 1}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </TabsContent>
 
           {/* Documents Tab */}
           <TabsContent value="documents" className="mt-0">
-            <div className="text-center py-8">
-              <ArrowUpRight className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">No documents attached</p>
-              <Button variant="outline" size="sm" className="mt-3"><Plus className="h-3.5 w-3.5 mr-1" />Upload Document</Button>
-            </div>
+            {drawerDocsLoading ? (
+              <div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+            ) : drawerDocs.length === 0 ? (
+              <div className="text-center py-8">
+                <ArrowUpRight className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">No documents attached</p>
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => router.push(`/leads/${leadData.id}?tab=documents`)}><Plus className="h-3.5 w-3.5 mr-1" />Upload Document</Button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-muted-foreground">{drawerDocs.length} document{drawerDocs.length === 1 ? '' : 's'}</span>
+                  <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => router.push(`/leads/${leadData.id}?tab=documents`)}><Plus className="h-3 w-3 mr-1" /> Upload</Button>
+                </div>
+                {drawerDocs.map((doc: any) => (
+                  <div key={doc.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50">
+                    <ArrowUpRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{doc.name || doc.file_name || 'Document'}</p>
+                      <p className="text-xs text-muted-foreground">{doc.category || 'General'} · {doc.file_size ? `${(doc.file_size / 1024).toFixed(1)} KB` : '—'}</p>
+                    </div>
+                    <Button variant="ghost" size="sm" className="text-xs h-7 shrink-0" onClick={async () => {
+                      try {
+                        const { documentsApi } = await import('@/lib/api/documents');
+                        const blob = await documentsApi.download(doc.id);
+                        const url = URL.createObjectURL(blob as any);
+                        const a = document.createElement('a'); a.href = url; a.download = doc.name || 'document'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+                      } catch { toast.error('Failed to download'); }
+                    }}>Download</Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </TabsContent>
         </div>
       </Tabs>
@@ -588,7 +652,12 @@ export default function LeadsPage() {
   async function handleBulkExport() {
     setIsBulkExporting(true);
     try {
-      const response = await exportsApi.leads();
+      // Pass selected lead IDs so the backend only exports those
+      const exportParams: Record<string, unknown> = {};
+      if (selectedLeads.length > 0) {
+        exportParams.ids = [...selectedLeads].join(',');
+      }
+      const response = await exportsApi.leads(exportParams as any);
       const blob = response instanceof Blob ? response : new Blob([response as any], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');

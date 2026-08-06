@@ -83,8 +83,7 @@ export default function ComposePage() {
       await communicationsApi.send({
         contact_id: sendContactId.trim() || sendTo.trim(),
         channel: sendType,
-        message: message.body,
-        subject: sendType === 'email' ? message.subject : undefined,
+        message: sendType === 'email' && message.subject ? `[Subject: ${message.subject}]\n${message.body}` : message.body,
       });
       toast.success(`Message sent via ${sendType} successfully!`);
       setSendDialogOpen(false);

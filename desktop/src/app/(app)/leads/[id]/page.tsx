@@ -849,7 +849,7 @@ export default function LeadDetailPage() {
                       <TableRow key={doc.id}>
                         <TableCell className="font-medium text-sm">{doc.name || doc.file_name || '—'}</TableCell>
                         <TableCell><Badge variant="outline" className="text-[10px] capitalize">{doc.category || 'General'}</Badge></TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{doc.size ? `${(doc.size / 1024).toFixed(1)} KB` : '—'}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{(doc.file_size || doc.size) ? `${((doc.file_size || doc.size) / 1024).toFixed(1)} KB` : '—'}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">{(doc.createdAt || doc.created_at || doc.uploadedAt || doc.uploaded_at) ? new Date(doc.createdAt || doc.created_at || doc.uploadedAt || doc.uploaded_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'}</TableCell>
                         <TableCell>
                           <Button variant="ghost" size="sm" className="text-xs" onClick={async () => {

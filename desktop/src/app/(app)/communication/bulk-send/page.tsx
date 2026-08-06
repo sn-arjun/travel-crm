@@ -137,8 +137,7 @@ export default function BulkSendPage() {
     const result = await bulkSend({
       channel,
       contact_ids: contactIds,
-      message: body,
-      subject: channel === 'email' ? subject : undefined,
+      message: channel === 'email' && subject ? `[Subject: ${subject}]\n${body}` : body,
       template_id: selectedTemplate || undefined,
     });
 

@@ -9,6 +9,7 @@ import { calculateInvoiceTotals, detectTaxType } from '../services/tax-calculato
 import { logActivity } from '../utils/activity-logger';
 import { drizzle } from 'drizzle-orm/d1';
 import { notifications } from '../db/tenant-schema';
+import { broadcastToTenant } from '../utils/realtime';
 
 const invoiceRoutes = new Hono<AppContext>();
 
@@ -844,6 +845,17 @@ invoiceRoutes.post('/:id/send', zValidator('json', sendInvoiceSchema), async (c)
       entityId: invoiceId,
       details: JSON.stringify({ channel: data.channel, to: data.to, invoiceNumber: invoice.invoice_number }),
     });
+
+    // Broadcast real-time event
+    try {
+      const tenantId = c.get('tenantId');
+      if (invoice.status === 'draft') {
+        await broadcastToTenant(c.env, tenantId, {
+          type: 'invoice:status_changed',
+          data: { invoiceId, oldStatus: 'draft', newStatus: 'sent', invoiceNumber: invoice.invoice_number },
+        });
+      }
+    } catch {}
 
     return success(c, {
       id: invoiceId,

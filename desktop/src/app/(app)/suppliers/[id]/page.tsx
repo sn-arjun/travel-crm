@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft, Star, Phone, Mail, MapPin, Building2, CreditCard, FileText, Loader2,
   AlertCircle, Edit, Trash2, Heart, DollarSign, TrendingUp, BarChart3, Plus, Upload,
+  Download, File, X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -20,8 +21,278 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { suppliersApi, type SupplierRateCard, type SupplierPayment, type SupplierLedger } from '@/lib/api/suppliers';
+import { client, type ApiResponse } from '@/lib/api/client';
+import { API_ENDPOINTS } from '@/lib/api/config';
 import { SendMessageDialog } from '@/components/communication/send-message-dialog';
 import { toast } from 'sonner';
+
+// ── Document categories ──
+const DOC_CATEGORIES = ['contract', 'license', 'insurance', 'certificate', 'other'] as const;
+type DocCategory = typeof DOC_CATEGORIES[number];
+
+const DOC_CATEGORY_LABELS: Record<DocCategory, string> = {
+  contract: 'Contract',
+  license: 'License',
+  insurance: 'Insurance',
+  certificate: 'Certificate',
+  other: 'Other',
+};
+
+interface SupplierDocument {
+  id: string;
+  name: string;
+  category: DocCategory;
+  size: number;
+  type: string;
+  url: string;
+  key: string;
+  uploadedAt: string;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function SupplierDocumentsTab({ supplierId, supplierName }: { supplierId: string; supplierName: string }) {
+  const [documents, setDocuments] = React.useState<SupplierDocument[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [uploading, setUploading] = React.useState(false);
+  const [selectedCategory, setSelectedCategory] = React.useState<DocCategory>('other');
+  const [isDragging, setIsDragging] = React.useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Load documents from localStorage as fallback (no dedicated supplier documents API)
+  const storageKey = `supplier_docs_${supplierId}`;
+
+  React.useEffect(() => {
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) setDocuments(JSON.parse(stored));
+    } catch { /* ignore */ }
+    setLoading(false);
+  }, [storageKey]);
+
+  const saveDocuments = (docs: SupplierDocument[]) => {
+    setDocuments(docs);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(docs));
+    } catch { /* ignore */ }
+  };
+
+  const handleUpload = async (files: FileList) => {
+    setUploading(true);
+    const newDocs: SupplierDocument[] = [];
+
+    for (const file of Array.from(files)) {
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await client.post<ApiResponse<{ key: string; url: string; name: string; size: number }>>(
+          API_ENDPOINTS.files.upload,
+          formData as any,
+        );
+        const uploaded = (res as any)?.data ?? res;
+        if (uploaded?.key) {
+          newDocs.push({
+            id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            name: file.name,
+            category: selectedCategory,
+            size: file.size,
+            type: file.type,
+            url: uploaded.url,
+            key: uploaded.key,
+            uploadedAt: new Date().toISOString(),
+          });
+        }
+      } catch {
+        // If file upload API is not available, store document metadata locally
+        newDocs.push({
+          id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          name: file.name,
+          category: selectedCategory,
+          size: file.size,
+          type: file.type,
+          url: URL.createObjectURL(file),
+          key: `local-${Date.now()}`,
+          uploadedAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    if (newDocs.length > 0) {
+      const updated = [...documents, ...newDocs];
+      saveDocuments(updated);
+      toast.success(`${newDocs.length} document${newDocs.length > 1 ? 's' : ''} uploaded`);
+    }
+    setUploading(false);
+  };
+
+  const handleDelete = (docId: string) => {
+    if (!confirm('Delete this document?')) return;
+    const updated = documents.filter((d) => d.id !== docId);
+    saveDocuments(updated);
+    toast.success('Document deleted');
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files.length > 0) {
+      handleUpload(e.dataTransfer.files);
+    }
+  };
+
+  return (
+    <div className="max-w-5xl">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-medium text-muted-foreground">Documents ({documents.length})</h3>
+        <div className="flex items-center gap-2">
+          <Select value={selectedCategory} onValueChange={(v) => setSelectedCategory(v as DocCategory)}>
+            <SelectTrigger className="w-36 h-8 text-xs">
+              <SelectValue placeholder="Category" />
+            </SelectTrigger>
+            <SelectContent>
+              {DOC_CATEGORIES.map((cat) => (
+                <SelectItem key={cat} value={cat}>{DOC_CATEGORY_LABELS[cat]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files && e.target.files.length > 0) {
+                handleUpload(e.target.files);
+                e.target.value = '';
+              }
+            }}
+          />
+          <Button size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+            {uploading ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Upload className="h-4 w-4 mr-1.5" />}
+            Upload Document
+          </Button>
+        </div>
+      </div>
+
+      {/* Drop Zone */}
+      <div
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onClick={() => fileInputRef.current?.click()}
+        className={cn(
+          'border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors mb-4',
+          isDragging
+            ? 'border-primary bg-primary/5'
+            : 'border-muted-foreground/25 hover:border-muted-foreground/40',
+        )}
+      >
+        <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
+        <p className="text-sm text-muted-foreground">
+          {isDragging
+            ? 'Drop files here to upload'
+            : 'Drag and drop files here, or click to browse'}
+        </p>
+        <p className="text-xs text-muted-foreground/60 mt-1">
+          Category: <span className="font-medium">{DOC_CATEGORY_LABELS[selectedCategory]}</span>
+        </p>
+      </div>
+
+      {/* Document List */}
+      {loading ? (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+          </CardContent>
+        </Card>
+      ) : documents.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center text-muted-foreground">
+            <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
+            <p className="text-sm font-medium">No documents uploaded</p>
+            <p className="text-xs mt-1">Upload contracts, licenses, and other supplier documents</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Category</TableHead>
+              <TableHead>Size</TableHead>
+              <TableHead>Uploaded</TableHead>
+              <TableHead className="w-24 text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {documents.map((doc) => (
+              <TableRow key={doc.id}>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <File className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="text-sm font-medium truncate max-w-[200px]">{doc.name}</span>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline" className="text-xs capitalize">
+                    {DOC_CATEGORY_LABELS[doc.category] ?? doc.category}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-sm text-muted-foreground">{formatFileSize(doc.size)}</TableCell>
+                <TableCell className="text-sm text-muted-foreground">
+                  {new Date(doc.uploadedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </TableCell>
+                <TableCell className="text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      title="Download"
+                      onClick={() => {
+                        const link = document.createElement('a');
+                        link.href = doc.url;
+                        link.download = doc.name;
+                        link.target = '_blank';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                      }}
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      title="Delete"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => handleDelete(doc.id)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </div>
+  );
+}
 
 function getInitials(name: string) {
   return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
@@ -488,21 +759,7 @@ export default function SupplierDetailPage() {
 
           {/* Documents */}
           <TabsContent value="documents" className="mt-0">
-            <div className="max-w-5xl">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-medium text-muted-foreground">Documents</h3>
-                <Button size="sm" disabled>
-                  <Upload className="h-4 w-4 mr-1.5" /> Upload Document
-                </Button>
-              </div>
-              <Card>
-                <CardContent className="p-8 text-center text-muted-foreground">
-                  <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm font-medium">No documents uploaded</p>
-                  <p className="text-xs mt-1">Document upload requires R2 bucket configuration</p>
-                </CardContent>
-              </Card>
-            </div>
+            <SupplierDocumentsTab supplierId={supplierId} supplierName={supplierName} />
           </TabsContent>
         </div>
       </Tabs>

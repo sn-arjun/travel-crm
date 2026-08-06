@@ -50,8 +50,17 @@ export async function processCampaignScheduler(env: Env): Promise<void> {
         .bind(now, campaign.id)
         .run();
 
-      // Resolve contacts for this segment
-      const filters = JSON.parse(campaign.segment_filters || '{}') as SegmentFilter;
+      // Resolve contacts for this segment via the linked contact_segments record
+      let filters: SegmentFilter = {};
+      if (campaign.segment_id) {
+        const segment = await tenantDb
+          .prepare('SELECT filters_json FROM contact_segments WHERE id = ?')
+          .bind(campaign.segment_id)
+          .first<{ filters_json: string | null }>();
+        if (segment?.filters_json) {
+          filters = JSON.parse(segment.filters_json) as SegmentFilter;
+        }
+      }
       const contactIds = await resolveSegment(tenantDb, filters);
 
       if (contactIds.length === 0) {
@@ -94,7 +103,7 @@ export async function processCampaignScheduler(env: Env): Promise<void> {
             campaignId: campaign.id,
             contactId: contactId,
             to: contact.email,
-            subject: campaign.email_subject || campaign.subject,
+            subject: campaign.email_subject || campaign.name,
             html: campaign.message_body || undefined,
             templateId: campaign.template_id || undefined,
             templateData: { contactName: contact.name },

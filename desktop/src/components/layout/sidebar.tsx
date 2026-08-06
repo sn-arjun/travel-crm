@@ -49,6 +49,8 @@ import {
 } from '@/components/ui/tooltip';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { notificationsApi } from '@/lib/api/notifications';
+import { useRealtimeEvent, useRealtimeConnected } from '@/hooks/use-realtime-event';
+import { ConnectionStatus } from '@/components/layout/connection-status';
 
 interface NavItem {
   title: string;
@@ -174,12 +176,33 @@ function useBadgeCounts() {
     }
   }, []);
 
+  // Initial fetch
+  React.useEffect(() => { fetchCounts(); }, [fetchCounts]);
+
+  // Real-time updates via WebSocket
+  useRealtimeEvent('badge_counts:update', (data) => {
+    if (data) {
+      setCounts({
+        unread_notifications: data.unreadNotifications ?? data.unread_notifications ?? 0,
+        pending_tasks: data.pendingTasks ?? data.pending_tasks ?? 0,
+        overdue_followups: data.overdueFollowups ?? data.overdue_followups ?? 0,
+        overdue_invoices: data.overdueInvoices ?? data.overdue_invoices ?? 0,
+      });
+    }
+  });
+  // Refetch on events that affect counts
+  useRealtimeEvent([
+    'task:assigned', 'task:completed',
+    'payment:received', 'notification:new',
+  ], () => { fetchCounts(); });
+
+  // Fallback polling if WS disconnected
+  const wsConnected = useRealtimeConnected();
   React.useEffect(() => {
-    fetchCounts();
-    // Refresh every 90 seconds
+    if (wsConnected) return;
     const interval = setInterval(fetchCounts, 90_000);
     return () => clearInterval(interval);
-  }, [fetchCounts]);
+  }, [wsConnected, fetchCounts]);
 
   return counts;
 }
@@ -292,6 +315,7 @@ export function Sidebar() {
           {bottomNav.map((item: any) => (
             <NavItemLink key={item.href} item={item} isCollapsed={isCollapsed} badgeCounts={badgeCounts} />
           ))}
+          <ConnectionStatus />
         </div>
 
         {/* User Profile Area */}

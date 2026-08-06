@@ -3,7 +3,7 @@
 import * as React from 'react';
 import {
   Plus, Link2, Calendar, AlertCircle, Loader2, CheckSquare, Eye, Pencil,
-  MoreHorizontal, ChevronDown, ChevronUp,
+  MoreHorizontal, ChevronDown, ChevronUp, LayoutGrid, List,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +12,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from '@/components/ui/sheet';
+import { Separator } from '@/components/ui/separator';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
@@ -25,6 +26,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { FilterBar } from '@/components/domain/filter-bar';
 import { Combobox } from '@/components/ui/combobox';
 import { cn } from '@/lib/utils';
@@ -34,7 +36,7 @@ import { tasksApi, type Task } from '@/lib/api/tasks';
 import { usersApi } from '@/lib/api/users';
 import { toast } from 'sonner';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 const REF_DATE = Date.now();
 
@@ -299,14 +301,14 @@ function TaskDetailPanel({ task, open, onOpenChange, onRefetch }: {
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:w-[420px] overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle className="text-left pr-4">{task.title}</SheetTitle>
-        </SheetHeader>
+      <SheetContent className="w-full sm:w-[420px] overflow-y-auto p-0">
+        <div className="p-6 pb-4 border-b">
+          <SheetHeader>
+            <SheetTitle className="text-left pr-4">{task.title}</SheetTitle>
+          </SheetHeader>
 
-        <div className="mt-6 space-y-5">
           {/* Actions */}
-          <div className="flex gap-2">
+          <div className="flex gap-2 mt-4">
             <Select value={task.status} onValueChange={handleStatusChange}>
               <SelectTrigger className="h-8 text-xs flex-1">
                 <SelectValue />
@@ -326,21 +328,23 @@ function TaskDetailPanel({ task, open, onOpenChange, onRefetch }: {
               Delete
             </Button>
           </div>
+        </div>
 
-          {/* Status */}
-          <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1.5">Status</p>
-            <Badge variant={task.status === 'done' ? 'default' : task.status === 'in_progress' ? 'secondary' : 'outline'}>
-              {STATUS_LABELS[task.status] ?? task.status}
-            </Badge>
-          </div>
-
-          {/* Priority */}
-          <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1.5">Priority</p>
-            <Badge className={cn('text-[10px]', PRIORITY_COLORS[task.priority])}>
-              {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
-            </Badge>
+        <div className="p-6 space-y-5">
+          {/* Status & Priority */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-1.5">Status</p>
+              <Badge variant={task.status === 'done' ? 'default' : task.status === 'in_progress' ? 'secondary' : 'outline'}>
+                {STATUS_LABELS[task.status] ?? task.status}
+              </Badge>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-1.5">Priority</p>
+              <Badge className={cn('text-[10px]', PRIORITY_COLORS[task.priority])}>
+                {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
+              </Badge>
+            </div>
           </div>
 
           {/* Category */}
@@ -355,29 +359,33 @@ function TaskDetailPanel({ task, open, onOpenChange, onRefetch }: {
           {task.description && (
             <div>
               <p className="text-xs font-medium text-muted-foreground mb-1.5">Description</p>
-              <p className="text-sm">{task.description}</p>
+              <p className="text-sm whitespace-pre-wrap">{task.description}</p>
             </div>
           )}
 
-          {/* Due Date */}
-          {dueDate && (
+          <Separator />
+
+          {/* Due Date & Assignee */}
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-xs font-medium text-muted-foreground mb-1.5">Due Date</p>
-              <div className="flex items-center gap-2 text-sm">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span>{dueDate.toLocaleDateString('en-IN')}</span>
-              </div>
+              {dueDate ? (
+                <div className="flex items-center gap-2 text-sm">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span>{dueDate.toLocaleDateString('en-IN')}</span>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Not set</p>
+              )}
             </div>
-          )}
-
-          {/* Assignee */}
-          <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1.5">Assigned To</p>
-            <div className="flex items-center gap-2">
-              <Avatar className="h-7 w-7">
-                <AvatarFallback className="text-xs">{assigneeName.substring(0, 2).toUpperCase()}</AvatarFallback>
-              </Avatar>
-              <span className="text-sm">{assigneeName}</span>
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-1.5">Assigned To</p>
+              <div className="flex items-center gap-2">
+                <Avatar className="h-6 w-6">
+                  <AvatarFallback className="text-[9px]">{assigneeName.substring(0, 2).toUpperCase()}</AvatarFallback>
+                </Avatar>
+                <span className="text-sm">{assigneeName}</span>
+              </div>
             </div>
           </div>
 
@@ -442,8 +450,27 @@ function KanbanSkeleton() {
   );
 }
 
+/* ─── Table Skeleton ─── */
+function TableSkeleton() {
+  return (
+    <div className="p-6 space-y-3">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} className="flex items-center gap-4 py-3 border-b last:border-0">
+          <Skeleton className="h-4 w-[30%]" />
+          <Skeleton className="h-5 w-16 rounded-full" />
+          <Skeleton className="h-5 w-14 rounded-full" />
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-6 w-6 rounded-full" />
+          <Skeleton className="h-5 w-16 rounded-full" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ─── Main Page ─── */
 export default function TasksPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const prefillLeadId = searchParams.get('leadId');
   const prefillLeadTitle = searchParams.get('leadTitle');
@@ -452,6 +479,7 @@ export default function TasksPage() {
   const [filterStatus, setFilterStatus] = React.useState('all');
   const [filterPriority, setFilterPriority] = React.useState('all');
   const [viewMode, setViewMode] = React.useState<'all' | 'my'>('my');
+  const [layoutView, setLayoutView] = React.useState<'kanban' | 'table'>('kanban');
   const [selectedTask, setSelectedTask] = React.useState<Task | null>(null);
   const [detailOpen, setDetailOpen] = React.useState(false);
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -505,7 +533,7 @@ export default function TasksPage() {
   );
 
   // Infinite scroll for tasks
-  const { items: tasks, loading, error, sentinelRef, refetch, total } = useInfiniteScroll<Task>({
+  const { items: tasks, loading, loadingMore, error, sentinelRef, refetch, total } = useInfiniteScroll<Task>({
     fetcher: taskFetcher,
   });
 
@@ -601,6 +629,15 @@ export default function TasksPage() {
               All Tasks
             </button>
           </div>
+          {/* Kanban / Table toggle */}
+          <div className="flex items-center gap-1 border rounded-md p-0.5">
+            <Button variant={layoutView === 'kanban' ? 'secondary' : 'ghost'} size="sm" className="h-7 px-2" onClick={() => setLayoutView('kanban')}>
+              <LayoutGrid className="h-4 w-4" />
+            </Button>
+            <Button variant={layoutView === 'table' ? 'secondary' : 'ghost'} size="sm" className="h-7 px-2" onClick={() => setLayoutView('table')}>
+              <List className="h-4 w-4" />
+            </Button>
+          </div>
           <Button className="gap-1.5" onClick={() => setCreateOpen(true)}>
             <Plus className="h-4 w-4" />
             Add Task
@@ -662,10 +699,10 @@ export default function TasksPage() {
       )}
 
       {/* Loading Skeleton */}
-      {loading && <KanbanSkeleton />}
+      {loading && (layoutView === 'kanban' ? <KanbanSkeleton /> : <TableSkeleton />)}
 
       {/* Kanban Board */}
-      {!loading && !error && (
+      {!loading && !error && layoutView === 'kanban' && (
         <div className="flex-1 overflow-hidden">
           <div className="flex gap-6 h-full overflow-x-auto p-6">
             <KanbanColumn
@@ -701,6 +738,128 @@ export default function TasksPage() {
           </div>
           {/* Infinite scroll sentinel */}
           <div ref={sentinelRef} className="h-1" />
+        </div>
+      )}
+
+      {/* Table View */}
+      {!loading && !error && layoutView === 'table' && (
+        <div className="flex-1 overflow-auto p-6">
+          {normalizedTasks.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 gap-3 text-muted-foreground">
+              <CheckSquare className="h-10 w-10 opacity-30" />
+              <p className="text-sm">No tasks found</p>
+              {(filterSearch || filterStatus !== 'all' || filterPriority !== 'all') && (
+                <Button variant="outline" size="sm" onClick={() => { setFilterSearch(''); setFilterStatus('all'); setFilterPriority('all'); }}>Clear filters</Button>
+              )}
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Title</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Priority</TableHead>
+                  <TableHead>Due Date</TableHead>
+                  <TableHead>Assignee</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead className="w-10" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {normalizedTasks.map((task) => {
+                  const dueDate = task.dueDate ? new Date(task.dueDate) : null;
+                  const isOverdue = dueDate && dueDate < new Date(REF_DATE) && task.status !== 'done';
+                  const assigneeName = task.assignee_name || task.assignedTo || 'Unassigned';
+                  return (
+                    <TableRow
+                      key={task.id}
+                      className="cursor-pointer"
+                      onClick={() => router.push(`/tasks/${task.id}`)}
+                    >
+                      <TableCell>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-sm font-medium truncate max-w-[300px]">{task.title}</span>
+                          {(task.subtask_count ?? 0) > 0 && (
+                            <span className="text-[10px] text-muted-foreground shrink-0">
+                              <CheckSquare className="h-3 w-3 inline mr-0.5" />
+                              {task.completed_subtask_count}/{task.subtask_count}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={task.status === 'done' ? 'default' : task.status === 'in_progress' ? 'secondary' : 'outline'} className="text-[10px]">
+                          {task.status === 'todo' ? 'To Do' : task.status === 'in_progress' ? 'In Progress' : 'Done'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={cn('text-[10px] font-medium border-transparent', PRIORITY_COLORS[task.priority])}>
+                          {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {dueDate ? (
+                          <span className={cn('text-sm', isOverdue ? 'text-red-600 font-semibold' : 'text-muted-foreground')}>
+                            {isOverdue && 'Overdue: '}
+                            {dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">--</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-6 w-6">
+                            <AvatarFallback className="text-[9px]">{assigneeName.substring(0, 2).toUpperCase()}</AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm truncate max-w-[120px]">{assigneeName}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {task.category ? (
+                          <Badge variant="outline" className="text-[10px] capitalize">{task.category.replace('_', ' ')}</Badge>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">--</span>
+                        )}
+                      </TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon-sm">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => { setSelectedTask(task); setDetailOpen(true); }}>
+                              <Eye className="h-4 w-4 mr-2" /> Quick View
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => router.push(`/tasks/${task.id}`)}>
+                              <Pencil className="h-4 w-4 mr-2" /> Full Details
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => handleStatusChange(task, 'done')}>
+                              <CheckSquare className="h-4 w-4 mr-2" /> Mark Complete
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem className="text-red-600" onClick={() => handleDelete(task.id)}>
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+          {/* Infinite scroll sentinel */}
+          <div ref={sentinelRef} className="h-4" />
+          {loadingMore && (
+            <div className="flex justify-center py-4">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          )}
         </div>
       )}
 

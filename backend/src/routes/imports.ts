@@ -126,10 +126,10 @@ importRoutes.post(
             })
             .where(eq(schema.importJobs.id, jobId));
 
-        // Send to Queue
+        // Send to Queue (include tenantId so the consumer can resolve the correct DB)
         await c.env.IMPORT_QUEUE.send({
             type: 'import',
-            data: { jobId }
+            data: { jobId, tenantId: c.get('tenantId') || '' }
         });
 
         return success(c, { message: 'Import queued successfully', jobId });

@@ -14,6 +14,7 @@ import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { importsApi } from '@/lib/api/imports';
+import { useRealtimeEvent, useRealtimeConnected } from '@/hooks/use-realtime-event';
 
 type EntityType = 'contacts' | 'leads' | 'suppliers' | 'rate_cards' | 'travellers';
 type DuplicateStrategy = 'skip' | 'merge' | 'create';
@@ -137,6 +138,21 @@ export default function ImportPage() {
   const [importDone, setImportDone] = React.useState(false);
   const [isCancelling, setIsCancelling] = React.useState(false);
   const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const wsConnected = useRealtimeConnected();
+  const useRealtimeConnectedRef = React.useRef(wsConnected);
+  React.useEffect(() => { useRealtimeConnectedRef.current = wsConnected; }, [wsConnected]);
+
+  // Real-time import progress via WebSocket
+  useRealtimeEvent(['import:progress', 'import:completed', 'import:failed'], (data) => {
+    if (data?.jobId === uploadedJobId) {
+      setProgress(data);
+      if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
+        if (pollRef.current) clearInterval(pollRef.current);
+        setImportDone(true);
+        setIsImporting(false);
+      }
+    }
+  });
 
   const availableFields = entityType ? CRM_FIELDS[entityType as EntityType] : [];
   const requiredFields = availableFields.filter(f => f.required).map(f => f.value);
@@ -238,8 +254,9 @@ export default function ImportPage() {
         duplicateStrategy,
       });
 
-      // Start polling progress
+      // Start fallback polling (only active when WS is disconnected; WS events handle it otherwise)
       pollRef.current = setInterval(async () => {
+        if (useRealtimeConnectedRef.current) return; // WS handles it
         try {
           const res = await importsApi.getProgress(uploadedJobId) as any;
           const job = res?.data ?? res;
