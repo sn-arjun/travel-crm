@@ -66,6 +66,19 @@ testApp.post('/reset', async (c) => {
         await db.run(sql`INSERT OR REPLACE INTO users (id, email, password_hash, role, name, is_active, language, created_at, updated_at) VALUES ('55555555-5555-5555-5555-555555555555', 'viewer@e2e.test', ${voPassword}, 'view_only', 'E2E Viewer', 1, 'en', datetime('now'), datetime('now'))`);
         await db.run(sql`INSERT OR REPLACE INTO tenant_users (id, tenant_id, email, user_id, role, is_active, created_at) VALUES ('66666666-6666-6666-6666-666666666666', ${tenantId}, 'viewer@e2e.test', '55555555-5555-5555-5555-555555555555', 'view_only', 1, datetime('now'))`);
 
+        // [ui-remake] Additionally seed the DEMO tenant used by the desktop
+        // Playwright suite. desktop/e2e/helpers/auth.ts hardcodes these values,
+        // so without this seed the entire desktop E2E layer cannot use /reset
+        // and no run is deterministic. Purely additive — the e2e.test tenant
+        // above is untouched so backend/test/*.test.ts keeps passing.
+        const demoTenantId = '01960000-0000-7000-8000-000000000001';
+        await db.run(sql`INSERT OR REPLACE INTO tenants (id, company_name, subdomain, plan, status, max_users, created_at, updated_at) VALUES (${demoTenantId}, 'Demo Travels', 'demo', 'enterprise', 'active', 25, datetime('now'), datetime('now'))`);
+
+        const demoAdminId = '01960000-0000-7000-8000-0000000000a1';
+        const demoAdminPassword = await bcrypt.hash('Admin@123', 10);
+        await db.run(sql`INSERT OR REPLACE INTO users (id, email, password_hash, role, name, is_active, language, created_at, updated_at) VALUES (${demoAdminId}, 'admin@demo.com', ${demoAdminPassword}, 'admin', 'Demo Admin', 1, 'en', datetime('now'), datetime('now'))`);
+        await db.run(sql`INSERT OR REPLACE INTO tenant_users (id, tenant_id, email, user_id, role, is_active, created_at) VALUES ('01960000-0000-7000-8000-0000000000a2', ${demoTenantId}, 'admin@demo.com', ${demoAdminId}, 'admin', 1, datetime('now'))`);
+
         return c.json({ success: true, message: 'Test database reset and seeded successfully' });
     } catch (error: any) {
         console.error("Reset endpoint caught error:", error?.message, error?.cause);

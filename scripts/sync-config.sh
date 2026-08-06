@@ -61,6 +61,12 @@ GOOGLE_MAPS_API_KEY=$(tfvar google_maps_api_key)
 CF_ACCOUNT_ID=$(tfvar cloudflare_account_id)
 CF_API_TOKEN=$(tfvar cloudflare_api_token)
 APP_URL=$(tfvar app_url)
+
+# Local dev only. Enables POST /api/v1/test/reset, which the Playwright suites
+# use to reset to a clean, deterministic database. Never set in staging/prod —
+# it is checked at backend/src/routes/test.ts and 403s unless it is exactly
+# "true". This file is only read by \`wrangler dev\`.
+TEST_MODE=true
 EOF
 
 echo "    -> backend/.dev.vars written"
