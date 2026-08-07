@@ -1,0 +1,60 @@
+{
+  "slice": "fleet-rate-cards",
+  "title": "Fleet — Vehicle Rate Cards",
+  "status": "existing",
+  "showcaseOrder": 19,
+  "endpoints": [
+    "DELETE /api/v1/fleet/vehicle-rate-cards/:id",
+    "GET /api/v1/fleet/vehicle-rate-cards",
+    "GET /api/v1/fleet/vehicle-rate-cards/:id",
+    "GET /api/v1/fleet/vehicle-rate-cards/lookup",
+    "POST /api/v1/fleet/vehicle-rate-cards",
+    "POST /api/v1/fleet/vehicle-rate-cards/estimate",
+    "PUT /api/v1/fleet/vehicle-rate-cards/:id"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/fleet.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/fleet/rate-cards/page.tsx",
+    "desktop/src/app/(app)/fleet/rate-cards/new/page.tsx"
+  ],
+  "newPages": [
+    "desktop/src/app/(app)/fleet/rate-cards/[id]/edit/page.tsx"
+  ],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/fleet-rate-cards.spec.ts",
+  "seedHelpers": [
+    "seedVehicle"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/fleet/rate-cards/**",
+    "desktop/src/lib/api/fleet.ts",
+    "desktop/e2e/fleet-rate-cards.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": false,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "P1 #75: @ts-ignore comments render as visible text in the JSX. No edit page. POST /vehicle-rate-cards/estimate and GET /lookup are orphaned.",
+  "showcaseScript": [
+    "Open Fleet → Rate Cards",
+    "Create a per-km rate card for a vehicle type",
+    "Estimate the cost of a 300 km trip from the rate card"
+  ]
+}

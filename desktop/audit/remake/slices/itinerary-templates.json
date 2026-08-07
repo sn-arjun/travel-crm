@@ -1,0 +1,55 @@
+{
+  "slice": "itinerary-templates",
+  "title": "Itinerary Templates",
+  "status": "existing",
+  "showcaseOrder": 7,
+  "endpoints": [
+    "DELETE /api/v1/itinerary-templates/:id",
+    "GET /api/v1/itinerary-templates",
+    "GET /api/v1/itinerary-templates/:id",
+    "POST /api/v1/itinerary-templates",
+    "POST /api/v1/itinerary-templates/create-from",
+    "POST /api/v1/itinerary-templates/from-itinerary"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/itineraries.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/itineraries/templates/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/itinerary-templates.spec.ts",
+  "seedHelpers": [
+    "seedItineraryTemplate"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/itineraries/templates/**",
+    "desktop/e2e/itinerary-templates.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": false,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": false,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "No dedicated API module — endpoints live in config.ts but templates page has no create/delete UI. POST /from-itinerary and POST /create-from are orphaned.",
+  "showcaseScript": [
+    "Open Itinerary Templates",
+    "Save an existing itinerary as a reusable template",
+    "Create a new itinerary from that template"
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "slice": "notifications",
+  "title": "Notifications",
+  "status": "existing",
+  "showcaseOrder": 44,
+  "endpoints": [
+    "DELETE /api/v1/notifications/:id",
+    "DELETE /api/v1/push-tokens/:token",
+    "DELETE /api/v1/push-tokens/token/:fcmToken",
+    "GET /api/v1/notification-preferences/me",
+    "GET /api/v1/notification-preferences/me/quiet-hours",
+    "GET /api/v1/notifications",
+    "GET /api/v1/notifications/unread-count",
+    "GET /api/v1/push-tokens",
+    "POST /api/v1/notifications/:id/read",
+    "POST /api/v1/notifications/announce",
+    "POST /api/v1/notifications/read-all",
+    "POST /api/v1/push-tokens",
+    "PUT /api/v1/notification-preferences/me",
+    "PUT /api/v1/notification-preferences/me/quiet-hours"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/notifications.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/notifications/page.tsx",
+    "desktop/src/app/(app)/settings/notifications/page.tsx",
+    "desktop/src/app/(app)/settings/announcements/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [
+    "desktop/src/stores/notification-store.ts",
+    "desktop/src/stores/realtime-store.ts"
+  ],
+  "existingSpecs": [
+    "desktop/e2e/10-m10-notifications.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/notifications.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/notifications/**",
+    "desktop/src/app/(app)/settings/notifications/**",
+    "desktop/src/app/(app)/settings/announcements/**",
+    "desktop/src/lib/api/notifications.ts",
+    "desktop/src/stores/notification-store.ts",
+    "desktop/src/stores/realtime-store.ts",
+    "desktop/e2e/notifications.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": true,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "Prefs format mismatch — frontend sends channel-first, backend expects type-first (#23); quiet hours sends strings vs integer hours (#24). Sidebar badge hardcoded to 7 (#27). No deep linking on click (#65). No bell dropdown (#109). push-tokens is entirely orphaned (mobile-only, acceptable).",
+  "showcaseScript": [
+    "Open Notifications and filter to unread",
+    "Click a notification and deep-link to the record",
+    "Mark all as read and watch the sidebar badge clear",
+    "Open Settings → Notifications and set quiet hours"
+  ]
+}

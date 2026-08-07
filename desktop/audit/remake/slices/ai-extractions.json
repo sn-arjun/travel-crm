@@ -1,0 +1,62 @@
+{
+  "slice": "ai-extractions",
+  "title": "AI Extractions Queue",
+  "status": "new",
+  "showcaseOrder": 38,
+  "endpoints": [
+    "GET /api/v1/ai/extractions",
+    "GET /api/v1/ai/extractions/:id",
+    "GET /api/v1/ai/extractions/pending-count",
+    "GET /api/v1/ai/extractions/usage/summary",
+    "POST /api/v1/ai/extractions/:id/confirm",
+    "POST /api/v1/ai/extractions/:id/create-invoice",
+    "POST /api/v1/ai/extractions/:id/create-itinerary",
+    "POST /api/v1/ai/extractions/:id/reject",
+    "POST /api/v1/ai/extractions/:id/schedule-followup"
+  ],
+  "gates": [
+    "ai_extraction"
+  ],
+  "apiModules": [],
+  "pages": [],
+  "newPages": [
+    "desktop/src/app/(app)/ai/extractions/page.tsx",
+    "desktop/src/app/(app)/ai/extractions/[id]/page.tsx"
+  ],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/ai-extractions.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/ai/extractions/**",
+    "desktop/src/lib/api/ai-extractions.ts",
+    "desktop/src/lib/api/config.ts",
+    "desktop/src/components/layout/sidebar.tsx",
+    "desktop/e2e/ai-extractions.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": false,
+    "filterBar": false,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": false,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "ORPHANED: 9 endpoints, a whole human-in-the-loop review queue (confirm/reject/create-itinerary/create-invoice/schedule-followup) with no UI. GET /pending-count is designed for a sidebar badge that does not exist.",
+  "showcaseScript": [
+    "Open AI → Extractions and see the pending review queue",
+    "Open an extracted enquiry and check the parsed fields",
+    "Confirm it and create an itinerary in one click",
+    "Reject a low-confidence extraction",
+    "Show the pending badge count drop"
+  ]
+}

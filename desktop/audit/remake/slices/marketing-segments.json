@@ -1,0 +1,62 @@
+{
+  "slice": "marketing-segments",
+  "title": "Marketing Segments",
+  "status": "existing",
+  "showcaseOrder": 32,
+  "endpoints": [
+    "DELETE /api/v1/marketing/segments/:id",
+    "GET /api/v1/marketing/segments",
+    "GET /api/v1/marketing/segments/:id",
+    "GET /api/v1/marketing/segments/:id/contacts",
+    "POST /api/v1/marketing/segments",
+    "POST /api/v1/marketing/segments/:id/refresh-count",
+    "PUT /api/v1/marketing/segments/:id"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/marketing.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/marketing/segments/page.tsx",
+    "desktop/src/app/(app)/marketing/segments/new/page.tsx",
+    "desktop/src/app/(app)/marketing/segments/[id]/edit/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/17-m17-marketing-campaigns.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/marketing-segments.spec.ts",
+  "seedHelpers": [
+    "seedContact"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/marketing/segments/**",
+    "desktop/src/lib/api/marketing.ts",
+    "desktop/e2e/marketing-segments.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": false,
+    "detailDrawer": true,
+    "emptyState": false,
+    "skeleton": true,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "GET /segments/:id/contacts and POST /segments/:id/refresh-count are orphaned — no member preview, no live count refresh (#116).",
+  "showcaseScript": [
+    "Open Marketing → Segments",
+    "Build a segment with rules on destination and spend",
+    "Refresh the count and preview matching contacts",
+    "Launch a campaign to that segment"
+  ]
+}

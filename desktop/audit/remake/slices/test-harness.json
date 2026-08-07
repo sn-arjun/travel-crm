@@ -1,0 +1,46 @@
+{
+  "slice": "test-harness",
+  "title": "Test Harness (internal)",
+  "status": "existing",
+  "showcaseOrder": 50,
+  "endpoints": [
+    "POST /api/v1/test/reset"
+  ],
+  "gates": [],
+  "apiModules": [],
+  "pages": [],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/global-setup.ts"
+  ],
+  "targetSpec": "desktop/e2e/test-harness.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/e2e/helpers/**",
+    "desktop/e2e/test-harness.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": false,
+    "filterBar": false,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": false,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "POST /test/reset is the E2E database reset, TEST_MODE-gated. No UI by design. Every other slice depends on it for deterministic seeding.",
+  "showcaseScript": [
+    "Reset the test tenant to a known state",
+    "Seed the demo dataset used by the walkthrough",
+    "Confirm the seeded records appear in the CRM"
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "slice": "documents",
+  "title": "Documents",
+  "status": "existing",
+  "showcaseOrder": 24,
+  "endpoints": [
+    "DELETE /api/v1/documents/:id",
+    "GET /api/v1/documents",
+    "GET /api/v1/documents/:id",
+    "GET /api/v1/documents/:id/download",
+    "POST /api/v1/documents/upload",
+    "PUT /api/v1/documents/:id"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/documents.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/documents/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/16-documents.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/documents.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/documents/**",
+    "desktop/src/lib/api/documents.ts",
+    "desktop/e2e/documents.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": false,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": false,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "PUT /documents/:id and DELETE /documents/:id are orphaned — rename and delete have no UI. No FilterBar, skeleton, infinite scroll or empty state.",
+  "showcaseScript": [
+    "Open Documents and filter by entity type",
+    "Upload a document against a lead",
+    "Rename it and download it back"
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "slice": "import-export",
+  "title": "Import & Export",
+  "status": "existing",
+  "showcaseOrder": 43,
+  "endpoints": [
+    "GET /api/v1/exports/contacts",
+    "GET /api/v1/exports/jobs/:id",
+    "GET /api/v1/exports/jobs/:id/download",
+    "GET /api/v1/exports/leads",
+    "GET /api/v1/imports",
+    "GET /api/v1/imports/:id/errors",
+    "GET /api/v1/imports/:id/errors/download",
+    "GET /api/v1/imports/:id/progress",
+    "GET /api/v1/imports/templates/:type",
+    "POST /api/v1/exports/full",
+    "POST /api/v1/exports/invoices/bulk-pdf",
+    "POST /api/v1/imports/:id/cancel",
+    "POST /api/v1/imports/:id/execute",
+    "POST /api/v1/imports/upload"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/imports.ts",
+    "desktop/src/lib/api/exports.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/import/page.tsx",
+    "desktop/src/app/(app)/settings/import/page.tsx",
+    "desktop/src/app/(app)/settings/export/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/16-m16-import-export.spec.ts",
+    "desktop/e2e/20-import-export.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/import-export.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/import/**",
+    "desktop/src/app/(app)/settings/import/**",
+    "desktop/src/app/(app)/settings/export/**",
+    "desktop/src/lib/api/imports.ts",
+    "desktop/src/lib/api/exports.ts",
+    "desktop/e2e/import-export.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": false,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": false,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "P0 #3/#4: import and export queues read MASTER_DB instead of the tenant DB — cross-tenant data leak risk, must be verified fixed. Import wizard uses hardcoded sample data for mapping and preview (#67). Client sends POST to the GET-only contacts export (#17).",
+  "showcaseScript": [
+    "Open Import / Export",
+    "Download the contacts CSV template",
+    "Upload a file and map the columns",
+    "Run the import and watch live progress",
+    "Export leads as a branded Excel file"
+  ]
+}

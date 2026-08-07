@@ -1,0 +1,69 @@
+{
+  "slice": "calls",
+  "title": "Call Log & Dialer",
+  "status": "existing",
+  "showcaseOrder": 27,
+  "endpoints": [
+    "DELETE /api/v1/calls/:id",
+    "GET /api/v1/calls",
+    "GET /api/v1/calls/:id",
+    "GET /api/v1/calls/:id/actions",
+    "GET /api/v1/calls/analytics",
+    "GET /api/v1/calls/missed",
+    "GET /api/v1/transcripts",
+    "GET /api/v1/transcripts/:callLogId",
+    "POST /api/v1/calls/:id/end",
+    "POST /api/v1/calls/:id/transfer",
+    "POST /api/v1/calls/missed/:id/mark-returned",
+    "POST /api/v1/calls/outbound",
+    "PUT /api/v1/calls/:id",
+    "PUT /api/v1/transcripts/:callLogId"
+  ],
+  "gates": [
+    "voip_calling"
+  ],
+  "apiModules": [
+    "desktop/src/lib/api/voip.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/communication/calls/page.tsx",
+    "desktop/src/app/(app)/communication/calls/[id]/page.tsx",
+    "desktop/src/app/(app)/communication/calls/dial/page.tsx",
+    "desktop/src/app/(app)/communication/calls/analytics/page.tsx",
+    "desktop/src/app/(app)/communication/calls/transcripts/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/calls.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/communication/calls/**",
+    "desktop/src/lib/api/voip.ts",
+    "desktop/e2e/calls.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": false,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": false,
+    "relationCombobox": false,
+    "urlPrefill": true,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "Gated on voip_calling — every page must degrade to a disabled state, not crash, when the feature is off. Call transfer/end and missed-call mark-returned are orphaned. No FilterBar or skeleton anywhere.",
+  "showcaseScript": [
+    "Open the Call Log and filter to missed calls",
+    "Place an outbound call from the dialer",
+    "Open a call recording and read its transcript",
+    "Show call analytics by agent"
+  ]
+}

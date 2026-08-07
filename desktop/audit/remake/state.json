@@ -1,0 +1,22 @@
+{
+  "started": "2026-08-06T23:09:11.755Z",
+  "jobs": {
+    "inventory": {
+      "status": "ok",
+      "timestamp": "2026-08-06T23:21:17.627Z",
+      "error": null,
+      "repairAttempts": 0
+    },
+    "backend:admin": {
+      "status": "ok",
+      "timestamp": "2026-08-07T10:56:26.284Z",
+      "error": null,
+      "repairAttempts": 0
+    }
+  },
+  "lastCompleted": {
+    "id": "backend:admin",
+    "status": "ok",
+    "timestamp": "2026-08-07T10:56:26.284Z"
+  }
+}

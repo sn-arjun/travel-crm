@@ -1,0 +1,1042 @@
+import { Hono } from 'hono';
+import type { AppContext } from '../types';
+import { success, error, notFound, paginated } from '../utils/response';
+import { requireSuperAdmin } from '../middleware/require-super-admin';
+import { PLAN_DEFAULTS } from '../middleware/feature-gate';
+
+/**
+ * Platform administration routes — read-only, cross-tenant.
+ *
+ * Every handler reads MASTER_DB (the platform registry). A tenant DB is
+ * never touched here: this surface is about the platform, not one customer.
+ * The whole mount sits behind `requireSuperAdmin`.
+ */
+const app = new Hono<AppContext>();
+
+app.use('*', requireSuperAdmin);
+
+// --- Helpers ---
+
+function readPaging(c: any): { page: number; limit: number; offset: number } {
+  const params = new URL(c.req.url).searchParams;
+  const page = Math.max(1, parseInt(params.get('page') || '1', 10) || 1);
+  const rawLimit = parseInt(params.get('limit') || '20', 10) || 20;
+  const limit = Math.min(100, Math.max(1, rawLimit));
+  return { page, limit, offset: (page - 1) * limit };
+}
+
+function param(c: any, key: string): string {
+  return (new URL(c.req.url).searchParams.get(key) || '').trim();
+}
+
+/**
+ * Tenant `status` in MASTER_DB carries trial/active/suspended/expired, but the
+ * admin UI only renders active/suspended/inactive. Collapse the tail states.
+ */
+function uiTenantStatus(status: string | null): 'active' | 'suspended' | 'inactive' {
+  if (status === 'active' || status === 'trial') return 'active';
+  if (status === 'suspended') return 'suspended';
+  return 'inactive';
+}
+
+function uiUserStatus(isActive: number | null): 'active' | 'inactive' {
+  return isActive ? 'active' : 'inactive';
+}
+
+/** Money is REAL in D1; guard against NULL aggregates. */
+function money(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Count rows in a table that may not exist in every deployment (per-tenant
+ * tables live in a separate D1 in production). Missing table -> 0, not a 500.
+ */
+async function safeCount(db: D1Database, sql: string, ...binds: unknown[]): Promise<number> {
+  try {
+    const row = await db.prepare(sql).bind(...binds).first<{ c: number }>();
+    return row?.c ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** The last `months` calendar months as YYYY-MM, oldest first. */
+function recentMonths(months: number): string[] {
+  const out: string[] = [];
+  const now = new Date();
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    out.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
+  }
+  return out;
+}
+
+// --- Plan catalog -------------------------------------------------
+// Plans are a code-level catalog (PLAN_DEFAULTS drives feature gating);
+// there is no `plans` table in MASTER_DB. Prices are annual INR list prices.
+
+const PLAN_CATALOG = [
+  {
+    id: 'basic',
+    name: 'Basic',
+    description: 'Core CRM for a small agency getting started.',
+    price: 12000,
+    billingCycle: 'yearly' as const,
+    maxUsers: 5,
+    maxContacts: 5000,
+    maxTeam: 5,
+  },
+  {
+    id: 'pro',
+    name: 'Pro',
+    description: 'Adds advanced reporting and the Pro AI feature set.',
+    price: 18000,
+    billingCycle: 'yearly' as const,
+    maxUsers: 15,
+    maxContacts: 25000,
+    maxTeam: 15,
+  },
+  {
+    id: 'enterprise',
+    name: 'Enterprise',
+    description: 'Every feature, all 22 AI capabilities, priority support.',
+    price: 24000,
+    billingCycle: 'yearly' as const,
+    maxUsers: 100,
+    maxContacts: 250000,
+    maxTeam: 100,
+  },
+];
+
+function buildPlan(entry: (typeof PLAN_CATALOG)[number]) {
+  return {
+    ...entry,
+    features: PLAN_DEFAULTS[entry.id] ?? [],
+    isActive: true,
+    createdAt: new Date(0).toISOString(),
+  };
+}
+
+// --- Aggregates ---------------------------------------------------
+
+async function platformStats(db: D1Database) {
+  const tenantCount = await safeCount(db, 'SELECT COUNT(*) AS c FROM tenants');
+  const activeUsers = await safeCount(
+    db,
+    'SELECT COUNT(*) AS c FROM tenant_users WHERE is_active = 1'
+  );
+
+  const revenueRow = await db
+    .prepare(
+      `SELECT COALESCE(SUM(amount), 0) AS total
+         FROM subscription_payments
+        WHERE status = 'success'`
+    )
+    .first<{ total: number }>()
+    .catch(() => null);
+
+  // Signups per day for the trailing 30 days.
+  const signupRows = await db
+    .prepare(
+      `SELECT substr(created_at, 1, 10) AS date, COUNT(*) AS count
+         FROM tenants
+        WHERE created_at >= ?
+        GROUP BY substr(created_at, 1, 10)
+        ORDER BY date ASC`
+    )
+    .bind(new Date(Date.now() - 30 * 86400000).toISOString())
+    .all<{ date: string; count: number }>()
+    .catch(() => ({ results: [] as { date: string; count: number }[] }));
+
+  // Tenant mix by plan — feeds the pie chart.
+  const breakdownRows = await db
+    .prepare(
+      `SELECT COALESCE(plan, 'unknown') AS name, COUNT(*) AS value
+         FROM tenants
+        GROUP BY COALESCE(plan, 'unknown')
+        ORDER BY value DESC`
+    )
+    .all<{ name: string; value: number }>()
+    .catch(() => ({ results: [] as { name: string; value: number }[] }));
+
+  const revenueByPlanRows = await db
+    .prepare(
+      `SELECT COALESCE(s.plan, 'unknown') AS plan,
+              COALESCE(SUM(p.amount), 0) AS revenue
+         FROM subscription_payments p
+         LEFT JOIN subscriptions s ON s.id = p.subscription_id
+        WHERE p.status = 'success'
+        GROUP BY COALESCE(s.plan, 'unknown')
+        ORDER BY revenue DESC`
+    )
+    .all<{ plan: string; revenue: number }>()
+    .catch(() => ({ results: [] as { plan: string; revenue: number }[] }));
+
+  // No paid subscriptions yet still shows the tiers at zero, so the chart
+  // renders an axis instead of an empty frame.
+  const revenueByPlan = revenueByPlanRows.results?.length
+    ? revenueByPlanRows.results.map((r) => ({ plan: r.plan, revenue: money(r.revenue) }))
+    : PLAN_CATALOG.map((p) => ({ plan: p.id, revenue: 0 }));
+
+  const suspended = await safeCount(
+    db,
+    `SELECT COUNT(*) AS c FROM tenants WHERE status IN ('suspended', 'expired')`
+  );
+  const platformHealth =
+    tenantCount === 0 ? 100 : Math.round(((tenantCount - suspended) / tenantCount) * 100);
+
+  return {
+    totalTenants: tenantCount,
+    activeUsers,
+    totalRevenue: money(revenueRow?.total),
+    platformHealth,
+    recentSignups: (signupRows.results ?? []).map((r) => ({
+      date: r.date,
+      count: r.count ?? 0,
+    })),
+    tenantBreakdown: (breakdownRows.results ?? []).map((r) => ({
+      name: r.name,
+      value: r.value ?? 0,
+    })),
+    revenueByPlan,
+  };
+}
+
+async function billingStats(db: D1Database) {
+  const totalRow = await db
+    .prepare(
+      `SELECT COALESCE(SUM(amount), 0) AS total
+         FROM subscription_payments
+        WHERE status = 'success'`
+    )
+    .first<{ total: number }>()
+    .catch(() => null);
+
+  const mrrRow = await db
+    .prepare(
+      `SELECT COALESCE(SUM(
+                CASE WHEN billing_cycle = 'yearly' THEN amount / 12.0 ELSE amount END
+              ), 0) AS mrr
+         FROM subscriptions
+        WHERE status = 'active'`
+    )
+    .first<{ mrr: number }>()
+    .catch(() => null);
+
+  const activeSubscriptions = await safeCount(
+    db,
+    `SELECT COUNT(*) AS c FROM subscriptions WHERE status = 'active'`
+  );
+  const cancelled = await safeCount(
+    db,
+    `SELECT COUNT(*) AS c FROM subscriptions WHERE status = 'cancelled'`
+  );
+
+  const totalSubs = activeSubscriptions + cancelled;
+  const churnRate = totalSubs === 0 ? 0 : Math.round((cancelled / totalSubs) * 1000) / 10;
+
+  const monthRows = await db
+    .prepare(
+      `SELECT substr(created_at, 1, 7) AS month,
+              COALESCE(SUM(amount), 0) AS revenue
+         FROM subscription_payments
+        WHERE status = 'success'
+        GROUP BY substr(created_at, 1, 7)`
+    )
+    .all<{ month: string; revenue: number }>()
+    .catch(() => ({ results: [] as { month: string; revenue: number }[] }));
+
+  // Always emit a 12-month series so the chart has a stable x-axis.
+  const byMonth = new Map(
+    (monthRows.results ?? []).map((r) => [r.month, money(r.revenue)] as const)
+  );
+  const revenueByMonth = recentMonths(12).map((month) => ({
+    month,
+    revenue: byMonth.get(month) ?? 0,
+  }));
+
+  return {
+    totalRevenue: money(totalRow?.total),
+    monthlyRecurring: Math.round(money(mrrRow?.mrr) * 100) / 100,
+    activeSubscriptions,
+    churnRate,
+    revenueByMonth,
+  };
+}
+
+/**
+ * Subscriptions rendered as the invoice rows the billing page expects.
+ * There is no platform `invoices` table — a subscription period *is* the
+ * invoice at this level.
+ */
+async function listInvoices(db: D1Database, search: string, status: string, limit: number, offset: number) {
+  const where: string[] = [];
+  const binds: unknown[] = [];
+
+  if (search) {
+    where.push('t.company_name LIKE ?');
+    binds.push(`%${search}%`);
+  }
+  if (status) {
+    // Map the UI's invoice vocabulary onto subscription status.
+    const map: Record<string, string> = {
+      paid: 'active',
+      overdue: 'past_due',
+      cancelled: 'cancelled',
+    };
+    where.push('s.status = ?');
+    binds.push(map[status] ?? status);
+  }
+
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  const countRow = await db
+    .prepare(
+      `SELECT COUNT(*) AS c
+         FROM subscriptions s
+         LEFT JOIN tenants t ON t.id = s.tenant_id
+         ${clause}`
+    )
+    .bind(...binds)
+    .first<{ c: number }>()
+    .catch(() => null);
+
+  const rows = await db
+    .prepare(
+      `SELECT s.id, s.tenant_id, s.amount, s.status, s.start_date,
+              s.next_billing_date, s.created_at,
+              t.company_name
+         FROM subscriptions s
+         LEFT JOIN tenants t ON t.id = s.tenant_id
+         ${clause}
+        ORDER BY s.created_at DESC
+        LIMIT ? OFFSET ?`
+    )
+    .bind(...binds, limit, offset)
+    .all<any>()
+    .catch(() => ({ results: [] as any[] }));
+
+  const data = (rows.results ?? []).map((r) => ({
+    id: r.id,
+    tenantId: r.tenant_id,
+    tenantName: r.company_name ?? 'Unknown',
+    amount: money(r.amount),
+    status:
+      r.status === 'active' ? 'paid' : r.status === 'past_due' ? 'overdue' : r.status === 'cancelled' ? 'cancelled' : 'sent',
+    issueDate: r.start_date ?? r.created_at ?? '',
+    dueDate: r.next_billing_date ?? '',
+    ...(r.status === 'active' ? { paidDate: r.start_date ?? r.created_at ?? '' } : {}),
+  }));
+
+  return { data, total: countRow?.c ?? 0 };
+}
+
+async function listPayments(db: D1Database, search: string, limit: number, offset: number) {
+  const where: string[] = [];
+  const binds: unknown[] = [];
+
+  if (search) {
+    where.push('t.company_name LIKE ?');
+    binds.push(`%${search}%`);
+  }
+
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  const countRow = await db
+    .prepare(
+      `SELECT COUNT(*) AS c
+         FROM subscription_payments p
+         LEFT JOIN tenants t ON t.id = p.tenant_id
+         ${clause}`
+    )
+    .bind(...binds)
+    .first<{ c: number }>()
+    .catch(() => null);
+
+  const rows = await db
+    .prepare(
+      `SELECT p.id, p.tenant_id, p.amount, p.status, p.payment_method, p.created_at,
+              t.company_name
+         FROM subscription_payments p
+         LEFT JOIN tenants t ON t.id = p.tenant_id
+         ${clause}
+        ORDER BY p.created_at DESC
+        LIMIT ? OFFSET ?`
+    )
+    .bind(...binds, limit, offset)
+    .all<any>()
+    .catch(() => ({ results: [] as any[] }));
+
+  const data = (rows.results ?? []).map((r) => ({
+    id: r.id,
+    tenantId: r.tenant_id,
+    tenantName: r.company_name ?? 'Unknown',
+    amount: money(r.amount),
+    status:
+      r.status === 'success' ? 'completed' : r.status === 'refunded' ? 'refunded' : r.status === 'failed' ? 'failed' : 'pending',
+    method: r.payment_method ?? 'unknown',
+    processedAt: r.created_at ?? '',
+  }));
+
+  return { data, total: countRow?.c ?? 0 };
+}
+
+/**
+ * The platform has no log store; the webhook log is the closest real signal
+ * and is what the system page surfaces as its recent event stream.
+ */
+async function listSystemLogs(db: D1Database, search: string, level: string, limit: number, offset: number) {
+  const where: string[] = [];
+  const binds: unknown[] = [];
+
+  if (search) {
+    where.push('(w.error_message LIKE ? OR w.source LIKE ?)');
+    binds.push(`%${search}%`, `%${search}%`);
+  }
+  if (level === 'info') {
+    where.push(`w.status = 'success'`);
+  } else if (level) {
+    where.push(`w.status != 'success'`);
+  }
+
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  const countRow = await db
+    .prepare(`SELECT COUNT(*) AS c FROM webhook_log w ${clause}`)
+    .bind(...binds)
+    .first<{ c: number }>()
+    .catch(() => null);
+
+  const rows = await db
+    .prepare(
+      `SELECT w.id, w.source, w.status, w.error_message, w.created_at
+         FROM webhook_log w
+         ${clause}
+        ORDER BY w.created_at DESC
+        LIMIT ? OFFSET ?`
+    )
+    .bind(...binds, limit, offset)
+    .all<any>()
+    .catch(() => ({ results: [] as any[] }));
+
+  const data = (rows.results ?? []).map((r) => ({
+    id: r.id,
+    timestamp: r.created_at ?? '',
+    level: r.status === 'success' ? 'info' : 'error',
+    service: r.source ?? 'webhook',
+    message: r.error_message ?? `Webhook ${r.status ?? 'processed'}`,
+    ...(r.error_message ? { details: r.error_message } : {}),
+  }));
+
+  return { data, total: countRow?.c ?? 0 };
+}
+
+async function systemHealth(db: D1Database) {
+  const start = Date.now();
+  let databaseConnection = true;
+  try {
+    await db.prepare('SELECT 1 AS ok').first();
+  } catch {
+    databaseConnection = false;
+  }
+  const responseTime = Date.now() - start;
+
+  const recent = await listSystemLogs(db, '', 'error', 10, 0);
+
+  // A Worker isolate exposes no CPU/memory counters. Report the honest
+  // measurements we do have and zero the ones the platform cannot provide.
+  return {
+    status: databaseConnection ? ('healthy' as const) : ('critical' as const),
+    uptime: Math.floor(Date.now() / 1000),
+    responseTime,
+    cpuUsage: 0,
+    memoryUsage: 0,
+    databaseConnection,
+    cacheHealth: databaseConnection ? 'ok' : 'degraded',
+    metrics: [
+      {
+        timestamp: new Date().toISOString(),
+        cpu: 0,
+        memory: 0,
+        responseTime,
+      },
+    ],
+    recentErrors: recent.data,
+  };
+}
+
+// --- Dashboard & Stats --------------------------------------------
+
+app.get('/dashboard', async (c) => {
+  try {
+    return success(c, await platformStats(c.env.MASTER_DB));
+  } catch (err) {
+    console.error('Error loading admin dashboard:', err);
+    return error(c, 'Failed to load dashboard', 500);
+  }
+});
+
+app.get('/stats', async (c) => {
+  try {
+    return success(c, await platformStats(c.env.MASTER_DB));
+  } catch (err) {
+    console.error('Error loading admin stats:', err);
+    return error(c, 'Failed to load stats', 500);
+  }
+});
+
+// --- System / Platform health -------------------------------------
+// Registered before /tenants/:id etc. so the literal segments always win.
+
+app.get('/system/health', async (c) => {
+  try {
+    return success(c, await systemHealth(c.env.MASTER_DB));
+  } catch (err) {
+    console.error('Error loading system health:', err);
+    return error(c, 'Failed to load system health', 500);
+  }
+});
+
+app.get('/platform/health', async (c) => {
+  try {
+    return success(c, await systemHealth(c.env.MASTER_DB));
+  } catch (err) {
+    console.error('Error loading platform health:', err);
+    return error(c, 'Failed to load platform health', 500);
+  }
+});
+
+app.get('/system/logs', async (c) => {
+  const { page, limit, offset } = readPaging(c);
+  try {
+    const { data, total } = await listSystemLogs(
+      c.env.MASTER_DB,
+      param(c, 'search'),
+      param(c, 'level'),
+      limit,
+      offset
+    );
+    return paginated(c, data, total, page, limit);
+  } catch (err) {
+    console.error('Error loading system logs:', err);
+    return error(c, 'Failed to load system logs', 500);
+  }
+});
+
+app.get('/system/metrics', async (c) => {
+  try {
+    const health = await systemHealth(c.env.MASTER_DB);
+    return success(c, {
+      metrics: health.metrics,
+      responseTime: health.responseTime,
+      uptime: health.uptime,
+      databaseConnection: health.databaseConnection,
+    });
+  } catch (err) {
+    console.error('Error loading system metrics:', err);
+    return error(c, 'Failed to load system metrics', 500);
+  }
+});
+
+// --- Billing ------------------------------------------------------
+
+app.get('/billing', async (c) => {
+  try {
+    const db = c.env.MASTER_DB;
+    const stats = await billingStats(db);
+    const invoices = await listInvoices(db, '', '', 10, 0);
+    const payments = await listPayments(db, '', 10, 0);
+
+    return success(c, {
+      ...stats,
+      invoices: invoices.data,
+      payments: payments.data,
+    });
+  } catch (err) {
+    console.error('Error loading billing overview:', err);
+    return error(c, 'Failed to load billing', 500);
+  }
+});
+
+app.get('/billing/stats', async (c) => {
+  try {
+    return success(c, await billingStats(c.env.MASTER_DB));
+  } catch (err) {
+    console.error('Error loading billing stats:', err);
+    return error(c, 'Failed to load billing stats', 500);
+  }
+});
+
+app.get('/billing/invoices', async (c) => {
+  const { page, limit, offset } = readPaging(c);
+  try {
+    const { data, total } = await listInvoices(
+      c.env.MASTER_DB,
+      param(c, 'search'),
+      param(c, 'status'),
+      limit,
+      offset
+    );
+    return paginated(c, data, total, page, limit);
+  } catch (err) {
+    console.error('Error loading invoices:', err);
+    return error(c, 'Failed to load invoices', 500);
+  }
+});
+
+app.get('/billing/payments', async (c) => {
+  const { page, limit, offset } = readPaging(c);
+  try {
+    const { data, total } = await listPayments(
+      c.env.MASTER_DB,
+      param(c, 'search'),
+      limit,
+      offset
+    );
+    return paginated(c, data, total, page, limit);
+  } catch (err) {
+    console.error('Error loading payments:', err);
+    return error(c, 'Failed to load payments', 500);
+  }
+});
+
+app.get('/billing/revenue', async (c) => {
+  try {
+    const db = c.env.MASTER_DB;
+    const stats = await billingStats(db);
+    const platform = await platformStats(db);
+    return success(c, {
+      totalRevenue: stats.totalRevenue,
+      monthlyRecurring: stats.monthlyRecurring,
+      revenueByMonth: stats.revenueByMonth,
+      revenueByPlan: platform.revenueByPlan,
+    });
+  } catch (err) {
+    console.error('Error loading revenue:', err);
+    return error(c, 'Failed to load revenue', 500);
+  }
+});
+
+// --- Plans --------------------------------------------------------
+
+app.get('/plans', async (c) => {
+  return success(c, PLAN_CATALOG.map(buildPlan));
+});
+
+app.get('/plans/:id', async (c) => {
+  const entry = PLAN_CATALOG.find((p) => p.id === c.req.param('id'));
+  if (!entry) return notFound(c, 'Plan');
+  return success(c, buildPlan(entry));
+});
+
+// --- Config -------------------------------------------------------
+
+app.get('/config', async (c) => {
+  // Derived from deployment settings and the plan catalog. Secrets are never
+  // read here — only whether an integration is configured at all.
+  const db = c.env.MASTER_DB;
+
+  const maxTenantsPerPlan: Record<string, number> = {};
+  for (const plan of PLAN_CATALOG) {
+    maxTenantsPerPlan[plan.id] = await safeCount(
+      db,
+      'SELECT COUNT(*) AS c FROM tenants WHERE plan = ?',
+      plan.id
+    );
+  }
+
+  return success(c, {
+    id: 'global',
+    appName: 'TravelCRM Pro',
+    appUrl: 'https://app.travelcrm.pro',
+    supportEmail: 'support@travelcrm.pro',
+    supportPhone: '',
+    maxTenantsPerPlan,
+    features: {
+      emailNotifications: Boolean(c.env.SENDGRID_API_KEY),
+      smsNotifications: Boolean(c.env.TWILIO_ACCOUNT_SID || c.env.PLIVO_AUTH_ID),
+      twoFactor: Boolean(c.env.TWILIO_VERIFY_SERVICE_SID),
+      apiAccess: true,
+      customDomain: true,
+      whiteLabel: true,
+      advancedAnalytics: Boolean(c.env.AI),
+    },
+    security: {
+      passwordMinLength: 8,
+      passwordRequireSpecialChar: false,
+      passwordRequireNumbers: true,
+      maxLoginAttempts: 5,
+      sessionTimeoutMinutes: 15,
+      requireEmailVerification: false,
+    },
+    email: {
+      smtpHost: 'smtp.sendgrid.net',
+      smtpPort: 587,
+      smtpUser: 'apikey',
+      fromEmail: 'no-reply@travelcrm.pro',
+      fromName: 'TravelCRM Pro',
+    },
+  });
+});
+
+// --- Audit Logs ---------------------------------------------------
+
+app.get('/audit-logs', async (c) => {
+  const { page, limit, offset } = readPaging(c);
+  const search = param(c, 'search');
+  const action = param(c, 'action');
+
+  const where: string[] = [];
+  const binds: unknown[] = [];
+
+  if (search) {
+    where.push('(l.action LIKE ? OR l.entity_type LIKE ? OR a.name LIKE ? OR a.email LIKE ?)');
+    binds.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+  }
+  if (action) {
+    where.push('l.action LIKE ?');
+    binds.push(`%${action}%`);
+  }
+
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  try {
+    const db = c.env.MASTER_DB;
+
+    const countRow = await db
+      .prepare(
+        `SELECT COUNT(*) AS c
+           FROM super_admin_audit_log l
+           LEFT JOIN super_admins a ON a.id = l.admin_id
+           ${clause}`
+      )
+      .bind(...binds)
+      .first<{ c: number }>();
+
+    const rows = await db
+      .prepare(
+        `SELECT l.id, l.admin_id, l.action, l.entity_type, l.entity_id,
+                l.details, l.ip_address, l.user_agent, l.created_at,
+                a.name AS admin_name, a.email AS admin_email
+           FROM super_admin_audit_log l
+           LEFT JOIN super_admins a ON a.id = l.admin_id
+           ${clause}
+          ORDER BY l.created_at DESC
+          LIMIT ? OFFSET ?`
+      )
+      .bind(...binds, limit, offset)
+      .all<any>();
+
+    const data = (rows.results ?? []).map((r) => {
+      // `details` is JSON text; it carries the changed fields and, when the
+      // action failed, a status marker.
+      let details: Record<string, any> = {};
+      try {
+        details = r.details ? JSON.parse(r.details) : {};
+      } catch {
+        details = {};
+      }
+
+      return {
+        id: r.id,
+        timestamp: r.created_at ?? '',
+        userId: r.admin_id ?? '',
+        userName: r.admin_name ?? r.admin_email ?? 'Unknown',
+        action: r.action,
+        resourceType: r.entity_type ?? 'system',
+        resourceId: r.entity_id ?? undefined,
+        resourceName: details.name ?? undefined,
+        ipAddress: r.ip_address ?? '',
+        userAgent: r.user_agent ?? undefined,
+        status: details.status === 'failure' ? 'failure' : 'success',
+      };
+    });
+
+    return paginated(c, data, countRow?.c ?? 0, page, limit);
+  } catch (err) {
+    console.error('Error loading audit logs:', err);
+    return error(c, 'Failed to load audit logs', 500);
+  }
+});
+
+// --- Users --------------------------------------------------------
+
+app.get('/users', async (c) => {
+  const { page, limit, offset } = readPaging(c);
+  const search = param(c, 'search');
+  const role = param(c, 'role');
+  const status = param(c, 'status');
+
+  const where: string[] = [];
+  const binds: unknown[] = [];
+
+  if (search) {
+    where.push('(u.email LIKE ? OR t.company_name LIKE ?)');
+    binds.push(`%${search}%`, `%${search}%`);
+  }
+  if (role) {
+    where.push('u.role = ?');
+    binds.push(role);
+  }
+  if (status) {
+    where.push('u.is_active = ?');
+    binds.push(status === 'active' ? 1 : 0);
+  }
+
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  try {
+    const db = c.env.MASTER_DB;
+
+    const countRow = await db
+      .prepare(
+        `SELECT COUNT(*) AS c
+           FROM tenant_users u
+           LEFT JOIN tenants t ON t.id = u.tenant_id
+           ${clause}`
+      )
+      .bind(...binds)
+      .first<{ c: number }>();
+
+    const rows = await db
+      .prepare(
+        `SELECT u.id, u.tenant_id, u.email, u.role, u.is_active, u.created_at,
+                t.company_name
+           FROM tenant_users u
+           LEFT JOIN tenants t ON t.id = u.tenant_id
+           ${clause}
+          ORDER BY u.created_at DESC
+          LIMIT ? OFFSET ?`
+      )
+      .bind(...binds, limit, offset)
+      .all<any>();
+
+    // `tenant_users` is the cross-tenant registry and carries no display
+    // name; the local part of the email is the best label available here.
+    const data = (rows.results ?? []).map((r) => ({
+      id: r.id,
+      name: String(r.email ?? '').split('@')[0] || r.email,
+      email: r.email,
+      tenantId: r.tenant_id,
+      tenantName: r.company_name ?? 'Unknown',
+      role: r.role,
+      status: uiUserStatus(r.is_active),
+      createdAt: r.created_at ?? '',
+    }));
+
+    return paginated(c, data, countRow?.c ?? 0, page, limit);
+  } catch (err) {
+    console.error('Error loading admin users:', err);
+    return error(c, 'Failed to load users', 500);
+  }
+});
+
+app.get('/users/:id', async (c) => {
+  try {
+    const row = await c.env.MASTER_DB.prepare(
+      `SELECT u.id, u.tenant_id, u.email, u.phone, u.role, u.is_active, u.created_at,
+              t.company_name
+         FROM tenant_users u
+         LEFT JOIN tenants t ON t.id = u.tenant_id
+        WHERE u.id = ?
+        LIMIT 1`
+    )
+      .bind(c.req.param('id'))
+      .first<any>();
+
+    if (!row) return notFound(c, 'User');
+
+    return success(c, {
+      id: row.id,
+      name: String(row.email ?? '').split('@')[0] || row.email,
+      email: row.email,
+      phone: row.phone ?? undefined,
+      tenantId: row.tenant_id,
+      tenantName: row.company_name ?? 'Unknown',
+      role: row.role,
+      status: uiUserStatus(row.is_active),
+      createdAt: row.created_at ?? '',
+    });
+  } catch (err) {
+    console.error('Error loading admin user:', err);
+    return error(c, 'Failed to load user', 500);
+  }
+});
+
+// --- Tenants ------------------------------------------------------
+
+app.get('/tenants', async (c) => {
+  const { page, limit, offset } = readPaging(c);
+  const search = param(c, 'search');
+  const status = param(c, 'status');
+
+  const where: string[] = [];
+  const binds: unknown[] = [];
+
+  if (search) {
+    where.push('(t.company_name LIKE ? OR t.subdomain LIKE ?)');
+    binds.push(`%${search}%`, `%${search}%`);
+  }
+  if (status === 'active') {
+    where.push(`t.status IN ('active', 'trial')`);
+  } else if (status === 'suspended') {
+    where.push(`t.status = 'suspended'`);
+  } else if (status === 'inactive') {
+    where.push(`t.status NOT IN ('active', 'trial', 'suspended')`);
+  }
+
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  try {
+    const db = c.env.MASTER_DB;
+
+    const countRow = await db
+      .prepare(`SELECT COUNT(*) AS c FROM tenants t ${clause}`)
+      .bind(...binds)
+      .first<{ c: number }>();
+
+    // `tenants` has no email column — the tenant's admin in tenant_users is
+    // the contact the UI shows, and user_count comes from the same registry.
+    const rows = await db
+      .prepare(
+        `SELECT t.id, t.company_name, t.subdomain, t.plan, t.status, t.created_at,
+                (SELECT COUNT(*) FROM tenant_users tu WHERE tu.tenant_id = t.id) AS user_count,
+                (SELECT tu.email FROM tenant_users tu
+                  WHERE tu.tenant_id = t.id
+                  ORDER BY CASE WHEN tu.role = 'admin' THEN 0 ELSE 1 END, tu.created_at ASC
+                  LIMIT 1) AS contact_email,
+                (SELECT s.status FROM subscriptions s
+                  WHERE s.tenant_id = t.id
+                  ORDER BY s.created_at DESC LIMIT 1) AS sub_status
+           FROM tenants t
+           ${clause}
+          ORDER BY t.created_at DESC
+          LIMIT ? OFFSET ?`
+      )
+      .bind(...binds, limit, offset)
+      .all<any>();
+
+    const data = (rows.results ?? []).map((r) => ({
+      id: r.id,
+      name: r.company_name,
+      email: r.contact_email ?? `${r.subdomain ?? 'tenant'}@example.com`,
+      status: uiTenantStatus(r.status),
+      createdAt: r.created_at ?? '',
+      userCount: r.user_count ?? 0,
+      subscription: {
+        plan: r.plan ?? 'trial',
+        status:
+          r.sub_status === 'cancelled'
+            ? 'cancelled'
+            : r.sub_status === 'past_due'
+              ? 'expired'
+              : 'active',
+      },
+    }));
+
+    return paginated(c, data, countRow?.c ?? 0, page, limit);
+  } catch (err) {
+    console.error('Error loading tenants:', err);
+    return error(c, 'Failed to load tenants', 500);
+  }
+});
+
+app.get('/tenants/:id', async (c) => {
+  const id = c.req.param('id');
+
+  try {
+    const db = c.env.MASTER_DB;
+
+    const row = await db
+      .prepare(
+        `SELECT t.id, t.company_name, t.subdomain, t.plan, t.status, t.settings,
+                t.created_at,
+                (SELECT tu.email FROM tenant_users tu
+                  WHERE tu.tenant_id = t.id
+                  ORDER BY CASE WHEN tu.role = 'admin' THEN 0 ELSE 1 END, tu.created_at ASC
+                  LIMIT 1) AS contact_email,
+                (SELECT tu.phone FROM tenant_users tu
+                  WHERE tu.tenant_id = t.id AND tu.phone IS NOT NULL
+                  ORDER BY tu.created_at ASC LIMIT 1) AS contact_phone
+           FROM tenants t
+          WHERE t.id = ?
+          LIMIT 1`
+      )
+      .bind(id)
+      .first<any>();
+
+    if (!row) return notFound(c, 'Tenant');
+
+    const sub = await db
+      .prepare(
+        `SELECT plan, status, next_billing_date
+           FROM subscriptions
+          WHERE tenant_id = ?
+          ORDER BY created_at DESC
+          LIMIT 1`
+      )
+      .bind(id)
+      .first<any>()
+      .catch(() => null);
+
+    // Per-tenant counts. In production these tables live in the tenant's own
+    // D1, so a miss here degrades to 0 rather than failing the page.
+    const userCount = await safeCount(
+      db,
+      'SELECT COUNT(*) AS c FROM tenant_users WHERE tenant_id = ?',
+      id
+    );
+    const contactCount = await safeCount(
+      db,
+      'SELECT COUNT(*) AS c FROM contacts WHERE tenant_id = ?',
+      id
+    );
+    const leadCount = await safeCount(
+      db,
+      'SELECT COUNT(*) AS c FROM leads WHERE tenant_id = ?',
+      id
+    );
+    const invoiceCount = await safeCount(
+      db,
+      'SELECT COUNT(*) AS c FROM invoices WHERE tenant_id = ?',
+      id
+    );
+
+    let website: string | undefined;
+    try {
+      const settings = row.settings ? JSON.parse(row.settings) : {};
+      website = settings.website ?? undefined;
+    } catch {
+      website = undefined;
+    }
+
+    return success(c, {
+      id: row.id,
+      name: row.company_name,
+      email: row.contact_email ?? `${row.subdomain ?? 'tenant'}@example.com`,
+      phone: row.contact_phone ?? undefined,
+      status: uiTenantStatus(row.status),
+      planId: row.plan ?? 'trial',
+      website,
+      createdAt: row.created_at ?? '',
+      subscription: {
+        plan: sub?.plan ?? row.plan ?? 'trial',
+        status:
+          sub?.status === 'cancelled'
+            ? 'cancelled'
+            : sub?.status === 'past_due'
+              ? 'expired'
+              : 'active',
+        renewalDate: sub?.next_billing_date ?? undefined,
+      },
+      stats: { userCount, contactCount, leadCount, invoiceCount },
+    });
+  } catch (err) {
+    console.error('Error loading tenant detail:', err);
+    return error(c, 'Failed to load tenant', 500);
+  }
+});
+
+export default app;

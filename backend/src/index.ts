@@ -81,6 +81,7 @@ import marketingSuggestionRoutes from './routes/marketing-suggestions';
 import driverRoutes from './routes/driver';
 import publicRoutes from './routes/public';
 import hsnCodeRoutes from './routes/hsn-codes';
+import adminRoutes from './routes/admin';
 import { checkFollowUpReminders } from './services/follow-up-reminders';
 import {
   checkBirthdayAnniversary,
@@ -260,6 +261,7 @@ const routeMounts: Array<[string, typeof authRoutes]> = [
   ['marketing/social-content', socialContentRoutes],
   ['marketing/suggestions', marketingSuggestionRoutes],
   ['hsn-codes', hsnCodeRoutes],
+  ['admin', adminRoutes],
 ];
 
 for (const [path, handler] of routeMounts) {

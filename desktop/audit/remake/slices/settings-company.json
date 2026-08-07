@@ -1,0 +1,83 @@
+{
+  "slice": "settings-company",
+  "title": "Company Settings",
+  "status": "existing",
+  "showcaseOrder": 45,
+  "endpoints": [
+    "DELETE /api/v1/settings/follow-up-sequences/:id",
+    "GET /api/v1/settings/assignment-rules",
+    "GET /api/v1/settings/company",
+    "GET /api/v1/settings/follow-up-sequences",
+    "GET /api/v1/settings/invoice-defaults",
+    "GET /api/v1/settings/itinerary-defaults",
+    "GET /api/v1/settings/numbering",
+    "GET /api/v1/settings/routing-rules",
+    "POST /api/v1/settings/follow-up-sequences",
+    "POST /api/v1/settings/logo",
+    "PUT /api/v1/settings/assignment-rules",
+    "PUT /api/v1/settings/company",
+    "PUT /api/v1/settings/follow-up-sequences/:id",
+    "PUT /api/v1/settings/invoice-defaults",
+    "PUT /api/v1/settings/itinerary-defaults",
+    "PUT /api/v1/settings/numbering",
+    "PUT /api/v1/settings/routing-rules"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/settings.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/settings/page.tsx",
+    "desktop/src/app/(app)/settings/company/page.tsx",
+    "desktop/src/app/(app)/settings/assignment-rules/page.tsx",
+    "desktop/src/app/(app)/settings/routing-rules/page.tsx",
+    "desktop/src/app/(app)/settings/followup-sequences/page.tsx"
+  ],
+  "newPages": [
+    "desktop/src/app/(app)/settings/numbering/page.tsx",
+    "desktop/src/app/(app)/settings/invoice-defaults/page.tsx",
+    "desktop/src/app/(app)/settings/itinerary-defaults/page.tsx"
+  ],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/15-settings.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/settings-company.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/settings/page.tsx",
+    "desktop/src/app/(app)/settings/company/**",
+    "desktop/src/app/(app)/settings/assignment-rules/**",
+    "desktop/src/app/(app)/settings/routing-rules/**",
+    "desktop/src/app/(app)/settings/followup-sequences/**",
+    "desktop/src/app/(app)/settings/numbering/**",
+    "desktop/src/app/(app)/settings/invoice-defaults/**",
+    "desktop/src/app/(app)/settings/itinerary-defaults/**",
+    "desktop/src/lib/api/settings.ts",
+    "desktop/e2e/settings-company.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": false,
+    "filterBar": false,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": false,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "Document numbering, invoice defaults and itinerary defaults are all client-only — endpoints exist in config.ts but no page reaches them. Company address should use AddressAutocomplete; company phone should use PhoneInput.",
+  "showcaseScript": [
+    "Open Settings → Company and update the GSTIN and logo",
+    "Set the invoice numbering prefix and next number",
+    "Configure default invoice terms and tax rate",
+    "Create a lead assignment rule by destination"
+  ]
+}

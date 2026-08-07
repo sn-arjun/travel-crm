@@ -1,0 +1,70 @@
+{
+  "slice": "settings-team",
+  "title": "Team & Users",
+  "status": "existing",
+  "showcaseOrder": 46,
+  "endpoints": [
+    "GET /api/v1/activity-logs",
+    "GET /api/v1/activity-logs/entity/:type/:id",
+    "GET /api/v1/activity-logs/user/:id",
+    "GET /api/v1/users",
+    "GET /api/v1/users/:id",
+    "GET /api/v1/users/:id/login-history",
+    "POST /api/v1/users",
+    "POST /api/v1/users/:id/unlock",
+    "PUT /api/v1/users/:id",
+    "PUT /api/v1/users/:id/activate",
+    "PUT /api/v1/users/:id/deactivate"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/users.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/settings/team/page.tsx",
+    "desktop/src/app/(app)/settings/profile/page.tsx",
+    "desktop/src/app/(app)/settings/email-signature/page.tsx",
+    "desktop/src/app/(app)/settings/login-history/page.tsx",
+    "desktop/src/app/(app)/settings/activity-log/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/15-settings.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/settings-team.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/settings/team/**",
+    "desktop/src/app/(app)/settings/profile/**",
+    "desktop/src/app/(app)/settings/email-signature/**",
+    "desktop/src/app/(app)/settings/login-history/**",
+    "desktop/src/app/(app)/settings/activity-log/**",
+    "desktop/src/lib/api/users.ts",
+    "desktop/e2e/settings-team.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": false,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": false,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "Only users.list/me/byId are in the client. Invite user, update role, activate/deactivate, unlock and per-user login history are orphaned. Activity logs have no API module at all despite three endpoints and a page.",
+  "showcaseScript": [
+    "Open Settings → Team",
+    "Invite a user and assign the Sales Manager role",
+    "Deactivate a departed user",
+    "Open the activity log and filter by that user"
+  ]
+}

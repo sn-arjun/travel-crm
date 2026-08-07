@@ -1,0 +1,65 @@
+{
+  "slice": "credit-debit-notes",
+  "title": "Credit & Debit Notes",
+  "status": "existing",
+  "showcaseOrder": 12,
+  "endpoints": [
+    "GET /api/v1/credit-notes",
+    "GET /api/v1/debit-notes",
+    "POST /api/v1/credit-notes",
+    "POST /api/v1/credit-notes/:id/apply",
+    "POST /api/v1/debit-notes",
+    "POST /api/v1/debit-notes/:id/apply"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/credit-notes.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/credit-notes/page.tsx",
+    "desktop/src/app/(app)/debit-notes/page.tsx"
+  ],
+  "newPages": [
+    "desktop/src/app/(app)/credit-notes/new/page.tsx",
+    "desktop/src/app/(app)/debit-notes/new/page.tsx"
+  ],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/09-credit-debit-notes.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/credit-debit-notes.spec.ts",
+  "seedHelpers": [
+    "seedCreditNote",
+    "seedInvoice"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/credit-notes/**",
+    "desktop/src/app/(app)/debit-notes/**",
+    "desktop/src/lib/api/credit-notes.ts",
+    "desktop/e2e/credit-debit-notes.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": false,
+    "detailDrawer": true,
+    "emptyState": false,
+    "skeleton": true,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "Debit-notes page imports the CreditNote type (#79). No create pages despite POST endpoints existing — creation is client-only.",
+  "showcaseScript": [
+    "Open Credit Notes and review outstanding balances",
+    "Issue a credit note against a paid invoice",
+    "Apply the credit note and watch the invoice balance drop",
+    "Switch to Debit Notes and issue one"
+  ]
+}

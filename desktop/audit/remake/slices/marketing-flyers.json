@@ -1,0 +1,75 @@
+{
+  "slice": "marketing-flyers",
+  "title": "Flyers & Branding",
+  "status": "existing",
+  "showcaseOrder": 33,
+  "endpoints": [
+    "DELETE /api/v1/marketing/flyer-templates/:id",
+    "DELETE /api/v1/marketing/flyer-templates/:templateId/assets/:assetId",
+    "DELETE /api/v1/marketing/flyers/:id",
+    "DELETE /api/v1/marketing/images/:id",
+    "GET /api/v1/marketing/branding",
+    "GET /api/v1/marketing/flyer-templates",
+    "GET /api/v1/marketing/flyer-templates/:id",
+    "GET /api/v1/marketing/flyers",
+    "GET /api/v1/marketing/flyers/:id",
+    "GET /api/v1/marketing/images",
+    "POST /api/v1/marketing/flyer-templates",
+    "POST /api/v1/marketing/flyer-templates/:id/assets",
+    "POST /api/v1/marketing/flyers",
+    "POST /api/v1/marketing/flyers/:id/upload",
+    "POST /api/v1/marketing/flyers/share",
+    "POST /api/v1/marketing/images/upload",
+    "POST /api/v1/marketing/images/upload-logo",
+    "PUT /api/v1/marketing/branding",
+    "PUT /api/v1/marketing/flyer-templates/:id"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/marketing.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/marketing/flyers/page.tsx",
+    "desktop/src/app/(app)/marketing/branding/page.tsx"
+  ],
+  "newPages": [
+    "desktop/src/app/(app)/marketing/flyers/templates/page.tsx"
+  ],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/17-m17-marketing-campaigns.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/marketing-flyers.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/marketing/flyers/**",
+    "desktop/src/app/(app)/marketing/branding/**",
+    "desktop/src/lib/api/marketing.ts",
+    "desktop/src/components/domain/marketing/**",
+    "desktop/e2e/marketing-flyers.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": false,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": false,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "P1 #77: not a real canvas editor — no drag-drop, resize or layers. Flyer template CRUD, template assets and image upload-logo are all orphaned. No \"My Flyers\" gallery (#115).",
+  "showcaseScript": [
+    "Open Marketing → Branding and set the company logo and palette",
+    "Open Flyers and pick a festival template",
+    "Customise the headline and offer, then generate",
+    "Share the flyer to a WhatsApp segment"
+  ]
+}

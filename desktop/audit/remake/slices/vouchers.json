@@ -1,0 +1,68 @@
+{
+  "slice": "vouchers",
+  "title": "Vouchers",
+  "status": "existing",
+  "showcaseOrder": 13,
+  "endpoints": [
+    "DELETE /api/v1/vouchers/:id",
+    "GET /api/v1/vouchers",
+    "GET /api/v1/vouchers/:id",
+    "GET /api/v1/vouchers/:id/pdf",
+    "GET /api/v1/vouchers/by-lead/:leadId",
+    "PATCH /api/v1/vouchers/:id/status",
+    "POST /api/v1/vouchers",
+    "POST /api/v1/vouchers/:id/send",
+    "POST /api/v1/vouchers/bulk-send",
+    "POST /api/v1/vouchers/from-itinerary-item",
+    "PUT /api/v1/vouchers/:id"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/vouchers.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/vouchers/page.tsx",
+    "desktop/src/app/(app)/vouchers/[id]/page.tsx",
+    "desktop/src/app/(app)/vouchers/[id]/edit/page.tsx",
+    "desktop/src/app/(app)/vouchers/new/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/07-vouchers.spec.ts",
+    "desktop/e2e/11-m11-vouchers.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/vouchers.spec.ts",
+  "seedHelpers": [
+    "seedVoucher"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/vouchers/**",
+    "desktop/src/lib/api/vouchers.ts",
+    "desktop/e2e/vouchers.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": false,
+    "detailDrawer": true,
+    "emptyState": false,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": true,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": true,
+    "themedExport": false
+  },
+  "notes": "P0 #1: the whole voucher frontend renders a data model the backend does not have (voucherNumber, issueDate, items[]). Must be rebuilt against the real schema before anything else. Custom send dialog instead of SendMessageDialog (#45).",
+  "showcaseScript": [
+    "Open Vouchers and filter by voucher type",
+    "Generate a hotel voucher from an itinerary item",
+    "Preview the branded voucher PDF",
+    "Bulk-send vouchers to the supplier and traveller"
+  ]
+}

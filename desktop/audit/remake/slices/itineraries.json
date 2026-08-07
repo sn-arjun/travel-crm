@@ -1,0 +1,73 @@
+{
+  "slice": "itineraries",
+  "title": "Itineraries",
+  "status": "existing",
+  "showcaseOrder": 6,
+  "endpoints": [
+    "DELETE /api/v1/itineraries/:id",
+    "DELETE /api/v1/itineraries/:id/share-link",
+    "GET /api/v1/itineraries",
+    "GET /api/v1/itineraries/:id",
+    "GET /api/v1/itineraries/:id/pdf",
+    "GET /api/v1/itineraries/:id/versions",
+    "POST /api/v1/itineraries",
+    "POST /api/v1/itineraries/:id/clone",
+    "POST /api/v1/itineraries/:id/new-version",
+    "POST /api/v1/itineraries/:id/send",
+    "POST /api/v1/itineraries/:id/share-link",
+    "PUT /api/v1/itineraries/:id"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/itineraries.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/itineraries/page.tsx",
+    "desktop/src/app/(app)/itineraries/[id]/page.tsx",
+    "desktop/src/app/(app)/itineraries/[id]/edit/page.tsx",
+    "desktop/src/app/(app)/itineraries/[id]/pdf/page.tsx",
+    "desktop/src/app/(app)/itineraries/new/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/05-itineraries.spec.ts",
+    "desktop/e2e/06-m6-itineraries-rate-cards.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/itineraries.spec.ts",
+  "seedHelpers": [
+    "seedItinerary",
+    "seedLead"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/itineraries/**",
+    "desktop/src/lib/api/itineraries.ts",
+    "desktop/src/components/domain/itineraries/**",
+    "desktop/e2e/itineraries.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": false,
+    "detailDrawer": true,
+    "emptyState": false,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": true,
+    "themedExport": false
+  },
+  "notes": "DELETE /itineraries/:id/share-link is orphaned (revoke public link has no UI). Lead picker is a custom dropdown not Combobox (IMPROVEMENTS #42). No auto-save draft.",
+  "showcaseScript": [
+    "Open Itineraries and filter by destination",
+    "Build a multi-day itinerary from a lead",
+    "Generate a public share link and open the quotation preview",
+    "Send the itinerary to the customer",
+    "Create a new version and compare"
+  ]
+}

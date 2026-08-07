@@ -1,0 +1,53 @@
+{
+  "slice": "marketing-opt-out",
+  "title": "Opt-Out Management",
+  "status": "existing",
+  "showcaseOrder": 35,
+  "endpoints": [
+    "GET /api/v1/marketing/opt-out",
+    "POST /api/v1/marketing/opt-out/:contactId",
+    "POST /api/v1/marketing/opt-out/:contactId/opt-in"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/marketing.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/marketing/opted-out/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/marketing-opt-out.spec.ts",
+  "seedHelpers": [
+    "seedContact"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/marketing/opted-out/**",
+    "desktop/src/lib/api/marketing.ts",
+    "desktop/e2e/marketing-opt-out.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": true,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "P0 #25: the opt-out route references contact columns that do not exist in the schema. Opt-in reversal has no UI.",
+  "showcaseScript": [
+    "Open Marketing → Opted-Out",
+    "Show contacts who unsubscribed and when",
+    "Re-subscribe a contact who asked to opt back in"
+  ]
+}

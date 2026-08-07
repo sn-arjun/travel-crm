@@ -1,0 +1,84 @@
+{
+  "slice": "contacts",
+  "title": "Contacts",
+  "status": "existing",
+  "showcaseOrder": 3,
+  "endpoints": [
+    "DELETE /api/v1/contacts/:id",
+    "DELETE /api/v1/contacts/custom-fields/:id",
+    "GET /api/v1/contacts",
+    "GET /api/v1/contacts/:id",
+    "GET /api/v1/contacts/:id/timeline",
+    "GET /api/v1/contacts/custom-fields",
+    "GET /api/v1/contacts/export",
+    "GET /api/v1/contacts/filter-options",
+    "GET /api/v1/contacts/shared-with-me",
+    "GET /api/v1/contacts/tags",
+    "GET /api/v1/contacts/upcoming-occasions",
+    "POST /api/v1/contacts",
+    "POST /api/v1/contacts/:id/share",
+    "POST /api/v1/contacts/bulk-tag",
+    "POST /api/v1/contacts/check-duplicate",
+    "POST /api/v1/contacts/custom-fields",
+    "POST /api/v1/contacts/import",
+    "POST /api/v1/contacts/merge",
+    "POST /api/v1/contacts/merge/preview",
+    "PUT /api/v1/contacts/:id",
+    "PUT /api/v1/contacts/custom-fields/:id"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/contacts.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/contacts/page.tsx",
+    "desktop/src/app/(app)/contacts/[id]/page.tsx",
+    "desktop/src/app/(app)/contacts/[id]/edit/page.tsx",
+    "desktop/src/app/(app)/contacts/new/page.tsx",
+    "desktop/src/app/(app)/contacts/merge/page.tsx",
+    "desktop/src/app/(app)/contacts/import/page.tsx"
+  ],
+  "newPages": [
+    "desktop/src/app/(app)/settings/custom-fields/page.tsx"
+  ],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/03-contacts.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/contacts.spec.ts",
+  "seedHelpers": [
+    "seedContact"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/contacts/**",
+    "desktop/src/app/(app)/settings/custom-fields/**",
+    "desktop/src/lib/api/contacts.ts",
+    "desktop/src/components/domain/contacts/**",
+    "desktop/e2e/contacts.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": false,
+    "infiniteScroll": true,
+    "hoverActions": false,
+    "detailDrawer": true,
+    "emptyState": false,
+    "skeleton": false,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": true,
+    "addressAutocomplete": true,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": true,
+    "themedExport": false
+  },
+  "notes": "Strongest slice today. Missing: FilterBar, skeleton, empty state, hover actions. GET /contacts/shared-with-me, POST /contacts/bulk-tag and the custom-fields CRUD have no UI at all.",
+  "showcaseScript": [
+    "Open Contacts and filter by tag",
+    "Create a contact with phone country code and Google address autocomplete",
+    "Open the detail drawer and confirm every field saved",
+    "Merge two duplicate contacts",
+    "Message the contact through the Communication Hub"
+  ]
+}

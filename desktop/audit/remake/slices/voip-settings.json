@@ -1,0 +1,70 @@
+{
+  "slice": "voip-settings",
+  "title": "VoIP Settings & Numbers",
+  "status": "existing",
+  "showcaseOrder": 28,
+  "endpoints": [
+    "DELETE /api/v1/voip/numbers/:id",
+    "GET /api/v1/voip/caller-info",
+    "GET /api/v1/voip/numbers",
+    "GET /api/v1/voip/settings",
+    "GET /api/v1/voip/test-connection",
+    "POST /api/v1/voip/numbers/purchase",
+    "POST /api/v1/voip/numbers/search",
+    "POST /api/v1/voip/recording-callback",
+    "POST /api/v1/voip/status-callback",
+    "POST /api/v1/voip/token",
+    "POST /api/v1/voip/twiml/dial-status",
+    "POST /api/v1/voip/twiml/inbound",
+    "POST /api/v1/voip/twiml/ivr-handler",
+    "POST /api/v1/voip/twiml/outbound",
+    "POST /api/v1/voip/voicemail-callback",
+    "POST /api/v1/voip/voicemail-complete",
+    "PUT /api/v1/voip/numbers/:id",
+    "PUT /api/v1/voip/settings"
+  ],
+  "gates": [
+    "voip_calling"
+  ],
+  "apiModules": [
+    "desktop/src/lib/api/voip.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/settings/voip/page.tsx",
+    "desktop/src/app/(app)/settings/phone-numbers/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/voip-settings.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/settings/voip/**",
+    "desktop/src/app/(app)/settings/phone-numbers/**",
+    "desktop/src/lib/api/voip.ts",
+    "desktop/e2e/voip-settings.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": false,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": false,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "Number search/purchase/update/delete are orphaned. Twilio callback routes are pre-auth and intentionally have no UI. Must degrade gracefully with no Twilio credentials configured.",
+  "showcaseScript": [
+    "Open Settings → VoIP and test the Twilio connection",
+    "Search for an available phone number",
+    "Purchase and assign it to a team member"
+  ]
+}

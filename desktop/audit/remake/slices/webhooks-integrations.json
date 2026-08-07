@@ -1,0 +1,50 @@
+{
+  "slice": "webhooks-integrations",
+  "title": "Webhooks & Integrations",
+  "status": "new",
+  "showcaseOrder": 48,
+  "endpoints": [
+    "POST /api/v1/leads/webhook",
+    "POST /api/v1/webhooks/sendgrid/events",
+    "POST /api/v1/webhooks/twilio/status"
+  ],
+  "gates": [],
+  "apiModules": [],
+  "pages": [],
+  "newPages": [
+    "desktop/src/app/(app)/settings/integrations/page.tsx"
+  ],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/webhooks-integrations.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/settings/integrations/**",
+    "desktop/src/lib/api/config.ts",
+    "desktop/e2e/webhooks-integrations.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": false,
+    "filterBar": false,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": false,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "ORPHANED: three pre-auth webhook receivers (Twilio status, SendGrid events, lead capture) with no settings UI. Users cannot discover their lead-capture webhook URL. P0 #8: the lead webhook reads tenantDb on a route where no auth sets tenant context. P0 #9: no Twilio signature verification.",
+  "showcaseScript": [
+    "Open Settings → Integrations",
+    "Copy the lead-capture webhook URL for the website form",
+    "Show recent inbound webhook deliveries",
+    "Confirm Twilio and SendGrid callback status"
+  ]
+}

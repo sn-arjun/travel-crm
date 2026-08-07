@@ -1,0 +1,70 @@
+{
+  "slice": "visa",
+  "title": "Visa Applications",
+  "status": "existing",
+  "showcaseOrder": 15,
+  "endpoints": [
+    "DELETE /api/v1/visa/:id",
+    "DELETE /api/v1/visa/:id/documents/:docId",
+    "GET /api/v1/visa",
+    "GET /api/v1/visa/:id",
+    "GET /api/v1/visa/:id/documents",
+    "GET /api/v1/visa/:id/documents/:docId/download",
+    "GET /api/v1/visa/dashboard",
+    "GET /api/v1/visa/missing-documents",
+    "POST /api/v1/visa",
+    "POST /api/v1/visa/:id/documents",
+    "POST /api/v1/visa/:id/notes",
+    "PUT /api/v1/visa/:id",
+    "PUT /api/v1/visa/:id/checklist/:itemId",
+    "PUT /api/v1/visa/:id/status"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/visa.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/visa/page.tsx",
+    "desktop/src/app/(app)/visa/[id]/page.tsx",
+    "desktop/src/app/(app)/visa/new/page.tsx",
+    "desktop/src/app/(app)/visa/dashboard/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/13-m13-travellers-visa.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/visa.spec.ts",
+  "seedHelpers": [
+    "seedTraveller"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/visa/**",
+    "desktop/src/lib/api/visa.ts",
+    "desktop/e2e/visa.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": false,
+    "detailDrawer": true,
+    "emptyState": false,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": true,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "Default status hardcoded to applied instead of not_started (#52). Raw inputs for traveller and destination country (#53). GET /visa/missing-documents is orphaned. No Kanban view (#112).",
+  "showcaseScript": [
+    "Open the Visa dashboard and see applications by stage",
+    "Create a visa application for a traveller",
+    "Tick off checklist items and upload a document",
+    "Move the application to Approved"
+  ]
+}

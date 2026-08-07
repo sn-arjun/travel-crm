@@ -1,0 +1,50 @@
+{
+  "slice": "accounts",
+  "title": "Accounts",
+  "status": "existing",
+  "showcaseOrder": 5,
+  "endpoints": [
+    "GET /api/v1/suppliers/categories/summary"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/suppliers.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/accounts/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/accounts.spec.ts",
+  "seedHelpers": [
+    "seedSupplier"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/accounts/**",
+    "desktop/e2e/accounts.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": false,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": false,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "DECIDED (owner, 2026-08-07): KEEP /accounts as an explicit, honestly-labelled VIEW OF SUPPLIERS. Do NOT invent an accounts backend, do NOT create an Account model, and do NOT delete the route. Requirements: (1) the page must state plainly in the UI that it is a filtered view of Suppliers — no pretending to be a separate entity; (2) it reads through suppliersApi only; (3) row actions and the detail drawer navigate into the Suppliers detail route rather than a fake /accounts/:id; (4) the sidebar label should read as a Suppliers view, e.g. nested under Suppliers; (5) it still meets the full list-page UX contract (FilterBar, infinite scroll, hover actions, skeleton, empty state, themed export).",
+  "showcaseScript": [
+    "Open Accounts from the sidebar and note it is a Suppliers view",
+    "Filter by category to narrow the corporate accounts",
+    "Open a row and land on the full Supplier detail"
+  ]
+}

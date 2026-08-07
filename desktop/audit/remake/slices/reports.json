@@ -1,0 +1,76 @@
+{
+  "slice": "reports",
+  "title": "Reports & Analytics",
+  "status": "existing",
+  "showcaseOrder": 42,
+  "endpoints": [
+    "DELETE /api/v1/reports/:id/cache",
+    "DELETE /api/v1/reports/cache",
+    "GET /api/v1/reports",
+    "GET /api/v1/reports/:id",
+    "GET /api/v1/reports/:id/export",
+    "GET /api/v1/reports/ageing",
+    "GET /api/v1/reports/outstanding"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/reports.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/reports/page.tsx",
+    "desktop/src/app/(app)/reports/sales/page.tsx",
+    "desktop/src/app/(app)/reports/financial/page.tsx",
+    "desktop/src/app/(app)/reports/leads/page.tsx",
+    "desktop/src/app/(app)/reports/customer/page.tsx",
+    "desktop/src/app/(app)/reports/team/page.tsx",
+    "desktop/src/app/(app)/reports/fleet/page.tsx",
+    "desktop/src/app/(app)/reports/supplier/page.tsx",
+    "desktop/src/app/(app)/reports/visa/page.tsx",
+    "desktop/src/app/(app)/reports/marketing/page.tsx",
+    "desktop/src/app/(app)/reports/pipeline/page.tsx",
+    "desktop/src/app/(app)/reports/revenue/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/10-financial-reports.spec.ts",
+    "desktop/e2e/14-reports.spec.ts",
+    "desktop/e2e/15-m15-reports-analytics.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/reports.spec.ts",
+  "seedHelpers": [
+    "seedInvoice",
+    "seedLead"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/reports/**",
+    "desktop/src/lib/api/reports.ts",
+    "desktop/src/components/domain/reports/**",
+    "desktop/e2e/reports.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": false,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": true,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "P0 #12: fallback data silently replaces real data on all 12 report pages — users see fake numbers. #13: the hub fetches 500 leads + 500 invoices client-side instead of calling GET /reports/dashboard. Excel export uses $ not ₹ (#14). Needs the dataviz skill palette and themed export.",
+  "showcaseScript": [
+    "Open the Reports hub",
+    "Run the Sales report for the last quarter",
+    "Change the date range and watch the chart update",
+    "Drill into the outstanding and ageing views",
+    "Export the report as a branded Excel file"
+  ]
+}

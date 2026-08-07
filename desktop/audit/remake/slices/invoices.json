@@ -1,0 +1,71 @@
+{
+  "slice": "invoices",
+  "title": "Invoices",
+  "status": "existing",
+  "showcaseOrder": 10,
+  "endpoints": [
+    "DELETE /api/v1/invoices/:id",
+    "GET /api/v1/invoices",
+    "GET /api/v1/invoices/:id",
+    "GET /api/v1/invoices/:id/payments",
+    "GET /api/v1/invoices/summary",
+    "POST /api/v1/invoices",
+    "POST /api/v1/invoices/:id/duplicate",
+    "POST /api/v1/invoices/:id/send",
+    "POST /api/v1/invoices/:id/void",
+    "POST /api/v1/invoices/from-itinerary",
+    "PUT /api/v1/invoices/:id"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/invoices.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/invoices/page.tsx",
+    "desktop/src/app/(app)/invoices/[id]/page.tsx",
+    "desktop/src/app/(app)/invoices/[id]/edit/page.tsx",
+    "desktop/src/app/(app)/invoices/new/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/06-invoices.spec.ts",
+    "desktop/e2e/07-m7-invoices-payments.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/invoices.spec.ts",
+  "seedHelpers": [
+    "seedInvoice",
+    "seedContact"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/invoices/**",
+    "desktop/src/lib/api/invoices.ts",
+    "desktop/src/components/domain/invoices/**",
+    "desktop/e2e/invoices.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": true,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": true,
+    "themedExport": false
+  },
+  "notes": "No GST/tax breakdown on detail (#36). Download PDF is a placeholder (#40). PDF missing branded header, QR, bank details, amount in words (#41). Custom send dialog instead of SendMessageDialog (#39).",
+  "showcaseScript": [
+    "Open Invoices and filter to overdue",
+    "Create a GST invoice from an itinerary",
+    "Show the tax breakdown and branded PDF preview",
+    "Email the invoice through the Communication Hub",
+    "Void a draft invoice"
+  ]
+}

@@ -1,0 +1,66 @@
+{
+  "slice": "whatsapp-campaigns",
+  "title": "WhatsApp Campaigns",
+  "status": "new",
+  "showcaseOrder": 36,
+  "endpoints": [
+    "DELETE /api/v1/whatsapp-campaigns/:id",
+    "GET /api/v1/whatsapp-campaigns",
+    "GET /api/v1/whatsapp-campaigns/:id",
+    "GET /api/v1/whatsapp-campaigns/:id/analytics",
+    "GET /api/v1/whatsapp-campaigns/:id/recipients",
+    "POST /api/v1/whatsapp-campaigns",
+    "POST /api/v1/whatsapp-campaigns/:id/cancel",
+    "POST /api/v1/whatsapp-campaigns/:id/pause",
+    "POST /api/v1/whatsapp-campaigns/:id/send",
+    "PUT /api/v1/whatsapp-campaigns/:id"
+  ],
+  "gates": [
+    "whatsapp_campaigns"
+  ],
+  "apiModules": [],
+  "pages": [],
+  "newPages": [
+    "desktop/src/app/(app)/marketing/whatsapp/page.tsx",
+    "desktop/src/app/(app)/marketing/whatsapp/new/page.tsx",
+    "desktop/src/app/(app)/marketing/whatsapp/[id]/page.tsx"
+  ],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/whatsapp-campaigns.spec.ts",
+  "seedHelpers": [
+    "seedContact"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/marketing/whatsapp/**",
+    "desktop/src/lib/api/whatsapp-campaigns.ts",
+    "desktop/src/lib/api/config.ts",
+    "desktop/src/components/layout/sidebar.tsx",
+    "desktop/e2e/whatsapp-campaigns.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": false,
+    "filterBar": false,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": false,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "BIGGEST SURPRISE: 10 fully-built, feature-gated endpoints with zero UI and zero client module. Needs a full slice build plus a sidebar entry under Marketing. Gate whatsapp_campaigns must degrade to an upsell state.",
+  "showcaseScript": [
+    "Open Marketing → WhatsApp Campaigns",
+    "Create a campaign from an approved WhatsApp template",
+    "Select the recipient segment and send",
+    "Pause the campaign mid-flight",
+    "Open analytics and show delivered, read and replied counts"
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "slice": "communication-inbox",
+  "title": "Communication Inbox",
+  "status": "existing",
+  "showcaseOrder": 25,
+  "endpoints": [
+    "GET /api/v1/communications/bulk-send/:batchId/status",
+    "GET /api/v1/communications/history",
+    "GET /api/v1/communications/log",
+    "POST /api/v1/communications/bulk-send",
+    "POST /api/v1/communications/send",
+    "POST /api/v1/communications/send-document",
+    "POST /api/v1/communications/send-template"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/communications.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/communication/page.tsx",
+    "desktop/src/app/(app)/communication/[contactId]/page.tsx",
+    "desktop/src/app/(app)/communication/compose/page.tsx",
+    "desktop/src/app/(app)/communication/bulk-send/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/08-m8-communication.spec.ts",
+    "desktop/e2e/12-communication.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/communication-inbox.spec.ts",
+  "seedHelpers": [
+    "seedContact"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/communication/page.tsx",
+    "desktop/src/app/(app)/communication/[contactId]/**",
+    "desktop/src/app/(app)/communication/compose/**",
+    "desktop/src/app/(app)/communication/bulk-send/**",
+    "desktop/src/lib/api/communications.ts",
+    "desktop/src/components/communication/**",
+    "desktop/e2e/communication-inbox.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": true,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "P0 #5: mock messages everywhere — inbox shows hardcoded chat, bulk-send has fake segments. Contact info hardcoded on the thread page (#60). API contracts mismatch backend Zod validators (#61). Attachment upload is a fake toast (#63).",
+  "showcaseScript": [
+    "Open the Communication Inbox",
+    "Open a contact thread and see the real message history",
+    "Compose an email from a template and send it",
+    "Bulk-send a WhatsApp message to a segment and watch the batch status"
+  ]
+}

@@ -1,0 +1,76 @@
+{
+  "slice": "fleet-trips",
+  "title": "Fleet — Trips",
+  "status": "existing",
+  "showcaseOrder": 18,
+  "endpoints": [
+    "DELETE /api/v1/fleet/trips/:id",
+    "DELETE /api/v1/fleet/trips/:tripId/costs/:costId",
+    "GET /api/v1/fleet/costs/report",
+    "GET /api/v1/fleet/trips",
+    "GET /api/v1/fleet/trips/:id",
+    "GET /api/v1/fleet/trips/:id/costs",
+    "GET /api/v1/fleet/trips/:id/costs/summary",
+    "GET /api/v1/fleet/trips/:id/timeline",
+    "POST /api/v1/fleet/calculate-distance",
+    "POST /api/v1/fleet/trips",
+    "POST /api/v1/fleet/trips/:id/costs",
+    "POST /api/v1/fleet/trips/:id/generate-invoice",
+    "POST /api/v1/fleet/trips/:id/generate-voucher",
+    "PUT /api/v1/fleet/trips/:id",
+    "PUT /api/v1/fleet/trips/:id/status"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/fleet.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/fleet/trips/page.tsx",
+    "desktop/src/app/(app)/fleet/trips/[id]/page.tsx",
+    "desktop/src/app/(app)/fleet/trips/[id]/edit/page.tsx",
+    "desktop/src/app/(app)/fleet/trips/new/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [
+    "desktop/src/stores/fleet-store.ts"
+  ],
+  "existingSpecs": [
+    "desktop/e2e/18-m18-fleet.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/fleet-trips.spec.ts",
+  "seedHelpers": [
+    "seedVehicle",
+    "seedDriver"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/fleet/trips/**",
+    "desktop/src/lib/api/fleet.ts",
+    "desktop/src/components/domain/fleet/**",
+    "desktop/e2e/fleet-trips.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": true,
+    "phoneInput": true,
+    "addressAutocomplete": true,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "P0 #22: trip detail renders hardcoded fake vehicle/driver/passenger strings. Raw vehicleId shown in list (#35). POST /trips/:id/generate-invoice and /generate-voucher are orphaned.",
+  "showcaseScript": [
+    "Open Fleet → Trips in Kanban view",
+    "Create a trip assigning an available vehicle and driver",
+    "Move the trip through Assigned → In Progress → Completed",
+    "Add fuel and toll costs, then view the cost summary",
+    "Generate the trip invoice"
+  ]
+}

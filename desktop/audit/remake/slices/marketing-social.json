@@ -1,0 +1,63 @@
+{
+  "slice": "marketing-social",
+  "title": "Social Content & Suggestions",
+  "status": "existing",
+  "showcaseOrder": 34,
+  "endpoints": [
+    "DELETE /api/v1/marketing/social-content/:id",
+    "GET /api/v1/marketing/social-content",
+    "GET /api/v1/marketing/social-content/:id",
+    "GET /api/v1/marketing/suggestions",
+    "POST /api/v1/marketing/social-content/generate",
+    "POST /api/v1/marketing/social-content/generate-batch",
+    "POST /api/v1/marketing/suggestions/generate",
+    "PUT /api/v1/marketing/social-content/:id",
+    "PUT /api/v1/marketing/suggestions/:id/accept",
+    "PUT /api/v1/marketing/suggestions/:id/dismiss"
+  ],
+  "gates": [
+    "ai_assistant"
+  ],
+  "apiModules": [
+    "desktop/src/lib/api/marketing.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/marketing/social/page.tsx",
+    "desktop/src/app/(app)/marketing/festivals/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/marketing-social.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/marketing/social/**",
+    "desktop/src/app/(app)/marketing/festivals/**",
+    "desktop/src/lib/api/marketing.ts",
+    "desktop/e2e/marketing-social.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": true,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "AI-generated social posts. POST /generate-batch, PUT/:id, DELETE/:id are orphaned. Marketing suggestions accept/dismiss are orphaned. Must degrade when the AI provider is unconfigured.",
+  "showcaseScript": [
+    "Open Marketing → Social Content",
+    "Generate a batch of Instagram captions for a destination",
+    "Edit one and mark it approved",
+    "Review AI festival-offer suggestions and accept one"
+  ]
+}

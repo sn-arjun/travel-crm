@@ -1,0 +1,58 @@
+{
+  "slice": "ai-settings",
+  "title": "AI Settings & Usage",
+  "status": "existing",
+  "showcaseOrder": 41,
+  "endpoints": [
+    "GET /api/v1/ai/settings",
+    "GET /api/v1/ai/settings/features/check/:featureKey",
+    "GET /api/v1/ai/settings/provider",
+    "GET /api/v1/ai/settings/usage",
+    "PUT /api/v1/ai/settings/features"
+  ],
+  "gates": [
+    "ai_assistant"
+  ],
+  "apiModules": [
+    "desktop/src/lib/api/ai.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/settings/ai/page.tsx",
+    "desktop/src/app/(app)/settings/ai-usage/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [],
+  "targetSpec": "desktop/e2e/ai-settings.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/settings/ai/**",
+    "desktop/src/app/(app)/settings/ai-usage/**",
+    "desktop/src/lib/api/ai.ts",
+    "desktop/e2e/ai-settings.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": false,
+    "filterBar": false,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": true,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "This slice is the control plane for every AI gate. It must show which features are on, the provider in use, and daily/monthly usage against caps — the degradation story for all other AI slices depends on it.",
+  "showcaseScript": [
+    "Open Settings → AI",
+    "Toggle individual AI features on and off",
+    "Show the active provider and model",
+    "Open AI Usage and show consumption against the daily cap"
+  ]
+}

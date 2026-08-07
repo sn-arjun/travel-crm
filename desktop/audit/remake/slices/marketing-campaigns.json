@@ -1,0 +1,66 @@
+{
+  "slice": "marketing-campaigns",
+  "title": "Marketing Campaigns",
+  "status": "existing",
+  "showcaseOrder": 31,
+  "endpoints": [
+    "DELETE /api/v1/marketing/campaigns/:id",
+    "GET /api/v1/marketing/campaigns",
+    "GET /api/v1/marketing/campaigns/:id",
+    "GET /api/v1/marketing/campaigns/:id/analytics",
+    "GET /api/v1/marketing/campaigns/:id/recipients",
+    "POST /api/v1/marketing/campaigns",
+    "POST /api/v1/marketing/campaigns/:id/cancel",
+    "POST /api/v1/marketing/campaigns/:id/send",
+    "PUT /api/v1/marketing/campaigns/:id"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/marketing.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/marketing/campaigns/page.tsx",
+    "desktop/src/app/(app)/marketing/page.tsx"
+  ],
+  "newPages": [
+    "desktop/src/app/(app)/marketing/campaigns/new/page.tsx",
+    "desktop/src/app/(app)/marketing/campaigns/[id]/page.tsx"
+  ],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/17-m17-marketing-campaigns.spec.ts",
+    "desktop/e2e/19-marketing.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/marketing-campaigns.spec.ts",
+  "seedHelpers": [],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/marketing/campaigns/**",
+    "desktop/src/app/(app)/marketing/page.tsx",
+    "desktop/src/lib/api/marketing.ts",
+    "desktop/e2e/marketing-campaigns.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": false,
+    "detailDrawer": true,
+    "emptyState": false,
+    "skeleton": true,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "Separate backend from /campaigns — multi-channel marketing campaigns with their own analytics and recipients. Create/detail pages missing entirely; analytics endpoint orphaned. Campaign scheduler cron queries the wrong table (#11).",
+  "showcaseScript": [
+    "Open Marketing → Campaigns",
+    "Create a multi-channel campaign with a flyer attached",
+    "Send it to a segment",
+    "Open the analytics view and show delivery and engagement"
+  ]
+}

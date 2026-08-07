@@ -1,0 +1,65 @@
+{
+  "slice": "campaigns",
+  "title": "Email Campaigns",
+  "status": "existing",
+  "showcaseOrder": 30,
+  "endpoints": [
+    "DELETE /api/v1/campaigns/:id",
+    "GET /api/v1/campaigns",
+    "GET /api/v1/campaigns/:id",
+    "GET /api/v1/campaigns/:id/recipients",
+    "POST /api/v1/campaigns",
+    "POST /api/v1/campaigns/:id/cancel",
+    "POST /api/v1/campaigns/:id/schedule",
+    "POST /api/v1/campaigns/:id/send",
+    "PUT /api/v1/campaigns/:id"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/campaigns.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/campaigns/page.tsx",
+    "desktop/src/app/(app)/campaigns/[id]/page.tsx",
+    "desktop/src/app/(app)/campaigns/new/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/09-m9-campaigns-email.spec.ts",
+    "desktop/e2e/13-campaigns.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/campaigns.spec.ts",
+  "seedHelpers": [
+    "seedCampaign"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/campaigns/**",
+    "desktop/src/lib/api/campaigns.ts",
+    "desktop/e2e/campaigns.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": true,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "Campaign detail shows 8 hardcoded mock recipients (#64). PUT /campaigns/:id and DELETE /campaigns/:id are orphaned — no edit or delete UI.",
+  "showcaseScript": [
+    "Open Campaigns and filter by status",
+    "Create an email campaign targeting a segment",
+    "Schedule it and show the recipient list",
+    "Open a sent campaign and read its open and click rates"
+  ]
+}

@@ -1,0 +1,93 @@
+{
+  "slice": "ai-intelligence",
+  "title": "AI Intelligence & Insights",
+  "status": "existing",
+  "showcaseOrder": 39,
+  "endpoints": [
+    "GET /api/v1/ai/intelligence/document-scans",
+    "GET /api/v1/ai/intelligence/document-scans/:id",
+    "GET /api/v1/ai/intelligence/insights",
+    "GET /api/v1/ai/intelligence/insights/:id",
+    "GET /api/v1/ai/intelligence/lead-score/:leadId",
+    "GET /api/v1/ai/intelligence/lead-score/:leadId/history",
+    "GET /api/v1/ai/intelligence/nl-queries",
+    "GET /api/v1/ai/intelligence/recommendations",
+    "GET /api/v1/ai/intelligence/smart-followups",
+    "POST /api/v1/ai/intelligence/document-scans/:id/apply",
+    "POST /api/v1/ai/intelligence/document-scans/:id/reject",
+    "POST /api/v1/ai/intelligence/insights/:id/action",
+    "POST /api/v1/ai/intelligence/insights/:id/dismiss",
+    "POST /api/v1/ai/intelligence/insights/customer/:contactId",
+    "POST /api/v1/ai/intelligence/insights/predictions",
+    "POST /api/v1/ai/intelligence/insights/trends",
+    "POST /api/v1/ai/intelligence/lead-score/:leadId",
+    "POST /api/v1/ai/intelligence/lead-scores/bulk",
+    "POST /api/v1/ai/intelligence/nl-query",
+    "POST /api/v1/ai/intelligence/ocr/passport",
+    "POST /api/v1/ai/intelligence/ocr/supplier-invoice",
+    "POST /api/v1/ai/intelligence/ocr/visa-classify",
+    "POST /api/v1/ai/intelligence/recommendations/:id/act",
+    "POST /api/v1/ai/intelligence/recommendations/:id/dismiss",
+    "POST /api/v1/ai/intelligence/smart-followup/:leadId",
+    "POST /api/v1/ai/intelligence/smart-followups/:id/dismiss",
+    "POST /api/v1/ai/intelligence/smart-followups/:id/send"
+  ],
+  "gates": [
+    "ai_intelligence"
+  ],
+  "apiModules": [
+    "desktop/src/lib/api/ai.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/ai/insights/page.tsx",
+    "desktop/src/app/(app)/ai/lead-score/page.tsx",
+    "desktop/src/app/(app)/ai/lead-score/[id]/page.tsx",
+    "desktop/src/app/(app)/ai/ocr/page.tsx",
+    "desktop/src/app/(app)/ai/smart-followups/page.tsx"
+  ],
+  "newPages": [
+    "desktop/src/app/(app)/ai/document-scans/page.tsx"
+  ],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/18-ai-features.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/ai-intelligence.spec.ts",
+  "seedHelpers": [
+    "seedLead"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/ai/insights/**",
+    "desktop/src/app/(app)/ai/lead-score/**",
+    "desktop/src/app/(app)/ai/ocr/**",
+    "desktop/src/app/(app)/ai/smart-followups/**",
+    "desktop/src/app/(app)/ai/document-scans/**",
+    "desktop/src/lib/api/ai.ts",
+    "desktop/e2e/ai-intelligence.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": false,
+    "filterBar": false,
+    "infiniteScroll": false,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": true,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "Gated ai_intelligence. Orphaned: nl-queries history, insight dismiss/action, customer insights, predictions, recommendation act/dismiss, bulk lead scoring, the whole document-scans review flow, and smart-followup send/dismiss.",
+  "showcaseScript": [
+    "Open AI → Insights and read the generated recommendations",
+    "Ask a natural-language question about pipeline revenue",
+    "Open a lead score and show the contributing factors",
+    "Scan a passport with OCR and apply the extracted fields",
+    "Send an AI-drafted smart follow-up"
+  ]
+}

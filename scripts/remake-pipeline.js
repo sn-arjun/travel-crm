@@ -94,6 +94,28 @@ const BACKEND_ALLOWED_CHANGES = [
   // Untracked (git rm --cached) — it holds local dev secrets and was committed
   // despite the README calling it gitignored. The file stays on disk.
   'backend/.dev.vars',
+  // The /admin surface, built by the backend:admin job and now a permanent part
+  // of the codebase. Listed here so it does not flag on the ~100 later jobs;
+  // BACKEND_ADMIN_CHANGES still governs who may CREATE it.
+  'backend/src/routes/admin.ts',
+  'backend/src/middleware/require-super-admin.ts',
+  'backend/src/index.ts',
+  'backend/test/admin.test.ts',
+];
+
+/**
+ * The owner lifted the freeze for the missing /admin surface (the 10 in-desktop
+ * super-admin pages call API_ENDPOINTS.admin.* and every one 404s today).
+ *
+ * These are allowed ONLY for the `backend:admin` job. Slice and verify jobs are
+ * still held to BACKEND_ALLOWED_CHANGES, so a wandering agent cannot use the
+ * lifted freeze as a general licence to edit the backend.
+ */
+const BACKEND_ADMIN_CHANGES = [
+  'backend/src/routes/admin.ts',
+  'backend/src/middleware/require-super-admin.ts',
+  'backend/src/index.ts',
+  'backend/test/admin.test.ts',
 ];
 
 /**
@@ -200,7 +222,35 @@ function buildJobs() {
     },
   ];
 
+  // Backend surfaces the owner authorised building. Must precede any slice whose
+  // manifest declares `requiresBackend`, or that slice has nothing to call.
+  const needsAdminBackend = slices.some((s) => {
+    try {
+      return JSON.parse(fs.readFileSync(sliceManifestPath(s), 'utf8')).requiresBackend === 'admin';
+    } catch {
+      return false;
+    }
+  });
+  if (needsAdminBackend) {
+    jobs.push({
+      id: 'backend:admin',
+      phase: 'backend',
+      model: OPUS,
+      cmd: '/remake-backend admin',
+      gates: ['backendFrozen', 'backendTests'],
+      requires: [sliceManifestPath('super-admin')],
+      produces: [path.join(BACKEND, 'src', 'routes', 'admin.ts')],
+    });
+  }
+
   for (const s of slices) {
+    // A slice whose API was built by a backend job cannot run before it.
+    let dependsOn = [];
+    try {
+      const m = JSON.parse(fs.readFileSync(sliceManifestPath(s), 'utf8'));
+      if (m.requiresBackend) dependsOn = [`backend:${m.requiresBackend}`];
+    } catch { /* manifest absent → no dependency */ }
+
     jobs.push({
       id: `slice:${s}`,
       phase: 'slice',
@@ -211,6 +261,7 @@ function buildJobs() {
       // very slice that wandered, instead of at the end of a 30-hour run.
       gates: ['backendFrozen', 'typecheck', 'unit'],
       requires: [CONTRACT_FILE, sliceManifestPath(s)],
+      dependsOn,
       produces: [],
     });
   }
@@ -466,18 +517,55 @@ const GATES = {
    * catches a wandering agent on the exact slice that wandered. Complements
    * `backendTests` below, which proves behavior rather than structure.
    */
-  backendFrozen: () => {
+  backendFrozen: (job) => {
     console.log('  [gate] backend freeze (git diff)...');
+    // Only the backend:admin job may touch the /admin surface.
+    const allowed =
+      job && job.phase === 'backend'
+        ? [...BACKEND_ALLOWED_CHANGES, ...BACKEND_ADMIN_CHANGES]
+        : BACKEND_ALLOWED_CHANGES;
+
     const base = sh('git', ['merge-base', 'HEAD', BASE_REF], ROOT);
     const ref = base.ok && base.output.trim() ? base.output.trim() : BASE_REF;
     const diff = sh('git', ['diff', '--name-only', ref, '--', 'backend/'], ROOT);
     if (!diff.ok) return { ok: true, output: '(could not diff; skipping freeze check)' };
+
+    // `git diff` only reports TRACKED files, so a brand-new file an agent
+    // creates under backend/ would slip the freeze entirely. Add untracked
+    // files explicitly.
+    const untracked = sh(
+      'git',
+      ['ls-files', '--others', '--exclude-standard', '--', 'backend/'],
+      ROOT
+    );
+
     // sh() merges stderr, and git emits CRLF warnings there. Keep only real paths.
-    const changed = diff.output
-      .split(/\r?\n/)
-      .map((s) => s.trim())
-      .filter((s) => s.startsWith('backend/') && !s.includes(' '));
-    const illegal = changed.filter((f) => !BACKEND_ALLOWED_CHANGES.includes(f));
+    const toPaths = (out) =>
+      String(out)
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter((s) => s.startsWith('backend/') && !s.includes(' '));
+
+    const changed = [...new Set([...toPaths(diff.output), ...toPaths(untracked.output)])];
+    const illegal = changed.filter((f) => !allowed.includes(f));
+
+    // index.ts is allow-listed only because the admin mount lives there. It is
+    // the single most likely file to be edited by accident, so verify its diff
+    // is CONFINED to that mount rather than trusting the path allowance.
+    if (changed.includes('backend/src/index.ts')) {
+      const d = sh('git', ['diff', '-U0', ref, '--', 'backend/src/index.ts'], ROOT);
+      const touched = d.output
+        .split(/\r?\n/)
+        .filter((l) => /^[+-][^+-]/.test(l))
+        .filter((l) => !/admin/i.test(l));
+      if (touched.length) {
+        illegal.push(
+          'backend/src/index.ts (changes beyond the admin mount:\n' +
+            touched.slice(0, 6).map((l) => '      ' + l.trim()).join('\n') +
+            ')'
+        );
+      }
+    }
     if (illegal.length) {
       return {
         ok: false,
@@ -508,7 +596,7 @@ const GATES = {
   },
 };
 
-function runGate(name) {
+function runGate(name, job) {
   if (name.startsWith('spec:')) {
     const slice = name.slice(5);
     const spec = `e2e/${slice}.spec.ts`;
@@ -520,12 +608,12 @@ function runGate(name) {
   }
   const fn = GATES[name];
   if (!fn) return { ok: true, output: `(no gate named ${name})` };
-  return fn();
+  return fn(job);
 }
 
 function runGates(job) {
   for (const g of job.gates) {
-    const res = runGate(g);
+    const res = runGate(g, job);
     if (!res.ok) {
       console.log(`  [gate] FAILED: ${g}`);
       return { ok: false, gate: g, output: res.output };
@@ -621,8 +709,26 @@ function missingProduces(job) {
 
 function runJob(job, st) {
   if (isDone(st, job.id)) {
-    console.log(`  SKIP ${job.id} — already ok`);
-    return true;
+    // A job marked ok can still be invalidated later (a subsequent job, or a
+    // human, deleting something it produced). Re-verify rather than trusting
+    // the checkpoint blindly.
+    const gone = missingProduces(job);
+    if (gone.length) {
+      const rel = gone.map((p) => path.relative(ROOT, p)).join(', ');
+      console.log(`  ${job.id} was ok but its output is gone (${rel}) — re-running.`);
+      delete st.jobs[job.id];
+      saveState(st);
+    } else {
+      console.log(`  SKIP ${job.id} — already ok`);
+      return true;
+    }
+  }
+
+  const unmet = (job.dependsOn || []).filter((d) => !isDone(st, d));
+  if (unmet.length) {
+    console.log(`  SKIP ${job.id} — upstream job not ok: ${unmet.join(', ')}`);
+    markJob(st, job.id, 'skipped', `upstream not ok: ${unmet.join(', ')}`);
+    return false;
   }
 
   const missing = missingRequires(job);
@@ -807,7 +913,7 @@ function usage() {
     --preflight        Check blockers and exit (runs nothing)
     --dry-run          Print the job graph and exit
     --all              Run every job in order (unattended)
-    --phase <name>     inventory | foundation | slice | verify | cleanup | showcase
+    --phase <name>     inventory | foundation | backend | slice | verify | cleanup | showcase
     --job <id>         Run one job, e.g. slice:leads
     --resume           Run every job not yet marked ok
     --retry <id>       Clear one job's state and re-run it
@@ -874,7 +980,7 @@ function main() {
     if (a === '--resume') { selector = { kind: 'resume' }; continue; }
     if (a === '--phase') {
       const p = args[++i];
-      const valid = ['inventory', 'foundation', 'slice', 'verify', 'cleanup', 'showcase'];
+      const valid = ['inventory', 'foundation', 'backend', 'slice', 'verify', 'cleanup', 'showcase'];
       if (!valid.includes(p)) { console.error(`  Unknown phase: ${p}`); process.exit(1); }
       selector = { kind: 'phase', value: p };
       continue;

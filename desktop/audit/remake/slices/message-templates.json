@@ -1,0 +1,60 @@
+{
+  "slice": "message-templates",
+  "title": "Message Templates",
+  "status": "existing",
+  "showcaseOrder": 26,
+  "endpoints": [
+    "DELETE /api/v1/message-templates/:id",
+    "GET /api/v1/message-templates",
+    "GET /api/v1/message-templates/:id",
+    "POST /api/v1/message-templates",
+    "PUT /api/v1/message-templates/:id"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/templates.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/communication/templates/page.tsx",
+    "desktop/src/app/(app)/communication/templates/new/page.tsx",
+    "desktop/src/app/(app)/communication/templates/[id]/edit/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/08-m8-communication.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/message-templates.spec.ts",
+  "seedHelpers": [
+    "seedEmailTemplate"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/communication/templates/**",
+    "desktop/src/lib/api/templates.ts",
+    "desktop/e2e/message-templates.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": true,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "IMPROVEMENTS #6 said no API client existed — templates.ts now exists and is wired. Verify the template CRUD pages actually call it rather than local data.",
+  "showcaseScript": [
+    "Open Message Templates and filter by channel",
+    "Create a WhatsApp template with merge variables",
+    "Preview it with a real contact substituted",
+    "Use it from a lead detail page"
+  ]
+}

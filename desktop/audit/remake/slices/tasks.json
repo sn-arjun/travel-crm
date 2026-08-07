@@ -1,0 +1,69 @@
+{
+  "slice": "tasks",
+  "title": "Tasks",
+  "status": "existing",
+  "showcaseOrder": 21,
+  "endpoints": [
+    "DELETE /api/v1/tasks/:id",
+    "DELETE /api/v1/tasks/:taskId/comments/:commentId",
+    "GET /api/v1/tasks",
+    "GET /api/v1/tasks/:id",
+    "GET /api/v1/tasks/:id/subtasks",
+    "GET /api/v1/tasks/:taskId/comments",
+    "GET /api/v1/tasks/dashboard/summary",
+    "GET /api/v1/tasks/leads/:leadId/tasks",
+    "PATCH /api/v1/tasks/:id/status",
+    "POST /api/v1/tasks",
+    "POST /api/v1/tasks/:taskId/comments",
+    "PUT /api/v1/tasks/:id",
+    "PUT /api/v1/tasks/:taskId/comments/:commentId"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/tasks.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/tasks/page.tsx",
+    "desktop/src/app/(app)/tasks/[id]/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/11-tasks-calendar.spec.ts",
+    "desktop/e2e/14-m14-tasks-calendar.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/tasks.spec.ts",
+  "seedHelpers": [
+    "seedTask"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/tasks/**",
+    "desktop/src/lib/api/tasks.ts",
+    "desktop/src/components/domain/tasks/**",
+    "desktop/e2e/tasks.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": false,
+    "detailDrawer": true,
+    "emptyState": false,
+    "skeleton": true,
+    "relationCombobox": true,
+    "urlPrefill": true,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "Raw leadId and assignedTo shown as text (#33). Status enum mismatch pending/completed vs todo/done (#56). Create form missing assignedTo, category, leadId (#54). Comments CRUD is orphaned.",
+  "showcaseScript": [
+    "Open Tasks in Kanban view",
+    "Create a task assigned to a teammate and linked to a lead",
+    "Add a subtask and a comment",
+    "Drag the task to Done and show the dashboard count update"
+  ]
+}

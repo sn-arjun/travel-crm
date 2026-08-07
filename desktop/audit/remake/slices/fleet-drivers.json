@@ -1,0 +1,75 @@
+{
+  "slice": "fleet-drivers",
+  "title": "Fleet — Drivers",
+  "status": "existing",
+  "showcaseOrder": 17,
+  "endpoints": [
+    "DELETE /api/v1/fleet/drivers/:driverId/documents/:docId",
+    "DELETE /api/v1/fleet/drivers/:id",
+    "GET /api/v1/fleet/documents/drivers/expiring",
+    "GET /api/v1/fleet/drivers",
+    "GET /api/v1/fleet/drivers/:driverId/documents/:docId/download",
+    "GET /api/v1/fleet/drivers/:id",
+    "GET /api/v1/fleet/drivers/:id/documents",
+    "GET /api/v1/fleet/drivers/:id/schedule",
+    "GET /api/v1/fleet/drivers/:id/trips",
+    "GET /api/v1/fleet/drivers/schedule",
+    "POST /api/v1/fleet/drivers",
+    "POST /api/v1/fleet/drivers/:id/documents",
+    "POST /api/v1/fleet/drivers/:id/rate",
+    "PUT /api/v1/fleet/drivers/:id",
+    "PUT /api/v1/fleet/drivers/:id/status"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/fleet.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/fleet/drivers/page.tsx",
+    "desktop/src/app/(app)/fleet/drivers/[id]/page.tsx",
+    "desktop/src/app/(app)/fleet/drivers/[id]/edit/page.tsx",
+    "desktop/src/app/(app)/fleet/drivers/new/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [
+    "desktop/src/stores/fleet-store.ts"
+  ],
+  "existingSpecs": [
+    "desktop/e2e/18-m18-fleet.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/fleet-drivers.spec.ts",
+  "seedHelpers": [
+    "seedDriver"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/fleet/drivers/**",
+    "desktop/src/lib/api/fleet.ts",
+    "desktop/src/components/domain/fleet/**",
+    "desktop/e2e/fleet-drivers.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": true,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": false,
+    "addressAutocomplete": false,
+    "currencyInput": false,
+    "datePicker": true,
+    "sendMessageDialog": false,
+    "themedExport": false
+  },
+  "notes": "MOCKED: driver-schedule-calendar.tsx imports fleet-mock-data. Documents tab empty (#70). License badge always \"valid\" regardless of expiry (#71). No PhoneInput on driver form.",
+  "showcaseScript": [
+    "Open Fleet → Drivers and filter by availability",
+    "Add a driver with licence number and expiry",
+    "Upload licence and ID documents",
+    "Open the driver schedule calendar for the week",
+    "Rate the driver after a completed trip"
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "slice": "suppliers",
+  "title": "Suppliers",
+  "status": "existing",
+  "showcaseOrder": 9,
+  "endpoints": [
+    "DELETE /api/v1/suppliers/:id",
+    "GET /api/v1/suppliers",
+    "GET /api/v1/suppliers/:id",
+    "GET /api/v1/suppliers/:id/ledger",
+    "GET /api/v1/suppliers/:id/payments",
+    "GET /api/v1/suppliers/:id/rate-cards",
+    "GET /api/v1/suppliers/compare-rates",
+    "POST /api/v1/suppliers",
+    "POST /api/v1/suppliers/:id/payments",
+    "POST /api/v1/suppliers/:id/rate",
+    "POST /api/v1/suppliers/:id/rate-cards",
+    "POST /api/v1/suppliers/:id/toggle-preferred",
+    "PUT /api/v1/suppliers/:id"
+  ],
+  "gates": [],
+  "apiModules": [
+    "desktop/src/lib/api/suppliers.ts"
+  ],
+  "pages": [
+    "desktop/src/app/(app)/suppliers/page.tsx",
+    "desktop/src/app/(app)/suppliers/[id]/page.tsx",
+    "desktop/src/app/(app)/suppliers/[id]/edit/page.tsx",
+    "desktop/src/app/(app)/suppliers/new/page.tsx",
+    "desktop/src/app/(app)/suppliers/compare/page.tsx"
+  ],
+  "newPages": [],
+  "stores": [],
+  "existingSpecs": [
+    "desktop/e2e/08-suppliers.spec.ts",
+    "desktop/e2e/12-m12-suppliers.spec.ts"
+  ],
+  "targetSpec": "desktop/e2e/suppliers.spec.ts",
+  "seedHelpers": [
+    "seedSupplier"
+  ],
+  "fileAllowlist": [
+    "desktop/src/app/(app)/suppliers/**",
+    "desktop/src/lib/api/suppliers.ts",
+    "desktop/src/components/domain/suppliers/**",
+    "desktop/e2e/suppliers.spec.ts"
+  ],
+  "uxContract": {
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": false,
+    "detailDrawer": false,
+    "emptyState": false,
+    "skeleton": false,
+    "relationCombobox": false,
+    "urlPrefill": false,
+    "phoneInput": true,
+    "addressAutocomplete": true,
+    "currencyInput": false,
+    "datePicker": false,
+    "sendMessageDialog": true,
+    "themedExport": false
+  },
+  "notes": "Detail page has field-name mismatches vs backend (IMPROVEMENTS #26). compare-rates sends POST to a GET-only route (#20). Supplier ledger and payments tabs need real wiring.",
+  "showcaseScript": [
+    "Open Suppliers and filter by category",
+    "Add a supplier with phone country code and address lookup",
+    "Compare rates across suppliers for one service",
+    "Record a supplier payment and view the ledger"
+  ]
+}
