@@ -30,11 +30,17 @@
       "timestamp": "2026-08-08T13:19:27.599Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:invoices": {
+      "status": "ok",
+      "timestamp": "2026-08-08T13:26:31.348Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "slice:contacts",
-    "status": "failed",
-    "timestamp": "2026-08-08T07:56:36.473Z"
+    "id": "slice:invoices",
+    "status": "ok",
+    "timestamp": "2026-08-08T13:26:31.348Z"
   }
 }
