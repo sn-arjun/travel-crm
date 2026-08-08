@@ -230,7 +230,7 @@ function buildJobs() {
       model: OPUS,
       cmd: '/remake-foundation',
       mustChangeFiles: true,
-      gates: ['typecheck', 'unit'],
+      gates: ['typecheck', 'unit', 'build'],
       requires: [INVENTORY_FILE],
       produces: [CONTRACT_FILE],
     },
@@ -302,7 +302,7 @@ function buildJobs() {
     model: HAIKU,
     cmd: '/remake-cleanup',
     mustChangeFiles: true,
-    gates: ['backendFrozen', 'backendTests', 'typecheck', 'unit'],
+    gates: ['backendFrozen', 'backendTests', 'typecheck', 'unit', 'build'],
     requires: [],
     produces: [COVERAGE_FILE],
   });
@@ -313,7 +313,8 @@ function buildJobs() {
     model: SONNET,
     cmd: '/remake-showcase',
     mustChangeFiles: true,
-    gates: ['showcase'],
+    // build first: a broken build wastes a 90-minute recording attempt.
+    gates: ['build', 'showcase'],
     requires: [CONTRACT_FILE],
     produces: [SHOWCASE_SPEC],
   });
@@ -598,6 +599,22 @@ const GATES = {
       };
     }
     return { ok: true, output: `backend clean (${changed.length} sanctioned change(s))` };
+  },
+  /**
+   * Real Next.js production build.
+   *
+   * typecheck and vitest both pass on code that will not build (server/client
+   * boundary violations, bad imports in route files). Without this a broken
+   * build could survive ~99 more jobs.
+   *
+   * MUST pass --webpack: next.config.ts carries a webpack config and no
+   * turbopack config, and Next 16 defaults to Turbopack, which hard-errors.
+   * Pre-existing, which is why .claude/settings.local.json already allowlists
+   * `npx next build --webpack`.
+   */
+  build: () => {
+    console.log('  [gate] next build...');
+    return sh('npx', ['next', 'build', '--webpack'], DESKTOP, 30 * MIN);
   },
   /**
    * Behavioral freeze proof: 29 files / 901 tests must stay green.
