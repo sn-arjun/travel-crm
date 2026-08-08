@@ -78,7 +78,6 @@ const navigation: NavGroup[] = [
     items: [
       { title: 'Leads', href: '/leads', icon: Briefcase, badgeKey: 'overdue_followups' },
       { title: 'Contacts', href: '/contacts', icon: Users },
-      { title: 'Accounts', href: '/accounts', icon: Building2 },
     ],
   },
   {
@@ -88,6 +87,7 @@ const navigation: NavGroup[] = [
       { title: 'Itineraries', href: '/itineraries', icon: Map },
       { title: 'Rate Cards', href: '/rate-cards', icon: Tag },
       { title: 'Suppliers', href: '/suppliers', icon: PackageSearch },
+      { title: 'Accounts (Suppliers view)', href: '/accounts', icon: Building2 },
       { title: 'Rate Comparison', href: '/suppliers/compare', icon: BarChart3 },
       { title: 'Visa & Travellers', href: '/visa', icon: Stamp },
       { title: 'Vouchers', href: '/vouchers', icon: ClipboardList },

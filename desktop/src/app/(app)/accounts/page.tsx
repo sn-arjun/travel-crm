@@ -1,134 +1,191 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Building2, MoreHorizontal, Phone, Mail, Loader, AlertCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useApiQuery } from '@/hooks/use-api';
+import { Eye, Pencil, Phone, Mail, Trash2, Info } from 'lucide-react';
+import { ListPage } from '@/components/domain';
+import { Button, Tag, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Alert, AlertDescription } from '@/components/ui';
 import { suppliersApi } from '@/lib/api/suppliers';
+import { SendMessageDialog } from '@/components/communication/send-message-dialog';
+import { toast } from 'sonner';
 import type { Supplier } from '@travelcrm/shared';
 
-function getInitials(name: string) { return name.split(' ').map((n: any) => n[0]).join('').toUpperCase().slice(0, 2); }
+const CATEGORY_OPTIONS = [
+  { value: 'hotel', label: 'Hotel' },
+  { value: 'transport', label: 'Transport' },
+  { value: 'airline', label: 'Airline' },
+  { value: 'activity_provider', label: 'Activity Provider' },
+  { value: 'guide', label: 'Guide' },
+  { value: 'visa_agent', label: 'Visa Agent' },
+  { value: 'insurance', label: 'Insurance' },
+];
+
+function toCsv(rows: Supplier[]) {
+  const header = ['Company', 'Category', 'Contact Person', 'Email', 'Phone', 'Status'];
+  const lines = rows.map((s: any) => [
+    s.companyName ?? s.name ?? '',
+    (s.category ?? s.type ?? '').replace(/_/g, ' '),
+    s.contactPerson ?? '',
+    s.email ?? '',
+    s.phone ?? '',
+    s.isActive ? 'Active' : 'Inactive',
+  ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','));
+  return [header.join(','), ...lines].join('\n');
+}
 
 export default function AccountsPage() {
   const router = useRouter();
-  const [search, setSearch] = React.useState('');
-  const [typeFilter, setTypeFilter] = React.useState('all');
+  const [categoryFilter, setCategoryFilter] = React.useState('');
+  const [msgDialogOpen, setMsgDialogOpen] = React.useState(false);
+  const [msgContact, setMsgContact] = React.useState<{ id: string; name: string; email?: string | null; phone?: string | null }>({ id: '', name: '' });
 
-  const { data: response, loading, error } = useApiQuery<any>(
-    () => suppliersApi.list({ search: search || undefined, category: typeFilter !== 'all' ? typeFilter : undefined }),
-    [search, typeFilter],
-  );
+  const activeFilters = [
+    categoryFilter && { id: 'category', label: 'Category', value: CATEGORY_OPTIONS.find((c) => c.value === categoryFilter)?.label ?? categoryFilter },
+  ].filter(Boolean) as { id: string; label: string; value: string }[];
 
-  const responseData = response?.data;
-  const suppliers = (Array.isArray(responseData) ? responseData : (responseData?.data ?? [])) as Supplier[];
-
-  const filtered = React.useMemo(() => {
-    if (!suppliers || !Array.isArray(suppliers)) return [];
-    let result = [...suppliers];
-    if (search) { const q = search.toLowerCase(); result = result.filter((s: any) => (s.companyName || s.name || '').toLowerCase().includes(q) || (s.contactPerson || '').toLowerCase().includes(q)); }
-    return result;
-  }, [suppliers, search]);
-
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
-        <AlertCircle className="h-12 w-12 text-red-500" />
-        <p className="text-muted-foreground">Failed to load suppliers</p>
-      </div>
-    );
+  function openSendMessage(sup: any) {
+    setMsgContact({
+      id: sup.id,
+      name: sup.companyName || sup.name || '',
+      email: sup.email || null,
+      phone: sup.phone || null,
+    });
+    setMsgDialogOpen(true);
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div><h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Accounts & Suppliers</h1><p className="text-sm text-muted-foreground">{filtered.length} accounts</p></div>
-        <Link href="/suppliers/new"><Button><Plus className="h-4 w-4 mr-1.5" /> Add Supplier</Button></Link>
+    <>
+      <div className="px-ds-6 pt-ds-4">
+        <Alert>
+          <Info aria-hidden="true" />
+          <AlertDescription>Accounts is a filtered view of your Suppliers. Opening a row takes you to the full Supplier record.</AlertDescription>
+        </Alert>
       </div>
 
-      <div className="flex items-center gap-3 px-6 py-3 border-b">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search suppliers..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-9" />
-        </div>
-        <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-40 h-9"><SelectValue placeholder="All types" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="hotel">Hotel</SelectItem>
-            <SelectItem value="transport">Transport</SelectItem>
-            <SelectItem value="airline">Airline</SelectItem>
-            <SelectItem value="activity_provider">Activity Provider</SelectItem>
-            <SelectItem value="guide">Guide</SelectItem>
-            <SelectItem value="visa_agent">Visa Agent</SelectItem>
-            <SelectItem value="insurance">Insurance</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="flex-1 overflow-auto">
-        {loading ? (
-          <div className="flex items-center justify-center h-full">
-            <Loader className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-muted-foreground">
-            <p>No suppliers found</p>
-          </div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Supplier</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Contact Person</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-10" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((sup: any) => (
-                <TableRow key={sup.id} className="cursor-pointer" onClick={() => router.push(`/suppliers/${sup.id}`)}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-8 w-8"><AvatarFallback className="text-xs">{getInitials((sup as any).companyName || sup.name || '')}</AvatarFallback></Avatar>
-                      <span className="font-medium text-sm">{(sup as any).companyName || sup.name || ''}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell><Badge variant="outline" className="text-xs capitalize">{(sup.category || sup.type || '').replace('_', ' ')}</Badge></TableCell>
-                  <TableCell className="text-sm">{sup.contactPerson ?? ''}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{sup.email ?? ''}</TableCell>
-                  <TableCell className="text-sm">{sup.phone ?? ''}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={sup.isActive ? 'bg-green-100 text-green-700 border-transparent dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 border-transparent dark:bg-red-900/30 dark:text-red-400'}>
-                      {sup.isActive ? 'Active' : 'Inactive'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => router.push(`/suppliers/${sup.id}`)}>View details</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => router.push(`/suppliers/${sup.id}/edit`)}>Edit</DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">Deactivate</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
+      <ListPage<Supplier>
+        title="Accounts"
+        description="Corporate accounts — a filtered view of Suppliers."
+        getRowId={(s) => s.id}
+        fetcher={({ page, limit, search }) =>
+          suppliersApi.list({
+            page,
+            limit,
+            search: search || undefined,
+            category: categoryFilter || undefined,
+          })
+        }
+        searchPlaceholder="Search accounts..."
+        columns={[
+          {
+            key: 'company', header: 'Company', sortable: true,
+            cell: (s: any) => <span className="font-medium text-sm">{s.companyName || s.name || '—'}</span>,
+          },
+          {
+            key: 'category', header: 'Category', sortable: true,
+            cell: (s: any) => <Tag tone="info">{(s.category ?? s.type ?? '').replace(/_/g, ' ')}</Tag>,
+          },
+          { key: 'contactPerson', header: 'Contact Person', cell: (s: any) => s.contactPerson ?? '—' },
+          { key: 'email', header: 'Email', cell: (s: any) => s.email ?? '—' },
+          { key: 'phone', header: 'Phone', cell: (s: any) => s.phone ?? '—' },
+          {
+            key: 'status', header: 'Status', sortable: true,
+            cell: (s: any) => <Tag tone={s.isActive ? 'success' : 'danger'}>{s.isActive ? 'Active' : 'Inactive'}</Tag>,
+          },
+        ]}
+        headerActions={
+          <Select value={categoryFilter || 'all'} onValueChange={(v) => setCategoryFilter(v === 'all' ? '' : v)}>
+            <SelectTrigger className="w-44 h-9"><SelectValue placeholder="All categories" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All categories</SelectItem>
+              {CATEGORY_OPTIONS.map((c) => (
+                <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
               ))}
-            </TableBody>
-          </Table>
+            </SelectContent>
+          </Select>
+        }
+        filters={activeFilters}
+        onRemoveFilter={() => setCategoryFilter('')}
+        onClearFilters={() => setCategoryFilter('')}
+        rowActions={(s: any) => (
+          <>
+            <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => router.push(`/suppliers/${s.id}`)}>
+              <Eye />
+            </Button>
+            <Button variant="ghost" size="icon-sm" aria-label="Edit" onClick={() => router.push(`/suppliers/${s.id}/edit`)}>
+              <Pencil />
+            </Button>
+            {s.phone && (
+              <Button variant="ghost" size="icon-sm" aria-label="Call" onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(s.phone)}`)}>
+                <Phone />
+              </Button>
+            )}
+            {s.email && (
+              <Button variant="ghost" size="icon-sm" aria-label="Email" onClick={() => openSendMessage(s)}>
+                <Mail />
+              </Button>
+            )}
+            <Button variant="ghost" size="icon-sm" aria-label="Delete" onClick={async () => {
+              try {
+                await suppliersApi.delete(s.id);
+                toast.success('Account deleted');
+              } catch { toast.error('Failed to delete account'); }
+            }}>
+              <Trash2 />
+            </Button>
+          </>
         )}
-      </div>
-    </div>
+        onRowClick={(s) => router.push(`/suppliers/${s.id}`)}
+        bulkActions={[
+          {
+            label: 'Delete',
+            icon: <Trash2 aria-hidden="true" />,
+            destructive: true,
+            onSelect: async (rows) => {
+              await Promise.all(rows.map((r) => suppliersApi.delete(r.id)));
+              toast.success(`${rows.length} account(s) deleted`);
+            },
+          },
+        ]}
+        onExport={async () => {
+          try {
+            const all: Supplier[] = [];
+            let page = 1;
+            const limit = 100;
+            for (;;) {
+              const res = await suppliersApi.list({ page, limit, category: categoryFilter || undefined });
+              const data = (res as any)?.data;
+              const items: Supplier[] = Array.isArray(data) ? data : (data?.data ?? []);
+              all.push(...items);
+              const total = Array.isArray(data) ? items.length : (data?.pagination?.total ?? items.length);
+              if (all.length >= total || items.length === 0) break;
+              page += 1;
+            }
+            const blob = new Blob([toCsv(all)], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `accounts_export_${new Date().toISOString().slice(0, 10)}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            toast.success('Accounts exported successfully');
+          } catch {
+            toast.error('Failed to export accounts');
+          }
+        }}
+        emptyTitle="No accounts yet"
+        emptyDescription="Accounts are sourced from Suppliers — add your first supplier to get started."
+        emptyAction={
+          <Button size="sm" onClick={() => router.push('/suppliers/new')}>Add supplier</Button>
+        }
+      />
+
+      <SendMessageDialog
+        open={msgDialogOpen}
+        onOpenChange={setMsgDialogOpen}
+        contact={msgContact}
+      />
+    </>
   );
 }
