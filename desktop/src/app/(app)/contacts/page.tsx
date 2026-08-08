@@ -1,49 +1,36 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  Plus, Search, Phone, Mail, MoreHorizontal, Building2, MessageCircle,
-  Tag, Download, Upload, MapPin, Calendar, Globe, ArrowUpRight, AlertCircle, Loader2,
-  Edit, Trash2, Zap, TrendingUp, DollarSign, Clock, ExternalLink, Send, FileText,
+  Plus, Phone, Mail, MessageCircle, Building2, MapPin, Calendar, Globe,
+  ExternalLink, Send, Edit, Trash2, Zap, Clock, Loader2, Eye, Upload, Download, ListChecks,
 } from 'lucide-react';
+import { ListPage } from '@/components/domain';
+import type { DataTableColumn } from '@/components/ui/data-table';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
-  Dialog, DialogContent, DialogDescription, DialogTitle, DialogFooter,
-} from '@/components/ui/dialog';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
-import {
-  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
 import { contactsApi, type UpdateContactRequest } from '@/lib/api/contacts';
 import { leadsApi } from '@/lib/api/leads';
 import { followUpsApi } from '@/lib/api/follow-ups';
 import { SendMessageDialog } from '@/components/communication/send-message-dialog';
 import { toast } from 'sonner';
+import type { Contact } from '@travelcrm/shared';
 
 function getInitials(name: string) {
-  return name.split(' ').map((n: any) => n[0]).join('').toUpperCase().slice(0, 2);
+  return name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
 }
 
 function getStatusColor(status: string) {
@@ -60,8 +47,8 @@ function getStatusColor(status: string) {
   return colors[status] ?? 'bg-gray-100 text-gray-900';
 }
 
-/* ─── Contact Detail Panel (360° Drawer) ─── */
-function ContactDetailPanel({ contactId, onClose, onDeleted }: { contactId: string; onClose: () => void; onDeleted: () => void }) {
+/* ─── Contact Detail Panel (drawer content) ─── */
+function ContactDetailPanel({ contactId, onDeleted }: { contactId: string; onDeleted: () => void }) {
   const router = useRouter();
   const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
@@ -133,47 +120,40 @@ function ContactDetailPanel({ contactId, onClose, onDeleted }: { contactId: stri
 
   if (loading) {
     return (
-      <SheetContent className="w-[560px] sm:max-w-[560px] overflow-y-auto p-0">
-        <div className="flex items-center justify-center h-full">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </div>
-      </SheetContent>
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-6 w-6 animate-spin text-ds-foreground-muted" />
+      </div>
     );
   }
 
   if (error || !contact) return null;
 
   return (
-    <SheetContent className="w-[560px] sm:max-w-[560px] overflow-y-auto p-0">
-      {/* Drawer Header with Avatar + Actions */}
-      <div className="px-6 pt-6 pb-4 border-b bg-muted/30">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-4">
-            <Avatar className="h-14 w-14">
-              <AvatarFallback className="text-lg font-semibold">{getInitials(contact.name)}</AvatarFallback>
-            </Avatar>
-            <div>
-              <SheetHeader className="p-0 space-y-0">
-                <SheetTitle className="text-lg font-bold">{contact.name}</SheetTitle>
-              </SheetHeader>
-              <div className="flex items-center gap-2 mt-0.5">
-                <Badge variant="outline" className="text-[10px] capitalize">{contact.type}</Badge>
-                {(contact as any).source && (
-                  <Badge variant="secondary" className="text-[10px] capitalize">{(contact as any).source}</Badge>
-                )}
-              </div>
+    <div className="flex flex-col">
+      {/* Header with Avatar + Actions */}
+      <div className="px-ds-1 pb-ds-4 border-b border-ds-border">
+        <div className="flex items-center gap-ds-4">
+          <Avatar className="h-14 w-14">
+            <AvatarFallback className="text-lg font-semibold">{getInitials(contact.name)}</AvatarFallback>
+          </Avatar>
+          <div>
+            <div className="flex items-center gap-ds-2 mt-0.5">
+              <Badge variant="outline" className="text-[10px] capitalize">{contact.type}</Badge>
+              {(contact as any).source && (
+                <Badge variant="secondary" className="text-[10px] capitalize">{(contact as any).source}</Badge>
+              )}
             </div>
           </div>
         </div>
 
         {/* Quick Action Buttons */}
-        <div className="flex items-center gap-2 mt-4">
+        <div className="flex items-center gap-ds-2 mt-ds-4 flex-wrap">
           <TooltipProvider delayDuration={300}>
             {contact.phone && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="outline" size="sm" onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(contact.phone!)}`)}>
-                    <Phone className="h-4 w-4 mr-1.5" /> Call
+                    <Phone aria-hidden="true" /> Call
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Call {contact.phone}</TooltipContent>
@@ -183,7 +163,7 @@ function ContactDetailPanel({ contactId, onClose, onDeleted }: { contactId: stri
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="outline" size="sm" onClick={() => { setSendChannel('whatsapp'); setIsSendDialogOpen(true); }}>
-                    <MessageCircle className="h-4 w-4 mr-1.5" /> WhatsApp
+                    <MessageCircle aria-hidden="true" /> WhatsApp
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Send WhatsApp via Communication Hub</TooltipContent>
@@ -193,7 +173,7 @@ function ContactDetailPanel({ contactId, onClose, onDeleted }: { contactId: stri
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="outline" size="sm" onClick={() => { setSendChannel('email'); setIsSendDialogOpen(true); }}>
-                    <Send className="h-4 w-4 mr-1.5" /> Email
+                    <Send aria-hidden="true" /> Email
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Send Email via Communication Hub</TooltipContent>
@@ -202,7 +182,7 @@ function ContactDetailPanel({ contactId, onClose, onDeleted }: { contactId: stri
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="outline" size="sm" onClick={() => { setSendChannel(undefined); setIsSendDialogOpen(true); }}>
-                  <Mail className="h-4 w-4 mr-1.5" /> Message
+                  <Mail aria-hidden="true" /> Message
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Send message (choose channel)</TooltipContent>
@@ -210,7 +190,7 @@ function ContactDetailPanel({ contactId, onClose, onDeleted }: { contactId: stri
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="outline" size="sm" onClick={() => setIsEditDialogOpen(true)}>
-                  <Edit className="h-4 w-4 mr-1.5" /> Edit
+                  <Edit aria-hidden="true" /> Edit
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Edit contact</TooltipContent>
@@ -219,48 +199,46 @@ function ContactDetailPanel({ contactId, onClose, onDeleted }: { contactId: stri
         </div>
 
         {/* Secondary Actions */}
-        <div className="flex items-center gap-2 mt-2">
+        <div className="flex items-center gap-ds-2 mt-ds-2">
           <Button variant="ghost" size="sm" className="text-xs" onClick={() => router.push(`/leads/new?contactId=${contactId}`)}>
-            <Zap className="h-3.5 w-3.5 mr-1" /> Create Lead
+            <Zap className="size-3.5" aria-hidden="true" /> Create Lead
           </Button>
-          <Button variant="ghost" size="sm" className="text-xs" asChild>
-            <Link href={`/contacts/${contactId}`}>
-              <ExternalLink className="h-3.5 w-3.5 mr-1" /> Full Profile
-            </Link>
+          <Button variant="ghost" size="sm" className="text-xs" onClick={() => router.push(`/contacts/${contactId}`)}>
+            <ExternalLink className="size-3.5" aria-hidden="true" /> Full Profile
           </Button>
-          <Button variant="ghost" size="sm" className="text-xs text-destructive hover:text-destructive" onClick={() => setIsDeleteDialogOpen(true)}>
-            <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
+          <Button variant="ghost" size="sm" className="text-xs text-ds-danger hover:text-ds-danger" onClick={() => setIsDeleteDialogOpen(true)}>
+            <Trash2 className="size-3.5" aria-hidden="true" /> Delete
           </Button>
         </div>
       </div>
 
       {/* Quick Stats Row */}
-      <div className="grid grid-cols-3 gap-3 px-6 py-4 border-b">
+      <div className="grid grid-cols-3 gap-ds-3 py-ds-4 border-b border-ds-border">
         <Card>
-          <CardContent className="p-3 text-center">
+          <CardContent className="p-ds-3 text-center">
             <p className="text-2xl font-bold">{contactLeads.length}</p>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Leads</p>
+            <p className="text-[10px] text-ds-foreground-muted uppercase tracking-wide">Leads</p>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-3 text-center">
+          <CardContent className="p-ds-3 text-center">
             <p className="text-2xl font-bold">{wonLeads}</p>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Won</p>
+            <p className="text-[10px] text-ds-foreground-muted uppercase tracking-wide">Won</p>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-3 text-center">
+          <CardContent className="p-ds-3 text-center">
             <p className="text-2xl font-bold">
               {new Intl.NumberFormat('en-IN', { notation: 'compact' }).format(totalRevenue)}
             </p>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Value</p>
+            <p className="text-[10px] text-ds-foreground-muted uppercase tracking-wide">Value</p>
           </CardContent>
         </Card>
       </div>
 
       {/* Tabs */}
       <Tabs defaultValue="overview" className="flex-1">
-        <div className="px-6 pt-3 border-b">
+        <div className="pt-ds-3 border-b border-ds-border">
           <TabsList className="w-full justify-start">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="deals">Deals ({contactLeads.length})</TabsTrigger>
@@ -268,62 +246,60 @@ function ContactDetailPanel({ contactId, onClose, onDeleted }: { contactId: stri
           </TabsList>
         </div>
 
-        <TabsContent value="overview" className="px-6 py-4 space-y-5 mt-0">
-          {/* Contact Info */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Contact Details</h4>
+        <TabsContent value="overview" className="py-ds-4 space-y-ds-5 mt-0">
+          <div className="space-y-ds-3">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-ds-foreground-muted">Contact Details</h4>
             {contact.email && (
-              <div className="flex items-center gap-3 text-sm">
-                <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
-                <a href={`mailto:${contact.email}`} className="text-primary hover:underline truncate">{contact.email}</a>
+              <div className="flex items-center gap-ds-3 text-sm">
+                <Mail className="h-4 w-4 text-ds-foreground-muted shrink-0" aria-hidden="true" />
+                <span className="truncate">{contact.email}</span>
               </div>
             )}
             {contact.phone && (
-              <div className="flex items-center gap-3 text-sm">
-                <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
+              <div className="flex items-center gap-ds-3 text-sm">
+                <Phone className="h-4 w-4 text-ds-foreground-muted shrink-0" aria-hidden="true" />
                 <span>{contact.phone}</span>
               </div>
             )}
             {(contact as any).company && (
-              <div className="flex items-center gap-3 text-sm">
-                <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+              <div className="flex items-center gap-ds-3 text-sm">
+                <Building2 className="h-4 w-4 text-ds-foreground-muted shrink-0" aria-hidden="true" />
                 <span>{(contact as any).company}</span>
               </div>
             )}
             {((contact as any).city || (contact as any).country) && (
-              <div className="flex items-center gap-3 text-sm">
-                <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+              <div className="flex items-center gap-ds-3 text-sm">
+                <MapPin className="h-4 w-4 text-ds-foreground-muted shrink-0" aria-hidden="true" />
                 <span>{[(contact as any).address, (contact as any).city, (contact as any).state, (contact as any).country].filter(Boolean).join(', ')}</span>
               </div>
             )}
             {(contact as any).birthday && (
-              <div className="flex items-center gap-3 text-sm">
-                <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+              <div className="flex items-center gap-ds-3 text-sm">
+                <Calendar className="h-4 w-4 text-ds-foreground-muted shrink-0" aria-hidden="true" />
                 <span>Birthday: {new Date((contact as any).birthday).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
               </div>
             )}
             {(contact as any).anniversary && (
-              <div className="flex items-center gap-3 text-sm">
-                <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+              <div className="flex items-center gap-ds-3 text-sm">
+                <Calendar className="h-4 w-4 text-ds-foreground-muted shrink-0" aria-hidden="true" />
                 <span>Anniversary: {new Date((contact as any).anniversary).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
               </div>
             )}
             {(contact as any).preferredLanguage && (contact as any).preferredLanguage !== 'en' && (
-              <div className="flex items-center gap-3 text-sm">
-                <Globe className="h-4 w-4 text-muted-foreground shrink-0" />
+              <div className="flex items-center gap-ds-3 text-sm">
+                <Globe className="h-4 w-4 text-ds-foreground-muted shrink-0" aria-hidden="true" />
                 <span>Language: {(contact as any).preferredLanguage.toUpperCase()}</span>
               </div>
             )}
           </div>
 
-          {/* Tags */}
           {(contact.tags ?? []).length > 0 && (
             <>
               <Separator />
               <div>
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Tags</h4>
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-ds-foreground-muted mb-ds-2">Tags</h4>
                 <div className="flex flex-wrap gap-1.5">
-                  {(contact.tags ?? []).map((tag: any) => (
+                  {(contact.tags ?? []).map((tag: string) => (
                     <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
                   ))}
                 </div>
@@ -331,50 +307,49 @@ function ContactDetailPanel({ contactId, onClose, onDeleted }: { contactId: stri
             </>
           )}
 
-          {/* Notes */}
           {(contact as any).notes && (
             <>
               <Separator />
               <div>
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Notes</h4>
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{(contact as any).notes}</p>
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-ds-foreground-muted mb-ds-2">Notes</h4>
+                <p className="text-sm text-ds-foreground-muted whitespace-pre-wrap">{(contact as any).notes}</p>
               </div>
             </>
           )}
 
           <Separator />
-          <div className="text-xs text-muted-foreground space-y-1">
+          <div className="text-xs text-ds-foreground-muted space-y-1">
             <p>Created {new Date(contact.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
             <p>Updated {new Date(contact.updatedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
           </div>
         </TabsContent>
 
-        <TabsContent value="deals" className="px-6 py-4 mt-0">
-          <div className="space-y-2">
+        <TabsContent value="deals" className="py-ds-4 mt-0">
+          <div className="space-y-ds-2">
             {contactLeads.length === 0 ? (
-              <div className="text-center py-8">
-                <Zap className="h-8 w-8 mx-auto mb-2 text-muted-foreground/30" />
-                <p className="text-sm text-muted-foreground">No leads yet</p>
-                <Button variant="outline" size="sm" className="mt-3" onClick={() => router.push(`/leads/new?contactId=${contactId}`)}>
-                  <Plus className="h-3.5 w-3.5 mr-1" /> Create Lead
+              <div className="text-center py-ds-8">
+                <Zap className="h-8 w-8 mx-auto mb-ds-2 text-ds-foreground-subtle" aria-hidden="true" />
+                <p className="text-sm text-ds-foreground-muted">No leads yet</p>
+                <Button variant="outline" size="sm" className="mt-ds-3" onClick={() => router.push(`/leads/new?contactId=${contactId}`)}>
+                  <Plus className="size-3.5" aria-hidden="true" /> Create Lead
                 </Button>
               </div>
             ) : (
               contactLeads.map((lead: any) => (
-                <Card key={lead.id} className="cursor-pointer hover:shadow-sm transition-shadow" onClick={() => router.push(`/leads/${lead.id}`)}>
-                  <CardContent className="p-3">
+                <Card key={lead.id} className="cursor-pointer hover:shadow-ds-1 transition-shadow" onClick={() => router.push(`/leads/${lead.id}`)}>
+                  <CardContent className="p-ds-3">
                     <div className="flex items-start justify-between">
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium truncate">{lead.title}</p>
-                        <p className="text-xs text-muted-foreground">{lead.destination}</p>
+                        <p className="text-xs text-ds-foreground-muted">{lead.destination}</p>
                       </div>
-                      <Badge className={cn('text-[10px] ml-2 shrink-0', getStatusColor(lead.status))}>
+                      <Badge className={cn('text-[10px] ml-ds-2 shrink-0', getStatusColor(lead.status))}>
                         {lead.status.replace('_', ' ')}
                       </Badge>
                     </div>
-                    <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
+                    <div className="flex items-center justify-between mt-ds-2 text-xs text-ds-foreground-muted">
                       <span>{lead.travelDate ? new Date(lead.travelDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'No date'}</span>
-                      <span className="font-medium text-foreground">
+                      <span className="font-medium text-ds-foreground">
                         {lead.budget ? new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(lead.budget) : '—'}
                       </span>
                     </div>
@@ -385,26 +360,26 @@ function ContactDetailPanel({ contactId, onClose, onDeleted }: { contactId: stri
           </div>
         </TabsContent>
 
-        <TabsContent value="activity" className="px-6 py-4 mt-0">
-          <div className="space-y-4">
+        <TabsContent value="activity" className="py-ds-4 mt-0">
+          <div className="space-y-ds-4">
             {contactFollowUps.length === 0 ? (
-              <div className="text-center py-8">
-                <Clock className="h-8 w-8 mx-auto mb-2 text-muted-foreground/30" />
-                <p className="text-sm text-muted-foreground">No activity yet</p>
+              <div className="text-center py-ds-8">
+                <Clock className="h-8 w-8 mx-auto mb-ds-2 text-ds-foreground-subtle" aria-hidden="true" />
+                <p className="text-sm text-ds-foreground-muted">No activity yet</p>
               </div>
             ) : (
               contactFollowUps.slice(0, 15).map((fu: any, idx: number) => (
-                <div key={fu.id} className="flex gap-3">
+                <div key={fu.id} className="flex gap-ds-3">
                   <div className="flex flex-col items-center">
-                    <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center shrink-0">
-                      {fu.type === 'call' ? <Phone className="h-3.5 w-3.5" /> : <Mail className="h-3.5 w-3.5" />}
+                    <div className="h-8 w-8 rounded-ds-full bg-ds-surface-sunken flex items-center justify-center shrink-0">
+                      {fu.type === 'call' ? <Phone className="h-3.5 w-3.5" aria-hidden="true" /> : <Mail className="h-3.5 w-3.5" aria-hidden="true" />}
                     </div>
-                    {idx < Math.min(contactFollowUps.length - 1, 14) && <div className="flex-1 w-px bg-border mt-1" />}
+                    {idx < Math.min(contactFollowUps.length - 1, 14) && <div className="flex-1 w-px bg-ds-border mt-1" />}
                   </div>
-                  <div className="pb-4 min-w-0">
+                  <div className="pb-ds-4 min-w-0">
                     <p className="text-sm font-medium capitalize">{fu.type}</p>
-                    <p className="text-xs text-muted-foreground truncate">{fu.notes}</p>
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className="text-xs text-ds-foreground-muted truncate">{fu.notes}</p>
+                    <p className="text-xs text-ds-foreground-muted mt-1">
                       {new Date(fu.scheduledAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </p>
                   </div>
@@ -419,24 +394,24 @@ function ContactDetailPanel({ contactId, onClose, onDeleted }: { contactId: stri
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogTitle>Edit Contact</DialogTitle>
-          <div className="space-y-4">
-            <div className="space-y-2">
+          <div className="space-y-ds-4">
+            <div className="space-y-ds-2">
               <Label htmlFor="drawer-edit-name">Full Name</Label>
               <Input id="drawer-edit-name" value={editForm.name ?? ''} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-ds-2">
               <Label htmlFor="drawer-edit-email">Email</Label>
               <Input id="drawer-edit-email" type="email" value={editForm.email ?? ''} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-ds-2">
               <Label htmlFor="drawer-edit-phone">Phone</Label>
               <Input id="drawer-edit-phone" value={editForm.phone ?? ''} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-ds-2">
               <Label htmlFor="drawer-edit-company">Company</Label>
               <Input id="drawer-edit-company" value={editForm.company ?? ''} onChange={(e) => setEditForm({ ...editForm, company: e.target.value })} />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-ds-2">
               <Label htmlFor="drawer-edit-notes">Notes</Label>
               <Textarea id="drawer-edit-notes" value={editForm.notes ?? ''} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} rows={3} />
             </div>
@@ -444,7 +419,7 @@ function ContactDetailPanel({ contactId, onClose, onDeleted }: { contactId: stri
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} disabled={isUpdating}>Cancel</Button>
             <Button onClick={handleSaveEdit} disabled={isUpdating}>
-              {isUpdating && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+              {isUpdating && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
               Save Changes
             </Button>
           </DialogFooter>
@@ -458,17 +433,16 @@ function ContactDetailPanel({ contactId, onClose, onDeleted }: { contactId: stri
           <DialogDescription>
             Are you sure you want to delete {contact.name}? This action cannot be undone.
           </DialogDescription>
-          <div className="flex justify-end gap-3 mt-4">
+          <div className="flex justify-end gap-ds-3 mt-ds-4">
             <Button variant="outline" disabled={isDeleting} onClick={() => setIsDeleteDialogOpen(false)}>Cancel</Button>
             <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
-              {isDeleting && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+              {isDeleting && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
               Delete
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Send Message Dialog (Communication Hub) */}
       {contact && (
         <SendMessageDialog
           open={isSendDialogOpen}
@@ -477,268 +451,220 @@ function ContactDetailPanel({ contactId, onClose, onDeleted }: { contactId: stri
           defaultChannel={sendChannel}
         />
       )}
-    </SheetContent>
+    </div>
   );
 }
 
 /* ─── Main Contacts Page ─── */
 export default function ContactsPage() {
   const router = useRouter();
-  const [search, setSearch] = React.useState('');
   const [typeFilter, setTypeFilter] = React.useState('all');
   const [tagFilter, setTagFilter] = React.useState('all');
-  const [selectedContact, setSelectedContact] = React.useState<string | null>(null);
-  const [sendMsgContact, setSendMsgContact] = React.useState<{ id: string; name: string; email?: string | null; phone?: string | null; } | null>(null);
+  const [sendMsgContact, setSendMsgContact] = React.useState<{ id: string; name: string; email?: string | null; phone?: string | null } | null>(null);
   const [sendMsgChannel, setSendMsgChannel] = React.useState<'email' | 'whatsapp' | 'sms' | undefined>(undefined);
+  const [refetchKey, setRefetchKey] = React.useState(0);
 
-  // Fetch unique tags for filter
   const { data: tagsResponse } = useApiQuery(() => contactsApi.getTags(), []);
-
   const allTags: string[] = Array.isArray(tagsResponse?.data) ? tagsResponse.data : [];
 
-  const fetcher = React.useCallback((p: number, limit: number) =>
-    contactsApi.list({ page: p, limit, search: search || undefined, type: typeFilter !== 'all' ? typeFilter : undefined, tag: tagFilter !== 'all' ? tagFilter : undefined }),
-    [search, typeFilter, tagFilter],
-  );
+  const activeFilters = React.useMemo(() => {
+    const f: { id: string; label: string; value: string }[] = [];
+    if (typeFilter !== 'all') f.push({ id: 'type', label: 'Type', value: typeFilter });
+    if (tagFilter !== 'all') f.push({ id: 'tag', label: 'Tag', value: tagFilter });
+    return f;
+  }, [typeFilter, tagFilter]);
 
-  const { items: displayContacts, loading, loadingMore, hasMore, total, error, sentinelRef, refetch } = useInfiniteScroll({
-    fetcher,
-    limit: 30,
-  });
+  const columns: DataTableColumn<Contact>[] = [
+    {
+      key: 'name',
+      header: 'Name',
+      sortable: true,
+      hideable: false,
+      cell: (c) => {
+        const displayName = c.name || `${(c as any).firstName ?? ''} ${(c as any).lastName ?? ''}`.trim();
+        return (
+          <div className="flex items-center gap-ds-3">
+            <Avatar className="h-8 w-8">
+              <AvatarFallback className="text-xs">{getInitials(displayName)}</AvatarFallback>
+            </Avatar>
+            <span className="font-medium text-sm">{displayName}</span>
+          </div>
+        );
+      },
+    },
+    { key: 'email', header: 'Email', cell: (c) => <span className="text-sm text-ds-foreground-muted">{c.email ?? '—'}</span> },
+    { key: 'phone', header: 'Phone', cell: (c) => <span className="text-sm">{c.phone ?? '—'}</span> },
+    { key: 'type', header: 'Type', cell: (c) => <Badge variant="outline" className="text-xs capitalize">{c.type}</Badge> },
+    {
+      key: 'tags',
+      header: 'Tags',
+      cell: (c) => (
+        <div className="flex gap-1">
+          {(c.tags ?? []).slice(0, 2).map((tag: string) => (
+            <Badge key={tag} variant="secondary" className="text-[10px]">{tag}</Badge>
+          ))}
+          {(c.tags ?? []).length > 2 && (
+            <Badge variant="secondary" className="text-[10px]">+{(c.tags ?? []).length - 2}</Badge>
+          )}
+        </div>
+      ),
+    },
+    { key: 'source', header: 'Source', cell: (c) => <span className="text-sm text-ds-foreground-muted capitalize">{(c as any).source ?? '—'}</span> },
+    {
+      key: 'createdAt',
+      header: 'Created',
+      sortable: true,
+      cell: (c) => <span className="text-sm text-ds-foreground-muted">{new Date(c.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>,
+    },
+  ];
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Error Banner */}
-      {error && (
-        <div className="flex items-center gap-3 px-6 py-3 bg-amber-50 border-b border-amber-200 dark:bg-amber-900/20 dark:border-amber-800">
-          <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-500 shrink-0" />
-          <p className="text-sm text-amber-600 dark:text-amber-500">Using sample data — connect to backend for real data</p>
-          <Button variant="ghost" size="sm" className="ml-auto h-6 text-xs" onClick={() => refetch()}>Retry</Button>
-        </div>
-      )}
-
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Contacts</h1>
-          <p className="text-sm text-muted-foreground">{total > 0 ? `${displayContacts.length} of ${total}` : `${displayContacts.length}`} contacts</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/contacts/import"><Upload className="h-4 w-4 mr-1.5" /> Import</Link>
+    <div className="p-ds-6">
+      <ListPage<Contact>
+        title="Contacts"
+        description="Every customer, supplier, agent, and partner in one place."
+        getRowId={(c) => c.id}
+        fetcher={({ page, limit, search }) =>
+          contactsApi.list({
+            page,
+            limit,
+            search: search || undefined,
+            type: typeFilter !== 'all' ? typeFilter : undefined,
+            tag: tagFilter !== 'all' ? tagFilter : undefined,
+          })
+        }
+        extractItems={(r: any) => r?.data?.data ?? (Array.isArray(r?.data) ? r.data : [])}
+        extractTotal={(r: any) => r?.data?.pagination?.total ?? 0}
+        columns={columns}
+        searchPlaceholder="Search contacts..."
+        filters={activeFilters}
+        onRemoveFilter={(id) => {
+          if (id === 'type') setTypeFilter('all');
+          if (id === 'tag') setTagFilter('all');
+        }}
+        onClearFilters={() => { setTypeFilter('all'); setTagFilter('all'); }}
+        headerActions={
+          <>
+            <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <SelectTrigger className="w-36 h-9">
+                <SelectValue placeholder="All types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All types</SelectItem>
+                <SelectItem value="customer">Customer</SelectItem>
+                <SelectItem value="supplier">Supplier</SelectItem>
+                <SelectItem value="agent">Agent</SelectItem>
+                <SelectItem value="partner">Partner</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={tagFilter} onValueChange={setTagFilter}>
+              <SelectTrigger className="w-36 h-9">
+                <SelectValue placeholder="All tags" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All tags</SelectItem>
+                {allTags.map((tag) => (
+                  <SelectItem key={tag} value={tag}>{tag}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="sm" onClick={() => router.push('/contacts/import')}>
+              <Upload aria-hidden="true" /> Import
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => router.push('/settings/custom-fields')}>
+              <ListChecks aria-hidden="true" /> Custom Fields
+            </Button>
+          </>
+        }
+        primaryAction={
+          <Button size="sm" onClick={() => router.push('/contacts/new')}>
+            <Plus aria-hidden="true" /> New Contact
           </Button>
-          <Button variant="outline" size="sm" onClick={async () => {
-            try {
-              const blob = await contactsApi.export({ format: 'csv', filters: { type: typeFilter !== 'all' ? typeFilter : undefined } });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `contacts-${new Date().toISOString().split('T')[0]}.csv`;
-              a.click();
-              URL.revokeObjectURL(url);
-              toast.success('Contacts exported');
-            } catch { toast.error('Export failed'); }
-          }}>
-            <Download className="h-4 w-4 mr-1.5" /> Export
-          </Button>
-          <Button asChild>
-            <Link href="/contacts/new"><Plus className="h-4 w-4 mr-1.5" /> New Contact</Link>
-          </Button>
-        </div>
-      </div>
+        }
+        rowActions={(c) => {
+          const displayName = c.name || `${(c as any).firstName ?? ''} ${(c as any).lastName ?? ''}`.trim();
+          return (
+            <>
+              <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => router.push(`/contacts/${c.id}`)}>
+                <Eye aria-hidden="true" />
+              </Button>
+              <Button variant="ghost" size="icon-sm" aria-label="Edit" onClick={() => router.push(`/contacts/${c.id}/edit`)}>
+                <Edit aria-hidden="true" />
+              </Button>
+              {c.phone && (
+                <Button variant="ghost" size="icon-sm" aria-label="Call" onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(c.phone!)}`)}>
+                  <Phone aria-hidden="true" />
+                </Button>
+              )}
+              {c.email && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Email"
+                  onClick={() => { setSendMsgContact({ id: c.id, name: displayName, email: c.email, phone: c.phone }); setSendMsgChannel('email'); }}
+                >
+                  <Mail aria-hidden="true" />
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Delete"
+                onClick={async () => {
+                  if (confirm(`Delete ${displayName}?`)) {
+                    try {
+                      await contactsApi.delete(c.id);
+                      toast.success('Contact deleted');
+                      setRefetchKey((k) => k + 1);
+                    } catch { toast.error('Failed to delete'); }
+                  }
+                }}
+              >
+                <Trash2 aria-hidden="true" />
+              </Button>
+            </>
+          );
+        }}
+        key={refetchKey}
+        renderDetail={(c) => <ContactDetailPanel contactId={c.id} onDeleted={() => setRefetchKey((k) => k + 1)} />}
+        detailTitle={(c) => c.name}
+        bulkActions={[
+          {
+            label: 'Delete',
+            icon: <Trash2 aria-hidden="true" />,
+            destructive: true,
+            onSelect: async (rows) => {
+              await Promise.all(rows.map((r) => contactsApi.delete(r.id)));
+              toast.success(`${rows.length} contact(s) deleted`);
+              setRefetchKey((k) => k + 1);
+            },
+          },
+        ]}
+        onExport={async (rows) => {
+          try {
+            const blob = await contactsApi.export({
+              format: 'csv',
+              filters: {
+                type: typeFilter !== 'all' ? typeFilter : undefined,
+                tag: tagFilter !== 'all' ? tagFilter : undefined,
+                ids: rows.length > 0 && rows.length < 1000 ? rows.map((r) => r.id) : undefined,
+              },
+            });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `contacts-${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+            toast.success('Contacts exported');
+          } catch { toast.error('Export failed'); }
+        }}
+        exportLabel="Export"
+        emptyTitle="No contacts yet"
+        emptyDescription="Add your first contact to start building your customer base."
+        emptyIcon={<Download aria-hidden="true" />}
+      />
 
-      {/* Toolbar */}
-      <div className="flex items-center gap-3 px-6 py-3 border-b">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search contacts..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-9" />
-        </div>
-        <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-36 h-9">
-            <SelectValue placeholder="All types" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All types</SelectItem>
-            <SelectItem value="customer">Customer</SelectItem>
-            <SelectItem value="supplier">Supplier</SelectItem>
-            <SelectItem value="agent">Agent</SelectItem>
-            <SelectItem value="partner">Partner</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={tagFilter} onValueChange={setTagFilter}>
-          <SelectTrigger className="w-36 h-9">
-            <SelectValue placeholder="All tags" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All tags</SelectItem>
-            {allTags.map((tag) => (
-              <SelectItem key={tag} value={tag}>{tag}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Loading State */}
-      {loading && (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">Loading contacts...</p>
-          </div>
-        </div>
-      )}
-
-      {/* Table */}
-      {!loading && (
-        <div className="flex-1 overflow-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Tags</TableHead>
-                <TableHead>Source</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="text-center w-[120px]">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {displayContacts.map((contact: any) => {
-                const displayName = contact.name || `${contact.firstName ?? ''} ${contact.lastName ?? ''}`.trim();
-                return (
-                  <TableRow key={contact.id} className="cursor-pointer group" onClick={() => setSelectedContact(contact.id)}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-8 w-8">
-                          <AvatarFallback className="text-xs">{getInitials(displayName)}</AvatarFallback>
-                        </Avatar>
-                        <span className="font-medium text-sm">{displayName}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{contact.email ?? '—'}</TableCell>
-                    <TableCell className="text-sm">{contact.phone ?? '—'}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-xs capitalize">{contact.type}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        {(contact.tags ?? []).slice(0, 2).map((tag: string) => (
-                          <Badge key={tag} variant="secondary" className="text-[10px]">{tag}</Badge>
-                        ))}
-                        {(contact.tags ?? []).length > 2 && (
-                          <Badge variant="secondary" className="text-[10px]">+{(contact.tags ?? []).length - 2}</Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground capitalize">{(contact as any).source ?? '—'}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {new Date(contact.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                    </TableCell>
-                    <TableCell onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-center gap-1">
-                        <TooltipProvider delayDuration={300}>
-                          {contact.phone && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(contact.phone)}`)}
-                                >
-                                  <Phone className="h-3.5 w-3.5 text-green-600" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Call</TooltipContent>
-                            </Tooltip>
-                          )}
-                          {contact.phone && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  onClick={() => { setSendMsgContact({ id: contact.id, name: displayName, email: contact.email, phone: contact.phone }); setSendMsgChannel('whatsapp'); }}
-                                >
-                                  <MessageCircle className="h-3.5 w-3.5 text-green-500" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>WhatsApp</TooltipContent>
-                            </Tooltip>
-                          )}
-                          {contact.email && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  onClick={() => { setSendMsgContact({ id: contact.id, name: displayName, email: contact.email, phone: contact.phone }); setSendMsgChannel('email'); }}
-                                >
-                                  <Mail className="h-3.5 w-3.5 text-blue-500" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Email</TooltipContent>
-                            </Tooltip>
-                          )}
-                        </TooltipProvider>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon-sm" className="h-7 w-7"><MoreHorizontal className="h-4 w-4" /></Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => setSelectedContact(contact.id)}>View details</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => router.push(`/contacts/${contact.id}`)}>Full profile</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => router.push(`/contacts/${contact.id}/edit`)}>Edit</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => router.push(`/leads/new?contactId=${contact.id}`)}>Create lead</DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-destructive" onClick={async () => {
-                              if (confirm(`Delete ${displayName}?`)) {
-                                try {
-                                  await contactsApi.delete(contact.id);
-                                  toast.success('Contact deleted');
-                                  refetch();
-                                } catch { toast.error('Failed to delete'); }
-                              }
-                            }}>Delete</DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-          {/* Infinite scroll sentinel */}
-          <div ref={sentinelRef} className="h-4" />
-          {loadingMore && (
-            <div className="flex items-center justify-center py-4">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              <span className="ml-2 text-sm text-muted-foreground">Loading more...</span>
-            </div>
-          )}
-          {!hasMore && displayContacts.length > 0 && (
-            <p className="text-center text-xs text-muted-foreground py-3">All contacts loaded</p>
-          )}
-        </div>
-      )}
-
-      {/* Detail Sheet */}
-      <Sheet open={!!selectedContact} onOpenChange={(open) => !open && setSelectedContact(null)}>
-        {selectedContact && (
-          <ContactDetailPanel
-            contactId={selectedContact}
-            onClose={() => setSelectedContact(null)}
-            onDeleted={() => { setSelectedContact(null); refetch(); }}
-          />
-        )}
-      </Sheet>
-
-      {/* Send Message Dialog (from table row actions) */}
       {sendMsgContact && (
         <SendMessageDialog
           open={!!sendMsgContact}

@@ -72,6 +72,23 @@ export interface ContactTimeline {
   createdBy: string;
 }
 
+export interface CustomFieldDef {
+  id: string;
+  name: string;
+  label: string;
+  type: 'text' | 'number' | 'date' | 'select' | 'boolean';
+  options?: string[];
+  required?: boolean;
+}
+
+export interface CreateCustomFieldRequest {
+  name: string;
+  label: string;
+  type: CustomFieldDef['type'];
+  options?: string[];
+  required?: boolean;
+}
+
 export const contactsApi = {
   list: (params?: {
     page?: number;
@@ -123,7 +140,22 @@ export const contactsApi = {
     client.get<ApiResponse<Contact[]>>(API_ENDPOINTS.contacts.upcomingOccasions, { params }),
 
   getCustomFields: () =>
-    client.get<ApiResponse<Record<string, unknown>>>(API_ENDPOINTS.contacts.customFields),
+    client.get<ApiResponse<CustomFieldDef[]>>(API_ENDPOINTS.contacts.customFields),
+
+  createCustomField: (data: CreateCustomFieldRequest) =>
+    client.post<ApiResponse<CustomFieldDef>>(API_ENDPOINTS.contacts.customFields, data),
+
+  updateCustomField: (id: string, data: Partial<CreateCustomFieldRequest>) =>
+    client.put<ApiResponse<CustomFieldDef>>(API_ENDPOINTS.contacts.customFieldById(id), data),
+
+  deleteCustomField: (id: string) =>
+    client.delete<ApiResponse<void>>(API_ENDPOINTS.contacts.customFieldById(id)),
+
+  getSharedWithMe: (params?: { page?: number; limit?: number }) =>
+    client.get<ApiResponse<PaginatedResponse<Contact>>>(API_ENDPOINTS.contacts.sharedWithMe, { params }),
+
+  bulkTag: (data: { contactIds: string[]; tags: string[] }) =>
+    client.post<ApiResponse<{ updated: number }>>(API_ENDPOINTS.contacts.bulkTag, data),
 
   export: (params?: { filters?: Record<string, unknown>; format?: 'csv' | 'xlsx' }) =>
     client.get<Blob>(API_ENDPOINTS.contacts.export, { params: params as Record<string, string | number | boolean>, responseType: 'blob' }),

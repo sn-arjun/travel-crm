@@ -35,6 +35,9 @@ export const API_ENDPOINTS = {
     share: (id: string) => `/contacts/${id}/share`,
     upcomingOccasions: '/contacts/upcoming-occasions',
     customFields: '/contacts/custom-fields',
+    customFieldById: (id: string) => `/contacts/custom-fields/${id}`,
+    sharedWithMe: '/contacts/shared-with-me',
+    bulkTag: '/contacts/bulk-tag',
   },
   // Leads
   leads: {
