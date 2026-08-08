@@ -125,6 +125,12 @@ export const leadsApi = {
   createNote: (id: string, data: { content: string }) =>
     client.post<ApiResponse<LeadNote>>(API_ENDPOINTS.leads.notes(id), data),
 
+  updateNote: (id: string, noteId: string, data: { content: string }) =>
+    client.put<ApiResponse<LeadNote>>(`${API_ENDPOINTS.leads.notes(id)}/${noteId}`, data),
+
+  deleteNote: (id: string, noteId: string) =>
+    client.delete<ApiResponse<void>>(`${API_ENDPOINTS.leads.notes(id)}/${noteId}`),
+
   createFollowUp: (id: string, data: { title: string; dueDate: string; type?: string; priority?: string; description?: string }) =>
     client.post<ApiResponse<LeadFollowUp>>(API_ENDPOINTS.leads.followUps(id), data),
 
