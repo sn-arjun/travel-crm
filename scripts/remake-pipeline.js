@@ -178,12 +178,25 @@ const isDone = (st, id) => st.jobs[id]?.status === 'ok';
 
 // ─── Slice discovery ─────────────────────────────────────────────
 
+/**
+ * Slices the owner reviews before the remaining ~47 are built on the same
+ * foundation. Deliberately core-CRM: alphabetical order would have led with
+ * `accounts` (a Suppliers-view special case) and the gated AI slices, which
+ * tell you nothing about whether the design language is right.
+ */
+const REVIEW_SLICES = ['contacts', 'leads', 'invoices'];
+
 function loadSlices() {
+  let all;
   try {
     const files = fs.readdirSync(SLICE_DIR).filter((f) => f.endsWith('.json'));
-    if (files.length) return files.map((f) => f.replace(/\.json$/, '')).sort();
-  } catch { /* not generated yet */ }
-  return DEFAULT_SLICES;
+    all = files.length ? files.map((f) => f.replace(/\.json$/, '')).sort() : DEFAULT_SLICES;
+  } catch {
+    all = DEFAULT_SLICES;
+  }
+  // Review slices lead; the rest keep their stable alphabetical order.
+  const lead = REVIEW_SLICES.filter((s) => all.includes(s));
+  return [...lead, ...all.filter((s) => !lead.includes(s))];
 }
 
 function sliceManifestPath(slice) {
@@ -913,6 +926,7 @@ function usage() {
     --preflight        Check blockers and exit (runs nothing)
     --dry-run          Print the job graph and exit
     --all              Run every job in order (unattended)
+    --checkpoint       Run foundation + review slices, then stop for review
     --phase <name>     inventory | foundation | backend | slice | verify | cleanup | showcase
     --job <id>         Run one job, e.g. slice:leads
     --resume           Run every job not yet marked ok
@@ -937,6 +951,7 @@ function main() {
   // job because `inventory` writes the slice manifests that create phases 2 & 3.
   let selector = null;
   let doBranch = true;
+  let checkpointSet = null;
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
@@ -977,6 +992,16 @@ function main() {
       return;
     }
     if (a === '--all') { selector = { kind: 'all' }; continue; }
+    if (a === '--checkpoint') {
+      // Run through foundation + the review slices, then stop for owner review.
+      checkpointSet = new Set([
+        'inventory',
+        'foundation',
+        'backend:admin',
+        ...REVIEW_SLICES.map((s) => `slice:${s}`),
+      ]);
+      continue;
+    }
     if (a === '--resume') { selector = { kind: 'resume' }; continue; }
     if (a === '--phase') {
       const p = args[++i];
@@ -1035,16 +1060,46 @@ function main() {
   ]);
 
   const processed = new Set();
+  let stopped = null;
   for (;;) {
     const pending = resolve(st).filter((j) => !processed.has(j.id));
     if (!pending.length) break;
     const job = pending[0];
+
+    // Owner review checkpoint: halt at the first job outside the allowed set,
+    // so the design language can be reviewed before ~47 more slices inherit it.
+    if (checkpointSet && !checkpointSet.has(job.id)) {
+      stopped = job.id;
+      break;
+    }
+
     processed.add(job.id);
     runJob(job, st);
     st = loadState(); // inventory writes slice manifests → graph expands here
   }
 
   showStatus(loadState());
+
+  if (stopped) {
+    banner([
+      'CHECKPOINT REACHED — stopped for owner review',
+      '',
+      `Next job would have been: ${stopped}`,
+      '',
+      'Review before the remaining slices inherit this foundation:',
+      '  desktop/audit/remake/CONTRACT.md      the design-system contract',
+      '  desktop/src/design-system/tokens/     colors, spacing, type scale',
+      '  desktop/src/components/domain/        ListPage / EntityForm / DetailPage',
+      ...REVIEW_SLICES.map((s) => `  desktop/src/app/(app)/${s}/`.padEnd(40) + 'rebuilt slice'),
+      '',
+      'See it running:  npm run dev:desktop   then visit /contacts /leads /invoices',
+      '',
+      'Happy?   node scripts/remake-pipeline.js --all',
+      'Not?     adjust the foundation, then --retry slice:<name> to rebuild one',
+    ]);
+    return;
+  }
+
   console.log('  NEXT:');
   console.log('    Status:  node scripts/remake-pipeline.js --status');
   console.log('    Resume:  node scripts/remake-pipeline.js --resume');
