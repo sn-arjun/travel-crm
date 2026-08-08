@@ -153,9 +153,10 @@ describe('Design System Tokens', () => {
         parseInt(zIndex.command),
       ];
 
-      for (let i = 1; i < zValues.length; i++) {
-        expect(zValues[i]).toBeGreaterThan(zValues[i - 1]);
-      }
+      zValues.forEach((value, i) => {
+        if (i === 0) return;
+        expect(value).toBeGreaterThan(zValues[i - 1] as number);
+      });
     });
   });
 

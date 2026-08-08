@@ -2,11 +2,115 @@
 @import "tw-animate-css";
 
 /*
- * TravelCRM Pro — shadcn/ui v4 Theme
- * Coral primary (#FF5C38), warm stone neutrals
+ * TravelCRM Pro — Design System
+ *
+ * Two layers live here:
+ *   1. The SEMANTIC token layer (--ds-*) — the source of truth for all new
+ *      work. Mirrors src/design-system/tokens/semantic.ts exactly. Every
+ *      token has a light and a dark value; every fg/bg pair is >= 4.5:1.
+ *   2. The legacy shadcn/ui variable layer, retained so existing pages keep
+ *      rendering. New code should use the `ds-` Tailwind utilities.
  */
 
-/* ─── shadcn/ui v4 Theme ─────────────────────────────────── */
+/* ─── Semantic tokens → Tailwind utilities ───────────────── */
+@theme inline {
+  /* Surfaces */
+  --color-ds-background: var(--ds-background);
+  --color-ds-surface: var(--ds-surface);
+  --color-ds-surface-raised: var(--ds-surface-raised);
+  --color-ds-surface-sunken: var(--ds-surface-sunken);
+
+  /* Borders */
+  --color-ds-border: var(--ds-border);
+  --color-ds-border-strong: var(--ds-border-strong);
+
+  /* Foregrounds */
+  --color-ds-foreground: var(--ds-foreground);
+  --color-ds-foreground-muted: var(--ds-foreground-muted);
+  --color-ds-foreground-subtle: var(--ds-foreground-subtle);
+
+  /* Primary */
+  --color-ds-primary: var(--ds-primary);
+  --color-ds-primary-hover: var(--ds-primary-hover);
+  --color-ds-primary-active: var(--ds-primary-active);
+  --color-ds-primary-subtle: var(--ds-primary-subtle);
+  --color-ds-primary-foreground: var(--ds-primary-foreground);
+  --color-ds-primary-on-subtle: var(--ds-primary-on-subtle);
+
+  /* Success */
+  --color-ds-success: var(--ds-success);
+  --color-ds-success-hover: var(--ds-success-hover);
+  --color-ds-success-active: var(--ds-success-active);
+  --color-ds-success-subtle: var(--ds-success-subtle);
+  --color-ds-success-foreground: var(--ds-success-foreground);
+  --color-ds-success-on-subtle: var(--ds-success-on-subtle);
+
+  /* Warning */
+  --color-ds-warning: var(--ds-warning);
+  --color-ds-warning-hover: var(--ds-warning-hover);
+  --color-ds-warning-active: var(--ds-warning-active);
+  --color-ds-warning-subtle: var(--ds-warning-subtle);
+  --color-ds-warning-foreground: var(--ds-warning-foreground);
+  --color-ds-warning-on-subtle: var(--ds-warning-on-subtle);
+
+  /* Danger */
+  --color-ds-danger: var(--ds-danger);
+  --color-ds-danger-hover: var(--ds-danger-hover);
+  --color-ds-danger-active: var(--ds-danger-active);
+  --color-ds-danger-subtle: var(--ds-danger-subtle);
+  --color-ds-danger-foreground: var(--ds-danger-foreground);
+  --color-ds-danger-on-subtle: var(--ds-danger-on-subtle);
+
+  /* Info */
+  --color-ds-info: var(--ds-info);
+  --color-ds-info-hover: var(--ds-info-hover);
+  --color-ds-info-active: var(--ds-info-active);
+  --color-ds-info-subtle: var(--ds-info-subtle);
+  --color-ds-info-foreground: var(--ds-info-foreground);
+  --color-ds-info-on-subtle: var(--ds-info-on-subtle);
+
+  /* Focus ring */
+  --color-ds-ring: var(--ds-ring);
+
+  /* Chart series */
+  --color-ds-chart-1: var(--ds-chart-1);
+  --color-ds-chart-2: var(--ds-chart-2);
+  --color-ds-chart-3: var(--ds-chart-3);
+  --color-ds-chart-4: var(--ds-chart-4);
+  --color-ds-chart-5: var(--ds-chart-5);
+  --color-ds-chart-6: var(--ds-chart-6);
+
+  /* Spacing — 8pt scale */
+  --spacing-ds-0: 0px;
+  --spacing-ds-1: 4px;
+  --spacing-ds-2: 8px;
+  --spacing-ds-3: 12px;
+  --spacing-ds-4: 16px;
+  --spacing-ds-5: 24px;
+  --spacing-ds-6: 32px;
+  --spacing-ds-7: 40px;
+  --spacing-ds-8: 48px;
+  --spacing-ds-9: 64px;
+  --spacing-ds-10: 80px;
+
+  /* Radius */
+  --radius-ds-none: 0px;
+  --radius-ds-sm: 6px;
+  --radius-ds-md: 10px;
+  --radius-ds-lg: 14px;
+  --radius-ds-xl: 16px;
+  --radius-ds-2xl: 20px;
+  --radius-ds-full: 9999px;
+
+  /* Elevation */
+  --shadow-ds-1: 0 1px 2px rgb(0 0 0 / 0.04);
+  --shadow-ds-2: 0 1px 3px rgb(0 0 0 / 0.06), 0 1px 2px rgb(0 0 0 / 0.04);
+  --shadow-ds-3: 0 4px 8px rgb(0 0 0 / 0.06), 0 2px 4px rgb(0 0 0 / 0.04);
+  --shadow-ds-4: 0 8px 24px rgb(0 0 0 / 0.08), 0 4px 8px rgb(0 0 0 / 0.04);
+  --shadow-ds-5: 0 16px 48px rgb(0 0 0 / 0.1), 0 8px 16px rgb(0 0 0 / 0.04);
+}
+
+/* ─── shadcn/ui v4 Theme (legacy layer) ──────────────────── */
 @theme inline {
   /* Core semantic colors — mapped from CSS vars below */
   --color-background: hsl(var(--background));
@@ -64,6 +168,152 @@
   --font-sans: 'Geist', 'DM Sans', 'Inter', system-ui, -apple-system, sans-serif;
   --font-display: 'DM Sans', 'Geist', system-ui, sans-serif;
   --font-mono: 'Geist Mono', 'JetBrains Mono', 'SF Mono', monospace;
+}
+
+/* ─── Semantic tokens: shared (theme-independent) ────────── */
+:root {
+  /* Motion — durations */
+  --ds-duration-instant: 50ms;
+  --ds-duration-fast: 100ms;
+  --ds-duration-base: 150ms;
+  --ds-duration-slow: 200ms;
+  --ds-duration-slower: 300ms;
+  --ds-duration-slowest: 500ms;
+
+  /* Motion — easings */
+  --ds-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ds-ease-decelerate: cubic-bezier(0, 0, 0.2, 1);
+  --ds-ease-accelerate: cubic-bezier(0.4, 0, 1, 1);
+  --ds-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Z-index ladder */
+  --ds-z-base: 0;
+  --ds-z-sticky: 20;
+  --ds-z-dropdown: 30;
+  --ds-z-overlay: 40;
+  --ds-z-modal: 50;
+  --ds-z-popover: 60;
+  --ds-z-toast: 70;
+  --ds-z-command: 80;
+  --ds-z-tooltip: 90;
+}
+
+/* ─── Semantic tokens: LIGHT ─────────────────────────────── */
+:root {
+  --ds-background: #FAFAFB;
+  --ds-surface: #FFFFFF;
+  --ds-surface-raised: #FFFFFF;
+  --ds-surface-sunken: #F4F4F6;
+
+  --ds-border: #E4E4E9;
+  --ds-border-strong: #C7C7D1;
+
+  --ds-foreground: #111117;
+  --ds-foreground-muted: #55555F;
+  --ds-foreground-subtle: #6E6E7A;
+
+  --ds-primary: #4F46E5;
+  --ds-primary-hover: #4338CA;
+  --ds-primary-active: #3730A3;
+  --ds-primary-subtle: #EEF0FE;
+  --ds-primary-foreground: #FFFFFF;
+  --ds-primary-on-subtle: #3730A3;
+
+  --ds-success: #047857;
+  --ds-success-hover: #036049;
+  --ds-success-active: #024C3A;
+  --ds-success-subtle: #ECFDF5;
+  --ds-success-foreground: #FFFFFF;
+  --ds-success-on-subtle: #04563F;
+
+  --ds-warning: #B45309;
+  --ds-warning-hover: #92400E;
+  --ds-warning-active: #78350F;
+  --ds-warning-subtle: #FFFBEB;
+  --ds-warning-foreground: #FFFFFF;
+  --ds-warning-on-subtle: #78350F;
+
+  --ds-danger: #DC2626;
+  --ds-danger-hover: #B91C1C;
+  --ds-danger-active: #991B1B;
+  --ds-danger-subtle: #FEF2F2;
+  --ds-danger-foreground: #FFFFFF;
+  --ds-danger-on-subtle: #991B1B;
+
+  --ds-info: #1D4ED8;
+  --ds-info-hover: #1E40AF;
+  --ds-info-active: #1E3A8A;
+  --ds-info-subtle: #EFF6FF;
+  --ds-info-foreground: #FFFFFF;
+  --ds-info-on-subtle: #1E3A8A;
+
+  --ds-ring: #4F46E5;
+
+  --ds-chart-1: #4F46E5;
+  --ds-chart-2: #0891B2;
+  --ds-chart-3: #047857;
+  --ds-chart-4: #B45309;
+  --ds-chart-5: #BE185D;
+  --ds-chart-6: #7C3AED;
+}
+
+/* ─── Semantic tokens: DARK ──────────────────────────────── */
+.dark {
+  --ds-background: #0A0A0F;
+  --ds-surface: #14141B;
+  --ds-surface-raised: #1C1C26;
+  --ds-surface-sunken: #08080C;
+
+  --ds-border: #26262F;
+  --ds-border-strong: #3A3A47;
+
+  --ds-foreground: #EDEDF2;
+  --ds-foreground-muted: #A0A0AE;
+  --ds-foreground-subtle: #83838F;
+
+  --ds-primary: #818CF8;
+  --ds-primary-hover: #A5B4FC;
+  --ds-primary-active: #C7D2FE;
+  --ds-primary-subtle: #1E1B4B;
+  --ds-primary-foreground: #0A0A0F;
+  --ds-primary-on-subtle: #C7D2FE;
+
+  --ds-success: #34D399;
+  --ds-success-hover: #6EE7B7;
+  --ds-success-active: #A7F3D0;
+  --ds-success-subtle: #022C22;
+  --ds-success-foreground: #0A0A0F;
+  --ds-success-on-subtle: #6EE7B7;
+
+  --ds-warning: #FBBF24;
+  --ds-warning-hover: #FCD34D;
+  --ds-warning-active: #FDE68A;
+  --ds-warning-subtle: #2A1D05;
+  --ds-warning-foreground: #0A0A0F;
+  --ds-warning-on-subtle: #FCD34D;
+
+  --ds-danger: #F87171;
+  --ds-danger-hover: #FCA5A5;
+  --ds-danger-active: #FECACA;
+  --ds-danger-subtle: #300B0B;
+  --ds-danger-foreground: #0A0A0F;
+  --ds-danger-on-subtle: #FCA5A5;
+
+  --ds-info: #60A5FA;
+  --ds-info-hover: #93C5FD;
+  --ds-info-active: #BFDBFE;
+  --ds-info-subtle: #0C1F3D;
+  --ds-info-foreground: #0A0A0F;
+  --ds-info-on-subtle: #93C5FD;
+
+  --ds-ring: #818CF8;
+
+  --ds-chart-1: #818CF8;
+  --ds-chart-2: #22D3EE;
+  --ds-chart-3: #34D399;
+  --ds-chart-4: #FBBF24;
+  --ds-chart-5: #F472B6;
+  --ds-chart-6: #A78BFA;
 }
 
 /* ─── Light Theme ────────────────────────────────────────── */

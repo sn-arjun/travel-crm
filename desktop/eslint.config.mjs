@@ -9,12 +9,25 @@ const compat = new FlatCompat({
   baseDirectory: __dirname,
 });
 
+// ─── Design-system enforcement ──────────────────────────────
+// These fail the build. See desktop/audit/remake/CONTRACT.md for the rules
+// and the sanctioned alternative for each.
+
+/** Raw hex colors and rgb()/rgba() outside the design system. */
+const RAW_COLOR_RE = String.raw`(#[0-9a-fA-F]{3,8}\b|\brgba?\s*\()`;
+
+/** Hardcoded px values, e.g. "16px", "p-[12px]". */
+const RAW_PX_RE = String.raw`\b\d+px\b`;
+
+/**
+ * mailto:, wa.me, tel: — all outbound comms go through the Communication Hub.
+ * Forward slashes MUST stay escaped: esquery parses the selector's `/.../` as
+ * a regex literal and an unescaped `/` terminates it early.
+ */
+const DIRECT_CHANNEL_RE = String.raw`(mailto:|wa\.me\/|api\.whatsapp\.com\/send|tel:)`;
+
 const eslintConfig = [
-  ...compat.extends(
-    'next/core-web-vitals',
-    'next/typescript',
-    'prettier',
-  ),
+  ...compat.extends('next/core-web-vitals', 'next/typescript', 'prettier'),
   {
     rules: {
       // Strict TypeScript rules
@@ -30,23 +43,109 @@ const eslintConfig = [
       'import/order': [
         'warn',
         {
-          groups: [
-            'builtin',
-            'external',
-            'internal',
-            ['parent', 'sibling'],
-            'index',
-            'type',
-          ],
+          groups: ['builtin', 'external', 'internal', ['parent', 'sibling'], 'index', 'type'],
           'newlines-between': 'always',
           alphabetize: { order: 'asc' },
         },
       ],
     },
   },
+
+  // ── Rules 1 & 3: no raw hex/rgb()/px, no direct comms links ──
+  // One block: ESLint flat config REPLACES a rule's options rather than
+  // merging them, so these selectors must be declared together.
+  // Allowed only in design-system/ and globals.css, which define the tokens.
   {
-    // Ignore Electron files (different environment)
-    ignores: ['electron/**'],
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/design-system/**'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: `Literal[value=/${RAW_COLOR_RE}/]`,
+          message:
+            'Raw color literals are not allowed. Use a semantic token class (e.g. text-ds-foreground, bg-ds-surface) or import from @/design-system/tokens.',
+        },
+        {
+          selector: `TemplateElement[value.raw=/${RAW_COLOR_RE}/]`,
+          message:
+            'Raw color literals are not allowed. Use a semantic token class or import from @/design-system/tokens.',
+        },
+        {
+          selector: `Literal[value=/${RAW_PX_RE}/]`,
+          message:
+            'Hardcoded px values are not allowed. Use a spacing token class (p-ds-4, gap-ds-2) or import from @/design-system/tokens.',
+        },
+        {
+          selector: `TemplateElement[value.raw=/${RAW_PX_RE}/]`,
+          message:
+            'Hardcoded px values are not allowed. Use a spacing token class or import from @/design-system/tokens.',
+        },
+        {
+          selector: `Literal[value=/${DIRECT_CHANNEL_RE}/]`,
+          message:
+            'Direct mailto:/wa.me/tel: links are not allowed. Use SendMessageDialog so the message routes through the Communication Hub.',
+        },
+        {
+          selector: `TemplateElement[value.raw=/${DIRECT_CHANNEL_RE}/]`,
+          message:
+            'Direct mailto:/wa.me/tel: links are not allowed. Use SendMessageDialog so the message routes through the Communication Hub.',
+        },
+      ],
+    },
+  },
+
+  // ── Rule 2: components/ui/ is domain-free ────────────────
+  {
+    files: ['src/components/ui/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/lib/api', '@/lib/api/*', '../../lib/api', '../../lib/api/*'],
+              message:
+                'Primitives in components/ui/ must be domain-free. Pass data in via props, or put the component in components/domain/.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  // ── Rule 4: user-facing copy lives in design-system/copy/ ─
+  // Warn-level: flags long literal strings in JSX text position.
+  {
+    files: ['src/app/**/*.tsx', 'src/components/domain/**/*.tsx'],
+    rules: {
+      'react/jsx-no-literals': [
+        'warn',
+        {
+          noStrings: false,
+          allowedStrings: [],
+          ignoreProps: true,
+        },
+      ],
+    },
+  },
+
+  {
+    // Config, tokens, tests and Electron are exempt from the token rules.
+    files: [
+      'src/design-system/**/*.{ts,tsx}',
+      '**/*.test.{ts,tsx}',
+      '**/*.config.{ts,mjs,js}',
+      'e2e/**/*.ts',
+    ],
+    rules: {
+      'no-restricted-syntax': 'off',
+      'react/jsx-no-literals': 'off',
+    },
+  },
+
+  {
+    ignores: ['electron/**', '.next/**', 'out/**', 'node_modules/**'],
   },
 ];
 

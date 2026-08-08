@@ -12,11 +12,35 @@
       "timestamp": "2026-08-07T10:56:26.284Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "foundation": {
+      "status": "ok",
+      "timestamp": "2026-08-08T07:48:21.419Z",
+      "error": null,
+      "repairAttempts": 0
+    },
+    "slice:contacts": {
+      "status": "ok",
+      "timestamp": "2026-08-08T07:49:15.333Z",
+      "error": null,
+      "repairAttempts": 0
+    },
+    "slice:leads": {
+      "status": "ok",
+      "timestamp": "2026-08-08T07:50:09.128Z",
+      "error": null,
+      "repairAttempts": 0
+    },
+    "slice:invoices": {
+      "status": "ok",
+      "timestamp": "2026-08-08T07:50:54.822Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "backend:admin",
+    "id": "slice:invoices",
     "status": "ok",
-    "timestamp": "2026-08-07T10:56:26.284Z"
+    "timestamp": "2026-08-08T07:50:54.822Z"
   }
 }

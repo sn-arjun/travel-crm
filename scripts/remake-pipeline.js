@@ -332,18 +332,26 @@ function runClaude(slashCommand, model, label, phase) {
   const env = { ...process.env };
   delete env.CLAUDECODE;
 
-  const res = spawnSync(
-    'claude',
-    ['-p', slashCommand, '--model', model, '--dangerously-skip-permissions'],
-    {
-      cwd: ROOT,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      timeout,
-      env,
-      shell: process.platform === 'win32', // .cmd shim needs a shell on Windows
-    }
-  );
+  // Multi-line prompts (the repair jobs) MUST NOT be passed as an argv string
+  // under shell:true — Windows word-splits them and the agent receives only the
+  // first token. Feed those via stdin instead; short slash commands are safe
+  // as arguments.
+  const isMultiline = /[\r\n]/.test(slashCommand);
+  const args = isMultiline
+    ? ['-p', '--model', model, '--dangerously-skip-permissions']
+    : ['-p', slashCommand, '--model', model, '--dangerously-skip-permissions'];
+
+  const res = spawnSync('claude', args, {
+    cwd: ROOT,
+    encoding: 'utf8',
+    input: isMultiline ? slashCommand : undefined,
+    stdio: isMultiline ? ['pipe', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe'],
+    timeout,
+    env,
+    // .cmd shim needs a shell on Windows, but a shell would word-split a
+    // multi-line prompt, so only use it for the single-line case.
+    shell: process.platform === 'win32' && !isMultiline,
+  });
 
   const elapsed = Math.round((Date.now() - start) / 1000);
 
@@ -705,9 +713,25 @@ function commitJob(job) {
     return;
   }
   git(['add', '-A']);
-  const msg = `remake(${job.phase}): ${job.id}\n\nAutomated by scripts/remake-pipeline.js\n\nCo-Authored-By: Claude Opus 5 <noreply@anthropic.com>`;
-  const r = git(['commit', '-m', msg]);
-  console.log(r.ok ? `  Committed: ${job.id}` : `  WARNING: commit failed for ${job.id}`);
+  const msg = `remake(${job.phase}): ${job.id}\n\nAutomated by scripts/remake-pipeline.js\n\nCo-Authored-By: Claude Opus 5 <noreply@anthropic.com>\n`;
+
+  // The message MUST go via stdin, not `-m`. With shell:true on Windows a
+  // multi-line -m argument is word-split, so git reads only the first token as
+  // the message and treats the rest as pathspecs ("did not match any file(s)").
+  const r = spawnSync('git', ['commit', '-F', '-'], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    input: msg,
+    timeout: 5 * MIN,
+    shell: false,
+  });
+  const ok = !r.error && r.status === 0;
+  if (ok) {
+    console.log(`  Committed: ${job.id}`);
+  } else {
+    console.log(`  WARNING: commit failed for ${job.id}`);
+    console.log('    ' + String(r.stderr || r.error?.message || '').split('\n')[0]);
+  }
 }
 
 // ─── Job execution ───────────────────────────────────────────────
