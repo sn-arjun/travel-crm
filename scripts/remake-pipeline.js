@@ -229,6 +229,7 @@ function buildJobs() {
       phase: 'foundation',
       model: OPUS,
       cmd: '/remake-foundation',
+      mustChangeFiles: true,
       gates: ['typecheck', 'unit'],
       requires: [INVENTORY_FILE],
       produces: [CONTRACT_FILE],
@@ -250,6 +251,7 @@ function buildJobs() {
       phase: 'backend',
       model: OPUS,
       cmd: '/remake-backend admin',
+      mustChangeFiles: true,
       gates: ['backendFrozen', 'backendTests'],
       requires: [sliceManifestPath('super-admin')],
       produces: [path.join(BACKEND, 'src', 'routes', 'admin.ts')],
@@ -270,6 +272,7 @@ function buildJobs() {
       slice: s,
       model: SONNET,
       cmd: `/remake-slice ${s}`,
+      mustChangeFiles: true,
       // backendFrozen is a cheap git diff — it catches a wandering agent on the
       // very slice that wandered, instead of at the end of a 30-hour run.
       gates: ['backendFrozen', 'typecheck', 'unit'],
@@ -286,6 +289,7 @@ function buildJobs() {
       slice: s,
       model: SONNET,
       cmd: `/remake-verify ${s}`,
+      mustChangeFiles: true,
       gates: [`spec:${s}`],
       requires: [CONTRACT_FILE, sliceManifestPath(s)],
       produces: [sliceSpecPath(s)],
@@ -297,6 +301,7 @@ function buildJobs() {
     phase: 'cleanup',
     model: HAIKU,
     cmd: '/remake-cleanup',
+    mustChangeFiles: true,
     gates: ['backendFrozen', 'backendTests', 'typecheck', 'unit'],
     requires: [],
     produces: [COVERAGE_FILE],
@@ -307,6 +312,7 @@ function buildJobs() {
     phase: 'showcase',
     model: SONNET,
     cmd: '/remake-showcase',
+    mustChangeFiles: true,
     gates: ['showcase'],
     requires: [CONTRACT_FILE],
     produces: [SHOWCASE_SPEC],
@@ -332,25 +338,21 @@ function runClaude(slashCommand, model, label, phase) {
   const env = { ...process.env };
   delete env.CLAUDECODE;
 
-  // Multi-line prompts (the repair jobs) MUST NOT be passed as an argv string
-  // under shell:true — Windows word-splits them and the agent receives only the
-  // first token. Feed those via stdin instead; short slash commands are safe
-  // as arguments.
-  const isMultiline = /[\r\n]/.test(slashCommand);
-  const args = isMultiline
-    ? ['-p', '--model', model, '--dangerously-skip-permissions']
-    : ['-p', slashCommand, '--model', model, '--dangerously-skip-permissions'];
-
-  const res = spawnSync('claude', args, {
+  // NEVER use shell:true here. The Windows shell word-splits the argv entry, so
+  // `-p "/remake-slice contacts"` arrived as `/remake-slice` with $ARGUMENTS
+  // EMPTY — agents asked which slice to build, exited 0 in 30s having changed
+  // nothing, and every gate passed because doing nothing breaks nothing.
+  // The same splitting silently truncated multi-line repair prompts to their
+  // first line. `claude` resolves fine without a shell, so there is no reason
+  // to use one. Prompts go via stdin, which is immune either way.
+  const res = spawnSync('claude', ['-p', '--model', model, '--dangerously-skip-permissions'], {
     cwd: ROOT,
     encoding: 'utf8',
-    input: isMultiline ? slashCommand : undefined,
-    stdio: isMultiline ? ['pipe', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe'],
+    input: slashCommand,
+    stdio: ['pipe', 'pipe', 'pipe'],
     timeout,
     env,
-    // .cmd shim needs a shell on Windows, but a shell would word-split a
-    // multi-line prompt, so only use it for the single-line case.
-    shell: process.platform === 'win32' && !isMultiline,
+    shell: false,
   });
 
   const elapsed = Math.round((Date.now() - start) / 1000);
@@ -744,6 +746,19 @@ function missingProduces(job) {
   return job.produces.filter((p) => !fs.existsSync(p));
 }
 
+/**
+ * Fingerprint of the working tree, used to prove a job actually did something.
+ *
+ * typecheck and vitest both pass when an agent changes NOTHING, so they cannot
+ * distinguish "built the slice correctly" from "misread the prompt and exited".
+ * That is exactly how three slice jobs were marked ok having touched no files.
+ */
+function treeFingerprint() {
+  const r = sh('git', ['status', '--porcelain'], ROOT, 2 * MIN);
+  const head = sh('git', ['rev-parse', 'HEAD'], ROOT, 2 * MIN);
+  return `${head.output.trim()}::${r.output.trim()}`;
+}
+
 function runJob(job, st) {
   if (isDone(st, job.id)) {
     // A job marked ok can still be invalidated later (a subsequent job, or a
@@ -776,10 +791,20 @@ function runJob(job, st) {
     return false;
   }
 
+  const before = job.mustChangeFiles ? treeFingerprint() : null;
+
   const res = runClaude(job.cmd, job.model, job.id.toUpperCase(), job.phase);
   if (!res.ok) {
     markJob(st, job.id, res.reason, res.error);
     console.log(`  ${job.id} failed (${res.reason}). Continuing.`);
+    return false;
+  }
+
+  // A job that must produce work but changed nothing did not do its job,
+  // regardless of what it printed or what exit code it returned.
+  if (before !== null && treeFingerprint() === before) {
+    console.log(`  ${job.id}: agent changed NO files — treating as failed.`);
+    markJob(st, job.id, 'failed', 'no-op: agent completed without modifying any file');
     return false;
   }
 
