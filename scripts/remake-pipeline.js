@@ -994,6 +994,8 @@ function main() {
     if (a === '--all') { selector = { kind: 'all' }; continue; }
     if (a === '--checkpoint') {
       // Run through foundation + the review slices, then stop for owner review.
+      // This is a MODIFIER over the full graph, so it implies --all unless an
+      // explicit selector was given.
       checkpointSet = new Set([
         'inventory',
         'foundation',
@@ -1029,6 +1031,10 @@ function main() {
     process.exit(1);
   }
 
+  // --checkpoint is a modifier over the full graph, so it implies --all.
+  // Applied after arg parsing so flag order does not matter.
+  if (!selector && checkpointSet) selector = { kind: 'all' };
+
   if (!selector) { usage(); return; }
 
   // Re-resolved on every iteration so the graph can grow mid-run.
@@ -1061,6 +1067,7 @@ function main() {
 
   const processed = new Set();
   let stopped = null;
+  let ran = 0;
   for (;;) {
     const pending = resolve(st).filter((j) => !processed.has(j.id));
     if (!pending.length) break;
@@ -1075,7 +1082,17 @@ function main() {
 
     processed.add(job.id);
     runJob(job, st);
+    ran += 1;
     st = loadState(); // inventory writes slice manifests → graph expands here
+  }
+
+  // A run that executed nothing is almost always a CLI mistake (this exact
+  // shape once burned hours by printing usage and exiting 0). Fail loudly.
+  if (ran === 0 && !stopped) {
+    console.error('\n  ERROR: no jobs ran. Every selected job was already ok, or the');
+    console.error('  selection matched nothing. Check `--status` and your flags.\n');
+    process.exitCode = 1;
+    return;
   }
 
   showStatus(loadState());
