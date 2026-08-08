@@ -18,6 +18,18 @@
       "timestamp": "2026-08-08T07:48:21.419Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:contacts": {
+      "status": "ok",
+      "timestamp": "2026-08-08T13:19:27.599Z",
+      "error": null,
+      "repairAttempts": 0
+    },
+    "slice:leads": {
+      "status": "ok",
+      "timestamp": "2026-08-08T13:19:27.599Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
