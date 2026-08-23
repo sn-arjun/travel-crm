@@ -2,19 +2,20 @@
 
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Loader2, Lock, Eye, EyeOff, CheckCircle2, User, AlertTriangle } from 'lucide-react';
+import { Loader2, Lock, Eye, EyeOff, CheckCircle2, User as UserIcon, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
 import { client, type ApiResponse } from '@/lib/api/client';
+import type { User, Tenant } from '@travelcrm/shared';
 
 interface SetupAccountResponse {
   accessToken: string;
   refreshToken: string;
-  user: any;
-  tenant: any;
+  user: User;
+  tenant: Tenant;
 }
 
 export default function SetupAccountPageWrapper() {
@@ -59,8 +60,8 @@ function SetupAccountPage() {
   if (!token) {
     return (
       <div className="space-y-6 text-center">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
-          <AlertTriangle className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-ds-warning-subtle">
+          <AlertTriangle className="h-8 w-8 text-ds-warning" />
         </div>
         <div>
           <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
@@ -119,8 +120,8 @@ function SetupAccountPage() {
   if (success) {
     return (
       <div className="space-y-6 text-center">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-          <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-ds-success-subtle">
+          <CheckCircle2 className="h-8 w-8 text-ds-success" />
         </div>
         <div>
           <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
@@ -155,7 +156,7 @@ function SetupAccountPage() {
         <div className="space-y-2">
           <Label htmlFor="name">Full name</Label>
           <div className="relative">
-            <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               id="name"
               type="text"
@@ -199,10 +200,10 @@ function SetupAccountPage() {
                     className={`h-1 flex-1 rounded-full ${
                       i <= passwordStrength.score
                         ? passwordStrength.score <= 1
-                          ? 'bg-red-500'
+                          ? 'bg-ds-danger'
                           : passwordStrength.score <= 2
-                            ? 'bg-amber-500'
-                            : 'bg-green-500'
+                            ? 'bg-ds-warning'
+                            : 'bg-ds-success'
                         : 'bg-muted'
                     }`}
                   />

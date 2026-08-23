@@ -88,6 +88,8 @@ const faqItems: FAQItem[] = [
   },
 ];
 
+const SUPPORT_EMAIL = 'support@travelcrmpro.com';
+
 const quickLinks = [
   { label: 'Documentation', icon: BookOpen, href: '#' },
   { label: 'Video Tutorials', icon: Video, href: '#' },
@@ -127,34 +129,19 @@ export default function HelpPage() {
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validate form
     if (!formData.name || !formData.email || !formData.subject || !formData.message) {
       toast.error('Please fill in all fields');
       return;
     }
 
-    // Submit feedback/ticket
+    const body = `From: ${formData.name} <${formData.email}>\nSubject: ${formData.subject}\n\n${formData.message}`;
     try {
-      // Submit to API - using a simple POST request pattern
-      const response = await fetch('/api/support-tickets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to submit support ticket');
-      }
-
-      setSubmitMessage('Thank you! Your message has been sent. We will respond within 24 hours.');
-      setFormData({ name: '', email: '', subject: '', message: '' });
-      toast.success('Support ticket created successfully');
-      // Clear message after 5 seconds
-      const timer = setTimeout(() => setSubmitMessage(''), 5000);
-      return () => clearTimeout(timer);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to submit form';
-      toast.error(errorMessage);
+      await navigator.clipboard.writeText(body);
+      setSubmitMessage(`Copied to clipboard — paste it into an email to ${SUPPORT_EMAIL}.`);
+      toast.success('Message copied — send it to support from your email client');
+    } catch {
+      setSubmitMessage(`Please email ${SUPPORT_EMAIL} directly with your message.`);
+      toast.info(`Email ${SUPPORT_EMAIL} directly — clipboard access unavailable`);
     }
   };
 
@@ -333,7 +320,7 @@ export default function HelpPage() {
                 </div>
                 <div className="flex items-center justify-between">
                   {submitMessage && (
-                    <p className="text-xs text-green-600">{submitMessage}</p>
+                    <p className="text-xs text-ds-success">{submitMessage}</p>
                   )}
                   <Button type="submit" className="ml-auto">
                     Send Message

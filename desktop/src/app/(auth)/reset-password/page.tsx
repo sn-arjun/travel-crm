@@ -81,8 +81,8 @@ function ResetPasswordPage() {
   if (success) {
     return (
       <div className="space-y-6 text-center">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-          <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-ds-success-subtle">
+          <CheckCircle2 className="h-8 w-8 text-ds-success" />
         </div>
         <div>
           <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Password reset!</h2>
@@ -134,8 +134,8 @@ function ResetPasswordPage() {
           {password && (
             <div className="space-y-1">
               <div className="flex gap-1">
-                {[1, 2, 3, 4].map((i: any) => (
-                  <div key={i} className={`h-1 flex-1 rounded-full ${i <= passwordStrength.score ? (passwordStrength.score <= 1 ? 'bg-red-500' : passwordStrength.score <= 2 ? 'bg-amber-500' : 'bg-green-500') : 'bg-muted'}`} />
+                {[1, 2, 3, 4].map((i: number) => (
+                  <div key={i} className={`h-1 flex-1 rounded-full ${i <= passwordStrength.score ? (passwordStrength.score <= 1 ? 'bg-ds-danger' : passwordStrength.score <= 2 ? 'bg-ds-warning' : 'bg-ds-success') : 'bg-muted'}`} />
                 ))}
               </div>
               <p className="text-xs text-muted-foreground">{passwordStrength.label}</p>

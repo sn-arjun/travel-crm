@@ -90,14 +90,8 @@ export default function LoginPage() {
       const response = await authApi.login({ email, password, tenantId: selectedTenantId });
 
       if (response.data) {
-        const selectedTenant = resolvedTenants.find((t) => t.id === selectedTenantId);
-        const { accessToken, refreshToken, user } = response.data;
-        setAuth({
-          accessToken,
-          refreshToken,
-          user,
-          tenant: { id: selectedTenantId, companyName: selectedTenant?.companyName ?? '' } as any,
-        });
+        const { accessToken, refreshToken, user, tenant } = response.data;
+        setAuth({ accessToken, refreshToken, user, tenant });
         toast.success('Logged in successfully');
         router.push('/');
       }
@@ -150,14 +144,8 @@ export default function LoginPage() {
       const response = await authApi.verifyOtp({ phone: fullPhone, otp, tenantId: selectedTenantId });
 
       if (response.data) {
-        const selectedTenant = resolvedTenants.find((t) => t.id === selectedTenantId);
-        const { accessToken, refreshToken, user } = response.data;
-        setAuth({
-          accessToken,
-          refreshToken,
-          user,
-          tenant: { id: selectedTenantId, companyName: selectedTenant?.companyName ?? '' } as any,
-        });
+        const { accessToken, refreshToken, user, tenant } = response.data;
+        setAuth({ accessToken, refreshToken, user, tenant });
         toast.success('Logged in successfully');
         router.push('/');
       }

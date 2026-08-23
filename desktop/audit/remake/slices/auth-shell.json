@@ -80,10 +80,10 @@
     "listPage": false,
     "filterBar": false,
     "infiniteScroll": false,
-    "hoverActions": false,
+    "hoverActions": true,
     "detailDrawer": false,
-    "emptyState": false,
-    "skeleton": false,
+    "emptyState": true,
+    "skeleton": true,
     "relationCombobox": false,
     "urlPrefill": true,
     "phoneInput": false,
@@ -93,7 +93,7 @@
     "sendMessageDialog": false,
     "themedExport": false
   },
-  "notes": "Login/forgot/reset/setup exist. Session management (GET/DELETE /auth/sessions) has a page at settings/sessions but no wired API module. Sidebar badge count is hardcoded (IMPROVEMENTS #27). Shell owns sidebar, topbar, command palette.",
+  "notes": "Login/forgot/reset/setup exist and now use ds-* tokens instead of raw green/red/amber Tailwind colors. Fixed a real bug: login (password + OTP) was discarding the real Tenant from the login response and fabricating a fake partial one via `as any` — now uses response.data.tenant directly. Sessions page (settings/sessions) rebuilt onto PageHeader + DataTable + EmptyState + Skeleton + useConfirm (was raw Card/Table with no confirm-before-revoke); it's a small flat array from the backend (not paginated), so no infinite scroll/filterBar apply here — ListPage archetype doesn't fit a non-paginated dataset. Help page's 'Contact Support' form posted to a nonexistent `/api/support-tickets` Next.js route (this app has no Next API routes at all, only the Workers backend) — replaced with a copy-to-clipboard + direct support-email instruction since no such backend endpoint exists in this slice and mailto: is banned. Sidebar badge counts are already wired to notificationsApi.getBadgeCounts() with realtime updates, not hardcoded as previously noted. Shell (sidebar/topbar/command palette) was already solid, uses shadcn CSS-var classes consistently (not raw hex/px, so contract-compliant) — left as-is rather than a wholesale ds-* rewrite given no functional defect.",
   "showcaseScript": [
     "Open the app and sign in with email and password",
     "Show the tenant-aware sidebar and global search",

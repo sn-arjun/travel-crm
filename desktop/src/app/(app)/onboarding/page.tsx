@@ -253,8 +253,8 @@ export default function OnboardingPage() {
       {stepId === 'done' && (
         <Card>
           <CardContent className="py-12 text-center space-y-4">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-              <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-ds-success-subtle">
+              <CheckCircle2 className="h-8 w-8 text-ds-success" />
             </div>
             <h2 className="text-2xl font-bold">You&apos;re all set!</h2>
             <p className="text-muted-foreground max-w-md mx-auto">
