@@ -1,249 +1,159 @@
 'use client';
 
 import * as React from 'react';
-import {
-  Star, Trash2, ExternalLink, Search, Loader2,
-} from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Star, Trash2, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { ListPage } from '@/components/domain';
 import { Badge } from '@/components/ui/badge';
-import { Card } from '@/components/ui/card';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
-import { cn } from '@/lib/utils';
-import { useApiQuery, useApiMutation } from '@/hooks/use-api';
+import { Button } from '@/components/ui/button';
 import { bookmarksApi } from '@/lib/api/bookmarks';
 import type { Bookmark } from '@/lib/api/bookmarks';
 
-const REF_DATE = Date.now();
+const ENTITY_ROUTES: Record<Bookmark['entityType'], string> = {
+  contact: '/contacts',
+  lead: '/leads',
+  invoice: '/invoices',
+  itinerary: '/itineraries',
+  task: '/tasks',
+};
 
-function getEntityIcon(type: string) {
-  switch (type) {
-    case 'contact':
-      return '👤';
-    case 'lead':
-      return '💼';
-    case 'invoice':
-      return '📄';
-    case 'itinerary':
-      return '🗺️';
-    case 'task':
-      return '✓';
-    default:
-      return '⭐';
-  }
-}
-
-function getEntityColor(type: string) {
-  switch (type) {
-    case 'contact':
-      return 'bg-blue-100 text-blue-800';
-    case 'lead':
-      return 'bg-purple-100 text-purple-800';
-    case 'invoice':
-      return 'bg-green-100 text-green-800';
-    case 'itinerary':
-      return 'bg-orange-100 text-orange-800';
-    case 'task':
-      return 'bg-red-100 text-red-800';
-    default:
-      return 'bg-gray-100 text-gray-800';
-  }
-}
+const ENTITY_TONE: Record<Bookmark['entityType'], 'info' | 'default'> = {
+  contact: 'info',
+  lead: 'default',
+  invoice: 'default',
+  itinerary: 'default',
+  task: 'default',
+};
 
 function formatDate(dateString: string) {
   const date = new Date(dateString);
-  const today = new Date(REF_DATE);
+  const today = new Date();
   const yesterday = new Date(today.getTime() - 86400000);
+  if (date.toDateString() === today.toDateString()) return 'Today';
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return date.toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
-  if (date.toDateString() === today.toDateString()) {
-    return 'Today';
-  }
-  if (date.toDateString() === yesterday.toDateString()) {
-    return 'Yesterday';
-  }
-
-  return date.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
+function toCsv(rows: Bookmark[]) {
+  const header = ['Name', 'Type', 'Bookmarked At'];
+  const lines = rows.map((b) => [b.entityName, b.entityType, b.createdAt].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','));
+  return [header.join(','), ...lines].join('\n');
 }
 
 export default function BookmarksPage() {
-  const { data: response, loading, error, refetch } = useApiQuery(
-    () => bookmarksApi.list({ limit: 100 }),
-    [],
-  );
+  const router = useRouter();
+  const [filterType, setFilterType] = React.useState<string | null>(null);
+  const [refetchKey, setRefetchKey] = React.useState(0);
 
-  const bookmarks = React.useMemo(() => {
-    if (!response || !('data' in response)) return [];
-    const data = response.data;
-    return Array.isArray(data) ? data : (data?.data ?? []);
-  }, [response]);
+  const openEntity = (bookmark: Bookmark) => {
+    router.push(`${ENTITY_ROUTES[bookmark.entityType]}/${bookmark.entityId}`);
+  };
 
-  const { mutate: deleteBookmark } = useApiMutation((id: string) => bookmarksApi.delete(id));
-
-  const [search, setSearch] = React.useState('');
-  const [filterType, setFilterType] = React.useState('all');
-
-  const filtered = React.useMemo(() => {
-    let result = [...bookmarks];
-
-    if (search) {
-      const q = search.toLowerCase();
-      result = result.filter((b: any) => b.entityName.toLowerCase().includes(q));
-    }
-
-    if (filterType !== 'all') {
-      result = result.filter((b: any) => b.entityType === filterType);
-    }
-
-    return result.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [bookmarks, search, filterType]);
-
-  const groupedByType = React.useMemo(() => {
-    const groups: Record<string, typeof bookmarks> = {};
-
-    filtered.forEach((b: any) => {
-      if (!groups[b.entityType]) {
-        groups[b.entityType] = [];
-      }
-      groups[b.entityType]?.push(b);
-    });
-
-    return groups;
-  }, [filtered]);
-
-  const isEmpty = bookmarks.length === 0;
-
-  const handleDeleteBookmark = async (id: string) => {
-    const result = await deleteBookmark(id);
-    if (result) {
+  const handleDelete = async (id: string) => {
+    try {
+      await bookmarksApi.delete(id);
       toast.success('Bookmark removed');
-      refetch();
+      setRefetchKey((k) => k + 1);
+    } catch {
+      toast.error('Failed to remove bookmark');
     }
   };
 
+  const handleExport = (rows: Bookmark[]) => {
+    const csv = toCsv(rows);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `bookmarks-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const filters = filterType
+    ? [{ id: 'entityType', label: 'Type', value: filterType }]
+    : [];
+
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-            Bookmarks
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {isEmpty ? 'Star items to find them quickly' : `${bookmarks.length} bookmarked item${bookmarks.length !== 1 ? 's' : ''}`}
-          </p>
-        </div>
-      </div>
-
-      {/* Search and Filter */}
-      {!isEmpty && (
-        <div className="px-6 py-3 border-b space-y-3 bg-muted/30">
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search bookmarks..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 h-9"
-              />
+    <ListPage<Bookmark>
+      key={refetchKey}
+      title="Bookmarks"
+      description="Items you've starred for quick access."
+      getRowId={(b) => b.id}
+      fetcher={async ({ page, limit, search }) => {
+        const res = await bookmarksApi.list({ page, limit, entityType: filterType ?? undefined });
+        if (!search) return res;
+        const filtered = res.data.data.filter((b) =>
+          b.entityName.toLowerCase().includes(search.toLowerCase()),
+        );
+        return { ...res, data: { ...res.data, data: filtered } };
+      }}
+      searchPlaceholder="Search bookmarks..."
+      filters={filters}
+      onRemoveFilter={() => setFilterType(null)}
+      onClearFilters={() => setFilterType(null)}
+      columns={[
+        {
+          key: 'entityName',
+          header: 'Name',
+          sortable: true,
+          cell: (b) => (
+            <div className="flex items-center gap-ds-2">
+              <Star className="size-4 shrink-0 text-ds-warning" aria-hidden="true" />
+              <span className="truncate font-medium">{b.entityName}</span>
             </div>
-            <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="contact">Contacts</SelectItem>
-                <SelectItem value="lead">Leads</SelectItem>
-                <SelectItem value="invoice">Invoices</SelectItem>
-                <SelectItem value="itinerary">Itineraries</SelectItem>
-                <SelectItem value="task">Tasks</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      )}
-
-      {error && (
-        <div className="px-6 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800">
-          <p className="text-sm text-amber-800 dark:text-amber-200">Using sample data — connect to backend for real data</p>
-        </div>
-      )}
-
-      {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
-        {loading && (
-          <div className="flex items-center justify-center h-full">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        )}
-
-        {!loading && isEmpty ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <Star className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-semibold mb-2">No bookmarks yet</p>
-              <p className="text-sm text-muted-foreground">Star items to find them quickly</p>
-            </div>
-          </div>
-        ) : !loading && (
-          <div className="max-w-4xl mx-auto space-y-6">
-            {Object.entries(groupedByType).map(([entityType, bookmarksOfType]) => (
-              bookmarksOfType.length > 0 && (
-                <div key={entityType}>
-                  <h2 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
-                    <span>{getEntityIcon(entityType)}</span>
-                    {entityType.charAt(0).toUpperCase() + entityType.slice(1)}s
-                    <Badge variant="secondary" className="ml-auto">{bookmarksOfType.length}</Badge>
-                  </h2>
-                  <div className="space-y-2">
-                    {bookmarksOfType.map((bookmark: any) => (
-                      <BookmarkRow key={bookmark.id} bookmark={bookmark} onRemove={handleDeleteBookmark} />
-                    ))}
-                  </div>
-                </div>
-              )
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function BookmarkRow({ bookmark, onRemove }: { bookmark: Bookmark; onRemove: (id: string) => void }) {
-  return (
-    <Card className="p-4 hover:bg-muted/50 transition-colors">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <span className="text-xl shrink-0">{getEntityIcon(bookmark.entityType)}</span>
-          <div className="flex-1 min-w-0">
-            <p className="font-medium text-sm truncate">{bookmark.entityName}</p>
-            <p className="text-xs text-muted-foreground">
-              Bookmarked {formatDate(bookmark.createdAt)}
-            </p>
-          </div>
-          <Badge className={cn('shrink-0', getEntityColor(bookmark.entityType))}>
-            {bookmark.entityType.charAt(0).toUpperCase() + bookmark.entityType.slice(1)}
-          </Badge>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-            <ExternalLink className="h-4 w-4" />
+          ),
+        },
+        {
+          key: 'entityType',
+          header: 'Type',
+          cell: (b) => (
+            <Badge variant={ENTITY_TONE[b.entityType] === 'info' ? 'secondary' : 'outline'}>
+              {b.entityType.charAt(0).toUpperCase() + b.entityType.slice(1)}
+            </Badge>
+          ),
+        },
+        {
+          key: 'createdAt',
+          header: 'Bookmarked',
+          sortable: true,
+          cell: (b) => <span className="text-ds-foreground-muted">{formatDate(b.createdAt)}</span>,
+        },
+      ]}
+      onRowClick={openEntity}
+      rowActions={(b) => (
+        <>
+          <Button variant="ghost" size="icon-sm" aria-label="Open" onClick={() => openEntity(b)}>
+            <ExternalLink />
           </Button>
           <Button
             variant="ghost"
-            size="sm"
-            className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-            onClick={() => onRemove(bookmark.id)}
+            size="icon-sm"
+            aria-label="Remove bookmark"
+            onClick={() => void handleDelete(b.id)}
           >
-            <Trash2 className="h-4 w-4" />
+            <Trash2 />
           </Button>
-        </div>
-      </div>
-    </Card>
+        </>
+      )}
+      bulkActions={[
+        {
+          label: 'Remove',
+          icon: <Trash2 />,
+          destructive: true,
+          onSelect: async (rows) => {
+            await Promise.all(rows.map((r) => bookmarksApi.delete(r.id)));
+            toast.success(`${rows.length} bookmark${rows.length === 1 ? '' : 's'} removed`);
+            setRefetchKey((k) => k + 1);
+          },
+        },
+      ]}
+      onExport={handleExport}
+      exportLabel="Export CSV"
+      emptyTitle="No bookmarks yet"
+      emptyDescription="Star items across the CRM to find them quickly here."
+      emptyIcon={<Star className="size-10 text-ds-foreground-subtle" aria-hidden="true" />}
+    />
   );
 }

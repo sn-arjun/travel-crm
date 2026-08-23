@@ -14,12 +14,15 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
+import { Skeleton } from '@/components/ui/skeleton';
+import { PageHeader } from '@/components/ui/page-header';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS } from '@travelcrm/shared';
-import { StickyNotesWidget } from '@/components/domain/sticky-notes-widget';
+import { StickyNotesWidget } from '@/components/domain/dashboard/sticky-notes-widget';
 import { useApiQuery } from '@/hooks/use-api';
 import { tasksApi } from '@/lib/api/tasks';
 import { notificationsApi } from '@/lib/api/notifications';
@@ -528,19 +531,29 @@ function UpcomingTravel() {
 }
 
 /* ─── Date Range Selector ─── */
-function DateRangeSelector({ value, onValueChange }: { value: string; onValueChange: (value: string) => void }) {
+function DateRangeSelector({
+  value, onValueChange, customDate, onCustomDateChange,
+}: {
+  value: string; onValueChange: (value: string) => void;
+  customDate?: Date; onCustomDateChange: (date: Date | undefined) => void;
+}) {
   return (
-    <Select value={value} onValueChange={onValueChange}>
-      <SelectTrigger className="w-40">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="week">This Week</SelectItem>
-        <SelectItem value="month">This Month</SelectItem>
-        <SelectItem value="quarter">This Quarter</SelectItem>
-        <SelectItem value="custom">Custom Range</SelectItem>
-      </SelectContent>
-    </Select>
+    <div className="flex items-center gap-ds-2">
+      <Select value={value} onValueChange={onValueChange}>
+        <SelectTrigger className="w-40">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="week">This Week</SelectItem>
+          <SelectItem value="month">This Month</SelectItem>
+          <SelectItem value="quarter">This Quarter</SelectItem>
+          <SelectItem value="custom">Custom Range</SelectItem>
+        </SelectContent>
+      </Select>
+      {value === 'custom' && (
+        <DatePicker value={customDate} onChange={onCustomDateChange} placeholder="Pick a date" className="w-44" />
+      )}
+    </div>
   );
 }
 
@@ -667,6 +680,7 @@ function QuickActions() {
 /* ─── Main Dashboard ─── */
 export default function DashboardPage() {
   const [dateRange, setDateRange] = React.useState('month');
+  const [customDate, setCustomDate] = React.useState<Date | undefined>();
 
   const { data: taskSummary, loading: tasksLoading } = useApiQuery(
     () => tasksApi.getDashboardSummary(),
@@ -688,10 +702,12 @@ export default function DashboardPage() {
     [],
   );
 
-  const { data: leadsResponse } = useApiQuery(
+  const { data: leadsResponse, loading: leadsLoading } = useApiQuery(
     () => leadsApi.list({ page: 1, limit: 1000 }),
     [],
   );
+
+  const kpisLoading = leadsLoading && tasksLoading;
 
   const leadsData = leadsResponse?.data;
   const allLeads = Array.isArray(leadsData) ? leadsData : (leadsData?.data ?? []);
@@ -752,70 +768,83 @@ export default function DashboardPage() {
   }, [taskSummary, allLeads, pipelineData, followUpStats]);
 
   return (
-    <div className="flex flex-col h-full overflow-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Welcome back, Arjun. Here's your overview.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <DateRangeSelector value={dateRange} onValueChange={setDateRange} />
-          <Button>
-            <Plus className="h-4 w-4 mr-1.5" /> Quick Add
-          </Button>
-        </div>
-      </div>
+    <div className="flex h-full flex-col overflow-auto">
+      <PageHeader
+        title="Dashboard"
+        description="Welcome back, Arjun. Here's your overview."
+        className="px-ds-6 pt-ds-4"
+        actions={
+          <>
+            <DateRangeSelector
+              value={dateRange}
+              onValueChange={setDateRange}
+              customDate={customDate}
+              onCustomDateChange={setCustomDate}
+            />
+            <Button>
+              <Plus className="mr-1.5 size-4" aria-hidden="true" /> Quick Add
+            </Button>
+          </>
+        }
+      />
 
       {/* Content */}
-      <div className="flex-1 p-6 space-y-6 overflow-y-auto">
+      <div className="flex-1 space-y-ds-6 overflow-y-auto p-ds-6">
         {/* KPI Row */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-          <Link href="/leads" className="block">
-            <KPICard
-              title="New Leads"
-              value={String(kpis.newLeads.count)}
-              trend={kpis.newLeads.trend}
-              icon={Briefcase}
-              sparkData={[8, 12, 10, 15, 18, 14, 20, 24]}
-            />
-          </Link>
-          <Link href="/tasks" className="block">
-            <KPICard
-              title="Follow-ups Today"
-              value={String(kpis.followUpsToday.count)}
-              icon={Clock}
-              sparkData={[5, 3, 7, 4, 8, 6, 5, 8]}
-              color="hsl(38, 92%, 50%)"
-            />
-          </Link>
-          <Link href="/invoices" className="block">
-            <KPICard
-              title="Revenue (Month)"
-              value={formatCurrency(kpis.revenueThisMonth.amount)}
-              trend={kpis.revenueThisMonth.trend}
-              icon={DollarSign}
-              sparkData={[120, 180, 150, 220, 280, 210, 300, 245]}
-              color="hsl(142, 72%, 29%)"
-            />
-          </Link>
-          <Link href="/leads" className="block">
-            <KPICard
-              title="Bookings"
-              value={String(kpis.bookingsThisMonth.count)}
-              trend={kpis.bookingsThisMonth.trend}
-              icon={Plane}
-              sparkData={[3, 5, 4, 2, 6, 7, 4, 5]}
-              color="hsl(262, 83%, 58%)"
-            />
-          </Link>
-          <KPICard
-            title="Collection Rate"
-            value={`${kpis.collectionRate.percentage}%`}
-            icon={Target}
-            sparkData={[65, 70, 68, 72, 75, 78, 74, 78]}
-            color="hsl(217, 91%, 60%)"
-          />
+        <div className="grid grid-cols-2 gap-ds-4 lg:grid-cols-5">
+          {kpisLoading ? (
+            Array.from({ length: 5 }, (_, i) => (
+              <Skeleton key={i} className="h-32 rounded-ds-lg" />
+            ))
+          ) : (
+            <>
+              <Link href="/leads" className="block">
+                <KPICard
+                  title="New Leads"
+                  value={String(kpis.newLeads.count)}
+                  trend={kpis.newLeads.trend}
+                  icon={Briefcase}
+                  sparkData={[8, 12, 10, 15, 18, 14, 20, 24]}
+                />
+              </Link>
+              <Link href="/tasks" className="block">
+                <KPICard
+                  title="Follow-ups Today"
+                  value={String(kpis.followUpsToday.count)}
+                  icon={Clock}
+                  sparkData={[5, 3, 7, 4, 8, 6, 5, 8]}
+                  color="hsl(38, 92%, 50%)"
+                />
+              </Link>
+              <Link href="/invoices" className="block">
+                <KPICard
+                  title="Revenue (Month)"
+                  value={formatCurrency(kpis.revenueThisMonth.amount)}
+                  trend={kpis.revenueThisMonth.trend}
+                  icon={DollarSign}
+                  sparkData={[120, 180, 150, 220, 280, 210, 300, 245]}
+                  color="hsl(142, 72%, 29%)"
+                />
+              </Link>
+              <Link href="/leads" className="block">
+                <KPICard
+                  title="Bookings"
+                  value={String(kpis.bookingsThisMonth.count)}
+                  trend={kpis.bookingsThisMonth.trend}
+                  icon={Plane}
+                  sparkData={[3, 5, 4, 2, 6, 7, 4, 5]}
+                  color="hsl(262, 83%, 58%)"
+                />
+              </Link>
+              <KPICard
+                title="Collection Rate"
+                value={`${kpis.collectionRate.percentage}%`}
+                icon={Target}
+                sparkData={[65, 70, 68, 72, 75, 78, 74, 78]}
+                color="hsl(217, 91%, 60%)"
+              />
+            </>
+          )}
         </div>
 
         {/* Financial Summary */}
