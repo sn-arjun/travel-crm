@@ -176,6 +176,18 @@ function markJob(st, id, status, error = null, extra = {}) {
 
 const isDone = (st, id) => st.jobs[id]?.status === 'ok';
 
+/**
+ * Circuit breaker.
+ *
+ * A --all run once burned all 98 remaining jobs in 11 minutes: every agent
+ * exited non-zero within seconds (a usage cap), and the pipeline dutifully
+ * marked each failed and moved on. A systemic outage must stop the run, not
+ * consume the graph. Real slices take minutes; a sub-30s non-zero exit means
+ * the agent never started work.
+ */
+const CONSECUTIVE_FAILURE_LIMIT = 3;
+const SUSPICIOUSLY_FAST_SECONDS = 30;
+
 // ─── Slice discovery ─────────────────────────────────────────────
 
 /**
@@ -358,24 +370,46 @@ function runClaude(slashCommand, model, label, phase) {
 
   const elapsed = Math.round((Date.now() - start) / 1000);
 
+  // Capture ALL failure signals. `claude` often reports the real problem on
+  // stdout, and a timeout kill leaves status null with both streams empty.
+  // `elapsed` is returned so the circuit breaker can distinguish an instant
+  // agent-backend failure from a genuine long-running one.
+  const stderrRaw = (res.stderr || '').trim();
+  const stdoutTail = tail(res.stdout || '', 20);
+  const combined = [
+    stderrRaw && `stderr: ${stderrRaw}`,
+    stdoutTail && `stdout(tail): ${stdoutTail}`,
+  ]
+    .filter(Boolean)
+    .join('\n')
+    .slice(0, 1500);
+
   if (res.error) {
     if (res.error.code === 'ETIMEDOUT' || /TIMEOUT/i.test(res.error.message)) {
       console.error(`  TIMEOUT after ${elapsed}s`);
-      return { ok: false, reason: 'timeout', error: res.error.message };
+      return { ok: false, reason: 'timeout', error: res.error.message, elapsed };
     }
     console.error(`  ERROR: ${res.error.message}`);
-    return { ok: false, reason: 'failed', error: res.error.message };
+    return { ok: false, reason: 'failed', error: res.error.message, elapsed };
   }
 
   if (res.status !== 0) {
-    const stderr = (res.stderr || '').slice(0, 500);
-    if (/context|token|limit/i.test(stderr)) {
-      console.error(`  CONTEXT LIMIT after ${elapsed}s`);
-      return { ok: false, reason: 'context-limit', error: stderr };
+    if (res.status === null) {
+      console.error(`  KILLED (likely timeout) after ${elapsed}s`);
+      return { ok: false, reason: 'timeout', error: combined || 'killed with no output', elapsed };
+    }
+    if (/context|token|limit|quota|rate/i.test(combined)) {
+      console.error(`  CONTEXT/QUOTA LIMIT after ${elapsed}s`);
+      return { ok: false, reason: 'context-limit', error: combined, elapsed };
     }
     console.error(`  EXIT ${res.status} after ${elapsed}s`);
-    if (stderr) console.error(`  STDERR: ${stderr}`);
-    return { ok: false, reason: 'failed', error: stderr };
+    console.error(combined ? `  ${combined.split('\n').slice(0, 8).join('\n  ')}` : '  (no output captured)');
+    return {
+      ok: false,
+      reason: 'failed',
+      error: combined || `exit ${res.status} after ${elapsed}s with no output`,
+      elapsed,
+    };
   }
 
   if (res.stdout) console.log(`  ...last 15 lines:\n${tail(res.stdout, 15)}`);
@@ -789,7 +823,7 @@ function runJob(job, st) {
       saveState(st);
     } else {
       console.log(`  SKIP ${job.id} — already ok`);
-      return true;
+      return { ok: true, suspicious: false };
     }
   }
 
@@ -797,7 +831,7 @@ function runJob(job, st) {
   if (unmet.length) {
     console.log(`  SKIP ${job.id} — upstream job not ok: ${unmet.join(', ')}`);
     markJob(st, job.id, 'skipped', `upstream not ok: ${unmet.join(', ')}`);
-    return false;
+    return { ok: false, suspicious: false };
   }
 
   const missing = missingRequires(job);
@@ -805,7 +839,7 @@ function runJob(job, st) {
     const rel = missing.map((p) => path.relative(ROOT, p)).join(', ');
     console.log(`  SKIP ${job.id} — missing prerequisite: ${rel}`);
     markJob(st, job.id, 'skipped', `missing prerequisite: ${rel}`);
-    return false;
+    return { ok: false, suspicious: false };
   }
 
   const before = job.mustChangeFiles ? treeFingerprint() : null;
@@ -814,7 +848,10 @@ function runJob(job, st) {
   if (!res.ok) {
     markJob(st, job.id, res.reason, res.error);
     console.log(`  ${job.id} failed (${res.reason}). Continuing.`);
-    return false;
+    return {
+      ok: false,
+      suspicious: res.reason !== 'timeout' && (res.elapsed ?? 999) < SUSPICIOUSLY_FAST_SECONDS,
+    };
   }
 
   // A job that must produce work but changed nothing did not do its job,
@@ -822,7 +859,7 @@ function runJob(job, st) {
   if (before !== null && treeFingerprint() === before) {
     console.log(`  ${job.id}: agent changed NO files — treating as failed.`);
     markJob(st, job.id, 'failed', 'no-op: agent completed without modifying any file');
-    return false;
+    return { ok: false, suspicious: false };
   }
 
   // An agent that printed instead of writing has not done the job.
@@ -831,7 +868,7 @@ function runJob(job, st) {
     const rel = notWritten.map((p) => path.relative(ROOT, p)).join(', ');
     console.log(`  ${job.id}: expected output not written: ${rel}`);
     markJob(st, job.id, 'failed', `expected output not written: ${rel}`);
-    return false;
+    return { ok: false, suspicious: false };
   }
 
   // Deterministic gates + capped repair loop.
@@ -856,12 +893,12 @@ function runJob(job, st) {
     });
     console.log(`  ${job.id}: gate ${gate.gate} still failing after ${attempts} repairs. Continuing.`);
     commitJob(job); // keep the partial work; it is on a branch and revertible
-    return false;
+    return { ok: false, suspicious: false };
   }
 
   markJob(st, job.id, 'ok', null, { repairAttempts: attempts });
   commitJob(job);
-  return true;
+  return { ok: true, suspicious: false };
 }
 
 // ─── Status ──────────────────────────────────────────────────────
@@ -1134,6 +1171,8 @@ function main() {
   const processed = new Set();
   let stopped = null;
   let ran = 0;
+  let consecutiveFast = 0;
+  let aborted = null;
   for (;;) {
     const pending = resolve(st).filter((j) => !processed.has(j.id));
     if (!pending.length) break;
@@ -1147,9 +1186,22 @@ function main() {
     }
 
     processed.add(job.id);
-    runJob(job, st);
+    const outcome = runJob(job, st);
     ran += 1;
     st = loadState(); // inventory writes slice manifests → graph expands here
+
+    // Circuit breaker: consecutive instant failures mean the agent backend is
+    // unavailable (usage cap, auth, outage). Without this a --all run consumes
+    // the whole graph in minutes and marks every job failed.
+    if (outcome && outcome.suspicious) {
+      consecutiveFast += 1;
+      if (consecutiveFast >= CONSECUTIVE_FAILURE_LIMIT) {
+        aborted = job.id;
+        break;
+      }
+    } else if (outcome && outcome.ok) {
+      consecutiveFast = 0;
+    }
   }
 
   // A run that executed nothing is almost always a CLI mistake (this exact
@@ -1162,6 +1214,25 @@ function main() {
   }
 
   showStatus(loadState());
+
+  if (aborted) {
+    banner([
+      'ABORTED - circuit breaker tripped',
+      '',
+      `${CONSECUTIVE_FAILURE_LIMIT} agents in a row failed in under ${SUSPICIOUSLY_FAST_SECONDS}s.`,
+      `Last job: ${aborted}`,
+      '',
+      'That is an agent-backend problem, not a code problem - usually a',
+      'usage/rate limit, expired auth, or a service outage.',
+      '',
+      'Check with:  claude -p "say ok"',
+      'Then resume: node scripts/remake-pipeline.js --resume',
+      '',
+      'Jobs already ok are untouched; --resume retries only the rest.',
+    ]);
+    process.exitCode = 1;
+    return;
+  }
 
   if (stopped) {
     banner([
