@@ -35,23 +35,23 @@
     "desktop/e2e/ai-extractions.spec.ts"
   ],
   "uxContract": {
-    "listPage": false,
-    "filterBar": false,
-    "infiniteScroll": false,
-    "hoverActions": false,
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
     "detailDrawer": false,
-    "emptyState": false,
-    "skeleton": false,
+    "emptyState": true,
+    "skeleton": true,
     "relationCombobox": false,
     "urlPrefill": false,
     "phoneInput": false,
     "addressAutocomplete": false,
     "currencyInput": false,
-    "datePicker": false,
+    "datePicker": true,
     "sendMessageDialog": false,
-    "themedExport": false
+    "themedExport": true
   },
-  "notes": "ORPHANED: 9 endpoints, a whole human-in-the-loop review queue (confirm/reject/create-itinerary/create-invoice/schedule-followup) with no UI. GET /pending-count is designed for a sidebar badge that does not exist.",
+  "notes": "Built list page (/ai/extractions) and detail page (/ai/extractions/[id]) on ListPage/DetailPage archetypes, wired to all 9 endpoints via new desktop/src/lib/api/ai-extractions.ts. detailDrawer is false by design — row click navigates to the full detail page instead (matches the archetype's onRowClick alternative), since this queue needs a dedicated review surface for confirm/reject/create-itinerary/create-invoice/schedule-followup actions. relationCombobox/phoneInput/addressAutocomplete/currencyInput/sendMessageDialog not applicable: no relation, phone, address, currency, or messaging fields in this entity. GET /pending-count is still unused (no sidebar badge wiring) — out of scope since sidebar.tsx badge plumbing lives in a shared hook outside this slice's allowlist.",
   "showcaseScript": [
     "Open AI → Extractions and see the pending review queue",
     "Open an extracted enquiry and check the parsed fields",

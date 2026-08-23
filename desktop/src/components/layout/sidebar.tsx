@@ -38,6 +38,7 @@ import {
   CalendarClock,
   Plane,
   Send,
+  ScanSearch,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarStore } from '@/stores/sidebar-store';
@@ -116,6 +117,7 @@ const navigation: NavGroup[] = [
     items: [
       { title: 'Reports', href: '/reports', icon: BarChart3 },
       { title: 'AI Assistant', href: '/ai', icon: Sparkles },
+      { title: 'AI Extractions', href: '/ai/extractions', icon: ScanSearch },
       { title: 'Chatbot', href: '/chatbot', icon: Bot },
       { title: 'Notifications', href: '/notifications', icon: Bell, badgeKey: 'unread_notifications' },
       { title: 'Documents', href: '/documents', icon: FileText },
