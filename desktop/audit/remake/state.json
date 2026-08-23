@@ -66,11 +66,17 @@
       "timestamp": "2026-08-23T09:42:35.483Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:ai-intelligence": {
+      "status": "ok",
+      "timestamp": "2026-08-23T09:49:13.686Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "slice:ai-extractions",
+    "id": "slice:ai-intelligence",
     "status": "ok",
-    "timestamp": "2026-08-23T09:42:35.483Z"
+    "timestamp": "2026-08-23T09:49:13.686Z"
   }
 }

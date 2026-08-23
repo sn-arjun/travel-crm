@@ -1,4 +1,4 @@
-import { client, type ApiResponse } from './client';
+import { client, type ApiResponse, type PaginatedResponse } from './client';
 import { API_ENDPOINTS } from './config';
 
 export interface AiConversation {
@@ -52,13 +52,32 @@ export interface SuggestedReply {
 }
 
 export interface LeadScore {
+  id?: string;
+  leadId?: string;
   score: number;
+  category?: string;
   factors: Array<{
     name: string;
     weight: number;
     contribution: number;
   }>;
   recommendation?: string;
+  createdAt?: string;
+}
+
+export interface LeadScoreHistoryEntry {
+  id: string;
+  leadId: string;
+  score: number;
+  category?: string;
+  createdAt: string;
+}
+
+export interface BulkLeadScoreResult {
+  leadId: string;
+  leadName?: string;
+  score: number;
+  category?: string;
 }
 
 export interface OcrPassportResult {
@@ -95,14 +114,26 @@ export interface OcrSupplierInvoiceResult {
 }
 
 export interface SmartFollowup {
+  id?: string;
+  leadId?: string;
+  leadName?: string;
   nextFollowUpDate: string;
+  suggestedChannel?: string;
+  suggestedTiming?: string;
+  messageContent?: string;
   suggestedActions: string[];
   tone?: string;
   templateId?: string;
+  confidence?: number;
+  status?: 'pending' | 'sent' | 'dismissed';
+  createdAt?: string;
 }
 
 export interface NlQueryResult {
   query: string;
+  sql?: string;
+  result?: unknown;
+  narrative?: string;
   response: string;
   data?: Record<string, unknown>;
   visualizations?: Array<{
@@ -111,21 +142,49 @@ export interface NlQueryResult {
   }>;
 }
 
+export interface NlQueryHistoryEntry {
+  id: string;
+  query: string;
+  sql?: string;
+  narrative?: string;
+  createdAt: string;
+}
+
 export interface Insight {
+  id: string;
   title: string;
   description: string;
   metric: string;
   value: number | string;
   trend?: 'up' | 'down' | 'stable';
   recommendation?: string;
+  status?: 'active' | 'dismissed' | 'actioned';
+  createdAt?: string;
 }
 
 export interface Recommendation {
+  id: string;
   category: string;
   title: string;
   description: string;
   action: string;
   priority: 'low' | 'medium' | 'high';
+  status?: 'active' | 'dismissed' | 'actioned';
+  createdAt?: string;
+}
+
+export interface DocumentScan {
+  id: string;
+  documentType: 'passport' | 'visa' | 'invoice';
+  status: 'pending' | 'applied' | 'rejected';
+  fileName?: string;
+  extractedFields: Array<{ key: string; label: string; value: string; confidence: number }>;
+  overallConfidence: number;
+  contactId?: string;
+  contactName?: string;
+  createdAt: string;
+  reviewedAt?: string;
+  rejectionReason?: string;
 }
 
 export interface BriefingData {
@@ -442,14 +501,52 @@ export const aiApi = {
     nlQuery: (data: { query: string; context?: string }) =>
       client.post<ApiResponse<NlQueryResult>>(API_ENDPOINTS.ai.intelligence.nlQuery, data),
 
+    getNlQueryHistory: () =>
+      client.get<ApiResponse<NlQueryHistoryEntry[]>>('/ai/intelligence/nl-queries'),
+
     getInsights: (params?: { type?: string; limit?: number }) =>
       client.get<ApiResponse<Insight[]>>(API_ENDPOINTS.ai.intelligence.insights, { params }),
+
+    getInsightById: (id: string) =>
+      client.get<ApiResponse<Insight>>(`/ai/intelligence/insights/${id}`),
+
+    dismissInsight: (id: string) =>
+      client.post<ApiResponse<{ id: string }>>(`/ai/intelligence/insights/${id}/dismiss`),
+
+    actionInsight: (id: string) =>
+      client.post<ApiResponse<{ id: string }>>(`/ai/intelligence/insights/${id}/action`),
+
+    getCustomerInsights: (contactId: string) =>
+      client.post<ApiResponse<Insight[]>>(`/ai/intelligence/insights/customer/${contactId}`),
+
+    generatePredictions: () =>
+      client.post<ApiResponse<{ predictions: unknown }>>('/ai/intelligence/insights/predictions'),
+
+    generateTrends: () =>
+      client.post<ApiResponse<{ trends: unknown; anomalies: unknown; recommendations: unknown }>>(
+        '/ai/intelligence/insights/trends',
+      ),
 
     getRecommendations: (params?: { category?: string; priority?: string; limit?: number }) =>
       client.get<ApiResponse<Recommendation[]>>(API_ENDPOINTS.ai.intelligence.recommendations, { params }),
 
+    actRecommendation: (id: string) =>
+      client.post<ApiResponse<{ id: string }>>(`/ai/intelligence/recommendations/${id}/act`),
+
+    dismissRecommendation: (id: string) =>
+      client.post<ApiResponse<{ id: string }>>(`/ai/intelligence/recommendations/${id}/dismiss`),
+
     getLeadScore: (id: string) =>
       client.get<ApiResponse<LeadScore>>(API_ENDPOINTS.ai.intelligence.leadScore(id)),
+
+    calculateLeadScore: (id: string) =>
+      client.post<ApiResponse<LeadScore>>(API_ENDPOINTS.ai.intelligence.leadScore(id)),
+
+    getLeadScoreHistory: (id: string) =>
+      client.get<ApiResponse<LeadScoreHistoryEntry[]>>(`/ai/intelligence/lead-score/${id}/history`),
+
+    bulkLeadScore: (data: { leadIds: string[] }) =>
+      client.post<ApiResponse<BulkLeadScoreResult[]>>('/ai/intelligence/lead-scores/bulk', data),
 
     ocrPassport: async (file: File) => {
       const formData = new FormData();
@@ -469,8 +566,34 @@ export const aiApi = {
       return client.post<ApiResponse<OcrSupplierInvoiceResult>>(API_ENDPOINTS.ai.intelligence.ocrSupplierInvoice, formData as unknown as Record<string, unknown>);
     },
 
+    listDocumentScans: (params?: { page?: number; limit?: number; search?: string; status?: string; documentType?: string }) =>
+      client.get<PaginatedResponse<DocumentScan>>('/ai/intelligence/document-scans', {
+        params: params as unknown as Record<string, string | number | boolean | undefined>,
+      }),
+
+    getDocumentScanById: (id: string) =>
+      client.get<ApiResponse<DocumentScan>>(`/ai/intelligence/document-scans/${id}`),
+
+    applyDocumentScan: (id: string, data?: { fields?: Record<string, string> }) =>
+      client.post<ApiResponse<DocumentScan>>(`/ai/intelligence/document-scans/${id}/apply`, data),
+
+    rejectDocumentScan: (id: string, data?: { reason?: string }) =>
+      client.post<ApiResponse<DocumentScan>>(`/ai/intelligence/document-scans/${id}/reject`, data),
+
     getSmartFollowup: (id: string) =>
       client.get<ApiResponse<SmartFollowup>>(API_ENDPOINTS.ai.intelligence.smartFollowup(id)),
+
+    generateSmartFollowup: (leadId: string) =>
+      client.post<ApiResponse<SmartFollowup>>(`/ai/intelligence/smart-followup/${leadId}`),
+
+    listSmartFollowups: () =>
+      client.get<ApiResponse<SmartFollowup[]>>('/ai/intelligence/smart-followups'),
+
+    sendSmartFollowup: (id: string) =>
+      client.post<ApiResponse<{ id: string }>>(`/ai/intelligence/smart-followups/${id}/send`),
+
+    dismissSmartFollowup: (id: string) =>
+      client.post<ApiResponse<{ id: string }>>(`/ai/intelligence/smart-followups/${id}/dismiss`),
   },
 
   bi: {

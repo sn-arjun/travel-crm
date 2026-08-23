@@ -66,23 +66,23 @@
     "desktop/e2e/ai-intelligence.spec.ts"
   ],
   "uxContract": {
-    "listPage": false,
-    "filterBar": false,
-    "infiniteScroll": false,
-    "hoverActions": false,
-    "detailDrawer": false,
-    "emptyState": false,
+    "listPage": true,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": true,
+    "emptyState": true,
     "skeleton": true,
-    "relationCombobox": false,
+    "relationCombobox": true,
     "urlPrefill": false,
     "phoneInput": false,
     "addressAutocomplete": false,
     "currencyInput": false,
     "datePicker": true,
     "sendMessageDialog": false,
-    "themedExport": false
+    "themedExport": true
   },
-  "notes": "Gated ai_intelligence. Orphaned: nl-queries history, insight dismiss/action, customer insights, predictions, recommendation act/dismiss, bulk lead scoring, the whole document-scans review flow, and smart-followup send/dismiss.",
+  "notes": "Insights/Recommendations, Document Scans, and (implicitly via listSmartFollowups) Smart Follow-ups are now backed by real list endpoints with dismiss/action/apply/reject wired up; document-scans is a full ListPage with row detail drawer, bulk apply/reject, and CSV export. Lead Score index and Smart Follow-ups now use RelationCombobox instead of raw lead-ID text inputs. Lead Score detail adds a recalculate action and a history timeline. Still orphaned/not surfaced in UI: nl-query (POST) and nl-queries history, insights/predictions and insights/customer/:contactId (no natural entry point in this slice — nl-query and per-contact insight surfaces belong to other slices). OCR page still does client-side-only scanning preview; applying now routes to the Document Scans queue rather than duplicating apply logic inline. urlPrefill/phoneInput/addressAutocomplete/currencyInput/sendMessageDialog are not applicable — this slice has no address/phone/currency/relation-creation forms and outbound messaging is a server-triggered send (smart-followups/:id/send), not a client compose dialog.",
   "showcaseScript": [
     "Open AI → Insights and read the generated recommendations",
     "Ask a natural-language question about pipeline revenue",

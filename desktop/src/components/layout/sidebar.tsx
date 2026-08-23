@@ -39,6 +39,10 @@ import {
   Plane,
   Send,
   ScanSearch,
+  Lightbulb,
+  Target,
+  ScanLine,
+  BellRing,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarStore } from '@/stores/sidebar-store';
@@ -118,6 +122,11 @@ const navigation: NavGroup[] = [
       { title: 'Reports', href: '/reports', icon: BarChart3 },
       { title: 'AI Assistant', href: '/ai', icon: Sparkles },
       { title: 'AI Extractions', href: '/ai/extractions', icon: ScanSearch },
+      { title: 'AI Insights', href: '/ai/insights', icon: Lightbulb },
+      { title: 'AI Lead Scoring', href: '/ai/lead-score', icon: Target },
+      { title: 'AI Document Scans', href: '/ai/document-scans', icon: ScanLine },
+      { title: 'AI OCR', href: '/ai/ocr', icon: ScanSearch },
+      { title: 'AI Smart Follow-ups', href: '/ai/smart-followups', icon: BellRing },
       { title: 'Chatbot', href: '/chatbot', icon: Bot },
       { title: 'Notifications', href: '/notifications', icon: Bell, badgeKey: 'unread_notifications' },
       { title: 'Documents', href: '/documents', icon: FileText },

@@ -1,242 +1,280 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import {
   BellRing,
-  Loader2,
   Calendar,
   CheckCircle2,
-  X,
-  Edit,
   Clock,
-  Search,
+  Loader2,
+  Lock,
+  Send,
+  Sparkles,
+  X,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
+import { RelationCombobox } from '@/components/domain';
+import { Button, Card, CardContent, EmptyState, Separator, Skeleton, Tag } from '@/components/ui';
+import { useFeatureGate } from '@/hooks/use-feature-gate';
+import { useApiQuery } from '@/hooks/use-api';
 import { aiApi, type SmartFollowup } from '@/lib/api/ai';
+import { leadsApi } from '@/lib/api/leads';
+import type { Lead } from '@travelcrm/shared';
 
-interface FollowupEntry {
-  leadId: string;
-  leadName: string;
-  followup: SmartFollowup;
-  status: 'pending' | 'accepted' | 'dismissed';
-}
+const STATUS_TONE: Record<string, 'success' | 'warning' | 'neutral'> = {
+  sent: 'success',
+  dismissed: 'neutral',
+  pending: 'warning',
+};
 
-export default function SmartFollowupsPage() {
-  const [leadId, setLeadId] = React.useState('');
-  const [loading, setLoading] = React.useState(false);
-  const [entries, setEntries] = React.useState<FollowupEntry[]>([]);
+function SmartFollowupsContent() {
+  const [selectedLeadId, setSelectedLeadId] = React.useState<string | null>(null);
+  const [generating, setGenerating] = React.useState(false);
+  const [refetchKey, setRefetchKey] = React.useState(0);
 
-  const handleFetch = async () => {
-    if (!leadId.trim()) {
-      toast.error('Please enter a lead ID');
+  const { data, loading } = useApiQuery(() => aiApi.intelligence.listSmartFollowups(), [refetchKey]);
+  const followups: SmartFollowup[] = data?.data ?? [];
+
+  const handleGenerate = async () => {
+    if (!selectedLeadId) {
+      toast.error('Please choose a lead');
       return;
     }
-
-    setLoading(true);
+    setGenerating(true);
     try {
-      const response = await aiApi.intelligence.getSmartFollowup(leadId.trim());
-      const newEntry: FollowupEntry = {
-        leadId: leadId.trim(),
-        leadName: `Lead ${leadId.trim()}`,
-        followup: response.data,
-        status: 'pending',
-      };
-      setEntries((prev) => [newEntry, ...prev]);
-      setLeadId('');
-      toast.success('Smart follow-up fetched');
+      await aiApi.intelligence.generateSmartFollowup(selectedLeadId);
+      toast.success('Smart follow-up generated');
+      setSelectedLeadId(null);
+      setRefetchKey((k) => k + 1);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to get follow-up suggestion';
+      const msg = err instanceof Error ? err.message : 'Failed to generate follow-up suggestion';
       toast.error(msg);
     } finally {
-      setLoading(false);
+      setGenerating(false);
     }
   };
 
-  const handleAccept = (index: number) => {
-    setEntries((prev) =>
-      prev.map((e, i) => (i === index ? { ...e, status: 'accepted' as const } : e)),
-    );
-    toast.success('Follow-up accepted and scheduled');
+  const handleSend = async (id?: string) => {
+    if (!id) return;
+    try {
+      await aiApi.intelligence.sendSmartFollowup(id);
+      toast.success('Follow-up sent');
+      setRefetchKey((k) => k + 1);
+    } catch {
+      toast.error('Could not send follow-up');
+    }
   };
 
-  const handleDismiss = (index: number) => {
-    setEntries((prev) =>
-      prev.map((e, i) => (i === index ? { ...e, status: 'dismissed' as const } : e)),
-    );
-    toast.info('Follow-up dismissed');
+  const handleDismiss = async (id?: string) => {
+    if (!id) return;
+    try {
+      await aiApi.intelligence.dismissSmartFollowup(id);
+      toast.info('Follow-up dismissed');
+      setRefetchKey((k) => k + 1);
+    } catch {
+      toast.error('Could not dismiss follow-up');
+    }
   };
 
-  const pendingEntries = entries.filter((e) => e.status === 'pending');
-  const processedEntries = entries.filter((e) => e.status !== 'pending');
+  const pending = followups.filter((f) => (f.status ?? 'pending') === 'pending');
+  const processed = followups.filter((f) => (f.status ?? 'pending') !== 'pending');
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-ds-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Smart Follow-ups</h1>
-        <p className="text-muted-foreground mt-1">
+        <h1 className="text-3xl font-bold tracking-tight text-ds-foreground">Smart Follow-ups</h1>
+        <p className="mt-ds-1 text-ds-foreground-muted">
           AI-suggested follow-up actions and optimal timing for your leads
         </p>
       </div>
 
-      {/* Fetch Follow-up */}
       <Card>
-        <CardContent className="pt-6">
-          <div className="flex gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Enter a lead ID to get smart follow-up suggestions..."
-                value={leadId}
-                onChange={(e) => setLeadId(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleFetch()}
-                className="pl-10"
+        <CardContent className="pt-ds-6">
+          <div className="flex flex-col sm:flex-row gap-ds-3">
+            <div className="flex-1">
+              <RelationCombobox<Lead>
+                value={selectedLeadId}
+                onChange={(id) => setSelectedLeadId(id)}
+                fetcher={async (query, page) => {
+                  const res = await leadsApi.list({ search: query, page, limit: 20 });
+                  return { items: res.data.data, total: res.data.pagination.total };
+                }}
+                getOptionId={(l) => l.id}
+                getOptionLabel={(l) => l.title}
+                getOptionDescription={(l) => l.contact?.name}
+                resolveSelected={async (id) => (await leadsApi.getById(id)).data}
+                placeholder="Select a lead to generate a follow-up…"
+                searchPlaceholder="Search leads…"
               />
             </div>
-            <Button onClick={handleFetch} disabled={loading || !leadId.trim()} className="gap-2">
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <BellRing className="h-4 w-4" />
-              )}
-              Get Suggestions
+            <Button onClick={handleGenerate} disabled={generating || !selectedLeadId} className="gap-ds-2">
+              {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <BellRing className="h-4 w-4" />}
+              Get suggestions
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Pending */}
-      {pendingEntries.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="text-lg font-semibold">
-            Pending Actions ({pendingEntries.length})
-          </h2>
-          {pendingEntries.map((entry, idx) => {
-            const realIdx = entries.indexOf(entry);
-            return (
-              <Card key={idx}>
-                <CardContent className="pt-6">
-                  <div className="flex items-start gap-4">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-pink-50 dark:bg-pink-950/30 shrink-0">
-                      <BellRing className="h-5 w-5 text-pink-600" />
-                    </div>
-                    <div className="flex-1 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-semibold">{entry.leadName}</p>
-                          <p className="text-xs text-muted-foreground">ID: {entry.leadId}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Calendar className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm font-medium">
-                            {new Date(entry.followup.nextFollowUpDate).toLocaleDateString()}
-                          </span>
-                        </div>
-                      </div>
-
-                      {entry.followup.tone && (
-                        <Badge variant="outline" className="text-xs">
-                          Tone: {entry.followup.tone}
-                        </Badge>
-                      )}
-
-                      <div className="space-y-2">
-                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
-                          Suggested Actions
-                        </p>
-                        <ul className="space-y-1">
-                          {entry.followup.suggestedActions.map((action, actionIdx) => (
-                            <li
-                              key={actionIdx}
-                              className="flex items-start gap-2 text-sm rounded-lg border p-2"
-                            >
-                              <Clock className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                              {action}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-
-                      <Separator />
-
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          className="gap-1"
-                          onClick={() => handleAccept(realIdx)}
-                        >
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          Accept
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="gap-1"
-                          onClick={() => handleDismiss(realIdx)}
-                        >
-                          <X className="h-3.5 w-3.5" />
-                          Dismiss
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+      {loading ? (
+        <div className="flex flex-col gap-ds-3">
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
         </div>
-      )}
+      ) : followups.length === 0 ? (
+        <EmptyState
+          icon={<BellRing className="size-10 text-ds-foreground-subtle" aria-hidden="true" />}
+          title="No follow-up suggestions yet"
+          description="Select a lead above to get AI-powered follow-up suggestions."
+        />
+      ) : (
+        <>
+          {pending.length > 0 && (
+            <div className="flex flex-col gap-ds-3">
+              <h2 className="text-lg font-semibold text-ds-foreground">Pending actions ({pending.length})</h2>
+              {pending.map((entry) => (
+                <Card key={entry.id}>
+                  <CardContent className="pt-ds-6">
+                    <div className="flex items-start gap-ds-4">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-ds-full bg-ds-primary-subtle shrink-0">
+                        <BellRing className="h-5 w-5 text-ds-primary-on-subtle" />
+                      </div>
+                      <div className="flex-1 flex flex-col gap-ds-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-semibold text-ds-foreground">{entry.leadName ?? `Lead ${entry.leadId}`}</p>
+                            <p className="text-xs text-ds-foreground-muted">ID: {entry.leadId}</p>
+                          </div>
+                          {entry.nextFollowUpDate && (
+                            <div className="flex items-center gap-ds-2">
+                              <Calendar className="h-4 w-4 text-ds-foreground-muted" />
+                              <span className="text-sm font-medium text-ds-foreground">
+                                {new Date(entry.nextFollowUpDate).toLocaleDateString('en-IN')}
+                              </span>
+                            </div>
+                          )}
+                        </div>
 
-      {/* Processed */}
-      {processedEntries.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="text-lg font-semibold text-muted-foreground">
-            Processed ({processedEntries.length})
-          </h2>
-          {processedEntries.map((entry, idx) => (
-            <Card key={idx} className="opacity-60">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    {entry.status === 'accepted' ? (
-                      <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                    ) : (
-                      <X className="h-5 w-5 text-muted-foreground" />
-                    )}
-                    <div>
-                      <p className="font-medium">{entry.leadName}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {entry.status === 'accepted' ? 'Accepted & scheduled' : 'Dismissed'}
-                      </p>
+                        {entry.suggestedChannel && (
+                          <Tag tone="info">Channel: {entry.suggestedChannel}</Tag>
+                        )}
+                        {entry.tone && <Tag tone="neutral">Tone: {entry.tone}</Tag>}
+
+                        {entry.messageContent && (
+                          <p className="text-sm text-ds-foreground-muted rounded-ds-lg border border-ds-border p-ds-3">
+                            {entry.messageContent}
+                          </p>
+                        )}
+
+                        {entry.suggestedActions.length > 0 && (
+                          <div className="flex flex-col gap-ds-2">
+                            <p className="text-xs text-ds-foreground-muted font-medium uppercase tracking-wider">
+                              Suggested Actions
+                            </p>
+                            <ul className="flex flex-col gap-ds-1">
+                              {entry.suggestedActions.map((action, actionIdx) => (
+                                <li
+                                  key={actionIdx}
+                                  className="flex items-start gap-ds-2 text-sm rounded-ds-lg border border-ds-border p-ds-2"
+                                >
+                                  <Clock className="h-4 w-4 text-ds-foreground-muted shrink-0 mt-0.5" />
+                                  {action}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        <Separator />
+
+                        <div className="flex gap-ds-2">
+                          <Button size="sm" className="gap-ds-1" onClick={() => handleSend(entry.id)}>
+                            <Send className="h-3.5 w-3.5" />
+                            Send
+                          </Button>
+                          <Button size="sm" variant="outline" className="gap-ds-1" onClick={() => handleDismiss(entry.id)}>
+                            <X className="h-3.5 w-3.5" />
+                            Dismiss
+                          </Button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <Badge variant={entry.status === 'accepted' ? 'default' : 'secondary'}>
-                    {entry.status}
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {entries.length === 0 && (
-        <Card>
-          <CardContent className="py-12">
-            <div className="flex flex-col items-center justify-center text-muted-foreground">
-              <BellRing className="h-12 w-12 mb-3 opacity-30" />
-              <p className="text-sm">No follow-up suggestions yet</p>
-              <p className="text-xs mt-1">
-                Enter a lead ID above to get AI-powered follow-up suggestions
-              </p>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-          </CardContent>
-        </Card>
+          )}
+
+          {processed.length > 0 && (
+            <div className="flex flex-col gap-ds-3">
+              <h2 className="text-lg font-semibold text-ds-foreground-muted">Processed ({processed.length})</h2>
+              {processed.map((entry) => (
+                <Card key={entry.id} className="opacity-60">
+                  <CardContent className="pt-ds-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-ds-3">
+                        {entry.status === 'sent' ? (
+                          <CheckCircle2 className="h-5 w-5 text-ds-success" />
+                        ) : (
+                          <X className="h-5 w-5 text-ds-foreground-muted" />
+                        )}
+                        <div>
+                          <p className="font-medium text-ds-foreground">{entry.leadName ?? `Lead ${entry.leadId}`}</p>
+                          <p className="text-xs text-ds-foreground-muted">
+                            {entry.status === 'sent' ? 'Sent' : 'Dismissed'}
+                          </p>
+                        </div>
+                      </div>
+                      <Tag tone={STATUS_TONE[entry.status ?? 'pending']}>{entry.status}</Tag>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
+}
+
+export default function SmartFollowupsPage() {
+  const { enabled, reason, upgradeHref, loading } = useFeatureGate('ai_intelligence');
+
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-ds-4">
+        <Skeleton className="h-9 w-64" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  if (!enabled) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-ds-3 rounded-ds-lg border border-dashed border-ds-border py-ds-9 text-center">
+        <div className="flex size-12 items-center justify-center rounded-ds-full bg-ds-surface-sunken">
+          <Lock className="size-5 text-ds-foreground-muted" aria-hidden="true" />
+        </div>
+        <div>
+          <p className="text-sm font-medium text-ds-foreground">
+            {reason === 'cap_exceeded' ? "Today's AI intelligence quota is used up" : 'AI Intelligence is not on your plan'}
+          </p>
+          <p className="mt-ds-1 text-xs text-ds-foreground-muted">
+            {reason === 'cap_exceeded'
+              ? 'Your quota resets automatically tomorrow, or upgrade for a higher daily limit.'
+              : 'Upgrade your plan to unlock AI-powered smart follow-ups.'}
+          </p>
+        </div>
+        <Button asChild size="sm" className="gap-ds-2">
+          <Link href={upgradeHref}>
+            <Sparkles className="size-3.5" aria-hidden="true" />
+            {reason === 'cap_exceeded' ? 'Upgrade for more' : 'Upgrade to enable'}
+          </Link>
+        </Button>
+      </div>
+    );
+  }
+
+  return <SmartFollowupsContent />;
 }
