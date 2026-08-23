@@ -57,18 +57,18 @@
     "infiniteScroll": false,
     "hoverActions": false,
     "detailDrawer": false,
-    "emptyState": false,
+    "emptyState": true,
     "skeleton": true,
-    "relationCombobox": false,
+    "relationCombobox": true,
     "urlPrefill": false,
     "phoneInput": false,
     "addressAutocomplete": false,
     "currencyInput": false,
     "datePicker": false,
     "sendMessageDialog": false,
-    "themedExport": false
+    "themedExport": true
   },
-  "notes": "Orphaned: workload-analysis, customer-segments (calculate + list), customer-LTV, briefings/:id detail, health-score history, and recommendations/generate. Charts need the dataviz palette and themed export.",
+  "notes": "All six pages rebuilt on PageHeader/SectionCard/Stat/DataTable/chart archetypes with token classes, skeleton loading, EmptyState, and useFeatureGate (via AiGate, ai_assistant). listPage/filterBar/infiniteScroll/hoverActions/detailDrawer/phoneInput/addressAutocomplete/currencyInput/datePicker/sendMessageDialog are structurally N/A — this slice is dashboards and analytics, not an entity list or messaging surface. Wired previously-orphaned endpoints: briefings/generate, health-score/calculate + history, customer-segments (list + calculate), customer-ltv (via new RelationCombobox lookup on segments page), and bi/usage. workload-analysis and recommendations/generate remain unwired — no natural page slot for them in this manifest's page set; flagging for a future pass. Destinations page profitability table gets a CSV export; team performance and hub cash-flow/lead-source-roi/lost-deal sections added to surface previously-dead endpoints.",
   "showcaseScript": [
     "Open Business Intelligence",
     "Generate today's executive briefing",

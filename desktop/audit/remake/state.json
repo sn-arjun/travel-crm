@@ -54,11 +54,17 @@
       "timestamp": "2026-08-23T09:33:43.798Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:ai-business-intelligence": {
+      "status": "ok",
+      "timestamp": "2026-08-23T09:39:21.830Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "slice:ai-assistant",
+    "id": "slice:ai-business-intelligence",
     "status": "ok",
-    "timestamp": "2026-08-23T09:33:43.798Z"
+    "timestamp": "2026-08-23T09:39:21.830Z"
   }
 }

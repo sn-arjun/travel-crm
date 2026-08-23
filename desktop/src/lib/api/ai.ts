@@ -211,6 +211,48 @@ export interface RevenuePulseData {
   }>;
 }
 
+export interface WorkloadAnalysis {
+  userId: string;
+  userName: string;
+  openLeads: number;
+  openTasks: number;
+  overdueTasks: number;
+  capacityScore: number;
+  status: 'underloaded' | 'balanced' | 'overloaded';
+}
+
+export interface CustomerSegment {
+  segment: string;
+  customerCount: number;
+  avgLtv: number;
+  totalRevenue: number;
+  characteristics: string[];
+}
+
+export interface CustomerLtv {
+  contactId: string;
+  lifetimeValue: number;
+  predictedValue: number;
+  bookingCount: number;
+  avgBookingValue: number;
+  segment?: string;
+}
+
+export interface BiRecommendation {
+  category: string;
+  title: string;
+  description: string;
+  action: string;
+  priority: 'low' | 'medium' | 'high';
+  impact?: string;
+}
+
+export interface HealthScoreHistoryEntry {
+  date: string;
+  overallScore: number;
+  byCategory: Record<string, number>;
+}
+
 // AI Settings types
 export interface AiFeatureFlag {
   key: string;
@@ -461,6 +503,36 @@ export const aiApi = {
 
     getRevenuePulse: () =>
       client.get<ApiResponse<RevenuePulseData>>(API_ENDPOINTS.ai.bi.revenuePulse),
+
+    getBriefingById: (id: string) =>
+      client.get<ApiResponse<BriefingData & { id: string }>>(`/ai/bi/briefings/${id}`),
+
+    generateBriefing: (data?: { type?: string; dateRange?: string }) =>
+      client.post<ApiResponse<BriefingData & { id: string }>>('/ai/bi/briefings/generate', data),
+
+    getHealthScoreHistory: (params?: { limit?: number }) =>
+      client.get<ApiResponse<HealthScoreHistoryEntry[]>>('/ai/bi/health-score/history', { params }),
+
+    calculateHealthScore: () =>
+      client.post<ApiResponse<HealthScoreResult>>('/ai/bi/health-score/calculate'),
+
+    getWorkloadAnalysis: () =>
+      client.get<ApiResponse<WorkloadAnalysis[]>>('/ai/bi/workload-analysis'),
+
+    getCustomerSegments: () =>
+      client.get<ApiResponse<CustomerSegment[]>>('/ai/bi/customer-segments'),
+
+    calculateCustomerSegments: () =>
+      client.post<ApiResponse<CustomerSegment[]>>('/ai/bi/customer-segments/calculate'),
+
+    getCustomerLtv: (contactId: string) =>
+      client.post<ApiResponse<CustomerLtv>>(`/ai/bi/customer-ltv/${contactId}`),
+
+    generateRecommendations: (params?: { category?: string }) =>
+      client.post<ApiResponse<BiRecommendation[]>>('/ai/bi/recommendations/generate', params),
+
+    getUsage: () =>
+      client.get<ApiResponse<UsageData>>('/ai/bi/usage'),
   },
 
   settings: {

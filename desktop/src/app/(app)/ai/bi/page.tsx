@@ -11,205 +11,221 @@ import {
   Globe,
   FileText,
   Activity,
-  Loader2,
+  Layers,
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { cn } from '@/lib/utils';
+import { AreaChart, DataTable, EmptyState, PageHeader, SectionCard, Stat, Tag } from '@/components/ui';
+import type { DataTableColumn } from '@/components/ui';
 import { useApiQuery } from '@/hooks/use-api';
-import { aiApi, type HealthScoreResult, type RevenuePulseData, type TrendingDestination } from '@/lib/api/ai';
+import { AiGate } from '@/components/domain/ai/ai-gate';
+import {
+  aiApi,
+  type CashFlowForecast,
+  type HealthScoreResult,
+  type LeadSourceRoi,
+  type LostDealAnalysis,
+  type RevenuePulseData,
+  type TrendingDestination,
+} from '@/lib/api/ai';
 
 const BI_SECTIONS = [
   {
     title: 'Daily Briefings',
-    description: 'AI-generated daily business summaries and action items',
+    description: 'AI-generated business summaries and action items',
     icon: FileText,
     href: '/ai/bi/briefings',
-    color: 'text-blue-600',
-    bg: 'bg-blue-50 dark:bg-blue-950/30',
   },
   {
     title: 'Health Score',
     description: 'Overall business health with category breakdowns',
     icon: Heart,
     href: '/ai/bi/health-score',
-    color: 'text-red-600',
-    bg: 'bg-red-50 dark:bg-red-950/30',
   },
   {
     title: 'Team Performance',
     description: 'Agent performance metrics and comparisons',
     icon: Users,
     href: '/ai/bi/team',
-    color: 'text-purple-600',
-    bg: 'bg-purple-50 dark:bg-purple-950/30',
   },
   {
     title: 'Destination Analytics',
     description: 'Profitability, demand, and trending destinations',
     icon: Globe,
     href: '/ai/bi/destinations',
-    color: 'text-emerald-600',
-    bg: 'bg-emerald-50 dark:bg-emerald-950/30',
+  },
+  {
+    title: 'Customer Segments',
+    description: 'AI-clustered customer segments with lifetime value',
+    icon: Layers,
+    href: '/ai/bi/segments',
   },
   {
     title: 'AI Usage Stats',
     description: 'AI feature usage, API calls, and consumption metrics',
     icon: Activity,
     href: '/ai/bi/usage',
-    color: 'text-orange-600',
-    bg: 'bg-orange-50 dark:bg-orange-950/30',
   },
 ];
 
-export default function BIDashboardPage() {
-  const { data: healthData, loading: healthLoading } = useApiQuery(
-    () => aiApi.bi.getHealthScore(),
-    [],
-  );
-  const { data: pulseData, loading: pulseLoading } = useApiQuery(
-    () => aiApi.bi.getRevenuePulse(),
-    [],
-  );
+function BiDashboardContent() {
+  const { data: healthData, loading: healthLoading } = useApiQuery(() => aiApi.bi.getHealthScore(), []);
+  const { data: pulseData, loading: pulseLoading } = useApiQuery(() => aiApi.bi.getRevenuePulse(), []);
   const { data: trendingData, loading: trendingLoading } = useApiQuery(
     () => aiApi.bi.getTrendingDestinations({ limit: 3 }),
+    [],
+  );
+  const { data: cashFlowData, loading: cashFlowLoading } = useApiQuery(() => aiApi.bi.getCashFlowForecast(), []);
+  const { data: roiData, loading: roiLoading } = useApiQuery(() => aiApi.bi.getLeadSourceRoi(), []);
+  const { data: lostDealData, loading: lostDealLoading } = useApiQuery(
+    () => aiApi.bi.getLostDealAnalysis({ limit: 5 }),
     [],
   );
 
   const health: HealthScoreResult | null = (healthData as { data?: HealthScoreResult })?.data ?? null;
   const pulse: RevenuePulseData | null = (pulseData as { data?: RevenuePulseData })?.data ?? null;
   const trending: TrendingDestination[] = (trendingData as { data?: TrendingDestination[] })?.data ?? [];
+  const cashFlow: CashFlowForecast[] = (cashFlowData as { data?: CashFlowForecast[] })?.data ?? [];
+  const leadSourceRoi: LeadSourceRoi[] = (roiData as { data?: LeadSourceRoi[] })?.data ?? [];
+  const lostDeals: LostDealAnalysis[] = (lostDealData as { data?: LostDealAnalysis[] })?.data ?? [];
+
+  const roiColumns: DataTableColumn<LeadSourceRoi>[] = [
+    { key: 'source', header: 'Source', sortable: true },
+    { key: 'leadsGenerated', header: 'Leads', align: 'right' },
+    { key: 'dealsClosedCount', header: 'Deals', align: 'right' },
+    {
+      key: 'revenue',
+      header: 'Revenue',
+      align: 'right',
+      cell: (r) => r.revenue.toLocaleString('en-IN', { style: 'currency', currency: 'INR' }),
+    },
+    {
+      key: 'roi',
+      header: 'ROI',
+      align: 'right',
+      sortable: true,
+      cell: (r) => (
+        <Tag tone={r.roi >= 0 ? 'success' : 'danger'}>{r.roi >= 0 ? '+' : ''}{r.roi.toFixed(1)}%</Tag>
+      ),
+    },
+  ];
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Business Intelligence</h1>
-        <p className="text-muted-foreground mt-1">
-          AI-driven analytics, health scores, and trend analysis for your business
-        </p>
+    <div className="flex flex-col gap-ds-6">
+      <div className="grid grid-cols-1 gap-ds-4 md:grid-cols-3">
+        <Stat
+          label="Health Score"
+          value={health ? `${health.overallScore}/100` : '--'}
+          icon={<Heart className="size-4" aria-hidden="true" />}
+          loading={healthLoading}
+        />
+        <Stat
+          label="Monthly Revenue"
+          value={pulse ? pulse.currentMonth.toLocaleString('en-IN', { style: 'currency', currency: 'INR' }) : '--'}
+          delta={pulse?.growth}
+          icon={<DollarSign className="size-4" aria-hidden="true" />}
+          loading={pulseLoading}
+        />
+        <SectionCard title="Trending destinations">
+          {trendingLoading ? (
+            <p className="text-xs text-ds-foreground-muted">Loading…</p>
+          ) : trending.length === 0 ? (
+            <p className="text-xs text-ds-foreground-muted">No data yet</p>
+          ) : (
+            <div className="flex flex-col gap-ds-2">
+              {trending.map((dest) => (
+                <div key={dest.name} className="flex items-center justify-between text-sm">
+                  <span className="font-medium text-ds-foreground">{dest.name}</span>
+                  <Tag tone={dest.trend === 'up' ? 'success' : 'danger'}>
+                    <TrendingUp className="size-3" aria-hidden="true" />
+                    {dest.bookings} bookings
+                  </Tag>
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionCard>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Health Score */}
-        <Card>
-          <CardContent className="pt-6">
-            {healthLoading ? (
-              <div className="space-y-3">
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-10 w-16" />
-              </div>
-            ) : (
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Health Score</p>
-                  <p className="text-3xl font-bold mt-1">{health?.overallScore ?? '--'}</p>
-                  <p className="text-xs text-muted-foreground">/100</p>
-                </div>
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50 dark:bg-red-950/30">
-                  <Heart className="h-6 w-6 text-red-600" />
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Revenue Pulse */}
-        <Card>
-          <CardContent className="pt-6">
-            {pulseLoading ? (
-              <div className="space-y-3">
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-10 w-24" />
-              </div>
-            ) : (
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Monthly Revenue</p>
-                  <p className="text-3xl font-bold mt-1">
-                    ${pulse?.currentMonth?.toLocaleString() ?? '--'}
-                  </p>
-                  {pulse?.growth !== undefined && (
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        'mt-1',
-                        pulse.growth >= 0 ? 'text-emerald-600' : 'text-red-600',
-                      )}
-                    >
-                      {pulse.growth >= 0 ? '+' : ''}
-                      {pulse.growth.toFixed(1)}%
-                    </Badge>
-                  )}
-                </div>
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-                  <DollarSign className="h-6 w-6 text-emerald-600" />
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Trending */}
-        <Card>
-          <CardContent className="pt-6">
-            {trendingLoading ? (
-              <div className="space-y-3">
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-5 w-32" />
-                <Skeleton className="h-5 w-28" />
-              </div>
-            ) : (
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Trending Destinations</p>
-                {trending.length > 0 ? (
-                  <div className="space-y-2">
-                    {trending.map((dest, idx) => (
-                      <div key={idx} className="flex items-center justify-between">
-                        <span className="text-sm font-medium">{dest.name}</span>
-                        <div className="flex items-center gap-1">
-                          <TrendingUp
-                            className={cn(
-                              'h-3.5 w-3.5',
-                              dest.trend === 'up' ? 'text-emerald-600' : 'text-red-600',
-                            )}
-                          />
-                          <span className="text-xs text-muted-foreground">
-                            {dest.bookings} bookings
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No data yet</p>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Sections Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-ds-4 md:grid-cols-2 lg:grid-cols-3">
         {BI_SECTIONS.map((section) => (
           <Link key={section.href} href={section.href}>
-            <Card className="h-full transition-all hover:shadow-md hover:border-primary/30 cursor-pointer">
-              <CardHeader className="pb-3">
-                <div className={cn('inline-flex h-10 w-10 items-center justify-center rounded-lg', section.bg)}>
-                  <section.icon className={cn('h-5 w-5', section.color)} />
+            <SectionCard className="h-full transition-shadow hover:shadow-ds-2">
+              <div className="flex items-start gap-ds-3">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-ds-lg bg-ds-primary-subtle">
+                  <section.icon className="size-5 text-ds-primary" aria-hidden="true" />
                 </div>
-                <CardTitle className="text-lg mt-3">{section.title}</CardTitle>
-                <CardDescription>{section.description}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <span className="text-sm text-primary font-medium">View Details &rarr;</span>
-              </CardContent>
-            </Card>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-ds-foreground">{section.title}</p>
+                  <p className="mt-ds-1 text-xs text-ds-foreground-muted">{section.description}</p>
+                </div>
+              </div>
+              <p className="mt-ds-3 text-xs font-medium text-ds-primary">View details &rarr;</p>
+            </SectionCard>
           </Link>
         ))}
       </div>
+
+      <SectionCard title="Cash-flow forecast" description="Projected inflow, outflow, and balance">
+        <AreaChart
+          data={cashFlow}
+          loading={cashFlowLoading}
+          categoryKey="period"
+          series={[
+            { dataKey: 'inflow', label: 'Inflow' },
+            { dataKey: 'outflow', label: 'Outflow' },
+            { dataKey: 'balance', label: 'Balance' },
+          ]}
+          emptyMessage="No cash-flow forecast available yet"
+        />
+      </SectionCard>
+
+      <div className="grid grid-cols-1 gap-ds-4 lg:grid-cols-2">
+        <SectionCard title="Lead source ROI" flush>
+          <DataTable<LeadSourceRoi>
+            columns={roiColumns}
+            data={leadSourceRoi}
+            getRowId={(r) => r.source}
+            loading={roiLoading}
+            emptyState={<EmptyState title="No lead source ROI data available" />}
+          />
+        </SectionCard>
+
+        <SectionCard title="Lost deal analysis">
+          {lostDealLoading ? (
+            <p className="text-xs text-ds-foreground-muted">Loading…</p>
+          ) : lostDeals.length === 0 ? (
+            <EmptyState title="No lost deal analysis available" />
+          ) : (
+            <div className="flex flex-col gap-ds-3">
+              {lostDeals.map((deal) => (
+                <div key={deal.dealId} className="rounded-ds-md border border-ds-border p-ds-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-ds-foreground">{deal.reason}</p>
+                    <span className="text-sm font-semibold text-ds-danger">
+                      -{deal.estimatedLoss.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                    </span>
+                  </div>
+                  <p className="mt-ds-1 text-xs text-ds-foreground-muted">{deal.preventionStrategy}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionCard>
+      </div>
+    </div>
+  );
+}
+
+export default function BIDashboardPage() {
+  return (
+    <div className="flex flex-col gap-ds-4">
+      <PageHeader
+        title="Business Intelligence"
+        description="AI-driven analytics, health scores, and trend analysis for your business"
+        breadcrumbs={[{ label: 'AI Hub', href: '/ai' }, { label: 'Business Intelligence' }]}
+      />
+      <AiGate>
+        <BiDashboardContent />
+      </AiGate>
     </div>
   );
 }
