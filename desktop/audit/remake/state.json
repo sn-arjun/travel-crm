@@ -42,11 +42,17 @@
       "timestamp": "2026-08-08T13:36:34.709Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:dashboard": {
+      "status": "ok",
+      "timestamp": "2026-08-23T09:27:10.924Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "slice:accounts",
-    "status": "ok",
-    "timestamp": "2026-08-08T13:36:34.709Z"
+    "id": "slice:ai-extractions",
+    "status": "failed",
+    "timestamp": "2026-08-23T09:25:34.000Z"
   }
 }
