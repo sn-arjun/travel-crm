@@ -19,6 +19,7 @@ import {
   Check,
   ArrowUpRight,
   Receipt,
+  Sparkles,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -367,7 +368,7 @@ export default function SettingsPage() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7">
+        <TabsList className="grid w-full grid-cols-4 lg:grid-cols-8">
           <TabsTrigger value="general" className="gap-2">
             <Globe className="h-4 w-4" />
             <span className="hidden sm:inline">General</span>
@@ -387,6 +388,10 @@ export default function SettingsPage() {
           <TabsTrigger value="integrations" className="gap-2">
             <Zap className="h-4 w-4" />
             <span className="hidden sm:inline">Integrations</span>
+          </TabsTrigger>
+          <TabsTrigger value="ai" className="gap-2">
+            <Sparkles className="h-4 w-4" />
+            <span className="hidden sm:inline">AI</span>
           </TabsTrigger>
           <TabsTrigger value="users" className="gap-2">
             <Users className="h-4 w-4" />
@@ -994,6 +999,47 @@ export default function SettingsPage() {
                 </Link>
               </div>
             </CardHeader>
+          </Card>
+        </TabsContent>
+
+        {/* AI Tab */}
+        <TabsContent value="ai" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>AI Settings</CardTitle>
+                  <CardDescription>Manage AI features, provider, and usage quotas</CardDescription>
+                </div>
+                <Link href="/settings/ai">
+                  <Button>
+                    <Sparkles className="h-4 w-4 mr-1.5" />
+                    Open AI Settings
+                    <ArrowUpRight className="h-3 w-3 ml-1" />
+                  </Button>
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-center py-8">
+                <Sparkles className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                <p className="text-sm text-muted-foreground mb-3">
+                  Toggle AI features on and off, view your active provider, and monitor usage
+                </p>
+                <div className="flex items-center justify-center gap-2">
+                  <Link href="/settings/ai">
+                    <Button variant="outline" size="sm">
+                      AI Features <ArrowUpRight className="h-3 w-3 ml-1" />
+                    </Button>
+                  </Link>
+                  <Link href="/settings/ai-usage">
+                    <Button variant="outline" size="sm">
+                      AI Usage <ArrowUpRight className="h-3 w-3 ml-1" />
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </CardContent>
           </Card>
         </TabsContent>
 

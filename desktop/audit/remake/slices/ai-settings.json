@@ -44,11 +44,11 @@
     "phoneInput": false,
     "addressAutocomplete": false,
     "currencyInput": false,
-    "datePicker": true,
+    "datePicker": false,
     "sendMessageDialog": false,
     "themedExport": false
   },
-  "notes": "This slice is the control plane for every AI gate. It must show which features are on, the provider in use, and daily/monthly usage against caps — the degradation story for all other AI slices depends on it.",
+  "notes": "Not a list/table feature — settings + usage dashboard, so listPage/filterBar/infiniteScroll/hoverActions/detailDrawer/relationCombobox/urlPrefill/phoneInput/addressAutocomplete/currencyInput/datePicker/sendMessageDialog/themedExport are N/A by design. Rebuilt both pages on PageHeader/SectionCard/Stat/Tag with ds-* tokens, gated settings/ai behind useFeatureGate('ai_assistant') with a proper disabled/upgrade state (never an error), fixed ai-usage page to call the real aiApi.settings.getUsage() endpoint instead of a nonexistent /ai/usage, and added an AI tab to /settings linking to /settings/ai and /settings/ai-usage since neither was reachable before.",
   "showcaseScript": [
     "Open Settings → AI",
     "Toggle individual AI features on and off",

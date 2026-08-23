@@ -1,23 +1,27 @@
 'use client';
 
 import * as React from 'react';
-import { useAiSettings, invalidateAiSettingsCache } from '@/hooks/use-ai-feature';
-import { aiApi } from '@/lib/api/ai';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Button } from '@/components/ui/button';
 import {
   Sparkles, Shield, Zap, Brain, Eye, Search, MessageSquare,
   Map, Calculator, Phone, Truck, Users as UsersIcon, BarChart3,
   CreditCard, Stamp, Megaphone, TrendingUp, CalendarClock,
   Award, RefreshCw, Server, Cloud,
 } from 'lucide-react';
+
+import { useAiSettings, invalidateAiSettingsCache } from '@/hooks/use-ai-feature';
+import { useFeatureGate } from '@/hooks/use-feature-gate';
+import { aiApi, type UsageData } from '@/lib/api/ai';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/ui/page-header';
+import { SectionCard } from '@/components/ui/section-card';
+import { Progress } from '@/components/ui/progress';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
+import { Tag } from '@/components/ui/tag';
 import { cn } from '@/lib/utils';
 
-const AI_FEATURE_META: Record<string, { label: string; description: string; icon: React.ComponentType<any> }> = {
+const AI_FEATURE_META: Record<string, { label: string; description: string; icon: React.ComponentType<{ className?: string }> }> = {
   ai_copilot: { label: 'AI Co-Pilot', description: 'Contextual AI assistance across all modules', icon: Sparkles },
   ai_call_summary: { label: 'Call Summary', description: 'Auto-summarize call recordings and extract action items', icon: Phone },
   ai_lead_scoring: { label: 'Lead Scoring', description: 'AI-powered lead prioritization (0-100 score)', icon: TrendingUp },
@@ -42,17 +46,66 @@ const AI_FEATURE_META: Record<string, { label: string; description: string; icon
   ai_coaching: { label: 'AI Coaching', description: 'Real-time sales coaching during calls', icon: Zap },
 };
 
+function FeatureCard({
+  featureKey,
+  enabled,
+  canToggle,
+  saving,
+  onToggle,
+}: {
+  featureKey: string;
+  enabled: boolean;
+  canToggle: boolean;
+  saving: boolean;
+  onToggle: (key: string, enabled: boolean) => void;
+}) {
+  const meta = AI_FEATURE_META[featureKey];
+  if (!meta) return null;
+  const Icon = meta.icon;
+
+  return (
+    <div
+      className={cn(
+        'flex items-start gap-ds-3 rounded-ds-lg border border-ds-border bg-ds-surface p-ds-4 shadow-ds-1',
+        !enabled && 'opacity-60',
+      )}
+    >
+      <div
+        className={cn(
+          'flex size-9 shrink-0 items-center justify-center rounded-ds-md',
+          enabled ? 'bg-ds-primary-subtle text-ds-primary-on-subtle' : 'bg-ds-surface-sunken text-ds-foreground-subtle',
+        )}
+      >
+        <Icon className="size-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center justify-between gap-ds-2">
+          <p className="truncate text-sm font-medium text-ds-foreground">{meta.label}</p>
+          <Switch
+            checked={enabled}
+            disabled={!canToggle || saving}
+            onCheckedChange={(v) => onToggle(featureKey, v)}
+            aria-label={`Toggle ${meta.label}`}
+          />
+        </div>
+        <p className="mt-0.5 line-clamp-2 text-xs text-ds-foreground-muted">{meta.description}</p>
+      </div>
+    </div>
+  );
+}
+
 export default function AiSettingsPage() {
+  const { enabled: gateEnabled, reason, loading: gateLoading } = useFeatureGate('ai_assistant');
   const { features, usageCaps, provider, plan, loading, error, refetch } = useAiSettings();
   const [saving, setSaving] = React.useState<string | null>(null);
-  const [usageData, setUsageData] = React.useState<any>(null);
+  const [usageData, setUsageData] = React.useState<UsageData | null>(null);
   const [loadingUsage, setLoadingUsage] = React.useState(false);
 
-  // Fetch detailed usage
   React.useEffect(() => {
     setLoadingUsage(true);
-    aiApi.settings.getUsage()
-      .then((res: any) => {
+    aiApi.settings
+      .getUsage()
+      .then((res) => {
         if (res?.data) setUsageData(res.data);
       })
       .catch(() => {})
@@ -66,20 +119,20 @@ export default function AiSettingsPage() {
       invalidateAiSettingsCache();
       refetch();
     } catch {
-      // Will show error via refetch
+      // Refetch will surface the reverted state.
     } finally {
       setSaving(null);
     }
   };
 
-  const proFeatures = features.filter(f => f.tier === 'pro');
-  const enterpriseFeatures = features.filter(f => f.tier === 'enterprise');
+  const proFeatures = features.filter((f) => f.tier === 'pro');
+  const enterpriseFeatures = features.filter((f) => f.tier === 'enterprise');
 
-  if (loading) {
+  if (gateLoading || loading) {
     return (
-      <div className="space-y-6 p-6">
+      <div className="space-y-ds-6 p-ds-6">
         <Skeleton className="h-8 w-64" />
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-ds-4 md:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-32" />
           ))}
@@ -88,256 +141,202 @@ export default function AiSettingsPage() {
     );
   }
 
+  if (!gateEnabled) {
+    return (
+      <div className="space-y-ds-6 p-ds-6">
+        <PageHeader title="AI Settings" description="Manage AI features, usage quotas, and provider configuration." />
+        <SectionCard>
+          <div className="flex flex-col items-center gap-ds-3 py-ds-8 text-center">
+            <Sparkles className="size-8 text-ds-foreground-subtle" />
+            <p className="text-sm text-ds-foreground-muted">
+              AI Assistant is not available on your current plan.
+            </p>
+            <Button disabled>
+              {reason === 'cap_exceeded' ? 'Limit reached' : 'Upgrade to enable'}
+            </Button>
+          </div>
+        </SectionCard>
+      </div>
+    );
+  }
+
   if (error) {
     return (
-      <div className="p-6">
-        <Card>
-          <CardContent className="py-8 text-center">
-            <p className="text-sm text-destructive">{error}</p>
-            <Button variant="outline" size="sm" className="mt-4" onClick={refetch}>
+      <div className="p-ds-6">
+        <SectionCard>
+          <div className="py-ds-8 text-center">
+            <p className="text-sm text-ds-danger">{error}</p>
+            <Button variant="outline" size="sm" className="mt-ds-4" onClick={refetch}>
               Try Again
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </SectionCard>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8 p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">AI Settings</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage AI features, usage quotas, and provider configuration for your <Badge variant="outline" className="ml-1">{plan}</Badge> plan
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={refetch} className="gap-1.5">
-          <RefreshCw className="h-3.5 w-3.5" />
-          Refresh
-        </Button>
-      </div>
+    <div className="space-y-ds-8 p-ds-6">
+      <PageHeader
+        title="AI Settings"
+        description={`Manage AI features, usage quotas, and provider configuration for your plan.`}
+        status={<Badge variant="outline">{plan}</Badge>}
+        actions={
+          <Button variant="outline" size="sm" onClick={refetch} className="gap-ds-2">
+            <RefreshCw className="size-3.5" />
+            Refresh
+          </Button>
+        }
+      />
 
-      {/* Provider Status */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Server className="h-4 w-4" />
-            AI Provider
-          </CardTitle>
-          <CardDescription>Active AI model provider</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <Cloud className="h-5 w-5 text-orange-500" />
-              <div>
-                <p className="text-sm font-medium">Cloudflare Workers AI</p>
-                <p className="text-xs text-muted-foreground">
-                  {provider?.cloudflare ? 'Active' : 'Unavailable'} — Free tier included
-                </p>
-              </div>
-              {provider?.defaultProvider === 'cloudflare' && (
-                <Badge variant="default" className="ml-2 text-[10px]">Default</Badge>
-              )}
+      <SectionCard title="AI Provider" description="Active AI model provider">
+        <div className="flex flex-wrap items-center gap-ds-6">
+          <div className="flex items-center gap-ds-2">
+            <Cloud className="size-5 text-ds-warning" />
+            <div>
+              <p className="text-sm font-medium text-ds-foreground">Cloudflare Workers AI</p>
+              <p className="text-xs text-ds-foreground-muted">
+                {provider?.cloudflare ? 'Active' : 'Unavailable'} — Free tier included
+              </p>
             </div>
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-violet-500" />
-              <div>
-                <p className="text-sm font-medium">Claude API</p>
-                <p className="text-xs text-muted-foreground">
-                  {provider?.anthropic ? 'Connected' : 'No API key set'}
+            {provider?.defaultProvider === 'cloudflare' && (
+              <Tag tone="primary" size="sm">Default</Tag>
+            )}
+          </div>
+          <div className="flex items-center gap-ds-2">
+            <Sparkles className="size-5 text-ds-primary" />
+            <div>
+              <p className="text-sm font-medium text-ds-foreground">Claude API</p>
+              <p className="text-xs text-ds-foreground-muted">
+                {provider?.anthropic ? 'Connected' : 'No API key set'}
+              </p>
+            </div>
+            {provider?.defaultProvider === 'anthropic' && (
+              <Tag tone="primary" size="sm">Default</Tag>
+            )}
+          </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Usage Quotas" description="Current usage against your plan limits">
+        {Object.keys(usageCaps).length === 0 ? (
+          <p className="text-sm text-ds-foreground-muted">No usage caps configured for your plan.</p>
+        ) : (
+          <div className="grid gap-ds-4 md:grid-cols-2">
+            {Object.entries(usageCaps).map(([key, cap]) => (
+              <div key={key} className="space-y-ds-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium capitalize text-ds-foreground">{key.replace(/_/g, ' ')}</span>
+                  <span className="text-ds-foreground-muted">
+                    {cap.used ?? 0} / {cap.limit ?? 0}
+                  </span>
+                </div>
+                <Progress
+                  value={cap.percentUsed ?? 0}
+                  className={cn(
+                    'h-2',
+                    (cap.percentUsed ?? 0) >= 90 && '[&>div]:bg-ds-danger',
+                    (cap.percentUsed ?? 0) >= 70 && (cap.percentUsed ?? 0) < 90 && '[&>div]:bg-ds-warning',
+                  )}
+                />
+                <p className="text-[11px] text-ds-foreground-muted">
+                  {cap.remaining ?? 0} remaining
                 </p>
               </div>
-              {provider?.defaultProvider === 'anthropic' && (
-                <Badge variant="default" className="ml-2 text-[10px]">Default</Badge>
-              )}
+            ))}
+          </div>
+        )}
+
+        {!loadingUsage && usageData?.dailyTrend && usageData.dailyTrend.length > 0 && (
+          <div className="mt-ds-6 border-t border-ds-border pt-ds-4">
+            <p className="mb-ds-3 text-sm font-medium text-ds-foreground">Last 7 Days</p>
+            <div className="flex h-16 items-end gap-ds-1">
+              {usageData.dailyTrend.map((d, i) => {
+                const maxReq = Math.max(...usageData.dailyTrend.map((t) => t.requests), 1);
+                const height = (d.requests / maxReq) * 100;
+                return (
+                  <div key={i} className="flex flex-1 flex-col items-center gap-ds-1">
+                    <div
+                      className="w-full rounded-t bg-ds-primary/80 transition-all"
+                      style={{ height: `${Math.max(height, 4)}%` }}
+                      title={`${d.day}: ${d.requests} requests`}
+                    />
+                    <span className="text-[9px] text-ds-foreground-muted">{d.day?.slice(5)}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
-        </CardContent>
-      </Card>
+        )}
+      </SectionCard>
 
-      {/* Usage Quotas */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <BarChart3 className="h-4 w-4" />
-            Usage Quotas
-          </CardTitle>
-          <CardDescription>Current usage against your plan limits</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {Object.keys(usageCaps).length === 0 ? (
-            <p className="text-sm text-muted-foreground">No usage caps configured for your plan.</p>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {Object.entries(usageCaps).map(([key, cap]: [string, any]) => (
-                <div key={key} className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium capitalize">{key.replace(/_/g, ' ')}</span>
-                    <span className="text-muted-foreground">
-                      {cap.used ?? 0} / {cap.limit ?? 0}
-                    </span>
-                  </div>
-                  <Progress
-                    value={cap.percentUsed ?? 0}
-                    className={cn(
-                      'h-2',
-                      (cap.percentUsed ?? 0) >= 90 && '[&>div]:bg-red-500',
-                      (cap.percentUsed ?? 0) >= 70 && (cap.percentUsed ?? 0) < 90 && '[&>div]:bg-amber-500',
-                    )}
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    {cap.remaining ?? 0} remaining — resets {cap.resetPeriod ?? 'daily'}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Daily trend */}
-          {usageData?.dailyTrend?.length > 0 && (
-            <div className="mt-6 border-t pt-4">
-              <p className="text-sm font-medium mb-3">Last 7 Days</p>
-              <div className="flex items-end gap-1 h-16">
-                {usageData.dailyTrend.map((d: any, i: number) => {
-                  const maxReq = Math.max(...usageData.dailyTrend.map((t: any) => t.requests), 1);
-                  const height = (d.requests / maxReq) * 100;
-                  return (
-                    <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                      <div
-                        className="w-full rounded-t bg-primary/80 transition-all"
-                        style={{ height: `${Math.max(height, 4)}%` }}
-                        title={`${d.day}: ${d.requests} requests`}
-                      />
-                      <span className="text-[9px] text-muted-foreground">
-                        {d.day?.slice(5)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Pro AI Features */}
       <div>
-        <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
-          <Badge className="bg-blue-600">Pro</Badge>
-          AI Features ({proFeatures.filter(f => f.enabled).length}/{proFeatures.length})
+        <h2 className="mb-ds-4 flex items-center gap-ds-2 text-lg font-semibold text-ds-foreground">
+          <Tag tone="info">Pro</Tag>
+          AI Features ({proFeatures.filter((f) => f.enabled).length}/{proFeatures.length})
         </h2>
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {proFeatures.map((feature) => {
-            const meta = AI_FEATURE_META[feature.key];
-            if (!meta) return null;
-            const Icon = meta.icon;
-            const canToggle = plan === 'pro' || plan === 'enterprise' || plan === 'trial';
-
-            return (
-              <Card key={feature.key} className={cn(!feature.enabled && 'opacity-60')}>
-                <CardContent className="flex items-start gap-3 py-4">
-                  <div className={cn(
-                    'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
-                    feature.enabled ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-muted text-muted-foreground',
-                  )}>
-                    <Icon className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium truncate">{meta.label}</p>
-                      <Switch
-                        checked={feature.enabled}
-                        disabled={!canToggle || saving === feature.key}
-                        onCheckedChange={(v) => handleToggleFeature(feature.key, v)}
-                        aria-label={`Toggle ${meta.label}`}
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{meta.description}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+        <div className="grid gap-ds-3 md:grid-cols-2 lg:grid-cols-3">
+          {proFeatures.map((feature) => (
+            <FeatureCard
+              key={feature.key}
+              featureKey={feature.key}
+              enabled={feature.enabled}
+              canToggle={plan === 'pro' || plan === 'enterprise' || plan === 'trial'}
+              saving={saving === feature.key}
+              onToggle={handleToggleFeature}
+            />
+          ))}
         </div>
       </div>
 
-      {/* Enterprise AI Features */}
       <div>
-        <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
-          <Badge className="bg-purple-600">Enterprise</Badge>
-          AI Features ({enterpriseFeatures.filter(f => f.enabled).length}/{enterpriseFeatures.length})
+        <h2 className="mb-ds-4 flex items-center gap-ds-2 text-lg font-semibold text-ds-foreground">
+          <Tag tone="primary">Enterprise</Tag>
+          AI Features ({enterpriseFeatures.filter((f) => f.enabled).length}/{enterpriseFeatures.length})
         </h2>
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {enterpriseFeatures.map((feature) => {
-            const meta = AI_FEATURE_META[feature.key];
-            if (!meta) return null;
-            const Icon = meta.icon;
-            const canToggle = plan === 'enterprise';
-
-            return (
-              <Card key={feature.key} className={cn(!feature.enabled && 'opacity-60')}>
-                <CardContent className="flex items-start gap-3 py-4">
-                  <div className={cn(
-                    'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
-                    feature.enabled ? 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-muted text-muted-foreground',
-                  )}>
-                    <Icon className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium truncate">{meta.label}</p>
-                      <Switch
-                        checked={feature.enabled}
-                        disabled={!canToggle || saving === feature.key}
-                        onCheckedChange={(v) => handleToggleFeature(feature.key, v)}
-                        aria-label={`Toggle ${meta.label}`}
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{meta.description}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+        <div className="grid gap-ds-3 md:grid-cols-2 lg:grid-cols-3">
+          {enterpriseFeatures.map((feature) => (
+            <FeatureCard
+              key={feature.key}
+              featureKey={feature.key}
+              enabled={feature.enabled}
+              canToggle={plan === 'enterprise'}
+              saving={saving === feature.key}
+              onToggle={handleToggleFeature}
+            />
+          ))}
         </div>
       </div>
 
-      {/* Usage Breakdown */}
-      {usageData?.breakdown?.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Usage Breakdown (Last 30 Days)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-muted-foreground">
-                    <th className="pb-2 font-medium">Task</th>
-                    <th className="pb-2 font-medium">Model</th>
-                    <th className="pb-2 font-medium text-right">Requests</th>
-                    <th className="pb-2 font-medium text-right">Tokens</th>
-                    <th className="pb-2 font-medium text-right">Cost</th>
+      {!loadingUsage && usageData?.breakdown && usageData.breakdown.length > 0 && (
+        <SectionCard title="Usage Breakdown (Last 30 Days)" flush>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-ds-border text-left text-ds-foreground-muted">
+                  <th className="px-ds-4 py-ds-2 font-medium">Task</th>
+                  <th className="px-ds-4 py-ds-2 font-medium">Model</th>
+                  <th className="px-ds-4 py-ds-2 text-right font-medium">Requests</th>
+                  <th className="px-ds-4 py-ds-2 text-right font-medium">Tokens</th>
+                  <th className="px-ds-4 py-ds-2 text-right font-medium">Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {usageData.breakdown.map((row, i) => (
+                  <tr key={i} className="border-b border-ds-border/50 last:border-0">
+                    <td className="px-ds-4 py-ds-2 capitalize text-ds-foreground">{row.taskType?.replace(/_/g, ' ')}</td>
+                    <td className="px-ds-4 py-ds-2 text-xs text-ds-foreground-muted">{row.modelName}</td>
+                    <td className="px-ds-4 py-ds-2 text-right text-ds-foreground">{row.requestCount}</td>
+                    <td className="px-ds-4 py-ds-2 text-right text-ds-foreground">
+                      {(row.totalInputTokens + row.totalOutputTokens).toLocaleString()}
+                    </td>
+                    <td className="px-ds-4 py-ds-2 text-right text-ds-foreground">${row.totalCost?.toFixed(4)}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {usageData.breakdown.map((row: any, i: number) => (
-                    <tr key={i} className="border-b border-muted/50">
-                      <td className="py-2 capitalize">{row.taskType?.replace(/_/g, ' ')}</td>
-                      <td className="py-2 text-muted-foreground text-xs">{row.modelName}</td>
-                      <td className="py-2 text-right">{row.requestCount}</td>
-                      <td className="py-2 text-right">{(row.totalInputTokens + row.totalOutputTokens).toLocaleString()}</td>
-                      <td className="py-2 text-right">${row.totalCost?.toFixed(4)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
       )}
     </div>
   );
