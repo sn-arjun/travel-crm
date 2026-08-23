@@ -62,8 +62,8 @@
     "hoverActions": false,
     "detailDrawer": false,
     "emptyState": false,
-    "skeleton": false,
-    "relationCombobox": false,
+    "skeleton": true,
+    "relationCombobox": true,
     "urlPrefill": false,
     "phoneInput": false,
     "addressAutocomplete": false,
@@ -72,7 +72,7 @@
     "sendMessageDialog": false,
     "themedExport": false
   },
-  "notes": "Gated ai_assistant plus a daily usage cap on ai_actions_per_day — the UI must surface remaining quota and degrade when exhausted. Business-card scan, bulk lead parse, itinerary enrich, invoice generate and the whole /ai/generated feedback loop are orphaned.",
+  "notes": "All 4 tool pages (compose, itinerary, lead-creation, search) plus the hub are now wrapped in AiGate (useFeatureGate('ai_assistant')), which renders a skeleton while loading and an upgrade/quota-exhausted prompt instead of the page when gated — no page fires its AI call against a 403. Each page's header shows a live remaining-quota badge (AiQuotaBadge, desktop/src/components/domain/ai/quota-badge.tsx) via the existing useAiUsageCap hook. The compose page's send dialog used a raw 'Contact ID' text input; replaced with RelationCombobox against contactsApi. Added a GeneratedContentActions component (accept/reject/thumbs up-down) wired to the previously-orphaned /ai/generated/:id endpoints and surfaced it under each page's AI result once a contentId is returned. These pages are single-shot AI tool forms, not entity lists — ListPage/FilterBar/infiniteScroll/detailDrawer/emptyState/hoverActions/themedExport archetypes don't apply here (no paginated collection to browse). SendMessageDialog wasn't reused on the compose page because it has no prop for injecting a pre-composed body/subject; it still routes strictly through communicationsApi.send (Communication Hub), never mailto/wa.me. Business-card scan and bulk-lead-parse endpoints are now typed in ai.ts (aiApi.scanBusinessCard, aiApi.parseBulkLeads, aiApi.parseWhatsapp, aiApi.parseEmail, aiApi.enrichItinerary, aiApi.generateInvoice, aiApi.generated.*) but have no UI surface in this slice's page allowlist — no manifest page exists for them, so they remain callable-but-unsurfaced pending a future slice/page addition. AI Assistant was already reachable from the sidebar under Intelligence.",
   "showcaseScript": [
     "Open the AI Assistant",
     "Paste a WhatsApp enquiry and let AI extract a lead",

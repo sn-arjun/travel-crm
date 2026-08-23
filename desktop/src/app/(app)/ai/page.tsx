@@ -14,6 +14,9 @@ import {
   BarChart3,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { PageHeader } from '@/components/ui/page-header';
+import { AiGate } from '@/components/domain/ai/ai-gate';
+import { AiQuotaBadge } from '@/components/domain/ai/quota-badge';
 
 const AI_FEATURES = [
   {
@@ -92,44 +95,45 @@ const AI_FEATURES = [
 
 export default function AIHubPage() {
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">AI Hub</h1>
-        <p className="text-muted-foreground mt-1">
-          Leverage artificial intelligence to automate tasks, gain insights, and grow your business
-        </p>
-      </div>
+    <div className="flex flex-col gap-ds-4">
+      <PageHeader
+        title="AI Hub"
+        description="Leverage artificial intelligence to automate tasks, gain insights, and grow your business"
+        actions={<AiQuotaBadge capKey="ai_requests" />}
+      />
 
-      <div className="flex items-center gap-3 rounded-lg border bg-gradient-to-r from-primary/5 to-primary/10 p-4">
-        <Brain className="h-8 w-8 text-primary" />
-        <div>
-          <p className="font-semibold">AI-Powered CRM</p>
-          <p className="text-sm text-muted-foreground">
-            All features use advanced AI models to help you work smarter, not harder.
-          </p>
+      <AiGate>
+        <div className="flex items-center gap-3 rounded-lg border bg-gradient-to-r from-primary/5 to-primary/10 p-4">
+          <Brain className="h-8 w-8 text-primary" />
+          <div>
+            <p className="font-semibold">AI-Powered CRM</p>
+            <p className="text-sm text-muted-foreground">
+              All features use advanced AI models to help you work smarter, not harder.
+            </p>
+          </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {AI_FEATURES.map((feature) => (
-          <Link key={feature.href} href={feature.href}>
-            <Card className="h-full transition-all hover:shadow-md hover:border-primary/30 cursor-pointer">
-              <CardHeader className="pb-3">
-                <div className={`inline-flex h-10 w-10 items-center justify-center rounded-lg ${feature.bg}`}>
-                  <feature.icon className={`h-5 w-5 ${feature.color}`} />
-                </div>
-                <CardTitle className="text-lg mt-3">{feature.title}</CardTitle>
-                <CardDescription>{feature.description}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <span className="text-sm text-primary font-medium">
-                  Open &rarr;
-                </span>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
-      </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-ds-4">
+          {AI_FEATURES.map((feature) => (
+            <Link key={feature.href} href={feature.href}>
+              <Card className="h-full transition-all hover:shadow-md hover:border-primary/30 cursor-pointer">
+                <CardHeader className="pb-3">
+                  <div className={`inline-flex h-10 w-10 items-center justify-center rounded-lg ${feature.bg}`}>
+                    <feature.icon className={`h-5 w-5 ${feature.color}`} />
+                  </div>
+                  <CardTitle className="text-lg mt-3">{feature.title}</CardTitle>
+                  <CardDescription>{feature.description}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <span className="text-sm text-primary font-medium">
+                    Open &rarr;
+                  </span>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      </AiGate>
     </div>
   );
 }

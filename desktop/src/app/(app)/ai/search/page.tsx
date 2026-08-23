@@ -9,6 +9,9 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { aiApi, type NlQueryResult } from '@/lib/api/ai';
+import { PageHeader } from '@/components/ui/page-header';
+import { AiGate } from '@/components/domain/ai/ai-gate';
+import { AiQuotaBadge } from '@/components/domain/ai/quota-badge';
 
 const EXAMPLE_QUERIES = [
   'How many leads did we get this month?',
@@ -54,13 +57,13 @@ export default function SearchPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Natural Language Search</h1>
-        <p className="text-muted-foreground mt-1">
-          Ask questions about your CRM data in plain English
-        </p>
-      </div>
+      <PageHeader
+        title="Natural Language Search"
+        description="Ask questions about your CRM data in plain English"
+        actions={<AiQuotaBadge capKey="ai_requests" />}
+      />
 
+      <AiGate>
       {/* Search Bar */}
       <Card>
         <CardContent className="pt-6">
@@ -209,6 +212,7 @@ export default function SearchPage() {
           </CardContent>
         </Card>
       </div>
+      </AiGate>
     </div>
   );
 }

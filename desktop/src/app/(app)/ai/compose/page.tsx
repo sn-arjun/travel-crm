@@ -18,7 +18,14 @@ import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { aiApi, type ComposedMessage } from '@/lib/api/ai';
 import { communicationsApi } from '@/lib/api/communications';
+import { contactsApi } from '@/lib/api/contacts';
+import type { Contact } from '@travelcrm/shared';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { RelationCombobox } from '@/components/domain/relation-combobox';
+import { PageHeader } from '@/components/ui/page-header';
+import { AiGate } from '@/components/domain/ai/ai-gate';
+import { AiQuotaBadge } from '@/components/domain/ai/quota-badge';
+import { GeneratedContentActions } from '@/components/domain/ai/generated-content-actions';
 
 export default function ComposePage() {
   const [context, setContext] = React.useState('');
@@ -27,10 +34,10 @@ export default function ComposePage() {
   const [maxLength, setMaxLength] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [message, setMessage] = React.useState<ComposedMessage | null>(null);
+  const [contentId, setContentId] = React.useState<string | undefined>();
   const [sendDialogOpen, setSendDialogOpen] = React.useState(false);
-  const [sendTo, setSendTo] = React.useState('');
-  const [sendContactId, setSendContactId] = React.useState('');
   const [sendType, setSendType] = React.useState<'email' | 'sms' | 'whatsapp'>('email');
+  const [sendContactId, setSendContactId] = React.useState<string | null>(null);
   const [isSending, setIsSending] = React.useState(false);
 
   const handleGenerate = async () => {
@@ -41,6 +48,7 @@ export default function ComposePage() {
 
     setLoading(true);
     setMessage(null);
+    setContentId(undefined);
 
     try {
       const response = await aiApi.composeMessage({
@@ -50,6 +58,8 @@ export default function ComposePage() {
         maxLength: maxLength ? parseInt(maxLength, 10) : undefined,
       });
       setMessage(response.data);
+      const returnedId = (response.data as { contentId?: string }).contentId;
+      if (returnedId) setContentId(returnedId);
       toast.success('Message composed successfully');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to compose message';
@@ -74,21 +84,20 @@ export default function ComposePage() {
   };
 
   const handleSendConfirm = async () => {
-    if (!message || (!sendContactId.trim() && !sendTo.trim())) {
-      toast.error('Please enter a Contact ID or recipient');
+    if (!message || !sendContactId) {
+      toast.error('Please pick a contact to send to');
       return;
     }
     setIsSending(true);
     try {
       await communicationsApi.send({
-        contact_id: sendContactId.trim() || sendTo.trim(),
+        contact_id: sendContactId,
         channel: sendType,
         message: sendType === 'email' && message.subject ? `[Subject: ${message.subject}]\n${message.body}` : message.body,
       });
       toast.success(`Message sent via ${sendType} successfully!`);
       setSendDialogOpen(false);
-      setSendTo('');
-      setSendContactId('');
+      setSendContactId(null);
     } catch {
       toast.error('Failed to send message');
     } finally {
@@ -98,13 +107,13 @@ export default function ComposePage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">AI Message Composer</h1>
-        <p className="text-muted-foreground mt-1">
-          Generate professional messages for email, SMS, and WhatsApp with AI
-        </p>
-      </div>
+      <PageHeader
+        title="AI Message Composer"
+        description="Generate professional messages for email, SMS, and WhatsApp with AI"
+        actions={<AiQuotaBadge capKey="ai_requests" />}
+      />
 
+      <AiGate>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Input Form */}
         <Card>
@@ -250,6 +259,8 @@ export default function ComposePage() {
                     Send
                   </Button>
                 </div>
+
+                <GeneratedContentActions contentId={contentId} />
               </div>
             )}
           </CardContent>
@@ -276,26 +287,34 @@ export default function ComposePage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Contact ID</Label>
-              <Input
+              <Label>Contact</Label>
+              <RelationCombobox<Contact>
                 value={sendContactId}
-                onChange={(e) => setSendContactId(e.target.value)}
-                placeholder="Enter contact ID (from Contacts page)"
+                onChange={(id) => setSendContactId(id)}
+                fetcher={async (query, page) => {
+                  const res = await contactsApi.list({ search: query, page, limit: 20 });
+                  return { items: res.data.data, total: res.data.pagination.total };
+                }}
+                getOptionId={(c) => c.id}
+                getOptionLabel={(c) => c.name}
+                getOptionDescription={(c) => c.email ?? c.phone ?? undefined}
+                resolveSelected={async (id) => (await contactsApi.getById(id)).data}
+                placeholder="Search contacts…"
+                searchPlaceholder="Search by name, email, phone…"
+                required
               />
-              <p className="text-xs text-muted-foreground">
-                The contact must exist in CRM. Find their ID on the Contacts page.
-              </p>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setSendDialogOpen(false)} disabled={isSending}>Cancel</Button>
-            <Button onClick={handleSendConfirm} disabled={isSending} className="gap-2">
+            <Button onClick={handleSendConfirm} disabled={isSending || !sendContactId} className="gap-2">
               {isSending && <Loader2 className="h-4 w-4 animate-spin" />}
               Send
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </AiGate>
     </div>
   );
 }

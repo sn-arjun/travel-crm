@@ -14,6 +14,10 @@ import { useRouter } from 'next/navigation';
 import { aiApi, type ExtractedLead } from '@/lib/api/ai';
 import { leadsApi } from '@/lib/api/leads';
 import { contactsApi } from '@/lib/api/contacts';
+import { PageHeader } from '@/components/ui/page-header';
+import { AiGate } from '@/components/domain/ai/ai-gate';
+import { AiQuotaBadge } from '@/components/domain/ai/quota-badge';
+import { GeneratedContentActions } from '@/components/domain/ai/generated-content-actions';
 
 export default function LeadCreationPage() {
   const router = useRouter();
@@ -21,6 +25,7 @@ export default function LeadCreationPage() {
   const [loading, setLoading] = React.useState(false);
   const [isCreating, setIsCreating] = React.useState(false);
   const [result, setResult] = React.useState<ExtractedLead | null>(null);
+  const [contentId, setContentId] = React.useState<string | undefined>();
 
   const handleExtract = async () => {
     if (!text.trim()) {
@@ -29,9 +34,12 @@ export default function LeadCreationPage() {
     }
     setLoading(true);
     setResult(null);
+    setContentId(undefined);
     try {
       const response = await aiApi.extractLead({ text });
       setResult(response.data);
+      const returnedId = (response.data as ExtractedLead & { contentId?: string }).contentId;
+      if (returnedId) setContentId(returnedId);
       toast.success('Lead data extracted successfully');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to extract lead data';
@@ -98,13 +106,13 @@ export default function LeadCreationPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">AI Lead Extraction</h1>
-        <p className="text-muted-foreground mt-1">
-          Paste an email or inquiry text and let AI extract lead details automatically
-        </p>
-      </div>
+      <PageHeader
+        title="AI Lead Extraction"
+        description="Paste an email or inquiry text and let AI extract lead details automatically"
+        actions={<AiQuotaBadge capKey="ai_extractions" />}
+      />
 
+      <AiGate>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Input Section */}
         <Card>
@@ -228,11 +236,14 @@ export default function LeadCreationPage() {
                     {isCreating ? 'Creating...' : 'Create Lead'}
                   </Button>
                 </div>
+
+                <GeneratedContentActions contentId={contentId} />
               </div>
             )}
           </CardContent>
         </Card>
       </div>
+      </AiGate>
     </div>
   );
 }

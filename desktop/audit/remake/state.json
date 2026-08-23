@@ -48,11 +48,17 @@
       "timestamp": "2026-08-23T09:27:10.924Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:ai-assistant": {
+      "status": "ok",
+      "timestamp": "2026-08-23T09:33:43.798Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "slice:ai-extractions",
-    "status": "failed",
-    "timestamp": "2026-08-23T09:25:34.000Z"
+    "id": "slice:ai-assistant",
+    "status": "ok",
+    "timestamp": "2026-08-23T09:33:43.798Z"
   }
 }

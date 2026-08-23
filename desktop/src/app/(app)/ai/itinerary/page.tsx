@@ -12,6 +12,10 @@ import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { aiApi, type GeneratedItinerary } from '@/lib/api/ai';
 import { itinerariesApi } from '@/lib/api/itineraries';
+import { PageHeader } from '@/components/ui/page-header';
+import { AiGate } from '@/components/domain/ai/ai-gate';
+import { AiQuotaBadge } from '@/components/domain/ai/quota-badge';
+import { GeneratedContentActions } from '@/components/domain/ai/generated-content-actions';
 
 export default function ItineraryPage() {
   const router = useRouter();
@@ -21,6 +25,7 @@ export default function ItineraryPage() {
   const [preferences, setPreferences] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [itinerary, setItinerary] = React.useState<GeneratedItinerary | null>(null);
+  const [contentId, setContentId] = React.useState<string | undefined>();
 
   const handleGenerate = async () => {
     if (!destination.trim()) {
@@ -30,6 +35,7 @@ export default function ItineraryPage() {
 
     setLoading(true);
     setItinerary(null);
+    setContentId(undefined);
 
     try {
       const response = await aiApi.generateItinerary({
@@ -41,6 +47,8 @@ export default function ItineraryPage() {
           : undefined,
       });
       setItinerary(response.data);
+      const returnedId = (response.data as GeneratedItinerary & { contentId?: string }).contentId;
+      if (returnedId) setContentId(returnedId);
       toast.success('Itinerary generated successfully');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to generate itinerary';
@@ -56,7 +64,7 @@ export default function ItineraryPage() {
     if (!itinerary) return;
     setIsSaving(true);
     try {
-      const days = (itinerary.items || []).map((item: any, idx: number) => ({
+      const days = (itinerary.items || []).map((item, idx: number) => ({
         dayNumber: idx + 1,
         title: item.title || `Day ${idx + 1}`,
         description: item.description || '',
@@ -90,13 +98,13 @@ export default function ItineraryPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">AI Itinerary Generator</h1>
-        <p className="text-muted-foreground mt-1">
-          Generate detailed day-by-day travel itineraries with AI
-        </p>
-      </div>
+      <PageHeader
+        title="AI Itinerary Generator"
+        description="Generate detailed day-by-day travel itineraries with AI"
+        actions={<AiQuotaBadge capKey="ai_requests" />}
+      />
 
+      <AiGate>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Form */}
         <Card className="lg:col-span-1">
@@ -255,11 +263,14 @@ export default function ItineraryPage() {
                     </div>
                   ))}
                 </div>
+
+                <GeneratedContentActions contentId={contentId} className="mt-4" />
               </div>
             )}
           </CardContent>
         </Card>
       </div>
+      </AiGate>
     </div>
   );
 }
