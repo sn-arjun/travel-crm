@@ -39,9 +39,9 @@
     "listPage": true,
     "filterBar": true,
     "infiniteScroll": true,
-    "hoverActions": false,
+    "hoverActions": true,
     "detailDrawer": true,
-    "emptyState": false,
+    "emptyState": true,
     "skeleton": true,
     "relationCombobox": false,
     "urlPrefill": false,
@@ -50,9 +50,9 @@
     "currencyInput": false,
     "datePicker": true,
     "sendMessageDialog": false,
-    "themedExport": false
+    "themedExport": true
   },
-  "notes": "GET /segments/:id/contacts and POST /segments/:id/refresh-count are orphaned — no member preview, no live count refresh (#116).",
+  "notes": "No relation fields, phone/address/currency inputs, or messaging in this slice — segments have no such fields, so those contract items are N/A rather than unmet. GET /segments/:id/contacts now powers a matching-contacts preview in the detail drawer; POST /segments/:id/refresh-count now powers a Refresh count row action and drawer button. Edit form now loads via GET /segments/:id and saves via PUT /segments/:id (previously used list+create as a broken upsert). Count preview on create/edit uses create+refresh-count+delete as a dry run since no dedicated preview endpoint exists — acceptable but has a brief side-effect window.",
   "showcaseScript": [
     "Open Marketing → Segments",
     "Build a segment with rules on destination and spend",

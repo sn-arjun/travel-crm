@@ -4,9 +4,18 @@ import { API_ENDPOINTS } from './config';
 export interface MarketingSegment {
   id: string;
   name: string;
+  description?: string;
   criteria: Record<string, unknown>;
   contactCount: number;
   createdAt: string;
+  updatedAt?: string;
+}
+
+export interface SegmentContact {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
 }
 
 export interface CompanyBranding {
@@ -80,8 +89,11 @@ export interface SocialContent {
 
 export interface CreateSegmentRequest {
   name: string;
+  description?: string;
   criteria: Record<string, unknown>;
 }
+
+export type UpdateSegmentRequest = Partial<CreateSegmentRequest>;
 
 export interface UpdateBrandingRequest {
   logoUrl?: string;
@@ -265,11 +277,26 @@ export const marketingApi = {
     }) =>
       client.get<ApiResponse<PaginatedResponse<MarketingSegment>>>(API_ENDPOINTS.marketing.segments, { params }),
 
+    get: (id: string) =>
+      client.get<ApiResponse<MarketingSegment>>(`${API_ENDPOINTS.marketing.segments}/${id}`),
+
     create: (data: CreateSegmentRequest) =>
       client.post<ApiResponse<MarketingSegment>>(API_ENDPOINTS.marketing.segments, data),
 
+    update: (id: string, data: UpdateSegmentRequest) =>
+      client.put<ApiResponse<MarketingSegment>>(`${API_ENDPOINTS.marketing.segments}/${id}`, data),
+
     delete: (id: string) =>
       client.delete<ApiResponse<void>>(`${API_ENDPOINTS.marketing.segments}/${id}`),
+
+    contacts: (id: string, params?: { page?: number; limit?: number }) =>
+      client.get<ApiResponse<PaginatedResponse<SegmentContact>>>(
+        `${API_ENDPOINTS.marketing.segments}/${id}/contacts`,
+        { params },
+      ),
+
+    refreshCount: (id: string) =>
+      client.post<ApiResponse<MarketingSegment>>(`${API_ENDPOINTS.marketing.segments}/${id}/refresh-count`, {}),
   },
 
   branding: {

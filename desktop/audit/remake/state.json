@@ -204,11 +204,17 @@
       "timestamp": "2026-09-22T13:23:17.426Z",
       "error": null,
       "repairAttempts": 1
+    },
+    "slice:marketing-segments": {
+      "status": "ok",
+      "timestamp": "2026-09-22T13:30:09.796Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "slice:marketing-opt-out",
+    "id": "slice:marketing-segments",
     "status": "ok",
-    "timestamp": "2026-09-22T13:23:17.426Z"
+    "timestamp": "2026-09-22T13:30:09.796Z"
   }
 }
