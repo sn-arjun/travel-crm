@@ -90,6 +90,7 @@ const navigation: NavGroup[] = [
     items: [
       { title: 'Fleet', href: '/fleet', icon: Truck },
       { title: 'Itineraries', href: '/itineraries', icon: Map },
+      { title: 'Itinerary Templates', href: '/itineraries/templates', icon: Bookmark },
       { title: 'Rate Cards', href: '/rate-cards', icon: Tag },
       { title: 'Suppliers', href: '/suppliers', icon: PackageSearch },
       { title: 'Accounts (Suppliers view)', href: '/accounts', icon: Building2 },
