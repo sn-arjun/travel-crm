@@ -156,11 +156,32 @@
       "timestamp": "2026-09-22T06:42:56.509Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:fleet-vehicles": {
+      "status": "ok",
+      "timestamp": "2026-09-22T12:49:25.672Z",
+      "error": null,
+      "repairAttempts": 0
+    },
+    "slice:follow-ups": {
+      "status": "context-limit",
+      "timestamp": "2026-09-22T06:43:38.981Z",
+      "error": "stdout(tail): You've hit your session limit · resets 4:20pm (Asia/Kolkata)"
+    },
+    "slice:import-export": {
+      "status": "context-limit",
+      "timestamp": "2026-09-22T06:43:43.750Z",
+      "error": "stdout(tail): You've hit your session limit · resets 4:20pm (Asia/Kolkata)"
+    },
+    "slice:itineraries": {
+      "status": "context-limit",
+      "timestamp": "2026-09-22T06:43:48.536Z",
+      "error": "stdout(tail): You've hit your session limit · resets 4:20pm (Asia/Kolkata)"
     }
   },
   "lastCompleted": {
-    "id": "slice:fleet-trips",
+    "id": "slice:fleet-vehicles",
     "status": "ok",
-    "timestamp": "2026-09-22T06:42:56.509Z"
+    "timestamp": "2026-09-22T12:49:25.672Z"
   }
 }

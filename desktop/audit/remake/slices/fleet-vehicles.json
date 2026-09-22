@@ -58,9 +58,9 @@
     "listPage": true,
     "filterBar": true,
     "infiniteScroll": true,
-    "hoverActions": false,
-    "detailDrawer": false,
-    "emptyState": false,
+    "hoverActions": true,
+    "detailDrawer": true,
+    "emptyState": true,
     "skeleton": true,
     "relationCombobox": false,
     "urlPrefill": false,
@@ -69,9 +69,9 @@
     "currencyInput": false,
     "datePicker": true,
     "sendMessageDialog": false,
-    "themedExport": false
+    "themedExport": true
   },
-  "notes": "MOCKED: availability-picker.tsx imports fleet-mock-data. Edit button not linked, Deactivate is a placeholder (#68). Documents/Maintenance/Availability tabs missing (#69).",
+  "notes": "No relation fields on Vehicle, so relationCombobox/urlPrefill/phoneInput/addressAutocomplete/currencyInput/sendMessageDialog N/A for this entity. availability-picker.tsx still imports fleet-mock-data but is out of scope (not one of the 4 pages in this slice's fileAllowlist) — flagging for a future slice.",
   "showcaseScript": [
     "Open Fleet → Vehicles and filter by vehicle type",
     "Add a vehicle with registration and seating capacity",
