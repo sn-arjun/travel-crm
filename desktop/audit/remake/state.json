@@ -132,11 +132,17 @@
       "timestamp": "2026-09-22T06:24:29.160Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:fleet-dashboard": {
+      "status": "ok",
+      "timestamp": "2026-09-22T06:29:28.407Z",
+      "error": null,
+      "repairAttempts": 1
     }
   },
   "lastCompleted": {
-    "id": "slice:driver-app-api",
+    "id": "slice:fleet-dashboard",
     "status": "ok",
-    "timestamp": "2026-09-22T06:24:29.160Z"
+    "timestamp": "2026-09-22T06:29:28.407Z"
   }
 }

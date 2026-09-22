@@ -36,8 +36,8 @@
     "infiniteScroll": false,
     "hoverActions": false,
     "detailDrawer": false,
-    "emptyState": false,
-    "skeleton": false,
+    "emptyState": true,
+    "skeleton": true,
     "relationCombobox": false,
     "urlPrefill": false,
     "phoneInput": false,
@@ -47,7 +47,7 @@
     "sendMessageDialog": false,
     "themedExport": false
   },
-  "notes": "Makes 3 API calls instead of using GET /fleet/dashboard (#76). Alerts page only tracks driver licence — misses vehicle docs and maintenance due (#74).",
+  "notes": "This slice is a stats dashboard + tabbed alert feed, not a list/detail entity, so listPage/filterBar/infiniteScroll/hoverActions/detailDrawer/relationCombobox/urlPrefill/phoneInput/addressAutocomplete/currencyInput/sendMessageDialog/themedExport do not apply to this archetype. Fixed #76: dashboard page now makes 1 call (GET /fleet/dashboard) instead of 3; the API client normalizes the nested backend payload into the existing flat FleetDashboard shape so the colocated fleet.test.ts contract is unchanged. Fixed #74: alerts page now uses a single unified fleetApi.getExpiringDocuments() call (backend already unions vehicle_documents + driver_documents) instead of two separate calls, plus the existing maintenance-due call — vehicle docs, driver docs, and maintenance are all shown. Replaced raw hex/muted-foreground classes with ds-* tokens, TripStatusBadge/StatCard rewritten onto Tag/StatCard/PageHeader/Skeleton/EmptyState primitives per CONTRACT. Both pages use loading skeletons and EmptyState for zero-alert states.",
   "showcaseScript": [
     "Open the Fleet dashboard",
     "Point out utilisation, active trips and revenue tiles",

@@ -164,6 +164,32 @@ export interface FleetRateCard {
   customFields?: Record<string, unknown>;
 }
 
+export interface FleetDashboardVehicleSummary {
+  total: number;
+  available: number;
+  on_trip: number;
+  under_maintenance: number;
+  out_of_service: number;
+}
+
+export interface FleetDashboardDriverSummary {
+  total: number;
+  active: number;
+  on_trip: number;
+  off_duty: number;
+  on_leave: number;
+}
+
+export interface FleetDashboardRevenue {
+  thisMonth: number;
+  thisMonthTrips: number;
+  thisMonthCosts: number;
+  lastMonth: number;
+  lastMonthTrips: number;
+  byVehicleType: { vehicleType: string; trips: number; revenue: number }[];
+  byDriver: { id: string; name: string; trips: number; revenue: number }[];
+}
+
 export interface FleetDashboard {
   totalVehicles: number;
   availableVehicles: number;
@@ -172,12 +198,28 @@ export interface FleetDashboard {
   activeDrivers: number;
   driversOnTrip: number;
   activeTrips: number;
+  activeTripsList: Trip[];
   upcomingTrips: Trip[];
-  recentCompletedTrips: Trip[];
-  topDrivers: Driver[];
+  recentCompletedTrips: (Trip & { totalCost: number })[];
+  topDrivers: Pick<Driver, 'id' | 'name' | 'phone' | 'rating' | 'totalTrips'>[];
   expiringDocumentsCount: number;
   maintenanceDueCount: number;
   revenueMtd: number;
+  vehicleSummary: FleetDashboardVehicleSummary;
+  driverSummary: FleetDashboardDriverSummary;
+  revenue: FleetDashboardRevenue;
+}
+
+export interface FleetDocumentAlert {
+  id: string;
+  vehicleId?: string;
+  driverId?: string;
+  ownerType: 'vehicle' | 'driver';
+  entityName: string;
+  type: string;
+  expiryDate: string;
+  isExpired: boolean;
+  daysUntilExpiry: number | null;
 }
 
 export interface CreateVehicleRequest {
@@ -409,9 +451,79 @@ const FLEET = {
   tripCostSummary: (id: string) => `/fleet/trips/${id}/costs/summary`,
 };
 
+function mapDashboardResponse(res: ApiResponse<any>): ApiResponse<FleetDashboard> {
+  const raw = res?.data ?? {};
+  const vehicleSummary: FleetDashboardVehicleSummary = raw.vehicleSummary ?? {
+    total: raw.totalVehicles ?? 0,
+    available: raw.availableVehicles ?? 0,
+    on_trip: raw.vehiclesOnTrip ?? 0,
+    under_maintenance: 0,
+    out_of_service: 0,
+  };
+  const driverSummary: FleetDashboardDriverSummary = raw.driverSummary ?? {
+    total: raw.totalDrivers ?? 0,
+    active: raw.activeDrivers ?? 0,
+    on_trip: raw.driversOnTrip ?? 0,
+    off_duty: 0,
+    on_leave: 0,
+  };
+  const activeTripsList = (raw.activeTrips || []).map(mapTripFields);
+  const revenue: FleetDashboardRevenue = raw.revenue ?? {
+    thisMonth: 0, thisMonthTrips: 0, thisMonthCosts: 0, lastMonth: 0, lastMonthTrips: 0, byVehicleType: [], byDriver: [],
+  };
+
+  return {
+    ...res,
+    data: {
+      totalVehicles: vehicleSummary.total,
+      availableVehicles: vehicleSummary.available,
+      vehiclesOnTrip: vehicleSummary.on_trip,
+      totalDrivers: driverSummary.total,
+      activeDrivers: driverSummary.active,
+      driversOnTrip: driverSummary.on_trip,
+      activeTrips: activeTripsList.length,
+      activeTripsList,
+      upcomingTrips: (raw.upcomingTrips || []).map(mapTripFields),
+      recentCompletedTrips: (raw.recentCompleted || []).map((t: any) => ({ ...mapTripFields(t), totalCost: t.totalCost ?? 0 })),
+      topDrivers: raw.topDrivers || [],
+      expiringDocumentsCount: raw.expiringDocuments ?? 0,
+      maintenanceDueCount: raw.maintenanceDue ?? 0,
+      revenueMtd: revenue.thisMonth ?? 0,
+      vehicleSummary,
+      driverSummary,
+      revenue,
+    },
+  };
+}
+
+function mapDocumentAlert(r: any): FleetDocumentAlert {
+  const ownerType: 'vehicle' | 'driver' = r.owner_type === 'driver' ? 'driver' : 'vehicle';
+  return {
+    id: r.id,
+    vehicleId: ownerType === 'vehicle' ? r.vehicle_id : undefined,
+    driverId: ownerType === 'driver' ? r.driver_id : undefined,
+    ownerType,
+    entityName: r.registration_number || 'Unknown',
+    type: r.type,
+    expiryDate: r.expiry_date,
+    isExpired: !!r.isExpired,
+    daysUntilExpiry: r.daysUntilExpiry ?? null,
+  };
+}
+
 export const fleetApi = {
   dashboard: () =>
-    client.get<ApiResponse<FleetDashboard>>(FLEET.dashboard),
+    client.get<ApiResponse<FleetDashboard>>(FLEET.dashboard).then(mapDashboardResponse),
+
+  // Unified vehicle + driver document expiry alerts (single call, avoids two round trips).
+  getExpiringDocuments: (days = 30) =>
+    client.get<ApiResponse<any[]>>(FLEET.expiringDocs, { params: { days } }).then((res) => ({
+      ...res,
+      data: (res.data || []).map(mapDocumentAlert),
+    })),
+
+  getMaintenanceDue: (days = 15) =>
+    client.get<ApiResponse<(Vehicle & { daysTillService?: number })[]>>(FLEET.maintenanceDue, { params: { days } }),
 
   vehicles: {
     list: (params?: {
