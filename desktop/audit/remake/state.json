@@ -120,11 +120,17 @@
       "timestamp": "2026-09-22T06:21:18.716Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:documents": {
+      "status": "ok",
+      "timestamp": "2026-09-22T06:23:49.223Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "slice:credit-debit-notes",
+    "id": "slice:documents",
     "status": "ok",
-    "timestamp": "2026-09-22T06:21:18.716Z"
+    "timestamp": "2026-09-22T06:23:49.223Z"
   }
 }
