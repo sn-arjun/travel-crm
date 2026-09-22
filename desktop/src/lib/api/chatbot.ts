@@ -1,5 +1,5 @@
 import { client, type ApiResponse, type PaginatedResponse } from './client';
-import { API_ENDPOINTS } from './config';
+import { API_ENDPOINTS, API_BASE_URL } from './config';
 
 export interface ChatbotConfig {
   id: string;
@@ -84,6 +84,11 @@ export interface HandoffRequest {
   note?: string;
 }
 
+export interface CreateLeadFromConversationRequest {
+  title?: string;
+  priority?: 'hot' | 'warm' | 'cold';
+}
+
 export const chatbotApi = {
   config: {
     get: () =>
@@ -119,6 +124,9 @@ export const chatbotApi = {
 
     close: (id: string, data?: { notes?: string }) =>
       client.post<ApiResponse<ChatbotConversation>>(`${API_ENDPOINTS.chatbot.conversationById(id)}/close`, data),
+
+    createLead: (id: string, data?: CreateLeadFromConversationRequest) =>
+      client.post<ApiResponse<{ id: string }>>(`${API_ENDPOINTS.chatbot.conversationById(id)}/create-lead`, data),
   },
 
   reply: {
@@ -135,4 +143,6 @@ export const chatbotApi = {
     get: (params?: { fromDate?: string; toDate?: string; channel?: string }) =>
       client.get<ApiResponse<ChatbotAnalytics>>(API_ENDPOINTS.chatbot.analytics, { params }),
   },
+
+  widgetUrl: () => `${API_BASE_URL}/chatbot/widget.js`,
 };

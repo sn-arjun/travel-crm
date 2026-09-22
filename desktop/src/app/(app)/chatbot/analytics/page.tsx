@@ -1,47 +1,35 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  ArrowLeft, MessageCircle, Clock, Users, ThumbsUp,
-  Loader, AlertCircle, BarChart3, TrendingUp, UserPlus,
-  CheckCircle2,
+  ArrowLeft, MessageCircle, Clock, ThumbsUp, Lock, Sparkles, UserPlus, CheckCircle2,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import {
+  Button, Card, CardContent, CardHeader, CardTitle, Progress, Skeleton, EmptyState,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
-import { cn } from '@/lib/utils';
+} from '@/components/ui';
 import { useApiQuery } from '@/hooks/use-api';
+import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { chatbotApi, type ChatbotAnalytics } from '@/lib/api/chatbot';
 
 function StatCard({
-  label,
-  value,
-  icon: Icon,
-  color,
-  subtext,
+  label, value, icon: Icon, subtext,
 }: {
-  label: string;
-  value: string | number;
-  icon: React.ElementType;
-  color: string;
-  subtext?: string;
+  label: string; value: string | number; icon: React.ElementType; subtext?: string;
 }) {
   return (
     <Card>
-      <CardContent className="p-4">
+      <CardContent className="p-ds-4">
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-xs text-muted-foreground mb-1">{label}</p>
+            <p className="mb-ds-1 text-xs text-ds-foreground-muted">{label}</p>
             <p className="text-2xl font-bold">{value}</p>
-            {subtext && <p className="text-xs text-muted-foreground mt-1">{subtext}</p>}
+            {subtext && <p className="mt-ds-1 text-xs text-ds-foreground-muted">{subtext}</p>}
           </div>
-          <div className={cn('h-10 w-10 rounded-lg flex items-center justify-center', color)}>
-            <Icon className="h-5 w-5" />
+          <div className="flex size-10 items-center justify-center rounded-ds-lg bg-ds-primary-subtle text-ds-primary">
+            <Icon className="size-5" aria-hidden="true" />
           </div>
         </div>
       </CardContent>
@@ -57,27 +45,16 @@ function formatMinutes(minutes: number): string {
   return `${hrs}h ${mins}m`;
 }
 
-export default function ChatbotAnalyticsPage() {
+function ChatbotAnalyticsContent() {
   const router = useRouter();
-  const [period, setPeriod] = React.useState('this_month');
   const [channel, setChannel] = React.useState('all');
 
-  const { data: response, loading, error } = useApiQuery<any>(
-    () => chatbotApi.analytics.get({
-      channel: channel !== 'all' ? channel : undefined,
-    }),
+  const { data: response, loading, error } = useApiQuery(
+    () => chatbotApi.analytics.get({ channel: channel !== 'all' ? channel : undefined }),
     [channel],
   );
 
   const analytics: ChatbotAnalytics | null = response?.data ?? null;
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <Loader className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
 
   const totalConversations = analytics?.totalConversations ?? 0;
   const activeConversations = analytics?.activeConversations ?? 0;
@@ -90,237 +67,131 @@ export default function ChatbotAnalyticsPage() {
     : 0;
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
+    <div className="flex flex-col gap-ds-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-ds-3">
+          <Button variant="ghost" size="icon-sm" onClick={() => router.back()} aria-label="Back">
+            <ArrowLeft aria-hidden="true" />
           </Button>
           <div>
-            <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-              Chatbot Analytics
-            </h1>
-            <p className="text-sm text-muted-foreground">Performance overview of your chatbot</p>
+            <h1 className="text-xl font-bold tracking-tight">Chatbot Analytics</h1>
+            <p className="text-sm text-ds-foreground-muted">Performance overview of your chatbot</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Select value={channel} onValueChange={setChannel}>
-            <SelectTrigger className="w-28 h-9">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              <SelectItem value="web">Web</SelectItem>
-              <SelectItem value="whatsapp">WhatsApp</SelectItem>
-              <SelectItem value="facebook">Facebook</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-36 h-9">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="today">Today</SelectItem>
-              <SelectItem value="this_week">This Week</SelectItem>
-              <SelectItem value="this_month">This Month</SelectItem>
-              <SelectItem value="last_month">Last Month</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        <Select value={channel} onValueChange={setChannel}>
+          <SelectTrigger className="h-9 w-32"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All channels</SelectItem>
+            <SelectItem value="web">Web</SelectItem>
+            <SelectItem value="whatsapp">WhatsApp</SelectItem>
+            <SelectItem value="facebook">Facebook</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-5xl mx-auto space-y-6">
-          {error && (
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-900/20 dark:border-amber-800">
-              <AlertCircle className="h-4 w-4 text-amber-600" />
-              <p className="text-sm text-amber-600">Could not load analytics data</p>
-            </div>
-          )}
-
-          {/* Top Stats */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard
-              label="Total Conversations"
-              value={totalConversations}
-              icon={MessageCircle}
-              color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
-            />
-            <StatCard
-              label="Avg Resolution Time"
-              value={formatMinutes(avgResolutionTime)}
-              icon={Clock}
-              color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
-            />
-            <StatCard
-              label="Handoff Rate"
-              value={`${handoffRate}%`}
-              icon={UserPlus}
-              color="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400"
-            />
-            <StatCard
-              label="Satisfaction"
-              value={`${customerSatisfaction}%`}
-              icon={ThumbsUp}
-              color="bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400"
-            />
+      {loading ? (
+        <div className="grid grid-cols-2 gap-ds-4 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}
+        </div>
+      ) : error ? (
+        <EmptyState title="Could not load analytics" description="Try refreshing the page." />
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-ds-4 lg:grid-cols-4">
+            <StatCard label="Total conversations" value={totalConversations} icon={MessageCircle} />
+            <StatCard label="Avg resolution time" value={formatMinutes(avgResolutionTime)} icon={Clock} />
+            <StatCard label="Handoff rate" value={`${handoffRate}%`} icon={UserPlus} />
+            <StatCard label="Satisfaction" value={`${customerSatisfaction}%`} icon={ThumbsUp} />
           </div>
 
-          {/* Detailed Metrics */}
-          <div className="grid grid-cols-2 gap-6">
-            {/* Resolution Rate */}
+          <div className="grid gap-ds-4 sm:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4" /> Resolution Rate
+                <CardTitle className="flex items-center gap-ds-2 text-base">
+                  <CheckCircle2 className="size-4" aria-hidden="true" /> Resolution rate
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-ds-4">
                 <div className="text-center">
                   <p className="text-4xl font-bold">{resolutionRate}%</p>
-                  <p className="text-sm text-muted-foreground mt-1">of conversations resolved by bot</p>
+                  <p className="mt-ds-1 text-sm text-ds-foreground-muted">of conversations resolved by bot</p>
                 </div>
                 <Progress value={resolutionRate} className="h-3" />
-                <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="grid grid-cols-3 gap-ds-3 text-center">
                   <div>
                     <p className="text-sm font-medium">{totalConversations}</p>
-                    <p className="text-[10px] text-muted-foreground">Total</p>
+                    <p className="text-[10px] text-ds-foreground-muted">Total</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-green-600">{resolvedConversations}</p>
-                    <p className="text-[10px] text-muted-foreground">Resolved</p>
+                    <p className="text-sm font-medium text-ds-success">{resolvedConversations}</p>
+                    <p className="text-[10px] text-ds-foreground-muted">Resolved</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-amber-600">{activeConversations}</p>
-                    <p className="text-[10px] text-muted-foreground">Active</p>
+                    <p className="text-sm font-medium text-ds-warning">{activeConversations}</p>
+                    <p className="text-[10px] text-ds-foreground-muted">Active</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Customer Satisfaction */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <ThumbsUp className="h-4 w-4" /> Customer Satisfaction
+                <CardTitle className="flex items-center gap-ds-2 text-base">
+                  <ThumbsUp className="size-4" aria-hidden="true" /> Customer satisfaction
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-ds-4">
                 <div className="text-center">
                   <p className="text-4xl font-bold">{customerSatisfaction}%</p>
-                  <p className="text-sm text-muted-foreground mt-1">positive feedback rating</p>
+                  <p className="mt-ds-1 text-sm text-ds-foreground-muted">positive feedback rating</p>
                 </div>
                 <Progress value={customerSatisfaction} className="h-3" />
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Excellent (5 stars)</span>
-                    <div className="flex items-center gap-2">
-                      <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden">
-                        <div className="h-full bg-green-500 rounded-full" style={{ width: '60%' }} />
-                      </div>
-                      <span>60%</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Good (4 stars)</span>
-                    <div className="flex items-center gap-2">
-                      <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden">
-                        <div className="h-full bg-blue-500 rounded-full" style={{ width: '25%' }} />
-                      </div>
-                      <span>25%</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Average (3 stars)</span>
-                    <div className="flex items-center gap-2">
-                      <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden">
-                        <div className="h-full bg-amber-500 rounded-full" style={{ width: '10%' }} />
-                      </div>
-                      <span>10%</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Poor (1-2 stars)</span>
-                    <div className="flex items-center gap-2">
-                      <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden">
-                        <div className="h-full bg-red-500 rounded-full" style={{ width: '5%' }} />
-                      </div>
-                      <span>5%</span>
-                    </div>
-                  </div>
-                </div>
               </CardContent>
             </Card>
           </div>
-
-          {/* Handoff Analysis & Popular Topics */}
-          <div className="grid grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <UserPlus className="h-4 w-4" /> Handoff Analysis
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="text-center mb-4">
-                  <p className="text-3xl font-bold">{handoffRate}%</p>
-                  <p className="text-xs text-muted-foreground">of conversations required human agent</p>
-                </div>
-                <div className="space-y-2">
-                  {[
-                    { reason: 'Complex booking query', pct: 35 },
-                    { reason: 'Payment issue', pct: 25 },
-                    { reason: 'Complaint', pct: 20 },
-                    { reason: 'Custom itinerary request', pct: 15 },
-                    { reason: 'Other', pct: 5 },
-                  ].map((item) => (
-                    <div key={item.reason} className="flex items-center justify-between">
-                      <span className="text-xs">{item.reason}</span>
-                      <div className="flex items-center gap-2">
-                        <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
-                          <div className="h-full bg-purple-500 rounded-full" style={{ width: `${item.pct}%` }} />
-                        </div>
-                        <span className="text-xs text-muted-foreground w-8 text-right">{item.pct}%</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4" /> Popular Topics
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {[
-                    { topic: 'Package pricing', count: 156 },
-                    { topic: 'Booking status', count: 132 },
-                    { topic: 'Visa requirements', count: 98 },
-                    { topic: 'Cancellation policy', count: 87 },
-                    { topic: 'Payment options', count: 76 },
-                    { topic: 'Custom itinerary', count: 64 },
-                    { topic: 'Travel insurance', count: 52 },
-                    { topic: 'Group discounts', count: 41 },
-                  ].map((item, i) => (
-                    <div key={item.topic} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground w-4">{i + 1}.</span>
-                        <span className="text-sm">{item.topic}</span>
-                      </div>
-                      <Badge variant="secondary" className="text-xs">{item.count}</Badge>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
+}
+
+export default function ChatbotAnalyticsPage() {
+  const { enabled, reason, upgradeHref, loading } = useFeatureGate('ai_chatbot');
+
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-ds-4">
+        <Skeleton className="h-9 w-64" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  if (!enabled) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-ds-3 rounded-ds-lg border border-dashed border-ds-border py-ds-9 text-center">
+        <div className="flex size-12 items-center justify-center rounded-ds-full bg-ds-surface-sunken">
+          <Lock className="size-5 text-ds-foreground-muted" aria-hidden="true" />
+        </div>
+        <div>
+          <p className="text-sm font-medium text-ds-foreground">
+            {reason === 'cap_exceeded' ? "Today's chatbot quota is used up" : 'AI Chatbot is not on your plan'}
+          </p>
+          <p className="mt-ds-1 text-xs text-ds-foreground-muted">
+            {reason === 'cap_exceeded'
+              ? 'Your quota resets automatically tomorrow, or upgrade for a higher daily limit.'
+              : 'Upgrade your plan to unlock chatbot analytics.'}
+          </p>
+        </div>
+        <Button asChild size="sm" className="gap-ds-2">
+          <Link href={upgradeHref}>
+            <Sparkles className="size-3.5" aria-hidden="true" />
+            {reason === 'cap_exceeded' ? 'Upgrade for more' : 'Upgrade to enable'}
+          </Link>
+        </Button>
+      </div>
+    );
+  }
+
+  return <ChatbotAnalyticsContent />;
 }
