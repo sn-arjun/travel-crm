@@ -44,10 +44,10 @@
   "uxContract": {
     "listPage": true,
     "filterBar": true,
-    "infiniteScroll": false,
-    "hoverActions": false,
-    "detailDrawer": false,
-    "emptyState": false,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": true,
+    "emptyState": true,
     "skeleton": true,
     "relationCombobox": true,
     "urlPrefill": true,
@@ -55,10 +55,10 @@
     "addressAutocomplete": false,
     "currencyInput": false,
     "datePicker": false,
-    "sendMessageDialog": false,
-    "themedExport": false
+    "sendMessageDialog": true,
+    "themedExport": true
   },
-  "notes": "P0 #5: mock messages everywhere — inbox shows hardcoded chat, bulk-send has fake segments. Contact info hardcoded on the thread page (#60). API contracts mismatch backend Zod validators (#61). Attachment upload is a fake toast (#63).",
+  "notes": "Bulk-send's fake hardcoded segments were removed — recipients now come from real contactsApi.getTags()/list({tag}) or a manual contact picker, since no segment-resolution endpoint exists. The attachment/CC/BCC UI on compose was removed rather than kept as a non-functional stub: the backend send endpoint has no upload/multi-recipient support. Contact thread header now pulls real contact info via contactsApi.getById. phoneInput/addressAutocomplete/currencyInput/datePicker are n/a — this slice has no phone/address/money/date form fields.",
   "showcaseScript": [
     "Open the Communication Inbox",
     "Open a contact thread and see the real message history",

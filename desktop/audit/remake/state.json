@@ -108,11 +108,17 @@
       "timestamp": "2026-09-22T06:11:47.106Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:communication-inbox": {
+      "status": "ok",
+      "timestamp": "2026-09-22T06:17:43.801Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "slice:chatbot",
+    "id": "slice:communication-inbox",
     "status": "ok",
-    "timestamp": "2026-09-22T06:11:47.106Z"
+    "timestamp": "2026-09-22T06:17:43.801Z"
   }
 }
