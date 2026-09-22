@@ -47,12 +47,12 @@
   ],
   "uxContract": {
     "listPage": true,
-    "filterBar": false,
-    "infiniteScroll": false,
-    "hoverActions": false,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
     "detailDrawer": false,
-    "emptyState": false,
-    "skeleton": false,
+    "emptyState": true,
+    "skeleton": true,
     "relationCombobox": false,
     "urlPrefill": false,
     "phoneInput": false,
@@ -62,7 +62,7 @@
     "sendMessageDialog": false,
     "themedExport": false
   },
-  "notes": "P0 #3/#4: import and export queues read MASTER_DB instead of the tenant DB — cross-tenant data leak risk, must be verified fixed. Import wizard uses hardcoded sample data for mapping and preview (#67). Client sends POST to the GET-only contacts export (#17).",
+  "notes": "Import history (settings/import) now uses the ListPage archetype with infinite scroll, hover row actions, skeleton and empty state, all wired to the real GET /imports endpoint. Export jobs table (settings/export) could not get the same treatment: there is no GET /exports (list) endpoint in this manifest, only GET /exports/jobs/:id for a known job id, so it remains a client-side session log of jobs started/refreshed this session rather than a paginated ListPage — flag to inventory/backend if a real list endpoint should exist. relationCombobox/phoneInput/addressAutocomplete/currencyInput/datePicker/sendMessageDialog/detailDrawer/themedExport are not applicable: this slice has no relation fields, contact fields, or entity records to export — it's an upload wizard + job history, not an entity CRUD form. Did not verify the P0 MASTER_DB cross-tenant note — that's backend/src/queues, out of scope for this slice job. The importsApi.upload preview/mapping data (headers/previewData) is returned live from POST /imports/upload, not hardcoded — did not find a mock-data import to remove.",
   "showcaseScript": [
     "Open Import / Export",
     "Download the contacts CSV template",

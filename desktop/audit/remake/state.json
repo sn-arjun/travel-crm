@@ -170,9 +170,10 @@
       "repairAttempts": 0
     },
     "slice:import-export": {
-      "status": "context-limit",
-      "timestamp": "2026-09-22T06:43:43.750Z",
-      "error": "stdout(tail): You've hit your session limit · resets 4:20pm (Asia/Kolkata)"
+      "status": "ok",
+      "timestamp": "2026-09-22T12:56:43.316Z",
+      "error": null,
+      "repairAttempts": 0
     },
     "slice:itineraries": {
       "status": "context-limit",
@@ -181,8 +182,8 @@
     }
   },
   "lastCompleted": {
-    "id": "slice:follow-ups",
+    "id": "slice:import-export",
     "status": "ok",
-    "timestamp": "2026-09-22T12:52:23.136Z"
+    "timestamp": "2026-09-22T12:56:43.316Z"
   }
 }
