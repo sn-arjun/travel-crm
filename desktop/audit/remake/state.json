@@ -114,11 +114,17 @@
       "timestamp": "2026-09-22T06:17:43.801Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:credit-debit-notes": {
+      "status": "ok",
+      "timestamp": "2026-09-22T06:21:18.716Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "slice:communication-inbox",
+    "id": "slice:credit-debit-notes",
     "status": "ok",
-    "timestamp": "2026-09-22T06:17:43.801Z"
+    "timestamp": "2026-09-22T06:21:18.716Z"
   }
 }

@@ -42,7 +42,7 @@ export interface CreateDebitNoteRequest {
 }
 
 export const creditNotesApi = {
-  list: (params?: { page?: number; limit?: number; contactId?: string }) =>
+  list: (params?: { page?: number; limit?: number; search?: string; contactId?: string }) =>
     client.get<ApiResponse<PaginatedResponse<CreditNote>>>(API_ENDPOINTS.creditNotes.list, { params }),
 
   create: (data: CreateCreditNoteRequest) =>
@@ -53,7 +53,7 @@ export const creditNotesApi = {
 };
 
 export const debitNotesApi = {
-  list: (params?: { page?: number; limit?: number; contactId?: string }) =>
+  list: (params?: { page?: number; limit?: number; search?: string; contactId?: string }) =>
     client.get<ApiResponse<PaginatedResponse<CreditNote>>>(API_ENDPOINTS.debitNotes.list, { params }),
 
   create: (data: CreateDebitNoteRequest) =>
