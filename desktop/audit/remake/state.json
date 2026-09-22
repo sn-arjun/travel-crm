@@ -198,11 +198,17 @@
       "timestamp": "2026-09-22T13:18:41.825Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:marketing-opt-out": {
+      "status": "ok",
+      "timestamp": "2026-09-22T13:23:17.426Z",
+      "error": null,
+      "repairAttempts": 1
     }
   },
   "lastCompleted": {
-    "id": "slice:marketing-flyers",
+    "id": "slice:marketing-opt-out",
     "status": "ok",
-    "timestamp": "2026-09-22T13:18:41.825Z"
+    "timestamp": "2026-09-22T13:23:17.426Z"
   }
 }

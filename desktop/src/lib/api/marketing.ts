@@ -418,13 +418,17 @@ export const marketingApi = {
         params: { ...params, opted_out: true },
       }),
 
+    optOutContact: (contactId: string, data?: OptOutRequest) =>
+      client.post<ApiResponse<{ message: string }>>(
+        `${API_ENDPOINTS.marketing.optOut}/${contactId}`,
+        data ?? {},
+      ),
+
     resubscribe: (contactId: string) =>
-      client.put<ApiResponse<{ message: string }>>(`/contacts/${contactId}`, {
-        optedOut: 0,
-        optedOutAt: null,
-        optOutChannel: null,
-        optOutReason: null,
-      }),
+      client.put<ApiResponse<{ message: string }>>(
+        `/contacts/${contactId}`,
+        { optedOut: 0, optedOutAt: null, optOutChannel: null, optOutReason: null },
+      ),
   },
 
   festivals: {
