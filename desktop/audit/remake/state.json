@@ -210,11 +210,17 @@
       "timestamp": "2026-09-22T13:30:09.796Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:marketing-social": {
+      "status": "ok",
+      "timestamp": "2026-09-22T13:34:40.658Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "slice:marketing-segments",
+    "id": "slice:marketing-social",
     "status": "ok",
-    "timestamp": "2026-09-22T13:30:09.796Z"
+    "timestamp": "2026-09-22T13:34:40.658Z"
   }
 }

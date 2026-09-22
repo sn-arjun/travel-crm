@@ -85,6 +85,33 @@ export interface SocialContent {
   imageUrl?: string;
   scheduledFor?: string;
   status: 'draft' | 'scheduled' | 'posted';
+  createdAt?: string;
+}
+
+export interface GenerateSocialContentRequest {
+  topic: string;
+  destination?: string;
+  platform: 'facebook' | 'instagram' | 'twitter' | 'linkedin';
+  tone?: 'professional' | 'casual' | 'exciting' | 'informative';
+}
+
+export interface GenerateSocialContentBatchRequest {
+  topic: string;
+  destination?: string;
+  platforms: ('facebook' | 'instagram' | 'twitter' | 'linkedin')[];
+  tone?: 'professional' | 'casual' | 'exciting' | 'informative';
+  count?: number;
+}
+
+export interface MarketingSuggestion {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  status: 'pending' | 'accepted' | 'dismissed';
+  festivalName?: string;
+  suggestedDate?: string;
+  createdAt: string;
 }
 
 export interface CreateSegmentRequest {
@@ -421,6 +448,9 @@ export const marketingApi = {
     }) =>
       client.get<ApiResponse<PaginatedResponse<SocialContent>>>(API_ENDPOINTS.marketing.socialContent, { params }),
 
+    get: (id: string) =>
+      client.get<ApiResponse<SocialContent>>(`${API_ENDPOINTS.marketing.socialContent}/${id}`),
+
     create: (data: CreateSocialContentRequest) =>
       client.post<ApiResponse<SocialContent>>(API_ENDPOINTS.marketing.socialContent, data),
 
@@ -429,6 +459,26 @@ export const marketingApi = {
 
     delete: (id: string) =>
       client.delete<ApiResponse<void>>(`${API_ENDPOINTS.marketing.socialContent}/${id}`),
+
+    generate: (data: GenerateSocialContentRequest) =>
+      client.post<ApiResponse<SocialContent>>(`${API_ENDPOINTS.marketing.socialContent}/generate`, data),
+
+    generateBatch: (data: GenerateSocialContentBatchRequest) =>
+      client.post<ApiResponse<SocialContent[]>>(`${API_ENDPOINTS.marketing.socialContent}/generate-batch`, data),
+  },
+
+  suggestions: {
+    list: (params?: { page?: number; limit?: number; status?: string }) =>
+      client.get<ApiResponse<PaginatedResponse<MarketingSuggestion>>>('/marketing/suggestions', { params }),
+
+    generate: () =>
+      client.post<ApiResponse<MarketingSuggestion[]>>('/marketing/suggestions/generate', {}),
+
+    accept: (id: string) =>
+      client.put<ApiResponse<MarketingSuggestion>>(`/marketing/suggestions/${id}/accept`, {}),
+
+    dismiss: (id: string) =>
+      client.put<ApiResponse<MarketingSuggestion>>(`/marketing/suggestions/${id}/dismiss`, {}),
   },
 
   optOut: (data: OptOutRequest) =>
