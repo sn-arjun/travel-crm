@@ -1,311 +1,251 @@
 'use client';
 
 import * as React from 'react';
+import { z } from 'zod';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Loader2, Save, Route } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
+import { EntityForm, FormRow, RelationCombobox } from '@/components/domain';
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
-import { VEHICLE_TYPE_LABELS, FLEET_TRIP_TYPE_LABELS } from '@travelcrm/shared';
-import { useApiQuery, useApiMutation } from '@/hooks/use-api';
+  AddressAutocomplete, Input, PhoneInput, SectionCard, Textarea, DatePicker, Skeleton,
+} from '@/components/ui';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Button } from '@/components/ui/button';
 import { fleetApi } from '@/lib/api/fleet';
+import type { Vehicle, Driver } from '@/lib/api/fleet';
+import { useApiQuery } from '@/hooks/use-api';
 import { toast } from 'sonner';
+
+const schema = z.object({
+  vehicleId: z.string().min(1, 'Pick a vehicle'),
+  driverId: z.string().min(1, 'Pick a driver'),
+  passengerName: z.string().optional(),
+  passengerPhone: z.string().optional(),
+  specialInstructions: z.string().optional(),
+  startLocation: z.string().min(1, 'Start location is required'),
+  endLocation: z.string().min(1, 'End location is required'),
+  startDate: z.date({ error: 'Start date is required' }),
+  startClock: z.string().min(1, 'Start time is required'),
+  endDate: z.date({ error: 'End date is required' }),
+  endClock: z.string().min(1, 'End time is required'),
+  distance: z.number().optional(),
+  fare: z.number().optional(),
+});
+type TripForm = z.infer<typeof schema>;
+
+function toIso(date: Date, clock: string) {
+  const [h, m] = clock.split(':').map(Number);
+  const d = new Date(date);
+  d.setHours(h || 0, m || 0, 0, 0);
+  return d.toISOString();
+}
+
+function splitDateTime(iso?: string): { date: Date | undefined; clock: string } {
+  if (!iso) return { date: undefined, clock: '' };
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return { date: undefined, clock: '' };
+  const clock = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return { date: d, clock };
+}
 
 export default function EditTripPage() {
   const router = useRouter();
   const params = useParams();
   const tripId = params.id as string;
 
-  const { data: tripResponse, loading: tripLoading, error: tripError } = useApiQuery(
+  const { data: tripResponse, loading, error } = useApiQuery(
     () => fleetApi.trips.getById(tripId),
     [tripId],
   );
 
-  const { data: vehiclesResponse } = useApiQuery(
-    () => fleetApi.vehicles.list({ limit: 100 }),
-    [],
-  );
-
-  const { data: driversResponse } = useApiQuery(
-    () => fleetApi.drivers.list({ limit: 100 }),
-    [],
-  );
-
-  const { mutate: updateTrip, loading: isSubmitting } = useApiMutation(
-    (data: any) => fleetApi.trips.update(tripId, data),
-  );
-
   const trip = tripResponse?.data;
 
-  const vehiclesData = vehiclesResponse?.data;
-  const allVehicles = Array.isArray(vehiclesData) ? vehiclesData : (vehiclesData?.data ?? []);
-  const availableVehicles = allVehicles.filter((v: any) => v.status === 'active');
-
-  const driversData = driversResponse?.data;
-  const allDrivers = Array.isArray(driversData) ? driversData : (driversData?.data ?? []);
-  const availableDrivers = allDrivers.filter((d: any) => d.status === 'active');
-
-  const [form, setForm] = React.useState({
-    vehicleId: '',
-    driverId: '',
-    startLocation: '',
-    endLocation: '',
-    startTime: '',
-    endTime: '',
-    distance: 0,
-    fare: 0,
-    status: 'scheduled' as any,
-  });
-
-  // Initialize form when trip loads
-  React.useEffect(() => {
-    if (trip) {
-      setForm({
-        vehicleId: trip.vehicleId || '',
-        driverId: trip.driverId || '',
-        startLocation: trip.startLocation || '',
-        endLocation: trip.endLocation || '',
-        startTime: trip.startTime || '',
-        endTime: trip.endTime || '',
-        distance: trip.distance || 0,
-        fare: trip.fare || 0,
-        status: trip.status || 'scheduled',
-      });
-    }
-  }, [trip]);
-
-  function updateField(field: string, value: string | number) {
-    setForm((prev) => ({ ...prev, [field]: value }));
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const result = await updateTrip(form);
-    if (result) {
-      toast.success('Trip updated successfully');
-      router.push('/fleet/trips');
-    } else {
-      toast.error('Failed to update trip');
-    }
-  }
-
-  if (tripLoading) {
+  if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <p className="text-muted-foreground">Loading trip...</p>
+      <div className="flex flex-col gap-ds-4 p-ds-4">
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-64 w-full" />
       </div>
     );
   }
 
-  if (tripError || !trip) {
+  if (error || !trip) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <p className="text-muted-foreground">Trip not found</p>
-      </div>
+      <EmptyState
+        title="Trip not found"
+        description="This trip may have been removed."
+        action={<Button variant="outline" onClick={() => router.push('/fleet/trips')}>Back to trips</Button>}
+      />
     );
   }
+
+  const start = splitDateTime(trip.startTime);
+  const end = splitDateTime(trip.endTime);
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Edit Trip</h1>
-            // @ts-ignore-next-line
-            <p className="text-sm text-muted-foreground">{(trip as any).passengerName} • {(trip as any).pickupLocation}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => router.back()}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting}>
-            {isSubmitting ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Save className="h-4 w-4 mr-1.5" />}
-            Save Changes
-          </Button>
-        </div>
-      </div>
+    <EntityForm<TripForm>
+      title="Edit trip"
+      description={`${trip.startLocation} → ${trip.endLocation}`}
+      schema={schema}
+      defaultValues={{
+        vehicleId: trip.vehicleId || '',
+        driverId: trip.driverId || '',
+        passengerName: trip.passengerName || '',
+        passengerPhone: trip.passengerPhone || '',
+        specialInstructions: trip.specialInstructions || '',
+        startLocation: trip.startLocation || '',
+        endLocation: trip.endLocation || '',
+        startDate: start.date,
+        startClock: start.clock,
+        endDate: end.date,
+        endClock: end.clock,
+        distance: trip.distance || undefined,
+        fare: trip.fare || undefined,
+      }}
+      onCancel={() => router.back()}
+      onSubmit={async (v) => {
+        try {
+          await fleetApi.trips.update(tripId, {
+            vehicleId: v.vehicleId,
+            driverId: v.driverId,
+            startLocation: v.startLocation,
+            endLocation: v.endLocation,
+            startTime: toIso(v.startDate, v.startClock),
+            endTime: toIso(v.endDate, v.endClock),
+            distance: v.distance,
+            fare: v.fare,
+          });
+          toast.success('Trip updated successfully');
+          router.push(`/fleet/trips/${tripId}`);
+        } catch {
+          toast.error('Failed to update trip');
+        }
+      }}
+      renderSections={(form) => (
+        <>
+          <SectionCard title="Vehicle & driver" required>
+            <div className="grid gap-ds-4 sm:grid-cols-2">
+              <FormRow name="vehicleId" label="Vehicle" required>
+                <RelationCombobox<Vehicle>
+                  value={form.watch('vehicleId') || null}
+                  onChange={(id) => form.setValue('vehicleId', id ?? '', { shouldDirty: true })}
+                  fetcher={async (q, page) => {
+                    const r = await fleetApi.vehicles.list({ search: q, page, limit: 20 });
+                    const data: any = r.data;
+                    const items = Array.isArray(data) ? data : (data?.data ?? []);
+                    const total = Array.isArray(data) ? items.length : (data?.pagination?.total ?? items.length);
+                    return { items, total };
+                  }}
+                  getOptionId={(veh) => veh.id}
+                  getOptionLabel={(veh) => `${veh.registrationNumber} — ${veh.make} ${veh.model}`}
+                  getOptionDescription={(veh) => veh.seatingCapacity ? `${veh.seatingCapacity} seats` : undefined}
+                  resolveSelected={async (id) => (await fleetApi.vehicles.getById(id)).data}
+                  placeholder="Select vehicle"
+                  searchPlaceholder="Registration or make/model..."
+                  error={form.formState.errors.vehicleId?.message}
+                  required
+                />
+              </FormRow>
+              <FormRow name="driverId" label="Driver" required>
+                <RelationCombobox<Driver>
+                  value={form.watch('driverId') || null}
+                  onChange={(id) => form.setValue('driverId', id ?? '', { shouldDirty: true })}
+                  fetcher={async (q, page) => {
+                    const r = await fleetApi.drivers.list({ search: q, page, limit: 20 });
+                    const data: any = r.data;
+                    const items = Array.isArray(data) ? data : (data?.data ?? []);
+                    const total = Array.isArray(data) ? items.length : (data?.pagination?.total ?? items.length);
+                    return { items, total };
+                  }}
+                  getOptionId={(d) => d.id}
+                  getOptionLabel={(d) => d.name}
+                  getOptionDescription={(d) => d.phone}
+                  resolveSelected={async (id) => (await fleetApi.drivers.getById(id)).data}
+                  placeholder="Select driver"
+                  searchPlaceholder="Driver name or phone..."
+                  error={form.formState.errors.driverId?.message}
+                  required
+                />
+              </FormRow>
+            </div>
+          </SectionCard>
 
-      <div className="flex-1 overflow-auto p-6">
-        <form onSubmit={handleSubmit} className="max-w-3xl mx-auto space-y-6">
-          {/* Passenger Info */}
-          <Card>
-            <CardHeader><CardTitle className="text-base flex items-center gap-2"><Route className="h-4 w-4" />Passenger Details</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="passengerName">Passenger Name <span className="text-destructive">*</span></Label>
-                  // @ts-ignore-next-line
-        // @ts-expect-error
-                  <Input id="passengerName" placeholder="e.g., Rahul Sharma" value={(form as any).passengerName} onChange={(e) => updateField('passengerName', e.target.value)} required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="passengerPhone">Passenger Phone</Label>
-                  // @ts-ignore-next-line
-        // @ts-expect-error
-                  <Input id="passengerPhone" placeholder="+91 XXXXX XXXXX" value={(form as any).passengerPhone} onChange={(e) => updateField('passengerPhone', e.target.value)} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="passengers">Number of Passengers</Label>
-                  // @ts-ignore-next-line
-        // @ts-expect-error
-                  <Input id="passengers" type="number" min={1} max={60} value={(form as any).passengers} onChange={(e) => updateField('passengers', parseInt(e.target.value) || 1)} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Trip Type <span className="text-destructive">*</span></Label>
-                  // @ts-ignore-next-line
-        // @ts-expect-error
-                  <Select value={(form as any).tripType} onValueChange={(v) => updateField('tripType', v)}>
-                    <SelectTrigger><SelectValue placeholder="Select trip type" /></SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(FLEET_TRIP_TYPE_LABELS).map(([v, l]) => (
-                        <SelectItem key={v} value={v}>{l}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <SectionCard title="Route & schedule" required>
+            <div className="grid gap-ds-4 sm:grid-cols-2">
+              <FormRow name="startLocation" label="Start location" required wide>
+                <AddressAutocomplete
+                  value={form.watch('startLocation')}
+                  onChange={(v) => form.setValue('startLocation', v, { shouldDirty: true })}
+                  placeholder="Enter pickup location"
+                />
+              </FormRow>
+              <FormRow name="endLocation" label="End location" required wide>
+                <AddressAutocomplete
+                  value={form.watch('endLocation')}
+                  onChange={(v) => form.setValue('endLocation', v, { shouldDirty: true })}
+                  placeholder="Enter drop location"
+                />
+              </FormRow>
+              <FormRow name="startDate" label="Start date" required>
+                <DatePicker value={form.watch('startDate')} onChange={(d) => form.setValue('startDate', d as Date, { shouldDirty: true })} />
+              </FormRow>
+              <FormRow name="startClock" label="Start time" required>
+                <Input type="time" {...form.register('startClock')} />
+              </FormRow>
+              <FormRow name="endDate" label="End date" required>
+                <DatePicker
+                  value={form.watch('endDate')}
+                  onChange={(d) => form.setValue('endDate', d as Date, { shouldDirty: true })}
+                  minDate={form.watch('startDate')}
+                />
+              </FormRow>
+              <FormRow name="endClock" label="End time" required>
+                <Input type="time" {...form.register('endClock')} />
+              </FormRow>
+            </div>
+          </SectionCard>
 
-          {/* Route */}
-          <Card>
-            <CardHeader><CardTitle className="text-base">Route & Schedule</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="pickupLocation">Pickup Location <span className="text-destructive">*</span></Label>
-                  // @ts-ignore-next-line
-        // @ts-expect-error
-                  <Input id="pickupLocation" placeholder="e.g., Mumbai Airport T2" value={(form as any).pickupLocation} onChange={(e) => updateField('pickupLocation', e.target.value)} required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="dropLocation">Drop Location <span className="text-destructive">*</span></Label>
-                  // @ts-ignore-next-line
-        // @ts-expect-error
-                  <Input id="dropLocation" placeholder="e.g., Hotel Grand Hyatt" value={(form as any).dropLocation} onChange={(e) => updateField('dropLocation', e.target.value)} required />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="pickupDate">Pickup Date <span className="text-destructive">*</span></Label>
-                  // @ts-ignore-next-line
-        // @ts-expect-error
-                  <Input id="pickupDate" type="date" value={(form as any).pickupDate} onChange={(e) => updateField('pickupDate', e.target.value)} required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="pickupTime">Pickup Time</Label>
-                  // @ts-ignore-next-line
-        // @ts-expect-error
-                  <Input id="pickupTime" type="time" value={(form as any).pickupTime} onChange={(e) => updateField('pickupTime', e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="returnDate">Return Date</Label>
-                  // @ts-ignore-next-line
-        // @ts-expect-error
-                  <Input id="returnDate" type="date" value={(form as any).returnDate} onChange={(e) => updateField('returnDate', e.target.value)} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="flightNumber">Flight Number</Label>
-                  // @ts-ignore-next-line
-        // @ts-expect-error
-                  <Input id="flightNumber" placeholder="e.g., AI-302" value={(form as any).flightNumber} onChange={(e) => updateField('flightNumber', e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="trainNumber">Train Number</Label>
-                  // @ts-ignore-next-line
-        // @ts-expect-error
-                  <Input id="trainNumber" placeholder="e.g., 12951" value={(form as any).trainNumber} onChange={(e) => updateField('trainNumber', e.target.value)} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <SectionCard title="Passenger details">
+            <div className="grid gap-ds-4 sm:grid-cols-2">
+              <FormRow name="passengerName" label="Passenger name">
+                <Input {...form.register('passengerName')} placeholder="Full name" />
+              </FormRow>
+              <FormRow name="passengerPhone" label="Passenger phone">
+                <PhoneInput
+                  value={form.watch('passengerPhone') ?? ''}
+                  onChange={(v) => form.setValue('passengerPhone', v, { shouldDirty: true })}
+                />
+              </FormRow>
+              <FormRow name="specialInstructions" label="Special instructions" wide>
+                <Textarea
+                  rows={3}
+                  {...form.register('specialInstructions')}
+                  placeholder="Any special requirements or instructions..."
+                />
+              </FormRow>
+            </div>
+          </SectionCard>
 
-          {/* Vehicle & Driver Assignment */}
-          <Card>
-            <CardHeader><CardTitle className="text-base">Vehicle & Driver Assignment</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Vehicle <span className="text-destructive">*</span></Label>
-                  <Select value={(form as any).vehicleId} onValueChange={(v) => updateField('vehicleId', v)}>
-                    <SelectTrigger><SelectValue placeholder="Select vehicle" /></SelectTrigger>
-                    <SelectContent>
-                      {availableVehicles.map((v: any) => (
-                        <SelectItem key={v.id} value={v.id}>
-                          {v.registrationNumber} — {v.make} {v.model} ({v.seatingCapacity} seats)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">{availableVehicles.length} vehicles available</p>
-                </div>
-                <div className="space-y-2">
-                  <Label>Driver <span className="text-destructive">*</span></Label>
-                  <Select value={(form as any).driverId} onValueChange={(v) => updateField('driverId', v)}>
-                    <SelectTrigger><SelectValue placeholder="Select driver" /></SelectTrigger>
-                    <SelectContent>
-                      {availableDrivers.map((d: any) => (
-                        <SelectItem key={d.id} value={d.id}>
-                          {d.name} (★{d.rating} · {d.totalTrips} trips)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">{availableDrivers.length} drivers available</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Pricing */}
-          <Card>
-            <CardHeader><CardTitle className="text-base">Pricing</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="estimatedKm">Estimated KM</Label>
-                  // @ts-ignore-next-line
-        // @ts-expect-error
-                  <Input id="estimatedKm" type="number" min={0} placeholder="0" value={(form as any).estimatedKm} onChange={(e) => updateField('estimatedKm', e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="estimatedCost">Estimated Cost (₹) <span className="text-destructive">*</span></Label>
-                  // @ts-ignore-next-line
-        // @ts-expect-error
-                  <Input id="estimatedCost" type="number" min={0} placeholder="0" value={(form as any).estimatedCost} onChange={(e) => updateField('estimatedCost', e.target.value)} required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="advanceAmount">Advance Amount (₹)</Label>
-                  // @ts-ignore-next-line
-        // @ts-expect-error
-                  <Input id="advanceAmount" type="number" min={0} placeholder="0" value={(form as any).advanceAmount} onChange={(e) => updateField('advanceAmount', e.target.value)} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Special Instructions */}
-          <Card>
-            <CardHeader><CardTitle className="text-base">Special Instructions</CardTitle></CardHeader>
-            <CardContent>
-              // @ts-ignore-next-line
-        // @ts-expect-error
-              <Textarea id="specialInstructions" placeholder="e.g., Guest is VIP, needs water bottles, wheelchair access..." value={(form as any).specialInstructions} onChange={(e) => updateField('specialInstructions', e.target.value)} rows={3} />
-            </CardContent>
-          </Card>
-        </form>
-      </div>
-    </div>
+          <SectionCard title="Estimates">
+            <div className="grid gap-ds-4 sm:grid-cols-2">
+              <FormRow name="distance" label="Estimated distance (km)">
+                <Input
+                  type="number"
+                  min={0}
+                  value={form.watch('distance') ?? ''}
+                  onChange={(e) => form.setValue('distance', e.target.value ? Number(e.target.value) : undefined, { shouldDirty: true })}
+                />
+              </FormRow>
+              <FormRow name="fare" label="Estimated fare">
+                <Input
+                  type="number"
+                  min={0}
+                  value={form.watch('fare') ?? ''}
+                  onChange={(e) => form.setValue('fare', e.target.value ? Number(e.target.value) : undefined, { shouldDirty: true })}
+                />
+              </FormRow>
+            </div>
+          </SectionCard>
+        </>
+      )}
+    />
   );
 }

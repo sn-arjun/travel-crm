@@ -497,6 +497,9 @@ const FLEET = {
   tripCosts: (id: string) => `/fleet/trips/${id}/costs`,
   tripCostById: (tripId: string, costId: string) => `/fleet/trips/${tripId}/costs/${costId}`,
   tripCostSummary: (id: string) => `/fleet/trips/${id}/costs/summary`,
+  tripGenerateInvoice: (id: string) => `/fleet/trips/${id}/generate-invoice`,
+  tripGenerateVoucher: (id: string) => `/fleet/trips/${id}/generate-voucher`,
+  calculateDistance: '/fleet/calculate-distance',
 };
 
 function mapDashboardResponse(res: ApiResponse<any>): ApiResponse<FleetDashboard> {
@@ -708,6 +711,7 @@ export const fleetApi = {
     list: (params?: {
       page?: number;
       limit?: number;
+      search?: string;
       vehicleId?: string;
       driverId?: string;
       leadId?: string;
@@ -761,6 +765,15 @@ export const fleetApi = {
 
     getCostSummary: (tripId: string) =>
       client.get<ApiResponse<{ total: number; byType: Record<string, number> }>>(FLEET.tripCostSummary(tripId)),
+
+    generateInvoice: (tripId: string) =>
+      client.post<ApiResponse<{ id: string; invoiceNumber?: string }>>(FLEET.tripGenerateInvoice(tripId)),
+
+    generateVoucher: (tripId: string) =>
+      client.post<ApiResponse<{ id: string; voucherNumber?: string; url?: string }>>(FLEET.tripGenerateVoucher(tripId)),
+
+    calculateDistance: (data: { startLocation: string; endLocation: string }) =>
+      client.post<ApiResponse<{ distanceKm: number; durationMinutes?: number }>>(FLEET.calculateDistance, data),
   },
 
   rateCards: {

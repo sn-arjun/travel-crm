@@ -150,11 +150,17 @@
       "timestamp": "2026-09-22T06:38:18.733Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:fleet-trips": {
+      "status": "ok",
+      "timestamp": "2026-09-22T06:42:56.509Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "slice:fleet-rate-cards",
+    "id": "slice:fleet-trips",
     "status": "ok",
-    "timestamp": "2026-09-22T06:38:18.733Z"
+    "timestamp": "2026-09-22T06:42:56.509Z"
   }
 }

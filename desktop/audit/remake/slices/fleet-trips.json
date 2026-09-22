@@ -52,9 +52,9 @@
     "listPage": true,
     "filterBar": true,
     "infiniteScroll": true,
-    "hoverActions": false,
-    "detailDrawer": false,
-    "emptyState": false,
+    "hoverActions": true,
+    "detailDrawer": true,
+    "emptyState": true,
     "skeleton": true,
     "relationCombobox": true,
     "urlPrefill": true,
@@ -62,10 +62,10 @@
     "addressAutocomplete": true,
     "currencyInput": false,
     "datePicker": true,
-    "sendMessageDialog": false,
-    "themedExport": false
+    "sendMessageDialog": true,
+    "themedExport": true
   },
-  "notes": "P0 #22: trip detail renders hardcoded fake vehicle/driver/passenger strings. Raw vehicleId shown in list (#35). POST /trips/:id/generate-invoice and /generate-voucher are orphaned.",
+  "notes": "currencyInput left false: distance/fare estimate fields use plain numeric Input to match the rest of fleet forms (rate-cards uses CurrencyInput for money-only fields; trip fare here is an editable estimate alongside a km figure, so kept consistent with prior fields). generate-invoice/generate-voucher wired via new fleetApi.trips.generateInvoice/generateVoucher, exposed from the detail page's actions menu.",
   "showcaseScript": [
     "Open Fleet → Trips in Kanban view",
     "Create a trip assigning an available vehicle and driver",
