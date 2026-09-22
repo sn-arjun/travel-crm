@@ -1,355 +1,520 @@
 'use client';
 
 import * as React from 'react';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import {
-  Plus, Search, Filter, MoreHorizontal, Clock, CheckCircle2, AlertCircle,
-  Loader2, Calendar, Trash2, Phone, Mail, MessageCircle, MapPin,
+  Plus, Phone, Mail, MessageCircle, MapPin, ClipboardList, Trash2, CheckCircle2, CalendarClock,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
+import { ListPage, RelationCombobox } from '@/components/domain';
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
-import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
-} from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { cn } from '@/lib/utils';
-import { useApiQuery } from '@/hooks/use-api';
+  Button, Tag, Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+  Label, Textarea, useConfirm, Spinner,
+} from '@/components/ui';
+import { DateTimePicker } from '@/components/ui/date-picker';
 import { followUpsApi } from '@/lib/api/follow-ups';
 import { leadsApi } from '@/lib/api/leads';
-import { DateTimePicker } from '@/components/ui/date-picker';
-import { toast } from 'sonner';
-import { useRouter } from 'next/navigation';
+import type { FollowUp } from '@travelcrm/shared';
+import type { Lead } from '@travelcrm/shared';
 
-function FollowUpCard({
+type FollowUpRow = FollowUp & { status?: string; leadTitle?: string; contactName?: string };
+
+const TYPE_ICONS: Record<string, React.ReactNode> = {
+  call: <Phone className="size-3.5" aria-hidden="true" />,
+  email: <Mail className="size-3.5" aria-hidden="true" />,
+  whatsapp: <MessageCircle className="size-3.5" aria-hidden="true" />,
+  visit: <MapPin className="size-3.5" aria-hidden="true" />,
+  sms: <Mail className="size-3.5" aria-hidden="true" />,
+  meeting: <MapPin className="size-3.5" aria-hidden="true" />,
+  task: <ClipboardList className="size-3.5" aria-hidden="true" />,
+};
+
+function isOverdue(f: FollowUpRow) {
+  return f.status !== 'completed' && !f.completedAt && f.scheduledAt && new Date(f.scheduledAt) < new Date();
+}
+
+function statusTone(f: FollowUpRow): 'success' | 'danger' | 'warning' | 'neutral' {
+  if (f.status === 'completed' || f.completedAt) return 'success';
+  if (isOverdue(f)) return 'danger';
+  return 'warning';
+}
+
+function statusLabel(f: FollowUpRow) {
+  if (f.status === 'completed' || f.completedAt) return 'Completed';
+  if (isOverdue(f)) return 'Overdue';
+  return 'Pending';
+}
+
+function toCsvValue(v: unknown) {
+  const s = String(v ?? '');
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+interface ScheduleFormState {
+  leadId: string;
+  leadLabel: string;
+  scheduledAt: Date | undefined;
+  type: string;
+  notes: string;
+}
+
+const EMPTY_FORM: ScheduleFormState = { leadId: '', leadLabel: '', scheduledAt: undefined, type: 'call', notes: '' };
+
+function ScheduleDialog({
+  open,
+  onOpenChange,
+  mode,
   followUp,
-  onComplete,
-  onDelete,
+  onSaved,
 }: {
-  followUp: any;
-  onComplete: () => Promise<void>;
-  onDelete: () => Promise<void>;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  mode: 'create' | 'reschedule';
+  followUp?: FollowUpRow | null;
+  onSaved: () => void;
 }) {
-  const router = useRouter();
-  const scheduledAt = followUp.scheduledAt || followUp.scheduled_at;
-  const completedAt = followUp.completedAt || followUp.completed_at;
-  const isCompleted = followUp.status === 'completed' || !!completedAt;
-  const isOverdue = !isCompleted && scheduledAt && new Date(scheduledAt) < new Date();
-  const fuType = followUp.type || 'call';
+  const [form, setForm] = React.useState<ScheduleFormState>(EMPTY_FORM);
+  const [saving, setSaving] = React.useState(false);
 
-  const typeIcons: Record<string, React.ReactNode> = {
-    call: <Phone className="h-4 w-4" />,
-    email: <Mail className="h-4 w-4" />,
-    whatsapp: <MessageCircle className="h-4 w-4" />,
-    visit: <MapPin className="h-4 w-4" />,
-    sms: <Mail className="h-4 w-4" />,
-  };
+  React.useEffect(() => {
+    if (!open) return;
+    if (mode === 'reschedule' && followUp) {
+      setForm({
+        leadId: followUp.leadId,
+        leadLabel: followUp.leadTitle ?? '',
+        scheduledAt: followUp.scheduledAt ? new Date(followUp.scheduledAt) : undefined,
+        type: followUp.type,
+        notes: followUp.notes ?? '',
+      });
+    } else {
+      setForm(EMPTY_FORM);
+    }
+  }, [open, mode, followUp]);
 
-  const typeColors: Record<string, string> = {
-    call: 'text-purple-600 bg-purple-50 dark:bg-purple-900/30 dark:text-purple-400',
-    email: 'text-blue-600 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-400',
-    whatsapp: 'text-green-600 bg-green-50 dark:bg-green-900/30 dark:text-green-400',
-    visit: 'text-orange-600 bg-orange-50 dark:bg-orange-900/30 dark:text-orange-400',
-    sms: 'text-cyan-600 bg-cyan-50 dark:bg-cyan-900/30 dark:text-cyan-400',
-  };
+  async function handleSave() {
+    if (!form.scheduledAt || !form.leadId) {
+      toast.error('Please select a lead and date');
+      return;
+    }
+    setSaving(true);
+    try {
+      if (mode === 'reschedule' && followUp) {
+        await followUpsApi.update(followUp.id, { dueDate: form.scheduledAt.toISOString() } as never);
+      } else {
+        await followUpsApi.create({
+          leadId: form.leadId,
+          scheduledAt: form.scheduledAt.toISOString(),
+          type: form.type as never,
+          notes: form.notes || undefined,
+        });
+      }
+      toast.success(mode === 'reschedule' ? 'Follow-up rescheduled' : 'Follow-up scheduled');
+      onOpenChange(false);
+      onSaved();
+    } catch {
+      toast.error(mode === 'reschedule' ? 'Failed to reschedule follow-up' : 'Failed to create follow-up');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
-    <Card className={cn('hover:shadow-md transition-shadow group', isCompleted && 'opacity-70')}>
-      <CardContent className="p-4">
-        <div className="flex items-start gap-3">
-          <div className={cn(
-            'h-10 w-10 rounded-full flex items-center justify-center shrink-0 mt-0.5',
-            isCompleted ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-            isOverdue ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-            'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-          )}>
-            {isCompleted ? <CheckCircle2 className="h-4 w-4" /> :
-             isOverdue ? <AlertCircle className="h-4 w-4" /> :
-             typeIcons[fuType] || <Clock className="h-4 w-4" />}
+    <Dialog open={open} onOpenChange={(o) => !saving && onOpenChange(o)}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{mode === 'reschedule' ? 'Reschedule follow-up' : 'Schedule follow-up'}</DialogTitle>
+          <DialogDescription>
+            {mode === 'reschedule' ? 'Pick a new date and time for this follow-up.' : 'Schedule a new follow-up for a lead.'}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-ds-4">
+          <div className="flex flex-col gap-ds-1">
+            <Label htmlFor="followup-lead">
+              Lead<span aria-hidden="true" className="ml-0.5 text-ds-danger">*</span>
+            </Label>
+            <RelationCombobox<Lead>
+              value={form.leadId || null}
+              onChange={(id, item) => setForm((f) => ({ ...f, leadId: id ?? '', leadLabel: item?.title ?? '' }))}
+              disabled={mode === 'reschedule'}
+              fetcher={async (query, page) => {
+                const r = await leadsApi.list({ search: query, page, limit: 20 });
+                const data: any = r.data;
+                const items = Array.isArray(data) ? data : (data?.data ?? []);
+                const total = Array.isArray(data) ? items.length : (data?.pagination?.total ?? items.length);
+                return { items, total };
+              }}
+              getOptionId={(l) => l.id}
+              getOptionLabel={(l) => l.title}
+              getOptionDescription={(l) => l.contact?.name}
+              resolveSelected={async (id) => (await leadsApi.getById(id)).data}
+              placeholder="Select a lead"
+              searchPlaceholder="Search leads..."
+            />
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <h3 className="font-semibold text-sm capitalize">{fuType} Follow-up</h3>
-              <Badge className={cn('text-[10px]', typeColors[fuType] ?? 'bg-gray-100 text-gray-700')}>
-                {fuType}
-              </Badge>
-              <Badge variant="outline" className={cn('text-[10px] border-transparent',
-                isCompleted ? 'bg-green-100 text-green-700' :
-                isOverdue ? 'bg-red-100 text-red-700' :
-                'bg-amber-100 text-amber-700',
-              )}>
-                {isCompleted ? 'Completed' : isOverdue ? 'Overdue' : 'Pending'}
-              </Badge>
+          <div className="grid grid-cols-2 gap-ds-4">
+            <div className="flex flex-col gap-ds-1">
+              <Label htmlFor="followup-date">
+                Date &amp; time<span aria-hidden="true" className="ml-0.5 text-ds-danger">*</span>
+              </Label>
+              <DateTimePicker
+                value={form.scheduledAt}
+                onChange={(d) => setForm((f) => ({ ...f, scheduledAt: d }))}
+                placeholder="Pick date & time"
+                minDate={mode === 'create' ? new Date() : undefined}
+              />
             </div>
-            {followUp.leadTitle && (
-              <p className="text-xs text-muted-foreground mb-1">
-                Lead: <button className="text-primary hover:underline" onClick={() => router.push(`/leads/${followUp.leadId}`)}>{followUp.leadTitle}</button>
-                {followUp.contactName && <span> · {followUp.contactName}</span>}
-              </p>
-            )}
-            {followUp.notes && <p className="text-xs text-muted-foreground line-clamp-2">{followUp.notes}</p>}
-            <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
-              <Calendar className="h-3 w-3" />
-              <span className={cn(isOverdue && 'text-red-600 font-medium')}>
-                {scheduledAt ? new Date(scheduledAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
-              </span>
-              {followUp.createdByName && <><span>·</span><span>by {followUp.createdByName}</span></>}
+            <div className="flex flex-col gap-ds-1">
+              <Label htmlFor="followup-type">Type</Label>
+              <Select value={form.type} onValueChange={(v) => setForm((f) => ({ ...f, type: v }))} disabled={mode === 'reschedule'}>
+                <SelectTrigger id="followup-type"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="call">Call</SelectItem>
+                  <SelectItem value="email">Email</SelectItem>
+                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                  <SelectItem value="visit">Visit</SelectItem>
+                  <SelectItem value="sms">SMS</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm" className="opacity-0 group-hover:opacity-100 transition-opacity">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {!isCompleted && <DropdownMenuItem onClick={onComplete}>Mark Complete</DropdownMenuItem>}
-              {followUp.leadId && <DropdownMenuItem onClick={() => router.push(`/leads/${followUp.leadId}`)}>View Lead</DropdownMenuItem>}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-red-600" onClick={onDelete}>Delete</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {mode === 'create' && (
+            <div className="flex flex-col gap-ds-1">
+              <Label htmlFor="followup-notes">Notes</Label>
+              <Textarea
+                id="followup-notes"
+                placeholder="What to follow up on..."
+                value={form.notes}
+                onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                rows={3}
+              />
+            </div>
+          )}
         </div>
-      </CardContent>
-    </Card>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
+          <Button disabled={saving || !form.scheduledAt || !form.leadId} onClick={handleSave} className="gap-ds-2">
+            {saving && <Spinner className="size-4" />}
+            {mode === 'reschedule' ? 'Reschedule' : 'Schedule'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CompleteDialog({
+  open,
+  onOpenChange,
+  followUp,
+  onSaved,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  followUp: FollowUpRow | null;
+  onSaved: () => void;
+}) {
+  const [outcome, setOutcome] = React.useState('');
+  const [notes, setNotes] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+
+  React.useEffect(() => {
+    if (open) { setOutcome(''); setNotes(''); }
+  }, [open]);
+
+  async function handleComplete() {
+    if (!followUp) return;
+    setSaving(true);
+    try {
+      await followUpsApi.complete(followUp.id, {
+        completedAt: new Date().toISOString(),
+        outcome: outcome || undefined,
+        notes: notes || undefined,
+      });
+      toast.success('Follow-up completed');
+      onOpenChange(false);
+      onSaved();
+    } catch {
+      toast.error('Failed to complete follow-up');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !saving && onOpenChange(o)}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Complete follow-up</DialogTitle>
+          <DialogDescription>Log the outcome of this follow-up.</DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-ds-4">
+          <div className="flex flex-col gap-ds-1">
+            <Label htmlFor="complete-outcome">Outcome</Label>
+            <Select value={outcome} onValueChange={setOutcome}>
+              <SelectTrigger id="complete-outcome"><SelectValue placeholder="Select outcome" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="positive">Positive</SelectItem>
+                <SelectItem value="neutral">Neutral</SelectItem>
+                <SelectItem value="negative">Negative</SelectItem>
+                <SelectItem value="no_response">No response</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-ds-1">
+            <Label htmlFor="complete-notes">Notes</Label>
+            <Textarea
+              id="complete-notes"
+              placeholder="What happened?"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
+          <Button disabled={saving} onClick={handleComplete} className="gap-ds-2">
+            {saving && <Spinner className="size-4" />}
+            Mark complete
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 export default function FollowUpsPage() {
-  const [filter, setFilter] = React.useState<string>('all');
-  const [searchQuery, setSearchQuery] = React.useState('');
-  const [createDialogOpen, setCreateDialogOpen] = React.useState(false);
-  const [fuForm, setFuForm] = React.useState({
-    scheduledAt: undefined as Date | undefined,
-    type: 'call' as string,
-    notes: '',
-    leadId: '',
-  });
-  const [fuSaving, setFuSaving] = React.useState(false);
+  const router = useRouter();
+  const { confirm, dialog } = useConfirm();
+  const [statusFilter, setStatusFilter] = React.useState('');
+  const [typeFilter, setTypeFilter] = React.useState('');
+  const [refreshKey, setRefreshKey] = React.useState(0);
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const [rescheduleTarget, setRescheduleTarget] = React.useState<FollowUpRow | null>(null);
+  const [completeTarget, setCompleteTarget] = React.useState<FollowUpRow | null>(null);
 
-  const { data: response, loading, error, refetch } = useApiQuery(
-    () => followUpsApi.list({
-      ...(filter !== 'all' ? { status: filter as any } : {}),
-      ...(searchQuery ? { search: searchQuery } : {}),
-    }),
-    [filter, searchQuery],
-  );
+  const bump = () => setRefreshKey((k) => k + 1);
 
-  // Fetch leads for dropdown
-  const { data: leadsResponse } = useApiQuery(() => leadsApi.list({ limit: 100 }), []);
-  const leadsList: any[] = Array.isArray(leadsResponse?.data) ? leadsResponse!.data : (leadsResponse?.data?.data ?? []);
-
-  const followUps = Array.isArray(response?.data) ? response!.data : (response?.data?.data ?? []);
-
-  async function handleComplete(id: string) {
+  async function handleDelete(f: FollowUpRow) {
+    const ok = await confirm({
+      title: 'Cancel follow-up',
+      description: 'This follow-up will be permanently removed. This cannot be undone.',
+      confirmLabel: 'Cancel follow-up',
+      tone: 'destructive',
+    });
+    if (!ok) return;
     try {
-      await followUpsApi.complete(id);
-      toast.success('Follow-up completed');
-      refetch();
+      await followUpsApi.delete(f.id);
+      toast.success('Follow-up cancelled');
+      bump();
     } catch {
-      toast.error('Failed to complete follow-up');
+      toast.error('Failed to cancel follow-up');
     }
   }
 
-  async function handleDelete(id: string) {
-    try {
-      await followUpsApi.delete(id);
-      toast.success('Follow-up deleted');
-      refetch();
-    } catch {
-      toast.error('Failed to delete follow-up');
-    }
-  }
-
-  async function handleCreate() {
-    if (!fuForm.scheduledAt || !fuForm.leadId) {
-      toast.error('Please select a lead and date');
-      return;
-    }
-    setFuSaving(true);
-    try {
-      await followUpsApi.create({
-        leadId: fuForm.leadId,
-        scheduledAt: fuForm.scheduledAt.toISOString(),
-        type: fuForm.type as any,
-        notes: fuForm.notes || undefined,
-      });
-      toast.success('Follow-up scheduled');
-      setCreateDialogOpen(false);
-      setFuForm({ scheduledAt: undefined, type: 'call', notes: '', leadId: '' });
-      refetch();
-    } catch {
-      toast.error('Failed to create follow-up');
-    } finally {
-      setFuSaving(false);
-    }
-  }
-
-  // Stats
-  const totalPending = followUps.filter((f: any) => f.status === 'pending').length;
-  const totalOverdue = followUps.filter((f: any) => {
-    const sa = f.scheduledAt || f.scheduled_at;
-    return f.status === 'pending' && sa && new Date(sa) < new Date();
-  }).length;
+  const filters = [
+    ...(statusFilter ? [{ id: 'status', label: 'Status', value: statusFilter }] : []),
+    ...(typeFilter ? [{ id: 'type', label: 'Type', value: typeFilter }] : []),
+  ];
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Follow-ups</h1>
-          <p className="text-sm text-muted-foreground">
-            {totalPending} pending{totalOverdue > 0 && <span className="text-red-600 font-medium"> · {totalOverdue} overdue</span>}
-          </p>
-        </div>
-        <Button className="gap-1.5" onClick={() => setCreateDialogOpen(true)}>
-          <Plus className="h-4 w-4" />
-          Schedule Follow-up
-        </Button>
-      </div>
-
-      {/* Filter Bar */}
-      <div className="px-6 py-3 border-b bg-muted/30">
-        <div className="flex items-center gap-3">
-          <div className="relative max-w-xs">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search follow-ups..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-9 pl-10"
-            />
-          </div>
-          <Select value={filter} onValueChange={setFilter}>
-            <SelectTrigger className="w-40 h-9 text-xs">
-              <Filter className="h-3.5 w-3.5 mr-1.5" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Follow-ups</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="overdue">Overdue</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {/* Loading State */}
-      {loading && (
-        <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      )}
-
-      {/* Error State */}
-      {error && !loading && (
-        <div className="flex-1 flex items-center justify-center p-6">
-          <div className="text-center">
-            <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
-            <p className="text-muted-foreground">Failed to load follow-ups</p>
-            <Button size="sm" onClick={() => refetch()} className="mt-4">Retry</Button>
-          </div>
-        </div>
-      )}
-
-      {/* Follow-ups List */}
-      {!loading && !error && (
-        <div className="flex-1 overflow-auto p-6">
-          {followUps.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium">No follow-ups yet</p>
-              <p className="text-sm">Schedule one to get started</p>
-            </div>
-          ) : (
-            <div className="grid gap-3 max-w-3xl">
-              {followUps.map((fu: any) => (
-                <FollowUpCard
-                  key={fu.id}
-                  followUp={fu}
-                  onComplete={() => handleComplete(fu.id)}
-                  onDelete={() => handleDelete(fu.id)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Create Follow-up Dialog */}
-      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Schedule Follow-up</DialogTitle>
-            <DialogDescription>Schedule a new follow-up for a lead.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Lead <span className="text-destructive">*</span></Label>
-              <Select value={fuForm.leadId} onValueChange={(v) => setFuForm({ ...fuForm, leadId: v })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a lead" />
-                </SelectTrigger>
-                <SelectContent>
-                  {leadsList.map((lead: any) => (
-                    <SelectItem key={lead.id} value={lead.id}>
-                      {lead.title} {lead.contactName ? `(${lead.contactName})` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Date & Time <span className="text-destructive">*</span></Label>
-                <DateTimePicker
-                  value={fuForm.scheduledAt}
-                  onChange={(d) => setFuForm({ ...fuForm, scheduledAt: d })}
-                  placeholder="Pick date & time"
-                  minDate={new Date()}
-                />
+    <>
+      {dialog}
+      <ListPage<FollowUpRow>
+        key={refreshKey}
+        title="Follow-ups"
+        description="Stay on top of scheduled outreach across your pipeline."
+        getRowId={(f) => f.id}
+        fetcher={({ page, limit, search }) =>
+          followUpsApi.list({
+            page,
+            limit,
+            search: search || undefined,
+            status: (statusFilter || undefined) as never,
+            type: typeFilter || undefined,
+          })
+        }
+        searchPlaceholder="Search follow-ups..."
+        columns={[
+          {
+            key: 'type',
+            header: 'Type',
+            cell: (f) => (
+              <span className="inline-flex items-center gap-ds-2">
+                <span className="flex size-7 items-center justify-center rounded-ds-full bg-ds-surface-sunken text-ds-foreground-muted">
+                  {TYPE_ICONS[f.type] ?? <ClipboardList className="size-3.5" aria-hidden="true" />}
+                </span>
+                <span className="text-sm font-medium capitalize">{f.type}</span>
+              </span>
+            ),
+          },
+          {
+            key: 'lead',
+            header: 'Lead',
+            cell: (f) => (
+              <div>
+                <button
+                  type="button"
+                  className="text-sm font-medium text-ds-primary hover:underline"
+                  onClick={(e) => { e.stopPropagation(); router.push(`/leads/${f.leadId}`); }}
+                >
+                  {f.leadTitle ?? f.leadId}
+                </button>
+                {f.contactName && <p className="text-xs text-ds-foreground-muted">{f.contactName}</p>}
               </div>
-              <div className="space-y-2">
-                <Label>Type</Label>
-                <Select value={fuForm.type} onValueChange={(v) => setFuForm({ ...fuForm, type: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="call">Call</SelectItem>
-                    <SelectItem value="email">Email</SelectItem>
-                    <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                    <SelectItem value="visit">Visit</SelectItem>
-                    <SelectItem value="sms">SMS</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Notes</Label>
-              <Textarea
-                placeholder="What to follow up on..."
-                value={fuForm.notes}
-                onChange={(e) => setFuForm({ ...fuForm, notes: e.target.value })}
-                rows={3}
-              />
-            </div>
+            ),
+          },
+          {
+            key: 'notes',
+            header: 'Notes',
+            cell: (f) => <span className="line-clamp-2 text-sm text-ds-foreground-muted">{f.notes || '—'}</span>,
+          },
+          {
+            key: 'scheduledAt',
+            header: 'Scheduled',
+            sortable: true,
+            cell: (f) => (
+              <span className={isOverdue(f) ? 'text-sm font-medium text-ds-danger' : 'text-sm'}>
+                {f.scheduledAt
+                  ? new Date(f.scheduledAt).toLocaleDateString('en-IN', {
+                      day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+                    })
+                  : '—'}
+              </span>
+            ),
+          },
+          {
+            key: 'status',
+            header: 'Status',
+            cell: (f) => <Tag tone={statusTone(f)}>{statusLabel(f)}</Tag>,
+          },
+        ]}
+        primaryAction={
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus aria-hidden="true" /> Schedule follow-up
+          </Button>
+        }
+        headerActions={
+          <div className="flex items-center gap-ds-2">
+            <Select value={typeFilter || 'all'} onValueChange={(v) => setTypeFilter(v === 'all' ? '' : v)}>
+              <SelectTrigger className="w-36 h-9"><SelectValue placeholder="All types" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All types</SelectItem>
+                <SelectItem value="call">Call</SelectItem>
+                <SelectItem value="email">Email</SelectItem>
+                <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                <SelectItem value="visit">Visit</SelectItem>
+                <SelectItem value="sms">SMS</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={statusFilter || 'all'} onValueChange={(v) => setStatusFilter(v === 'all' ? '' : v)}>
+              <SelectTrigger className="w-36 h-9"><SelectValue placeholder="All statuses" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="overdue">Overdue</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateDialogOpen(false)} disabled={fuSaving}>Cancel</Button>
-            <Button disabled={fuSaving || !fuForm.scheduledAt || !fuForm.leadId} onClick={handleCreate}>
-              {fuSaving && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
-              Schedule
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+        }
+        filters={filters}
+        onRemoveFilter={(id) => { if (id === 'status') setStatusFilter(''); if (id === 'type') setTypeFilter(''); }}
+        onClearFilters={() => { setStatusFilter(''); setTypeFilter(''); }}
+        rowActions={(f) => {
+          const completed = f.status === 'completed' || !!f.completedAt;
+          return (
+            <>
+              {!completed && (
+                <Button variant="ghost" size="icon-sm" aria-label="Mark complete" onClick={() => setCompleteTarget(f)}>
+                  <CheckCircle2 />
+                </Button>
+              )}
+              {!completed && (
+                <Button variant="ghost" size="icon-sm" aria-label="Reschedule" onClick={() => setRescheduleTarget(f)}>
+                  <CalendarClock />
+                </Button>
+              )}
+              <Button variant="ghost" size="icon-sm" aria-label="Cancel follow-up" onClick={() => void handleDelete(f)}>
+                <Trash2 />
+              </Button>
+            </>
+          );
+        }}
+        bulkActions={[
+          {
+            label: 'Cancel',
+            icon: <Trash2 aria-hidden="true" />,
+            destructive: true,
+            onSelect: async (rows) => {
+              await Promise.all(rows.map((r) => followUpsApi.delete(r.id)));
+              toast.success(`${rows.length} follow-up${rows.length !== 1 ? 's' : ''} cancelled`);
+              bump();
+            },
+          },
+        ]}
+        onExport={async (rows) => {
+          try {
+            let all = rows;
+            const first = await followUpsApi.list({
+              page: 1,
+              limit: 500,
+              status: (statusFilter || undefined) as never,
+              type: typeFilter || undefined,
+            });
+            const data: any = first.data;
+            all = Array.isArray(data) ? data : (data?.data ?? rows);
+            const header = ['Type', 'Lead', 'Contact', 'Notes', 'Scheduled', 'Status'];
+            const lines = [header.join(',')];
+            for (const f of all as FollowUpRow[]) {
+              lines.push([
+                toCsvValue(f.type),
+                toCsvValue(f.leadTitle ?? f.leadId),
+                toCsvValue(f.contactName ?? ''),
+                toCsvValue(f.notes ?? ''),
+                toCsvValue(f.scheduledAt),
+                toCsvValue(statusLabel(f)),
+              ].join(','));
+            }
+            const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `follow-ups_export_${new Date().toISOString().slice(0, 10)}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            toast.success('Follow-ups exported successfully');
+          } catch {
+            toast.error('Failed to export follow-ups');
+          }
+        }}
+        emptyTitle="No follow-ups yet"
+        emptyDescription="Schedule a follow-up to stay on top of your leads."
+        emptyIcon={<CalendarClock className="size-10" aria-hidden="true" />}
+        emptyAction={
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus aria-hidden="true" /> Schedule follow-up
+          </Button>
+        }
+      />
+
+      <ScheduleDialog open={createOpen} onOpenChange={setCreateOpen} mode="create" onSaved={bump} />
+      <ScheduleDialog
+        open={rescheduleTarget !== null}
+        onOpenChange={(o) => !o && setRescheduleTarget(null)}
+        mode="reschedule"
+        followUp={rescheduleTarget}
+        onSaved={bump}
+      />
+      <CompleteDialog
+        open={completeTarget !== null}
+        onOpenChange={(o) => !o && setCompleteTarget(null)}
+        followUp={completeTarget}
+        onSaved={bump}
+      />
+    </>
   );
 }
