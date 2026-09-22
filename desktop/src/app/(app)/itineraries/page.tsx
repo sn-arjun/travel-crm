@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Plus, MapPin, MoreHorizontal, FileText, Copy, Loader2, Trash2, Pencil, Eye } from 'lucide-react';
+import { Plus, MapPin, MoreHorizontal, FileText, Copy, Loader2, Trash2, Pencil, Eye, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
 import { FilterBar } from '@/components/domain/filter-bar';
 import { cn } from '@/lib/utils';
 import { useApiMutation } from '@/hooks/use-api';
@@ -72,6 +73,66 @@ export default function ItinerariesPage() {
     (id: string) => itinerariesApi.delete(id),
   );
 
+  const [exporting, setExporting] = React.useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const rows: any[] = [];
+      let page = 1;
+      const limit = 100;
+      // Walk every page of the current filtered query, not just what's loaded on screen
+      while (true) {
+        const res = await itinerariesApi.list({
+          page,
+          limit,
+          search: search || undefined,
+          status: statusFilter || undefined,
+        });
+        const data = (res as any)?.data;
+        const items = Array.isArray(data) ? data : (data?.data ?? []);
+        rows.push(...items);
+        const total = data?.pagination?.total ?? items.length;
+        if (rows.length >= total || items.length === 0) break;
+        page += 1;
+      }
+
+      const header = ['Title', 'Client', 'Start Date', 'End Date', 'Duration', 'Status', 'Currency', 'Grand Total'];
+      const csvRows = rows.map((it: any) => {
+        const daysCount = it.daysCount ?? 0;
+        return [
+          it.title ?? '',
+          it.contactName ?? '',
+          it.startDate ?? '',
+          it.endDate ?? '',
+          `${daysCount}D/${Math.max(0, daysCount - 1)}N`,
+          it.status ?? 'draft',
+          it.currency ?? 'INR',
+          String(it.grandTotal ?? it.totalSelling ?? 0),
+        ];
+      });
+      const csv = [header, ...csvRows]
+        .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+        .join('\n');
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `itineraries_export_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success('Itineraries exported successfully');
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Failed to export itineraries';
+      toast.error(errorMsg);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleClone = async (id: string) => {
     try {
       await cloneItinerary(id);
@@ -104,9 +165,15 @@ export default function ItinerariesPage() {
           <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Itineraries</h1>
           <p className="text-sm text-muted-foreground">{total} itineraries</p>
         </div>
-        <Link href="/itineraries/new">
-          <Button><Plus className="h-4 w-4 mr-1.5" /> New Itinerary</Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={handleExport} disabled={exporting || total === 0}>
+            {exporting ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Download className="h-4 w-4 mr-1.5" />}
+            Export
+          </Button>
+          <Link href="/itineraries/new">
+            <Button><Plus className="h-4 w-4 mr-1.5" /> New Itinerary</Button>
+          </Link>
+        </div>
       </div>
 
       <div className="px-6 py-3 border-b">
@@ -151,7 +218,20 @@ export default function ItinerariesPage() {
           </div>
         )}
 
-        {!loading && (
+        {!loading && itineraries.length === 0 && (
+          <EmptyState
+            icon={<FileText className="h-8 w-8" />}
+            title="No itineraries found"
+            description={search || statusFilter ? 'Try adjusting your search or filters.' : 'Start building your first multi-day itinerary.'}
+            action={
+              <Link href="/itineraries/new">
+                <Button variant="outline" size="sm"><Plus className="h-4 w-4 mr-1" /> Create Itinerary</Button>
+              </Link>
+            }
+          />
+        )}
+
+        {!loading && itineraries.length > 0 && (
           <Table>
             <TableHeader>
               <TableRow>
@@ -236,17 +316,6 @@ export default function ItinerariesPage() {
                   </TableRow>
                 );
               })}
-              {itineraries.length === 0 && !loading && (
-                <TableRow>
-                  <TableCell colSpan={canSeeCost ? 8 : 6} className="text-center py-12">
-                    <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm text-muted-foreground">No itineraries found</p>
-                    <Link href="/itineraries/new">
-                      <Button variant="outline" size="sm" className="mt-3"><Plus className="h-4 w-4 mr-1" /> Create Itinerary</Button>
-                    </Link>
-                  </TableCell>
-                </TableRow>
-              )}
             </TableBody>
           </Table>
         )}

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft, Plus, Save, Trash2, Hotel, Plane,
   Car, Utensils, Camera, ChevronDown, ChevronUp, FileText, Send, Copy, Download, Loader2, Search, BookOpen,
@@ -199,10 +199,12 @@ function SortableDayCardWrapper({
 
 export default function ItineraryBuilderPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const prefillLeadId = searchParams.get('leadId') ?? '';
   const [title, setTitle] = React.useState('');
   const [description, setDescription] = React.useState('');
   const [destination, setDestination] = React.useState('');
-  const [leadId, setLeadId] = React.useState('');
+  const [leadId, setLeadId] = React.useState(prefillLeadId);
   const [leadSearch, setLeadSearch] = React.useState('');
   const [startDate, setStartDate] = React.useState('');
   const [endDate, setEndDate] = React.useState('');
@@ -239,6 +241,27 @@ export default function ItineraryBuilderPage() {
       label: `${l.title}${l.contactName ? ` - ${l.contactName}` : ''}`,
     }));
   }, [leadsResponse]);
+
+  // Resolve the display label when the lead is pre-filled from a URL param
+  // (search results may not include it if the user hasn't typed a query yet)
+  const { data: prefillLeadResponse } = useApiQuery(
+    () => (prefillLeadId ? leadsApi.getById(prefillLeadId) : Promise.resolve(null)),
+    [prefillLeadId],
+  );
+
+  const prefillLeadOption = React.useMemo(() => {
+    if (!prefillLeadResponse) return null;
+    const l = (prefillLeadResponse as any)?.data ?? prefillLeadResponse;
+    if (!l?.id) return null;
+    return { id: l.id, label: `${l.title}${l.contactName ? ` - ${l.contactName}` : ''}` };
+  }, [prefillLeadResponse]);
+
+  const leadComboboxOptions = React.useMemo(() => {
+    if (prefillLeadOption && !leadOptions.some((o: any) => o.id === prefillLeadOption.id)) {
+      return [prefillLeadOption, ...leadOptions];
+    }
+    return leadOptions;
+  }, [leadOptions, prefillLeadOption]);
 
   // Task 2H: Currency selector
   const [currency, setCurrency] = React.useState('INR');
@@ -715,7 +738,7 @@ export default function ItineraryBuilderPage() {
                 <div className="space-y-1">
                   <Label className="text-xs">Link to Lead <span className="text-red-500">*</span></Label>
                   <Combobox
-                    options={leadOptions.map((o: any) => ({ value: o.id, label: o.label }))}
+                    options={leadComboboxOptions.map((o: any) => ({ value: o.id, label: o.label }))}
                     value={leadId}
                     onValueChange={setLeadId}
                     onSearch={setLeadSearch}
