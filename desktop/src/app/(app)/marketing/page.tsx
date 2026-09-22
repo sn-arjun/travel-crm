@@ -12,7 +12,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { useApiQuery } from '@/hooks/use-api';
-import { campaignsApi } from '@/lib/api/campaigns';
 import { marketingApi } from '@/lib/api/marketing';
 
 function statusColor(status: string) {
@@ -32,7 +31,7 @@ function statusColor(status: string) {
 
 export default function MarketingDashboardPage() {
   const { data: campaignsResp, loading: loadingCampaigns } = useApiQuery(
-    () => campaignsApi.list({ limit: 5, sortBy: 'created_at', sortOrder: 'desc' }),
+    () => marketingApi.campaigns.list({ limit: 5, sortBy: 'created_at', sortOrder: 'desc' }),
     [],
   );
   const { data: segmentsResp, loading: loadingSegments } = useApiQuery(
@@ -62,7 +61,7 @@ export default function MarketingDashboardPage() {
   }, [recentCampaigns, segments]);
 
   const quickLinks = [
-    { title: 'New Campaign', href: '/campaigns/new', icon: Megaphone, color: 'text-indigo-600', bg: 'bg-indigo-50 dark:bg-indigo-900/30' },
+    { title: 'New Campaign', href: '/marketing/campaigns/new', icon: Megaphone, color: 'text-indigo-600', bg: 'bg-indigo-50 dark:bg-indigo-900/30' },
     { title: 'New Segment', href: '/marketing/segments/new', icon: Users, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-900/30' },
     { title: 'Design Flyer', href: '/marketing/flyers', icon: Image, color: 'text-pink-600', bg: 'bg-pink-50 dark:bg-pink-900/30' },
     { title: 'Branding', href: '/marketing/branding', icon: Palette, color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-900/30' },
@@ -81,7 +80,7 @@ export default function MarketingDashboardPage() {
           <p className="text-sm text-muted-foreground">Campaigns, segments, flyers & branding</p>
         </div>
         <Button asChild>
-          <Link href="/campaigns/new">
+          <Link href="/marketing/campaigns/new">
             <Send className="h-4 w-4 mr-1.5" /> New Campaign
           </Link>
         </Button>
@@ -182,7 +181,7 @@ export default function MarketingDashboardPage() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">Recent Campaigns</CardTitle>
               <Button variant="ghost" size="sm" asChild>
-                <Link href="/campaigns">
+                <Link href="/marketing/campaigns">
                   View all <ArrowRight className="h-3.5 w-3.5 ml-1" />
                 </Link>
               </Button>
@@ -198,7 +197,7 @@ export default function MarketingDashboardPage() {
                 <Megaphone className="h-8 w-8 mx-auto mb-2 text-muted-foreground opacity-50" />
                 <p className="text-sm text-muted-foreground">No campaigns yet</p>
                 <Button asChild variant="outline" size="sm" className="mt-3">
-                  <Link href="/campaigns/new">Create your first campaign</Link>
+                  <Link href="/marketing/campaigns/new">Create your first campaign</Link>
                 </Button>
               </div>
             ) : (
@@ -206,7 +205,7 @@ export default function MarketingDashboardPage() {
                 {recentCampaigns.map((campaign: any) => (
                   <Link
                     key={campaign.id}
-                    href={`/campaigns/${campaign.id}`}
+                    href={`/marketing/campaigns/${campaign.id}`}
                     className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors"
                   >
                     <div className="flex items-center gap-3">
@@ -259,7 +258,7 @@ export default function MarketingDashboardPage() {
                 {segments.slice(0, 5).map((segment: any) => (
                   <Link
                     key={segment.id}
-                    href={`/campaigns/new?segmentId=${segment.id}&segmentName=${encodeURIComponent(segment.name)}`}
+                    href={`/marketing/campaigns/new?segmentId=${segment.id}&segmentName=${encodeURIComponent(segment.name)}`}
                     className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors"
                   >
                     <span className="text-sm font-medium">{segment.name}</span>

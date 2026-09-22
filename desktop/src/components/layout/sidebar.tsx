@@ -137,7 +137,7 @@ const navigation: NavGroup[] = [
     label: 'Marketing',
     items: [
       { title: 'Dashboard', href: '/marketing', icon: LayoutDashboard },
-      { title: 'Campaigns', href: '/campaigns', icon: Megaphone },
+      { title: 'Campaigns', href: '/marketing/campaigns', icon: Megaphone },
       { title: 'Segments', href: '/marketing/segments', icon: Users },
       { title: 'Flyers', href: '/marketing/flyers', icon: Palette },
       { title: 'Branding', href: '/marketing/branding', icon: Palette },

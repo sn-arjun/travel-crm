@@ -114,6 +114,66 @@ export interface ResubscribeRequest {
   contactId: string;
 }
 
+export interface MarketingCampaign {
+  id: string;
+  name: string;
+  description?: string;
+  channel: 'email' | 'sms' | 'whatsapp' | 'push' | 'social';
+  subject?: string;
+  content?: string;
+  flyerId?: string;
+  segmentId?: string;
+  status: 'draft' | 'scheduled' | 'sending' | 'sent' | 'cancelled' | 'failed';
+  scheduledFor?: string;
+  sentCount?: number;
+  deliveredCount?: number;
+  openedCount?: number;
+  clickedCount?: number;
+  failedCount?: number;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface CreateMarketingCampaignRequest {
+  name: string;
+  description?: string;
+  channel: 'email' | 'sms' | 'whatsapp' | 'push' | 'social';
+  subject?: string;
+  content?: string;
+  flyerId?: string;
+  segmentId?: string;
+  scheduledFor?: string;
+}
+
+export type UpdateMarketingCampaignRequest = Partial<CreateMarketingCampaignRequest>;
+
+export interface MarketingCampaignAnalytics {
+  id: string;
+  sentCount: number;
+  deliveredCount: number;
+  openedCount: number;
+  clickedCount: number;
+  failedCount: number;
+  optedOutCount: number;
+  openRate: number;
+  clickRate: number;
+  deliveryRate: number;
+  timeline?: { date: string; sent: number; opened: number; clicked: number }[];
+}
+
+export interface MarketingCampaignRecipient {
+  id: string;
+  contactId?: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  status: 'pending' | 'sent' | 'delivered' | 'opened' | 'clicked' | 'failed' | 'opted_out';
+  sentAt?: string;
+  openedAt?: string;
+  clickedAt?: string;
+  errorMessage?: string;
+}
+
 export interface FestivalCampaign {
   id: string;
   name: string;
@@ -127,7 +187,49 @@ export interface FestivalCampaign {
   createdAt: string;
 }
 
+const CAMPAIGNS_BASE = '/marketing/campaigns';
+
 export const marketingApi = {
+  campaigns: {
+    list: (params?: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      status?: string;
+      channel?: string;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
+    }) =>
+      client.get<ApiResponse<PaginatedResponse<MarketingCampaign>>>(CAMPAIGNS_BASE, { params }),
+
+    get: (id: string) =>
+      client.get<ApiResponse<MarketingCampaign>>(`${CAMPAIGNS_BASE}/${id}`),
+
+    create: (data: CreateMarketingCampaignRequest) =>
+      client.post<ApiResponse<MarketingCampaign>>(CAMPAIGNS_BASE, data),
+
+    update: (id: string, data: UpdateMarketingCampaignRequest) =>
+      client.put<ApiResponse<MarketingCampaign>>(`${CAMPAIGNS_BASE}/${id}`, data),
+
+    delete: (id: string) =>
+      client.delete<ApiResponse<void>>(`${CAMPAIGNS_BASE}/${id}`),
+
+    send: (id: string) =>
+      client.post<ApiResponse<MarketingCampaign>>(`${CAMPAIGNS_BASE}/${id}/send`, {}),
+
+    cancel: (id: string) =>
+      client.post<ApiResponse<MarketingCampaign>>(`${CAMPAIGNS_BASE}/${id}/cancel`, {}),
+
+    analytics: (id: string) =>
+      client.get<ApiResponse<MarketingCampaignAnalytics>>(`${CAMPAIGNS_BASE}/${id}/analytics`),
+
+    recipients: (id: string, params?: { page?: number; limit?: number; status?: string }) =>
+      client.get<ApiResponse<PaginatedResponse<MarketingCampaignRecipient>>>(
+        `${CAMPAIGNS_BASE}/${id}/recipients`,
+        { params },
+      ),
+  },
+
   segments: {
     list: (params?: {
       page?: number;
