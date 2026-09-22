@@ -62,14 +62,22 @@ export interface Driver {
   name: string;
   phone: string;
   email?: string;
+  dateOfBirth?: string;
+  address?: string;
   licenseNumber?: string;
   licenseExpiry?: string;
+  licenseType?: string;
+  badgeNumber?: string;
   status: 'active' | 'on_trip' | 'off_duty' | 'on_leave';
   experience?: number;
   rating?: number;
   totalTrips?: number;
   emergencyContactName?: string;
   emergencyContactPhone?: string;
+  emergencyContactRelation?: string;
+  bankAccountName?: string;
+  bankAccountNumber?: string;
+  bankIFSC?: string;
   dateOfJoining?: string;
   notes?: string;
   customFields?: Record<string, unknown>;
@@ -248,22 +256,36 @@ export interface CreateDriverRequest {
   name: string;
   phone: string;
   email?: string;
+  dateOfBirth?: string;
   licenseNumber?: string;
   licenseExpiry?: string;
+  licenseType?: string;
+  badgeNumber?: string;
   address?: string;
   emergencyContactName?: string;
   emergencyContactPhone?: string;
+  emergencyContactRelation?: string;
   dateOfJoining?: string;
   notes?: string;
 }
 
 export interface UpdateDriverRequest {
-  firstName?: string;
-  lastName?: string;
-  licenseNumber?: string;
-  licenseExpiry?: string;
+  name?: string;
   phone?: string;
   email?: string;
+  dateOfBirth?: string;
+  address?: string;
+  licenseNumber?: string;
+  licenseExpiry?: string;
+  licenseType?: string;
+  badgeNumber?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  emergencyContactRelation?: string;
+  bankAccountName?: string;
+  bankAccountNumber?: string;
+  bankIFSC?: string;
+  notes?: string;
   status?: 'active' | 'inactive' | 'on_leave';
   experience?: number;
   customFields?: Record<string, unknown>;
@@ -443,6 +465,7 @@ const FLEET = {
   driverSchedule: '/fleet/drivers/schedule',
   driverSingleSchedule: (id: string) => `/fleet/drivers/${id}/schedule`,
   driverTrips: (id: string) => `/fleet/drivers/${id}/trips`,
+  driverRate: (id: string) => `/fleet/drivers/${id}/rate`,
   expiringDriverDocs: '/fleet/documents/drivers/expiring',
   tripTimeline: (id: string) => `/fleet/trips/${id}/timeline`,
   tripStatus: (id: string) => `/fleet/trips/${id}/status`,
@@ -651,6 +674,9 @@ export const fleetApi = {
 
     getTrips: (id: string, params?: { page?: number; limit?: number }) =>
       client.get<ApiResponse<PaginatedResponse<Trip>>>(FLEET.driverTrips(id), { params }).then(mapTripsResponse),
+
+    rate: (id: string, data: { rating: number; tripId?: string; comment?: string }) =>
+      client.post<ApiResponse<Driver>>(FLEET.driverRate(id), data).then(mapDriverResponse),
   },
 
   trips: {

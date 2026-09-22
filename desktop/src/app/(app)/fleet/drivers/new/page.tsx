@@ -2,128 +2,140 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Loader2, Save, UserPlus } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { toast } from 'sonner';
+import { z } from 'zod';
+import { EntityForm, FormRow } from '@/components/domain';
+import { Input, Textarea, SectionCard, PhoneInput, DatePicker } from '@/components/ui';
 import { fleetApi } from '@/lib/api/fleet';
+import { toast } from 'sonner';
+
+const schema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  phone: z.string().min(1, 'Phone is required'),
+  email: z.string().email('Invalid email').optional().or(z.literal('')),
+  dateOfBirth: z.date().optional(),
+  address: z.string().optional(),
+  licenseNumber: z.string().min(1, 'License number is required'),
+  licenseExpiry: z.date({ error: 'License expiry is required' }),
+  licenseType: z.string().optional(),
+  badgeNumber: z.string().optional(),
+  emergencyContactName: z.string().optional(),
+  emergencyContactPhone: z.string().optional(),
+  emergencyContactRelation: z.string().optional(),
+  notes: z.string().optional(),
+});
+type DriverFormValues = z.infer<typeof schema>;
 
 export default function NewDriverPage() {
   const router = useRouter();
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
-
-  const [form, setForm] = React.useState({
-    name: '',
-    phone: '',
-    email: '',
-    licenseNumber: '',
-    licenseExpiry: '',
-    status: 'active' as const,
-    experience: 0,
-  });
-
-  function updateField(field: string, value: string | number) {
-    setForm((prev) => ({ ...prev, [field]: value }));
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-
-    if (!form.name || !form.licenseNumber || !form.licenseExpiry || !form.phone) {
-      toast.error('Please fill in all required fields');
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      const dateOfJoining = form.experience > 0
-        ? new Date(Date.now() - form.experience * 365.25 * 86400000).toISOString().split('T')[0]
-        : undefined;
-      await fleetApi.drivers.create({
-        name: form.name,
-        phone: form.phone,
-        email: form.email || undefined,
-        licenseNumber: form.licenseNumber,
-        licenseExpiry: form.licenseExpiry,
-        dateOfJoining,
-      });
-      toast.success('Driver created successfully');
-      router.push('/fleet/drivers');
-    } catch (error: any) {
-      toast.error(error?.message || 'Failed to create driver');
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Add Driver</h1>
-            <p className="text-sm text-muted-foreground">Register a new driver</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => router.back()}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting}>
-            {isSubmitting ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Save className="h-4 w-4 mr-1.5" />}
-            Save Driver
-          </Button>
-        </div>
-      </div>
+    <EntityForm<DriverFormValues>
+      title="Add driver"
+      description="Register a new fleet driver"
+      schema={schema}
+      defaultValues={{
+        name: '', phone: '', email: '', dateOfBirth: undefined, address: '',
+        licenseNumber: '', licenseExpiry: undefined as unknown as Date, licenseType: '', badgeNumber: '',
+        emergencyContactName: '', emergencyContactPhone: '', emergencyContactRelation: '', notes: '',
+      }}
+      onCancel={() => router.back()}
+      onSubmit={async (v) => {
+        const result = await fleetApi.drivers.create({
+          name: v.name,
+          phone: v.phone,
+          email: v.email || undefined,
+          dateOfBirth: v.dateOfBirth ? v.dateOfBirth.toISOString().split('T')[0] : undefined,
+          address: v.address || undefined,
+          licenseNumber: v.licenseNumber,
+          licenseExpiry: v.licenseExpiry.toISOString().split('T')[0] as string,
+          licenseType: v.licenseType || undefined,
+          badgeNumber: v.badgeNumber || undefined,
+          emergencyContactName: v.emergencyContactName || undefined,
+          emergencyContactPhone: v.emergencyContactPhone || undefined,
+          emergencyContactRelation: v.emergencyContactRelation || undefined,
+          notes: v.notes || undefined,
+        });
+        if (result) {
+          toast.success('Driver created successfully');
+          router.push('/fleet/drivers');
+        } else {
+          toast.error('Failed to create driver');
+        }
+      }}
+      renderSections={(form) => (
+        <>
+          <SectionCard title="Personal information" required>
+            <div className="grid gap-ds-4 sm:grid-cols-2">
+              <FormRow name="name" label="Full name" required wide>
+                <Input {...form.register('name')} id="name" placeholder="e.g., Rajesh Kumar" />
+              </FormRow>
+              <FormRow name="phone" label="Phone number" required>
+                <PhoneInput
+                  value={form.watch('phone') || ''}
+                  onChange={(v) => form.setValue('phone', v, { shouldDirty: true })}
+                />
+              </FormRow>
+              <FormRow name="email" label="Email">
+                <Input {...form.register('email')} id="email" type="email" placeholder="driver@example.com" />
+              </FormRow>
+              <FormRow name="dateOfBirth" label="Date of birth">
+                <DatePicker
+                  value={form.watch('dateOfBirth')}
+                  onChange={(d) => form.setValue('dateOfBirth', d, { shouldDirty: true })}
+                  maxDate={new Date()}
+                />
+              </FormRow>
+              <FormRow name="address" label="Address" wide>
+                <Input {...form.register('address')} id="address" placeholder="City, State" />
+              </FormRow>
+            </div>
+          </SectionCard>
 
-      <div className="flex-1 overflow-auto p-6">
-        <form onSubmit={handleSubmit} className="max-w-3xl mx-auto space-y-6">
-          {/* Personal Information */}
-          <Card>
-            <CardHeader><CardTitle className="text-base flex items-center gap-2"><UserPlus className="h-4 w-4" />Personal Information</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Full Name <span className="text-destructive">*</span></Label>
-                <Input id="name" placeholder="e.g., Rajesh Kumar" value={form.name} onChange={(e) => updateField('name', e.target.value)} required />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone Number <span className="text-destructive">*</span></Label>
-                  <Input id="phone" placeholder="+91 XXXXX XXXXX" value={form.phone} onChange={(e) => updateField('phone', e.target.value)} required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" placeholder="driver@example.com" value={form.email} onChange={(e) => updateField('email', e.target.value)} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <SectionCard title="License & credentials" required>
+            <div className="grid gap-ds-4 sm:grid-cols-2">
+              <FormRow name="licenseNumber" label="License number" required>
+                <Input {...form.register('licenseNumber')} id="licenseNumber" placeholder="e.g., DL-0001-2024" />
+              </FormRow>
+              <FormRow name="licenseExpiry" label="License expiry" required hint={form.formState.errors.licenseExpiry?.message}>
+                <DatePicker
+                  value={form.watch('licenseExpiry')}
+                  onChange={(d) => form.setValue('licenseExpiry', d as Date, { shouldDirty: true })}
+                  minDate={new Date()}
+                />
+              </FormRow>
+              <FormRow name="licenseType" label="License type">
+                <Input {...form.register('licenseType')} id="licenseType" placeholder="e.g., LMV, HMV, Transport" />
+              </FormRow>
+              <FormRow name="badgeNumber" label="Badge number">
+                <Input {...form.register('badgeNumber')} id="badgeNumber" placeholder="Police verification badge" />
+              </FormRow>
+            </div>
+          </SectionCard>
 
-          {/* License Details */}
-          <Card>
-            <CardHeader><CardTitle className="text-base">License & Credentials</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="licenseNumber">License Number <span className="text-destructive">*</span></Label>
-                  <Input id="licenseNumber" placeholder="e.g., DL-0001-2024" value={form.licenseNumber} onChange={(e) => updateField('licenseNumber', e.target.value)} required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="licenseExpiry">License Expiry <span className="text-destructive">*</span></Label>
-                  <Input id="licenseExpiry" type="date" value={form.licenseExpiry} onChange={(e) => updateField('licenseExpiry', e.target.value)} required />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="experience">Years of Experience</Label>
-                <Input id="experience" type="number" min={0} max={50} value={form.experience} onChange={(e) => updateField('experience', parseInt(e.target.value) || 0)} />
-              </div>
-            </CardContent>
-          </Card>
-        </form>
-      </div>
-    </div>
+          <SectionCard title="Emergency contact">
+            <div className="grid gap-ds-4 sm:grid-cols-3">
+              <FormRow name="emergencyContactName" label="Contact name">
+                <Input {...form.register('emergencyContactName')} id="emergencyContactName" placeholder="Name" />
+              </FormRow>
+              <FormRow name="emergencyContactPhone" label="Contact phone">
+                <PhoneInput
+                  value={form.watch('emergencyContactPhone') || ''}
+                  onChange={(v) => form.setValue('emergencyContactPhone', v, { shouldDirty: true })}
+                />
+              </FormRow>
+              <FormRow name="emergencyContactRelation" label="Relation">
+                <Input {...form.register('emergencyContactRelation')} id="emergencyContactRelation" placeholder="e.g., Spouse, Parent" />
+              </FormRow>
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Additional notes">
+            <FormRow name="notes" label="Notes">
+              <Textarea {...form.register('notes')} id="notes" placeholder="Any notes about the driver..." rows={3} />
+            </FormRow>
+          </SectionCard>
+        </>
+      )}
+    />
   );
 }
