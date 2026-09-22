@@ -144,11 +144,17 @@
       "timestamp": "2026-09-22T06:34:11.314Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:fleet-rate-cards": {
+      "status": "ok",
+      "timestamp": "2026-09-22T06:38:18.733Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "slice:fleet-drivers",
+    "id": "slice:fleet-rate-cards",
     "status": "ok",
-    "timestamp": "2026-09-22T06:34:11.314Z"
+    "timestamp": "2026-09-22T06:38:18.733Z"
   }
 }

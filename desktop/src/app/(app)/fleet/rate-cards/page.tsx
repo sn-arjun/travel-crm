@@ -1,106 +1,150 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
-import { Plus, MoreHorizontal, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { FilterBar } from '@/components/domain/filter-bar';
-import { useApiQuery } from '@/hooks/use-api';
+import { useRouter } from 'next/navigation';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { ListPage } from '@/components/domain';
+import { Button, Tag, useConfirm } from '@/components/ui';
 import { fleetApi } from '@/lib/api/fleet';
+import type { FleetRateCard } from '@/lib/api/fleet';
 import { toast } from 'sonner';
-import { VEHICLE_TYPE_LABELS } from '@travelcrm/shared';
+import { VEHICLE_TYPE_LABELS, FLEET_TRIP_TYPE_LABELS } from '@travelcrm/shared';
+
+function exportRateCardsCsv(rows: FleetRateCard[]) {
+  const header = ['Name', 'Vehicle Type', 'Trip Type', 'Base Fare', 'Per Km', 'Per Hour', 'Status'];
+  const lines = rows.map((rc) => [
+    rc.name,
+    VEHICLE_TYPE_LABELS[rc.vehicleType as keyof typeof VEHICLE_TYPE_LABELS] || rc.vehicleType,
+    rc.tripType ? (FLEET_TRIP_TYPE_LABELS[rc.tripType as keyof typeof FLEET_TRIP_TYPE_LABELS] || rc.tripType) : '',
+    String(rc.baseFare ?? 0),
+    String(rc.perKmRate ?? 0),
+    rc.perHourRate != null ? String(rc.perHourRate) : '',
+    rc.isActive !== false ? 'Active' : 'Inactive',
+  ]);
+  const csv = [header, ...lines].map((row) => row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'rate-cards.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export default function RateCardsPage() {
-  const [search, setSearch] = React.useState('');
+  const router = useRouter();
+  const { confirm, dialog } = useConfirm();
 
-  const rateCardsQuery = useApiQuery(
-    () => fleetApi.rateCards.list({ limit: 100 }).then(res => res.data),
-    []
-  );
-
-  React.useEffect(() => {
-    if (rateCardsQuery.error) {
-      toast.error('Failed to load rate cards');
+  async function handleDelete(rc: FleetRateCard) {
+    const ok = await confirm({
+      title: 'Delete rate card',
+      description: `Delete "${rc.name}"? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      tone: 'destructive',
+    });
+    if (!ok) return;
+    try {
+      await fleetApi.rateCards.delete(rc.id);
+      toast.success('Rate card deleted');
+    } catch {
+      toast.error('Failed to delete rate card');
     }
-  }, [rateCardsQuery.error]);
-
-  const rateCards: any[] = rateCardsQuery.data?.data ?? [];
-
-  const filtered = React.useMemo(() => {
-    if (!search) return rateCards;
-    const q = search.toLowerCase();
-    return rateCards.filter((rc: any) => rc.name.toLowerCase().includes(q));
-  }, [search, rateCards]);
+  }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Rate Cards</h1>
-          <p className="text-sm text-muted-foreground">{filtered.length} rate card{filtered.length !== 1 ? 's' : ''}</p>
-        </div>
-        <Button asChild><Link href="/fleet/rate-cards/new"><Plus className="h-4 w-4 mr-1.5" />New Rate Card</Link></Button>
-      </div>
-
-      <div className="px-6 py-3 border-b">
-        <FilterBar
-          searchValue={search}
-          onSearchChange={setSearch}
-          searchPlaceholder="Search rate cards..."
-        />
-      </div>
-
-      <div className="flex-1 overflow-auto">
-        {rateCardsQuery.loading ? (
-          <div className="flex items-center justify-center h-64 gap-2 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" /><span>Loading rate cards...</span>
-          </div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Vehicle Type</TableHead>
-                <TableHead>Base Fare</TableHead>
-                <TableHead>Per Km</TableHead>
-                <TableHead>Per Hour</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-10" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((rc: any) => (
-                <TableRow key={rc.id} className="cursor-pointer" onClick={() => {}}>
-                  <TableCell className="text-sm font-medium">{rc.name}</TableCell>
-                  <TableCell><Badge variant="outline" className="text-xs">{VEHICLE_TYPE_LABELS[rc.vehicleType as keyof typeof VEHICLE_TYPE_LABELS] || rc.vehicleType}</Badge></TableCell>
-                  <TableCell className="text-sm font-medium">₹{(rc.baseFare ?? 0).toLocaleString('en-IN')}</TableCell>
-                  <TableCell className="text-sm">₹{rc.perKmRate}</TableCell>
-                  <TableCell className="text-sm">{rc.perHourRate ? `₹${rc.perHourRate}` : '—'}</TableCell>
-                  <TableCell>
-                    {rc.isActive !== false
-                      ? <Badge variant="outline" className="bg-green-100 text-green-700 border-transparent text-[10px]">Active</Badge>
-                      : <Badge variant="outline" className="bg-gray-100 text-gray-600 border-transparent text-[10px]">Inactive</Badge>
-                    }
-                  </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem asChild>
-                          <Link href={`/fleet/rate-cards/${rc.id}/edit`}>Edit</Link>
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </div>
-    </div>
+    <>
+    {dialog}
+    <ListPage<FleetRateCard>
+      title="Rate Cards"
+      description="Pricing for vehicle and trip type combinations."
+      getRowId={(rc) => rc.id}
+      fetcher={({ page, limit, search }) =>
+        fleetApi.rateCards.list({ page, limit, search: search || undefined })
+      }
+      columns={[
+        { key: 'name', header: 'Name', sortable: true },
+        {
+          key: 'vehicleType',
+          header: 'Vehicle Type',
+          cell: (rc) => (
+            <Tag>{VEHICLE_TYPE_LABELS[rc.vehicleType as keyof typeof VEHICLE_TYPE_LABELS] || rc.vehicleType}</Tag>
+          ),
+        },
+        {
+          key: 'tripType',
+          header: 'Trip Type',
+          cell: (rc) =>
+            rc.tripType ? (FLEET_TRIP_TYPE_LABELS[rc.tripType as keyof typeof FLEET_TRIP_TYPE_LABELS] || rc.tripType) : '—',
+        },
+        {
+          key: 'baseFare',
+          header: 'Base Fare',
+          align: 'right',
+          sortable: true,
+          cell: (rc) => (rc.baseFare ?? 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR' }),
+        },
+        {
+          key: 'perKmRate',
+          header: 'Per Km',
+          align: 'right',
+          sortable: true,
+          cell: (rc) => (rc.perKmRate ?? 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR' }),
+        },
+        {
+          key: 'perHourRate',
+          header: 'Per Hour',
+          align: 'right',
+          cell: (rc) => (rc.perHourRate != null ? rc.perHourRate.toLocaleString('en-IN', { style: 'currency', currency: 'INR' }) : '—'),
+        },
+        {
+          key: 'isActive',
+          header: 'Status',
+          cell: (rc) => (
+            <Tag tone={rc.isActive !== false ? 'success' : 'neutral'}>{rc.isActive !== false ? 'Active' : 'Inactive'}</Tag>
+          ),
+        },
+      ]}
+      primaryAction={
+        <Button size="sm" onClick={() => router.push('/fleet/rate-cards/new')}>
+          <Plus aria-hidden="true" /> New rate card
+        </Button>
+      }
+      rowActions={(rc) => (
+        <>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Edit"
+            onClick={() => router.push(`/fleet/rate-cards/${rc.id}/edit`)}
+          >
+            <Pencil />
+          </Button>
+          <Button variant="ghost" size="icon-sm" aria-label="Delete" onClick={() => void handleDelete(rc)}>
+            <Trash2 />
+          </Button>
+        </>
+      )}
+      onRowClick={(rc) => router.push(`/fleet/rate-cards/${rc.id}/edit`)}
+      bulkActions={[
+        {
+          label: 'Delete',
+          destructive: true,
+          onSelect: (rows) =>
+            Promise.all(rows.map((r) => fleetApi.rateCards.delete(r.id))).then(() => {
+              toast.success(`${rows.length} rate card${rows.length !== 1 ? 's' : ''} deleted`);
+            }),
+        },
+      ]}
+      onExport={(rows) => exportRateCardsCsv(rows)}
+      searchPlaceholder="Search rate cards..."
+      emptyTitle="No rate cards yet"
+      emptyDescription="Create a rate card to define pricing for a vehicle type."
+      emptyAction={
+        <Button size="sm" onClick={() => router.push('/fleet/rate-cards/new')}>
+          <Plus aria-hidden="true" /> New rate card
+        </Button>
+      }
+    />
+    </>
   );
 }

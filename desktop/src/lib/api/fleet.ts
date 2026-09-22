@@ -345,12 +345,37 @@ export interface CreateFleetRateCardRequest {
 export interface UpdateFleetRateCardRequest {
   name?: string;
   vehicleType?: string;
+  tripType?: string;
   baseFare?: number;
   perKmRate?: number;
   perHourRate?: number;
+  minimumKm?: number;
+  minimumHours?: number;
+  extraKmRate?: number;
+  extraHourRate?: number;
+  nightCharge?: number;
+  driverAllowance?: number;
+  tollIncluded?: boolean;
+  parkingIncluded?: boolean;
+  isActive?: boolean;
   validFrom?: string;
   validTo?: string;
   customFields?: Record<string, unknown>;
+}
+
+export interface RateCardEstimateRequest {
+  rateCardId: string;
+  distanceKm: number;
+  hours?: number;
+}
+
+export interface RateCardEstimateResult {
+  baseFare: number;
+  distanceCost: number;
+  timeCost: number;
+  nightCharge: number;
+  driverAllowance: number;
+  total: number;
 }
 
 export interface CreateTripCostRequest {
@@ -742,6 +767,7 @@ export const fleetApi = {
     list: (params?: {
       page?: number;
       limit?: number;
+      search?: string;
       vehicleType?: string;
       sortBy?: string;
       sortOrder?: 'asc' | 'desc';
@@ -759,5 +785,11 @@ export const fleetApi = {
 
     delete: (id: string) =>
       client.delete<ApiResponse<void>>(API_ENDPOINTS.fleet.rateCards.byId(id)),
+
+    lookup: (params: { vehicleType: string; tripType?: string }) =>
+      client.get<ApiResponse<FleetRateCard | null>>('/fleet/rate-cards/lookup', { params }),
+
+    estimate: (data: RateCardEstimateRequest) =>
+      client.post<ApiResponse<RateCardEstimateResult>>('/fleet/rate-cards/estimate', data),
   },
 };
