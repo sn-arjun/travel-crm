@@ -2,253 +2,229 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
+import { Eye, Phone, PhoneOff, PhoneIncoming, PhoneOutgoing, Play, Plus, Trash2 } from 'lucide-react';
+import { ListPage } from '@/components/domain';
 import {
-  Phone, PhoneOff, Search, Play, Download, MoreHorizontal,
-  Plus, Clock, TrendingUp, AlertCircle, Loader,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table';
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu';
-import { cn } from '@/lib/utils';
-
-import { useApiQuery } from '@/hooks/use-api';
+  Button, Tag, Skeleton,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuLabel,
+  DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator,
+} from '@/components/ui';
+import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { voipApi, type Call } from '@/lib/api/voip';
-
-interface CallRecord extends Call {
-  contactName: string;
-}
+import { toast } from 'sonner';
 
 function formatDuration(seconds: number): string {
-  if (seconds === 0) return '—';
+  if (!seconds) return '—';
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return `${mins}m ${secs}s`;
 }
 
-function getInitials(name: string) {
-  return name.split(' ').map((n: any) => n[0]).join('').toUpperCase().slice(0, 2);
+function statusTone(status: Call['status']): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
+  if (status === 'completed') return 'success';
+  if (status === 'no_answer' || status === 'failed') return 'danger';
+  if (status === 'in_progress' || status === 'ringing') return 'info';
+  return 'neutral';
+}
+
+function exportCallsCsv(rows: Call[]) {
+  const header = ['Direction', 'From', 'To', 'Status', 'Duration (s)', 'Start time'];
+  const lines = rows.map((c) => [
+    c.direction,
+    c.from,
+    c.to,
+    c.status,
+    String(c.duration ?? 0),
+    c.startTime,
+  ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','));
+  const csv = [header.join(','), ...lines].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `call-log-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export default function CallLogPage() {
   const router = useRouter();
-  const [search, setSearch] = React.useState('');
-  const [typeFilter, setTypeFilter] = React.useState('all');
+  const { enabled, reason, upgradeHref, loading: gateLoading } = useFeatureGate('voip_calling');
+  const [directionFilter, setDirectionFilter] = React.useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = React.useState<string | null>(null);
+  const [filterMenuOpen, setFilterMenuOpen] = React.useState(false);
 
-  const { data: response = {}, loading, error } = useApiQuery<any>(
-    () => voipApi.calls.list({ direction: typeFilter !== 'all' ? (typeFilter === 'incoming' ? 'inbound' : 'outbound') : undefined }),
-    [typeFilter],
-  );
+  if (gateLoading) {
+    return <Skeleton className="h-9 w-32" />;
+  }
 
-  const calls = ((response?.data ?? []) as Call[]);
-
-  const filtered = React.useMemo(() => {
-    if (!calls || !Array.isArray(calls)) return [];
-    let result = [...calls];
-    if (search) {
-      const q = search.toLowerCase();
-      result = result.filter((c: any) => {
-        const contactName = c.contactName || c.from || '';
-        return contactName.toLowerCase().includes(q);
-      });
-    }
-    return result;
-  }, [calls, search]);
-
-  // Calculate stats
-  const stats = React.useMemo(() => {
-    const totalDuration = filtered.reduce((sum: any, c: any) => sum + (c.duration ?? 0), 0);
-    const missedCount = filtered.filter((c: any) => c.status === 'no_answer').length;
-    const completedCount = filtered.filter((c: any) => c.status === 'completed').length;
-    const avgDuration = completedCount > 0 ? Math.floor(totalDuration / completedCount) : 0;
-
-    return {
-      todayCount: filtered.length,
-      avgDuration,
-      missedCount,
-    };
-  }, [filtered]);
-
-  return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-            Call Log
-          </h1>
-          <p className="text-sm text-muted-foreground">{filtered.length} calls</p>
-        </div>
-        <Button onClick={() => router.push('/communication/calls/dial')}>
-          <Phone className="h-4 w-4 mr-1.5" /> Click to Call
+  if (!enabled) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-ds-3 p-ds-9 text-center">
+        <Phone className="size-10 text-ds-foreground-subtle" aria-hidden="true" />
+        <p className="text-sm text-ds-foreground-muted">
+          {reason === 'cap_exceeded' ? 'Call limit reached for your plan.' : 'VoIP calling is not enabled on your plan.'}
+        </p>
+        <Button asChild size="sm">
+          <a href={upgradeHref}>Upgrade to enable</a>
         </Button>
       </div>
+    );
+  }
 
-      {/* Stats Cards */}
-      <div className="px-6 py-4 border-b">
-        <div className="grid grid-cols-3 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Calls Today</p>
-                  <p className="text-2xl font-bold">{stats.todayCount}</p>
-                </div>
-                <Phone className="h-5 w-5 text-blue-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Avg Duration</p>
-                  <p className="text-2xl font-bold">{formatDuration(stats.avgDuration)}</p>
-                </div>
-                <Clock className="h-5 w-5 text-amber-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Missed Calls</p>
-                  <p className="text-2xl font-bold">{stats.missedCount}</p>
-                </div>
-                <AlertCircle className="h-5 w-5 text-red-500" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+  const filters = [
+    ...(directionFilter ? [{ id: 'direction', label: `Direction: ${directionFilter}`, value: directionFilter }] : []),
+    ...(statusFilter ? [{ id: 'status', label: `Status: ${statusFilter.replace('_', ' ')}`, value: statusFilter }] : []),
+  ];
 
-      {/* Toolbar */}
-      <div className="flex items-center gap-3 px-6 py-3 border-b">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by contact or notes..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 h-9"
-          />
-        </div>
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-          className="h-9 px-3 rounded-md border border-input bg-background text-sm"
-        >
-          <option value="all">All Types</option>
-          <option value="incoming">Incoming</option>
-          <option value="outgoing">Outgoing</option>
-          <option value="missed">Missed</option>
-        </select>
-      </div>
-
-      {/* Table */}
-      <div className="flex-1 overflow-auto">
-        {loading ? (
-          <div className="flex items-center justify-center h-full">
-            <Loader className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : error || filtered.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-muted-foreground">
-            <p>{error ? 'Failed to load calls' : 'No calls found'}</p>
-          </div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Contact</TableHead>
-                <TableHead>Date & Time</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Duration</TableHead>
-                <TableHead>Recording</TableHead>
-                <TableHead className="w-10" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((call: any) => {
-                const direction = call.direction ?? 'outbound';
-                const callType = direction === 'inbound' ? 'incoming' : 'outgoing';
-                const contactName = call.contactName || call.from || 'Unknown';
-                const dateTime = new Date(call.startTime).toLocaleString('en-IN');
-                return (
-                  <TableRow key={call.id} className="hover:bg-muted/50 cursor-pointer" onClick={() => {
-                    const phoneNumber = call.direction === 'inbound' ? call.from : call.to;
-                    if (phoneNumber) router.push(`/communication/calls/dial?phone=${encodeURIComponent(phoneNumber)}`);
-                  }}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-8 w-8">
-                          <AvatarFallback className="text-xs">{getInitials(contactName)}</AvatarFallback>
-                        </Avatar>
-                        <span className="text-sm font-medium">{contactName}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{dateTime}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          'text-xs',
-                          callType === 'incoming' && 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400',
-                          callType === 'outgoing' && 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400',
-                          call.status === 'no_answer' && 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400',
-                        )}
-                      >
-                        {callType === 'incoming' && <Phone className="h-3 w-3 mr-1" />}
-                        {callType === 'outgoing' && <Phone className="h-3 w-3 mr-1 rotate-180" />}
-                        {call.status === 'no_answer' && <PhoneOff className="h-3 w-3 mr-1" />}
-                        {callType.charAt(0).toUpperCase() + callType.slice(1)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm font-medium">{formatDuration(call.duration ?? 0)}</TableCell>
-                    <TableCell>
-                      {call.recordingUrl ? (
-                        <Button variant="ghost" size="icon-sm" className="h-8 w-8">
-                          <Play className="h-4 w-4" />
-                        </Button>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell onClick={(e) => e.stopPropagation()}>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon-sm">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {call.recordingUrl && (
-                            <DropdownMenuItem>
-                              <Download className="h-3.5 w-3.5 mr-2" />
-                              Download recording
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem>Edit notes</DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        )}
-      </div>
-    </div>
+  return (
+    <ListPage<Call>
+      title="Call Log"
+      description="Inbound and outbound calls across your team."
+      getRowId={(c) => c.id}
+      fetcher={({ page, limit, search }) =>
+        voipApi.calls.list({
+          page,
+          limit,
+          direction: directionFilter === 'incoming' ? 'inbound' : directionFilter === 'outgoing' ? 'outbound' : undefined,
+          status: statusFilter ?? undefined,
+          sortBy: 'startTime',
+          sortOrder: 'desc',
+        }).then((r) => {
+          if (!search) return r;
+          const q = search.toLowerCase();
+          const filtered = r.data.data.filter((c) => c.from.toLowerCase().includes(q) || c.to.toLowerCase().includes(q));
+          return { ...r, data: { ...r.data, data: filtered } };
+        })
+      }
+      filters={filters}
+      onRemoveFilter={(id) => {
+        if (id === 'direction') setDirectionFilter(null);
+        if (id === 'status') setStatusFilter(null);
+      }}
+      onClearFilters={() => {
+        setDirectionFilter(null);
+        setStatusFilter(null);
+      }}
+      onOpenFilters={() => setFilterMenuOpen(true)}
+      searchPlaceholder="Search by phone number…"
+      columns={[
+        {
+          key: 'direction', header: 'Direction', width: '120px',
+          cell: (c) => (
+            <div className="flex items-center gap-ds-2">
+              {c.direction === 'inbound' ? (
+                <PhoneIncoming className="size-3.5 text-ds-info" aria-hidden="true" />
+              ) : (
+                <PhoneOutgoing className="size-3.5 text-ds-success" aria-hidden="true" />
+              )}
+              <span className="text-sm">{c.direction === 'inbound' ? 'Incoming' : 'Outgoing'}</span>
+            </div>
+          ),
+        },
+        {
+          key: 'number', header: 'Number', sortable: true,
+          cell: (c) => <span className="font-mono text-sm">{c.direction === 'inbound' ? c.from : c.to}</span>,
+        },
+        {
+          key: 'startTime', header: 'Date & time', sortable: true,
+          cell: (c) => <span className="text-sm text-ds-foreground-muted">{new Date(c.startTime).toLocaleString('en-IN')}</span>,
+        },
+        {
+          key: 'status', header: 'Status',
+          cell: (c) => (
+            <Tag tone={statusTone(c.status)}>
+              {c.status === 'no_answer' && <PhoneOff className="size-3" aria-hidden="true" />}
+              {c.status.replace('_', ' ')}
+            </Tag>
+          ),
+        },
+        {
+          key: 'duration', header: 'Duration', align: 'right', sortable: true,
+          cell: (c) => <span className="text-sm">{formatDuration(c.duration ?? 0)}</span>,
+        },
+        {
+          key: 'recording', header: 'Recording',
+          cell: (c) => (c.recordingUrl ? <Play className="size-4 text-ds-foreground-muted" aria-hidden="true" /> : <span className="text-xs text-ds-foreground-subtle">—</span>),
+        },
+      ]}
+      primaryAction={
+        <Button size="sm" onClick={() => router.push('/communication/calls/dial')} className="gap-ds-2">
+          <Plus aria-hidden="true" /> Click to call
+        </Button>
+      }
+      headerActions={
+        <>
+          <DropdownMenu open={filterMenuOpen} onOpenChange={setFilterMenuOpen}>
+            <DropdownMenuTrigger asChild>
+              <span className="sr-only">Open filters</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuLabel>Direction</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={directionFilter ?? ''} onValueChange={(v) => setDirectionFilter(v || null)}>
+                <DropdownMenuRadioItem value="">All</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="incoming">Incoming</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="outgoing">Outgoing</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Status</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={statusFilter ?? ''} onValueChange={(v) => setStatusFilter(v || null)}>
+                <DropdownMenuRadioItem value="">All</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="completed">Completed</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="no_answer">Missed</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="failed">Failed</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button variant="outline" size="sm" onClick={() => router.push('/communication/calls/analytics')}>
+            Analytics
+          </Button>
+        </>
+      }
+      rowActions={(c) => (
+        <>
+          <Button variant="ghost" size="icon-sm" aria-label="View"
+            onClick={() => router.push(`/communication/calls/${c.id}`)}><Eye /></Button>
+          <Button variant="ghost" size="icon-sm" aria-label="Call back"
+            onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(c.direction === 'inbound' ? c.from : c.to)}`)}><Phone /></Button>
+          <Button variant="ghost" size="icon-sm" aria-label="Delete"
+            onClick={async () => {
+              const result = await voipApi.calls.remove(c.id).catch(() => null);
+              if (result !== null) toast.success('Call log removed');
+              else toast.error('Failed to remove call log');
+            }}><Trash2 /></Button>
+        </>
+      )}
+      onRowClick={(c) => router.push(`/communication/calls/${c.id}`)}
+      bulkActions={[{
+        label: 'Delete', destructive: true, icon: <Trash2 />,
+        onSelect: async (rows) => {
+          await Promise.all(rows.map((r) => voipApi.calls.remove(r.id)));
+          toast.success(`${rows.length} call${rows.length > 1 ? 's' : ''} removed`);
+        },
+      }]}
+      onExport={async () => {
+        // Always export the full filtered dataset from the server, not just
+        // what's been loaded into the table via infinite scroll.
+        const direction = directionFilter === 'incoming' ? 'inbound' : directionFilter === 'outgoing' ? 'outbound' : undefined;
+        const all: Call[] = [];
+        let page = 1;
+        const limit = 200;
+        for (;;) {
+          const r = await voipApi.calls.list({ page, limit, direction, status: statusFilter ?? undefined });
+          all.push(...r.data.data);
+          if (all.length >= r.data.pagination.total || r.data.data.length === 0) break;
+          page += 1;
+        }
+        exportCallsCsv(all);
+      }}
+      emptyTitle="No calls yet"
+      emptyDescription="Calls placed or received through the dialer will show up here."
+      emptyAction={
+        <Button size="sm" onClick={() => router.push('/communication/calls/dial')} className="gap-ds-2">
+          <Plus aria-hidden="true" /> Click to call
+        </Button>
+      }
+    />
   );
 }

@@ -99,6 +99,16 @@ export interface CreateOutboundCallRequest {
   contactId?: string;
 }
 
+export interface UpdateCallRequest {
+  notes?: string;
+  contactId?: string;
+  leadId?: string;
+}
+
+export interface TransferCallRequest {
+  to: string;
+}
+
 export const voipApi = {
   settings: {
     get: () =>
@@ -139,6 +149,21 @@ export const voipApi = {
 
     createOutbound: (data: CreateOutboundCallRequest) =>
       client.post<ApiResponse<Call>>(API_ENDPOINTS.voip.outbound, data),
+
+    update: (id: string, data: UpdateCallRequest) =>
+      client.put<ApiResponse<Call>>(API_ENDPOINTS.voip.callById(id), data),
+
+    remove: (id: string) =>
+      client.delete<ApiResponse<void>>(API_ENDPOINTS.voip.callById(id)),
+
+    end: (id: string) =>
+      client.post<ApiResponse<Call>>(`${API_ENDPOINTS.voip.callById(id)}/end`),
+
+    transfer: (id: string, data: TransferCallRequest) =>
+      client.post<ApiResponse<Call>>(`${API_ENDPOINTS.voip.callById(id)}/transfer`, data),
+
+    getActions: (id: string) =>
+      client.get<ApiResponse<{ id: string; label: string }[]>>(`${API_ENDPOINTS.voip.callById(id)}/actions`),
   },
 
   analytics: {
@@ -156,6 +181,9 @@ export const voipApi = {
       sortOrder?: 'asc' | 'desc';
     }) =>
       client.get<ApiResponse<PaginatedResponse<MissedCall>>>(API_ENDPOINTS.voip.missed, { params }),
+
+    markReturned: (id: string) =>
+      client.post<ApiResponse<MissedCall>>(`${API_ENDPOINTS.voip.missed}/${id}/mark-returned`),
   },
 
   transcripts: {
@@ -171,5 +199,8 @@ export const voipApi = {
 
     getByCall: (callId: string) =>
       client.get<ApiResponse<Transcript>>(`${API_ENDPOINTS.voip.transcripts}/${callId}`),
+
+    update: (callLogId: string, data: { text?: string; sentiment?: Transcript['sentiment']; keywords?: string[] }) =>
+      client.put<ApiResponse<Transcript>>(`${API_ENDPOINTS.voip.transcripts}/${callLogId}`, data),
   },
 };
