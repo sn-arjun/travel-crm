@@ -126,11 +126,17 @@
       "timestamp": "2026-09-22T06:23:49.223Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:driver-app-api": {
+      "status": "ok",
+      "timestamp": "2026-09-22T06:24:29.160Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "slice:documents",
+    "id": "slice:driver-app-api",
     "status": "ok",
-    "timestamp": "2026-09-22T06:23:49.223Z"
+    "timestamp": "2026-09-22T06:24:29.160Z"
   }
 }

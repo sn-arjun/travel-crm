@@ -51,7 +51,7 @@
     "sendMessageDialog": false,
     "themedExport": false
   },
-  "notes": "INTENTIONALLY UI-LESS: 18 endpoints serving the Flutter driver_app with its own OTP auth. Not orphaned — consumed by packages/driver_app. No desktop UI should be built. Listed so the endpoint budget reconciles; the slice job is a no-op beyond an API contract smoke spec.",
+  "notes": "INTENTIONALLY UI-LESS: 18 endpoints serving the Flutter driver_app with its own OTP auth. Confirmed not orphaned — all 18 endpoints are referenced in packages/shared/lib/api_client/api_endpoints.dart (driver* constants, lines 482-498), consumed by the Flutter driver app. No desktop UI should be built. Slice job verified as no-op; the smoke spec at desktop/e2e/driver-app-api.spec.ts is owned by the verify phase, not this slice.",
   "showcaseScript": [
     "Confirm the driver mobile API is reachable",
     "Accept a trip as a driver and check in",
