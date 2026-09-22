@@ -98,14 +98,15 @@
       "repairAttempts": 0
     },
     "slice:campaigns": {
-      "status": "context-limit",
-      "timestamp": "2026-08-23T09:58:33.871Z",
-      "error": "stdout(tail): You've hit your session limit · resets 7:40pm (Asia/Kolkata)\nClient.listTools() called but server does not advertise tools capability - returning empty list"
+      "status": "ok",
+      "timestamp": "2026-09-22T06:07:10.806Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "slice:calls",
+    "id": "slice:campaigns",
     "status": "ok",
-    "timestamp": "2026-09-22T06:02:14.098Z"
+    "timestamp": "2026-09-22T06:07:10.806Z"
   }
 }

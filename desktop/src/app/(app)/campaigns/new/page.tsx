@@ -2,637 +2,342 @@
 
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ChevronRight, Mail, MessageSquare, Calendar, FileText, Users } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { z } from 'zod';
+import { Mail, MessageSquare } from 'lucide-react';
+import { EntityForm, FormRow, RelationCombobox } from '@/components/domain';
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Separator } from '@/components/ui/separator';
-import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
-import { useApiMutation, useApiQuery } from '@/hooks/use-api';
+  Input, Textarea, SectionCard, Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  DatePicker, Tag, Checkbox,
+} from '@/components/ui';
+import { useApiQuery } from '@/hooks/use-api';
 import { campaignsApi } from '@/lib/api/campaigns';
 import { templatesApi, type MessageTemplate } from '@/lib/api/templates';
 import { contactsApi } from '@/lib/api/contacts';
-import { Combobox } from '@/components/ui/combobox';
+import { toast } from 'sonner';
 
-interface FormState {
-  // Card 1: Campaign Details
-  campaignName: string;
-  campaignType: 'email' | 'sms' | 'whatsapp';
-  description: string;
-
-  // Card 2: Audience
-  audienceType: 'tags' | 'lead_status' | 'custom';
-  selectedTags: string[];
-  selectedStatuses: string[];
-  segmentId: string;
-  segmentName: string;
-
-  // Card 3: Content
-  contentSource: 'template' | 'custom';
-  selectedTemplate: string;
-  customContent: string;
-  emailSubject: string;
-
-  // Card 4: Schedule
-  scheduleType: 'now' | 'later';
-  scheduleDate: string;
-  scheduleTime: string;
-}
-
-const initialFormState: FormState = {
-  campaignName: '',
-  campaignType: 'email',
-  description: '',
-  audienceType: 'tags',
-  selectedTags: [],
-  selectedStatuses: [],
-  segmentId: '',
-  segmentName: '',
-  contentSource: 'template',
-  selectedTemplate: '',
-  customContent: '',
-  emailSubject: '',
-  scheduleType: 'now',
-  scheduleDate: '',
-  scheduleTime: '',
-};
-
-const leadStatuses = [
-  'New', 'Contacted', 'Qualified', 'Proposal Sent', 'Negotiation', 'Won', 'Lost',
-];
-
-// SMS character limit
 const SMS_LIMIT = 160;
+
+const leadStatuses = ['new', 'contacted', 'qualified', 'proposal_sent', 'negotiation', 'won', 'lost'];
+
+const schema = z.object({
+  name: z.string().min(1, 'Campaign name is required'),
+  type: z.enum(['email', 'sms', 'whatsapp']),
+  description: z.string().optional(),
+  audienceType: z.enum(['tags', 'lead_status', 'segment']),
+  tags: z.array(z.string()),
+  statuses: z.array(z.string()),
+  segmentId: z.string().optional(),
+  contentSource: z.enum(['template', 'custom']),
+  templateId: z.string().optional(),
+  subject: z.string().optional(),
+  body: z.string().optional(),
+  scheduleType: z.enum(['now', 'later']),
+  scheduleDate: z.date().optional(),
+  scheduleTime: z.string().optional(),
+}).refine((v) => v.audienceType !== 'tags' || v.tags.length > 0, {
+  message: 'Select at least one tag', path: ['tags'],
+}).refine((v) => v.audienceType !== 'lead_status' || v.statuses.length > 0, {
+  message: 'Select at least one status', path: ['statuses'],
+}).refine((v) => v.contentSource !== 'template' || !!v.templateId, {
+  message: 'Select a template', path: ['templateId'],
+}).refine((v) => v.contentSource !== 'custom' || !!v.body?.trim(), {
+  message: 'Write the message content', path: ['body'],
+}).refine((v) => v.type !== 'email' || v.contentSource !== 'custom' || !!v.subject?.trim(), {
+  message: 'Email subject is required', path: ['subject'],
+}).refine((v) => v.scheduleType !== 'later' || (!!v.scheduleDate && !!v.scheduleTime), {
+  message: 'Pick a date and time', path: ['scheduleDate'],
+});
+type CampaignFormValues = z.infer<typeof schema>;
 
 export default function NewCampaignPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [form, setForm] = React.useState<FormState>(initialFormState);
-  const [currentStep, setCurrentStep] = React.useState(1);
 
-  // Auto-populate from URL params (e.g., navigating from a segment's "Use in Campaign")
-  React.useEffect(() => {
-    const segmentId = searchParams.get('segmentId');
-    const segmentName = searchParams.get('segmentName');
-    if (segmentId) {
-      setForm((prev) => ({ ...prev, audienceType: 'custom', segmentId, segmentName: segmentName ?? '' }));
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const { mutate: createCampaign, loading: isCreating } = useApiMutation(campaignsApi.create);
-  const { mutate: scheduleCampaign, loading: isScheduling } = useApiMutation((data: { id: string; scheduledAt: string }) => campaignsApi.schedule(data.id, { scheduledFor: data.scheduledAt }));
-
-  // Fetch API data for form fields
-  const { data: templatesResponse } = useApiQuery(
-    () => templatesApi.list({ channel: form.campaignType, limit: 100 }),
-    [form.campaignType],
-  );
-  const apiTemplates: MessageTemplate[] = (templatesResponse?.data?.data ?? templatesResponse?.data ?? []) as MessageTemplate[];
-
-  const { data: tagsResponse } = useApiQuery(
-    () => contactsApi.getTags(),
-    [],
-  );
+  const { data: tagsResponse } = useApiQuery(() => contactsApi.getTags(), []);
   const availableTags: string[] = (tagsResponse?.data ?? []) as string[];
 
-  const handleFieldChange = (field: keyof FormState, value: unknown) => {
-    setForm((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
-
-  const handleTagToggle = (tag: string) => {
-    setForm((prev) => ({
-      ...prev,
-      selectedTags: prev.selectedTags.includes(tag)
-        ? prev.selectedTags.filter((t: any) => t !== tag)
-        : [...prev.selectedTags, tag],
-    }));
-  };
-
-  const handleStatusToggle = (status: string) => {
-    setForm((prev) => ({
-      ...prev,
-      selectedStatuses: prev.selectedStatuses.includes(status)
-        ? prev.selectedStatuses.filter((s: any) => s !== status)
-        : [...prev.selectedStatuses, status],
-    }));
-  };
-
-  const isStep1Valid = form.campaignName.trim() !== '' && form.campaignType;
-  const isStep2Valid =
-    (form.audienceType === 'tags' && form.selectedTags.length > 0) ||
-    (form.audienceType === 'lead_status' && form.selectedStatuses.length > 0) ||
-    form.audienceType === 'custom';
-  const isStep3Valid =
-    (form.contentSource === 'template' && form.selectedTemplate) ||
-    (form.contentSource === 'custom' && form.customContent.trim() !== '');
-  const isStep4Valid = form.scheduleType === 'now' || (() => {
-    if (!form.scheduleDate || !form.scheduleTime) return false;
-    const scheduled = new Date(`${form.scheduleDate}T${form.scheduleTime}`);
-    const minTime = new Date(Date.now() + 15 * 60 * 1000);
-    const maxTime = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
-    return scheduled >= minTime && scheduled <= maxTime;
-  })();
-
-  const stepValid = [isStep1Valid, isStep2Valid, isStep3Valid, isStep4Valid];
-
-  const buildCampaignPayload = (extraFields?: Partial<{ status: 'draft' | 'running' | 'scheduled' | 'completed' | 'paused'; startDate: string }>) => {
-    const segmentFilters: Record<string, unknown> = {};
-    if (form.audienceType === 'tags' && form.selectedTags.length > 0) {
-      segmentFilters.tags = form.selectedTags;
-    }
-    return {
-      name: form.campaignName,
-      subject: form.emailSubject || form.campaignName, // subject is required by backend
-      body: form.contentSource === 'custom' ? form.customContent : undefined,
-      templateId: form.contentSource === 'template' && form.selectedTemplate ? form.selectedTemplate : undefined,
-      segmentFilters,
-      ...extraFields,
-    };
-  };
-
-  const handleSaveDraft = async () => {
-    if (!isStep1Valid) {
-      toast.error('Please complete campaign details');
-      return;
-    }
-
-    const result = await createCampaign(buildCampaignPayload());
-
-    if (result) {
-      toast.success('Campaign saved as draft!');
-      router.push('/campaigns');
-    } else {
-      toast.error('Failed to save campaign');
-    }
-  };
-
-  const handleLaunch = async () => {
-    if (!stepValid.every((v) => v)) {
-      toast.error('Please complete all required fields');
-      return;
-    }
-
-    const result = await createCampaign(
-      buildCampaignPayload({
-        startDate: form.scheduleType === 'later' ? `${form.scheduleDate}T${form.scheduleTime}:00` : undefined,
-      }),
-    );
-
-    if (result) {
-      if (form.scheduleType === 'later') {
-        const scheduledAt = `${form.scheduleDate}T${form.scheduleTime}:00`;
-        // @ts-ignore-next-line
-        const scheduleResult = await scheduleCampaign({ id: result.id, scheduledAt });
-        if (scheduleResult) {
-          toast.success('Campaign scheduled successfully!');
-        } else {
-          toast.error('Campaign created but failed to schedule');
-        }
-      } else {
-        toast.success('Campaign launched successfully!');
-      }
-      router.push('/campaigns');
-    } else {
-      toast.error('Failed to create campaign');
-    }
-  };
-
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-            Create New Campaign
-          </h1>
-          <p className="text-sm text-muted-foreground">Step {currentStep} of 4</p>
-        </div>
-      </div>
+    <EntityForm<CampaignFormValues>
+      title="New campaign"
+      description="Reach contacts by email, SMS or WhatsApp."
+      schema={schema}
+      defaultValues={{
+        name: '',
+        type: 'email',
+        description: '',
+        audienceType: 'tags',
+        tags: [],
+        statuses: [],
+        segmentId: searchParams.get('segmentId') || '',
+        contentSource: 'template',
+        templateId: '',
+        subject: '',
+        body: '',
+        scheduleType: 'now',
+        scheduleDate: undefined,
+        scheduleTime: '',
+      }}
+      prefillFromParams={{ segmentId: 'segmentId' }}
+      onCancel={() => router.back()}
+      onSubmit={async (v) => {
+        const segmentFilters: Record<string, unknown> = {};
+        if (v.audienceType === 'tags') segmentFilters.tags = v.tags;
+        if (v.audienceType === 'lead_status') segmentFilters.statuses = v.statuses;
+        if (v.audienceType === 'segment' && v.segmentId) segmentFilters.segmentId = v.segmentId;
 
-      {/* Progress Bar */}
-      <div className="px-6 py-4 border-b">
-        <div className="flex items-center justify-between mb-2">
-          {Array.from({ length: 4 }, (_, i) => (
-            <React.Fragment key={i}>
-              <button
-                onClick={() => setCurrentStep(i + 1)}
-                className={cn(
-                  'h-10 w-10 rounded-full flex items-center justify-center font-semibold transition-colors',
-                  stepValid[i]
-                    ? 'bg-primary text-primary-foreground cursor-pointer'
-                    : 'bg-muted text-muted-foreground',
-                )}
-              >
-                {i + 1}
-              </button>
-              {i < 3 && (
-                <div
-                  className={cn(
-                    'flex-1 h-1 mx-2 transition-colors',
-                    stepValid[i] ? 'bg-primary' : 'bg-muted',
-                  )}
-                />
-              )}
-            </React.Fragment>
-          ))}
-        </div>
-        <div className="flex justify-between text-xs text-muted-foreground">
-          <span>Campaign Details</span>
-          <span>Audience</span>
-          <span>Content</span>
-          <span>Schedule</span>
-        </div>
-      </div>
+        const scheduledAt = v.scheduleType === 'later' && v.scheduleDate && v.scheduleTime
+          ? (() => {
+              const [h, m] = (v.scheduleTime as string).split(':').map(Number);
+              const d = new Date(v.scheduleDate as Date);
+              d.setHours(h ?? 0, m ?? 0, 0, 0);
+              return d;
+            })()
+          : undefined;
 
-      {/* Content Area */}
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-2xl mx-auto space-y-4">
-          {/* Step 1: Campaign Details */}
-          {currentStep === 1 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  Campaign Details
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Campaign Name *</label>
-                  <Input
-                    placeholder="e.g., Summer Holiday Offers"
-                    value={form.campaignName}
-                    onChange={(e) => handleFieldChange('campaignName', e.target.value)}
-                  />
-                </div>
+        const result = await campaignsApi.create({
+          name: v.name,
+          type: v.type as 'email' | 'sms',
+          subject: v.contentSource === 'custom' ? (v.subject || v.name) : v.name,
+          body: v.contentSource === 'custom' ? v.body : undefined,
+          templateId: v.contentSource === 'template' ? v.templateId : undefined,
+          segmentFilters,
+          description: v.description || undefined,
+        });
 
-                <div>
-                  <label className="block text-sm font-medium mb-2">Campaign Type *</label>
-                  <Select value={form.campaignType} onValueChange={(v) => handleFieldChange('campaignType', v as typeof form.campaignType)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
+        if (!result?.data) {
+          toast.error('Failed to create campaign');
+          return;
+        }
+        const created = result.data;
+
+        if (v.scheduleType === 'later' && scheduledAt) {
+          const scheduled = await campaignsApi.schedule(created.id, { scheduledAt: scheduledAt.toISOString() });
+          if (scheduled) toast.success('Campaign scheduled successfully!');
+          else toast.error('Campaign created but failed to schedule');
+        } else if (v.scheduleType === 'now') {
+          const sent = await campaignsApi.send(created.id, { sendImmediately: true });
+          if (sent) toast.success('Campaign launched successfully!');
+          else toast.error('Campaign created but failed to send');
+        } else {
+          toast.success('Campaign saved as draft');
+        }
+        router.push('/campaigns');
+      }}
+      renderSections={(form) => {
+        const type = form.watch('type');
+        const audienceType = form.watch('audienceType');
+        const contentSource = form.watch('contentSource');
+        const tags = form.watch('tags') || [];
+        const statuses = form.watch('statuses') || [];
+        const body = form.watch('body') || '';
+        const scheduleType = form.watch('scheduleType');
+
+        const { data: templatesResponse } = useApiQuery(
+          () => templatesApi.list({ channel: type, limit: 100 }),
+          [type],
+        );
+        const apiTemplates: MessageTemplate[] = (templatesResponse?.data as any)?.data ?? (templatesResponse?.data as any) ?? [];
+
+        return (
+          <>
+            <SectionCard title="Campaign details" required>
+              <div className="grid gap-ds-4 sm:grid-cols-2">
+                <FormRow name="name" label="Campaign name" required wide>
+                  <Input id="name" placeholder="e.g., Summer Holiday Offers" {...form.register('name')} />
+                </FormRow>
+                <FormRow name="type" label="Channel" required>
+                  <Select value={type} onValueChange={(v) => form.setValue('type', v as CampaignFormValues['type'], { shouldDirty: true })}>
+                    <SelectTrigger id="type"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="email">
-                        <span className="flex items-center gap-2">
-                          <Mail className="h-4 w-4" /> Email
-                        </span>
-                      </SelectItem>
+                      <SelectItem value="email"><span className="flex items-center gap-ds-2"><Mail className="size-4" /> Email</span></SelectItem>
                       <SelectItem value="sms">SMS</SelectItem>
-                      <SelectItem value="whatsapp">
-                        <span className="flex items-center gap-2">
-                          <MessageSquare className="h-4 w-4" /> WhatsApp
-                        </span>
-                      </SelectItem>
+                      <SelectItem value="whatsapp"><span className="flex items-center gap-ds-2"><MessageSquare className="size-4" /> WhatsApp</span></SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
+                </FormRow>
+                <FormRow name="description" label="Description" wide>
+                  <Textarea id="description" placeholder="What is this campaign about?" rows={3} {...form.register('description')} />
+                </FormRow>
+              </div>
+            </SectionCard>
 
-                <div>
-                  <label className="block text-sm font-medium mb-2">Description</label>
-                  <textarea
-                    placeholder="What is this campaign about?"
-                    value={form.description}
-                    onChange={(e) => handleFieldChange('description', e.target.value)}
-                    className="w-full h-24 rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          )}
+            <SectionCard title="Audience" required>
+              <div className="flex flex-col gap-ds-4">
+                <FormRow name="audienceType" label="Audience type" required>
+                  <Select
+                    value={audienceType}
+                    onValueChange={(v) => form.setValue('audienceType', v as CampaignFormValues['audienceType'], { shouldDirty: true, shouldValidate: true })}
+                  >
+                    <SelectTrigger id="audienceType"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="tags">By tags</SelectItem>
+                      <SelectItem value="lead_status">By lead status</SelectItem>
+                      <SelectItem value="segment">Custom segment</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FormRow>
 
-          {/* Step 2: Audience */}
-          {currentStep === 2 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5" />
-                  Select Audience
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Audience Type Selection */}
-                <div>
-                  <label className="block text-sm font-medium mb-3">Audience Type *</label>
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50" style={{
-                      borderColor: form.audienceType === 'tags' ? 'hsl(var(--primary))' : undefined,
-                      backgroundColor: form.audienceType === 'tags' ? 'hsl(var(--primary))10' : undefined,
-                    }}>
-                      <Checkbox checked={form.audienceType === 'tags'} onCheckedChange={() => handleFieldChange('audienceType', 'tags')} />
-                      <span className="text-sm font-medium">By Tags</span>
-                    </label>
-                    <label className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50" style={{
-                      borderColor: form.audienceType === 'lead_status' ? 'hsl(var(--primary))' : undefined,
-                      backgroundColor: form.audienceType === 'lead_status' ? 'hsl(var(--primary))10' : undefined,
-                    }}>
-                      <Checkbox checked={form.audienceType === 'lead_status'} onCheckedChange={() => handleFieldChange('audienceType', 'lead_status')} />
-                      <span className="text-sm font-medium">By Lead Status</span>
-                    </label>
-                    <label className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50" style={{
-                      borderColor: form.audienceType === 'custom' ? 'hsl(var(--primary))' : undefined,
-                      backgroundColor: form.audienceType === 'custom' ? 'hsl(var(--primary))10' : undefined,
-                    }}>
-                      <Checkbox checked={form.audienceType === 'custom'} onCheckedChange={() => handleFieldChange('audienceType', 'custom')} />
-                      <span className="text-sm font-medium">Custom Filter</span>
-                    </label>
-                  </div>
-                </div>
-
-                <Separator />
-
-                {/* Tags Selection */}
-                {form.audienceType === 'tags' && (
-                  <div>
-                    <label className="block text-sm font-medium mb-3">Select Tags *</label>
-                    <div className="flex flex-wrap gap-2">
-                      {availableTags.map((tag: any) => (
-                        <Badge
+                {audienceType === 'tags' && (
+                  <FormRow name="tags" label="Select tags" required>
+                    <div className="flex flex-wrap gap-ds-2">
+                      {availableTags.length === 0 && (
+                        <p className="text-sm text-ds-foreground-muted">No tags found on your contacts yet.</p>
+                      )}
+                      {availableTags.map((tag) => (
+                        <Tag
                           key={tag}
-                          variant={form.selectedTags.includes(tag) ? 'default' : 'outline'}
-                          className="cursor-pointer px-3 py-2"
-                          onClick={() => handleTagToggle(tag)}
+                          tone={tags.includes(tag) ? 'primary' : 'neutral'}
+                          className="cursor-pointer px-ds-3 py-ds-2"
+                          onClick={() => form.setValue(
+                            'tags',
+                            tags.includes(tag) ? tags.filter((t) => t !== tag) : [...tags, tag],
+                            { shouldDirty: true, shouldValidate: true },
+                          )}
                         >
                           {tag}
-                        </Badge>
+                        </Tag>
                       ))}
                     </div>
-                  </div>
+                  </FormRow>
                 )}
 
-                {/* Lead Status Selection */}
-                {form.audienceType === 'lead_status' && (
-                  <div>
-                    <label className="block text-sm font-medium mb-3">Select Lead Statuses *</label>
-                    <div className="grid grid-cols-2 gap-3">
-                      {leadStatuses.map((status: any) => (
-                        <label key={status} className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50">
+                {audienceType === 'lead_status' && (
+                  <FormRow name="statuses" label="Select lead statuses" required>
+                    <div className="grid grid-cols-2 gap-ds-2">
+                      {leadStatuses.map((status) => (
+                        <label key={status} className="flex items-center gap-ds-3 rounded-ds-md border border-ds-border p-ds-3 cursor-pointer hover:bg-ds-surface-sunken">
                           <Checkbox
-                            checked={form.selectedStatuses.includes(status)}
-                            onCheckedChange={() => handleStatusToggle(status)}
+                            checked={statuses.includes(status)}
+                            onCheckedChange={() => form.setValue(
+                              'statuses',
+                              statuses.includes(status) ? statuses.filter((s) => s !== status) : [...statuses, status],
+                              { shouldDirty: true, shouldValidate: true },
+                            )}
                           />
-                          <span className="text-sm">{status}</span>
+                          <span className="text-sm capitalize">{status.replace('_', ' ')}</span>
                         </label>
                       ))}
                     </div>
-                  </div>
+                  </FormRow>
                 )}
 
-                {/* Custom Filter */}
-                {form.audienceType === 'custom' && (
-                  <div className="p-4 rounded-lg border border-dashed text-center">
-                    <p className="text-sm text-muted-foreground">Custom filter builder (advanced)</p>
-                  </div>
+                {audienceType === 'segment' && (
+                  <FormRow name="segmentId" label="Segment ID" hint="Pass ?segmentId=… from a saved segment to prefill this.">
+                    <Input id="segmentId" placeholder="Segment ID" {...form.register('segmentId')} />
+                  </FormRow>
                 )}
-              </CardContent>
-            </Card>
-          )}
+              </div>
+            </SectionCard>
 
-          {/* Step 3: Content */}
-          {currentStep === 3 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Mail className="h-5 w-5" />
-                  Campaign Content
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Content Source Selection */}
-                <div>
-                  <label className="block text-sm font-medium mb-3">Content Source *</label>
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50" style={{
-                      borderColor: form.contentSource === 'template' ? 'hsl(var(--primary))' : undefined,
-                      backgroundColor: form.contentSource === 'template' ? 'hsl(var(--primary))10' : undefined,
-                    }}>
-                      <Checkbox checked={form.contentSource === 'template'} onCheckedChange={() => handleFieldChange('contentSource', 'template')} />
-                      <span className="text-sm font-medium">Use Template</span>
-                    </label>
-                    <label className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50" style={{
-                      borderColor: form.contentSource === 'custom' ? 'hsl(var(--primary))' : undefined,
-                      backgroundColor: form.contentSource === 'custom' ? 'hsl(var(--primary))10' : undefined,
-                    }}>
-                      <Checkbox checked={form.contentSource === 'custom'} onCheckedChange={() => handleFieldChange('contentSource', 'custom')} />
-                      <span className="text-sm font-medium">Write Custom Content</span>
-                    </label>
-                  </div>
-                </div>
+            <SectionCard title="Content" required>
+              <div className="flex flex-col gap-ds-4">
+                <FormRow name="contentSource" label="Content source" required>
+                  <Select
+                    value={contentSource}
+                    onValueChange={(v) => form.setValue('contentSource', v as CampaignFormValues['contentSource'], { shouldDirty: true, shouldValidate: true })}
+                  >
+                    <SelectTrigger id="contentSource"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="template">Use a template</SelectItem>
+                      <SelectItem value="custom">Write custom content</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FormRow>
 
-                <Separator />
-
-                {/* Template Selection — searchable Combobox */}
-                {form.contentSource === 'template' && (
-                  <div>
-                    <label className="block text-sm font-medium mb-3">Select Template *</label>
-                    <Combobox
-                      options={apiTemplates.map((t) => ({ value: t.id, label: t.name }))}
-                      value={form.selectedTemplate}
-                      onValueChange={(v) => handleFieldChange('selectedTemplate', v)}
-                      placeholder="Choose a template..."
+                {contentSource === 'template' && (
+                  <FormRow name="templateId" label="Template" required wide>
+                    <RelationCombobox
+                      value={form.watch('templateId') || null}
+                      onChange={(id) => form.setValue('templateId', id ?? '', { shouldDirty: true, shouldValidate: true })}
+                      fetcher={async (q, page) => {
+                        const r = await templatesApi.list({ channel: type, search: q, page, limit: 20 });
+                        const data = r.data as any;
+                        const items = Array.isArray(data) ? data : (data?.data ?? []);
+                        const total = data?.pagination?.total ?? items.length;
+                        return { items, total };
+                      }}
+                      getOptionId={(t: MessageTemplate) => t.id}
+                      getOptionLabel={(t: MessageTemplate) => t.name}
+                      getOptionDescription={(t: MessageTemplate) => t.subject}
+                      placeholder="Choose a template"
                       searchPlaceholder="Search templates..."
-                      emptyText={`No ${form.campaignType} templates found`}
+                      emptyText={`No ${type} templates found`}
+                      error={form.formState.errors.templateId?.message}
                     />
                     {apiTemplates.length === 0 && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        No {form.campaignType} templates found.{' '}
-                        <a href="/communication/templates/new" className="text-primary hover:underline">Create one</a>.
+                      <p className="mt-ds-1 text-xs text-ds-foreground-muted">
+                        No {type} templates found. <a href="/communication/templates/new" className="text-ds-primary hover:underline">Create one</a>.
                       </p>
                     )}
-                  </div>
+                  </FormRow>
                 )}
 
-                {/* Custom Content */}
-                {form.contentSource === 'custom' && (
+                {contentSource === 'custom' && (
                   <>
-                    {form.campaignType === 'email' && (
-                      <div>
-                        <label className="block text-sm font-medium mb-2">Email Subject *</label>
-                        <Input
-                          placeholder="e.g., Special Offer: 30% Off Your Next Trip!"
-                          value={form.emailSubject}
-                          onChange={(e) => handleFieldChange('emailSubject', e.target.value)}
-                        />
-                      </div>
+                    {type === 'email' && (
+                      <FormRow name="subject" label="Email subject" required wide>
+                        <Input id="subject" placeholder="e.g., Special Offer: 30% Off Your Next Trip!" {...form.register('subject')} />
+                      </FormRow>
                     )}
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <label className="block text-sm font-medium">Message Content *</label>
-                        {form.campaignType === 'sms' && (
-                          <span className={cn(
-                            'text-xs font-mono',
-                            form.customContent.length > SMS_LIMIT
-                              ? 'text-destructive'
-                              : form.customContent.length > SMS_LIMIT * 0.8
-                                ? 'text-amber-500'
-                                : 'text-muted-foreground',
-                          )}>
-                            {form.customContent.length}/{SMS_LIMIT}
-                            {form.customContent.length > SMS_LIMIT && (
-                              <span className="ml-1">
-                                ({Math.ceil(form.customContent.length / SMS_LIMIT)} parts)
-                              </span>
-                            )}
-                          </span>
-                        )}
-                      </div>
-                      <textarea
+                    <FormRow
+                      name="body"
+                      label="Message content"
+                      required
+                      wide
+                      hint={type === 'sms' ? `${body.length}/${SMS_LIMIT}${body.length > SMS_LIMIT ? ` (${Math.ceil(body.length / SMS_LIMIT)} parts)` : ''}` : undefined}
+                    >
+                      <Textarea
+                        id="body"
                         placeholder="Write your message here... You can use {{firstName}}, {{email}} for personalization"
-                        value={form.customContent}
-                        onChange={(e) => handleFieldChange('customContent', e.target.value)}
-                        className={cn(
-                          'w-full h-32 rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary',
-                          form.campaignType === 'sms' && form.customContent.length > SMS_LIMIT
-                            ? 'border-destructive focus:ring-destructive'
-                            : 'border-input',
-                        )}
+                        rows={6}
+                        {...form.register('body')}
                       />
-                      {form.campaignType === 'sms' && form.customContent.length > SMS_LIMIT && (
-                        <p className="text-xs text-amber-600 mt-1">
-                          Message exceeds 160 characters and will be split into {Math.ceil(form.customContent.length / SMS_LIMIT)} SMS parts.
-                        </p>
-                      )}
-                    </div>
+                    </FormRow>
                   </>
                 )}
-              </CardContent>
-            </Card>
-          )}
+              </div>
+            </SectionCard>
 
-          {/* Step 4: Schedule */}
-          {currentStep === 4 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Calendar className="h-5 w-5" />
-                  Schedule Campaign
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div>
-                  <label className="block text-sm font-medium mb-3">Send Schedule</label>
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50" style={{
-                      borderColor: form.scheduleType === 'now' ? 'hsl(var(--primary))' : undefined,
-                      backgroundColor: form.scheduleType === 'now' ? 'hsl(var(--primary))10' : undefined,
-                    }}>
-                      <Checkbox checked={form.scheduleType === 'now'} onCheckedChange={() => handleFieldChange('scheduleType', 'now')} />
-                      <span className="text-sm font-medium">Send Immediately</span>
-                    </label>
-                    <label className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50" style={{
-                      borderColor: form.scheduleType === 'later' ? 'hsl(var(--primary))' : undefined,
-                      backgroundColor: form.scheduleType === 'later' ? 'hsl(var(--primary))10' : undefined,
-                    }}>
-                      <Checkbox checked={form.scheduleType === 'later'} onCheckedChange={() => handleFieldChange('scheduleType', 'later')} />
-                      <span className="text-sm font-medium">Schedule for Later</span>
-                    </label>
+            <SectionCard title="Schedule">
+              <div className="flex flex-col gap-ds-4">
+                <FormRow name="scheduleType" label="Send schedule">
+                  <Select
+                    value={scheduleType}
+                    onValueChange={(v) => form.setValue('scheduleType', v as CampaignFormValues['scheduleType'], { shouldDirty: true })}
+                  >
+                    <SelectTrigger id="scheduleType"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="now">Send immediately</SelectItem>
+                      <SelectItem value="later">Schedule for later</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FormRow>
+
+                {scheduleType === 'later' && (
+                  <div className="grid gap-ds-4 sm:grid-cols-2">
+                    <FormRow name="scheduleDate" label="Date" required>
+                      <DatePicker
+                        value={form.watch('scheduleDate')}
+                        onChange={(d) => form.setValue('scheduleDate', d, { shouldDirty: true, shouldValidate: true })}
+                        minDate={new Date()}
+                        maxDate={new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)}
+                        placeholder="Pick a date"
+                      />
+                    </FormRow>
+                    <FormRow name="scheduleTime" label="Time" required>
+                      <Input
+                        type="time"
+                        value={form.watch('scheduleTime') || ''}
+                        onChange={(e) => form.setValue('scheduleTime', e.target.value, { shouldDirty: true, shouldValidate: true })}
+                      />
+                    </FormRow>
                   </div>
-                </div>
-
-                {form.scheduleType === 'later' && (
-                  <>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium mb-2">Date</label>
-                        <Input
-                          type="date"
-                          min={new Date(Date.now() + 15 * 60 * 1000).toISOString().split('T')[0]}
-                          max={new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
-                          value={form.scheduleDate}
-                          onChange={(e) => handleFieldChange('scheduleDate', e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-2">Time</label>
-                        <Input
-                          type="time"
-                          value={form.scheduleTime}
-                          onChange={(e) => handleFieldChange('scheduleTime', e.target.value)}
-                        />
-                      </div>
-                    </div>
-                    {form.scheduleDate && form.scheduleTime && (() => {
-                      const scheduled = new Date(`${form.scheduleDate}T${form.scheduleTime}`);
-                      const minTime = new Date(Date.now() + 15 * 60 * 1000);
-                      const maxTime = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
-                      if (scheduled < minTime) {
-                        return (
-                          <p className="text-xs text-destructive">
-                            Schedule must be at least 15 minutes from now.
-                          </p>
-                        );
-                      }
-                      if (scheduled > maxTime) {
-                        return (
-                          <p className="text-xs text-destructive">
-                            Schedule cannot be more than 90 days in the future.
-                          </p>
-                        );
-                      }
-                      return null;
-                    })()}
-                  </>
                 )}
-
-                <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
-                  <p className="text-sm text-blue-700 dark:text-blue-400">
-                    <strong>Summary:</strong> You're about to send a {form.campaignType} campaign to{' '}
-                    {form.audienceType === 'tags'
-                      ? `contacts with tags: ${form.selectedTags.join(', ')}`
-                      : form.audienceType === 'lead_status'
-                        ? `leads with status: ${form.selectedStatuses.join(', ')}`
-                        : 'your custom audience'}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      </div>
-
-      {/* Footer with Navigation */}
-      <div className="border-t px-6 py-4 bg-background flex items-center justify-between">
-        <Button
-          variant="outline"
-          onClick={handleSaveDraft}
-          disabled={isCreating}
-        >
-          Save Draft
-        </Button>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setCurrentStep(Math.max(1, currentStep - 1))}
-            disabled={currentStep === 1}
-          >
-            Previous
-          </Button>
-          {currentStep < 4 ? (
-            <Button
-              onClick={() => setCurrentStep(currentStep + 1)}
-              disabled={!stepValid[currentStep - 1]}
-            >
-              Next
-              {' '}
-              <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
-          ) : (
-            <Button onClick={handleLaunch} disabled={isCreating || isScheduling}>
-              {isCreating || isScheduling ? 'Creating...' : 'Launch Campaign'}
-            </Button>
-          )}
-        </div>
-      </div>
-    </div>
+              </div>
+            </SectionCard>
+          </>
+        );
+      }}
+    />
   );
 }

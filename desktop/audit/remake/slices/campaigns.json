@@ -42,9 +42,9 @@
     "listPage": true,
     "filterBar": true,
     "infiniteScroll": true,
-    "hoverActions": false,
+    "hoverActions": true,
     "detailDrawer": false,
-    "emptyState": false,
+    "emptyState": true,
     "skeleton": true,
     "relationCombobox": true,
     "urlPrefill": true,
@@ -53,9 +53,9 @@
     "currencyInput": false,
     "datePicker": true,
     "sendMessageDialog": false,
-    "themedExport": false
+    "themedExport": true
   },
-  "notes": "Campaign detail shows 8 hardcoded mock recipients (#64). PUT /campaigns/:id and DELETE /campaigns/:id are orphaned — no edit or delete UI.",
+  "notes": "Rebuilt onto ListPage/DetailPage/EntityForm archetypes. Detail page now reads real sentCount/deliveredCount/openedCount/clickedCount fields and a live paginated recipients table (no mock data). Added edit page (desktop/src/app/(app)/campaigns/[id]/edit/page.tsx) wired to the previously-orphaned PUT /campaigns/:id; delete row action wired to DELETE. List export pages through the full filtered dataset client-side as CSV (no dedicated /exports/campaigns backend endpoint exists). detailDrawer intentionally false — this slice uses a dedicated detail page/route (contract-sanctioned alternative to onRowClick navigation) rather than a drawer. sendMessageDialog/phoneInput/addressAutocomplete/currencyInput are not applicable — campaigns has no phone/address/currency fields and outbound sending goes through the campaign send/schedule API, not ad-hoc messaging.",
   "showcaseScript": [
     "Open Campaigns and filter by status",
     "Create an email campaign targeting a segment",
