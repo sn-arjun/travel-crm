@@ -84,11 +84,27 @@
       "timestamp": "2026-08-23T09:58:09.275Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:calendar": {
+      "status": "ok",
+      "timestamp": "2026-09-22T05:56:41.707Z",
+      "error": null,
+      "repairAttempts": 0
+    },
+    "slice:calls": {
+      "status": "context-limit",
+      "timestamp": "2026-08-23T09:58:29.279Z",
+      "error": "stdout(tail): You've hit your session limit · resets 7:40pm (Asia/Kolkata)\nClient.listTools() called but server does not advertise tools capability - returning empty list"
+    },
+    "slice:campaigns": {
+      "status": "context-limit",
+      "timestamp": "2026-08-23T09:58:33.871Z",
+      "error": "stdout(tail): You've hit your session limit · resets 7:40pm (Asia/Kolkata)\nClient.listTools() called but server does not advertise tools capability - returning empty list"
     }
   },
   "lastCompleted": {
-    "id": "slice:auth-shell",
+    "id": "slice:calendar",
     "status": "ok",
-    "timestamp": "2026-08-23T09:58:09.275Z"
+    "timestamp": "2026-09-22T05:56:41.707Z"
   }
 }

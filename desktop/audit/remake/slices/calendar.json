@@ -32,11 +32,11 @@
   ],
   "uxContract": {
     "listPage": false,
-    "filterBar": false,
+    "filterBar": true,
     "infiniteScroll": false,
     "hoverActions": false,
     "detailDrawer": true,
-    "emptyState": false,
+    "emptyState": true,
     "skeleton": true,
     "relationCombobox": true,
     "urlPrefill": false,
@@ -45,9 +45,9 @@
     "currencyInput": false,
     "datePicker": true,
     "sendMessageDialog": false,
-    "themedExport": false
+    "themedExport": true
   },
-  "notes": "PATCH /events/:id/reschedule is called with POST from the client (#16). Only 4 of 7 event types (#57). No editing — create and delete only (#59). Missing location, recurrence, all_day, colour, lead fields (#58).",
+  "notes": "listPage/infiniteScroll/urlPrefill intentionally not applicable: this is a spatial month/week/day grid, not a row list, so ListPage/DataTable/useInfiniteScroll archetypes don't fit; hoverActions likewise replaced by the detail-drawer edit/delete icons. reschedule already called via PATCH client.eventsApi.reschedule (was already correct, not POST as previously noted) but was unused by the UI — now wired to real drag-and-drop in month/week views (day view has a single column so drag is not meaningful there). Added FilterBar (search + event-type filter), EmptyState for zero-events-in-range and zero-events-on-selected-day, PageHeader with count, themed CSV export of the filtered/visible event set, and swapped the lead field from a bespoke Combobox to RelationCombobox (fetches/resolves via leadsApi). sendMessageDialog/phoneInput/addressAutocomplete/currencyInput are not applicable — events carry no contact email/phone/address/money fields. Editing already existed (edit dialog) so 'no editing' from the prior audit note no longer applies.",
   "showcaseScript": [
     "Open the Calendar in month view",
     "Create an all-day event linked to a lead",

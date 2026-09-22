@@ -3,7 +3,7 @@
 import * as React from 'react';
 import {
   ChevronLeft, ChevronRight, Plus, X, Clock, Bell, AlertCircle, Loader2,
-  Pencil, Link2, Users, User,
+  Pencil, Link2, Users, User, Download,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -20,10 +20,14 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Combobox } from '@/components/ui/combobox';
+import { PageHeader } from '@/components/ui/page-header';
+import { EmptyState } from '@/components/ui/empty-state';
+import { FilterBar } from '@/components/domain/filter-bar';
+import { RelationCombobox } from '@/components/domain/relation-combobox';
 import { cn } from '@/lib/utils';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { eventsApi, type CalendarEvent, type EventType } from '@/lib/api/events';
+import { leadsApi } from '@/lib/api/leads';
 import { toast } from 'sonner';
 import Link from 'next/link';
 
@@ -110,12 +114,13 @@ function getEventHourPosition(event: ReturnType<typeof normalizeEvent>) {
 
 // ─── Calendar Grid (Month View) ───
 function CalendarGrid({
-  year, month, onDateSelect, events, selectedDate,
+  year, month, onDateSelect, events, selectedDate, onEventDrop,
 }: {
   year: number; month: number;
   onDateSelect: (date: string) => void;
   events: ReturnType<typeof normalizeEvent>[];
   selectedDate: string | null;
+  onEventDrop: (eventId: string, newDateStr: string) => void;
 }) {
   const firstDay = new Date(year, month, 1);
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -161,6 +166,13 @@ function CalendarGrid({
                   !day && 'bg-muted/20 cursor-default',
                 )}
                 onClick={() => day && dayStr && onDateSelect(dayStr)}
+                onDragOver={(e) => { if (day) e.preventDefault(); }}
+                onDrop={(e) => {
+                  if (!day || !dayStr) return;
+                  e.preventDefault();
+                  const eventId = e.dataTransfer.getData('text/event-id');
+                  if (eventId) onEventDrop(eventId, dayStr);
+                }}
               >
                 {day && (
                   <>
@@ -174,7 +186,9 @@ function CalendarGrid({
                       {dayEvents.slice(0, 3).map((event) => (
                         <div
                           key={event.id}
-                          className={cn('text-[10px] px-1.5 py-0.5 rounded truncate', getTypeConfig(event.type).bg)}
+                          draggable
+                          onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData('text/event-id', event.id); }}
+                          className={cn('text-[10px] px-1.5 py-0.5 rounded truncate cursor-grab active:cursor-grabbing', getTypeConfig(event.type).bg)}
                           title={event.title}
                         >
                           {event.title}
@@ -199,13 +213,14 @@ function CalendarGrid({
 
 // ─── Week View ───
 function WeekView({
-  currentDate, events, onEventClick, onDateSelect, selectedDate,
+  currentDate, events, onEventClick, onDateSelect, selectedDate, onEventDrop,
 }: {
   currentDate: Date;
   events: ReturnType<typeof normalizeEvent>[];
   onEventClick: (event: ReturnType<typeof normalizeEvent>) => void;
   onDateSelect: (date: string) => void;
   selectedDate: string | null;
+  onEventDrop: (eventId: string, newDateStr: string) => void;
 }) {
   const weekDays = getWeekDays(currentDate);
   const todayStr = new Date(REF_DATE).toISOString().split('T')[0];
@@ -304,6 +319,8 @@ function WeekView({
               <div
                 key={dayStr}
                 className={cn('relative border-r last:border-r-0', isToday && 'bg-primary/[0.02] dark:bg-primary/[0.04]')}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => { e.preventDefault(); const eventId = e.dataTransfer.getData('text/event-id'); if (eventId) onEventDrop(eventId, dayStr); }}
               >
                 {/* Hour grid lines */}
                 {HOURS.map((hour) => (
@@ -323,8 +340,10 @@ function WeekView({
                   return (
                     <div
                       key={event.id}
+                      draggable
+                      onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData('text/event-id', event.id); }}
                       className={cn(
-                        'absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 overflow-hidden cursor-pointer',
+                        'absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 overflow-hidden cursor-grab active:cursor-grabbing',
                         'border-l-2 shadow-sm hover:shadow-md transition-shadow',
                         cfg.bg,
                       )}
@@ -538,14 +557,11 @@ interface EventFormData {
 }
 
 function EventForm({
-  value, onChange, selectedDate, leadOptions, userOptions, onLeadSearch,
+  value, onChange, selectedDate,
 }: {
   value: EventFormData;
   onChange: (v: EventFormData) => void;
   selectedDate?: string | null;
-  leadOptions: { value: string; label: string }[];
-  userOptions: { value: string; label: string }[];
-  onLeadSearch: (q: string) => void;
 }) {
   const set = (patch: Partial<EventFormData>) => onChange({ ...value, ...patch });
 
@@ -624,17 +640,21 @@ function EventForm({
 
       <div className="space-y-2">
         <Label>Linked Lead</Label>
-        <Combobox
-          options={[
-            ...(value.leadId && value.leadTitle ? [{ value: value.leadId, label: value.leadTitle }] : []),
-            ...leadOptions.filter((o) => o.value !== value.leadId),
-          ]}
-          value={value.leadId}
-          onValueChange={(v) => {
-            const opt = leadOptions.find((o) => o.value === v);
-            set({ leadId: v, leadTitle: opt?.label || '' });
+        <RelationCombobox<{ id: string; title?: string; name?: string }>
+          value={value.leadId || null}
+          onChange={(id, item) => set({ leadId: id ?? '', leadTitle: item ? (item.title || item.name || '') : '' })}
+          fetcher={async (q, page) => {
+            const r = await leadsApi.list({ search: q || undefined, page, limit: 20 });
+            const items = (r as any)?.data?.data ?? (r as any)?.data ?? [];
+            const total = (r as any)?.data?.pagination?.total ?? (Array.isArray(items) ? items.length : 0);
+            return { items: Array.isArray(items) ? items : [], total };
           }}
-          onSearch={onLeadSearch}
+          getOptionId={(l) => l.id}
+          getOptionLabel={(l) => l.title || l.name || l.id}
+          resolveSelected={async (id) => {
+            const r = await leadsApi.getById(id);
+            return (r as any)?.data ?? null;
+          }}
           placeholder="Search leads..."
           searchPlaceholder="Search by lead title..."
         />
@@ -670,7 +690,8 @@ export default function CalendarPage() {
   const [editOpen, setEditOpen] = React.useState(false);
   const [formData, setFormData] = React.useState<EventFormData>(EMPTY_FORM);
   const [editFormData, setEditFormData] = React.useState<EventFormData>(EMPTY_FORM);
-  const [leadSearch, setLeadSearch] = React.useState('');
+  const [search, setSearch] = React.useState('');
+  const [typeFilter, setTypeFilter] = React.useState<string>('');
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -704,26 +725,47 @@ export default function CalendarPage() {
     [rangeStart, rangeEnd, calendarView],
   );
 
-  const { data: leadsResp } = useApiQuery(
-    () => import('@/lib/api/leads').then((m) => m.leadsApi.list({ search: leadSearch || undefined, limit: 30 })),
-    [leadSearch],
-  );
-
-  const leads = React.useMemo(() => {
-    const raw = (leadsResp as any)?.data?.data ?? (leadsResp as any)?.data ?? [];
-    return Array.isArray(raw) ? raw : [];
-  }, [leadsResp]);
-  const leadOptions = leads.map((l: any) => ({ value: l.id, label: l.title || l.name || l.id }));
-
   const createMutation = useApiMutation((data: any) => eventsApi.create(data));
   const updateMutation = useApiMutation(({ id, data }: { id: string; data: any }) => eventsApi.update(id, data));
   const deleteMutation = useApiMutation((eventId: string) => eventsApi.delete(eventId));
+  const rescheduleMutation = useApiMutation(({ id, data }: { id: string; data: { start_at: string; end_at?: string } }) => eventsApi.reschedule(id, data));
 
   const rawEvents = (eventsResp as any)?.data?.data ?? (eventsResp as any)?.data ?? [];
-  const events = React.useMemo(
+  const allEvents = React.useMemo(
     () => (Array.isArray(rawEvents) ? rawEvents : []).map(normalizeEvent),
     [rawEvents],
   );
+
+  const events = React.useMemo(() => {
+    return allEvents.filter((e) => {
+      if (typeFilter && e.type !== typeFilter) return false;
+      if (search && !e.title.toLowerCase().includes(search.toLowerCase())) return false;
+      return true;
+    });
+  }, [allEvents, typeFilter, search]);
+
+  const handleEventDrop = async (eventId: string, newDateStr: string) => {
+    const event = allEvents.find((e) => e.id === eventId);
+    if (!event) return;
+    const oldDateStr = (event.startTime || '').split('T')[0];
+    if (oldDateStr === newDateStr) return;
+    const start = event.startTime ? new Date(event.startTime) : null;
+    const end = event.endTime ? new Date(event.endTime) : null;
+    const [ny, nm, nd] = newDateStr.split('-').map(Number);
+    const newStart = event.all_day || !start
+      ? `${newDateStr}T00:00:00.000Z`
+      : new Date(ny!, nm! - 1, nd!, start.getHours(), start.getMinutes()).toISOString();
+    const newEnd = event.all_day || !end
+      ? `${newDateStr}T23:59:59.000Z`
+      : new Date(ny!, nm! - 1, nd!, end.getHours(), end.getMinutes()).toISOString();
+    try {
+      await rescheduleMutation.mutate({ id: eventId, data: { start_at: newStart, end_at: newEnd } });
+      toast.success('Event rescheduled');
+      await refetch();
+    } catch {
+      toast.error('Failed to reschedule event');
+    }
+  };
 
   // ─── View-aware navigation ───
   const handlePrev = () => {
@@ -878,14 +920,47 @@ export default function CalendarPage() {
     }
   };
 
+  const handleExport = () => {
+    const header = ['Title', 'Type', 'Start', 'End', 'All day', 'Location', 'Linked lead'];
+    const rows = events.map((e) => [
+      e.title,
+      getTypeConfig(e.type).label,
+      e.startTime ?? '',
+      e.endTime ?? '',
+      e.all_day ? 'Yes' : 'No',
+      e.location ?? '',
+      e.lead_title ?? '',
+    ]);
+    const csv = [header, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `calendar-events-${formatDateStr(currentDate)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="flex h-full gap-6 p-6 overflow-hidden">
       {/* Calendar */}
       <div className="flex-1 flex flex-col gap-4 overflow-auto">
-        {/* Header */}
+        <PageHeader
+          title="Calendar"
+          description="Trip departures, meetings, deadlines and reminders."
+          count={events.length}
+          actions={
+            <Button variant="outline" size="sm" onClick={handleExport} disabled={events.length === 0}>
+              <Download className="h-4 w-4 mr-1.5" /> Export
+            </Button>
+          }
+        />
+
+        {/* View controls */}
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-3">
-            <h1 className="text-xl font-bold tracking-tight">Calendar</h1>
             {/* My / Team toggle */}
             <div className="flex rounded-md border overflow-hidden text-xs font-medium">
               <button
@@ -930,6 +1005,26 @@ export default function CalendarPage() {
           </div>
         </div>
 
+        <FilterBar
+          searchValue={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search events..."
+          activeFilters={typeFilter ? [{ id: 'type', label: 'Type', value: getTypeConfig(typeFilter).label }] : []}
+          onRemoveFilter={() => setTypeFilter('')}
+          onClearFilters={() => { setSearch(''); setTypeFilter(''); }}
+          actions={
+            <Select value={typeFilter || 'all'} onValueChange={(v) => setTypeFilter(v === 'all' ? '' : v)}>
+              <SelectTrigger className="h-9 w-[160px]"><SelectValue placeholder="Event type" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All types</SelectItem>
+                {EVENT_TYPES.slice(0, 7).map((t) => (
+                  <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          }
+        />
+
         {/* Legend — all 7 event types */}
         <div className="flex gap-3 flex-wrap text-xs">
           {EVENT_TYPES.slice(0, 7).map((t) => (
@@ -954,27 +1049,43 @@ export default function CalendarPage() {
           </div>
         )}
 
+        {/* Empty state — no events at all in range (regardless of filters) */}
+        {!loading && !error && allEvents.length === 0 && (
+          <EmptyState
+            icon={<Bell className="h-8 w-8" />}
+            title="No events in this range"
+            description="Create an event to see it on the calendar."
+            action={
+              <Button size="sm" onClick={() => { setSelectedDate(formatDateStr(currentDate)); setFormData(EMPTY_FORM); setCreateOpen(true); }}>
+                <Plus className="h-4 w-4 mr-1.5" /> Add event
+              </Button>
+            }
+          />
+        )}
+
         {/* Calendar Views */}
-        {!loading && !error && viewMode === 'month' && (
+        {!loading && !error && allEvents.length > 0 && viewMode === 'month' && (
           <CalendarGrid
             year={year} month={month}
             onDateSelect={setSelectedDate}
             events={events}
             selectedDate={selectedDate}
+            onEventDrop={handleEventDrop}
           />
         )}
 
-        {!loading && !error && viewMode === 'week' && (
+        {!loading && !error && allEvents.length > 0 && viewMode === 'week' && (
           <WeekView
             currentDate={currentDate}
             events={events}
             onEventClick={handleEventClick}
             onDateSelect={setSelectedDate}
             selectedDate={selectedDate}
+            onEventDrop={handleEventDrop}
           />
         )}
 
-        {!loading && !error && viewMode === 'day' && (
+        {!loading && !error && allEvents.length > 0 && viewMode === 'day' && (
           <DayView
             currentDate={currentDate}
             events={events}
@@ -997,11 +1108,11 @@ export default function CalendarPage() {
 
           <div className="flex-1 overflow-auto space-y-3 px-6 py-4">
             {selectedDateEvents.length === 0 ? (
-              <div className="text-center text-muted-foreground py-12">
-                <Bell className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                <p className="text-sm font-medium">No events on this day</p>
-                <p className="text-xs mt-1">Click "Add Event" to create one</p>
-              </div>
+              <EmptyState
+                icon={<Bell className="h-8 w-8" />}
+                title="No events on this day"
+                description='Click "Add Event" to create one.'
+              />
             ) : (
               selectedDateEvents.map((event) => {
                 const cfg = getTypeConfig(event.type);
@@ -1089,9 +1200,6 @@ export default function CalendarPage() {
             value={formData}
             onChange={setFormData}
             selectedDate={selectedDate}
-            leadOptions={leadOptions}
-            userOptions={[]}
-            onLeadSearch={setLeadSearch}
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
@@ -1114,9 +1222,6 @@ export default function CalendarPage() {
             value={editFormData}
             onChange={setEditFormData}
             selectedDate={selectedDate}
-            leadOptions={leadOptions}
-            userOptions={[]}
-            onLeadSearch={setLeadSearch}
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
