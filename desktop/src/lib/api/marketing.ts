@@ -24,6 +24,15 @@ export interface FlyerTemplate {
   category?: string;
   thumbnailUrl?: string;
   previewUrl?: string;
+  createdAt?: string;
+}
+
+export interface FlyerTemplateAsset {
+  id: string;
+  templateId: string;
+  url: string;
+  kind?: string;
+  createdAt?: string;
 }
 
 export interface MarketingFlyer {
@@ -42,6 +51,22 @@ export interface MarketingImage {
   title?: string;
   category?: string;
   uploadedAt: string;
+}
+
+export interface CreateFlyerTemplateRequest {
+  name: string;
+  category?: string;
+  thumbnailUrl?: string;
+  previewUrl?: string;
+}
+
+export type UpdateFlyerTemplateRequest = Partial<CreateFlyerTemplateRequest>;
+
+export interface ShareFlyerRequest {
+  flyerId: string;
+  segmentId?: string;
+  contactIds?: string[];
+  channel: 'email' | 'sms' | 'whatsapp';
 }
 
 export interface SocialContent {
@@ -263,6 +288,30 @@ export const marketingApi = {
       search?: string;
     }) =>
       client.get<ApiResponse<PaginatedResponse<FlyerTemplate>>>(API_ENDPOINTS.marketing.flyerTemplates, { params }),
+
+    get: (id: string) =>
+      client.get<ApiResponse<FlyerTemplate>>(`${API_ENDPOINTS.marketing.flyerTemplates}/${id}`),
+
+    create: (data: CreateFlyerTemplateRequest) =>
+      client.post<ApiResponse<FlyerTemplate>>(API_ENDPOINTS.marketing.flyerTemplates, data),
+
+    update: (id: string, data: UpdateFlyerTemplateRequest) =>
+      client.put<ApiResponse<FlyerTemplate>>(`${API_ENDPOINTS.marketing.flyerTemplates}/${id}`, data),
+
+    delete: (id: string) =>
+      client.delete<ApiResponse<void>>(`${API_ENDPOINTS.marketing.flyerTemplates}/${id}`),
+
+    addAsset: async (templateId: string, file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return client.post<ApiResponse<FlyerTemplateAsset>>(
+        `${API_ENDPOINTS.marketing.flyerTemplates}/${templateId}/assets`,
+        formData as unknown as Record<string, unknown>,
+      );
+    },
+
+    deleteAsset: (templateId: string, assetId: string) =>
+      client.delete<ApiResponse<void>>(`${API_ENDPOINTS.marketing.flyerTemplates}/${templateId}/assets/${assetId}`),
   },
 
   flyers: {
@@ -276,6 +325,9 @@ export const marketingApi = {
     }) =>
       client.get<ApiResponse<PaginatedResponse<MarketingFlyer>>>(API_ENDPOINTS.marketing.flyers, { params }),
 
+    get: (id: string) =>
+      client.get<ApiResponse<MarketingFlyer>>(`${API_ENDPOINTS.marketing.flyers}/${id}`),
+
     create: (data: CreateFlyerRequest) =>
       client.post<ApiResponse<MarketingFlyer>>(API_ENDPOINTS.marketing.flyers, data),
 
@@ -284,6 +336,18 @@ export const marketingApi = {
 
     delete: (id: string) =>
       client.delete<ApiResponse<void>>(`${API_ENDPOINTS.marketing.flyers}/${id}`),
+
+    upload: async (id: string, file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return client.post<ApiResponse<MarketingFlyer>>(
+        `${API_ENDPOINTS.marketing.flyers}/${id}/upload`,
+        formData as unknown as Record<string, unknown>,
+      );
+    },
+
+    share: (data: ShareFlyerRequest) =>
+      client.post<ApiResponse<{ message: string }>>(`${API_ENDPOINTS.marketing.flyers}/share`, data),
   },
 
   images: {
@@ -304,6 +368,15 @@ export const marketingApi = {
       if (data.category) formData.append('category', data.category);
 
       return client.post<ApiResponse<MarketingImage>>(API_ENDPOINTS.marketing.images, formData as unknown as Record<string, unknown>);
+    },
+
+    uploadLogo: async (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      return client.post<ApiResponse<MarketingImage>>(
+        `${API_ENDPOINTS.marketing.images}/upload-logo`,
+        formData as unknown as Record<string, unknown>,
+      );
     },
 
     delete: (id: string) =>

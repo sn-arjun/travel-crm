@@ -192,11 +192,17 @@
       "timestamp": "2026-09-22T13:08:07.131Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:marketing-flyers": {
+      "status": "ok",
+      "timestamp": "2026-09-22T13:18:41.825Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "slice:marketing-campaigns",
+    "id": "slice:marketing-flyers",
     "status": "ok",
-    "timestamp": "2026-09-22T13:08:07.131Z"
+    "timestamp": "2026-09-22T13:18:41.825Z"
   }
 }

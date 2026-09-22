@@ -43,6 +43,7 @@ import {
   Target,
   ScanLine,
   BellRing,
+  LayoutTemplate,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarStore } from '@/stores/sidebar-store';
@@ -140,6 +141,7 @@ const navigation: NavGroup[] = [
       { title: 'Campaigns', href: '/marketing/campaigns', icon: Megaphone },
       { title: 'Segments', href: '/marketing/segments', icon: Users },
       { title: 'Flyers', href: '/marketing/flyers', icon: Palette },
+      { title: 'Flyer Templates', href: '/marketing/flyers/templates', icon: LayoutTemplate },
       { title: 'Branding', href: '/marketing/branding', icon: Palette },
       { title: 'Festival Offers', href: '/marketing/festivals', icon: CalendarClock },
       { title: 'Opted-Out', href: '/marketing/opted-out', icon: UserCheck },
