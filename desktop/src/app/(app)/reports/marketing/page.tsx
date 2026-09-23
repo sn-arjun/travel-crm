@@ -3,13 +3,12 @@
 import * as React from 'react';
 import Link from 'next/link';
 import {
-  ArrowLeft, Download, AlertCircle, RefreshCw,
+  AlertCircle, RefreshCw,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
   Card, CardContent, CardHeader, CardTitle, CardDescription,
@@ -26,23 +25,12 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { reportsApi } from '@/lib/api/reports';
-
-const fmt = (n: number) =>
-  n >= 10000000
-    ? `₹${(n / 10000000).toFixed(1)}Cr`
-    : n >= 100000
-      ? `₹${(n / 100000).toFixed(1)}L`
-      : `₹${n.toLocaleString('en-IN')}`;
-
-const presetMap: Record<string, string> = {
-  '7days': 'this_week',
-  '30days': 'this_month',
-  '90days': 'this_quarter',
-  'thisMonth': 'this_month',
-  'lastMonth': 'last_month',
-  'thisQuarter': 'this_quarter',
-  'thisYear': 'this_year',
-};
+import { PRESET_MAP as presetMap } from '@/components/domain/report-page-template';
+import {
+  ReportExportButton,
+  formatReportCurrency as fmt,
+  useReportSemanticColors,
+} from '@/components/domain/reports/shared';
 
 function ChartSkeleton() {
   return (
@@ -57,6 +45,7 @@ function ChartSkeleton() {
 }
 
 export default function MarketingReportsPage() {
+  const semanticColors = useReportSemanticColors();
   const [dateRange, setDateRange] = React.useState('30days');
   const [showComparison, setShowComparison] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState('campaigns');
@@ -97,15 +86,6 @@ export default function MarketingReportsPage() {
 
     return () => { cancelled = true; };
   }, [dateRange, showComparison, activeTab, retryKey]);
-
-  const handleExport = async () => {
-    try {
-      await reportsApi.export('campaign_performance', 'excel', { date_preset: presetMap[dateRange] ?? 'this_month' });
-      toast.success('Export started');
-    } catch {
-      toast.error('Export failed');
-    }
-  };
 
   const renderError = () => (
     <div className="flex flex-col items-center justify-center h-[300px] gap-3">
@@ -176,10 +156,13 @@ export default function MarketingReportsPage() {
               <SelectItem value="thisYear">This Year</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="h-4 w-4 mr-1.5" />
-            Export
-          </Button>
+          <ReportExportButton
+            reportId="campaign_performance"
+            params={{ date_preset: presetMap[dateRange] ?? 'this_month' }}
+            filenamePrefix="marketing-report"
+            rangeLabel={dateRange}
+            size="sm"
+          />
         </div>
       </div>
 
@@ -254,8 +237,8 @@ export default function MarketingReportsPage() {
                         <YAxis />
                         <Tooltip />
                         <Legend />
-                        <Bar dataKey="Total Leads" fill="#3b82f6" />
-                        <Bar dataKey="Won Leads" fill="#10b981" />
+                        <Bar dataKey="Total Leads" fill={semanticColors.primary} />
+                        <Bar dataKey="Won Leads" fill={semanticColors.success} />
                       </BarChart>
                     </ResponsiveContainer>
                   </CardContent>
@@ -350,8 +333,8 @@ export default function MarketingReportsPage() {
                         <YAxis />
                         <Tooltip />
                         <Legend />
-                        <Bar dataKey="Total Leads" fill="#3b82f6" />
-                        <Bar dataKey="Won Leads" fill="#10b981" />
+                        <Bar dataKey="Total Leads" fill={semanticColors.primary} />
+                        <Bar dataKey="Won Leads" fill={semanticColors.success} />
                       </BarChart>
                     </ResponsiveContainer>
                   </CardContent>
@@ -452,9 +435,9 @@ export default function MarketingReportsPage() {
                         <YAxis />
                         <Tooltip />
                         <Legend />
-                        <Bar dataKey="Sent" fill="#3b82f6" />
-                        <Bar dataKey="Delivered" fill="#10b981" />
-                        <Bar dataKey="Failed" fill="#ef4444" />
+                        <Bar dataKey="Sent" fill={semanticColors.primary} />
+                        <Bar dataKey="Delivered" fill={semanticColors.success} />
+                        <Bar dataKey="Failed" fill={semanticColors.danger} />
                       </BarChart>
                     </ResponsiveContainer>
                   </CardContent>

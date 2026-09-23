@@ -3,13 +3,12 @@
 import * as React from 'react';
 import Link from 'next/link';
 import {
-  Download, Truck, Star, TrendingUp, AlertCircle, RefreshCw,
+  Truck, Star, TrendingUp, AlertCircle, RefreshCw,
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer,
 } from 'recharts';
-import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
   Card, CardContent, CardHeader, CardTitle, CardDescription,
@@ -26,25 +25,13 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { reportsApi } from '@/lib/api/reports';
-
-const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
-
-const fmt = (n: number) =>
-  n >= 10000000
-    ? `₹${(n / 10000000).toFixed(1)}Cr`
-    : n >= 100000
-      ? `₹${(n / 100000).toFixed(1)}L`
-      : `₹${n.toLocaleString('en-IN')}`;
-
-const presetMap: Record<string, string> = {
-  '7days': 'this_week',
-  '30days': 'this_month',
-  '90days': 'this_quarter',
-  thisMonth: 'this_month',
-  lastMonth: 'last_month',
-  thisQuarter: 'this_quarter',
-  thisYear: 'this_year',
-};
+import { PRESET_MAP as presetMap } from '@/components/domain/report-page-template';
+import {
+  ReportExportButton,
+  formatReportCurrency as fmt,
+  useReportChartColors,
+  useReportSemanticColors,
+} from '@/components/domain/reports/shared';
 
 function ChartSkeleton() {
   return (
@@ -59,6 +46,8 @@ function ChartSkeleton() {
 }
 
 export default function FleetReportsPage() {
+  const CHART_COLORS = useReportChartColors();
+  const semanticColors = useReportSemanticColors();
   const [dateRange, setDateRange] = React.useState('30days');
   const [showComparison, setShowComparison] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState('utilization');
@@ -102,15 +91,6 @@ export default function FleetReportsPage() {
 
     return () => { cancelled = true; };
   }, [dateRange, showComparison, activeTab, retryKey]);
-
-  const handleExport = async () => {
-    try {
-      await reportsApi.export('fleet_utilization', 'excel', { date_preset: presetMap[dateRange] ?? 'this_month' });
-      toast.success('Export started');
-    } catch {
-      toast.error('Export failed');
-    }
-  };
 
   const renderError = () => (
     <div className="flex flex-col items-center justify-center h-[300px] gap-3">
@@ -168,10 +148,13 @@ export default function FleetReportsPage() {
               <SelectItem value="thisYear">This Year</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="h-4 w-4 mr-1.5" />
-            Export
-          </Button>
+          <ReportExportButton
+            reportId="fleet_utilization"
+            params={{ date_preset: presetMap[dateRange] ?? 'this_month' }}
+            filenamePrefix="fleet-report"
+            rangeLabel={dateRange}
+            size="sm"
+          />
         </div>
       </div>
 
@@ -268,8 +251,8 @@ export default function FleetReportsPage() {
                         <YAxis yAxisId="right" orientation="right" tickFormatter={(v) => fmt(v)} />
                         <Tooltip formatter={(v, name) => name === 'Revenue' ? fmt(v as number) : v} />
                         <Legend />
-                        <Bar yAxisId="left" dataKey="Trips" fill="#3b82f6" />
-                        <Bar yAxisId="right" dataKey="Revenue" fill="#10b981" />
+                        <Bar yAxisId="left" dataKey="Trips" fill={CHART_COLORS[0]} />
+                        <Bar yAxisId="right" dataKey="Revenue" fill={semanticColors.success} />
                       </BarChart>
                     </ResponsiveContainer>
                   </CardContent>
@@ -365,8 +348,8 @@ export default function FleetReportsPage() {
                         <YAxis yAxisId="right" orientation="right" domain={[0, 5]} />
                         <Tooltip />
                         <Legend />
-                        <Bar yAxisId="left" dataKey="Trips" fill="#3b82f6" />
-                        <Bar yAxisId="right" dataKey="Rating" fill="#f59e0b" />
+                        <Bar yAxisId="left" dataKey="Trips" fill={CHART_COLORS[0]} />
+                        <Bar yAxisId="right" dataKey="Rating" fill={semanticColors.warning} />
                       </BarChart>
                     </ResponsiveContainer>
                   </CardContent>
@@ -525,9 +508,9 @@ export default function FleetReportsPage() {
                           <YAxis />
                           <Tooltip />
                           <Legend />
-                          <Bar dataKey="Available" fill="#10b981" stackId="a" />
-                          <Bar dataKey="Maintenance" fill="#f59e0b" stackId="a" />
-                          <Bar dataKey="Inactive" fill="#ef4444" stackId="a" />
+                          <Bar dataKey="Available" fill={semanticColors.success} stackId="a" />
+                          <Bar dataKey="Maintenance" fill={semanticColors.warning} stackId="a" />
+                          <Bar dataKey="Inactive" fill={semanticColors.danger} stackId="a" />
                         </BarChart>
                       </ResponsiveContainer>
                     </CardContent>
@@ -645,9 +628,9 @@ export default function FleetReportsPage() {
                         <YAxis yAxisId="right" orientation="right" />
                         <Tooltip formatter={(v, name) => name === 'Trips' ? v : fmt(v as number)} />
                         <Legend />
-                        <Bar yAxisId="left" dataKey="Avg Cost" fill="#3b82f6" />
-                        <Bar yAxisId="left" dataKey="Total Cost" fill="#10b981" />
-                        <Bar yAxisId="right" dataKey="Trips" fill="#f59e0b" />
+                        <Bar yAxisId="left" dataKey="Avg Cost" fill={CHART_COLORS[0]} />
+                        <Bar yAxisId="left" dataKey="Total Cost" fill={semanticColors.success} />
+                        <Bar yAxisId="right" dataKey="Trips" fill={semanticColors.warning} />
                       </BarChart>
                     </ResponsiveContainer>
                   </CardContent>

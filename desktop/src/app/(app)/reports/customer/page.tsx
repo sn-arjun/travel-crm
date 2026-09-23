@@ -3,13 +3,12 @@
 import * as React from 'react';
 import Link from 'next/link';
 import {
-  Download, Users, TrendingUp, Cake, Clock, AlertCircle, RefreshCw,
+  Users, TrendingUp, Cake, Clock, AlertCircle, RefreshCw,
 } from 'lucide-react';
 import {
-  BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer,
 } from 'recharts';
-import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
   Card, CardContent, CardHeader, CardTitle, CardDescription,
@@ -26,20 +25,12 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { reportsApi } from '@/lib/api/reports';
-
-const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
-
-const fmt = (n: number) => n >= 10000000 ? `₹${(n / 10000000).toFixed(1)}Cr` : n >= 100000 ? `₹${(n / 100000).toFixed(1)}L` : `₹${n.toLocaleString('en-IN')}`;
-
-const presetMap: Record<string, string> = {
-  '7days': 'this_week',
-  '30days': 'this_month',
-  '90days': 'this_quarter',
-  'thisMonth': 'this_month',
-  'lastMonth': 'last_month',
-  'thisQuarter': 'this_quarter',
-  'thisYear': 'this_year',
-};
+import { PRESET_MAP as presetMap } from '@/components/domain/report-page-template';
+import {
+  ReportExportButton,
+  formatReportCurrency as fmt,
+  useReportChartColors,
+} from '@/components/domain/reports/shared';
 
 function ChartSkeleton() {
   return (
@@ -56,6 +47,7 @@ function ChartSkeleton() {
 export default function CustomerReportsPage() {
   const [dateRange, setDateRange] = React.useState('30days');
   const [showComparison, setShowComparison] = React.useState(false);
+  const CHART_COLORS = useReportChartColors();
   const [activeTab, setActiveTab] = React.useState('repeat');
 
   const [repeatData, setRepeatData] = React.useState<any[]>([]);
@@ -96,15 +88,6 @@ export default function CustomerReportsPage() {
 
     return () => { cancelled = true; };
   }, [dateRange, showComparison, activeTab, retryKey]);
-
-  const handleExport = async () => {
-    try {
-      await reportsApi.export('repeat_customers', 'excel', { date_preset: presetMap[dateRange] ?? 'this_month' });
-      toast.success('Export started');
-    } catch {
-      toast.error('Export failed');
-    }
-  };
 
   const renderError = () => (
     <div className="flex flex-col items-center justify-center h-[300px] gap-3">
@@ -158,10 +141,13 @@ export default function CustomerReportsPage() {
               <SelectItem value="thisYear">This Year</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="h-4 w-4 mr-1.5" />
-            Export
-          </Button>
+          <ReportExportButton
+            reportId="repeat_customers"
+            params={{ date_preset: presetMap[dateRange] ?? 'this_month' }}
+            filenamePrefix="customer-report"
+            rangeLabel={dateRange}
+            size="sm"
+          />
         </div>
       </div>
 
@@ -254,7 +240,7 @@ export default function CustomerReportsPage() {
                         <YAxis tickFormatter={(v) => fmt(v)} />
                         <Tooltip formatter={(v, name) => name === 'Spend' ? fmt(v as number) : v} />
                         <Legend />
-                        <Bar dataKey="Spend" fill="#3b82f6" />
+                        <Bar dataKey="Spend" fill={CHART_COLORS[0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </CardContent>
@@ -312,7 +298,7 @@ export default function CustomerReportsPage() {
                         <XAxis type="number" tickFormatter={(v) => fmt(v)} />
                         <YAxis type="category" dataKey="name" width={75} tick={{ fontSize: 12 }} />
                         <Tooltip formatter={(v) => fmt(v as number)} />
-                        <Bar dataKey="LTV" fill="#3b82f6" />
+                        <Bar dataKey="LTV" fill={CHART_COLORS[0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </CardContent>

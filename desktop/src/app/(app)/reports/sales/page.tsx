@@ -19,14 +19,15 @@ import {
   ReportEmptyState,
   PRESET_MAP,
 } from '@/components/domain/report-page-template';
-
-const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+import { useReportChartColors, useReportSemanticColors } from '@/components/domain/reports/shared';
 
 export default function SalesReportsPage() {
   const [dateRange, setDateRange] = React.useState('30days');
   const [compareEnabled, setCompareEnabled] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState('summary');
   const [retryKey, setRetryKey] = React.useState(0);
+  const CHART_COLORS = useReportChartColors();
+  const semanticColors = useReportSemanticColors();
 
   const currentPreset = PRESET_MAP[dateRange] ?? 'this_month';
   const baseParams = { date_preset: currentPreset, compare: compareEnabled };
@@ -210,8 +211,8 @@ export default function SalesReportsPage() {
                   <AreaChart data={summaryData}>
                     <defs>
                       <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                        <stop offset="5%" stopColor={CHART_COLORS[0]} stopOpacity={0.8} />
+                        <stop offset="95%" stopColor={CHART_COLORS[0]} stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" />
@@ -219,9 +220,9 @@ export default function SalesReportsPage() {
                     <YAxis />
                     <Tooltip formatter={(value) => `\u20B9${((value as number) / 100000).toFixed(1)}L`} />
                     <Legend />
-                    <Area type="monotone" dataKey="total_revenue" stroke="#3b82f6" fillOpacity={1} fill="url(#colorRevenue)" name="Revenue" />
+                    <Area type="monotone" dataKey="total_revenue" stroke={CHART_COLORS[0]} fillOpacity={1} fill="url(#colorRevenue)" name="Revenue" />
                     {compareEnabled && (
-                      <Area type="monotone" dataKey="prev_revenue" stroke="#f59e0b" strokeDasharray="5 5" fill="none" name="Prev Period" />
+                      <Area type="monotone" dataKey="prev_revenue" stroke={semanticColors.warning} strokeDasharray="5 5" fill="none" name="Prev Period" />
                     )}
                   </AreaChart>
                 </ResponsiveContainer>
@@ -250,7 +251,7 @@ export default function SalesReportsPage() {
                     <XAxis type="number" />
                     <YAxis dataKey="name" type="category" width={100} />
                     <Tooltip formatter={(value) => `\u20B9${((value as number) / 1000000).toFixed(1)}M`} />
-                    <Bar dataKey="revenue" fill="#3b82f6" />
+                    <Bar dataKey="revenue" fill={CHART_COLORS[0]} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -279,8 +280,8 @@ export default function SalesReportsPage() {
                     <YAxis />
                     <Tooltip />
                     <Legend />
-                    <Bar dataKey="revenue" fill="#10b981" name="Revenue (\u20B9)" />
-                    <Bar dataKey="target" fill="#f59e0b" name="Target (\u20B9)" />
+                    <Bar dataKey="revenue" fill={semanticColors.success} name="Revenue (\u20B9)" />
+                    <Bar dataKey="target" fill={semanticColors.warning} name="Target (\u20B9)" />
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -311,7 +312,7 @@ export default function SalesReportsPage() {
                       labelLine={false}
                       label={({ name, value }) => `${name} (${value}%)`}
                       outerRadius={100}
-                      fill="#8884d8"
+                      fill={CHART_COLORS[0]}
                       dataKey="value"
                     >
                       {tripTypeData.map((_entry: any, index: any) => (
@@ -349,7 +350,7 @@ export default function SalesReportsPage() {
                       labelLine={false}
                       label={({ name, value }) => `${name} (${value}%)`}
                       outerRadius={100}
-                      fill="#8884d8"
+                      fill={CHART_COLORS[0]}
                       dataKey="value"
                     >
                       {sourceData.map((_entry: any, index: any) => (
@@ -385,7 +386,7 @@ export default function SalesReportsPage() {
                     <YAxis />
                     <Tooltip formatter={(value) => `\u20B9${((value as number) / 100000).toFixed(1)}L`} />
                     <Legend />
-                    <Line type="monotone" dataKey="avgSize" stroke="#8b5cf6" name="Average Size" />
+                    <Line type="monotone" dataKey="avgSize" stroke={CHART_COLORS[4]} name="Average Size" />
                   </LineChart>
                 </ResponsiveContainer>
               )}
@@ -414,8 +415,8 @@ export default function SalesReportsPage() {
                     <YAxis />
                     <Tooltip formatter={(value) => `\u20B9${((value as number) / 100000).toFixed(1)}L`} />
                     <Legend />
-                    <Area type="monotone" dataKey="revenue" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.6} name="Actual" />
-                    <Area type="monotone" dataKey="projected" stroke="#f59e0b" strokeDasharray="5 5" fill="none" name="Projected" />
+                    <Area type="monotone" dataKey="revenue" stroke={CHART_COLORS[0]} fill={CHART_COLORS[0]} fillOpacity={0.6} name="Actual" />
+                    <Area type="monotone" dataKey="projected" stroke={semanticColors.warning} strokeDasharray="5 5" fill="none" name="Projected" />
                   </AreaChart>
                 </ResponsiveContainer>
               )}
@@ -444,8 +445,8 @@ export default function SalesReportsPage() {
                     <YAxis />
                     <Tooltip />
                     <Legend />
-                    <Bar dataKey="won" fill="#10b981" name="Won" />
-                    <Bar dataKey="lost" fill="#ef4444" name="Lost" />
+                    <Bar dataKey="won" fill={semanticColors.success} name="Won" />
+                    <Bar dataKey="lost" fill={semanticColors.danger} name="Lost" />
                   </BarChart>
                 </ResponsiveContainer>
               )}

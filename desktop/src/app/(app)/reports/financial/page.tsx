@@ -2,9 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import {
-  ArrowLeft, Download, TrendingUp, TrendingDown, AlertCircle, RefreshCw,
-} from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -18,78 +16,26 @@ import {
 } from 'recharts';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { toast } from 'sonner';
 import { useApiQuery } from '@/hooks/use-api';
 import { reportsApi } from '@/lib/api/reports';
+import {
+  SummaryCard,
+  KPISkeleton,
+  ReportErrorState as ErrorState,
+  ChartSkeleton,
+  DEFAULT_PERIOD_OPTIONS,
+  PRESET_MAP as presetMap,
+} from '@/components/domain/report-page-template';
+import {
+  ReportExportButton,
+  ReportTabEmptyState,
+  useReportChartColors,
+  useReportSemanticColors,
+} from '@/components/domain/reports/shared';
 
 // ---------------------------------------------------------------------------
-// Constants
+// Helper sub-components (page-local; not covered by the shared template)
 // ---------------------------------------------------------------------------
-
-const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
-
-const presetMap: Record<string, string> = {
-  '7days': 'this_week',
-  '30days': 'this_month',
-  '90days': 'this_quarter',
-  'thisMonth': 'this_month',
-  'lastMonth': 'last_month',
-  'thisQuarter': 'this_quarter',
-  'thisYear': 'this_year',
-};
-
-// ---------------------------------------------------------------------------
-// Helper sub-components
-// ---------------------------------------------------------------------------
-
-function SummaryCard({
-  label,
-  value,
-  subtext,
-  trend,
-  loading,
-}: {
-  label: string;
-  value: string;
-  subtext?: string;
-  trend?: number;
-  loading?: boolean;
-}) {
-  if (loading) {
-    return (
-      <Card>
-        <CardContent className="p-4 space-y-2">
-          <Skeleton className="h-4 w-24" />
-          <Skeleton className="h-8 w-32" />
-          <Skeleton className="h-3 w-20" />
-        </CardContent>
-      </Card>
-    );
-  }
-  return (
-    <Card>
-      <CardContent className="p-4">
-        <p className="text-sm text-muted-foreground mb-1">{label}</p>
-        <div className="flex items-end gap-2">
-          <p className="text-2xl font-bold">{value}</p>
-          {trend !== undefined && (
-            <div className="flex items-center gap-1 mb-1">
-              {trend >= 0 ? (
-                <TrendingUp className="h-4 w-4 text-green-600" />
-              ) : (
-                <TrendingDown className="h-4 w-4 text-red-600" />
-              )}
-              <span className={trend >= 0 ? 'text-xs text-green-600' : 'text-xs text-red-600'}>
-                {Math.abs(trend)}%
-              </span>
-            </div>
-          )}
-        </div>
-        {subtext && <p className="text-xs text-muted-foreground mt-1">{subtext}</p>}
-      </CardContent>
-    </Card>
-  );
-}
 
 function DateRangeSelector({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   return (
@@ -100,36 +46,13 @@ function DateRangeSelector({ value, onChange }: { value: string; onChange: (valu
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="7days">Last 7 Days</SelectItem>
-          <SelectItem value="30days">Last 30 Days</SelectItem>
-          <SelectItem value="90days">Last 90 Days</SelectItem>
-          <SelectItem value="thisMonth">This Month</SelectItem>
-          <SelectItem value="lastMonth">Last Month</SelectItem>
-          <SelectItem value="thisQuarter">This Quarter</SelectItem>
-          <SelectItem value="thisYear">This Year</SelectItem>
+          {DEFAULT_PERIOD_OPTIONS.map((p) => (
+            <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+          ))}
         </SelectContent>
       </Select>
     </div>
   );
-}
-
-function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
-      <AlertCircle className="h-8 w-8 text-destructive" />
-      <p className="text-sm">{message}</p>
-      {onRetry && (
-        <Button variant="outline" size="sm" onClick={onRetry}>
-          <RefreshCw className="h-4 w-4 mr-1.5" />
-          Retry
-        </Button>
-      )}
-    </div>
-  );
-}
-
-function ChartSkeleton({ height = 300 }: { height?: number }) {
-  return <Skeleton className="w-full rounded-md" style={{ height }} />;
 }
 
 function TableSkeleton({ rows = 6 }: { rows?: number }) {
@@ -163,7 +86,8 @@ function fmtM(v: number) {
 export default function FinancialReportsPage() {
   const [dateRange, setDateRange] = React.useState('30days');
   const [comparePrev, setComparePrev] = React.useState(false);
-  const [isExporting, setIsExporting] = React.useState(false);
+  const CHART_COLORS = useReportChartColors();
+  const semanticColors = useReportSemanticColors();
 
   const preset = presetMap[dateRange] ?? 'this_month';
 
@@ -302,25 +226,6 @@ export default function FinancialReportsPage() {
 
   const kpiLoading = collectionsLoading || revenueLoading || outstandingLoading;
 
-  // ── Export handler ────────────────────────────────────────────────────────
-  async function handleExport() {
-    setIsExporting(true);
-    try {
-      const blob = await reportsApi.export('revenue_summary', 'excel', { date_preset: preset });
-      const url = URL.createObjectURL(blob as unknown as Blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `financial-report-${dateRange}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success('Export downloaded successfully.');
-    } catch {
-      toast.error('Failed to export report. Please try again.');
-    } finally {
-      setIsExporting(false);
-    }
-  }
-
   // ── Pie chart data shape for payment methods ──────────────────────────────
   const pieData = paymentMethodRows.map((r) => ({
     name: r.method,
@@ -352,45 +257,37 @@ export default function FinancialReportsPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button
+            <ReportExportButton
+              reportId="revenue_summary"
+              params={{ date_preset: preset }}
+              filenamePrefix="financial-report"
+              rangeLabel={dateRange}
               size="sm"
-              className="bg-primary text-primary-foreground"
-              onClick={handleExport}
-              disabled={isExporting}
-            >
-              {isExporting ? (
-                <RefreshCw className="h-4 w-4 mr-1.5 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4 mr-1.5" />
-              )}
-              Export
-            </Button>
+            />
           </div>
         </div>
 
         {/* KPI Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <SummaryCard
-            label="Total Invoiced"
-            value={kpiLoading ? '—' : fmtCr(totalInvoiced)}
-            loading={kpiLoading}
-          />
-          <SummaryCard
-            label="Total Collected"
-            value={kpiLoading ? '—' : fmtCr(totalCollected)}
-            loading={kpiLoading}
-          />
-          <SummaryCard
-            label="Collection Rate"
-            value={kpiLoading ? '—' : `${collectionRate}%`}
-            loading={kpiLoading}
-          />
-          <SummaryCard
-            label="Outstanding Receivable"
-            value={kpiLoading ? '—' : fmtM(totalReceivable)}
-            subtext={overdueReceivable > 0 ? `${fmtL(overdueReceivable)} overdue` : undefined}
-            loading={kpiLoading}
-          />
+          {kpiLoading ? (
+            <>
+              <KPISkeleton />
+              <KPISkeleton />
+              <KPISkeleton />
+              <KPISkeleton />
+            </>
+          ) : (
+            <>
+              <SummaryCard label="Total Invoiced" value={fmtCr(totalInvoiced)} />
+              <SummaryCard label="Total Collected" value={fmtCr(totalCollected)} />
+              <SummaryCard label="Collection Rate" value={`${collectionRate}%`} />
+              <SummaryCard
+                label="Outstanding Receivable"
+                value={fmtM(totalReceivable)}
+                subtext={overdueReceivable > 0 ? `${fmtL(overdueReceivable)} overdue` : undefined}
+              />
+            </>
+          )}
         </div>
       </div>
 
@@ -435,7 +332,7 @@ export default function FinancialReportsPage() {
                   <ErrorState message="Failed to load revenue data." onRetry={refetchRevenue} />
                 )}
                 {!revenueLoading && !revenueError && revenueRows.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-12">No revenue data for this period.</p>
+                  <ReportTabEmptyState message="No revenue data for this period." />
                 )}
                 {!revenueLoading && !revenueError && revenueRows.length > 0 && (
                   <>
@@ -443,12 +340,12 @@ export default function FinancialReportsPage() {
                       <AreaChart data={revenueRows}>
                         <defs>
                           <linearGradient id="colorAmount" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
-                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                            <stop offset="5%" stopColor={CHART_COLORS[0]} stopOpacity={0.8} />
+                            <stop offset="95%" stopColor={CHART_COLORS[0]} stopOpacity={0} />
                           </linearGradient>
                           <linearGradient id="colorOutstanding" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.8} />
-                            <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                            <stop offset="5%" stopColor={semanticColors.warning} stopOpacity={0.8} />
+                            <stop offset="95%" stopColor={semanticColors.warning} stopOpacity={0} />
                           </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" />
@@ -459,7 +356,7 @@ export default function FinancialReportsPage() {
                         <Area
                           type="monotone"
                           dataKey="total_amount"
-                          stroke="#3b82f6"
+                          stroke={CHART_COLORS[0]}
                           fillOpacity={1}
                           fill="url(#colorAmount)"
                           name="Total Amount"
@@ -467,7 +364,7 @@ export default function FinancialReportsPage() {
                         <Area
                           type="monotone"
                           dataKey="total_outstanding"
-                          stroke="#f59e0b"
+                          stroke={semanticColors.warning}
                           fillOpacity={1}
                           fill="url(#colorOutstanding)"
                           name="Outstanding"
@@ -523,7 +420,7 @@ export default function FinancialReportsPage() {
                   <ErrorState message="Failed to load collections data." onRetry={refetchCollections} />
                 )}
                 {!collectionsLoading && !collectionsError && collectionsRows.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-12">No collections data for this period.</p>
+                  <ReportTabEmptyState message="No collections data for this period." />
                 )}
                 {!collectionsLoading && !collectionsError && collectionsRows.length > 0 && (
                   <>
@@ -534,8 +431,8 @@ export default function FinancialReportsPage() {
                         <YAxis tickFormatter={(v) => fmtL(v)} />
                         <Tooltip formatter={(value) => fmtL(value as number)} />
                         <Legend />
-                        <Bar dataKey="collected_amount" fill="#10b981" name="Collected Amount" />
-                        <Bar dataKey="payment_count" fill="#3b82f6" name="Payment Count" yAxisId="right" />
+                        <Bar dataKey="collected_amount" fill={semanticColors.success} name="Collected Amount" />
+                        <Bar dataKey="payment_count" fill={CHART_COLORS[0]} name="Payment Count" yAxisId="right" />
                       </BarChart>
                     </ResponsiveContainer>
 
@@ -603,7 +500,7 @@ export default function FinancialReportsPage() {
                   </CardHeader>
                   <CardContent>
                     {(!outstandingData.topOverdueInvoices || outstandingData.topOverdueInvoices.length === 0) ? (
-                      <p className="text-sm text-muted-foreground text-center py-12">No overdue invoices.</p>
+                      <ReportTabEmptyState message="No overdue invoices." />
                     ) : (
                       <div className="overflow-x-auto">
                         <Table>
@@ -652,7 +549,7 @@ export default function FinancialReportsPage() {
                   <ErrorState message="Failed to load P&L data." onRetry={refetchPnl} />
                 )}
                 {!pnlLoading && !pnlError && pnlRows.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-12">No P&L data for this period.</p>
+                  <ReportTabEmptyState message="No P&L data for this period." />
                 )}
                 {!pnlLoading && !pnlError && pnlRows.length > 0 && (
                   <>
@@ -663,9 +560,9 @@ export default function FinancialReportsPage() {
                         <YAxis tickFormatter={(v) => fmtL(v)} />
                         <Tooltip formatter={(value) => fmtL(value as number)} />
                         <Legend />
-                        <Bar dataKey="total_invoiced" fill="#3b82f6" name="Invoiced" />
-                        <Bar dataKey="total_costs" fill="#ef4444" name="Costs" />
-                        <Bar dataKey="gross_profit" fill="#10b981" name="Gross Profit" />
+                        <Bar dataKey="total_invoiced" fill={CHART_COLORS[0]} name="Invoiced" />
+                        <Bar dataKey="total_costs" fill={semanticColors.danger} name="Costs" />
+                        <Bar dataKey="gross_profit" fill={semanticColors.success} name="Gross Profit" />
                       </BarChart>
                     </ResponsiveContainer>
 
@@ -727,7 +624,7 @@ export default function FinancialReportsPage() {
                   <ErrorState message="Failed to load tax data." onRetry={refetchTax} />
                 )}
                 {!taxLoading && !taxError && taxRows.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-12">No tax data for this period.</p>
+                  <ReportTabEmptyState message="No tax data for this period." />
                 )}
                 {!taxLoading && !taxError && taxRows.length > 0 && (
                   <div className="overflow-x-auto">
@@ -769,7 +666,7 @@ export default function FinancialReportsPage() {
                   <ErrorState message="Failed to load payment method data." onRetry={refetchPaymentMethod} />
                 )}
                 {!paymentMethodLoading && !paymentMethodError && paymentMethodRows.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-12">No payment data for this period.</p>
+                  <ReportTabEmptyState message="No payment data for this period." />
                 )}
                 {!paymentMethodLoading && !paymentMethodError && paymentMethodRows.length > 0 && (
                   <>
@@ -832,7 +729,7 @@ export default function FinancialReportsPage() {
                   <ErrorState message="Failed to load refund data." onRetry={refetchRefunds} />
                 )}
                 {!refundLoading && !refundError && refundRows.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-12">No refund data for this period.</p>
+                  <ReportTabEmptyState message="No refund data for this period." />
                 )}
                 {!refundLoading && !refundError && refundRows.length > 0 && (
                   <>
@@ -843,8 +740,8 @@ export default function FinancialReportsPage() {
                         <YAxis tickFormatter={(v) => fmtL(v)} />
                         <Tooltip formatter={(value) => fmtL(value as number)} />
                         <Legend />
-                        <Bar dataKey="refund_amount" fill="#ef4444" name="Refund Amount" />
-                        <Bar dataKey="refund_count" fill="#8b5cf6" name="Refund Count" />
+                        <Bar dataKey="refund_amount" fill={semanticColors.danger} name="Refund Amount" />
+                        <Bar dataKey="refund_count" fill={CHART_COLORS[4]} name="Refund Count" />
                       </BarChart>
                     </ResponsiveContainer>
 
@@ -886,7 +783,7 @@ export default function FinancialReportsPage() {
                   <ErrorState message="Failed to load daily cash data." onRetry={refetchDailyCash} />
                 )}
                 {!dailyCashLoading && !dailyCashError && dailyCashRows.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-12">No cash flow data for this period.</p>
+                  <ReportTabEmptyState message="No cash flow data for this period." />
                 )}
                 {!dailyCashLoading && !dailyCashError && dailyCashRows.length > 0 && (
                   <>
@@ -894,16 +791,16 @@ export default function FinancialReportsPage() {
                       <AreaChart data={dailyCashRows}>
                         <defs>
                           <linearGradient id="colorInflow" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
-                            <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                            <stop offset="5%" stopColor={semanticColors.success} stopOpacity={0.8} />
+                            <stop offset="95%" stopColor={semanticColors.success} stopOpacity={0} />
                           </linearGradient>
                           <linearGradient id="colorOutflow" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8} />
-                            <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                            <stop offset="5%" stopColor={semanticColors.danger} stopOpacity={0.8} />
+                            <stop offset="95%" stopColor={semanticColors.danger} stopOpacity={0} />
                           </linearGradient>
                           <linearGradient id="colorNet" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
-                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                            <stop offset="5%" stopColor={CHART_COLORS[0]} stopOpacity={0.8} />
+                            <stop offset="95%" stopColor={CHART_COLORS[0]} stopOpacity={0} />
                           </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" />
@@ -911,9 +808,9 @@ export default function FinancialReportsPage() {
                         <YAxis tickFormatter={(v) => fmtL(v)} />
                         <Tooltip formatter={(value) => fmtL(value as number)} />
                         <Legend />
-                        <Area type="monotone" dataKey="inflow" stroke="#10b981" fillOpacity={1} fill="url(#colorInflow)" name="Inflow" />
-                        <Area type="monotone" dataKey="outflow" stroke="#ef4444" fillOpacity={1} fill="url(#colorOutflow)" name="Outflow" />
-                        <Area type="monotone" dataKey="net_cash" stroke="#3b82f6" fillOpacity={1} fill="url(#colorNet)" name="Net Cash" />
+                        <Area type="monotone" dataKey="inflow" stroke={semanticColors.success} fillOpacity={1} fill="url(#colorInflow)" name="Inflow" />
+                        <Area type="monotone" dataKey="outflow" stroke={semanticColors.danger} fillOpacity={1} fill="url(#colorOutflow)" name="Outflow" />
+                        <Area type="monotone" dataKey="net_cash" stroke={CHART_COLORS[0]} fillOpacity={1} fill="url(#colorNet)" name="Net Cash" />
                       </AreaChart>
                     </ResponsiveContainer>
 

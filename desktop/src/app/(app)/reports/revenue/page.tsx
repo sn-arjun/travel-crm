@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import {
-  ArrowLeft, AlertCircle, RefreshCw,
+  AlertCircle, RefreshCw,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -21,25 +21,15 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { reportsApi } from '@/lib/api/reports';
-
-const presetMap: Record<string, string> = {
-  '7days': 'this_week',
-  '30days': 'this_month',
-  '90days': 'this_quarter',
-  thisMonth: 'this_month',
-  lastMonth: 'last_month',
-  thisQuarter: 'this_quarter',
-  thisYear: 'this_year',
-};
-
-function formatCurrency(amount: number) {
-  if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(1)}Cr`;
-  if (amount >= 100000) return `₹${(amount / 100000).toFixed(1)}L`;
-  if (amount >= 1000) return `₹${(amount / 1000).toFixed(0)}K`;
-  return `₹${amount.toLocaleString('en-IN')}`;
-}
+import { PRESET_MAP as presetMap } from '@/components/domain/report-page-template';
+import {
+  ReportExportButton,
+  formatReportCurrency as formatCurrency,
+  useReportSemanticColors,
+} from '@/components/domain/reports/shared';
 
 export default function RevenueReportPage() {
+  const semanticColors = useReportSemanticColors();
   const [dateRange, setDateRange] = React.useState('30days');
   const [rows, setRows] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -87,20 +77,29 @@ export default function RevenueReportPage() {
             <span className="text-foreground font-medium">Revenue Report</span>
           </nav>
         </div>
-        <Select value={dateRange} onValueChange={setDateRange}>
-          <SelectTrigger className="w-48">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="7days">Last 7 Days</SelectItem>
-            <SelectItem value="30days">Last 30 Days</SelectItem>
-            <SelectItem value="90days">Last 90 Days</SelectItem>
-            <SelectItem value="thisMonth">This Month</SelectItem>
-            <SelectItem value="lastMonth">Last Month</SelectItem>
-            <SelectItem value="thisQuarter">This Quarter</SelectItem>
-            <SelectItem value="thisYear">This Year</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          <Select value={dateRange} onValueChange={setDateRange}>
+            <SelectTrigger className="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7days">Last 7 Days</SelectItem>
+              <SelectItem value="30days">Last 30 Days</SelectItem>
+              <SelectItem value="90days">Last 90 Days</SelectItem>
+              <SelectItem value="thisMonth">This Month</SelectItem>
+              <SelectItem value="lastMonth">Last Month</SelectItem>
+              <SelectItem value="thisQuarter">This Quarter</SelectItem>
+              <SelectItem value="thisYear">This Year</SelectItem>
+            </SelectContent>
+          </Select>
+          <ReportExportButton
+            reportId="revenue_summary"
+            params={{ date_preset: presetMap[dateRange] ?? 'this_month' }}
+            filenamePrefix="revenue-report"
+            rangeLabel={dateRange}
+            size="sm"
+          />
+        </div>
       </div>
 
       {/* Title */}
@@ -185,8 +184,8 @@ export default function RevenueReportPage() {
                     <YAxis tickFormatter={(v) => formatCurrency(v)} />
                     <Tooltip formatter={(v) => formatCurrency(v as number)} />
                     <Legend />
-                    <Bar dataKey="Amount" fill="#3b82f6" />
-                    <Bar dataKey="Outstanding" fill="#ef4444" />
+                    <Bar dataKey="Amount" fill={semanticColors.primary} />
+                    <Bar dataKey="Outstanding" fill={semanticColors.danger} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>

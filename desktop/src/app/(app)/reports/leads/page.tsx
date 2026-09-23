@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import {
-  ArrowLeft, Download, Filter, AlertCircle, RefreshCw,
+  ArrowLeft, Filter, AlertCircle, RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,18 +20,13 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { reportsApi } from '@/lib/api/reports';
-
-const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
-
-const presetMap: Record<string, string> = {
-  '7days': 'this_week',
-  '30days': 'this_month',
-  '90days': 'this_quarter',
-  'thisMonth': 'this_month',
-  'lastMonth': 'last_month',
-  'thisQuarter': 'this_quarter',
-  'thisYear': 'this_year',
-};
+import { DEFAULT_PERIOD_OPTIONS, PRESET_MAP as presetMap } from '@/components/domain/report-page-template';
+import {
+  ReportExportButton,
+  ReportTabEmptyState as EmptyState,
+  useReportChartColors,
+  useReportSemanticColors,
+} from '@/components/domain/reports/shared';
 
 function SummaryCard({ label, value, subtext }: { label: string; value: string; subtext?: string }) {
   return (
@@ -54,13 +49,9 @@ function DateRangeSelector({ value, onChange }: { value: string; onChange: (valu
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="7days">Last 7 Days</SelectItem>
-          <SelectItem value="30days">Last 30 Days</SelectItem>
-          <SelectItem value="90days">Last 90 Days</SelectItem>
-          <SelectItem value="thisMonth">This Month</SelectItem>
-          <SelectItem value="lastMonth">Last Month</SelectItem>
-          <SelectItem value="thisQuarter">This Quarter</SelectItem>
-          <SelectItem value="thisYear">This Year</SelectItem>
+          {DEFAULT_PERIOD_OPTIONS.map((p) => (
+            <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+          ))}
         </SelectContent>
       </Select>
     </div>
@@ -80,14 +71,6 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
         <RefreshCw className="h-4 w-4 mr-1.5" />
         Retry
       </Button>
-    </div>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="flex flex-col items-center justify-center h-[300px] gap-2 text-muted-foreground">
-      <p className="text-sm">No data for selected period</p>
     </div>
   );
 }
@@ -130,7 +113,8 @@ export default function LeadReportsPage() {
   const [dateRange, setDateRange] = React.useState('30days');
   const [compare, setCompare] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState('pipeline');
-  const [exporting, setExporting] = React.useState(false);
+  const CHART_COLORS = useReportChartColors();
+  const semanticColors = useReportSemanticColors();
 
   const commonParams = { date_preset: presetMap[dateRange] };
 
@@ -183,23 +167,6 @@ export default function LeadReportsPage() {
     ? ((followup.data ?? []).reduce((s, d) => s + d.compliance_rate, 0) / (followup.data ?? []).length).toFixed(1)
     : null;
 
-  async function handleExport() {
-    setExporting(true);
-    try {
-      const blob = await reportsApi.export('pipeline_summary', 'excel', { date_preset: presetMap[dateRange] }) as any;
-      const url = URL.createObjectURL(blob instanceof Blob ? blob : new Blob([blob]));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `lead-report-${dateRange}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      // silently fail — export errors are non-critical
-    } finally {
-      setExporting(false);
-    }
-  }
-
   return (
     <div className="flex flex-col h-full overflow-auto">
       {/* Header */}
@@ -228,10 +195,13 @@ export default function LeadReportsPage() {
               <Filter className="h-4 w-4 mr-1.5" />
               Filter
             </Button>
-            <Button size="sm" className="bg-primary text-primary-foreground" onClick={handleExport} disabled={exporting}>
-              <Download className="h-4 w-4 mr-1.5" />
-              {exporting ? 'Exporting…' : 'Export'}
-            </Button>
+            <ReportExportButton
+              reportId="pipeline_summary"
+              params={{ date_preset: presetMap[dateRange] }}
+              filenamePrefix="lead-report"
+              rangeLabel={dateRange}
+              size="sm"
+            />
           </div>
         </div>
 
@@ -313,8 +283,8 @@ export default function LeadReportsPage() {
                       <YAxis yAxisId="right" orientation="right" />
                       <Tooltip />
                       <Legend />
-                      <Bar yAxisId="left" dataKey="lead_count" fill="#3b82f6" name="Lead Count" />
-                      <Bar yAxisId="right" dataKey="total_budget_potential" fill="#10b981" name="Budget Potential" />
+                      <Bar yAxisId="left" dataKey="lead_count" fill={CHART_COLORS[0]} name="Lead Count" />
+                      <Bar yAxisId="right" dataKey="total_budget_potential" fill={semanticColors.success} name="Budget Potential" />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -404,7 +374,7 @@ export default function LeadReportsPage() {
                             <TableCell>
                               <span
                                 className="inline-block w-3 h-3 rounded-full"
-                                style={{ backgroundColor: row.health_color ?? '#94a3b8' }}
+                                style={{ backgroundColor: row.health_color ?? semanticColors.neutral }}
                                 title={row.health_color}
                               />
                             </TableCell>
@@ -442,7 +412,7 @@ export default function LeadReportsPage() {
                           labelLine={false}
                           label={(entry: any) => `${entry.source} (${entry.total_leads})`}
                           outerRadius={100}
-                          fill="#8884d8"
+                          fill={CHART_COLORS[0]}
                           dataKey="total_leads"
                           nameKey="source"
                         >
@@ -551,7 +521,7 @@ export default function LeadReportsPage() {
                       <YAxis />
                       <Tooltip formatter={(value) => `${(value as number).toFixed(1)}h`} />
                       <Legend />
-                      <Bar dataKey="avg_response_hours" fill="#8b5cf6" name="Avg Response (hrs)" />
+                      <Bar dataKey="avg_response_hours" fill={CHART_COLORS[4]} name="Avg Response (hrs)" />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -737,7 +707,7 @@ export default function LeadReportsPage() {
                           labelLine={false}
                           label={(entry: any) => `${entry.lost_reason} (${entry.count})`}
                           outerRadius={100}
-                          fill="#8884d8"
+                          fill={CHART_COLORS[0]}
                           dataKey="count"
                           nameKey="lost_reason"
                         >
@@ -816,9 +786,9 @@ export default function LeadReportsPage() {
                       <YAxis yAxisId="right" orientation="right" />
                       <Tooltip />
                       <Legend />
-                      <Line yAxisId="left" type="monotone" dataKey="new_leads" stroke="#10b981" name="New Leads" strokeWidth={2} />
-                      <Line yAxisId="left" type="monotone" dataKey="qualified_won_leads" stroke="#3b82f6" name="Qualified/Won" strokeWidth={2} />
-                      <Line yAxisId="right" type="monotone" dataKey="avg_days_to_close" stroke="#f59e0b" name="Avg Days to Close" strokeWidth={2} strokeDasharray="5 5" />
+                      <Line yAxisId="left" type="monotone" dataKey="new_leads" stroke={semanticColors.success} name="New Leads" strokeWidth={2} />
+                      <Line yAxisId="left" type="monotone" dataKey="qualified_won_leads" stroke={CHART_COLORS[0]} name="Qualified/Won" strokeWidth={2} />
+                      <Line yAxisId="right" type="monotone" dataKey="avg_days_to_close" stroke={semanticColors.warning} name="Avg Days to Close" strokeWidth={2} strokeDasharray="5 5" />
                     </LineChart>
                   </ResponsiveContainer>
                 )}
@@ -909,7 +879,7 @@ export default function LeadReportsPage() {
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="month" />
                       <YAxis />
-                      <Line type="monotone" dataKey="new_leads" stroke="#10b981" strokeWidth={2} />
+                      <Line type="monotone" dataKey="new_leads" stroke={semanticColors.success} strokeWidth={2} />
                     </LineChart>
                   </ResponsiveContainer>
                 )}

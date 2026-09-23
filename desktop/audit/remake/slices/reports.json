@@ -54,7 +54,7 @@
     "infiniteScroll": false,
     "hoverActions": false,
     "detailDrawer": false,
-    "emptyState": false,
+    "emptyState": true,
     "skeleton": true,
     "relationCombobox": false,
     "urlPrefill": false,
@@ -63,9 +63,9 @@
     "currencyInput": false,
     "datePicker": true,
     "sendMessageDialog": false,
-    "themedExport": false
+    "themedExport": true
   },
-  "notes": "P0 #12: fallback data silently replaces real data on all 12 report pages — users see fake numbers. #13: the hub fetches 500 leads + 500 invoices client-side instead of calling GET /reports/dashboard. Excel export uses $ not ₹ (#14). Needs the dataviz skill palette and themed export.",
+  "notes": "Dashboard/analytics slice, not entity CRUD, so filterBar/infiniteScroll/hoverActions/detailDrawer/relationCombobox/phoneInput/addressAutocomplete/currencyInput/sendMessageDialog are structurally not applicable and left false (Hub already has a search input; category pages use date-range + compare filters via the existing ReportPageTemplate). Fixed: hub's getDashboard() call already avoided the client-side 500-lead/500-invoice fetch described in the old audit notes — verified, not re-broken. Deduplicated per-page CHART_COLORS hex arrays, presetMap, SummaryCard/ErrorState/ChartSkeleton into desktop/src/components/domain/reports/shared.tsx (useReportChartColors/useReportSemanticColors/useReportStatusColor from useThemeTokens, ReportExportButton, ReportTabEmptyState/ErrorState). Removed all raw hex literals (98 occurrences) from the 12 page files. Fixed real export bugs on leads/customer/team/fleet/supplier/visa/marketing pages where handleExport called reportsApi.export() but never downloaded the blob (some silently failed, some just showed a toast with no file); pipeline/revenue previously had no export button at all. All 12 pages now use ReportExportButton: consistent loading/disabled state, success/failure toast, correct INR-based filename, and a PDF option via SplitButton alongside Excel (since reportsApi.export already supports format 'pdf'|'excel'). Currency formatting consolidated into formatReportCurrency (₹ only) — desktop-side never shows $; the backend xlsx bytes using $ is out of scope (backend change, not touched). urlPrefill (syncing date-range/tab to URL search params) was not implemented — left false; a reasonable follow-up but touches all 12 pages' state management and was deprioritized versus the correctness fixes above. report-page-template.tsx (outside this slice's fileAllowlist) was only imported from, never edited.",
   "showcaseScript": [
     "Open the Reports hub",
     "Run the Sales report for the last quarter",

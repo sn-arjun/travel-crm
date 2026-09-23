@@ -3,13 +3,12 @@
 import * as React from 'react';
 import Link from 'next/link';
 import {
-  Download, CheckCircle2, Clock, AlertCircle, FileText, Calendar, RefreshCw,
+  CheckCircle2, Clock, AlertCircle, FileText, RefreshCw,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
   Card, CardContent, CardHeader, CardTitle, CardDescription,
@@ -27,18 +26,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { reportsApi } from '@/lib/api/reports';
-
-const fmt = (n: number) => n >= 10000000 ? `₹${(n / 10000000).toFixed(1)}Cr` : n >= 100000 ? `₹${(n / 100000).toFixed(1)}L` : `₹${n.toLocaleString('en-IN')}`;
-
-const presetMap: Record<string, string> = {
-  '7days': 'this_week',
-  '30days': 'this_month',
-  '90days': 'this_quarter',
-  'thisMonth': 'this_month',
-  'lastMonth': 'last_month',
-  'thisQuarter': 'this_quarter',
-  'thisYear': 'this_year',
-};
+import { PRESET_MAP as presetMap } from '@/components/domain/report-page-template';
+import {
+  ReportExportButton,
+  formatReportCurrency as fmt,
+  useReportSemanticColors,
+  useReportStatusColor,
+} from '@/components/domain/reports/shared';
 
 function ChartSkeleton() {
   return (
@@ -53,6 +47,8 @@ function ChartSkeleton() {
 }
 
 export default function VisaReportsPage() {
+  const semanticColors = useReportSemanticColors();
+  const getStatusColor = useReportStatusColor();
   const [dateRange, setDateRange] = React.useState('30days');
   const [showComparison, setShowComparison] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState('status');
@@ -92,15 +88,6 @@ export default function VisaReportsPage() {
 
     return () => { cancelled = true; };
   }, [dateRange, showComparison, activeTab, retryKey]);
-
-  const handleExport = async () => {
-    try {
-      await reportsApi.export('visa_status_summary', 'excel', { date_preset: presetMap[dateRange] ?? 'this_month' });
-      toast.success('Export started');
-    } catch {
-      toast.error('Export failed');
-    }
-  };
 
   const renderError = () => (
     <div className="flex flex-col items-center justify-center h-[300px] gap-3">
@@ -145,14 +132,6 @@ export default function VisaReportsPage() {
   }, [statusData]);
 
   const allStatuses = Array.from(new Set(statusData.map((r) => r.status ?? 'Unknown')));
-  const STATUS_COLORS: Record<string, string> = {
-    approved: '#10b981', Approved: '#10b981',
-    rejected: '#ef4444', Rejected: '#ef4444',
-    pending: '#f59e0b', Pending: '#f59e0b',
-    'in progress': '#3b82f6', 'In Progress': '#3b82f6',
-    applied: '#8b5cf6', Applied: '#8b5cf6',
-    expired: '#6b7280', Expired: '#6b7280',
-  };
 
   return (
     <div className="flex flex-col h-full overflow-auto">
@@ -184,10 +163,13 @@ export default function VisaReportsPage() {
               <SelectItem value="thisYear">This Year</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="h-4 w-4 mr-1.5" />
-            Export
-          </Button>
+          <ReportExportButton
+            reportId="visa_status_summary"
+            params={{ date_preset: presetMap[dateRange] ?? 'this_month' }}
+            filenamePrefix="visa-report"
+            rangeLabel={dateRange}
+            size="sm"
+          />
         </div>
       </div>
 
@@ -290,7 +272,7 @@ export default function VisaReportsPage() {
                         <Tooltip />
                         <Legend />
                         {allStatuses.map((s) => (
-                          <Bar key={s} dataKey={s} fill={STATUS_COLORS[s] ?? '#6b7280'} stackId="a" />
+                          <Bar key={s} dataKey={s} fill={getStatusColor(s)} stackId="a" />
                         ))}
                       </BarChart>
                     </ResponsiveContainer>
@@ -432,8 +414,8 @@ export default function VisaReportsPage() {
                         <YAxis type="category" dataKey="country" width={85} tick={{ fontSize: 12 }} />
                         <Tooltip formatter={(v, name) => name === 'Success Rate %' ? `${v}%` : `${v} days`} />
                         <Legend />
-                        <Bar dataKey="Success Rate %" fill="#10b981" />
-                        <Bar dataKey="Avg Processing Days" fill="#3b82f6" />
+                        <Bar dataKey="Success Rate %" fill={semanticColors.success} />
+                        <Bar dataKey="Avg Processing Days" fill={semanticColors.primary} />
                       </BarChart>
                     </ResponsiveContainer>
                   </CardContent>

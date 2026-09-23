@@ -3,13 +3,12 @@
 import * as React from 'react';
 import Link from 'next/link';
 import {
-  ArrowLeft, Download, Medal, TrendingUp, Users, AlertCircle, RefreshCw,
+  Medal, TrendingUp, Users, AlertCircle, RefreshCw,
 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
   Card, CardContent, CardHeader, CardTitle, CardDescription,
@@ -26,20 +25,13 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { reportsApi } from '@/lib/api/reports';
-
-const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
-
-const fmt = (n: number) => n >= 10000000 ? `₹${(n / 10000000).toFixed(1)}Cr` : n >= 100000 ? `₹${(n / 100000).toFixed(1)}L` : `₹${n.toLocaleString('en-IN')}`;
-
-const presetMap: Record<string, string> = {
-  '7days': 'this_week',
-  '30days': 'this_month',
-  '90days': 'this_quarter',
-  'thisMonth': 'this_month',
-  'lastMonth': 'last_month',
-  'thisQuarter': 'this_quarter',
-  'thisYear': 'this_year',
-};
+import { PRESET_MAP as presetMap } from '@/components/domain/report-page-template';
+import {
+  ReportExportButton,
+  formatReportCurrency as fmt,
+  useReportChartColors,
+  useReportSemanticColors,
+} from '@/components/domain/reports/shared';
 
 function ChartSkeleton() {
   return (
@@ -54,6 +46,8 @@ function ChartSkeleton() {
 }
 
 export default function TeamReportsPage() {
+  const CHART_COLORS = useReportChartColors();
+  const semanticColors = useReportSemanticColors();
   const [dateRange, setDateRange] = React.useState('30days');
   const [showComparison, setShowComparison] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState('dashboard');
@@ -99,15 +93,6 @@ export default function TeamReportsPage() {
 
     return () => { cancelled = true; };
   }, [dateRange, showComparison, activeTab, retryKey]);
-
-  const handleExport = async () => {
-    try {
-      await reportsApi.export('team_dashboard', 'excel', { date_preset: presetMap[dateRange] ?? 'this_month' });
-      toast.success('Export started');
-    } catch {
-      toast.error('Export failed');
-    }
-  };
 
   const totalLeads = dashboardData.reduce((s, r) => s + (r.total_leads ?? 0), 0);
   const totalWon = dashboardData.reduce((s, r) => s + (r.won_deals ?? 0), 0);
@@ -184,10 +169,13 @@ export default function TeamReportsPage() {
               <SelectItem value="thisYear">This Year</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="h-4 w-4 mr-1.5" />
-            Export
-          </Button>
+          <ReportExportButton
+            reportId="team_dashboard"
+            params={{ date_preset: presetMap[dateRange] ?? 'this_month' }}
+            filenamePrefix="team-report"
+            rangeLabel={dateRange}
+            size="sm"
+          />
         </div>
       </div>
 
@@ -322,8 +310,8 @@ export default function TeamReportsPage() {
                         <YAxis yAxisId="right" orientation="right" />
                         <Tooltip formatter={(value, name) => name === 'Revenue' ? fmt(value as number) : value} />
                         <Legend />
-                        <Bar yAxisId="left" dataKey="Revenue" fill="#3b82f6" />
-                        <Bar yAxisId="right" dataKey="Leads" fill="#10b981" />
+                        <Bar yAxisId="left" dataKey="Revenue" fill={CHART_COLORS[0]} />
+                        <Bar yAxisId="right" dataKey="Leads" fill={semanticColors.success} />
                       </BarChart>
                     </ResponsiveContainer>
                   </CardContent>
@@ -350,9 +338,9 @@ export default function TeamReportsPage() {
                         <YAxis yAxisId="right" orientation="right" />
                         <Tooltip formatter={(value, name) => name === 'Revenue' ? fmt(value as number) : value} />
                         <Legend />
-                        <Bar yAxisId="left" dataKey="Revenue" fill="#3b82f6" />
-                        <Bar yAxisId="right" dataKey="Leads" fill="#10b981" />
-                        <Bar yAxisId="right" dataKey="Won" fill="#f59e0b" />
+                        <Bar yAxisId="left" dataKey="Revenue" fill={CHART_COLORS[0]} />
+                        <Bar yAxisId="right" dataKey="Leads" fill={semanticColors.success} />
+                        <Bar yAxisId="right" dataKey="Won" fill={semanticColors.warning} />
                       </BarChart>
                     </ResponsiveContainer>
                   </CardContent>
@@ -408,7 +396,7 @@ export default function TeamReportsPage() {
                         <XAxis dataKey="name" />
                         <YAxis unit="h" />
                         <Tooltip formatter={(v) => `${v}h`} />
-                        <Bar dataKey="Avg Response (hrs)" fill="#3b82f6" />
+                        <Bar dataKey="Avg Response (hrs)" fill={CHART_COLORS[0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </CardContent>
@@ -508,9 +496,9 @@ export default function TeamReportsPage() {
                         <YAxis />
                         <Tooltip />
                         <Legend />
-                        <Bar dataKey="Completed" fill="#10b981" />
-                        <Bar dataKey="Pending" fill="#f59e0b" />
-                        <Bar dataKey="Overdue" fill="#ef4444" />
+                        <Bar dataKey="Completed" fill={semanticColors.success} />
+                        <Bar dataKey="Pending" fill={semanticColors.warning} />
+                        <Bar dataKey="Overdue" fill={semanticColors.danger} />
                       </BarChart>
                     </ResponsiveContainer>
                   </CardContent>
