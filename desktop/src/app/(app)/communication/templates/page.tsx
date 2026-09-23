@@ -1,64 +1,92 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
-import {
-  Plus, Mail, MessageSquare, Phone, Copy, Edit, Trash2, AlertCircle, Loader2,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
+import { useRouter } from 'next/navigation';
+import { Copy, Eye, Mail, MessageSquare, Pencil, Phone, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { ListPage, DetailPage } from '@/components/domain';
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu';
-import { FilterBar } from '@/components/domain/filter-bar';
-import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
+  Button, Badge, Sheet, SheetContent, useConfirm,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui';
 import { useApiMutation } from '@/hooks/use-api';
 import { templatesApi, type MessageTemplate } from '@/lib/api/templates';
 
+const CHANNEL_ICON: Record<MessageTemplate['channel'], React.ReactNode> = {
+  email: <Mail className="h-3 w-3" />,
+  sms: <Phone className="h-3 w-3" />,
+  whatsapp: <MessageSquare className="h-3 w-3" />,
+};
+
+const CATEGORY_LABELS: Record<string, string> = {
+  greeting: 'Greeting / Welcome',
+  follow_up: 'Follow-up',
+  quotation: 'Quotation / Proposal',
+  booking: 'Booking Confirmation',
+  reminder: 'Payment Reminder',
+  wish: 'Thank You / Wish',
+  offer: 'Promotional / Offer',
+  visa: 'Visa / Travel Docs',
+};
+
+function toCsv(rows: MessageTemplate[]) {
+  const header = ['Name', 'Channel', 'Category', 'Language', 'Subject', 'Content'];
+  const lines = rows.map((t) => [
+    t.name,
+    t.channel,
+    t.category ?? '',
+    t.language,
+    t.subject ?? '',
+    t.content.replace(/\n/g, ' '),
+  ]
+    .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+    .join(','));
+  return [header.join(','), ...lines].join('\n');
+}
+
+function downloadCsv(csv: string, filename: string) {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function TemplatesPage() {
-  const [search, setSearch] = React.useState('');
-  const [typeFilter, setTypeFilter] = React.useState('');
+  const router = useRouter();
+  const { confirm, dialog: confirmDialog } = useConfirm();
+  const [detailTemplate, setDetailTemplate] = React.useState<MessageTemplate | null>(null);
+  const [channelFilter, setChannelFilter] = React.useState('');
   const [categoryFilter, setCategoryFilter] = React.useState('');
 
-  const { items: templates, loading, loadingMore, total, error, sentinelRef, refetch } = useInfiniteScroll<MessageTemplate>({
-    fetcher: (page, limit) =>
-      templatesApi.list({
-        search: search || undefined,
-        channel: typeFilter || undefined,
-        category: categoryFilter || undefined,
-        page,
-        limit,
-      }),
-    limit: 24,
-  });
+  const { mutate: deleteTemplate } = useApiMutation((id: string) => templatesApi.delete(id));
+  const { mutate: createDuplicate } = useApiMutation((tpl: MessageTemplate) =>
+    templatesApi.create({
+      channel: tpl.channel,
+      name: `${tpl.name} (Copy)`,
+      subject: tpl.subject,
+      content: tpl.content,
+      category: tpl.category,
+      language: tpl.language,
+    }));
 
-  const { mutate: deleteTemplate } = useApiMutation(
-    (id: string) => templatesApi.delete(id),
-  );
+  const [reloadKey, setReloadKey] = React.useState(0);
+  const reload = () => setReloadKey((k) => k + 1);
 
-  const { mutate: createDuplicate } = useApiMutation(
-    (tpl: MessageTemplate) =>
-      templatesApi.create({
-        channel: tpl.channel,
-        name: `${tpl.name} (Copy)`,
-        subject: tpl.subject,
-        content: tpl.content,
-        category: tpl.category,
-        language: tpl.language,
-      }),
-  );
-
-  const handleDelete = async (id: string, name: string) => {
-    const result = await deleteTemplate(id);
+  const handleDelete = async (tpl: MessageTemplate) => {
+    const ok = await confirm({
+      title: 'Delete template',
+      description: `Delete "${tpl.name}"? This action cannot be undone.`,
+      confirmLabel: 'Delete',
+      tone: 'destructive',
+    });
+    if (!ok) return;
+    const result = await deleteTemplate(tpl.id);
     if (result) {
-      toast.success(`Template "${name}" deleted`);
-      refetch();
+      toast.success(`Template "${tpl.name}" deleted`);
+      reload();
     } else {
       toast.error('Failed to delete template');
     }
@@ -68,205 +96,201 @@ export default function TemplatesPage() {
     const result = await createDuplicate(tpl);
     if (result) {
       toast.success('Template duplicated');
-      refetch();
+      reload();
     } else {
       toast.error('Failed to duplicate template');
     }
   };
 
-  const activeFilters = [
-    ...(typeFilter ? [{ id: 'channel', label: 'Channel', value: typeFilter }] : []),
-    ...(categoryFilter ? [{ id: 'category', label: 'Category', value: categoryFilter }] : []),
-  ];
-
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-            Message Templates
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {loading ? '...' : `${total} templates`}
-          </p>
-        </div>
-        <Button asChild>
-          <Link href="/communication/templates/new">
-            <Plus className="h-4 w-4 mr-1.5" /> Create Template
-          </Link>
-        </Button>
-      </div>
-
-      {/* Toolbar */}
-      <div className="flex items-center gap-3 px-6 py-3 border-b flex-wrap">
-        <FilterBar
-          searchValue={search}
-          onSearchChange={setSearch}
-          searchPlaceholder="Search templates..."
-          activeFilters={activeFilters}
-          onRemoveFilter={(id) => {
-            if (id === 'channel') setTypeFilter('');
-            if (id === 'category') setCategoryFilter('');
-          }}
-          onClearFilters={() => { setTypeFilter(''); setCategoryFilter(''); }}
-          actions={
-            <div className="flex items-center gap-2">
-              <Select value={typeFilter || 'all'} onValueChange={(v) => setTypeFilter(v === 'all' ? '' : v)}>
-                <SelectTrigger className="w-36 h-9">
-                  <SelectValue placeholder="All Channels" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Channels</SelectItem>
-                  <SelectItem value="email">Email</SelectItem>
-                  <SelectItem value="sms">SMS</SelectItem>
-                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={categoryFilter || 'all'} onValueChange={(v) => setCategoryFilter(v === 'all' ? '' : v)}>
-                <SelectTrigger className="w-40 h-9">
-                  <SelectValue placeholder="All Categories" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
-                  <SelectItem value="greeting">Greeting / Welcome</SelectItem>
-                  <SelectItem value="follow_up">Follow-up</SelectItem>
-                  <SelectItem value="quotation">Quotation / Proposal</SelectItem>
-                  <SelectItem value="booking">Booking Confirmation</SelectItem>
-                  <SelectItem value="reminder">Payment Reminder</SelectItem>
-                  <SelectItem value="wish">Thank You / Wish</SelectItem>
-                  <SelectItem value="offer">Promotional / Offer</SelectItem>
-                  <SelectItem value="visa">Visa / Travel Docs</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          }
-        />
-      </div>
-
-      {/* Grid */}
-      <div className="flex-1 overflow-auto p-6">
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <Card key={i}>
-                <CardContent className="p-4 space-y-3">
-                  <Skeleton className="h-4 w-3/4" />
-                  <Skeleton className="h-3 w-1/2" />
-                  <Skeleton className="h-12 w-full" />
-                  <Skeleton className="h-8 w-full" />
-                </CardContent>
-              </Card>
-            ))}
+    <>
+      <ListPage<MessageTemplate>
+        key={`${reloadKey}-${channelFilter}-${categoryFilter}`}
+        title="Message Templates"
+        description="Reusable email, SMS and WhatsApp content for your team."
+        getRowId={(t) => t.id}
+        fetcher={({ page, limit, search }) =>
+          templatesApi.list({
+            search: search || undefined,
+            channel: channelFilter || undefined,
+            category: categoryFilter || undefined,
+            page,
+            limit,
+          })}
+        searchPlaceholder="Search templates..."
+        filters={[
+          ...(channelFilter ? [{ id: 'channel', label: 'Channel', value: channelFilter }] : []),
+          ...(categoryFilter ? [{ id: 'category', label: 'Category', value: categoryFilter }] : []),
+        ]}
+        onRemoveFilter={(id) => {
+          if (id === 'channel') setChannelFilter('');
+          if (id === 'category') setCategoryFilter('');
+        }}
+        onClearFilters={() => { setChannelFilter(''); setCategoryFilter(''); }}
+        headerActions={
+          <div className="flex items-center gap-ds-2">
+            <Select value={channelFilter || 'all'} onValueChange={(v) => setChannelFilter(v === 'all' ? '' : v)}>
+              <SelectTrigger className="w-36 h-9">
+                <SelectValue placeholder="All Channels" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Channels</SelectItem>
+                <SelectItem value="email">Email</SelectItem>
+                <SelectItem value="sms">SMS</SelectItem>
+                <SelectItem value="whatsapp">WhatsApp</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={categoryFilter || 'all'} onValueChange={(v) => setCategoryFilter(v === 'all' ? '' : v)}>
+              <SelectTrigger className="w-44 h-9">
+                <SelectValue placeholder="All Categories" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-        ) : error ? (
-          <div className="flex items-center justify-center h-full gap-4 text-muted-foreground">
-            <AlertCircle className="h-6 w-6" />
-            <p>Failed to load templates</p>
-          </div>
-        ) : templates.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-            <MessageSquare className="h-12 w-12 mb-4 opacity-30" />
-            <p className="text-lg font-medium">No templates found</p>
-            <p className="text-sm mb-4">Create your first message template to get started</p>
-            <Button asChild>
-              <Link href="/communication/templates/new">
-                <Plus className="h-4 w-4 mr-1.5" /> Create Template
-              </Link>
-            </Button>
-          </div>
-        ) : (
+        }
+        columns={[
+          { key: 'name', header: 'Name', sortable: true },
+          {
+            key: 'channel',
+            header: 'Channel',
+            cell: (t) => (
+              <Badge variant="outline" className="gap-1">
+                {CHANNEL_ICON[t.channel]}
+                {t.channel.toUpperCase()}
+              </Badge>
+            ),
+          },
+          {
+            key: 'category',
+            header: 'Category',
+            cell: (t) => (t.category ? <Badge variant="secondary">{CATEGORY_LABELS[t.category] ?? t.category}</Badge> : '—'),
+          },
+          {
+            key: 'language',
+            header: 'Language',
+            cell: (t) => t.language?.toUpperCase() ?? 'EN',
+          },
+          {
+            key: 'content',
+            header: 'Preview',
+            cell: (t) => (
+              <span className="line-clamp-1 text-ds-foreground-muted">
+                {t.subject ? `[${t.subject}] ` : ''}
+                {t.content}
+              </span>
+            ),
+          },
+        ]}
+        primaryAction={
+          <Button size="sm" onClick={() => router.push('/communication/templates/new')}>
+            <Plus aria-hidden="true" /> Create Template
+          </Button>
+        }
+        rowActions={(t) => (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {templates.map((template) => (
-                <Card key={template.id} className="hover:shadow-md transition-shadow flex flex-col">
-                  <CardContent className="p-4 flex-1 flex flex-col">
-                    <div className="mb-3">
-                      <div className="flex items-start justify-between mb-2">
-                        <h3 className="font-semibold text-sm line-clamp-1">{template.name}</h3>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon-sm" className="h-7 w-7 shrink-0">
-                              <span className="text-muted-foreground text-sm">⋯</span>
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleDuplicate(template)}>
-                              <Copy className="h-3.5 w-3.5 mr-2" />
-                              Duplicate
-                            </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                              <Link href={`/communication/templates/${template.id}/edit`}>
-                                <Edit className="h-3.5 w-3.5 mr-2" />
-                                Edit
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-destructive"
-                              onClick={() => handleDelete(template.id, template.name)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant="outline" className="text-[10px]">
-                          {template.channel === 'email' && <Mail className="h-3 w-3 mr-1" />}
-                          {template.channel === 'sms' && <Phone className="h-3 w-3 mr-1" />}
-                          {template.channel === 'whatsapp' && <MessageSquare className="h-3 w-3 mr-1" />}
-                          {template.channel.toUpperCase()}
-                        </Badge>
-                        {template.category && (
-                          <Badge variant="secondary" className="text-[10px]">
-                            {template.category}
-                          </Badge>
-                        )}
-                        {template.language && template.language !== 'en' && (
-                          <Badge variant="outline" className="text-[10px] uppercase">
-                            {template.language}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-
-                    <p className="text-xs text-muted-foreground flex-1 line-clamp-3 mb-4">
-                      {template.subject ? `[${template.subject}] ` : ''}
-                      {template.content}
-                    </p>
-
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 h-8 text-xs"
-                        onClick={() => {
-                          navigator.clipboard.writeText(template.content);
-                          toast.success('Template content copied');
-                        }}
-                      >
-                        <Copy className="h-3 w-3 mr-1" /> Copy
-                      </Button>
-                      <Button variant="outline" size="sm" className="flex-1 h-8 text-xs" asChild>
-                        <Link href={`/communication/templates/${template.id}/edit`}>
-                          <Edit className="h-3 w-3 mr-1" /> Edit
-                        </Link>
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-
-            {/* Infinite scroll sentinel */}
-            <div ref={sentinelRef} className="flex items-center justify-center py-6">
-              {loadingMore && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
-            </div>
+            <Button variant="ghost" size="icon-sm" aria-label="Preview" onClick={() => setDetailTemplate(t)}>
+              <Eye />
+            </Button>
+            <Button variant="ghost" size="icon-sm" aria-label="Duplicate" onClick={() => void handleDuplicate(t)}>
+              <Copy />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Edit"
+              onClick={() => router.push(`/communication/templates/${t.id}/edit`)}
+            >
+              <Pencil />
+            </Button>
+            <Button variant="ghost" size="icon-sm" aria-label="Delete" onClick={() => void handleDelete(t)}>
+              <Trash2 />
+            </Button>
           </>
         )}
-      </div>
-    </div>
+        onRowClick={(t) => setDetailTemplate(t)}
+        bulkActions={[
+          {
+            label: 'Delete',
+            destructive: true,
+            onSelect: async (rows) => {
+              const ok = await confirm({
+                title: 'Delete templates',
+                description: `Delete ${rows.length} template(s)? This action cannot be undone.`,
+                confirmLabel: 'Delete',
+                tone: 'destructive',
+              });
+              if (!ok) return;
+              await Promise.all(rows.map((r) => templatesApi.delete(r.id)));
+              toast.success(`${rows.length} template(s) deleted`);
+              reload();
+            },
+          },
+        ]}
+        onExport={async (rows) => downloadCsv(toCsv(rows), 'message-templates.csv')}
+        exportLabel="Export CSV"
+        emptyTitle="No templates yet"
+        emptyDescription="Create your first message template to get started."
+        emptyAction={
+          <Button size="sm" onClick={() => router.push('/communication/templates/new')}>
+            <Plus aria-hidden="true" /> Create Template
+          </Button>
+        }
+      />
+
+      <Sheet open={!!detailTemplate} onOpenChange={(open) => !open && setDetailTemplate(null)}>
+        <SheetContent className="w-full sm:max-w-xl">
+          {detailTemplate && (
+            <DetailPage
+              entity={detailTemplate}
+              title={detailTemplate.name}
+              subtitle={detailTemplate.category ? CATEGORY_LABELS[detailTemplate.category] ?? detailTemplate.category : undefined}
+              status={
+                <Badge variant="outline" className="gap-1">
+                  {CHANNEL_ICON[detailTemplate.channel]}
+                  {detailTemplate.channel.toUpperCase()}
+                </Badge>
+              }
+              actions={[
+                { label: 'Edit', icon: <Pencil />, onSelect: () => router.push(`/communication/templates/${detailTemplate.id}/edit`) },
+                { label: 'Duplicate', icon: <Copy />, onSelect: () => void handleDuplicate(detailTemplate) },
+                {
+                  label: 'Delete',
+                  icon: <Trash2 />,
+                  destructive: true,
+                  separatorBefore: true,
+                  onSelect: () => void handleDelete(detailTemplate),
+                },
+              ]}
+              overview={
+                <div className="space-y-ds-4">
+                  {detailTemplate.subject && (
+                    <div>
+                      <p className="text-ds-xs text-ds-foreground-subtle mb-ds-1">Subject</p>
+                      <p className="text-ds-sm font-medium">{detailTemplate.subject}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-ds-xs text-ds-foreground-subtle mb-ds-1">Content</p>
+                    <pre className="whitespace-pre-wrap rounded-ds-md border border-ds-border bg-ds-surface-sunken p-ds-4 text-ds-sm font-sans leading-relaxed">
+                      {detailTemplate.content}
+                    </pre>
+                  </div>
+                  <div>
+                    <p className="text-ds-xs text-ds-foreground-subtle mb-ds-1">Language</p>
+                    <p className="text-ds-sm">{detailTemplate.language?.toUpperCase() ?? 'EN'}</p>
+                  </div>
+                </div>
+              }
+            />
+          )}
+        </SheetContent>
+      </Sheet>
+      {confirmDialog}
+    </>
   );
 }

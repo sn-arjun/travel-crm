@@ -59,7 +59,7 @@ const SHOWCASE_SPEC = path.join(DESKTOP, 'e2e', 'showcase', 'full-walkthrough.sp
 // mechanical jobs; Haiku for the mechanical cleanup pass.
 // Override with REMAKE_OPUS / REMAKE_SONNET / REMAKE_HAIKU if your plan exposes
 // different model ids.
-const OPUS = process.env.REMAKE_OPUS || 'claude-opus-5';
+const OPUS = process.env.REMAKE_OPUS || 'claude-opus-5.5';
 const SONNET = process.env.REMAKE_SONNET || 'claude-sonnet-5';
 const HAIKU = process.env.REMAKE_HAIKU || 'claude-haiku-4-5-20251001';
 
