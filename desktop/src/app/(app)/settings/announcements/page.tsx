@@ -126,10 +126,10 @@ export default function AnnouncementsPage() {
 
           {/* Preview */}
           {(title || body) && (
-            <div className="rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20 p-4">
-              <p className="text-xs font-semibold text-purple-600 dark:text-purple-400 mb-2 uppercase tracking-wide">Preview</p>
-              <p className="font-semibold text-sm">{title || 'Untitled'}</p>
-              <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">{body}</p>
+            <div className="rounded-ds-md border border-ds-info bg-ds-info-subtle p-ds-4">
+              <p className="mb-ds-2 text-xs font-semibold uppercase tracking-wide text-ds-info-on-subtle">Preview</p>
+              <p className="text-sm font-semibold">{title || 'Untitled'}</p>
+              <p className="mt-ds-1 whitespace-pre-wrap text-sm text-ds-foreground-muted">{body}</p>
             </div>
           )}
 
