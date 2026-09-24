@@ -299,11 +299,17 @@
       "timestamp": "2026-09-24T11:38:08.740Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:vouchers": {
+      "status": "ok",
+      "timestamp": "2026-09-24T11:43:19.061Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "slice:voip-settings",
+    "id": "slice:vouchers",
     "status": "ok",
-    "timestamp": "2026-09-24T11:38:08.740Z"
+    "timestamp": "2026-09-24T11:43:19.062Z"
   }
 }
