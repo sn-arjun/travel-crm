@@ -305,11 +305,17 @@
       "timestamp": "2026-09-24T11:43:19.061Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:webhooks-integrations": {
+      "status": "ok",
+      "timestamp": "2026-09-24T11:45:24.060Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "slice:vouchers",
+    "id": "slice:webhooks-integrations",
     "status": "ok",
-    "timestamp": "2026-09-24T11:43:19.062Z"
+    "timestamp": "2026-09-24T11:45:24.060Z"
   }
 }

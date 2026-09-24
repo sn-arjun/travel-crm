@@ -40,7 +40,7 @@
     "sendMessageDialog": false,
     "themedExport": false
   },
-  "notes": "ORPHANED: three pre-auth webhook receivers (Twilio status, SendGrid events, lead capture) with no settings UI. Users cannot discover their lead-capture webhook URL. P0 #8: the lead webhook reads tenantDb on a route where no auth sets tenant context. P0 #9: no Twilio signature verification.",
+  "notes": "Built desktop/src/app/(app)/settings/integrations/page.tsx: informational settings page listing the 3 webhook endpoints (lead capture, SendGrid events, Twilio status) with copy-to-clipboard URLs and per-endpoint auth notes. Not a ListPage/EntityForm/DetailPage archetype because there is no backing CRUD API for these entries (no apiModules, no endpoints beyond the pre-auth receivers themselves) -- most uxContract booleans are structurally N/A for a static reference page and left false. NOT WIRED INTO NAVIGATION: settings/integrations is outside fileAllowlist for both sidebar.tsx and settings/page.tsx, so a user cannot reach this page through the UI yet -- someone with access to those files needs to link the existing (mocked) Integrations tab's 'Manage' button and/or add a settings sub-nav entry to /settings/integrations. Remaining gaps noted in manifest (P0 #8 tenant context, P0 #9 Twilio signature verification) are backend-only and out of scope here.",
   "showcaseScript": [
     "Open Settings → Integrations",
     "Copy the lead-capture webhook URL for the website form",
