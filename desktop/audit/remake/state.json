@@ -293,11 +293,17 @@
       "timestamp": "2026-09-24T11:34:03.141Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:voip-settings": {
+      "status": "ok",
+      "timestamp": "2026-09-24T11:38:08.740Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "slice:visa",
+    "id": "slice:voip-settings",
     "status": "ok",
-    "timestamp": "2026-09-24T11:34:03.141Z"
+    "timestamp": "2026-09-24T11:38:08.740Z"
   }
 }

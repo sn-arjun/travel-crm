@@ -48,10 +48,10 @@
     "listPage": true,
     "filterBar": false,
     "infiniteScroll": false,
-    "hoverActions": false,
+    "hoverActions": true,
     "detailDrawer": false,
-    "emptyState": false,
-    "skeleton": false,
+    "emptyState": true,
+    "skeleton": true,
     "relationCombobox": false,
     "urlPrefill": false,
     "phoneInput": false,
@@ -61,7 +61,7 @@
     "sendMessageDialog": false,
     "themedExport": false
   },
-  "notes": "Number search/purchase/update/delete are orphaned. Twilio callback routes are pre-auth and intentionally have no UI. Must degrade gracefully with no Twilio credentials configured.",
+  "notes": "Both pages migrated onto DataTable/PageHeader/SectionCard tokens and gated behind useFeatureGate('voip_calling') with an upgrade state instead of erroring on 403. Wired the orphaned numbers.search/purchase/update/remove and callerInfo.get endpoints into voip.ts and into the phone-numbers page (search dialog + purchase + set-primary via update + delete via ConfirmDialog). filterBar/infiniteScroll/themedExport are intentionally not applicable: /voip/numbers returns a small non-paginated array with no filterable fields, so there's nothing to filter, page, or export. relationCombobox/phoneInput/addressAutocomplete/currencyInput/datePicker/detailDrawer/sendMessageDialog/urlPrefill don't apply to this slice — there are no relation, address, money, date, or messaging fields, and there is no detail view or creation flow to prefill (numbers are looked up from Twilio inventory, not entered by ID/URL). Could not add these pages to a settings hub/nav — no settings index or nav file is in this slice's fileAllowlist, so /settings/voip and /settings/phone-numbers remain reachable only by direct URL.",
   "showcaseScript": [
     "Open Settings → VoIP and test the Twilio connection",
     "Search for an available phone number",

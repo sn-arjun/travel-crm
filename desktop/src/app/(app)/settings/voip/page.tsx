@@ -5,8 +5,6 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   Save,
-  Loader2,
-  Phone,
   Wifi,
   WifiOff,
   TestTube2,
@@ -15,27 +13,40 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import {
+  Button,
+  Input,
+  Label,
+  SectionCard,
+  PageHeader,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-import { Separator } from '@/components/ui/separator';
-import { Badge } from '@/components/ui/badge';
+  Switch,
+  Badge,
+  Skeleton,
+  Spinner,
+} from '@/components/ui';
 import { toast } from 'sonner';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { voipApi, type UpdateVoipSettingsRequest } from '@/lib/api/voip';
-import { cn } from '@/lib/utils';
+import { useFeatureGate } from '@/hooks/use-feature-gate';
+
+type VoipFeatureKey = keyof NonNullable<UpdateVoipSettingsRequest['features']>;
+
+const FEATURE_ROWS: { key: VoipFeatureKey; label: string; description: string }[] = [
+  { key: 'inboundCalls', label: 'Inbound Calls', description: 'Receive incoming calls in the CRM' },
+  { key: 'outboundCalls', label: 'Outbound Calls', description: 'Make calls directly from the CRM' },
+  { key: 'voicemail', label: 'Voicemail', description: 'Enable voicemail for missed calls' },
+  { key: 'transcription', label: 'Call Transcription', description: 'Automatically transcribe call recordings' },
+  { key: 'recording', label: 'Call Recording', description: 'Record calls for quality and training' },
+];
 
 export default function VoipSettingsPage() {
   const router = useRouter();
+  const { enabled, reason, upgradeHref, loading: gateLoading } = useFeatureGate('voip_calling');
   const [showApiKey, setShowApiKey] = React.useState(false);
   const [testing, setTesting] = React.useState(false);
   const [testResult, setTestResult] = React.useState<{ connected: boolean; message: string } | null>(null);
@@ -80,7 +91,7 @@ export default function VoipSettingsPage() {
     }
   }, [voipSettings]);
 
-  const updateMutation = useApiMutation<UpdateVoipSettingsRequest, any>((data) =>
+  const updateMutation = useApiMutation<UpdateVoipSettingsRequest, unknown>((data) =>
     voipApi.settings.update(data),
   );
 
@@ -103,12 +114,14 @@ export default function VoipSettingsPage() {
     setTestResult(null);
     try {
       const result = await voipApi.settings.testConnection();
-      const data = (result as any)?.data ?? result;
-      setTestResult(data);
-      if (data?.connected) {
-        toast.success('Connection successful');
-      } else {
-        toast.error(data?.message ?? 'Connection failed');
+      const data = (result as { data?: { connected: boolean; message: string } })?.data;
+      if (data) {
+        setTestResult(data);
+        if (data.connected) {
+          toast.success('Connection successful');
+        } else {
+          toast.error(data.message ?? 'Connection failed');
+        }
       }
     } catch {
       setTestResult({ connected: false, message: 'Connection test failed' });
@@ -120,52 +133,67 @@ export default function VoipSettingsPage() {
 
   const isConnected = voipSettings?.connected ?? false;
 
-  if (loading) {
+  const backButton = (
+    <Button variant="ghost" size="icon" onClick={() => router.push('/settings')} aria-label="Back to settings">
+      <ArrowLeft className="size-4" />
+    </Button>
+  );
+
+  if (gateLoading || loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="flex flex-col gap-ds-4">
+        <Skeleton className="h-9 w-64" />
+        <Skeleton className="h-48 w-full" />
+        <Skeleton className="h-48 w-full" />
+      </div>
+    );
+  }
+
+  if (!enabled) {
+    return (
+      <div className="flex flex-col gap-ds-4">
+        <PageHeader title="VoIP Settings" description="Configure your voice-over-IP provider and calling features" back={backButton} />
+        <SectionCard title="VoIP calling is not available on your plan">
+          <p className="mb-ds-4 text-sm text-ds-foreground-muted">
+            {reason === 'cap_exceeded'
+              ? 'You have reached your VoIP usage limit for this billing period.'
+              : 'Upgrade your plan to configure a VoIP provider and enable calling.'}
+          </p>
+          <Button asChild>
+            <a href={upgradeHref}>{reason === 'cap_exceeded' ? 'View plans' : 'Upgrade to enable'}</a>
+          </Button>
+        </SectionCard>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => router.push('/settings')}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold tracking-tight">VoIP Settings</h1>
-          <p className="text-muted-foreground mt-1">Configure your voice-over-IP provider and calling features</p>
-        </div>
-        <Badge
-          className={cn(
-            'gap-1',
-            isConnected
-              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-              : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-          )}
-        >
-          {isConnected ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
-          {isConnected ? 'Connected' : 'Disconnected'}
-        </Badge>
-      </div>
+    <div className="flex flex-col gap-ds-6">
+      <PageHeader
+        title="VoIP Settings"
+        description="Configure your voice-over-IP provider and calling features"
+        back={backButton}
+        status={
+          <Badge
+            variant={isConnected ? 'default' : 'destructive'}
+            className={isConnected ? 'gap-ds-1 bg-ds-success-subtle text-ds-success-on-subtle' : 'gap-ds-1'}
+          >
+            {isConnected ? <Wifi className="size-3" /> : <WifiOff className="size-3" />}
+            {isConnected ? 'Connected' : 'Disconnected'}
+          </Badge>
+        }
+      />
 
-      {/* Provider & Credentials */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Phone className="h-5 w-5" />
-            Provider Configuration
-          </CardTitle>
-          <CardDescription>Select your VoIP provider and enter API credentials</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-2">
+      <SectionCard
+        title="Provider Configuration"
+        description="Select your VoIP provider and enter API credentials"
+      >
+        <div className="flex flex-col gap-ds-4">
+          <div className="flex flex-col gap-ds-2">
             <Label>Provider</Label>
             <Select
               value={form.provider}
-              onValueChange={(v) => setForm((p) => ({ ...p, provider: v as any }))}
+              onValueChange={(v) => setForm((p) => ({ ...p, provider: v as typeof form.provider }))}
             >
               <SelectTrigger className="w-60">
                 <SelectValue />
@@ -178,7 +206,7 @@ export default function VoipSettingsPage() {
             </Select>
           </div>
 
-          <div className="space-y-2">
+          <div className="flex flex-col gap-ds-2">
             <Label htmlFor="accountSid">Account SID / ID</Label>
             <Input
               id="accountSid"
@@ -188,7 +216,7 @@ export default function VoipSettingsPage() {
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="flex flex-col gap-ds-2">
             <Label htmlFor="apiKey">Auth Token / API Key</Label>
             <div className="relative">
               <Input
@@ -200,62 +228,52 @@ export default function VoipSettingsPage() {
               />
               <Button
                 variant="ghost"
-                size="icon"
-                className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7"
+                size="icon-sm"
+                className="absolute right-2 top-1/2 -translate-y-1/2"
                 onClick={() => setShowApiKey(!showApiKey)}
+                aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
               >
-                {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {showApiKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </Button>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-ds-3">
             <Button
               variant="outline"
               onClick={handleTestConnection}
               disabled={testing || !form.accountSid || !form.apiKey}
-              className="gap-2"
+              className="gap-ds-2"
             >
-              {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <TestTube2 className="h-4 w-4" />}
+              {testing ? <Spinner className="size-4" /> : <TestTube2 className="size-4" />}
               Test Connection
             </Button>
             {testResult && (
-              <div className="flex items-center gap-2 text-sm">
+              <div className="flex items-center gap-ds-2 text-sm">
                 {testResult.connected ? (
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  <CheckCircle2 className="size-4 text-ds-success" />
                 ) : (
-                  <XCircle className="h-4 w-4 text-red-600" />
+                  <XCircle className="size-4 text-ds-danger" />
                 )}
-                <span className={testResult.connected ? 'text-green-600' : 'text-red-600'}>
+                <span className={testResult.connected ? 'text-ds-success' : 'text-ds-danger'}>
                   {testResult.message}
                 </span>
               </div>
             )}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </SectionCard>
 
-      {/* Features */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Calling Features</CardTitle>
-          <CardDescription>Enable or disable specific VoIP capabilities</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {[
-            { key: 'inboundCalls', label: 'Inbound Calls', description: 'Receive incoming calls in the CRM' },
-            { key: 'outboundCalls', label: 'Outbound Calls', description: 'Make calls directly from the CRM' },
-            { key: 'voicemail', label: 'Voicemail', description: 'Enable voicemail for missed calls' },
-            { key: 'transcription', label: 'Call Transcription', description: 'Automatically transcribe call recordings' },
-            { key: 'recording', label: 'Call Recording', description: 'Record calls for quality and training' },
-          ].map((feature) => (
-            <div key={feature.key} className="flex items-center justify-between py-2">
+      <SectionCard title="Calling Features" description="Enable or disable specific VoIP capabilities">
+        <div className="flex flex-col divide-y divide-ds-border">
+          {FEATURE_ROWS.map((feature) => (
+            <div key={feature.key} className="flex items-center justify-between py-ds-3 first:pt-0 last:pb-0">
               <div>
-                <p className="text-sm font-medium">{feature.label}</p>
-                <p className="text-xs text-muted-foreground">{feature.description}</p>
+                <p className="text-sm font-medium text-ds-foreground">{feature.label}</p>
+                <p className="text-xs text-ds-foreground-muted">{feature.description}</p>
               </div>
               <Switch
-                checked={(form.features as any)[feature.key]}
+                checked={form.features[feature.key]}
                 onCheckedChange={(v) =>
                   setForm((p) => ({
                     ...p,
@@ -265,14 +283,13 @@ export default function VoipSettingsPage() {
               />
             </div>
           ))}
-        </CardContent>
-      </Card>
+        </div>
+      </SectionCard>
 
-      {/* Save */}
-      <div className="flex justify-end">
-        <Button onClick={handleSave} disabled={updateMutation.loading} className="gap-2">
-          {updateMutation.loading && <Loader2 className="h-4 w-4 animate-spin" />}
-          <Save className="h-4 w-4" />
+      <div className="flex justify-end gap-ds-2">
+        <Button onClick={handleSave} disabled={updateMutation.loading} className="gap-ds-2">
+          {updateMutation.loading && <Spinner className="size-4" />}
+          <Save className="size-4" />
           Save VoIP Settings
         </Button>
       </div>

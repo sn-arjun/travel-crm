@@ -32,6 +32,48 @@ export interface VoipNumber {
     voice: boolean;
     fax: boolean;
   };
+  assignedTo?: string;
+}
+
+export interface AvailableNumber {
+  number: string;
+  friendlyName?: string;
+  locality?: string;
+  region?: string;
+  type: 'local' | 'toll_free';
+  capabilities: {
+    sms: boolean;
+    voice: boolean;
+    fax: boolean;
+  };
+  monthlyCost?: number;
+}
+
+export interface SearchNumbersRequest {
+  areaCode?: string;
+  country?: string;
+  type?: 'local' | 'toll_free';
+  contains?: string;
+}
+
+export interface PurchaseNumberRequest {
+  number: string;
+  friendlyName?: string;
+}
+
+export interface UpdateNumberRequest {
+  friendly_name?: string;
+  status?: 'active' | 'inactive';
+  assignedTo?: string;
+}
+
+export interface CallerInfo {
+  number: string;
+  name?: string;
+  contactId?: string;
+  leadId?: string;
+  carrier?: string;
+  lineType?: string;
 }
 
 export interface Call {
@@ -129,6 +171,23 @@ export const voipApi = {
   numbers: {
     list: () =>
       client.get<ApiResponse<VoipNumber[]>>(API_ENDPOINTS.voip.numbers),
+
+    search: (data: SearchNumbersRequest) =>
+      client.post<ApiResponse<AvailableNumber[]>>(`${API_ENDPOINTS.voip.numbers}/search`, data),
+
+    purchase: (data: PurchaseNumberRequest) =>
+      client.post<ApiResponse<VoipNumber>>(`${API_ENDPOINTS.voip.numbers}/purchase`, data),
+
+    update: (id: string, data: UpdateNumberRequest) =>
+      client.put<ApiResponse<VoipNumber>>(`${API_ENDPOINTS.voip.numbers}/${id}`, data),
+
+    remove: (id: string) =>
+      client.delete<ApiResponse<void>>(`${API_ENDPOINTS.voip.numbers}/${id}`),
+  },
+
+  callerInfo: {
+    get: (number: string) =>
+      client.get<ApiResponse<CallerInfo>>('/voip/caller-info', { params: { number } }),
   },
 
   calls: {

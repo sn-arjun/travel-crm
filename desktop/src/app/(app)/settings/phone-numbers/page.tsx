@@ -11,44 +11,47 @@ import {
   StarOff,
   MessageSquare,
   PhoneCall,
+  Search,
+  Trash2,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import {
-  Table,
-  TableHeader,
-  TableRow,
-  TableHead,
-  TableBody,
-  TableCell,
-} from '@/components/ui/table';
-import {
+  Button,
+  Input,
+  Label,
+  PageHeader,
+  SectionCard,
+  DataTable,
+  type DataTableColumn,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from '@/components/ui/dialog';
-import { Badge } from '@/components/ui/badge';
+  Badge,
+  EmptyState,
+  Skeleton,
+  Spinner,
+  ConfirmDialog,
+} from '@/components/ui';
 import { toast } from 'sonner';
-import { useApiQuery } from '@/hooks/use-api';
-import { voipApi, type VoipNumber } from '@/lib/api/voip';
+import { useApiQuery, useApiMutation } from '@/hooks/use-api';
+import { voipApi, type VoipNumber, type AvailableNumber } from '@/lib/api/voip';
+import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { cn } from '@/lib/utils';
 
 export default function PhoneNumbersPage() {
   const router = useRouter();
-  const [addOpen, setAddOpen] = React.useState(false);
-  const [addForm, setAddForm] = React.useState({ number: '', friendlyName: '', type: 'local' });
-  const [primaryId, setPrimaryId] = React.useState<string | null>(null);
+  const { enabled, reason, upgradeHref, loading: gateLoading } = useFeatureGate('voip_calling');
+
+  const [searchOpen, setSearchOpen] = React.useState(false);
+  const [searchForm, setSearchForm] = React.useState({ areaCode: '', type: 'local' as 'local' | 'toll_free' });
+  const [searchResults, setSearchResults] = React.useState<AvailableNumber[] | null>(null);
+  const [deleteTarget, setDeleteTarget] = React.useState<VoipNumber | null>(null);
 
   const { data: numbersResponse, loading, refetch } = useApiQuery(
     () => voipApi.numbers.list(),
@@ -60,207 +63,301 @@ export default function PhoneNumbersPage() {
     return (numbersResponse.data as VoipNumber[]) ?? [];
   }, [numbersResponse]);
 
-  // Set first active number as primary if none selected
-  React.useEffect(() => {
-    if (!primaryId && numbers.length > 0) {
-      const active = numbers.find((n) => n.status === 'active');
-      if (active) setPrimaryId(active.id);
-    }
-  }, [numbers, primaryId]);
+  const searchMutation = useApiMutation((data: { areaCode?: string; type?: 'local' | 'toll_free' }) =>
+    voipApi.numbers.search(data),
+  );
+  const purchaseMutation = useApiMutation((data: { number: string; friendlyName?: string }) =>
+    voipApi.numbers.purchase(data),
+  );
+  const updateMutation = useApiMutation((input: { id: string; assignedTo?: string; status?: 'active' | 'inactive' }) =>
+    voipApi.numbers.update(input.id, { assignedTo: input.assignedTo, status: input.status }),
+  );
+  const removeMutation = useApiMutation((id: string) => voipApi.numbers.remove(id));
 
-  const handleAddNumber = async () => {
-    if (!addForm.number.trim()) {
-      toast.error('Phone number is required');
-      return;
+  const primaryId = React.useMemo(
+    () => numbers.find((n) => n.status === 'active')?.id ?? null,
+    [numbers],
+  );
+
+  const handleSearch = async () => {
+    setSearchResults(null);
+    const result = await searchMutation.mutate({
+      areaCode: searchForm.areaCode || undefined,
+      type: searchForm.type,
+    });
+    if (result && 'data' in result) {
+      setSearchResults((result.data as AvailableNumber[]) ?? []);
+    } else {
+      toast.error(searchMutation.error?.message ?? 'Failed to search available numbers');
     }
-    try {
-      // Add number via API (would typically provision through provider)
-      toast.success('Phone number added');
-      setAddOpen(false);
-      setAddForm({ number: '', friendlyName: '', type: 'local' });
+  };
+
+  const handlePurchase = async (n: AvailableNumber) => {
+    const result = await purchaseMutation.mutate({ number: n.number, friendlyName: n.friendlyName });
+    if (result) {
+      toast.success('Phone number purchased');
+      setSearchOpen(false);
+      setSearchResults(null);
+      setSearchForm({ areaCode: '', type: 'local' });
       refetch();
-    } catch {
-      toast.error('Failed to add phone number');
+    } else {
+      toast.error(purchaseMutation.error?.message ?? 'Failed to purchase phone number');
     }
   };
 
-  const handleSetPrimary = (id: string) => {
-    setPrimaryId(id);
-    toast.success('Primary number updated');
+  const handleSetPrimary = async (num: VoipNumber) => {
+    const result = await updateMutation.mutate({ id: num.id, status: 'active' });
+    if (result) {
+      toast.success('Primary number updated');
+      refetch();
+    } else {
+      toast.error(updateMutation.error?.message ?? 'Failed to update number');
+    }
   };
 
-  if (loading) {
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    const result = await removeMutation.mutate(deleteTarget.id);
+    if (result !== null) {
+      toast.success('Phone number removed');
+      refetch();
+    } else {
+      toast.error(removeMutation.error?.message ?? 'Failed to remove phone number');
+    }
+    setDeleteTarget(null);
+  };
+
+  const columns: DataTableColumn<VoipNumber>[] = [
+    {
+      key: 'number',
+      header: 'Number',
+      cell: (num) => (
+        <div className="flex items-center gap-ds-2">
+          <span className="font-mono text-sm font-medium text-ds-foreground">{num.number}</span>
+          {num.id === primaryId && (
+            <Badge className="bg-ds-warning-subtle text-ds-warning-on-subtle text-xs">Primary</Badge>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'friendly_name',
+      header: 'Friendly Name',
+      cell: (num) => <span className="text-sm text-ds-foreground-muted">{num.friendly_name ?? '-'}</span>,
+    },
+    {
+      key: 'type',
+      header: 'Type',
+      cell: (num) => (
+        <Badge variant="outline" className="capitalize text-xs">
+          {num.type?.replace('_', ' ') ?? 'local'}
+        </Badge>
+      ),
+    },
+    {
+      key: 'capabilities',
+      header: 'Capabilities',
+      cell: (num) => (
+        <div className="flex items-center gap-ds-2 text-ds-foreground-muted">
+          {num.capabilities?.voice && <PhoneCall className="size-3.5" aria-label="Voice" />}
+          {num.capabilities?.sms && <MessageSquare className="size-3.5" aria-label="SMS" />}
+        </div>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      cell: (num) => (
+        <Badge
+          className={cn(
+            num.status === 'active'
+              ? 'bg-ds-success-subtle text-ds-success-on-subtle'
+              : 'bg-ds-surface-sunken text-ds-foreground-muted',
+          )}
+        >
+          {num.status}
+        </Badge>
+      ),
+    },
+  ];
+
+  const backButton = (
+    <Button variant="ghost" size="icon" onClick={() => router.push('/settings')} aria-label="Back to settings">
+      <ArrowLeft className="size-4" />
+    </Button>
+  );
+
+  if (gateLoading || loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="flex flex-col gap-ds-4">
+        <Skeleton className="h-9 w-64" />
+        <Skeleton className="h-72 w-full" />
+      </div>
+    );
+  }
+
+  if (!enabled) {
+    return (
+      <div className="flex flex-col gap-ds-4">
+        <PageHeader title="Phone Numbers" description="Manage your VoIP phone numbers and their assignments" back={backButton} />
+        <SectionCard title="Phone numbers are not available on your plan">
+          <p className="mb-ds-4 text-sm text-ds-foreground-muted">
+            {reason === 'cap_exceeded'
+              ? 'You have reached your VoIP usage limit for this billing period.'
+              : 'Upgrade your plan to purchase and manage VoIP phone numbers.'}
+          </p>
+          <Button asChild>
+            <a href={upgradeHref}>{reason === 'cap_exceeded' ? 'View plans' : 'Upgrade to enable'}</a>
+          </Button>
+        </SectionCard>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => router.push('/settings')}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold tracking-tight">Phone Numbers</h1>
-          <p className="text-muted-foreground mt-1">Manage your VoIP phone numbers and their assignments</p>
-        </div>
-        <Button onClick={() => setAddOpen(true)} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Add Number
-        </Button>
-      </div>
+    <div className="flex flex-col gap-ds-6">
+      <PageHeader
+        title="Phone Numbers"
+        description="Manage your VoIP phone numbers and their assignments"
+        count={numbers.length}
+        back={backButton}
+        actions={
+          <Button onClick={() => setSearchOpen(true)} className="gap-ds-2">
+            <Plus className="size-4" />
+            Add Number
+          </Button>
+        }
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Phone className="h-5 w-5" />
-            Phone Numbers ({numbers.length})
-          </CardTitle>
-          <CardDescription>Your provisioned phone numbers and their capabilities</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {numbers.length === 0 ? (
-            <div className="text-center py-12">
-              <Phone className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-sm text-muted-foreground">No phone numbers configured</p>
-              <Button onClick={() => setAddOpen(true)} variant="outline" className="mt-4 gap-2">
-                <Plus className="h-4 w-4" />
-                Add First Number
+      <SectionCard flush>
+        <DataTable<VoipNumber>
+          columns={columns}
+          data={numbers}
+          getRowId={(n) => n.id}
+          rowActions={(num) => (
+            <>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={num.id === primaryId ? 'Primary number' : 'Set as primary'}
+                onClick={() => handleSetPrimary(num)}
+                disabled={num.id === primaryId || updateMutation.loading}
+              >
+                {num.id === primaryId ? (
+                  <Star className="size-4 fill-ds-warning text-ds-warning" />
+                ) : (
+                  <StarOff className="size-4" />
+                )}
               </Button>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Number</TableHead>
-                  <TableHead>Friendly Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Capabilities</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {numbers.map((num) => {
-                  const isPrimary = num.id === primaryId;
-                  return (
-                    <TableRow key={num.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-sm font-medium">{num.number}</span>
-                          {isPrimary && (
-                            <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-xs">
-                              Primary
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm">{num.friendly_name ?? '-'}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary" className="capitalize text-xs">
-                          {num.type?.replace('_', ' ') ?? 'local'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {num.capabilities?.voice && (
-                            <span title="Voice" className="text-muted-foreground">
-                              <PhoneCall className="h-3.5 w-3.5" />
-                            </span>
-                          )}
-                          {num.capabilities?.sms && (
-                            <span title="SMS" className="text-muted-foreground">
-                              <MessageSquare className="h-3.5 w-3.5" />
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          className={cn(
-                            num.status === 'active'
-                              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                              : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400',
-                          )}
-                        >
-                          {num.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          title={isPrimary ? 'Primary number' : 'Set as primary'}
-                          onClick={() => handleSetPrimary(num.id)}
-                          disabled={isPrimary}
-                        >
-                          {isPrimary ? (
-                            <Star className="h-4 w-4 text-amber-500 fill-amber-500" />
-                          ) : (
-                            <StarOff className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Delete"
+                onClick={() => setDeleteTarget(num)}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </>
           )}
-        </CardContent>
-      </Card>
+          emptyState={
+            <EmptyState
+              icon={<Phone className="size-8" />}
+              title="No phone numbers configured"
+              description="Search for an available number and purchase one to get started."
+              action={
+                <Button onClick={() => setSearchOpen(true)} variant="outline" className="gap-ds-2">
+                  <Plus className="size-4" />
+                  Add First Number
+                </Button>
+              }
+            />
+          }
+        />
+      </SectionCard>
 
-      {/* Add Number Dialog */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent>
+      <Dialog open={searchOpen} onOpenChange={(open) => { setSearchOpen(open); if (!open) setSearchResults(null); }}>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Add Phone Number</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="phoneNumber">Phone Number</Label>
-              <Input
-                id="phoneNumber"
-                value={addForm.number}
-                onChange={(e) => setAddForm((p) => ({ ...p, number: e.target.value }))}
-                placeholder="+1 (555) 000-0000"
-              />
+          <div className="flex flex-col gap-ds-4 py-ds-4">
+            <div className="flex items-end gap-ds-2">
+              <div className="flex-1 flex flex-col gap-ds-2">
+                <Label htmlFor="areaCode">Area code</Label>
+                <Input
+                  id="areaCode"
+                  value={searchForm.areaCode}
+                  onChange={(e) => setSearchForm((p) => ({ ...p, areaCode: e.target.value }))}
+                  placeholder="e.g., 415"
+                />
+              </div>
+              <div className="w-40 flex flex-col gap-ds-2">
+                <Label>Type</Label>
+                <Select
+                  value={searchForm.type}
+                  onValueChange={(v) => setSearchForm((p) => ({ ...p, type: v as 'local' | 'toll_free' }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="local">Local</SelectItem>
+                    <SelectItem value="toll_free">Toll Free</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button onClick={handleSearch} disabled={searchMutation.loading} className="gap-ds-2">
+                {searchMutation.loading ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
+                Search
+              </Button>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="friendlyName">Friendly Name (optional)</Label>
-              <Input
-                id="friendlyName"
-                value={addForm.friendlyName}
-                onChange={(e) => setAddForm((p) => ({ ...p, friendlyName: e.target.value }))}
-                placeholder="e.g., Sales Line"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Type</Label>
-              <Select value={addForm.type} onValueChange={(v) => setAddForm((p) => ({ ...p, type: v }))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="local">Local</SelectItem>
-                  <SelectItem value="toll_free">Toll Free</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+
+            {searchResults !== null && (
+              <div className="flex flex-col gap-ds-2 max-h-72 overflow-y-auto">
+                {searchResults.length === 0 ? (
+                  <p className="text-sm text-ds-foreground-muted py-ds-4 text-center">
+                    No available numbers found. Try a different area code.
+                  </p>
+                ) : (
+                  searchResults.map((n) => (
+                    <div
+                      key={n.number}
+                      className="flex items-center justify-between rounded-ds-md border border-ds-border px-ds-3 py-ds-2"
+                    >
+                      <div>
+                        <p className="font-mono text-sm font-medium text-ds-foreground">{n.number}</p>
+                        <p className="text-xs text-ds-foreground-muted">
+                          {[n.locality, n.region].filter(Boolean).join(', ') || n.type}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={() => handlePurchase(n)}
+                        disabled={purchaseMutation.loading}
+                      >
+                        Purchase
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddNumber} className="gap-2">
-              <Plus className="h-4 w-4" />
-              Add Number
-            </Button>
+            <Button variant="outline" onClick={() => setSearchOpen(false)}>Cancel</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Remove phone number"
+        description={`This will release ${deleteTarget?.number ?? 'this number'}. This action cannot be undone.`}
+        confirmLabel="Remove"
+        tone="destructive"
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }
