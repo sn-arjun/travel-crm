@@ -246,11 +246,32 @@
       "timestamp": "2026-09-23T17:17:53.517Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:settings-company": {
+      "status": "context-limit",
+      "timestamp": "2026-09-24T10:59:17.961Z",
+      "error": "stdout(tail): Failed to refresh OAuth token: another Claude Code process is refreshing it or exited mid-refresh. This is usually transient; retry in a minute, and if it persists close other Claude Code processes or sign in again"
+    },
+    "slice:settings-team": {
+      "status": "ok",
+      "timestamp": "2026-09-24T11:07:03.616Z",
+      "error": null,
+      "repairAttempts": 0
+    },
+    "slice:super-admin": {
+      "status": "context-limit",
+      "timestamp": "2026-09-23T17:19:31.279Z",
+      "error": "stdout(tail): You've hit your session limit · resets 3:10am (Asia/Kolkata)"
+    },
+    "slice:suppliers": {
+      "status": "context-limit",
+      "timestamp": "2026-09-23T17:19:36.431Z",
+      "error": "stdout(tail): You've hit your session limit · resets 3:10am (Asia/Kolkata)"
     }
   },
   "lastCompleted": {
-    "id": "slice:reports",
+    "id": "slice:settings-team",
     "status": "ok",
-    "timestamp": "2026-09-23T17:17:53.517Z"
+    "timestamp": "2026-09-24T11:07:03.616Z"
   }
 }

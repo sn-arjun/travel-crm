@@ -9,9 +9,9 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
+import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-
-const STORAGE_KEY = 'travelcrm_email_signature';
+import { usersApi } from '@/lib/api/users';
 
 interface SignatureData {
   name: string;
@@ -33,14 +33,22 @@ const defaultSignature: SignatureData = {
   customHtml: '',
 };
 
-function loadSignature(): SignatureData {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) return { ...defaultSignature, ...JSON.parse(stored) };
-  } catch {
-    // ignore
+const DATA_COMMENT_RE = /^<!--travelcrm-signature-data:([\s\S]*?)-->/;
+
+function parseStoredSignature(stored: string): SignatureData {
+  const match = stored.match(DATA_COMMENT_RE);
+  if (match?.[1]) {
+    try {
+      return { ...defaultSignature, ...JSON.parse(match[1]) };
+    } catch {
+      // fall through to default
+    }
   }
   return { ...defaultSignature };
+}
+
+function serializeSignature(data: SignatureData): string {
+  return `<!--travelcrm-signature-data:${JSON.stringify(data)}-->${generatePreviewHtml(data)}`;
 }
 
 function generatePreviewHtml(data: SignatureData): string {
@@ -99,10 +107,24 @@ export default function EmailSignaturePage() {
   const [isSaving, setIsSaving] = React.useState(false);
   const [loaded, setLoaded] = React.useState(false);
 
-  // Load from localStorage on mount
   React.useEffect(() => {
-    setData(loadSignature());
-    setLoaded(true);
+    let cancelled = false;
+    usersApi
+      .getSignature()
+      .then((res) => {
+        if (cancelled) return;
+        const stored = (res as { data?: { signature?: string } })?.data?.signature;
+        if (stored) setData(parseStoredSignature(stored));
+      })
+      .catch(() => {
+        toast.error('Failed to load email signature');
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const setField = (field: keyof SignatureData, value: string) => {
@@ -112,7 +134,7 @@ export default function EmailSignaturePage() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      await usersApi.updateSignature(serializeSignature(data));
       toast.success('Email signature saved successfully');
     } catch {
       toast.error('Failed to save email signature');
@@ -121,14 +143,25 @@ export default function EmailSignaturePage() {
     }
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     if (!confirm('Are you sure you want to reset the email signature?')) return;
     setData({ ...defaultSignature });
-    localStorage.removeItem(STORAGE_KEY);
-    toast.success('Email signature reset');
+    try {
+      await usersApi.updateSignature('');
+      toast.success('Email signature reset');
+    } catch {
+      toast.error('Failed to reset email signature');
+    }
   };
 
-  if (!loaded) return null;
+  if (!loaded) {
+    return (
+      <div className="flex flex-col gap-ds-4 p-6">
+        <Skeleton className="h-10 w-64" />
+        <Skeleton className="h-96 w-full" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">

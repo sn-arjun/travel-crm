@@ -11,6 +11,48 @@ export interface UpdateUserRequest {
   timezone?: string;
 }
 
+export interface InviteUserRequest {
+  email: string;
+  name: string;
+  role: 'admin' | 'sales_manager' | 'salesperson' | 'operations' | 'accountant' | 'view_only';
+  phone?: string;
+  department?: string;
+}
+
+export interface InviteUserResponse {
+  inviteToken: string;
+  inviteUrl: string;
+  email: string;
+  role: string;
+}
+
+export interface LoginHistoryEntry {
+  id: string;
+  userId: string;
+  createdAt: string;
+  ipAddress?: string;
+  browser?: string;
+  os?: string;
+  device?: string;
+  status: 'success' | 'failed' | 'locked';
+  country?: string;
+  city?: string;
+  failureReason?: string;
+}
+
+export interface ActivityLogEntry {
+  id: string;
+  userId: string;
+  userName?: string;
+  action: string;
+  entityType: string;
+  entityId?: string;
+  entityName?: string;
+  details?: string;
+  ipAddress?: string;
+  createdAt: string;
+}
+
 export const usersApi = {
   list: (params?: { page?: number; limit?: number; search?: string; role?: string; status?: string }) =>
     client.get<ApiResponse<PaginatedResponse<User>>>(API_ENDPOINTS.users.list, { params }),
@@ -26,4 +68,45 @@ export const usersApi = {
 
   delete: (id: string) =>
     client.delete<ApiResponse<void>>(API_ENDPOINTS.users.byId(id)),
+
+  invite: (data: InviteUserRequest) =>
+    client.post<ApiResponse<InviteUserResponse>>(API_ENDPOINTS.users.list, data),
+
+  activate: (id: string) =>
+    client.put<ApiResponse<{ message: string }>>(`${API_ENDPOINTS.users.byId(id)}/activate`, {}),
+
+  deactivate: (id: string) =>
+    client.put<ApiResponse<{ message: string }>>(`${API_ENDPOINTS.users.byId(id)}/deactivate`, {}),
+
+  unlock: (id: string) =>
+    client.post<ApiResponse<{ message: string }>>(`${API_ENDPOINTS.users.byId(id)}/unlock`, {}),
+
+  getLoginHistory: (id: string) =>
+    client.get<ApiResponse<LoginHistoryEntry[]>>(`${API_ENDPOINTS.users.byId(id)}/login-history`),
+
+  getMyLoginHistory: () =>
+    client.get<ApiResponse<LoginHistoryEntry[]>>(`${API_ENDPOINTS.users.me}/login-history`),
+
+  getSignature: () =>
+    client.get<ApiResponse<{ signature: string }>>(`${API_ENDPOINTS.users.me}/signature`),
+
+  updateSignature: (signature: string) =>
+    client.put<ApiResponse<{ signature: string }>>(`${API_ENDPOINTS.users.me}/signature`, { signature }),
+};
+
+export const activityLogsApi = {
+  list: (params?: {
+    page?: number;
+    limit?: number;
+    action?: string;
+    entityType?: string;
+    userId?: string;
+  }) =>
+    client.get<ApiResponse<PaginatedResponse<ActivityLogEntry>>>('/activity-logs', { params }),
+
+  byUser: (id: string, params?: { limit?: number }) =>
+    client.get<ApiResponse<ActivityLogEntry[]>>(`/activity-logs/user/${id}`, { params }),
+
+  byEntity: (type: string, id: string, params?: { limit?: number }) =>
+    client.get<ApiResponse<ActivityLogEntry[]>>(`/activity-logs/entity/${type}/${id}`, { params }),
 };

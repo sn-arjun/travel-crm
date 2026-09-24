@@ -1,51 +1,17 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
-import {
-  ArrowLeft,
-  Loader2,
-  History,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  Filter,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import {
-  Table,
-  TableHeader,
-  TableRow,
-  TableHead,
-  TableBody,
-  TableCell,
-} from '@/components/ui/table';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { AlertTriangle, ArrowLeft, CheckCircle2, History, XCircle } from 'lucide-react';
+import { PageHeader } from '@/components/ui/page-header';
+import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useApiQuery } from '@/hooks/use-api';
-import { client, type ApiResponse } from '@/lib/api/client';
+import { usersApi, type LoginHistoryEntry } from '@/lib/api/users';
 import { cn } from '@/lib/utils';
-
-interface LoginHistoryEntry {
-  id: string;
-  createdAt: string;
-  ipAddress: string;
-  browser: string;
-  os: string;
-  device: string;
-  status: 'success' | 'failed' | 'locked';
-  country?: string;
-  city?: string;
-  failureReason?: string;
-}
 
 function formatDate(iso: string) {
   try {
@@ -56,152 +22,82 @@ function formatDate(iso: string) {
 }
 
 const statusConfig = {
-  success: { label: 'Success', icon: CheckCircle2, className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
-  failed: { label: 'Failed', icon: XCircle, className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
-  locked: { label: 'Locked', icon: AlertTriangle, className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
+  success: { label: 'Success', icon: CheckCircle2, className: 'text-ds-success-on-subtle bg-ds-success-subtle' },
+  failed: { label: 'Failed', icon: XCircle, className: 'text-ds-danger-on-subtle bg-ds-danger-subtle' },
+  locked: { label: 'Locked', icon: AlertTriangle, className: 'text-ds-warning-on-subtle bg-ds-warning-subtle' },
 };
 
 export default function LoginHistoryPage() {
   const router = useRouter();
-  const [statusFilter, setStatusFilter] = React.useState<string>('all');
-  const [dateFrom, setDateFrom] = React.useState('');
-  const [dateTo, setDateTo] = React.useState('');
+  const searchParams = useSearchParams();
+  const userId = searchParams?.get('userId') ?? null;
 
-  const { data: historyResponse, loading } = useApiQuery(
-    () => client.get<ApiResponse<LoginHistoryEntry[]>>('/users/me/login-history', {
-      params: {
-        ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
-        ...(dateFrom ? { fromDate: dateFrom } : {}),
-        ...(dateTo ? { toDate: dateTo } : {}),
-      },
-    }),
-    [statusFilter, dateFrom, dateTo],
+  const { data: response, loading } = useApiQuery(
+    () => (userId ? usersApi.getLoginHistory(userId) : usersApi.getMyLoginHistory()),
+    [userId],
   );
 
   const entries: LoginHistoryEntry[] = React.useMemo(() => {
-    if (!historyResponse || !('data' in historyResponse)) return [];
-    return (historyResponse.data as LoginHistoryEntry[]) ?? [];
-  }, [historyResponse]);
+    if (!response || !('data' in response)) return [];
+    return (response.data as LoginHistoryEntry[]) ?? [];
+  }, [response]);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  const columns: DataTableColumn<LoginHistoryEntry>[] = [
+    { key: 'createdAt', header: 'Date & time', cell: (e) => formatDate(e.createdAt), sortable: true },
+    { key: 'ipAddress', header: 'IP address', cell: (e) => <span className="font-mono text-sm">{e.ipAddress ?? '—'}</span> },
+    { key: 'location', header: 'Location', cell: (e) => [e.city, e.country].filter(Boolean).join(', ') || '—' },
+    { key: 'browser', header: 'Browser', cell: (e) => e.browser ?? '—' },
+    { key: 'device', header: 'OS / device', cell: (e) => [e.os, e.device].filter(Boolean).join(' / ') || '—' },
+    {
+      key: 'status',
+      header: 'Status',
+      cell: (e) => {
+        const config = statusConfig[e.status] ?? statusConfig.success;
+        const Icon = config.icon;
+        return (
+          <Badge className={cn('gap-ds-1', config.className)}>
+            <Icon aria-hidden="true" className="size-3" />
+            {config.label}
+          </Badge>
+        );
+      },
+    },
+  ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => router.push('/settings')}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Login History</h1>
-          <p className="text-muted-foreground mt-1">Review your recent login activity</p>
-        </div>
-      </div>
+    <div className="flex flex-col gap-ds-4">
+      <PageHeader
+        title="Login history"
+        description={userId ? 'Login activity for this team member.' : 'Review your recent login activity.'}
+        count={loading ? undefined : entries.length}
+        back={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Go back"
+            onClick={() => (userId ? router.push('/settings/team') : router.push('/settings'))}
+          >
+            <ArrowLeft aria-hidden="true" />
+          </Button>
+        }
+      />
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-4">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="success">Success</SelectItem>
-                <SelectItem value="failed">Failed</SelectItem>
-                <SelectItem value="locked">Locked</SelectItem>
-              </SelectContent>
-            </Select>
-            <Input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="w-40"
-              placeholder="From date"
+      {loading ? (
+        <Skeleton className="h-96 w-full" />
+      ) : (
+        <DataTable
+          columns={columns}
+          data={entries}
+          getRowId={(e) => e.id}
+          emptyState={
+            <EmptyState
+              icon={<History aria-hidden="true" className="size-10" />}
+              title="No login history found"
+              description="Login attempts will appear here once they happen."
             />
-            <Input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="w-40"
-              placeholder="To date"
-            />
-            {(statusFilter !== 'all' || dateFrom || dateTo) && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setStatusFilter('all');
-                  setDateFrom('');
-                  setDateTo('');
-                }}
-              >
-                Clear Filters
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* History Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <History className="h-5 w-5" />
-            Login Activity
-          </CardTitle>
-          <CardDescription>Your recent login attempts and their status</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {entries.length === 0 ? (
-            <div className="text-center py-12">
-              <History className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-sm text-muted-foreground">No login history found</p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date & Time</TableHead>
-                  <TableHead>IP Address</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Browser</TableHead>
-                  <TableHead>OS / Device</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {entries.map((entry) => {
-                  const config = statusConfig[entry.status] ?? statusConfig.success;
-                  const StatusIcon = config.icon;
-                  return (
-                    <TableRow key={entry.id}>
-                      <TableCell className="text-sm">{formatDate(entry.createdAt)}</TableCell>
-                      <TableCell className="font-mono text-sm">{entry.ipAddress ?? '-'}</TableCell>
-                      <TableCell className="text-sm">{[entry.city, entry.country].filter(Boolean).join(', ') || '-'}</TableCell>
-                      <TableCell className="text-sm">{entry.browser ?? '-'}</TableCell>
-                      <TableCell className="text-sm">{[entry.os, entry.device].filter(Boolean).join(' / ') || '-'}</TableCell>
-                      <TableCell>
-                        <Badge className={cn('gap-1', config.className)}>
-                          <StatusIcon className="h-3 w-3" />
-                          {config.label}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+          }
+        />
+      )}
     </div>
   );
 }
