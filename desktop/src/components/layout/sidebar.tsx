@@ -44,9 +44,11 @@ import {
   ScanLine,
   BellRing,
   LayoutTemplate,
+  ShieldCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarStore } from '@/stores/sidebar-store';
+import { useAuthStore } from '@/stores/auth-store';
 import {
   Tooltip,
   TooltipContent,
@@ -162,6 +164,8 @@ const bottomNav: NavItem[] = [
   { title: 'Help Center', href: '/help', icon: HelpCircle },
   { title: 'Settings', href: '/settings', icon: Settings },
 ];
+
+const superAdminNav: NavItem = { title: 'Super Admin', href: '/super-admin', icon: ShieldCheck };
 
 interface BadgeCounts {
   unread_notifications: number;
@@ -282,6 +286,7 @@ function NavItemLink({ item, isCollapsed, badgeCounts }: { item: NavItem; isColl
 export function Sidebar() {
   const { isCollapsed, toggle } = useSidebarStore();
   const badgeCounts = useBadgeCounts();
+  const isSuperAdmin = useAuthStore((s) => s.user?.role === 'admin');
 
   return (
     <TooltipProvider>
@@ -326,6 +331,9 @@ export function Sidebar() {
 
         {/* Bottom Nav */}
         <div className="border-t border-sidebar-border px-3 py-3 space-y-0.5">
+          {isSuperAdmin && (
+            <NavItemLink item={superAdminNav} isCollapsed={isCollapsed} badgeCounts={badgeCounts} />
+          )}
           {bottomNav.map((item: any) => (
             <NavItemLink key={item.href} item={item} isCollapsed={isCollapsed} badgeCounts={badgeCounts} />
           ))}

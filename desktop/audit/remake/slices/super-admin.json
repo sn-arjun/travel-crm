@@ -29,7 +29,6 @@
   "pages": [
     "desktop/src/app/(app)/super-admin/page.tsx",
     "desktop/src/app/(app)/super-admin/tenants/page.tsx",
-    "desktop/src/app/(app)/super-admin/tenants/new/page.tsx",
     "desktop/src/app/(app)/super-admin/tenants/[id]/page.tsx",
     "desktop/src/app/(app)/super-admin/users/page.tsx",
     "desktop/src/app/(app)/super-admin/plans/page.tsx",
@@ -49,12 +48,12 @@
   ],
   "uxContract": {
     "listPage": true,
-    "filterBar": false,
-    "infiniteScroll": false,
-    "hoverActions": false,
-    "detailDrawer": false,
-    "emptyState": false,
-    "skeleton": false,
+    "filterBar": true,
+    "infiniteScroll": true,
+    "hoverActions": true,
+    "detailDrawer": true,
+    "emptyState": true,
+    "skeleton": true,
     "relationCombobox": false,
     "urlPrefill": false,
     "phoneInput": false,
@@ -62,9 +61,9 @@
     "currencyInput": false,
     "datePicker": false,
     "sendMessageDialog": false,
-    "themedExport": false
+    "themedExport": true
   },
-  "notes": "DECIDED (owner, 2026-08-07): BUILD the missing /admin backend. The backend freeze is LIFTED for backend/src/routes/admin.ts and its mount in backend/src/index.ts ONLY — every other backend file remains frozen. The backend:admin job creates the routes against the MASTER_DB (tenants, subscriptions, feature flags, audit logs); this slice then builds the UI against them. The 10 existing pages already call API_ENDPOINTS.admin.* and previously 404d — keep those paths, they are the contract. Super-admin access must be role-gated; do NOT expose tenant-admin users to platform data.",
+  "notes": "All 9 remaining pages (dashboard, tenants list+detail, users, plans, billing, system, config, audit) migrated onto ListPage/DetailPage/DataTable/StatCard/chart archetypes; bespoke <table>/<Card> markup and manual pagination removed. Sidebar now shows a role-gated 'Super Admin' entry (visible only when user.role === 'admin'), matching the layout.tsx guard already in place. Backend (backend/src/routes/admin.ts) is READ-ONLY — 19 GET endpoints only, no create/update/delete/suspend/activate routes exist for tenants, users, plans, or config despite the old bespoke pages calling them. I removed those non-functional write actions rather than leave dead buttons calling 404 endpoints: deleted tenants/new/page.tsx (no tenantCreate endpoint, not linked from anywhere), dropped tenant suspend/activate/edit, user suspend/activate, and plan create/edit/delete from the UI, and made config read-only. relationCombobox/urlPrefill/phoneInput/addressAutocomplete/currencyInput/datePicker/sendMessageDialog are all false because this slice has no create/edit forms and no messaging surface (super admin operates on tenants/users, not contacts) — n/a rather than defects. themedExport is client-side CSV of the currently loaded/filtered rows (no server export endpoint exists to cover the full filtered dataset). If tenant/user/plan management needs write actions, that requires a separate backend job to add POST/PUT/DELETE routes to admin.ts first.",
   "showcaseScript": [
     "Note that Super Admin ships as a separate application",
     "Confirm the desktop CRM no longer routes to dead /admin/* pages",

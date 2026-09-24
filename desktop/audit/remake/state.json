@@ -259,9 +259,10 @@
       "repairAttempts": 0
     },
     "slice:super-admin": {
-      "status": "context-limit",
-      "timestamp": "2026-09-23T17:19:31.279Z",
-      "error": "stdout(tail): You've hit your session limit · resets 3:10am (Asia/Kolkata)"
+      "status": "ok",
+      "timestamp": "2026-09-24T11:12:14.355Z",
+      "error": null,
+      "repairAttempts": 0
     },
     "slice:suppliers": {
       "status": "context-limit",
@@ -270,8 +271,8 @@
     }
   },
   "lastCompleted": {
-    "id": "slice:settings-team",
+    "id": "slice:super-admin",
     "status": "ok",
-    "timestamp": "2026-09-24T11:07:03.616Z"
+    "timestamp": "2026-09-24T11:12:14.355Z"
   }
 }
