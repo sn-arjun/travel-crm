@@ -311,11 +311,17 @@
       "timestamp": "2026-09-24T11:45:24.060Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:whatsapp-campaigns": {
+      "status": "ok",
+      "timestamp": "2026-09-24T11:49:50.262Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "slice:webhooks-integrations",
+    "id": "slice:whatsapp-campaigns",
     "status": "ok",
-    "timestamp": "2026-09-24T11:45:24.060Z"
+    "timestamp": "2026-09-24T11:49:50.262Z"
   }
 }

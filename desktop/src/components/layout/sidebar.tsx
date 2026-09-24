@@ -46,6 +46,7 @@ import {
   BellRing,
   LayoutTemplate,
   ShieldCheck,
+  MessageCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarStore } from '@/stores/sidebar-store';
@@ -150,6 +151,7 @@ const navigation: NavGroup[] = [
       { title: 'Festival Offers', href: '/marketing/festivals', icon: CalendarClock },
       { title: 'Opted-Out', href: '/marketing/opted-out', icon: UserCheck },
       { title: 'Social Content', href: '/marketing/social', icon: Megaphone },
+      { title: 'WhatsApp Campaigns', href: '/marketing/whatsapp', icon: MessageCircle },
     ],
   },
   {

@@ -248,6 +248,17 @@ export const API_ENDPOINTS = {
     cancel: (id: string) => `/campaigns/${id}/cancel`,
     recipients: (id: string) => `/campaigns/${id}/recipients`,
   },
+  // WhatsApp Campaigns
+  whatsappCampaigns: {
+    list: '/whatsapp-campaigns',
+    create: '/whatsapp-campaigns',
+    byId: (id: string) => `/whatsapp-campaigns/${id}`,
+    send: (id: string) => `/whatsapp-campaigns/${id}/send`,
+    pause: (id: string) => `/whatsapp-campaigns/${id}/pause`,
+    cancel: (id: string) => `/whatsapp-campaigns/${id}/cancel`,
+    analytics: (id: string) => `/whatsapp-campaigns/${id}/analytics`,
+    recipients: (id: string) => `/whatsapp-campaigns/${id}/recipients`,
+  },
   // Marketing
   marketing: {
     segments: '/marketing/segments',
