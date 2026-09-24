@@ -281,11 +281,17 @@
       "timestamp": "2026-09-24T11:25:35.035Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:travellers": {
+      "status": "ok",
+      "timestamp": "2026-09-24T11:29:35.450Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "slice:test-harness",
+    "id": "slice:travellers",
     "status": "ok",
-    "timestamp": "2026-09-24T11:25:35.035Z"
+    "timestamp": "2026-09-24T11:29:35.450Z"
   }
 }

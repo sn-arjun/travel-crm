@@ -30,6 +30,16 @@ export interface Traveller {
   email?: string;
   phone?: string;
   leadId?: string;
+  contactId?: string;
+  contactName?: string;
+  passportExpiryDate?: string;
+  passportIssuingCountry?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  mealPreference?: string;
+  seatPreference?: string;
+  medicalNotes?: string;
+  frequentFlyerNumbers?: string;
   customFields?: Record<string, unknown>;
   createdBy: string;
   createdAt: string;
@@ -85,6 +95,7 @@ export interface UpdateTravellerRequest {
   nationality?: string;
   email?: string;
   phone?: string;
+  passportExpiryDate?: string;
   customFields?: Record<string, unknown>;
 }
 
@@ -177,4 +188,10 @@ export const travellersApi = {
 
   delete: (id: string) =>
     client.delete<ApiResponse<void>>(API_ENDPOINTS.travellers.byId(id)),
+
+  linkContact: (id: string, contactId: string) =>
+    client.put<ApiResponse<Traveller>>(`${API_ENDPOINTS.travellers.byId(id)}/link-contact`, { contactId }),
+
+  unlinkContact: (id: string) =>
+    client.put<ApiResponse<Traveller>>(`${API_ENDPOINTS.travellers.byId(id)}/unlink-contact`, {}),
 };
