@@ -1,222 +1,146 @@
 'use client';
 
-import * as React from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Save, Loader2, AlertCircle } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { z } from 'zod';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+
+import { EntityForm, FormRow } from '@/components/domain/entity-form';
+import { RelationCombobox } from '@/components/domain/relation-combobox';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { SectionCard } from '@/components/ui/section-card';
 import { Textarea } from '@/components/ui/textarea';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Combobox } from '@/components/ui/combobox';
-import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { visaApi, travellersApi, type CreateVisaRequest, type Traveller } from '@/lib/api/visa';
 
-// Popular destination countries for visa combobox
 const DESTINATION_COUNTRIES = [
   'Australia', 'Bahrain', 'Canada', 'China', 'Dubai (UAE)', 'Egypt', 'France', 'Germany',
   'Greece', 'Indonesia', 'Italy', 'Japan', 'Jordan', 'Kenya', 'Malaysia', 'Maldives',
   'Morocco', 'Nepal', 'Netherlands', 'New Zealand', 'Oman', 'Portugal', 'Qatar',
   'Saudi Arabia', 'Schengen', 'Singapore', 'South Africa', 'Spain', 'Sri Lanka',
   'Switzerland', 'Thailand', 'Turkey', 'United Kingdom', 'United States', 'Vietnam',
-].map((c) => ({ value: c, label: c }));
+];
 
 const VISA_TYPES = ['Tourist', 'Business', 'Student', 'Work', 'Medical', 'Transit', 'Visit', 'Residence'];
 
-interface FormState {
-  travellerId: string;
-  travellerName: string;
-  passportNumber: string;
-  destinationCountry: string;
-  visaType: string;
-  applicationDate: string;
-  expectedDate: string;
-  notes: string;
+const schema = z.object({
+  travellerId: z.string().min(1, 'Traveller is required'),
+  travellerName: z.string().min(1),
+  passportNumber: z.string().optional(),
+  destinationCountry: z.string().min(1, 'Destination country is required'),
+  visaType: z.string().optional(),
+  applicationDate: z.date().optional(),
+  expiryDate: z.date().optional(),
+  notes: z.string().optional(),
+});
+type VisaForm = z.infer<typeof schema>;
+
+function toDateOnly(d?: Date): string | undefined {
+  return d ? d.toISOString().split('T')[0] : undefined;
+}
+
+async function fetchTravellers(query: string, page: number) {
+  const r = await travellersApi.list({ search: query || undefined, page, limit: 20 });
+  const data = r.data as unknown;
+  const items = Array.isArray(data)
+    ? (data as Traveller[])
+    : ((data as { data?: Traveller[] })?.data ?? []);
+  const total = (data as { pagination?: { total?: number } })?.pagination?.total ?? items.length;
+  return { items, total };
 }
 
 export default function NewVisaApplicationPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-
-  // Auto-populate from URL params (when navigating from traveller detail)
-  const prefillTravellerId = searchParams.get('travellerId') ?? '';
-  const prefillTravellerName = searchParams.get('travellerName') ?? '';
-
-  const [form, setForm] = React.useState<FormState>({
-    travellerId: prefillTravellerId,
-    travellerName: prefillTravellerName,
-    passportNumber: '',
-    destinationCountry: '',
-    visaType: '',
-    applicationDate: new Date().toISOString().split('T')[0] ?? '',
-    expectedDate: '',
-    notes: '',
-  });
-
-  const [errors, setErrors] = React.useState<Record<string, string>>({});
-  const [travellerSearch, setTravellerSearch] = React.useState('');
-  const [countrySearch, setCountrySearch] = React.useState('');
-
-  // Search travellers
-  const { data: travellersResponse } = useApiQuery(
-    () => travellersApi.list({ search: travellerSearch || undefined, limit: 20 }),
-    [travellerSearch],
-  );
-
-  const travellers: Traveller[] = React.useMemo(() => {
-    const d = travellersResponse?.data;
-    if (!d) return [];
-    if (Array.isArray(d)) return d;
-    return (d as any)?.data ?? [];
-  }, [travellersResponse]);
-
-  const travellerOptions = travellers.map((t) => ({
-    value: t.id,
-    label: `${t.firstName} ${t.lastName} (${t.passportNumber})`,
-  }));
-
-  // If pre-filled, add the pre-fill as an option too
-  const allTravellerOptions = React.useMemo(() => {
-    if (prefillTravellerId && !travellerOptions.find((o) => o.value === prefillTravellerId)) {
-      return [{ value: prefillTravellerId, label: prefillTravellerName }, ...travellerOptions];
-    }
-    return travellerOptions;
-  }, [travellerOptions, prefillTravellerId, prefillTravellerName]);
-
-  const filteredCountries = React.useMemo(() => {
-    if (!countrySearch) return DESTINATION_COUNTRIES;
-    const q = countrySearch.toLowerCase();
-    return DESTINATION_COUNTRIES.filter((c) => c.label.toLowerCase().includes(q));
-  }, [countrySearch]);
-
-  const createMutation = useApiMutation<CreateVisaRequest, any>((data) => visaApi.create(data));
-
-  function updateField(field: keyof FormState, value: string) {
-    setForm((prev) => ({ ...prev, [field]: value }));
-    setErrors((prev) => { const next = { ...prev }; delete next[field]; return next; });
-  }
-
-  function handleTravellerSelect(travellerId: string) {
-    const t = travellers.find((t) => t.id === travellerId);
-    if (t) {
-      setForm((prev) => ({
-        ...prev,
-        travellerId,
-        travellerName: `${t.firstName} ${t.lastName}`,
-        passportNumber: t.passportNumber ?? '',
-      }));
-    } else if (travellerId === prefillTravellerId) {
-      setForm((prev) => ({ ...prev, travellerId, travellerName: prefillTravellerName }));
-    }
-    setErrors((prev) => { const next = { ...prev }; delete next.travellerId; return next; });
-  }
-
-  function validate() {
-    const errs: Record<string, string> = {};
-    if (!form.travellerId.trim() && !form.travellerName.trim()) errs.travellerId = 'Traveller is required';
-    if (!form.destinationCountry.trim()) errs.destinationCountry = 'Destination country is required';
-    if (!form.applicationDate) errs.applicationDate = 'Application date is required';
-    setErrors(errs);
-    return Object.keys(errs).length === 0;
-  }
-
-  async function handleSave() {
-    if (!validate()) return;
-
-    const visaData: CreateVisaRequest = {
-      travellerName: form.travellerName,
-      passportNumber: form.passportNumber,
-      countryName: form.destinationCountry,
-      visaType: form.visaType || undefined,
-      applicationDate: form.applicationDate,
-      expiryDate: undefined,
-      notes: form.notes || undefined,
-      status: 'not_started',
-    };
-
-    const result = await createMutation.mutate(visaData);
-    if (result) {
-      toast.success('Visa application created successfully!');
-      router.push('/visa');
-    } else {
-      toast.error(createMutation.error?.message ?? 'Failed to create visa application');
-    }
-  }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-              New Visa Application
-            </h1>
-            <p className="text-sm text-muted-foreground">Create a new visa record for a traveller</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => router.back()}>Cancel</Button>
-          <Button onClick={handleSave} disabled={createMutation.loading} className="gap-2">
-            {createMutation.loading && <Loader2 className="h-4 w-4 animate-spin" />}
-            <Save className="h-4 w-4" />
-            Create Application
-          </Button>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-2xl mx-auto space-y-6">
-          <Card>
-            <CardHeader><CardTitle className="text-base">Traveller</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Select Traveller <span className="text-destructive">*</span></Label>
-                <Combobox
-                  options={allTravellerOptions}
-                  value={form.travellerId}
-                  onValueChange={handleTravellerSelect}
-                  onSearch={setTravellerSearch}
-                  placeholder="Search travellers..."
-                  searchPlaceholder="Search by name or passport..."
-                  className={errors.travellerId ? 'border-destructive' : ''}
+    <EntityForm<VisaForm>
+      title="New Visa Application"
+      description="Create a new visa record for a traveller."
+      schema={schema}
+      defaultValues={{
+        travellerId: '',
+        travellerName: '',
+        passportNumber: '',
+        destinationCountry: '',
+        visaType: '',
+        applicationDate: new Date(),
+        notes: '',
+      }}
+      prefillFromParams={{ travellerId: 'travellerId' }}
+      onCancel={() => router.back()}
+      onSubmit={async (v) => {
+        const payload: CreateVisaRequest = {
+          travellerName: v.travellerName,
+          passportNumber: v.passportNumber ?? '',
+          countryName: v.destinationCountry,
+          visaType: v.visaType || undefined,
+          applicationDate: toDateOnly(v.applicationDate),
+          expiryDate: toDateOnly(v.expiryDate),
+          notes: v.notes || undefined,
+          status: 'not_started',
+        };
+        await visaApi.create(payload);
+        toast.success('Visa application created successfully!');
+        router.push('/visa');
+      }}
+      renderSections={(form) => (
+        <>
+          <SectionCard title="Traveller" required>
+            <div className="grid gap-ds-4 sm:grid-cols-2">
+              <FormRow name="travellerId" label="Traveller" required wide>
+                <RelationCombobox<Traveller>
+                  value={form.watch('travellerId') || null}
+                  onChange={(id, item) => {
+                    form.setValue('travellerId', id ?? '', { shouldDirty: true, shouldValidate: true });
+                    form.setValue('travellerName', item ? `${item.firstName} ${item.lastName}` : '', { shouldDirty: true });
+                    form.setValue('passportNumber', item?.passportNumber ?? '', { shouldDirty: true });
+                  }}
+                  fetcher={fetchTravellers}
+                  getOptionId={(t) => t.id}
+                  getOptionLabel={(t) => `${t.firstName} ${t.lastName}`}
+                  getOptionDescription={(t) => t.passportNumber}
+                  resolveSelected={async (id) => (await travellersApi.getById(id)).data}
+                  placeholder="Select a traveller…"
+                  searchPlaceholder="Search by name or passport…"
+                  required
+                  error={form.formState.errors.travellerId?.message}
                 />
-                {errors.travellerId && <p className="text-xs text-destructive flex items-center gap-1"><AlertCircle className="h-3 w-3" />{errors.travellerId}</p>}
-              </div>
-              {form.passportNumber && (
-                <div className="text-sm text-muted-foreground">
-                  Passport: <span className="font-mono font-medium text-foreground">{form.passportNumber}</span>
-                </div>
+              </FormRow>
+              {form.watch('passportNumber') && (
+                <FormRow name="passportNumber" label="Passport Number" wide>
+                  <Input value={form.watch('passportNumber')} disabled readOnly />
+                </FormRow>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </SectionCard>
 
-          <Card>
-            <CardHeader><CardTitle className="text-base">Visa Details</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Destination Country <span className="text-destructive">*</span></Label>
-                <Combobox
-                  options={filteredCountries}
-                  value={form.destinationCountry}
-                  onValueChange={(val) => updateField('destinationCountry', val)}
-                  onSearch={setCountrySearch}
-                  placeholder="Select destination country..."
-                  searchPlaceholder="Search countries..."
-                  className={errors.destinationCountry ? 'border-destructive' : ''}
+          <SectionCard title="Visa Details" required>
+            <div className="grid gap-ds-4 sm:grid-cols-2">
+              <FormRow name="destinationCountry" label="Destination Country" required>
+                <RelationCombobox<{ id: string; name: string }>
+                  value={form.watch('destinationCountry') || null}
+                  onChange={(id) =>
+                    form.setValue('destinationCountry', id ?? '', { shouldDirty: true, shouldValidate: true })
+                  }
+                  fetcher={async (query) => {
+                    const items = DESTINATION_COUNTRIES.filter((c) =>
+                      c.toLowerCase().includes(query.toLowerCase()),
+                    ).map((c) => ({ id: c, name: c }));
+                    return { items, total: items.length };
+                  }}
+                  getOptionId={(c) => c.id}
+                  getOptionLabel={(c) => c.name}
+                  placeholder="Select destination country…"
+                  searchPlaceholder="Search countries…"
+                  required
+                  error={form.formState.errors.destinationCountry?.message}
                 />
-                {errors.destinationCountry && <p className="text-xs text-destructive flex items-center gap-1"><AlertCircle className="h-3 w-3" />{errors.destinationCountry}</p>}
-              </div>
+              </FormRow>
 
-              <div className="space-y-2">
-                <Label>Visa Type</Label>
-                <Select value={form.visaType} onValueChange={(val) => updateField('visaType', val)}>
+              <FormRow name="visaType" label="Visa Type">
+                <Select value={form.watch('visaType')} onValueChange={(val) => form.setValue('visaType', val, { shouldDirty: true })}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select visa type..." />
+                    <SelectValue placeholder="Select visa type…" />
                   </SelectTrigger>
                   <SelectContent>
                     {VISA_TYPES.map((t) => (
@@ -224,45 +148,34 @@ export default function NewVisaApplicationPage() {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
+              </FormRow>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="applicationDate">Application Date <span className="text-destructive">*</span></Label>
-                  <Input
-                    id="applicationDate"
-                    type="date"
-                    value={form.applicationDate}
-                    onChange={(e) => updateField('applicationDate', e.target.value)}
-                    className={errors.applicationDate ? 'border-destructive' : ''}
-                  />
-                  {errors.applicationDate && <p className="text-xs text-destructive">{errors.applicationDate}</p>}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="expectedDate">Expected Date</Label>
-                  <Input
-                    id="expectedDate"
-                    type="date"
-                    value={form.expectedDate}
-                    onChange={(e) => updateField('expectedDate', e.target.value)}
-                  />
-                </div>
-              </div>
+              <FormRow name="applicationDate" label="Application Date">
+                <DatePicker
+                  value={form.watch('applicationDate')}
+                  onChange={(d) => form.setValue('applicationDate', d, { shouldDirty: true })}
+                />
+              </FormRow>
 
-              <div className="space-y-2">
-                <Label htmlFor="notes">Notes</Label>
+              <FormRow name="expiryDate" label="Expiry Date">
+                <DatePicker
+                  value={form.watch('expiryDate')}
+                  onChange={(d) => form.setValue('expiryDate', d, { shouldDirty: true })}
+                />
+              </FormRow>
+
+              <FormRow name="notes" label="Notes" wide>
                 <Textarea
-                  id="notes"
-                  value={form.notes}
-                  onChange={(e) => updateField('notes', e.target.value)}
-                  placeholder="Any additional notes about this visa application..."
+                  value={form.watch('notes')}
+                  onChange={(e) => form.setValue('notes', e.target.value, { shouldDirty: true })}
+                  placeholder="Any additional notes about this visa application…"
                   rows={3}
                 />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    </div>
+              </FormRow>
+            </div>
+          </SectionCard>
+        </>
+      )}
+    />
   );
 }

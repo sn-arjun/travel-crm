@@ -47,9 +47,9 @@
     "listPage": true,
     "filterBar": true,
     "infiniteScroll": true,
-    "hoverActions": false,
+    "hoverActions": true,
     "detailDrawer": true,
-    "emptyState": false,
+    "emptyState": true,
     "skeleton": true,
     "relationCombobox": true,
     "urlPrefill": true,
@@ -58,9 +58,9 @@
     "currencyInput": false,
     "datePicker": true,
     "sendMessageDialog": false,
-    "themedExport": false
+    "themedExport": true
   },
-  "notes": "Default status hardcoded to applied instead of not_started (#52). Raw inputs for traveller and destination country (#53). GET /visa/missing-documents is orphaned. No Kanban view (#112).",
+  "notes": "Migrated list/detail/new pages onto ListPage/DetailPage archetypes; added a real edit page (previously missing). Traveller and destination country now use RelationCombobox (fixes #53); status now correctly defaults to not_started on create (fixes #52). Dashboard rebuilt on design tokens. sendMessageDialog not wired — visa has no messaging affordance in the original app and no contact/phone data on the record to drive it. GET /visa/missing-documents remains orphaned (#112, no Kanban view — out of scope for this pass, would need a KanbanBoard rebuild).",
   "showcaseScript": [
     "Open the Visa dashboard and see applications by stage",
     "Create a visa application for a traveller",

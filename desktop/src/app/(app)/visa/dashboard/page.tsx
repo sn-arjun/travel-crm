@@ -2,40 +2,37 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import {
-  ArrowLeft, Clock, CheckCircle2, XCircle, Loader2, AlertCircle, Globe, Calendar, BarChart3,
-} from 'lucide-react';
+import { ArrowLeft, Calendar, Globe } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { cn } from '@/lib/utils';
+import { PageHeader } from '@/components/ui/page-header';
+import { SectionCard } from '@/components/ui/section-card';
+import { Tag } from '@/components/ui/tag';
+import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Stat } from '@/components/ui/stat';
 import { useApiQuery } from '@/hooks/use-api';
 import { visaApi, type VisaRecord } from '@/lib/api/visa';
+import { cn } from '@/lib/utils';
 
-function getStatusColor(status: string) {
-  const colors: Record<string, string> = {
-    applied: 'bg-blue-100 text-blue-900',
-    processing: 'bg-amber-100 text-amber-900',
-    approved: 'bg-green-100 text-green-900',
-    rejected: 'bg-red-100 text-red-900',
-  };
-  return colors[status] ?? 'bg-gray-100 text-gray-900';
-}
+const STATUS_TONE: Record<string, 'neutral' | 'success' | 'danger' | 'warning' | 'info'> = {
+  not_started: 'neutral',
+  documents_collecting: 'info',
+  applied: 'info',
+  processing: 'warning',
+  approved: 'success',
+  rejected: 'danger',
+};
 
 export default function VisaDashboardPage() {
   const router = useRouter();
 
-  const { data: response, loading, error } = useApiQuery(
-    () => visaApi.list({ page: 1, limit: 200 }),
-    [],
-  );
+  const { data: response, loading } = useApiQuery(() => visaApi.list({ page: 1, limit: 200 }), []);
 
   const records: VisaRecord[] = React.useMemo(() => {
-    if (!response || !('data' in response)) return [];
-    const data = response.data;
-    return Array.isArray(data) ? data : (data as any)?.data ?? [];
+    const data = response?.data as unknown;
+    if (Array.isArray(data)) return data as VisaRecord[];
+    return ((data as { data?: VisaRecord[] })?.data ?? []) as VisaRecord[];
   }, [response]);
 
   const stats = React.useMemo(() => {
@@ -54,188 +51,130 @@ export default function VisaDashboardPage() {
       .slice(0, 10);
   }, [records]);
 
-  const statusDistribution = React.useMemo(() => {
-    const countryMap: Record<string, Record<string, number>> = {};
+  const byCountry = React.useMemo(() => {
+    const map: Record<string, Record<string, number>> = {};
     records.forEach((r) => {
-      if (!countryMap[r.countryName]) countryMap[r.countryName] = {};
-      countryMap[r.countryName]![r.status] = (countryMap[r.countryName]![r.status] ?? 0) + 1;
+      map[r.countryName] ??= {};
+      map[r.countryName]![r.status] = (map[r.countryName]![r.status] ?? 0) + 1;
     });
-    return Object.entries(countryMap)
-      .map(([country, statuses]) => ({ country, ...statuses, total: Object.values(statuses).reduce((a, b) => a + b, 0) }))
+    return Object.entries(map)
+      .map(([country, statuses]) => ({
+        country,
+        statuses,
+        total: Object.values(statuses).reduce((a, b) => a + b, 0),
+      }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 8);
   }, [records]);
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        <p className="text-muted-foreground">Loading visa dashboard...</p>
+      <div className="flex flex-col gap-ds-4 p-ds-4">
+        <Skeleton className="h-9 w-64" />
+        <div className="grid grid-cols-4 gap-ds-4">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-ds-lg" />)}
+        </div>
+        <Skeleton className="h-64 rounded-ds-lg" />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
+    <div className="flex flex-col gap-ds-4">
+      <PageHeader
+        title="Visa Dashboard"
+        description={`${stats.total} total applications`}
+        back={
+          <Button variant="ghost" size="icon-sm" onClick={() => router.back()} aria-label="Go back">
+            <ArrowLeft aria-hidden="true" />
           </Button>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-              Visa Dashboard
-            </h1>
-            <p className="text-sm text-muted-foreground">{stats.total} total applications</p>
-          </div>
-        </div>
-        <Button asChild>
-          <Link href="/visa">View All Applications</Link>
-        </Button>
+        }
+        actions={<Button onClick={() => router.push('/visa')}>View All Applications</Button>}
+      />
+
+      <div className="grid grid-cols-2 gap-ds-4 sm:grid-cols-4">
+        <Stat label="Applied" value={stats.applied} />
+        <Stat label="Processing" value={stats.processing} />
+        <Stat label="Approved" value={stats.approved} />
+        <Stat label="Rejected" value={stats.rejected} />
       </div>
 
-      <div className="flex-1 overflow-auto p-6 space-y-6">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-4 text-center">
-              <Clock className="h-6 w-6 mx-auto text-blue-500 mb-2" />
-              <p className="text-3xl font-bold">{stats.applied}</p>
-              <p className="text-xs text-muted-foreground mt-1">Applied</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <BarChart3 className="h-6 w-6 mx-auto text-amber-500 mb-2" />
-              <p className="text-3xl font-bold">{stats.processing}</p>
-              <p className="text-xs text-muted-foreground mt-1">Processing</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <CheckCircle2 className="h-6 w-6 mx-auto text-green-500 mb-2" />
-              <p className="text-3xl font-bold">{stats.approved}</p>
-              <p className="text-xs text-muted-foreground mt-1">Approved</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <XCircle className="h-6 w-6 mx-auto text-red-500 mb-2" />
-              <p className="text-3xl font-bold">{stats.rejected}</p>
-              <p className="text-xs text-muted-foreground mt-1">Rejected</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Upcoming Deadlines */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Calendar className="h-5 w-5" /> Upcoming Deadlines
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {upcomingDeadlines.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">No upcoming deadlines</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Traveller</TableHead>
-                      <TableHead>Country</TableHead>
-                      <TableHead>Expiry</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {upcomingDeadlines.map((r) => {
-                      const daysUntil = Math.ceil((new Date(r.expiryDate!).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-                      return (
-                        <TableRow
-                          key={r.id}
-                          className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => router.push(`/visa/${r.id}`)}
-                        >
-                          <TableCell className="text-sm font-medium">{r.travellerName}</TableCell>
-                          <TableCell className="text-sm">{r.countryName}</TableCell>
-                          <TableCell className="text-sm">
-                            <span className={cn(daysUntil <= 7 && 'text-red-600 font-semibold', daysUntil <= 30 && daysUntil > 7 && 'text-amber-600')}>
-                              {new Date(r.expiryDate!).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                              <span className="text-xs ml-1">({daysUntil}d)</span>
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <Badge className={cn('text-xs capitalize', getStatusColor(r.status))}>{r.status}</Badge>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Status by Country */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Globe className="h-5 w-5" /> Applications by Country
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {statusDistribution.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">No data available</p>
-              ) : (
-                <div className="space-y-3">
-                  {statusDistribution.map((item: any) => (
-                    <div key={item.country} className="flex items-center gap-3">
-                      <span className="text-sm font-medium w-32 truncate">{item.country}</span>
-                      <div className="flex-1 flex items-center gap-1 h-6">
-                        {item.approved > 0 && (
-                          <div
-                            className="h-full bg-green-400 rounded-sm"
-                            style={{ width: `${(item.approved / item.total) * 100}%` }}
-                            title={`Approved: ${item.approved}`}
-                          />
-                        )}
-                        {item.processing > 0 && (
-                          <div
-                            className="h-full bg-amber-400 rounded-sm"
-                            style={{ width: `${(item.processing / item.total) * 100}%` }}
-                            title={`Processing: ${item.processing}`}
-                          />
-                        )}
-                        {item.applied > 0 && (
-                          <div
-                            className="h-full bg-blue-400 rounded-sm"
-                            style={{ width: `${(item.applied / item.total) * 100}%` }}
-                            title={`Applied: ${item.applied}`}
-                          />
-                        )}
-                        {item.rejected > 0 && (
-                          <div
-                            className="h-full bg-red-400 rounded-sm"
-                            style={{ width: `${(item.rejected / item.total) * 100}%` }}
-                            title={`Rejected: ${item.rejected}`}
-                          />
-                        )}
+      <div className="grid gap-ds-4 lg:grid-cols-2">
+        <SectionCard title="Upcoming Deadlines" flush>
+          {upcomingDeadlines.length === 0 ? (
+            <EmptyState title="No upcoming deadlines" />
+          ) : (
+            <ul className="divide-y divide-ds-border">
+              {upcomingDeadlines.map((r) => {
+                const daysUntil = Math.ceil((new Date(r.expiryDate!).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                return (
+                  <li key={r.id}>
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/visa/${r.id}`)}
+                      className="flex w-full items-center justify-between gap-ds-3 px-ds-4 py-ds-3 text-left transition-colors hover:bg-ds-surface-sunken"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{r.travellerName}</p>
+                        <p className="text-xs text-ds-foreground-muted">{r.countryName}</p>
                       </div>
-                      <span className="text-sm text-muted-foreground w-8 text-right">{item.total}</span>
-                    </div>
-                  ))}
-                  <div className="flex items-center gap-4 pt-2 border-t mt-3">
-                    <span className="flex items-center gap-1 text-xs"><span className="h-2 w-2 rounded-sm bg-green-400" />Approved</span>
-                    <span className="flex items-center gap-1 text-xs"><span className="h-2 w-2 rounded-sm bg-amber-400" />Processing</span>
-                    <span className="flex items-center gap-1 text-xs"><span className="h-2 w-2 rounded-sm bg-blue-400" />Applied</span>
-                    <span className="flex items-center gap-1 text-xs"><span className="h-2 w-2 rounded-sm bg-red-400" />Rejected</span>
+                      <div className="flex shrink-0 items-center gap-ds-2">
+                        <span
+                          className={cn(
+                            'text-xs',
+                            daysUntil <= 7 ? 'font-semibold text-ds-danger' : daysUntil <= 30 ? 'text-ds-warning' : 'text-ds-foreground-muted',
+                          )}
+                        >
+                          {new Date(r.expiryDate!).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} ({daysUntil}d)
+                        </span>
+                        <Tag tone={STATUS_TONE[r.status] ?? 'info'} size="sm">{r.status}</Tag>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </SectionCard>
+
+        <SectionCard title="Applications by Country">
+          {byCountry.length === 0 ? (
+            <EmptyState icon={<Globe />} title="No data available" />
+          ) : (
+            <div className="flex flex-col gap-ds-3">
+              {byCountry.map(({ country, statuses, total }) => (
+                <div key={country} className="flex items-center gap-ds-3">
+                  <span className="w-28 shrink-0 truncate text-sm font-medium">{country}</span>
+                  <div className="flex h-6 flex-1 items-center gap-ds-1">
+                    {(['approved', 'processing', 'applied', 'rejected'] as const).map((s) =>
+                      statuses[s] ? (
+                        <div
+                          key={s}
+                          className={cn(
+                            'h-full rounded-ds-sm',
+                            s === 'approved' && 'bg-ds-success',
+                            s === 'processing' && 'bg-ds-warning',
+                            s === 'applied' && 'bg-ds-info',
+                            s === 'rejected' && 'bg-ds-danger',
+                          )}
+                          style={{ width: `${(statuses[s]! / total) * 100}%` }}
+                          title={`${s}: ${statuses[s]}`}
+                        />
+                      ) : null,
+                    )}
                   </div>
+                  <span className="w-8 shrink-0 text-right text-sm text-ds-foreground-muted">{total}</span>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+              ))}
+              <div className="mt-ds-2 flex items-center gap-ds-4 border-t border-ds-border pt-ds-3">
+                <span className="flex items-center gap-ds-1 text-xs"><span className="size-2 rounded-ds-sm bg-ds-success" />Approved</span>
+                <span className="flex items-center gap-ds-1 text-xs"><span className="size-2 rounded-ds-sm bg-ds-warning" />Processing</span>
+                <span className="flex items-center gap-ds-1 text-xs"><span className="size-2 rounded-ds-sm bg-ds-info" />Applied</span>
+                <span className="flex items-center gap-ds-1 text-xs"><span className="size-2 rounded-ds-sm bg-ds-danger" />Rejected</span>
+              </div>
+            </div>
+          )}
+        </SectionCard>
       </div>
     </div>
   );
