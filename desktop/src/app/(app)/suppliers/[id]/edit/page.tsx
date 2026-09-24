@@ -2,20 +2,18 @@
 
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Loader2, Save, Building2, MapPin, FileText, ShieldCheck } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-import { PhoneInput } from '@/components/ui/phone-input';
-import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { suppliersApi, type UpdateSupplierRequest } from '@/lib/api/suppliers';
+import { z } from 'zod';
 import { toast } from 'sonner';
+import { EntityForm, FormRow } from '@/components/domain';
+import {
+  Input, Textarea, SectionCard, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch, Spinner,
+} from '@/components/ui';
+import { PhoneInput } from '@/components/ui/phone-input';
+import { AddressAutocomplete, type AddressParts } from '@/components/ui/address-autocomplete';
+import { useApiQuery } from '@/hooks/use-api';
+import { suppliersApi } from '@/lib/api/suppliers';
 
-const SUPPLIER_CATEGORY_OPTIONS = [
+const CATEGORY_OPTIONS = [
   { value: 'hotel', label: 'Hotel' },
   { value: 'airline', label: 'Airline' },
   { value: 'transport', label: 'Transport' },
@@ -25,289 +23,220 @@ const SUPPLIER_CATEGORY_OPTIONS = [
   { value: 'insurance', label: 'Insurance' },
 ];
 
+const schema = z.object({
+  companyName: z.string().min(1, 'Supplier name is required'),
+  category: z.enum(['hotel', 'transport', 'airline', 'activity_provider', 'guide', 'visa_agent', 'insurance']),
+  contactPerson: z.string().optional(),
+  phone: z.string().optional(),
+  phoneCountryCode: z.string(),
+  email: z.string().email('Enter a valid email').optional().or(z.literal('')),
+  website: z.string().optional(),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  country: z.string().optional(),
+  postalCode: z.string().optional(),
+  gstNumber: z.string().optional(),
+  taxId: z.string().optional(),
+  notes: z.string().optional(),
+  status: z.enum(['active', 'inactive']),
+  isPreferred: z.boolean(),
+});
+type SupplierFormValues = z.infer<typeof schema>;
+
 export default function SupplierEditPage() {
   const router = useRouter();
   const params = useParams();
   const supplierId = params.id as string;
-
-  const [phoneCountryCode, setPhoneCountryCode] = React.useState('+91');
-  const [phoneNumber, setPhoneNumber] = React.useState('');
-  const [form, setForm] = React.useState<UpdateSupplierRequest & { street?: string }>({});
 
   const { data: supplierResponse, loading, error } = useApiQuery(
     () => suppliersApi.getById(supplierId),
     [supplierId],
   );
 
-  const { mutate: updateSupplier, loading: isSaving } = useApiMutation<UpdateSupplierRequest, any>(
-    (data) => suppliersApi.update(supplierId, data),
-  );
-
-  const supplier = supplierResponse?.data;
-
-  React.useEffect(() => {
-    if (supplier) {
-      const s = supplier as any;
-      // Parse phone: if it starts with a country code like "+91 ...", split it
-      const rawPhone = s.phone ?? '';
-      const phoneMatch = rawPhone.match(/^(\+\d+)\s+(.*)$/);
-      if (phoneMatch) {
-        setPhoneCountryCode(phoneMatch[1]);
-        setPhoneNumber(phoneMatch[2]);
-      } else {
-        setPhoneNumber(rawPhone);
-      }
-      setForm({
-        companyName: s.company_name ?? s.name ?? '',
-        category: s.category ?? '',
-        contactPerson: s.contact_person ?? s.contactPerson ?? '',
-        email: s.email ?? '',
-        website: s.website ?? '',
-        address: s.address ?? '',
-        city: s.city ?? '',
-        state: s.state ?? '',
-        country: s.country ?? '',
-        postalCode: s.postal_code ?? s.postalCode ?? '',
-        gstNumber: s.gst_number ?? s.gstNumber ?? '',
-        taxId: s.tax_id ?? s.taxId ?? '',
-        notes: s.notes ?? '',
-        isPreferred: s.is_preferred ?? s.isPreferred ?? false,
-        status: s.status ?? 'active',
-      });
-    }
-  }, [supplier]);
-
-  async function handleSave() {
-    const result = await updateSupplier({
-      ...form,
-      phone: phoneNumber ? `${phoneCountryCode} ${phoneNumber}` : undefined,
-    });
-    if (result) {
-      toast.success('Supplier updated successfully');
-      router.push(`/suppliers/${supplierId}`);
-    } else {
-      toast.error('Failed to update supplier');
-    }
-  }
-
-  function updateField(field: keyof (UpdateSupplierRequest & { street?: string }), value: any) {
-    setForm((prev) => ({ ...prev, [field]: value }));
-  }
+  const supplier = supplierResponse?.data as any;
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
-        <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
-        <p className="text-muted-foreground">Loading supplier...</p>
+      <div className="flex flex-col items-center justify-center h-full gap-ds-4">
+        <Spinner className="size-8" />
+        <p className="text-ds-foreground-muted">Loading supplier...</p>
       </div>
     );
   }
 
   if (error || !supplier) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
-        <p className="text-destructive">Failed to load supplier</p>
-        <Button variant="outline" onClick={() => router.back()}>Go Back</Button>
+      <div className="flex flex-col items-center justify-center h-full gap-ds-4">
+        <p className="text-ds-danger">Failed to load supplier</p>
       </div>
     );
   }
 
+  const rawPhone: string = supplier.phone ?? '';
+  const phoneMatch = rawPhone.match(/^(\+\d+)\s+(.*)$/);
+  const phoneCountryCode = phoneMatch ? phoneMatch[1] : '+91';
+  const phone = phoneMatch ? phoneMatch[2] : rawPhone;
+
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-            Edit Supplier
-          </h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => router.back()} disabled={isSaving}>Cancel</Button>
-          <Button onClick={handleSave} disabled={isSaving}>
-            {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Save className="h-4 w-4 mr-1.5" />}
-            Save Changes
-          </Button>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-3xl mx-auto space-y-6">
-          {/* Basic Info */}
-          <Card>
-            <CardHeader><CardTitle className="text-base flex items-center gap-2"><Building2 className="h-4 w-4" />Basic Information</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="companyName">Supplier Name *</Label>
-                  <Input
-                    id="companyName"
-                    value={form.companyName ?? ''}
-                    onChange={(e) => updateField('companyName', e.target.value)}
-                    placeholder="Supplier name"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Category</Label>
-                  <Select value={form.category ?? ''} onValueChange={(v) => updateField('category', v)}>
-                    <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
-                    <SelectContent>
-                      {SUPPLIER_CATEGORY_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="contactPerson">Contact Person</Label>
-                  <Input
-                    id="contactPerson"
-                    value={form.contactPerson ?? ''}
-                    onChange={(e) => updateField('contactPerson', e.target.value)}
-                    placeholder="Primary contact name"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Phone</Label>
-                  <PhoneInput
-                    value={phoneNumber}
-                    onChange={setPhoneNumber}
-                    countryCode={phoneCountryCode}
-                    onCountryCodeChange={setPhoneCountryCode}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={form.email ?? ''}
-                    onChange={(e) => updateField('email', e.target.value)}
-                    placeholder="email@example.com"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="website">Website</Label>
-                  <Input
-                    id="website"
-                    value={form.website ?? ''}
-                    onChange={(e) => updateField('website', e.target.value)}
-                    placeholder="https://example.com"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Status</Label>
-                  <Select value={form.status ?? 'active'} onValueChange={(v) => updateField('status', v as any)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="inactive">Inactive</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="block mb-3">Preferred Supplier</Label>
-                  <div className="flex items-center gap-2 mt-2">
-                    <Switch
-                      checked={form.isPreferred ?? false}
-                      onCheckedChange={(v) => updateField('isPreferred', v)}
-                    />
-                    <span className="text-sm text-muted-foreground">
-                      {form.isPreferred ? 'Marked as preferred' : 'Not preferred'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Address */}
-          <Card>
-            <CardHeader><CardTitle className="text-base flex items-center gap-2"><MapPin className="h-4 w-4" />Address</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="address">Street Address</Label>
-                <Input
-                  id="address"
-                  value={form.address ?? ''}
-                  onChange={(e) => updateField('address', e.target.value)}
-                  placeholder="Street address"
+    <EntityForm<SupplierFormValues>
+      title="Edit Supplier"
+      schema={schema}
+      defaultValues={{
+        companyName: supplier.company_name ?? supplier.name ?? '',
+        category: supplier.category ?? 'hotel',
+        contactPerson: supplier.contact_person ?? supplier.contactPerson ?? '',
+        phone,
+        phoneCountryCode,
+        email: supplier.email ?? '',
+        website: supplier.website ?? '',
+        address: supplier.address ?? '',
+        city: supplier.city ?? '',
+        state: supplier.state ?? '',
+        country: supplier.country ?? '',
+        postalCode: supplier.postal_code ?? supplier.postalCode ?? '',
+        gstNumber: supplier.gst_number ?? supplier.gstNumber ?? '',
+        taxId: supplier.tax_id ?? supplier.taxId ?? '',
+        notes: supplier.notes ?? '',
+        status: supplier.status ?? 'active',
+        isPreferred: supplier.is_preferred ?? supplier.isPreferred ?? false,
+      }}
+      onCancel={() => router.back()}
+      submitLabel="Save Changes"
+      onSubmit={async (v) => {
+        try {
+          await suppliersApi.update(supplierId, {
+            companyName: v.companyName,
+            category: v.category,
+            contactPerson: v.contactPerson || undefined,
+            phone: v.phone ? `${v.phoneCountryCode} ${v.phone}` : undefined,
+            email: v.email || undefined,
+            website: v.website || undefined,
+            address: v.address || undefined,
+            city: v.city || undefined,
+            state: v.state || undefined,
+            country: v.country || undefined,
+            postalCode: v.postalCode || undefined,
+            gstNumber: v.gstNumber || undefined,
+            taxId: v.taxId || undefined,
+            notes: v.notes || undefined,
+            isPreferred: v.isPreferred,
+            status: v.status,
+          });
+          toast.success('Supplier updated successfully');
+          router.push(`/suppliers/${supplierId}`);
+        } catch {
+          toast.error('Failed to update supplier');
+        }
+      }}
+      renderSections={(form) => (
+        <>
+          <SectionCard title="Basic Information" required>
+            <div className="grid gap-ds-4 sm:grid-cols-2">
+              <FormRow name="companyName" label="Supplier Name" required>
+                <Input id="companyName" {...form.register('companyName')} />
+              </FormRow>
+              <FormRow name="category" label="Category" required>
+                <Select value={form.watch('category')} onValueChange={(v) => form.setValue('category', v as SupplierFormValues['category'], { shouldDirty: true })}>
+                  <SelectTrigger id="category"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {CATEGORY_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormRow>
+              <FormRow name="contactPerson" label="Contact Person">
+                <Input id="contactPerson" {...form.register('contactPerson')} />
+              </FormRow>
+              <FormRow name="phone" label="Phone">
+                <PhoneInput
+                  value={form.watch('phone') ?? ''}
+                  onChange={(v) => form.setValue('phone', v, { shouldDirty: true })}
+                  countryCode={form.watch('phoneCountryCode')}
+                  onCountryCodeChange={(c) => form.setValue('phoneCountryCode', c, { shouldDirty: true })}
                 />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="city">City</Label>
-                  <Input id="city" value={form.city ?? ''} onChange={(e) => updateField('city', e.target.value)} placeholder="City" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="state">State</Label>
-                  <Input id="state" value={form.state ?? ''} onChange={(e) => updateField('state', e.target.value)} placeholder="State" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="country">Country</Label>
-                  <Input id="country" value={form.country ?? ''} onChange={(e) => updateField('country', e.target.value)} placeholder="Country" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="postalCode">Postal Code</Label>
-                  <Input id="postalCode" value={form.postalCode ?? ''} onChange={(e) => updateField('postalCode', e.target.value)} placeholder="400001" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Tax */}
-          <Card>
-            <CardHeader><CardTitle className="text-base flex items-center gap-2"><ShieldCheck className="h-4 w-4" />Tax & Compliance</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="gstNumber">GST Number</Label>
-                  <Input
-                    id="gstNumber"
-                    value={form.gstNumber ?? ''}
-                    onChange={(e) => updateField('gstNumber', e.target.value)}
-                    placeholder="22AAAAA0000A1Z5"
+              </FormRow>
+              <FormRow name="email" label="Email">
+                <Input id="email" type="email" {...form.register('email')} />
+              </FormRow>
+              <FormRow name="website" label="Website">
+                <Input id="website" type="url" {...form.register('website')} />
+              </FormRow>
+              <FormRow name="status" label="Status">
+                <Select value={form.watch('status')} onValueChange={(v) => form.setValue('status', v as SupplierFormValues['status'], { shouldDirty: true })}>
+                  <SelectTrigger id="status"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FormRow>
+              <FormRow name="isPreferred" label="Preferred Supplier">
+                <div className="flex items-center gap-ds-2 h-9">
+                  <Switch
+                    checked={form.watch('isPreferred')}
+                    onCheckedChange={(v) => form.setValue('isPreferred', v, { shouldDirty: true })}
                   />
+                  <span className="text-sm text-ds-foreground-muted">
+                    {form.watch('isPreferred') ? 'Marked as preferred' : 'Not preferred'}
+                  </span>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="taxId">Tax ID / PAN</Label>
-                  <Input
-                    id="taxId"
-                    value={form.taxId ?? ''}
-                    onChange={(e) => updateField('taxId', e.target.value)}
-                    placeholder="AAAAA0000A"
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </FormRow>
+            </div>
+          </SectionCard>
 
-          {/* Notes */}
-          <Card>
-            <CardHeader><CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4" />Notes</CardTitle></CardHeader>
-            <CardContent>
-              <Textarea
-                value={form.notes ?? ''}
-                onChange={(e) => updateField('notes', e.target.value)}
-                placeholder="Internal notes about this supplier..."
-                rows={4}
-              />
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    </div>
+          <SectionCard title="Address">
+            <div className="grid gap-ds-4 sm:grid-cols-2">
+              <FormRow name="address" label="Street Address" wide>
+                <AddressAutocomplete
+                  value={form.watch('address') ?? ''}
+                  onChange={(v: string) => form.setValue('address', v, { shouldDirty: true })}
+                  onAddressSelect={(parts: AddressParts) => {
+                    form.setValue('address', parts.address, { shouldDirty: true });
+                    form.setValue('city', parts.city, { shouldDirty: true });
+                    form.setValue('state', parts.state, { shouldDirty: true });
+                    form.setValue('country', parts.country, { shouldDirty: true });
+                    form.setValue('postalCode', parts.postalCode, { shouldDirty: true });
+                  }}
+                  placeholder="Start typing an address..."
+                />
+              </FormRow>
+              <FormRow name="city" label="City">
+                <Input id="city" {...form.register('city')} />
+              </FormRow>
+              <FormRow name="state" label="State">
+                <Input id="state" {...form.register('state')} />
+              </FormRow>
+              <FormRow name="country" label="Country">
+                <Input id="country" {...form.register('country')} />
+              </FormRow>
+              <FormRow name="postalCode" label="Postal Code">
+                <Input id="postalCode" {...form.register('postalCode')} />
+              </FormRow>
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Tax & Compliance">
+            <div className="grid gap-ds-4 sm:grid-cols-2">
+              <FormRow name="gstNumber" label="GST Number">
+                <Input id="gstNumber" {...form.register('gstNumber')} />
+              </FormRow>
+              <FormRow name="taxId" label="Tax ID / PAN">
+                <Input id="taxId" {...form.register('taxId')} />
+              </FormRow>
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Notes">
+            <div className="grid gap-ds-4 sm:grid-cols-2">
+              <FormRow name="notes" label="Notes" wide>
+                <Textarea id="notes" rows={3} {...form.register('notes')} />
+              </FormRow>
+            </div>
+          </SectionCard>
+        </>
+      )}
+    />
   );
 }
