@@ -284,6 +284,18 @@ export async function seedCampaign(overrides: Record<string, any> = {}) {
   return res.data ?? res;
 }
 
+/**
+ * Reset the E2E test tenant to a known state via the TEST_MODE-gated
+ * POST /test/reset endpoint. Every other slice depends on this for
+ * deterministic seeding between spec files.
+ */
+export async function resetTestData(): Promise<void> {
+  const res = await api('POST', '/test/reset');
+  if (res?.success === false) {
+    throw new Error(`Test data reset failed: ${JSON.stringify(res)}`);
+  }
+}
+
 export async function seedEmailTemplate(overrides: Record<string, any> = {}) {
   const ts = Date.now();
   const data = {

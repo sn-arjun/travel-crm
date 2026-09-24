@@ -37,7 +37,7 @@
     "sendMessageDialog": false,
     "themedExport": false
   },
-  "notes": "POST /test/reset is the E2E database reset, TEST_MODE-gated. No UI by design. Every other slice depends on it for deterministic seeding.",
+  "notes": "No UI by design (uxContract booleans intentionally all false — not applicable). Added resetTestData() helper in e2e/helpers/api-seed.ts wired to POST /test/reset, and desktop/e2e/test-harness.spec.ts as a smoke test verifying reset+reseed produces a clean, queryable tenant state.",
   "showcaseScript": [
     "Reset the test tenant to a known state",
     "Seed the demo dataset used by the walkthrough",
