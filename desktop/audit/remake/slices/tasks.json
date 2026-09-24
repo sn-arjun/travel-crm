@@ -46,9 +46,9 @@
     "listPage": true,
     "filterBar": true,
     "infiniteScroll": true,
-    "hoverActions": false,
-    "detailDrawer": true,
-    "emptyState": false,
+    "hoverActions": true,
+    "detailDrawer": false,
+    "emptyState": true,
     "skeleton": true,
     "relationCombobox": true,
     "urlPrefill": true,
@@ -57,9 +57,9 @@
     "currencyInput": false,
     "datePicker": true,
     "sendMessageDialog": false,
-    "themedExport": false
+    "themedExport": true
   },
-  "notes": "Raw leadId and assignedTo shown as text (#33). Status enum mismatch pending/completed vs todo/done (#56). Create form missing assignedTo, category, leadId (#54). Comments CRUD is orphaned.",
+  "notes": "Table view rebuilt on ListPage (PageHeader/FilterBar/DataTable/hover actions/infinite scroll/bulk select+delete+complete/CSV export of full filtered set/EmptyState) with row click -> detail page instead of a drawer; a Kanban toggle view is kept alongside as a bespoke board (KanbanBoard domain component) since the manifest's showcase script calls out drag-to-Done. Detail page rebuilt on DetailPage archetype (Overview/Activity/Related tabs, ActivityTimeline from comments+lifecycle events, Comments CRUD moved into Related tab so it is no longer orphaned). Assignee and linked lead are now RelationCombobox everywhere (create dialog, edit dialog) instead of raw IDs (#33 fixed). Create/edit forms now include assignedTo, category, leadId (#54 fixed). sendMessageDialog not wired -- no direct messaging surface exists for tasks in the current design (assignee has no messaging affordance in scope); phoneInput/addressAutocomplete/currencyInput not applicable to this entity. Status enum mismatch (#56) not touched -- normalizeTask still maps legacy pending/completed/cancelled values from the API, which is an API-shape issue outside the fileAllowlist (tasks.ts request/response shapes are frozen per slice rules).",
   "showcaseScript": [
     "Open Tasks in Kanban view",
     "Create a task assigned to a teammate and linked to a lead",

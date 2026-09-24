@@ -269,11 +269,17 @@
       "timestamp": "2026-09-24T11:20:21.223Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "slice:tasks": {
+      "status": "ok",
+      "timestamp": "2026-09-24T11:24:32.255Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "slice:suppliers",
+    "id": "slice:tasks",
     "status": "ok",
-    "timestamp": "2026-09-24T11:20:21.223Z"
+    "timestamp": "2026-09-24T11:24:32.255Z"
   }
 }
