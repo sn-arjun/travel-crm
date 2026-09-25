@@ -252,8 +252,12 @@ leadRoutes.get('/', requirePermission('leads', 'view'), async (c) => {
   }
 
   if (search) {
+    // Escape the term for FTS5 MATCH: wrap as a quoted phrase-prefix so
+    // characters with special meaning in FTS5 query syntax (-, ", :, (, ))
+    // are treated as literal text instead of being parsed as operators.
+    const ftsQuery = `"${search.replace(/"/g, '""')}"*`;
     conditions.push('(l.rowid IN (SELECT rowid FROM leads_fts WHERE leads_fts MATCH ?) OR c.name LIKE ?)');
-    bindings.push(search + '*', `%${search}%`);
+    bindings.push(ftsQuery, `%${search}%`);
   }
 
   if (statusFilter) {

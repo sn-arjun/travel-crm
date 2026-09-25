@@ -69,6 +69,7 @@ export default function EditLeadPage() {
     <EntityForm<LeadFormValues>
       title="Edit lead"
       description={lead.title}
+      submitLabel="Save Changes"
       schema={schema}
       defaultValues={{
         contactId: lead.contactId || '',

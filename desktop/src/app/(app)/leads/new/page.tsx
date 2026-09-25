@@ -42,6 +42,7 @@ export default function NewLeadPage() {
     <EntityForm<LeadFormValues>
       title="New lead"
       description="Create a new sales lead"
+      submitLabel="Save Lead"
       schema={schema}
       defaultValues={{
         contactId: '',
