@@ -320,9 +320,10 @@
       "repairAttempts": 0
     },
     "verify:contacts": {
-      "status": "context-limit",
-      "timestamp": "2026-09-24T12:01:22.819Z",
-      "error": "stdout(tail): You've hit your session limit · resets 9:20pm (Asia/Kolkata)"
+      "status": "ok",
+      "timestamp": "2026-09-25T11:33:04.965Z",
+      "error": null,
+      "repairAttempts": 0
     },
     "verify:leads": {
       "status": "context-limit",
@@ -341,8 +342,8 @@
     }
   },
   "lastCompleted": {
-    "id": "slice:settings-company",
+    "id": "verify:contacts",
     "status": "ok",
-    "timestamp": "2026-09-25T11:12:22.212Z"
+    "timestamp": "2026-09-25T11:33:04.965Z"
   }
 }

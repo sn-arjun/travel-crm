@@ -223,7 +223,7 @@ export default function EditContactPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Type</Label>
-                  <Select value={form.type} onValueChange={(v: string) => updateField('type', v)}>
+                  <Select value={form.type} onValueChange={(v: string) => { if (v) updateField('type', v); }}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="customer">Customer</SelectItem>
@@ -325,7 +325,7 @@ export default function EditContactPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="source">Source</Label>
-                  <Select value={form.source} onValueChange={(v) => updateField('source', v)}>
+                  <Select value={form.source} onValueChange={(v) => { if (v) updateField('source', v); }}>
                     <SelectTrigger><SelectValue placeholder="Select source" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="website">Website</SelectItem>

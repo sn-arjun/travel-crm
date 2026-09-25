@@ -76,17 +76,17 @@ export interface CustomFieldDef {
   id: string;
   name: string;
   label: string;
-  type: 'text' | 'number' | 'date' | 'select' | 'boolean';
-  options?: string[];
-  required?: boolean;
+  fieldType: 'text' | 'number' | 'date' | 'select' | 'multi_select' | 'boolean';
+  options?: string[] | null;
+  isRequired?: boolean;
 }
 
 export interface CreateCustomFieldRequest {
   name: string;
   label: string;
-  type: CustomFieldDef['type'];
+  fieldType: CustomFieldDef['fieldType'];
   options?: string[];
-  required?: boolean;
+  isRequired?: boolean;
 }
 
 export const contactsApi = {

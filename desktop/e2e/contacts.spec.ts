@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { waitForLoad, navigateTo, getAuthToken, API_URL } from './helpers/auth';
+import { waitForLoad, getAuthToken, API_URL } from './helpers/auth';
 import { seedContact, api } from './helpers/api-seed';
 
 test.describe('Contacts', () => {
@@ -421,7 +421,8 @@ test.describe('Contacts', () => {
   // ─────────────────────────────────────────────────────────────
 
   test('custom field can be created in settings, saved with a contact, and deleted', async ({ page }) => {
-    await navigateTo(page, '/contacts');
+    await page.goto('/contacts');
+    await waitForLoad(page);
     await page.locator('button:has-text("Custom Fields")').click();
     await page.waitForURL('**/settings/custom-fields', { timeout: 10_000 });
     await waitForLoad(page);
@@ -551,9 +552,9 @@ test.describe('Contacts', () => {
     await page.goto(`/leads/new?contactId=${contact.id}`);
     await waitForLoad(page);
 
-    const selectTrigger = page.locator('button:has-text("Select a contact")');
-    const isPlaceholder = await selectTrigger.isVisible().catch(() => false);
-    expect(isPlaceholder).toBe(false);
-    await expect(page.locator(`text=${contact.name}`).first()).toBeVisible({ timeout: 5_000 });
+    // The RelationCombobox resolves the prefilled id asynchronously via
+    // resolveSelected() — wait for the resolved label instead of racing it.
+    await expect(page.locator(`text=${contact.name}`).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('button:has-text("Select a contact")')).toHaveCount(0);
   });
 });

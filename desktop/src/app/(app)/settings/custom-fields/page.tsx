@@ -20,18 +20,19 @@ import { contactsApi, type CustomFieldDef, type CreateCustomFieldRequest } from 
 interface FieldForm {
   name: string;
   label: string;
-  type: CustomFieldDef['type'];
+  fieldType: CustomFieldDef['fieldType'];
   options: string;
-  required: boolean;
+  isRequired: boolean;
 }
 
-const emptyForm: FieldForm = { name: '', label: '', type: 'text', options: '', required: false };
+const emptyForm: FieldForm = { name: '', label: '', fieldType: 'text', options: '', isRequired: false };
 
-const TYPE_LABELS: Record<CustomFieldDef['type'], string> = {
+const TYPE_LABELS: Record<CustomFieldDef['fieldType'], string> = {
   text: 'Text',
   number: 'Number',
   date: 'Date',
   select: 'Select',
+  multi_select: 'Multi-select',
   boolean: 'Yes/No',
 };
 
@@ -64,9 +65,9 @@ export default function ContactCustomFieldsPage() {
     setForm({
       name: field.name,
       label: field.label,
-      type: field.type,
+      fieldType: field.fieldType,
       options: (field.options ?? []).join(', '),
-      required: !!field.required,
+      isRequired: !!field.isRequired,
     });
     setDialogOpen(true);
   }
@@ -84,9 +85,9 @@ export default function ContactCustomFieldsPage() {
     const payload: CreateCustomFieldRequest = {
       name: form.name.trim(),
       label: form.label.trim(),
-      type: form.type,
-      required: form.required,
-      options: form.type === 'select'
+      fieldType: form.fieldType,
+      isRequired: form.isRequired,
+      options: form.fieldType === 'select' || form.fieldType === 'multi_select'
         ? form.options.split(',').map((o) => o.trim()).filter(Boolean)
         : undefined,
     };
@@ -174,8 +175,8 @@ export default function ContactCustomFieldsPage() {
                     <TableRow key={f.id}>
                       <TableCell className="font-medium text-sm">{f.label}</TableCell>
                       <TableCell className="text-sm text-ds-foreground-muted font-mono">{f.name}</TableCell>
-                      <TableCell><Badge variant="outline" className="text-xs">{TYPE_LABELS[f.type]}</Badge></TableCell>
-                      <TableCell>{f.required ? <Badge className="text-xs">Required</Badge> : <span className="text-xs text-ds-foreground-muted">Optional</span>}</TableCell>
+                      <TableCell><Badge variant="outline" className="text-xs">{TYPE_LABELS[f.fieldType]}</Badge></TableCell>
+                      <TableCell>{f.isRequired ? <Badge className="text-xs">Required</Badge> : <span className="text-xs text-ds-foreground-muted">Optional</span>}</TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-ds-1">
                           <Button variant="ghost" size="icon-sm" aria-label="Edit" onClick={() => openEdit(f)}>
@@ -228,7 +229,7 @@ export default function ContactCustomFieldsPage() {
             </div>
             <div className="space-y-ds-2">
               <Label>Type</Label>
-              <Select value={form.type} onValueChange={(v: CustomFieldDef['type']) => setForm({ ...form, type: v })}>
+              <Select value={form.fieldType} onValueChange={(v: CustomFieldDef['fieldType']) => { if (v) setForm({ ...form, fieldType: v }); }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {Object.entries(TYPE_LABELS).map(([value, label]) => (
@@ -237,7 +238,7 @@ export default function ContactCustomFieldsPage() {
                 </SelectContent>
               </Select>
             </div>
-            {form.type === 'select' && (
+            {(form.fieldType === 'select' || form.fieldType === 'multi_select') && (
               <div className="space-y-ds-2">
                 <Label htmlFor="field-options">Options (comma-separated)</Label>
                 <Input
@@ -250,7 +251,7 @@ export default function ContactCustomFieldsPage() {
             )}
             <div className="flex items-center justify-between">
               <Label htmlFor="field-required">Required</Label>
-              <Switch id="field-required" checked={form.required} onCheckedChange={(v) => setForm({ ...form, required: v })} />
+              <Switch id="field-required" checked={form.isRequired} onCheckedChange={(v) => setForm({ ...form, isRequired: v })} />
             </div>
           </div>
           <DialogFooter>
