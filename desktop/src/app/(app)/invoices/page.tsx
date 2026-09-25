@@ -17,6 +17,31 @@ function formatCurrency(amount: number, currency = 'INR') {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount);
 }
 
+async function downloadInvoicesZip(invoiceIds: string[]) {
+  const queued = await exportsApi.invoicesBulkPdf({ invoiceIds });
+  const jobId = (queued as any)?.data?.id;
+  if (!jobId) throw new Error('Export job was not created');
+
+  let job = (queued as any).data;
+  const deadline = Date.now() + 30_000;
+  while (job.status !== 'completed' && job.status !== 'failed' && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const statusRes = await exportsApi.getJobStatus(jobId);
+    job = (statusRes as any).data;
+  }
+  if (job.status !== 'completed') throw new Error('Export did not complete in time');
+
+  const blob = await exportsApi.downloadJob(jobId) as unknown as Blob;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `invoices_${new Date().toISOString().slice(0, 10)}.zip`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
   if (status === 'paid') return 'success';
   if (status === 'overdue' || status === 'cancelled') return 'danger';
@@ -155,15 +180,7 @@ export default function InvoicesPage() {
             icon: <Download aria-hidden="true" />,
             onSelect: async (rows) => {
               try {
-                const blob = await exportsApi.invoicesBulkPdf({ invoiceIds: rows.map((r: any) => r.id) }) as unknown as Blob;
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `invoices_${new Date().toISOString().slice(0, 10)}.zip`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
+                await downloadInvoicesZip(rows.map((r: any) => r.id));
                 toast.success(`Downloaded ${rows.length} invoice(s)`);
               } catch {
                 toast.error('Failed to download invoices');
@@ -189,15 +206,7 @@ export default function InvoicesPage() {
         ]}
         onExport={async (rows) => {
           try {
-            const blob = await exportsApi.invoicesBulkPdf({ invoiceIds: rows.map((r: any) => r.id) }) as unknown as Blob;
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `invoices_export_${new Date().toISOString().slice(0, 10)}.zip`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+            await downloadInvoicesZip(rows.map((r: any) => r.id));
             toast.success('Invoices exported');
           } catch {
             toast.error('Failed to export invoices');
