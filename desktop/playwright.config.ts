@@ -37,7 +37,10 @@ export default defineConfig({
 
   webServer: [
     {
-      command: 'cd ../backend && npx wrangler dev --port 8787',
+      // AI binding needs Cloudflare auth wrangler dev can't get in a sandboxed/offline
+      // environment; -c points at a gitignored copy of wrangler.toml with [ai] stripped,
+      // generated the same way backend/vitest.config.ts does for the test pool.
+      command: 'cd ../backend && node -e "const fs=require(\'fs\');const l=fs.readFileSync(\'wrangler.toml\',\'utf8\').split(/\\r?\\n/);const out=[];let skip=false;for(const line of l){if(/^\\s*\\[/.test(line))skip=/^\\s*\\[ai\\]/.test(line);if(!skip)out.push(line);}fs.writeFileSync(\'.wrangler-e2e.toml\',out.join(String.fromCharCode(10)));" && npx wrangler dev --port 8787 -c .wrangler-e2e.toml',
       url: `${API_URL}/api/v1/health`,
       reuseExistingServer: true,
       timeout: 60_000,

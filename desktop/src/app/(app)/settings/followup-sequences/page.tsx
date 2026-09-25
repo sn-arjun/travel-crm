@@ -1,55 +1,40 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
 import {
-  ArrowLeft,
-  Loader2,
+  CheckSquare,
   ListOrdered,
-  Plus,
+  Mail,
+  MessageSquare,
   Pencil,
-  Trash2,
+  Phone,
+  Plus,
   Power,
   PowerOff,
-  Mail,
-  Phone,
-  MessageSquare,
-  CheckSquare,
+  Trash2,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { ListPage } from '@/components/domain';
 import {
-  Table,
-  TableHeader,
-  TableRow,
-  TableHead,
-  TableBody,
-  TableCell,
-} from '@/components/ui/table';
-import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { Separator } from '@/components/ui/separator';
+  Separator,
+  Switch,
+  Tag,
+  Textarea,
+} from '@/components/ui';
 import { toast } from 'sonner';
-import { useApiQuery } from '@/hooks/use-api';
 import { settingsApi, type FollowUpSequence } from '@/lib/api/settings';
-import { cn } from '@/lib/utils';
 
 type StepType = 'email' | 'sms' | 'call' | 'task';
 
@@ -69,10 +54,10 @@ interface SequenceForm {
 }
 
 const stepTypeIcons: Record<StepType, React.ReactNode> = {
-  email: <Mail className="h-4 w-4" />,
-  sms: <MessageSquare className="h-4 w-4" />,
-  call: <Phone className="h-4 w-4" />,
-  task: <CheckSquare className="h-4 w-4" />,
+  email: <Mail className="h-4 w-4" aria-hidden="true" />,
+  sms: <MessageSquare className="h-4 w-4" aria-hidden="true" />,
+  call: <Phone className="h-4 w-4" aria-hidden="true" />,
+  task: <CheckSquare className="h-4 w-4" aria-hidden="true" />,
 };
 
 const emptyStep: StepForm = { order: 1, delayDays: 1, type: 'email', message: '', template: '' };
@@ -85,20 +70,19 @@ const emptyForm: SequenceForm = {
 };
 
 export default function FollowUpSequencesPage() {
-  const router = useRouter();
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [form, setForm] = React.useState<SequenceForm>(emptyForm);
+  const [refreshKey, setRefreshKey] = React.useState(0);
+  const [cachedSequences, setCachedSequences] = React.useState<FollowUpSequence[]>([]);
 
-  const { data: seqResponse, loading, refetch } = useApiQuery(
-    () => settingsApi.followUpSequences.list(),
-    [],
-  );
-
-  const sequences: FollowUpSequence[] = React.useMemo(() => {
-    if (!seqResponse || !('data' in seqResponse)) return [];
-    return (seqResponse.data as FollowUpSequence[]) ?? [];
-  }, [seqResponse]);
+  const fetchAll = React.useCallback(async (page: number) => {
+    if (page > 1) return { data: [], pagination: { total: cachedSequences.length } };
+    const res = await settingsApi.followUpSequences.list();
+    const sequences = ('data' in res ? (res.data as FollowUpSequence[]) : []) ?? [];
+    setCachedSequences(sequences);
+    return { data: sequences, pagination: { total: sequences.length } };
+  }, [cachedSequences.length]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -124,10 +108,7 @@ export default function FollowUpSequencesPage() {
   };
 
   const addStep = () => {
-    setForm((p) => ({
-      ...p,
-      steps: [...p.steps, { ...emptyStep, order: p.steps.length + 1 }],
-    }));
+    setForm((p) => ({ ...p, steps: [...p.steps, { ...emptyStep, order: p.steps.length + 1 }] }));
   };
 
   const removeStep = (idx: number) => {
@@ -138,10 +119,7 @@ export default function FollowUpSequencesPage() {
   };
 
   const updateStep = (idx: number, patch: Partial<StepForm>) => {
-    setForm((p) => ({
-      ...p,
-      steps: p.steps.map((s, i) => (i === idx ? { ...s, ...patch } : s)),
-    }));
+    setForm((p) => ({ ...p, steps: p.steps.map((s, i) => (i === idx ? { ...s, ...patch } : s)) }));
   };
 
   const handleSave = async () => {
@@ -168,17 +146,17 @@ export default function FollowUpSequencesPage() {
         toast.success('Sequence created');
       }
       setDialogOpen(false);
-      refetch();
+      setRefreshKey((k) => k + 1);
     } catch {
       toast.error('Failed to save sequence');
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (seq: FollowUpSequence) => {
     try {
-      await settingsApi.followUpSequences.delete(id);
+      await settingsApi.followUpSequences.delete(seq.id);
       toast.success('Sequence deleted');
-      refetch();
+      setRefreshKey((k) => k + 1);
     } catch {
       toast.error('Failed to delete sequence');
     }
@@ -188,126 +166,107 @@ export default function FollowUpSequencesPage() {
     try {
       await settingsApi.followUpSequences.update(seq.id, { isActive: !seq.isActive });
       toast.success(`Sequence ${seq.isActive ? 'disabled' : 'enabled'}`);
-      refetch();
+      setRefreshKey((k) => k + 1);
     } catch {
       toast.error('Failed to update sequence');
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => router.push('/settings')}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold tracking-tight">Follow-up Sequences</h1>
-          <p className="text-muted-foreground mt-1">Configure automated follow-up workflows for leads</p>
-        </div>
-        <Button onClick={openCreate} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Add Sequence
-        </Button>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ListOrdered className="h-5 w-5" />
-            Sequences ({sequences.length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {sequences.length === 0 ? (
-            <div className="text-center py-12">
-              <ListOrdered className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-sm text-muted-foreground">No follow-up sequences configured</p>
-              <Button onClick={openCreate} variant="outline" className="mt-4 gap-2">
-                <Plus className="h-4 w-4" />
-                Create First Sequence
-              </Button>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Steps</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sequences.map((seq) => (
-                  <TableRow key={seq.id}>
-                    <TableCell className="font-medium">{seq.name}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
-                      {seq.description || '-'}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        {seq.steps.map((s, i) => (
-                          <span key={i} title={`Day ${s.delayDays}: ${s.type}`}>
-                            {stepTypeIcons[s.type]}
-                          </span>
-                        ))}
-                        <span className="text-xs text-muted-foreground ml-1">({seq.steps.length})</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        className={cn(
-                          seq.isActive
-                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                            : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400',
-                        )}
-                      >
-                        {seq.isActive ? 'Active' : 'Disabled'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleToggle(seq)}>
-                          {seq.isActive ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(seq)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-destructive hover:text-destructive"
-                          onClick={() => handleDelete(seq.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
+    <>
+      <ListPage<FollowUpSequence>
+        key={refreshKey}
+        title="Follow-up Sequences"
+        description="Configure automated follow-up workflows for leads."
+        getRowId={(s) => s.id}
+        fetcher={({ page }) => fetchAll(page)}
+        extractItems={(r) => (r as { data: FollowUpSequence[] }).data}
+        extractTotal={(r) => (r as { pagination: { total: number } }).pagination.total}
+        primaryAction={
+          <Button size="sm" onClick={openCreate} className="gap-ds-2">
+            <Plus className="h-4 w-4" aria-hidden="true" /> Add Sequence
+          </Button>
+        }
+        columns={[
+          { key: 'name', header: 'Name', sortable: true },
+          {
+            key: 'description',
+            header: 'Description',
+            cell: (s) => <span className="text-ds-foreground-muted truncate max-w-[200px] block">{s.description || '-'}</span>,
+          },
+          {
+            key: 'steps',
+            header: 'Steps',
+            cell: (s) => (
+              <div className="flex items-center gap-ds-1">
+                {s.steps.map((step, i) => (
+                  <span key={i} title={`Day ${step.delayDays}: ${step.type}`}>
+                    {stepTypeIcons[step.type]}
+                  </span>
                 ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                <span className="text-xs text-ds-foreground-subtle ml-ds-1">({s.steps.length})</span>
+              </div>
+            ),
+          },
+          {
+            key: 'isActive',
+            header: 'Status',
+            cell: (s) => <Tag tone={s.isActive ? 'success' : 'neutral'}>{s.isActive ? 'Active' : 'Disabled'}</Tag>,
+          },
+        ]}
+        rowActions={(s) => (
+          <>
+            <Button variant="ghost" size="icon-sm" aria-label={s.isActive ? 'Disable' : 'Enable'} onClick={() => handleToggle(s)}>
+              {s.isActive ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+            </Button>
+            <Button variant="ghost" size="icon-sm" aria-label="Edit" onClick={() => openEdit(s)}>
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon-sm" aria-label="Delete" onClick={() => handleDelete(s)}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </>
+        )}
+        bulkActions={[
+          {
+            label: 'Delete',
+            destructive: true,
+            onSelect: async (rows) => {
+              await Promise.all(rows.map((s) => settingsApi.followUpSequences.delete(s.id)));
+              setRefreshKey((k) => k + 1);
+            },
+          },
+        ]}
+        onExport={(rows) => {
+          const csv = [
+            ['Name', 'Description', 'Steps', 'Status'].join(','),
+            ...rows.map((s) => [`"${s.name}"`, `"${s.description ?? ''}"`, s.steps.length, s.isActive ? 'Active' : 'Disabled'].join(',')),
+          ].join('\n');
+          const blob = new Blob([csv], { type: 'text/csv' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'followup-sequences.csv';
+          a.click();
+          URL.revokeObjectURL(url);
+        }}
+        emptyTitle="No follow-up sequences configured"
+        emptyDescription="Create a sequence to automate follow-up steps for new leads."
+        emptyIcon={<ListOrdered className="h-10 w-10" aria-hidden="true" />}
+        emptyAction={
+          <Button onClick={openCreate} variant="outline" className="gap-ds-2">
+            <Plus className="h-4 w-4" aria-hidden="true" /> Create First Sequence
+          </Button>
+        }
+      />
 
-      {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingId ? 'Edit Sequence' : 'Create Sequence'}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
+          <div className="space-y-ds-4 py-ds-4">
+            <div className="space-y-ds-2">
               <Label htmlFor="seqName">Name</Label>
               <Input
                 id="seqName"
@@ -316,7 +275,7 @@ export default function FollowUpSequencesPage() {
                 placeholder="e.g., New Lead Welcome Sequence"
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-ds-2">
               <Label htmlFor="seqDesc">Description</Label>
               <Textarea
                 id="seqDesc"
@@ -326,41 +285,35 @@ export default function FollowUpSequencesPage() {
                 placeholder="Describe what this sequence does"
               />
             </div>
-            <div className="flex items-center gap-3">
-              <Switch
-                checked={form.isActive}
-                onCheckedChange={(v) => setForm((p) => ({ ...p, isActive: v }))}
-              />
+            <div className="flex items-center gap-ds-3">
+              <Switch checked={form.isActive} onCheckedChange={(v) => setForm((p) => ({ ...p, isActive: v }))} />
               <Label>Active</Label>
             </div>
 
             <Separator />
 
-            <div className="space-y-2">
+            <div className="space-y-ds-2">
               <div className="flex items-center justify-between">
                 <Label>Steps</Label>
-                <Button variant="outline" size="sm" onClick={addStep} className="gap-1">
-                  <Plus className="h-3 w-3" />
-                  Add Step
+                <Button variant="outline" size="sm" onClick={addStep} className="gap-ds-1">
+                  <Plus className="h-3 w-3" aria-hidden="true" /> Add Step
                 </Button>
               </div>
               {form.steps.map((step, idx) => (
-                <div key={idx} className="border rounded-lg p-4 space-y-3">
+                <div key={idx} className="rounded-ds-md border border-ds-border p-ds-4 space-y-ds-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">Step {idx + 1}</span>
                     {form.steps.length > 1 && (
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => removeStep(idx)}>
+                      <Button variant="ghost" size="icon-sm" className="text-ds-danger" onClick={() => removeStep(idx)} aria-label="Remove step">
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     )}
                   </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="space-y-1">
+                  <div className="grid grid-cols-3 gap-ds-3">
+                    <div className="space-y-ds-1">
                       <Label className="text-xs">Type</Label>
                       <Select value={step.type} onValueChange={(v) => updateStep(idx, { type: v as StepType })}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="email">Email</SelectItem>
                           <SelectItem value="sms">SMS</SelectItem>
@@ -369,16 +322,16 @@ export default function FollowUpSequencesPage() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-ds-1">
                       <Label className="text-xs">Delay (days)</Label>
                       <Input
                         type="number"
                         min={0}
                         value={step.delayDays}
-                        onChange={(e) => updateStep(idx, { delayDays: parseInt(e.target.value) || 0 })}
+                        onChange={(e) => updateStep(idx, { delayDays: parseInt(e.target.value, 10) || 0 })}
                       />
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-ds-1">
                       <Label className="text-xs">Template (optional)</Label>
                       <Input
                         value={step.template}
@@ -387,7 +340,7 @@ export default function FollowUpSequencesPage() {
                       />
                     </div>
                   </div>
-                  <div className="space-y-1">
+                  <div className="space-y-ds-1">
                     <Label className="text-xs">Message</Label>
                     <Textarea
                       value={step.message}
@@ -406,6 +359,6 @@ export default function FollowUpSequencesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }

@@ -248,9 +248,10 @@
       "repairAttempts": 0
     },
     "slice:settings-company": {
-      "status": "context-limit",
-      "timestamp": "2026-09-24T10:59:17.961Z",
-      "error": "stdout(tail): Failed to refresh OAuth token: another Claude Code process is refreshing it or exited mid-refresh. This is usually transient; retry in a minute, and if it persists close other Claude Code processes or sign in again"
+      "status": "ok",
+      "timestamp": "2026-09-25T11:12:22.212Z",
+      "error": null,
+      "repairAttempts": 1
     },
     "slice:settings-team": {
       "status": "ok",
@@ -317,11 +318,31 @@
       "timestamp": "2026-09-24T11:49:50.262Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "verify:contacts": {
+      "status": "context-limit",
+      "timestamp": "2026-09-24T12:01:22.819Z",
+      "error": "stdout(tail): You've hit your session limit · resets 9:20pm (Asia/Kolkata)"
+    },
+    "verify:leads": {
+      "status": "context-limit",
+      "timestamp": "2026-09-24T12:01:27.827Z",
+      "error": "stdout(tail): You've hit your session limit · resets 9:20pm (Asia/Kolkata)"
+    },
+    "verify:invoices": {
+      "status": "context-limit",
+      "timestamp": "2026-09-24T12:01:32.903Z",
+      "error": "stdout(tail): You've hit your session limit · resets 9:20pm (Asia/Kolkata)"
+    },
+    "verify:accounts": {
+      "status": "context-limit",
+      "timestamp": "2026-09-24T12:01:37.855Z",
+      "error": "stdout(tail): You've hit your session limit · resets 9:20pm (Asia/Kolkata)"
     }
   },
   "lastCompleted": {
-    "id": "slice:whatsapp-campaigns",
+    "id": "slice:settings-company",
     "status": "ok",
-    "timestamp": "2026-09-24T11:49:50.262Z"
+    "timestamp": "2026-09-25T11:12:22.212Z"
   }
 }

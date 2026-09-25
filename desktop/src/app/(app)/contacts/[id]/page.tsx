@@ -247,7 +247,15 @@ export default function ContactDetailPage() {
             </h1>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               {contact.email && <span className="flex items-center gap-1"><Mail className="h-3 w-3" />{contact.email}</span>}
-              {contact.phone && <a href={`tel:${contact.phone}`} className="flex items-center gap-1 hover:text-primary"><Phone className="h-3 w-3" />{contact.phone}</a>}
+              {contact.phone && (
+                <button
+                  type="button"
+                  onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(contact.phone!)}`)}
+                  className="flex items-center gap-1 hover:text-primary"
+                >
+                  <Phone className="h-3 w-3" />{contact.phone}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -346,7 +354,15 @@ export default function ContactDetailPage() {
                       <label className="text-xs text-muted-foreground font-semibold">Phone</label>
                       <p className="text-sm font-medium flex items-center gap-2 mt-1">
                         <Phone className="h-4 w-4 text-muted-foreground" />
-                        {contact.phone ? <a href={`tel:${contact.phone}`} className="hover:text-primary hover:underline">{contact.phone}</a> : '—'}
+                        {contact.phone ? (
+                          <button
+                            type="button"
+                            onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(contact.phone!)}`)}
+                            className="hover:text-primary hover:underline"
+                          >
+                            {contact.phone}
+                          </button>
+                        ) : '—'}
                       </p>
                     </div>
                     <div>

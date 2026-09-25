@@ -133,6 +133,40 @@ export interface UpdateFollowUpSequenceRequest {
   isActive?: boolean;
 }
 
+export interface InvoiceDefaults {
+  bankName?: string;
+  accountNumber?: string;
+  ifsc?: string;
+  branch?: string;
+  accountHolderName?: string;
+  upiId?: string;
+  defaultCurrency?: string;
+  defaultTaxSystem?: string;
+  defaultPaymentTerms?: number;
+  defaultNotes?: string;
+  defaultTerms?: string;
+}
+
+export interface NumberingConfig {
+  invoicePrefix?: string;
+  proformaPrefix?: string;
+  receiptPrefix?: string;
+  creditNotePrefix?: string;
+  debitNotePrefix?: string;
+  voucherPrefix?: string;
+  fyStartMonth?: number;
+  resetYearly?: boolean;
+}
+
+export interface ItineraryDefaults {
+  defaultValidityDays?: number;
+  defaultTerms?: string;
+  defaultNotes?: string;
+  defaultInclusions?: string;
+  defaultExclusions?: string;
+  showPricePerPerson?: boolean;
+}
+
 export const settingsApi = {
   company: {
     get: () =>
@@ -195,17 +229,25 @@ export const settingsApi = {
 
   invoiceDefaults: {
     get: () =>
-      client.get<ApiResponse<any>>(API_ENDPOINTS.settings.invoiceDefaults),
+      client.get<ApiResponse<InvoiceDefaults>>(API_ENDPOINTS.settings.invoiceDefaults),
 
-    update: (data: any) =>
-      client.put<ApiResponse<any>>(API_ENDPOINTS.settings.invoiceDefaults, data),
+    update: (data: InvoiceDefaults) =>
+      client.put<ApiResponse<InvoiceDefaults>>(API_ENDPOINTS.settings.invoiceDefaults, data),
   },
 
   numberingConfig: {
     get: () =>
-      client.get<ApiResponse<any>>(API_ENDPOINTS.settings.numbering),
+      client.get<ApiResponse<NumberingConfig>>(API_ENDPOINTS.settings.numbering),
 
-    update: (data: any) =>
-      client.put<ApiResponse<any>>(API_ENDPOINTS.settings.numbering, data),
+    update: (data: NumberingConfig) =>
+      client.put<ApiResponse<NumberingConfig>>(API_ENDPOINTS.settings.numbering, data),
+  },
+
+  itineraryDefaults: {
+    get: () =>
+      client.get<ApiResponse<ItineraryDefaults>>(API_ENDPOINTS.settings.itineraryDefaults),
+
+    update: (data: ItineraryDefaults) =>
+      client.put<ApiResponse<ItineraryDefaults>>(API_ENDPOINTS.settings.itineraryDefaults, data),
   },
 };
