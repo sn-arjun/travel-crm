@@ -23,12 +23,12 @@ const CATEGORY_OPTIONS = [
 function toCsv(rows: Supplier[]) {
   const header = ['Company', 'Category', 'Contact Person', 'Email', 'Phone', 'Status'];
   const lines = rows.map((s: any) => [
-    s.companyName ?? s.name ?? '',
+    s.companyName ?? s.company_name ?? s.name ?? '',
     (s.category ?? s.type ?? '').replace(/_/g, ' '),
-    s.contactPerson ?? '',
+    s.contactPerson ?? s.contact_person ?? '',
     s.email ?? '',
     s.phone ?? '',
-    s.isActive ? 'Active' : 'Inactive',
+    (s.isActive ?? s.is_active) ? 'Active' : 'Inactive',
   ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','));
   return [header.join(','), ...lines].join('\n');
 }
@@ -36,6 +36,7 @@ function toCsv(rows: Supplier[]) {
 export default function AccountsPage() {
   const router = useRouter();
   const [categoryFilter, setCategoryFilter] = React.useState('');
+  const [refreshKey, setRefreshKey] = React.useState(0);
   const [msgDialogOpen, setMsgDialogOpen] = React.useState(false);
   const [msgContact, setMsgContact] = React.useState<{ id: string; name: string; email?: string | null; phone?: string | null }>({ id: '', name: '' });
 
@@ -46,7 +47,7 @@ export default function AccountsPage() {
   function openSendMessage(sup: any) {
     setMsgContact({
       id: sup.id,
-      name: sup.companyName || sup.name || '',
+      name: sup.companyName || sup.company_name || sup.name || '',
       email: sup.email || null,
       phone: sup.phone || null,
     });
@@ -63,6 +64,7 @@ export default function AccountsPage() {
       </div>
 
       <ListPage<Supplier>
+        key={refreshKey}
         title="Accounts"
         description="Corporate accounts — a filtered view of Suppliers."
         getRowId={(s) => s.id}
@@ -78,18 +80,21 @@ export default function AccountsPage() {
         columns={[
           {
             key: 'company', header: 'Company', sortable: true,
-            cell: (s: any) => <span className="font-medium text-sm">{s.companyName || s.name || '—'}</span>,
+            cell: (s: any) => <span className="font-medium text-sm">{s.companyName || s.company_name || s.name || '—'}</span>,
           },
           {
             key: 'category', header: 'Category', sortable: true,
             cell: (s: any) => <Tag tone="info">{(s.category ?? s.type ?? '').replace(/_/g, ' ')}</Tag>,
           },
-          { key: 'contactPerson', header: 'Contact Person', cell: (s: any) => s.contactPerson ?? '—' },
+          { key: 'contactPerson', header: 'Contact Person', cell: (s: any) => s.contactPerson ?? s.contact_person ?? '—' },
           { key: 'email', header: 'Email', cell: (s: any) => s.email ?? '—' },
           { key: 'phone', header: 'Phone', cell: (s: any) => s.phone ?? '—' },
           {
             key: 'status', header: 'Status', sortable: true,
-            cell: (s: any) => <Tag tone={s.isActive ? 'success' : 'danger'}>{s.isActive ? 'Active' : 'Inactive'}</Tag>,
+            cell: (s: any) => {
+              const active = s.isActive ?? s.is_active;
+              return <Tag tone={active ? 'success' : 'danger'}>{active ? 'Active' : 'Inactive'}</Tag>;
+            },
           },
         ]}
         headerActions={
@@ -128,6 +133,7 @@ export default function AccountsPage() {
               try {
                 await suppliersApi.delete(s.id);
                 toast.success('Account deleted');
+                setRefreshKey((k) => k + 1);
               } catch { toast.error('Failed to delete account'); }
             }}>
               <Trash2 />
@@ -143,6 +149,7 @@ export default function AccountsPage() {
             onSelect: async (rows) => {
               await Promise.all(rows.map((r) => suppliersApi.delete(r.id)));
               toast.success(`${rows.length} account(s) deleted`);
+              setRefreshKey((k) => k + 1);
             },
           },
         ]}
