@@ -119,8 +119,12 @@ function BiDashboardContent() {
         />
         <Stat
           label="Monthly Revenue"
-          value={pulse ? pulse.currentMonth.toLocaleString('en-IN', { style: 'currency', currency: 'INR' }) : '--'}
-          delta={pulse?.growth}
+          value={
+            pulse
+              ? pulse.currentMonthRevenue.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })
+              : '--'
+          }
+          delta={pulse?.momChange}
           icon={<DollarSign className="size-4" aria-hidden="true" />}
           loading={pulseLoading}
         />

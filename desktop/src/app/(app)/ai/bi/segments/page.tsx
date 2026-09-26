@@ -121,8 +121,10 @@ function SegmentsContent() {
               onChange={(id) => void handleContactChange(id)}
               fetcher={async (query, page) => {
                 const r = await contactsApi.list({ search: query, page, limit: 20 });
-                const payload = r.data;
-                return { items: payload.data, total: payload.pagination.total };
+                const data = r.data as unknown;
+                const items = Array.isArray(data) ? data : ((data as { data?: Contact[] })?.data ?? []);
+                const total = (data as { pagination?: { total: number } })?.pagination?.total ?? items.length;
+                return { items, total };
               }}
               getOptionId={(c) => c.id}
               getOptionLabel={(c) => c.name}

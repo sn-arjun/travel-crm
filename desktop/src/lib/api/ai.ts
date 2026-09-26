@@ -204,11 +204,86 @@ export interface BriefingData {
   recommendations: Recommendation[];
 }
 
+/** Raw shape persisted by POST /ai/bi/briefings/generate and returned by GET /ai/bi/briefings(/:id). */
+export interface RawBriefingRow {
+  id: string;
+  briefing_type: string;
+  title: string;
+  content: string; // JSON: Array<{ heading: string; body: string }>
+  metrics: string; // JSON: Record<string, number | string>
+  highlights: string; // JSON: string[]
+  period: string;
+  created_at: string;
+}
+
+function normalizeBriefing(row: RawBriefingRow): BriefingData & { id: string } {
+  let sections: Array<{ heading: string; body: string }> = [];
+  try {
+    sections = JSON.parse(row.content || '[]');
+  } catch {
+    sections = [];
+  }
+  let keyMetrics: Record<string, number | string> = {};
+  try {
+    keyMetrics = JSON.parse(row.metrics || '{}');
+  } catch {
+    keyMetrics = {};
+  }
+  const summary = sections.map((s) => s.body).join('\n\n') || row.title;
+  return {
+    id: row.id,
+    date: row.created_at,
+    summary,
+    keyMetrics,
+    insights: [],
+    recommendations: [],
+  };
+}
+
 export interface HealthScoreResult {
   overallScore: number;
   byCategory: Record<string, number>;
   trends: Record<string, number[]>;
   recommendations: string[];
+}
+
+/** Raw shape returned by GET /ai/bi/health-score, POST /calculate, and each row of /history. */
+export interface RawHealthScoreRow {
+  id?: string;
+  overallScore: number;
+  revenueScore?: number;
+  pipelineScore?: number;
+  customerScore?: number;
+  teamScore?: number;
+  operationsScore?: number;
+  trends?: string | Record<string, number[]>;
+  recommendations?: string | string[];
+  calculatedAt?: string;
+  status?: string;
+}
+
+function parseJsonField<T>(value: unknown, fallback: T): T {
+  if (typeof value !== 'string') return (value as T) ?? fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeHealthScore(row: RawHealthScoreRow): HealthScoreResult {
+  const byCategory: Record<string, number> = {};
+  if (typeof row.revenueScore === 'number') byCategory.revenue = row.revenueScore;
+  if (typeof row.pipelineScore === 'number') byCategory.pipeline = row.pipelineScore;
+  if (typeof row.customerScore === 'number') byCategory.customer = row.customerScore;
+  if (typeof row.teamScore === 'number') byCategory.team = row.teamScore;
+  if (typeof row.operationsScore === 'number') byCategory.operations = row.operationsScore;
+  return {
+    overallScore: row.overallScore ?? 0,
+    byCategory,
+    trends: parseJsonField(row.trends, {}),
+    recommendations: parseJsonField(row.recommendations, []),
+  };
 }
 
 export interface ProfitabilityAnalysis {
@@ -220,11 +295,63 @@ export interface ProfitabilityAnalysis {
   trend: 'up' | 'down' | 'stable';
 }
 
+/**
+ * The AI providing this feature is a Workers AI binding that isn't available
+ * in every environment; when it can't run, the route falls back to raw SQL
+ * aggregates instead of the LLM's structured analysis. The client always
+ * normalizes off `rawData` (destination, lead_count, won_count, total_revenue,
+ * avg_deal_size) since that's the one field guaranteed to be present.
+ */
+interface RawDestinationRow {
+  destination: string;
+  lead_count: number;
+  won_count: number;
+  total_revenue: number | null;
+  avg_deal_size: number | null;
+}
+
+function normalizeDestinationProfitability(rawData: RawDestinationRow[]): ProfitabilityAnalysis[] {
+  return rawData.map((r) => {
+    let destination = r.destination;
+    try {
+      const parsed = JSON.parse(destination);
+      if (Array.isArray(parsed)) destination = parsed.join(', ');
+    } catch {
+      // Plain string destination — use as-is.
+    }
+    const revenue = r.total_revenue ?? 0;
+    return {
+      destination,
+      revenue,
+      costs: 0,
+      profit: revenue,
+      margin: revenue > 0 ? 100 : 0,
+      trend: 'stable' as const,
+    };
+  });
+}
+
 export interface SeasonalDemandData {
   month: string;
   demand: number;
   avgBooking: number;
   trending: boolean;
+}
+
+/** GET /ai/bi/seasonal-demand is AI-freeform; only `forecast` is a reliably-shaped array. */
+interface RawSeasonalDemandResponse {
+  forecast?: Array<{ month: string; predictedLeads: number }>;
+  peakMonths?: string[];
+}
+
+function normalizeSeasonalDemand(raw: RawSeasonalDemandResponse): SeasonalDemandData[] {
+  const peak = new Set(raw.peakMonths ?? []);
+  return (raw.forecast ?? []).map((f) => ({
+    month: f.month,
+    demand: f.predictedLeads ?? 0,
+    avgBooking: 0,
+    trending: peak.has(f.month),
+  }));
 }
 
 export interface CashFlowForecast {
@@ -233,6 +360,25 @@ export interface CashFlowForecast {
   outflow: number;
   netCashFlow: number;
   balance: number;
+}
+
+/** GET /ai/bi/cash-flow-forecast is AI-freeform; `forecast` has no running balance, so accumulate one client-side. */
+interface RawCashFlowResponse {
+  forecast?: Array<{ month: string; predictedInflow: number; predictedOutflow: number; netCashFlow: number }>;
+}
+
+function normalizeCashFlowForecast(raw: RawCashFlowResponse): CashFlowForecast[] {
+  let balance = 0;
+  return (raw.forecast ?? []).map((f) => {
+    balance += f.netCashFlow ?? (f.predictedInflow ?? 0) - (f.predictedOutflow ?? 0);
+    return {
+      period: f.month,
+      inflow: f.predictedInflow ?? 0,
+      outflow: f.predictedOutflow ?? 0,
+      netCashFlow: f.netCashFlow ?? (f.predictedInflow ?? 0) - (f.predictedOutflow ?? 0),
+      balance,
+    };
+  });
 }
 
 export interface TeamPerformanceMetrics {
@@ -244,6 +390,27 @@ export interface TeamPerformanceMetrics {
   avgDealValue: number;
 }
 
+/** GET /ai/bi/team-performance is AI-freeform; `rawData` is the reliable SQL aggregate. */
+interface RawTeamPerformanceRow {
+  id: string;
+  name: string;
+  total_leads: number;
+  won_leads: number;
+  revenue: number | null;
+  avg_deal_size: number | null;
+}
+
+function normalizeTeamPerformance(rawData: RawTeamPerformanceRow[]): TeamPerformanceMetrics[] {
+  return rawData.map((r) => ({
+    userId: r.id,
+    userName: r.name,
+    dealsClosedCount: r.won_leads ?? 0,
+    revenue: r.revenue ?? 0,
+    conversionRate: r.total_leads > 0 ? ((r.won_leads ?? 0) / r.total_leads) * 100 : 0,
+    avgDealValue: r.avg_deal_size ?? 0,
+  }));
+}
+
 export interface TrendingDestination {
   name: string;
   bookings: number;
@@ -252,11 +419,55 @@ export interface TrendingDestination {
   trend: 'up' | 'down';
 }
 
+/** GET /ai/bi/trending-destinations returns raw lead-count comparisons, not revenue. */
+interface RawTrendingDestinationRow {
+  destination: string;
+  currentCount: number;
+  previousCount: number;
+  growth: string; // percentage string, or the literal 'new'
+}
+
+function normalizeTrendingDestinations(trending: RawTrendingDestinationRow[]): TrendingDestination[] {
+  return trending.map((t) => {
+    let name = t.destination;
+    try {
+      const parsed = JSON.parse(name);
+      if (Array.isArray(parsed)) name = parsed.join(', ');
+    } catch {
+      // Plain string destination — use as-is.
+    }
+    const growthValue = t.growth === 'new' ? 100 : parseFloat(t.growth);
+    return {
+      name,
+      bookings: t.currentCount,
+      revenue: 0,
+      avgDealValue: 0,
+      trend: (Number.isFinite(growthValue) ? growthValue : 0) >= 0 ? ('up' as const) : ('down' as const),
+    };
+  });
+}
+
 export interface LostDealAnalysis {
   dealId: string;
   reason: string;
   estimatedLoss: number;
   preventionStrategy: string;
+}
+
+/** GET /ai/bi/lost-deal-analysis is AI-freeform; `rawByReason` is the reliable SQL aggregate fallback. */
+interface RawLostDealReasonRow {
+  lost_reason: string;
+  count: number;
+  lost_value: number;
+}
+
+function normalizeLostDealAnalysis(rawByReason: RawLostDealReasonRow[]): LostDealAnalysis[] {
+  return rawByReason.map((r) => ({
+    dealId: r.lost_reason,
+    reason: `${r.lost_reason} (${r.count} deal${r.count === 1 ? '' : 's'})`,
+    estimatedLoss: r.lost_value ?? 0,
+    preventionStrategy: 'Review and address this loss reason with the sales team.',
+  }));
 }
 
 export interface LeadSourceRoi {
@@ -268,15 +479,36 @@ export interface LeadSourceRoi {
   roi: number;
 }
 
+/**
+ * GET /ai/bi/lead-source-roi returns totalLeads/wonLeads/totalRevenue directly
+ * (no AI step, no ad-spend tracking) — roi is approximated from conversion
+ * rate since there's no cost data to compute a true return on spend.
+ */
+interface RawLeadSourceRoiRow {
+  source: string;
+  totalLeads: number;
+  wonLeads: number;
+  totalRevenue: number;
+  conversionRate: string;
+}
+
+function normalizeLeadSourceRoi(rows: RawLeadSourceRoiRow[]): LeadSourceRoi[] {
+  return rows.map((r) => ({
+    source: r.source,
+    leadsGenerated: r.totalLeads,
+    dealsClosedCount: r.wonLeads,
+    revenue: r.totalRevenue,
+    costPerLead: 0,
+    roi: parseFloat(r.conversionRate) || 0,
+  }));
+}
+
 export interface RevenuePulseData {
-  currentMonth: number;
-  previousMonth: number;
-  growth: number;
-  projectedMonthEnd: number;
-  topProductsRevenue: Array<{
-    name: string;
-    revenue: number;
-  }>;
+  currentMonthRevenue: number;
+  lastMonthRevenue: number;
+  momChange: number;
+  pipelineValue: number;
+  avgDealSize: number;
 }
 
 export interface WorkloadAnalysis {
@@ -297,6 +529,35 @@ export interface CustomerSegment {
   characteristics: string[];
 }
 
+/**
+ * GET /ai/bi/customer-segments returns one row per contact (ai_customer_segments
+ * joined to contacts), not a segment-level rollup. The client aggregates by
+ * `segment` for the summary table this page renders.
+ */
+interface RawCustomerSegmentRow {
+  segment: string;
+  lifetime_value: number | null;
+  preferred_channel: string | null;
+}
+
+function normalizeCustomerSegments(rows: RawCustomerSegmentRow[]): CustomerSegment[] {
+  const bySegment = new Map<string, { count: number; totalLtv: number; channels: Set<string> }>();
+  for (const row of rows) {
+    const entry = bySegment.get(row.segment) ?? { count: 0, totalLtv: 0, channels: new Set<string>() };
+    entry.count += 1;
+    entry.totalLtv += row.lifetime_value ?? 0;
+    if (row.preferred_channel) entry.channels.add(row.preferred_channel);
+    bySegment.set(row.segment, entry);
+  }
+  return Array.from(bySegment.entries()).map(([segment, entry]) => ({
+    segment,
+    customerCount: entry.count,
+    avgLtv: entry.count > 0 ? entry.totalLtv / entry.count : 0,
+    totalRevenue: entry.totalLtv,
+    characteristics: Array.from(entry.channels),
+  }));
+}
+
 export interface CustomerLtv {
   contactId: string;
   lifetimeValue: number;
@@ -304,6 +565,26 @@ export interface CustomerLtv {
   bookingCount: number;
   avgBookingValue: number;
   segment?: string;
+}
+
+/** POST /ai/bi/customer-ltv/:id is AI-freeform with no guaranteed fallback shape. */
+interface RawCustomerLtvResponse {
+  contactId: string;
+  lifetimeValue?: number;
+  predictedNextValue?: number;
+  segment?: string;
+  note?: string;
+}
+
+function normalizeCustomerLtv(raw: RawCustomerLtvResponse): CustomerLtv {
+  return {
+    contactId: raw.contactId,
+    lifetimeValue: raw.lifetimeValue ?? 0,
+    predictedValue: raw.predictedNextValue ?? 0,
+    bookingCount: 0,
+    avgBookingValue: 0,
+    segment: raw.segment,
+  };
 }
 
 export interface BiRecommendation {
@@ -318,7 +599,6 @@ export interface BiRecommendation {
 export interface HealthScoreHistoryEntry {
   date: string;
   overallScore: number;
-  byCategory: Record<string, number>;
 }
 
 // AI Settings types
@@ -375,6 +655,29 @@ export interface UsageData {
   quotas: UsageCap[];
   breakdown: UsageBreakdown[];
   dailyTrend: Array<{ day: string; requests: number; cost: number }>;
+}
+
+/** GET /ai/bi/usage groups task type and model separately; the page wants one merged breakdown row per task type. */
+interface RawUsageResponse {
+  byTask?: Array<{ task_type: string; calls: number; tokens: number; cost: number }>;
+  byModel?: Array<{ model_name: string; calls: number; cost: number }>;
+  daily?: Array<{ day: string; calls: number; cost: number }>;
+}
+
+function normalizeUsage(raw: RawUsageResponse): UsageData {
+  const primaryModel = (raw.byModel ?? []).slice().sort((a, b) => b.calls - a.calls)[0]?.model_name ?? 'unknown';
+  return {
+    quotas: [],
+    breakdown: (raw.byTask ?? []).map((t) => ({
+      taskType: t.task_type,
+      modelName: primaryModel,
+      requestCount: t.calls,
+      totalInputTokens: t.tokens,
+      totalOutputTokens: 0,
+      totalCost: t.cost,
+    })),
+    dailyTrend: (raw.daily ?? []).map((d) => ({ day: d.day, requests: d.calls, cost: d.cost })),
+  };
 }
 
 // ─── Generated content management (orphaned endpoints) ─────────────
@@ -617,65 +920,129 @@ export const aiApi = {
   },
 
   bi: {
-    getBriefing: (params?: { type?: string; dateRange?: string }) =>
-      client.get<ApiResponse<BriefingData>>(API_ENDPOINTS.ai.bi.briefings, { params }),
+    getBriefing: async (params?: { type?: string; dateRange?: string }) => {
+      const res = await client.get<ApiResponse<RawBriefingRow[]>>(API_ENDPOINTS.ai.bi.briefings, {
+        params: { ...params, limit: 1 },
+      });
+      const rows = res.data ?? [];
+      return { ...res, data: rows[0] ? normalizeBriefing(rows[0]) : null } as ApiResponse<
+        (BriefingData & { id: string }) | null
+      >;
+    },
 
-    getHealthScore: () =>
-      client.get<ApiResponse<HealthScoreResult>>(API_ENDPOINTS.ai.bi.healthScore),
+    getHealthScore: async () => {
+      const res = await client.get<ApiResponse<RawHealthScoreRow>>(API_ENDPOINTS.ai.bi.healthScore);
+      return { ...res, data: normalizeHealthScore(res.data) };
+    },
 
-    getDestinationProfitability: (params?: { period?: string; limit?: number }) =>
-      client.get<ApiResponse<ProfitabilityAnalysis[]>>(API_ENDPOINTS.ai.bi.destinationProfitability, { params }),
+    getDestinationProfitability: async (params?: { period?: string; limit?: number }) => {
+      const res = await client.get<ApiResponse<{ rawData?: RawDestinationRow[] }>>(
+        API_ENDPOINTS.ai.bi.destinationProfitability,
+        { params },
+      );
+      return { ...res, data: normalizeDestinationProfitability(res.data.rawData ?? []) };
+    },
 
-    getSeasonalDemand: (params?: { destination?: string }) =>
-      client.get<ApiResponse<SeasonalDemandData[]>>(API_ENDPOINTS.ai.bi.seasonalDemand, { params }),
+    getSeasonalDemand: async (params?: { destination?: string }) => {
+      const res = await client.get<ApiResponse<RawSeasonalDemandResponse>>(API_ENDPOINTS.ai.bi.seasonalDemand, {
+        params,
+      });
+      return { ...res, data: normalizeSeasonalDemand(res.data) };
+    },
 
-    getCashFlowForecast: (params?: { months?: number }) =>
-      client.get<ApiResponse<CashFlowForecast[]>>(API_ENDPOINTS.ai.bi.cashFlowForecast, { params }),
+    getCashFlowForecast: async (params?: { months?: number }) => {
+      const res = await client.get<ApiResponse<RawCashFlowResponse>>(API_ENDPOINTS.ai.bi.cashFlowForecast, {
+        params,
+      });
+      return { ...res, data: normalizeCashFlowForecast(res.data) };
+    },
 
-    getTeamPerformance: (params?: { period?: string; limit?: number }) =>
-      client.get<ApiResponse<TeamPerformanceMetrics[]>>(API_ENDPOINTS.ai.bi.teamPerformance, { params }),
+    getTeamPerformance: async (params?: { period?: string; limit?: number }) => {
+      const res = await client.get<ApiResponse<{ rawData?: RawTeamPerformanceRow[] }>>(
+        API_ENDPOINTS.ai.bi.teamPerformance,
+        { params },
+      );
+      return { ...res, data: normalizeTeamPerformance(res.data.rawData ?? []) };
+    },
 
-    getTrendingDestinations: (params?: { limit?: number }) =>
-      client.get<ApiResponse<TrendingDestination[]>>(API_ENDPOINTS.ai.bi.trendingDestinations, { params }),
+    getTrendingDestinations: async (params?: { limit?: number }) => {
+      const res = await client.get<ApiResponse<{ trending?: RawTrendingDestinationRow[] }>>(
+        API_ENDPOINTS.ai.bi.trendingDestinations,
+        { params },
+      );
+      const trending = normalizeTrendingDestinations(res.data.trending ?? []);
+      return { ...res, data: params?.limit ? trending.slice(0, params.limit) : trending };
+    },
 
-    getLostDealAnalysis: (params?: { period?: string; limit?: number }) =>
-      client.get<ApiResponse<LostDealAnalysis[]>>(API_ENDPOINTS.ai.bi.lostDealAnalysis, { params }),
+    getLostDealAnalysis: async (params?: { period?: string; limit?: number }) => {
+      const res = await client.get<ApiResponse<{ rawByReason?: RawLostDealReasonRow[] }>>(
+        API_ENDPOINTS.ai.bi.lostDealAnalysis,
+        { params },
+      );
+      return { ...res, data: normalizeLostDealAnalysis(res.data.rawByReason ?? []) };
+    },
 
-    getLeadSourceRoi: (params?: { period?: string }) =>
-      client.get<ApiResponse<LeadSourceRoi[]>>(API_ENDPOINTS.ai.bi.leadSourceRoi, { params }),
+    getLeadSourceRoi: async (params?: { period?: string }) => {
+      const res = await client.get<ApiResponse<RawLeadSourceRoiRow[]>>(API_ENDPOINTS.ai.bi.leadSourceRoi, {
+        params,
+      });
+      return { ...res, data: normalizeLeadSourceRoi(res.data ?? []) };
+    },
 
     getRevenuePulse: () =>
       client.get<ApiResponse<RevenuePulseData>>(API_ENDPOINTS.ai.bi.revenuePulse),
 
-    getBriefingById: (id: string) =>
-      client.get<ApiResponse<BriefingData & { id: string }>>(`/ai/bi/briefings/${id}`),
+    getBriefingById: async (id: string) => {
+      const res = await client.get<ApiResponse<RawBriefingRow>>(`/ai/bi/briefings/${id}`);
+      return { ...res, data: normalizeBriefing(res.data) };
+    },
 
-    generateBriefing: (data?: { type?: string; dateRange?: string }) =>
-      client.post<ApiResponse<BriefingData & { id: string }>>('/ai/bi/briefings/generate', data),
+    generateBriefing: async (data?: { type?: string; dateRange?: string }) => {
+      const res = await client.post<ApiResponse<RawBriefingRow>>('/ai/bi/briefings/generate', data);
+      return { ...res, data: normalizeBriefing(res.data) };
+    },
 
-    getHealthScoreHistory: (params?: { limit?: number }) =>
-      client.get<ApiResponse<HealthScoreHistoryEntry[]>>('/ai/bi/health-score/history', { params }),
+    getHealthScoreHistory: async (params?: { limit?: number }) => {
+      const res = await client.get<
+        ApiResponse<Array<{ overall_score: number; calculated_at: string }>>
+      >('/ai/bi/health-score/history', { params });
+      const data = (res.data ?? []).map((row) => ({
+        date: row.calculated_at,
+        overallScore: row.overall_score,
+      }));
+      return { ...res, data };
+    },
 
-    calculateHealthScore: () =>
-      client.post<ApiResponse<HealthScoreResult>>('/ai/bi/health-score/calculate'),
+    calculateHealthScore: async () => {
+      const res = await client.post<ApiResponse<RawHealthScoreRow>>('/ai/bi/health-score/calculate');
+      return { ...res, data: normalizeHealthScore(res.data) };
+    },
 
     getWorkloadAnalysis: () =>
       client.get<ApiResponse<WorkloadAnalysis[]>>('/ai/bi/workload-analysis'),
 
-    getCustomerSegments: () =>
-      client.get<ApiResponse<CustomerSegment[]>>('/ai/bi/customer-segments'),
+    getCustomerSegments: async () => {
+      const res = await client.get<ApiResponse<RawCustomerSegmentRow[]>>('/ai/bi/customer-segments', {
+        params: { limit: 1000 },
+      });
+      return { ...res, data: normalizeCustomerSegments(res.data ?? []) };
+    },
 
     calculateCustomerSegments: () =>
-      client.post<ApiResponse<CustomerSegment[]>>('/ai/bi/customer-segments/calculate'),
+      client.post<ApiResponse<{ segmented: number }>>('/ai/bi/customer-segments/calculate'),
 
-    getCustomerLtv: (contactId: string) =>
-      client.post<ApiResponse<CustomerLtv>>(`/ai/bi/customer-ltv/${contactId}`),
+    getCustomerLtv: async (contactId: string) => {
+      const res = await client.post<ApiResponse<RawCustomerLtvResponse>>(`/ai/bi/customer-ltv/${contactId}`);
+      return { ...res, data: normalizeCustomerLtv(res.data) };
+    },
 
     generateRecommendations: (params?: { category?: string }) =>
       client.post<ApiResponse<BiRecommendation[]>>('/ai/bi/recommendations/generate', params),
 
-    getUsage: () =>
-      client.get<ApiResponse<UsageData>>('/ai/bi/usage'),
+    getUsage: async () => {
+      const res = await client.get<ApiResponse<RawUsageResponse>>('/ai/bi/usage');
+      return { ...res, data: normalizeUsage(res.data) };
+    },
   },
 
   settings: {
