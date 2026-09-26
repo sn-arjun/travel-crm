@@ -378,11 +378,32 @@
       "timestamp": "2026-09-26T09:17:14.101Z",
       "error": null,
       "repairAttempts": 1
+    },
+    "verify:calendar": {
+      "status": "ok",
+      "timestamp": "2026-09-26T15:12:06.444Z",
+      "error": null,
+      "repairAttempts": 0
+    },
+    "verify:calls": {
+      "status": "context-limit",
+      "timestamp": "2026-09-26T09:34:46.367Z",
+      "error": "stdout(tail): You've hit your session limit · resets 6:20pm (Asia/Kolkata)"
+    },
+    "verify:campaigns": {
+      "status": "context-limit",
+      "timestamp": "2026-09-26T09:34:51.493Z",
+      "error": "stdout(tail): You've hit your session limit · resets 6:20pm (Asia/Kolkata)"
+    },
+    "verify:chatbot": {
+      "status": "context-limit",
+      "timestamp": "2026-09-26T09:34:56.648Z",
+      "error": "stdout(tail): You've hit your session limit · resets 6:20pm (Asia/Kolkata)"
     }
   },
   "lastCompleted": {
-    "id": "verify:auth-shell",
+    "id": "verify:calendar",
     "status": "ok",
-    "timestamp": "2026-09-26T09:17:14.101Z"
+    "timestamp": "2026-09-26T15:12:06.444Z"
   }
 }

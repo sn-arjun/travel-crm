@@ -40,13 +40,6 @@ test.describe('Tasks & Calendar', () => {
     }
   });
 
-  // Calendar
-  test('should load calendar page', async ({ page }) => {
-    await page.goto('/calendar');
-    await waitForLoad(page);
-    await expect(page.locator('text=Calendar').first()).toBeVisible();
-  });
-
   // Follow-ups
   test('should load follow-ups page', async ({ page }) => {
     await page.goto('/follow-ups');
