@@ -45,6 +45,15 @@ export interface ComposedMessage {
   language?: string;
 }
 
+export interface ComposeMessageResult {
+  contentId: string;
+  message: ComposedMessage;
+  channel: 'whatsapp' | 'email' | 'sms';
+  model: string;
+  provider: string;
+  cost: number;
+}
+
 export interface SuggestedReply {
   text: string;
   tone?: string;
@@ -488,11 +497,22 @@ export const aiApi = {
   extractLead: (data: { text: string; sourceUrl?: string }) =>
     client.post<ApiResponse<ExtractedLead>>(API_ENDPOINTS.ai.extractLead, data),
 
-  generateItinerary: (data: { destination: string; duration: number; budget?: number; preferences?: string[] }) =>
+  generateItinerary: (data: { prompt: string; destination: string; duration: number; budget?: number; preferences?: string[] }) =>
     client.post<ApiResponse<GeneratedItinerary>>(API_ENDPOINTS.ai.generateItinerary, data),
 
-  composeMessage: (data: { context: string; tone?: string; language?: string; maxLength?: number }) =>
-    client.post<ApiResponse<ComposedMessage>>(API_ENDPOINTS.ai.composeMessage, data),
+  composeMessage: (data: {
+    channel: 'whatsapp' | 'email' | 'sms';
+    purpose: string;
+    tone?: 'formal' | 'casual' | 'enthusiastic' | 'professional';
+    language?: string;
+    context?: {
+      customerName?: string;
+      destination?: string;
+      leadStatus?: string;
+      lastInteraction?: string;
+      additionalContext?: string;
+    };
+  }) => client.post<ApiResponse<ComposeMessageResult>>(API_ENDPOINTS.ai.composeMessage, data),
 
   suggestReplies: (data: { message: string; context?: string }) =>
     client.post<ApiResponse<{ suggestions: SuggestedReply[] }>>(API_ENDPOINTS.ai.suggestReplies, data),

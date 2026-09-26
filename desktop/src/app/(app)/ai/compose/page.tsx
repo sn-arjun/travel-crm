@@ -3,7 +3,6 @@
 import * as React from 'react';
 import { Loader2, MessageSquare, Copy, Send, Sparkles, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -27,11 +26,18 @@ import { AiGate } from '@/components/domain/ai/ai-gate';
 import { AiQuotaBadge } from '@/components/domain/ai/quota-badge';
 import { GeneratedContentActions } from '@/components/domain/ai/generated-content-actions';
 
+const TONE_OPTIONS = [
+  { value: 'professional', label: 'Professional' },
+  { value: 'formal', label: 'Formal' },
+  { value: 'casual', label: 'Casual' },
+  { value: 'enthusiastic', label: 'Enthusiastic' },
+] as const;
+
 export default function ComposePage() {
+  const [channel, setChannel] = React.useState<'email' | 'sms' | 'whatsapp'>('email');
   const [context, setContext] = React.useState('');
-  const [tone, setTone] = React.useState('professional');
-  const [language, setLanguage] = React.useState('english');
-  const [maxLength, setMaxLength] = React.useState('');
+  const [tone, setTone] = React.useState<'formal' | 'casual' | 'enthusiastic' | 'professional'>('professional');
+  const [language, setLanguage] = React.useState('en');
   const [loading, setLoading] = React.useState(false);
   const [message, setMessage] = React.useState<ComposedMessage | null>(null);
   const [contentId, setContentId] = React.useState<string | undefined>();
@@ -52,14 +58,15 @@ export default function ComposePage() {
 
     try {
       const response = await aiApi.composeMessage({
-        context: context.trim(),
+        channel,
+        purpose: context.trim(),
         tone,
         language,
-        maxLength: maxLength ? parseInt(maxLength, 10) : undefined,
+        context: { additionalContext: context.trim() },
       });
-      setMessage(response.data);
-      const returnedId = (response.data as { contentId?: string }).contentId;
-      if (returnedId) setContentId(returnedId);
+      setMessage(response.data.message);
+      setContentId(response.data.contentId);
+      setSendType(channel);
       toast.success('Message composed successfully');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to compose message';
@@ -126,6 +133,20 @@ export default function ComposePage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
+              <Label htmlFor="channel">Channel</Label>
+              <Select value={channel} onValueChange={(v) => setChannel(v as 'email' | 'sms' | 'whatsapp')}>
+                <SelectTrigger id="channel">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="email">Email</SelectItem>
+                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                  <SelectItem value="sms">SMS</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="context">Context / Purpose *</Label>
               <Textarea
                 id="context"
@@ -140,16 +161,14 @@ export default function ComposePage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="tone">Tone</Label>
-                <Select value={tone} onValueChange={setTone}>
+                <Select value={tone} onValueChange={(v) => setTone(v as typeof tone)}>
                   <SelectTrigger id="tone">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="professional">Professional</SelectItem>
-                    <SelectItem value="friendly">Friendly</SelectItem>
-                    <SelectItem value="formal">Formal</SelectItem>
-                    <SelectItem value="casual">Casual</SelectItem>
-                    <SelectItem value="urgent">Urgent</SelectItem>
+                    {TONE_OPTIONS.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -161,25 +180,14 @@ export default function ComposePage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="english">English</SelectItem>
-                    <SelectItem value="hindi">Hindi</SelectItem>
-                    <SelectItem value="spanish">Spanish</SelectItem>
-                    <SelectItem value="french">French</SelectItem>
-                    <SelectItem value="arabic">Arabic</SelectItem>
+                    <SelectItem value="en">English</SelectItem>
+                    <SelectItem value="hi">Hindi</SelectItem>
+                    <SelectItem value="es">Spanish</SelectItem>
+                    <SelectItem value="fr">French</SelectItem>
+                    <SelectItem value="ar">Arabic</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="maxLength">Max Length (characters, optional)</Label>
-              <Input
-                id="maxLength"
-                type="number"
-                placeholder="e.g., 500"
-                value={maxLength}
-                onChange={(e) => setMaxLength(e.target.value)}
-              />
             </div>
 
             <Button
@@ -293,7 +301,10 @@ export default function ComposePage() {
                 onChange={(id) => setSendContactId(id)}
                 fetcher={async (query, page) => {
                   const res = await contactsApi.list({ search: query, page, limit: 20 });
-                  return { items: res.data.data, total: res.data.pagination.total };
+                  const payload = res as unknown as { data: Contact[]; pagination?: { total: number } };
+                  const items = payload.data ?? [];
+                  const total = payload.pagination?.total ?? items.length;
+                  return { items, total };
                 }}
                 getOptionId={(c) => c.id}
                 getOptionLabel={(c) => c.name}

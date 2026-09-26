@@ -12,10 +12,14 @@ import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { aiApi, type GeneratedItinerary } from '@/lib/api/ai';
 import { itinerariesApi } from '@/lib/api/itineraries';
+import { leadsApi } from '@/lib/api/leads';
+import type { Lead } from '@travelcrm/shared';
 import { PageHeader } from '@/components/ui/page-header';
 import { AiGate } from '@/components/domain/ai/ai-gate';
 import { AiQuotaBadge } from '@/components/domain/ai/quota-badge';
 import { GeneratedContentActions } from '@/components/domain/ai/generated-content-actions';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { RelationCombobox } from '@/components/domain/relation-combobox';
 
 export default function ItineraryPage() {
   const router = useRouter();
@@ -38,9 +42,12 @@ export default function ItineraryPage() {
     setContentId(undefined);
 
     try {
+      const trimmedDuration = parseInt(duration, 10);
+      const prompt = `Plan a ${trimmedDuration}-day trip to ${destination.trim()}${budget ? ` with a budget of ${budget}` : ''}${preferences.trim() ? `, focused on ${preferences.trim()}` : ''}.`;
       const response = await aiApi.generateItinerary({
+        prompt,
         destination: destination.trim(),
-        duration: parseInt(duration, 10),
+        duration: trimmedDuration,
         budget: budget ? parseFloat(budget) : undefined,
         preferences: preferences
           ? preferences.split(',').map((p) => p.trim()).filter(Boolean)
@@ -59,9 +66,14 @@ export default function ItineraryPage() {
   };
 
   const [isSaving, setIsSaving] = React.useState(false);
+  const [saveDialogOpen, setSaveDialogOpen] = React.useState(false);
+  const [saveLeadId, setSaveLeadId] = React.useState<string | null>(null);
 
-  const handleSave = async () => {
-    if (!itinerary) return;
+  const handleSaveConfirm = async () => {
+    if (!itinerary || !saveLeadId) {
+      toast.error('Please pick a lead to attach this itinerary to');
+      return;
+    }
     setIsSaving(true);
     try {
       const days = (itinerary.items || []).map((item, idx: number) => ({
@@ -77,13 +89,14 @@ export default function ItineraryPage() {
         }],
       }));
       const response = await itinerariesApi.create({
-        leadId: '' as any, // AI-generated itineraries may not have a lead yet
-        title: itinerary.title,
+        leadId: saveLeadId,
+        title: itinerary.title || `${destination.trim()} Itinerary`,
         notes: itinerary.description,
         days: days.length > 0 ? days : [{ dayNumber: 1, title: 'Day 1', items: [] }],
       });
       if (response?.data?.id) {
         toast.success('Itinerary saved successfully');
+        setSaveDialogOpen(false);
         router.push(`/itineraries/${response.data.id}`);
       } else {
         throw new Error('Failed to save itinerary');
@@ -194,7 +207,7 @@ export default function ItineraryPage() {
                 </CardDescription>
               </div>
               {itinerary && (
-                <Button onClick={handleSave} variant="outline" className="gap-2" disabled={isSaving}>
+                <Button onClick={() => setSaveDialogOpen(true)} variant="outline" className="gap-2" disabled={isSaving}>
                   {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   {isSaving ? 'Saving...' : 'Save'}
                 </Button>
@@ -232,8 +245,14 @@ export default function ItineraryPage() {
 
                 <Separator />
 
+                {(!itinerary.items || itinerary.items.length === 0) && (
+                  <p className="text-sm text-muted-foreground">
+                    {(itinerary as { note?: string }).note || 'No day-by-day details were returned for this itinerary.'}
+                  </p>
+                )}
+
                 <div className="space-y-4">
-                  {itinerary.items.map((item, idx) => (
+                  {(itinerary.items || []).map((item, idx) => (
                     <div key={idx} className="flex gap-4">
                       <div className="flex flex-col items-center">
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
@@ -270,6 +289,43 @@ export default function ItineraryPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Save Itinerary</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Lead</Label>
+              <RelationCombobox<Lead>
+                value={saveLeadId}
+                onChange={(id) => setSaveLeadId(id)}
+                fetcher={async (query, page) => {
+                  const res = await leadsApi.list({ search: query, page, limit: 20 });
+                  const payload = res as unknown as { data: Lead[]; pagination?: { total: number } };
+                  const items = payload.data ?? [];
+                  const total = payload.pagination?.total ?? items.length;
+                  return { items, total };
+                }}
+                getOptionId={(l) => l.id}
+                getOptionLabel={(l) => l.title}
+                resolveSelected={async (id) => (await leadsApi.getById(id)).data}
+                placeholder="Search leads…"
+                searchPlaceholder="Search by lead title…"
+                required
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSaveDialogOpen(false)} disabled={isSaving}>Cancel</Button>
+            <Button onClick={handleSaveConfirm} disabled={isSaving || !saveLeadId} className="gap-2">
+              {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       </AiGate>
     </div>
   );

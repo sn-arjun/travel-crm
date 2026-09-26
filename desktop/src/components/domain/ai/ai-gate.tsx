@@ -6,11 +6,18 @@ import * as React from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useFeatureGate } from '@/hooks/use-feature-gate';
+import { useAiSettings } from '@/hooks/use-ai-feature';
 
 interface AiGateProps {
   children: React.ReactNode;
 }
+
+// Plans without the ai_assistant umbrella feature — mirrors backend
+// PLAN_DEFAULTS (backend/src/middleware/feature-gate.ts). The `ai_assistant`
+// key itself never appears in `aiFeatures` (that array only carries the 22
+// granular Pro/Enterprise toggles), so gating must be derived from `plan`.
+const PLANS_WITHOUT_AI_ASSISTANT = new Set(['starter', 'basic']);
+const UPGRADE_HREF = '/settings/billing';
 
 /**
  * Wraps a full AI Assistant page. Renders a skeleton while the plan is
@@ -18,7 +25,12 @@ interface AiGateProps {
  * page never fires its AI request against a 403.
  */
 export function AiGate({ children }: AiGateProps) {
-  const { enabled, reason, upgradeHref, loading } = useFeatureGate('ai_assistant');
+  const { plan, usageCaps, loading } = useAiSettings();
+  const cap = usageCaps.ai_requests;
+  const capExhausted = !!cap && cap.remaining <= 0;
+  const enabled = !loading && !!plan && !PLANS_WITHOUT_AI_ASSISTANT.has(plan) && !capExhausted;
+  const reason = capExhausted ? 'cap_exceeded' : 'not_in_plan';
+  const upgradeHref = UPGRADE_HREF;
 
   if (loading) {
     return (
