@@ -366,11 +366,17 @@
       "timestamp": "2026-09-26T09:00:29.006Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "verify:ai-settings": {
+      "status": "ok",
+      "timestamp": "2026-09-26T09:03:53.616Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "verify:ai-intelligence",
+    "id": "verify:ai-settings",
     "status": "ok",
-    "timestamp": "2026-09-26T09:00:29.006Z"
+    "timestamp": "2026-09-26T09:03:53.616Z"
   }
 }
