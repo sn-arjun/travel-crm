@@ -183,6 +183,9 @@ class HttpClient {
     if (store.accessToken) {
       finalHeaders['Authorization'] = `Bearer ${store.accessToken}`;
     }
+    if (store.refreshToken) {
+      finalHeaders['X-Refresh-Token'] = store.refreshToken;
+    }
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);

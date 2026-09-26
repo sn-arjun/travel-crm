@@ -93,7 +93,7 @@ export default function LoginPage() {
         const { accessToken, refreshToken, user, tenant } = response.data;
         setAuth({ accessToken, refreshToken, user, tenant });
         toast.success('Logged in successfully');
-        router.push('/');
+        router.push('/dashboard');
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Invalid email or password';
@@ -147,7 +147,7 @@ export default function LoginPage() {
         const { accessToken, refreshToken, user, tenant } = response.data;
         setAuth({ accessToken, refreshToken, user, tenant });
         toast.success('Logged in successfully');
-        router.push('/');
+        router.push('/dashboard');
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Invalid OTP';

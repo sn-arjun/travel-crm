@@ -372,11 +372,17 @@
       "timestamp": "2026-09-26T09:03:53.616Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "verify:auth-shell": {
+      "status": "ok",
+      "timestamp": "2026-09-26T09:17:14.101Z",
+      "error": null,
+      "repairAttempts": 1
     }
   },
   "lastCompleted": {
-    "id": "verify:ai-settings",
+    "id": "verify:auth-shell",
     "status": "ok",
-    "timestamp": "2026-09-26T09:03:53.616Z"
+    "timestamp": "2026-09-26T09:17:14.101Z"
   }
 }

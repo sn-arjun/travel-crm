@@ -28,7 +28,15 @@ export default function SessionsSettingsPage() {
     [],
   );
 
-  const sessions: SessionData[] = sessionsResponse?.data ?? [];
+  const [sortDirection, setSortDirection] = React.useState<'asc' | 'desc'>('desc');
+
+  const sessions: SessionData[] = React.useMemo(() => {
+    const list = sessionsResponse?.data ?? [];
+    return [...list].sort((a, b) => {
+      const diff = new Date(a.loginAt).getTime() - new Date(b.loginAt).getTime();
+      return sortDirection === 'asc' ? diff : -diff;
+    });
+  }, [sessionsResponse, sortDirection]);
 
   const handleRevokeSession = async (session: SessionData) => {
     const ok = await confirm({
@@ -153,6 +161,9 @@ export default function SessionsSettingsPage() {
           columns={columns}
           data={sessions}
           getRowId={(s) => s.id}
+          sortColumn="loginAt"
+          sortDirection={sortDirection}
+          onSort={(_column, direction) => setSortDirection(direction)}
           rowActions={(s) =>
             !s.isCurrent ? (
               <Button
