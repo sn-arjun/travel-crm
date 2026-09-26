@@ -28,6 +28,9 @@ const AI_FEATURE_KEYS = [
   'ai_visa_intelligence', 'ai_campaign_content', 'ai_campaign_optimize',
   'ai_follow_up_suggest', 'ai_churn_prediction', 'ai_daily_briefing',
   'ai_supplier_negotiate', 'ai_coaching',
+  // Gated surfaces checked via useFeatureGate() on the desktop app —
+  // must stay listed here or the gate always reports "not_in_plan".
+  'ai_assistant', 'ai_extraction', 'ai_intelligence', 'ai_chatbot', 'whatsapp_campaigns',
 ] as const;
 
 // Usage cap keys for AI features

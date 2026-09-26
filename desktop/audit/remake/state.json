@@ -356,9 +356,10 @@
       "repairAttempts": 0
     },
     "verify:ai-extractions": {
-      "status": "context-limit",
-      "timestamp": "2026-09-26T07:55:42.516Z",
-      "error": "stdout(tail): Failed to refresh OAuth token: another Claude Code process is refreshing it or exited mid-refresh. This is usually transient; retry in a minute, and if it persists close other Claude Code processes or sign in again"
+      "status": "ok",
+      "timestamp": "2026-09-26T08:39:51.028Z",
+      "error": null,
+      "repairAttempts": 0
     },
     "verify:ai-intelligence": {
       "status": "context-limit",
@@ -367,8 +368,8 @@
     }
   },
   "lastCompleted": {
-    "id": "verify:ai-business-intelligence",
+    "id": "verify:ai-extractions",
     "status": "ok",
-    "timestamp": "2026-09-26T08:34:27.985Z"
+    "timestamp": "2026-09-26T08:39:51.028Z"
   }
 }
