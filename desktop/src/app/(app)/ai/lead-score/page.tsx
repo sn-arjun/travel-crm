@@ -49,8 +49,8 @@ function LeadScoreIndexContent() {
             onChange={(id) => setLeadId(id)}
             fetcher={async (query, page) => {
               const res = await leadsApi.list({ search: query, page, limit: 20 });
-              const body = res.data;
-              return { items: body.data, total: body.pagination.total };
+              const body = res as unknown as { data: Lead[]; pagination?: { total: number } };
+              return { items: body.data ?? [], total: body.pagination?.total ?? body.data?.length ?? 0 };
             }}
             getOptionId={(l) => l.id}
             getOptionLabel={(l) => l.title}

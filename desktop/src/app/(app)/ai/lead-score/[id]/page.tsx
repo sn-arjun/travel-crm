@@ -43,7 +43,7 @@ function scoreTone(score: number): 'success' | 'info' | 'warning' | 'danger' {
 function LeadScoreDetailContent({ id }: { id: string }) {
   const router = useRouter();
   const { data, loading, refetch } = useApiQuery(() => aiApi.intelligence.getLeadScore(id), [id]);
-  const { data: historyData, loading: historyLoading } = useApiQuery(
+  const { data: historyData, loading: historyLoading, refetch: refetchHistory } = useApiQuery(
     () => aiApi.intelligence.getLeadScoreHistory(id),
     [id],
   );
@@ -59,6 +59,7 @@ function LeadScoreDetailContent({ id }: { id: string }) {
     if (result) {
       toast.success('Lead score recalculated');
       refetch();
+      refetchHistory();
     } else {
       toast.error('Could not recalculate lead score');
     }
@@ -81,12 +82,18 @@ function LeadScoreDetailContent({ id }: { id: string }) {
       <div className="flex flex-col items-center justify-center gap-ds-3 rounded-ds-lg border border-dashed border-ds-border py-ds-9 text-center">
         <Target className="size-10 text-ds-foreground-subtle" aria-hidden="true" />
         <div>
-          <p className="text-sm font-medium text-ds-foreground">Unable to calculate lead score</p>
-          <p className="mt-ds-1 text-xs text-ds-foreground-muted">This lead may not have enough data for scoring</p>
+          <p className="text-sm font-medium text-ds-foreground">No score calculated yet</p>
+          <p className="mt-ds-1 text-xs text-ds-foreground-muted">Run the AI scoring model to get a breakdown for this lead</p>
         </div>
-        <Button size="sm" onClick={() => router.push('/ai/lead-score')}>
-          Back
-        </Button>
+        <div className="flex gap-ds-2">
+          <Button size="sm" className="gap-ds-2" onClick={handleRecalculate} disabled={recalculating}>
+            <RefreshCw className="h-4 w-4" />
+            {recalculating ? 'Calculating…' : 'Calculate score'}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => router.push('/ai/lead-score')}>
+            Back
+          </Button>
+        </div>
       </div>
     );
   }

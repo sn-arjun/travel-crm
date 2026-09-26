@@ -362,14 +362,15 @@
       "repairAttempts": 0
     },
     "verify:ai-intelligence": {
-      "status": "context-limit",
-      "timestamp": "2026-09-25T12:25:10.275Z",
-      "error": "stdout(tail): You've hit your session limit · resets 9:30pm (Asia/Kolkata)"
+      "status": "ok",
+      "timestamp": "2026-09-26T09:00:29.006Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "verify:ai-extractions",
+    "id": "verify:ai-intelligence",
     "status": "ok",
-    "timestamp": "2026-09-26T08:39:51.028Z"
+    "timestamp": "2026-09-26T09:00:29.006Z"
   }
 }

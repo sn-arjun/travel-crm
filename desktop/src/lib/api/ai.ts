@@ -74,6 +74,60 @@ export interface LeadScore {
   createdAt?: string;
 }
 
+/**
+ * Raw shape persisted by POST /lead-score/:leadId and returned as-is by
+ * GET /lead-score/:leadId (GET reads the DB row directly, so `signals` and
+ * `breakdown` come back as JSON strings there but as parsed objects from the
+ * POST response). `signals` is an AI-freeform array of scoring factors —
+ * often empty — so `breakdown` (a fixed five-category score) is the reliable
+ * fallback to render as factors.
+ */
+interface RawLeadScoreRow {
+  id?: string;
+  lead_id?: string;
+  leadId?: string;
+  score: number;
+  category?: string;
+  signals?: string | Array<{ name: string; value?: number; weight?: number; contribution?: number }>;
+  breakdown?: string | Record<string, number>;
+  calculated_at?: string;
+  createdAt?: string;
+}
+
+function parseMaybeJson<T>(value: unknown, fallback: T): T {
+  if (typeof value !== 'string') return (value as T) ?? fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeLeadScore(row: RawLeadScoreRow): LeadScore {
+  const signals = parseMaybeJson<Array<{ name: string; value?: number; weight?: number; contribution?: number }>>(
+    row.signals,
+    [],
+  );
+  const breakdown = parseMaybeJson<Record<string, number>>(row.breakdown, {});
+
+  const factors = signals.length > 0
+    ? signals.map((s) => ({ name: s.name, weight: s.weight ?? 0, contribution: s.contribution ?? s.value ?? 0 }))
+    : Object.entries(breakdown).map(([name, value]) => ({
+        name: name.charAt(0).toUpperCase() + name.slice(1),
+        weight: 0.2,
+        contribution: value,
+      }));
+
+  return {
+    id: row.id,
+    leadId: row.leadId ?? row.lead_id,
+    score: row.score,
+    category: row.category,
+    factors,
+    createdAt: row.createdAt ?? row.calculated_at,
+  };
+}
+
 export interface LeadScoreHistoryEntry {
   id: string;
   leadId: string;
@@ -126,16 +180,53 @@ export interface SmartFollowup {
   id?: string;
   leadId?: string;
   leadName?: string;
-  nextFollowUpDate: string;
   suggestedChannel?: string;
   suggestedTiming?: string;
+  timingReasoning?: string;
+  channelReasoning?: string;
   messageContent?: string;
-  suggestedActions: string[];
-  tone?: string;
-  templateId?: string;
   confidence?: number;
   status?: 'pending' | 'sent' | 'dismissed';
   createdAt?: string;
+}
+
+/** Raw row shape: camelCase from the POST /smart-followup/:leadId response, snake_case from the GET /smart-followups list (a direct DB row read). */
+interface RawSmartFollowupRow {
+  id?: string;
+  leadId?: string;
+  lead_id?: string;
+  leadName?: string;
+  suggestedChannel?: string;
+  suggested_channel?: string;
+  suggestedTiming?: string;
+  suggested_timing?: string;
+  timingReasoning?: string;
+  timing_reasoning?: string;
+  channelReasoning?: string;
+  channel_reasoning?: string;
+  messageContent?: string;
+  message_content?: string;
+  confidence?: number;
+  confidence_score?: number;
+  status?: 'pending' | 'sent' | 'dismissed';
+  createdAt?: string;
+  created_at?: string;
+}
+
+function normalizeSmartFollowup(row: RawSmartFollowupRow): SmartFollowup {
+  return {
+    id: row.id,
+    leadId: row.leadId ?? row.lead_id,
+    leadName: row.leadName,
+    suggestedChannel: row.suggestedChannel ?? row.suggested_channel,
+    suggestedTiming: row.suggestedTiming ?? row.suggested_timing,
+    timingReasoning: row.timingReasoning ?? row.timing_reasoning,
+    channelReasoning: row.channelReasoning ?? row.channel_reasoning,
+    messageContent: row.messageContent ?? row.message_content,
+    confidence: row.confidence ?? row.confidence_score,
+    status: row.status ?? 'pending',
+    createdAt: row.createdAt ?? row.created_at,
+  };
 }
 
 export interface NlQueryResult {
@@ -859,14 +950,27 @@ export const aiApi = {
     dismissRecommendation: (id: string) =>
       client.post<ApiResponse<{ id: string }>>(`/ai/intelligence/recommendations/${id}/dismiss`),
 
-    getLeadScore: (id: string) =>
-      client.get<ApiResponse<LeadScore>>(API_ENDPOINTS.ai.intelligence.leadScore(id)),
+    getLeadScore: async (id: string) => {
+      const res = await client.get<ApiResponse<RawLeadScoreRow | null>>(API_ENDPOINTS.ai.intelligence.leadScore(id));
+      return { ...res, data: res.data ? normalizeLeadScore(res.data) : null } as ApiResponse<LeadScore | null>;
+    },
 
-    calculateLeadScore: (id: string) =>
-      client.post<ApiResponse<LeadScore>>(API_ENDPOINTS.ai.intelligence.leadScore(id)),
+    calculateLeadScore: async (id: string) => {
+      const res = await client.post<ApiResponse<RawLeadScoreRow>>(API_ENDPOINTS.ai.intelligence.leadScore(id));
+      return { ...res, data: normalizeLeadScore(res.data) };
+    },
 
-    getLeadScoreHistory: (id: string) =>
-      client.get<ApiResponse<LeadScoreHistoryEntry[]>>(`/ai/intelligence/lead-score/${id}/history`),
+    getLeadScoreHistory: async (id: string) => {
+      const res = await client.get<ApiResponse<RawLeadScoreRow[]>>(`/ai/intelligence/lead-score/${id}/history`);
+      const data = (res.data ?? []).map((row) => ({
+        id: row.id ?? '',
+        leadId: row.leadId ?? row.lead_id ?? id,
+        score: row.score,
+        category: row.category,
+        createdAt: row.createdAt ?? row.calculated_at ?? '',
+      }));
+      return { ...res, data };
+    },
 
     bulkLeadScore: (data: { leadIds: string[] }) =>
       client.post<ApiResponse<BulkLeadScoreResult[]>>('/ai/intelligence/lead-scores/bulk', data),
@@ -903,14 +1007,20 @@ export const aiApi = {
     rejectDocumentScan: (id: string, data?: { reason?: string }) =>
       client.post<ApiResponse<DocumentScan>>(`/ai/intelligence/document-scans/${id}/reject`, data),
 
-    getSmartFollowup: (id: string) =>
-      client.get<ApiResponse<SmartFollowup>>(API_ENDPOINTS.ai.intelligence.smartFollowup(id)),
+    getSmartFollowup: async (id: string) => {
+      const res = await client.get<ApiResponse<RawSmartFollowupRow>>(API_ENDPOINTS.ai.intelligence.smartFollowup(id));
+      return { ...res, data: normalizeSmartFollowup(res.data) };
+    },
 
-    generateSmartFollowup: (leadId: string) =>
-      client.post<ApiResponse<SmartFollowup>>(`/ai/intelligence/smart-followup/${leadId}`),
+    generateSmartFollowup: async (leadId: string) => {
+      const res = await client.post<ApiResponse<RawSmartFollowupRow>>(`/ai/intelligence/smart-followup/${leadId}`);
+      return { ...res, data: normalizeSmartFollowup({ ...res.data, leadId }) };
+    },
 
-    listSmartFollowups: () =>
-      client.get<ApiResponse<SmartFollowup[]>>('/ai/intelligence/smart-followups'),
+    listSmartFollowups: async () => {
+      const res = await client.get<ApiResponse<RawSmartFollowupRow[]>>('/ai/intelligence/smart-followups');
+      return { ...res, data: (res.data ?? []).map(normalizeSmartFollowup) };
+    },
 
     sendSmartFollowup: (id: string) =>
       client.post<ApiResponse<{ id: string }>>(`/ai/intelligence/smart-followups/${id}/send`),

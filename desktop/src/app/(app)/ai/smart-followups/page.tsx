@@ -98,7 +98,8 @@ function SmartFollowupsContent() {
                 onChange={(id) => setSelectedLeadId(id)}
                 fetcher={async (query, page) => {
                   const res = await leadsApi.list({ search: query, page, limit: 20 });
-                  return { items: res.data.data, total: res.data.pagination.total };
+                  const body = res as unknown as { data: Lead[]; pagination?: { total: number } };
+                  return { items: body.data ?? [], total: body.pagination?.total ?? body.data?.length ?? 0 };
                 }}
                 getOptionId={(l) => l.id}
                 getOptionLabel={(l) => l.title}
@@ -145,11 +146,11 @@ function SmartFollowupsContent() {
                             <p className="font-semibold text-ds-foreground">{entry.leadName ?? `Lead ${entry.leadId}`}</p>
                             <p className="text-xs text-ds-foreground-muted">ID: {entry.leadId}</p>
                           </div>
-                          {entry.nextFollowUpDate && (
+                          {entry.suggestedTiming && (
                             <div className="flex items-center gap-ds-2">
                               <Calendar className="h-4 w-4 text-ds-foreground-muted" />
                               <span className="text-sm font-medium text-ds-foreground">
-                                {new Date(entry.nextFollowUpDate).toLocaleDateString('en-IN')}
+                                {new Date(entry.suggestedTiming).toLocaleDateString('en-IN')}
                               </span>
                             </div>
                           )}
@@ -158,7 +159,9 @@ function SmartFollowupsContent() {
                         {entry.suggestedChannel && (
                           <Tag tone="info">Channel: {entry.suggestedChannel}</Tag>
                         )}
-                        {entry.tone && <Tag tone="neutral">Tone: {entry.tone}</Tag>}
+                        {typeof entry.confidence === 'number' && (
+                          <Tag tone="neutral">Confidence: {Math.round(entry.confidence * 100)}%</Tag>
+                        )}
 
                         {entry.messageContent && (
                           <p className="text-sm text-ds-foreground-muted rounded-ds-lg border border-ds-border p-ds-3">
@@ -166,19 +169,19 @@ function SmartFollowupsContent() {
                           </p>
                         )}
 
-                        {entry.suggestedActions.length > 0 && (
+                        {(entry.timingReasoning || entry.channelReasoning) && (
                           <div className="flex flex-col gap-ds-2">
                             <p className="text-xs text-ds-foreground-muted font-medium uppercase tracking-wider">
-                              Suggested Actions
+                              Why this suggestion
                             </p>
                             <ul className="flex flex-col gap-ds-1">
-                              {entry.suggestedActions.map((action, actionIdx) => (
+                              {[entry.channelReasoning, entry.timingReasoning].filter(Boolean).map((reason, idx) => (
                                 <li
-                                  key={actionIdx}
+                                  key={idx}
                                   className="flex items-start gap-ds-2 text-sm rounded-ds-lg border border-ds-border p-ds-2"
                                 >
                                   <Clock className="h-4 w-4 text-ds-foreground-muted shrink-0 mt-0.5" />
-                                  {action}
+                                  {reason}
                                 </li>
                               ))}
                             </ul>
