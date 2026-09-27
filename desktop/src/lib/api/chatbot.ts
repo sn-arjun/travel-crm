@@ -89,13 +89,102 @@ export interface CreateLeadFromConversationRequest {
   priority?: 'hot' | 'warm' | 'cold';
 }
 
+/**
+ * The backend (backend/src/routes/chatbot.ts) returns raw D1 rows: snake_case
+ * columns, `messages` as a JSON string with roles assistant/user/agent, and
+ * started/ended timestamps named created_at/closed_at rather than the
+ * camelCase contract this module's types declare. Normalize at the boundary
+ * so the rest of the app can rely on the typed shape.
+ */
+function normalizeMessage(raw: any): ChatbotMessage {
+  const role = raw.role ?? raw.sender;
+  return {
+    id: raw.id ?? `${raw.timestamp}-${Math.random().toString(36).slice(2)}`,
+    conversationId: raw.conversationId ?? raw.conversation_id ?? '',
+    sender: role === 'assistant' ? 'bot' : role === 'agent' ? 'bot' : 'user',
+    text: raw.text ?? raw.content ?? '',
+    attachments: raw.attachments,
+    timestamp: raw.timestamp,
+  };
+}
+
+function normalizeConversation(raw: any): ChatbotConversation {
+  let messages: ChatbotMessage[] = [];
+  if (Array.isArray(raw.messages)) {
+    messages = raw.messages.map(normalizeMessage);
+  } else if (typeof raw.messages === 'string' && raw.messages) {
+    try {
+      messages = JSON.parse(raw.messages).map(normalizeMessage);
+    } catch {
+      messages = [];
+    }
+  }
+
+  return {
+    id: raw.id,
+    visitorId: raw.visitorId ?? raw.visitor_id,
+    visitorName: raw.visitorName ?? raw.visitor_name ?? undefined,
+    visitorEmail: raw.visitorEmail ?? raw.visitor_email ?? undefined,
+    channel: raw.channel,
+    status: raw.status,
+    messages,
+    startedAt: raw.startedAt ?? raw.created_at,
+    endedAt: raw.endedAt ?? raw.closed_at ?? undefined,
+    handedOffTo: raw.handedOffTo ?? raw.assigned_user_id ?? undefined,
+    notes: raw.notes,
+  };
+}
+
+function normalizeConfig(rows: any[]): ChatbotConfig {
+  const web = rows.find((r) => r.channel === 'web');
+  const source = web ?? rows[0];
+  return {
+    id: source?.id ?? '',
+    enabled: !!(source?.enabled ?? 0),
+    name: source?.name ?? 'Chatbot',
+    description: source?.description,
+    avatar: source?.branding_logo ?? undefined,
+    welcomeMessage: source?.greeting ?? source?.welcomeMessage ?? '',
+    channels: rows.map((r) => ({
+      platform: r.channel,
+      enabled: !!r.enabled,
+      config: {
+        position: r.widget_position,
+        primaryColor: r.branding_color,
+        autoReply: r.auto_reply,
+        greetingMessage: r.greeting,
+      },
+    })),
+  };
+}
+
 export const chatbotApi = {
   config: {
-    get: () =>
-      client.get<ApiResponse<ChatbotConfig>>(API_ENDPOINTS.chatbot.config),
+    get: async (): Promise<ApiResponse<ChatbotConfig>> => {
+      const res = await client.get<ApiResponse<any[]>>(API_ENDPOINTS.chatbot.config);
+      return { ...res, data: normalizeConfig(Array.isArray(res.data) ? res.data : []) };
+    },
 
-    update: (data: UpdateChatbotConfigRequest) =>
-      client.put<ApiResponse<ChatbotConfig>>(API_ENDPOINTS.chatbot.config, data),
+    update: (data: UpdateChatbotConfigRequest) => {
+      const channels = data.channels ?? [];
+      const web = channels.find((ch) => ch.platform === 'web');
+      const whatsapp = channels.find((ch) => ch.platform === 'whatsapp');
+      const requests: Promise<unknown>[] = [];
+      if (web) {
+        requests.push(client.put(API_ENDPOINTS.chatbot.configChannel('web'), {
+          enabled: data.enabled ?? web.enabled,
+          greeting: data.welcomeMessage,
+          brandingColor: web.config?.primaryColor,
+        }));
+      }
+      if (whatsapp) {
+        requests.push(client.put(API_ENDPOINTS.chatbot.configChannel('whatsapp'), {
+          enabled: whatsapp.enabled,
+          greeting: whatsapp.config?.greetingMessage,
+        }));
+      }
+      return Promise.all(requests).then(() => chatbotApi.config.get());
+    },
   },
 
   configChannel: {
@@ -107,7 +196,7 @@ export const chatbotApi = {
   },
 
   conversations: {
-    list: (params?: {
+    list: async (params?: {
       page?: number;
       limit?: number;
       channel?: string;
@@ -116,32 +205,78 @@ export const chatbotApi = {
       toDate?: string;
       sortBy?: string;
       sortOrder?: 'asc' | 'desc';
-    }) =>
-      client.get<ApiResponse<PaginatedResponse<ChatbotConversation>>>(API_ENDPOINTS.chatbot.conversations, { params }),
+    }): Promise<ApiResponse<PaginatedResponse<ChatbotConversation>>> => {
+      const res = await client.get<any>(API_ENDPOINTS.chatbot.conversations, { params });
+      const raw = res.data;
+      const items: any[] = Array.isArray(raw) ? raw : (raw?.data ?? []);
+      const pagination = raw?.pagination ?? res.pagination ?? { page: 1, limit: params?.limit ?? 20, total: items.length, totalPages: 1 };
+      return {
+        ...res,
+        data: {
+          data: items.map(normalizeConversation),
+          pagination: {
+            page: pagination.page ?? Math.floor((pagination.offset ?? 0) / (pagination.limit || 1)) + 1,
+            limit: pagination.limit,
+            total: pagination.total,
+            totalPages: pagination.totalPages ?? Math.ceil((pagination.total ?? 0) / (pagination.limit || 1)),
+          },
+        },
+      };
+    },
 
-    getById: (id: string) =>
-      client.get<ApiResponse<ChatbotConversation>>(API_ENDPOINTS.chatbot.conversationById(id)),
+    getById: async (id: string): Promise<ApiResponse<ChatbotConversation>> => {
+      const res = await client.get<ApiResponse<any>>(API_ENDPOINTS.chatbot.conversationById(id));
+      return { ...res, data: normalizeConversation(res.data) };
+    },
 
-    close: (id: string, data?: { notes?: string }) =>
-      client.post<ApiResponse<ChatbotConversation>>(`${API_ENDPOINTS.chatbot.conversationById(id)}/close`, data),
+    close: async (id: string, data?: { notes?: string }): Promise<ApiResponse<ChatbotConversation>> => {
+      await client.post(`${API_ENDPOINTS.chatbot.conversationById(id)}/close`, data);
+      return chatbotApi.conversations.getById(id);
+    },
 
-    createLead: (id: string, data?: CreateLeadFromConversationRequest) =>
-      client.post<ApiResponse<{ id: string }>>(`${API_ENDPOINTS.chatbot.conversationById(id)}/create-lead`, data),
+    createLead: async (id: string, data?: CreateLeadFromConversationRequest): Promise<ApiResponse<{ id: string }>> => {
+      const res = await client.post<ApiResponse<{ leadId: string }>>(`${API_ENDPOINTS.chatbot.conversationById(id)}/create-lead`, data);
+      return { ...res, data: { id: res.data.leadId } };
+    },
   },
 
   reply: {
     send: (conversationId: string, data: SendReplyRequest) =>
-      client.post<ApiResponse<ChatbotMessage>>(API_ENDPOINTS.chatbot.reply(conversationId), data),
+      client.post<ApiResponse<{ replied: boolean }>>(API_ENDPOINTS.chatbot.reply(conversationId), data),
   },
 
   handoff: {
     send: (conversationId: string, data: HandoffRequest) =>
-      client.post<ApiResponse<ChatbotConversation>>(API_ENDPOINTS.chatbot.handoff(conversationId), data),
+      client.post<ApiResponse<{ handedOff: boolean; assignedTo: string }>>(API_ENDPOINTS.chatbot.handoff(conversationId), data),
   },
 
   analytics: {
-    get: (params?: { fromDate?: string; toDate?: string; channel?: string }) =>
-      client.get<ApiResponse<ChatbotAnalytics>>(API_ENDPOINTS.chatbot.analytics, { params }),
+    get: async (params?: { fromDate?: string; toDate?: string; channel?: string }): Promise<ApiResponse<ChatbotAnalytics>> => {
+      const res = await client.get<ApiResponse<{
+        totalConversations: number;
+        byChannel: Array<{ channel: string; count: number }>;
+        byStatus: Array<{ status: string; count: number }>;
+        handoffCount: number;
+        qualifiedCount: number;
+        avgMessagesPerConversation: number;
+        totalAiCost: number;
+        handoffRate: string;
+      }>>(API_ENDPOINTS.chatbot.analytics, { params });
+      const raw = res.data;
+      const resolvedConversations = raw.byStatus?.find((s) => s.status === 'closed' || s.status === 'qualified')?.count ?? raw.qualifiedCount ?? 0;
+      const activeConversations = raw.byStatus?.find((s) => s.status === 'active')?.count ?? 0;
+      return {
+        ...res,
+        data: {
+          totalConversations: raw.totalConversations ?? 0,
+          activeConversations,
+          resolvedConversations,
+          avgResolutionTime: 0,
+          customerSatisfaction: 0,
+          handoffRate: parseFloat(raw.handoffRate ?? '0') || 0,
+        },
+      };
+    },
   },
 
   widgetUrl: () => `${API_BASE_URL}/chatbot/widget.js`,
