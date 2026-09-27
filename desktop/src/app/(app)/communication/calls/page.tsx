@@ -22,8 +22,8 @@ function formatDuration(seconds: number): string {
 
 function statusTone(status: Call['status']): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
   if (status === 'completed') return 'success';
-  if (status === 'no_answer' || status === 'failed') return 'danger';
-  if (status === 'in_progress' || status === 'ringing') return 'info';
+  if (status === 'no-answer' || status === 'failed' || status === 'busy' || status === 'canceled') return 'danger';
+  if (status === 'in-progress' || status === 'ringing') return 'info';
   return 'neutral';
 }
 
@@ -31,11 +31,11 @@ function exportCallsCsv(rows: Call[]) {
   const header = ['Direction', 'From', 'To', 'Status', 'Duration (s)', 'Start time'];
   const lines = rows.map((c) => [
     c.direction,
-    c.from,
-    c.to,
+    c.fromNumber,
+    c.toNumber,
     c.status,
-    String(c.duration ?? 0),
-    c.startTime,
+    String(c.durationSeconds ?? 0),
+    c.createdAt,
   ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','));
   const csv = [header.join(','), ...lines].join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -53,6 +53,7 @@ export default function CallLogPage() {
   const [directionFilter, setDirectionFilter] = React.useState<string | null>(null);
   const [statusFilter, setStatusFilter] = React.useState<string | null>(null);
   const [filterMenuOpen, setFilterMenuOpen] = React.useState(false);
+  const [refetchKey, setRefetchKey] = React.useState(0);
 
   if (gateLoading) {
     return <Skeleton className="h-9 w-32" />;
@@ -74,11 +75,12 @@ export default function CallLogPage() {
 
   const filters = [
     ...(directionFilter ? [{ id: 'direction', label: `Direction: ${directionFilter}`, value: directionFilter }] : []),
-    ...(statusFilter ? [{ id: 'status', label: `Status: ${statusFilter.replace('_', ' ')}`, value: statusFilter }] : []),
+    ...(statusFilter ? [{ id: 'status', label: `Status: ${statusFilter.replace('-', ' ')}`, value: statusFilter }] : []),
   ];
 
   return (
     <ListPage<Call>
+      key={refetchKey}
       title="Call Log"
       description="Inbound and outbound calls across your team."
       getRowId={(c) => c.id}
@@ -88,13 +90,9 @@ export default function CallLogPage() {
           limit,
           direction: directionFilter === 'incoming' ? 'inbound' : directionFilter === 'outgoing' ? 'outbound' : undefined,
           status: statusFilter ?? undefined,
-          sortBy: 'startTime',
+          search: search || undefined,
+          sortBy: 'createdAt',
           sortOrder: 'desc',
-        }).then((r) => {
-          if (!search) return r;
-          const q = search.toLowerCase();
-          const filtered = r.data.data.filter((c) => c.from.toLowerCase().includes(q) || c.to.toLowerCase().includes(q));
-          return { ...r, data: { ...r.data, data: filtered } };
         })
       }
       filters={filters}
@@ -124,24 +122,24 @@ export default function CallLogPage() {
         },
         {
           key: 'number', header: 'Number', sortable: true,
-          cell: (c) => <span className="font-mono text-sm">{c.direction === 'inbound' ? c.from : c.to}</span>,
+          cell: (c) => <span className="font-mono text-sm">{c.direction === 'inbound' ? c.fromNumber : c.toNumber}</span>,
         },
         {
-          key: 'startTime', header: 'Date & time', sortable: true,
-          cell: (c) => <span className="text-sm text-ds-foreground-muted">{new Date(c.startTime).toLocaleString('en-IN')}</span>,
+          key: 'createdAt', header: 'Date & time', sortable: true,
+          cell: (c) => <span className="text-sm text-ds-foreground-muted">{new Date(c.createdAt).toLocaleString('en-IN')}</span>,
         },
         {
           key: 'status', header: 'Status',
           cell: (c) => (
             <Tag tone={statusTone(c.status)}>
-              {c.status === 'no_answer' && <PhoneOff className="size-3" aria-hidden="true" />}
-              {c.status.replace('_', ' ')}
+              {c.status === 'no-answer' && <PhoneOff className="size-3" aria-hidden="true" />}
+              {c.status.replace('-', ' ')}
             </Tag>
           ),
         },
         {
           key: 'duration', header: 'Duration', align: 'right', sortable: true,
-          cell: (c) => <span className="text-sm">{formatDuration(c.duration ?? 0)}</span>,
+          cell: (c) => <span className="text-sm">{formatDuration(c.durationSeconds ?? 0)}</span>,
         },
         {
           key: 'recording', header: 'Recording',
@@ -171,7 +169,7 @@ export default function CallLogPage() {
               <DropdownMenuRadioGroup value={statusFilter ?? ''} onValueChange={(v) => setStatusFilter(v || null)}>
                 <DropdownMenuRadioItem value="">All</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="completed">Completed</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="no_answer">Missed</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="no-answer">Missed</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="failed">Failed</DropdownMenuRadioItem>
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
@@ -186,12 +184,14 @@ export default function CallLogPage() {
           <Button variant="ghost" size="icon-sm" aria-label="View"
             onClick={() => router.push(`/communication/calls/${c.id}`)}><Eye /></Button>
           <Button variant="ghost" size="icon-sm" aria-label="Call back"
-            onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(c.direction === 'inbound' ? c.from : c.to)}`)}><Phone /></Button>
+            onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(c.direction === 'inbound' ? c.fromNumber : c.toNumber)}`)}><Phone /></Button>
           <Button variant="ghost" size="icon-sm" aria-label="Delete"
             onClick={async () => {
               const result = await voipApi.calls.remove(c.id).catch(() => null);
-              if (result !== null) toast.success('Call log removed');
-              else toast.error('Failed to remove call log');
+              if (result !== null) {
+                toast.success('Call log removed');
+                setRefetchKey((k) => k + 1);
+              } else toast.error('Failed to remove call log');
             }}><Trash2 /></Button>
         </>
       )}
@@ -201,6 +201,7 @@ export default function CallLogPage() {
         onSelect: async (rows) => {
           await Promise.all(rows.map((r) => voipApi.calls.remove(r.id)));
           toast.success(`${rows.length} call${rows.length > 1 ? 's' : ''} removed`);
+          setRefetchKey((k) => k + 1);
         },
       }]}
       onExport={async () => {
@@ -212,8 +213,8 @@ export default function CallLogPage() {
         const limit = 200;
         for (;;) {
           const r = await voipApi.calls.list({ page, limit, direction, status: statusFilter ?? undefined });
-          all.push(...r.data.data);
-          if (all.length >= r.data.pagination.total || r.data.data.length === 0) break;
+          all.push(...r.data);
+          if (all.length >= r.pagination.total || r.data.length === 0) break;
           page += 1;
         }
         exportCallsCsv(all);

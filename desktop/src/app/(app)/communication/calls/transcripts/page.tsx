@@ -4,32 +4,13 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, FileText, PhoneOff } from 'lucide-react';
 import { ListPage } from '@/components/domain';
-import { Button, Tag, Skeleton } from '@/components/ui';
+import { Button, Tag, Skeleton, EmptyState } from '@/components/ui';
 import { useFeatureGate } from '@/hooks/use-feature-gate';
-import { voipApi, type Transcript } from '@/lib/api/voip';
-
-function sentimentTone(sentiment?: Transcript['sentiment']): 'success' | 'danger' | 'neutral' {
-  if (sentiment === 'positive') return 'success';
-  if (sentiment === 'negative') return 'danger';
-  return 'neutral';
-}
-
-function getSnippet(text: string, query: string, contextLength = 150): string {
-  if (!query.trim()) return text.slice(0, contextLength * 2);
-  const idx = text.toLowerCase().indexOf(query.toLowerCase());
-  if (idx === -1) return text.slice(0, contextLength * 2);
-  const start = Math.max(0, idx - contextLength);
-  const end = Math.min(text.length, idx + query.length + contextLength);
-  let snippet = text.slice(start, end);
-  if (start > 0) snippet = '...' + snippet;
-  if (end < text.length) snippet += '...';
-  return snippet;
-}
+import { voipApi, type TranscriptSearchResult } from '@/lib/api/voip';
 
 export default function TranscriptSearchPage() {
   const router = useRouter();
   const { enabled, reason, upgradeHref, loading: gateLoading } = useFeatureGate('voip_calling');
-  const [sentimentFilter, setSentimentFilter] = React.useState<string | null>(null);
 
   if (gateLoading) return <Skeleton className="h-9 w-32" />;
 
@@ -47,29 +28,18 @@ export default function TranscriptSearchPage() {
     );
   }
 
-  const filters = sentimentFilter
-    ? [{ id: 'sentiment', label: `Sentiment: ${sentimentFilter}`, value: sentimentFilter }]
-    : [];
-
   return (
-    <ListPage<Transcript>
+    <ListPage<TranscriptSearchResult>
       title="Transcript search"
       description="Search across all call transcripts."
       getRowId={(t) => t.id}
-      fetcher={({ page, limit, search }) =>
-        voipApi.transcripts.list({ page, limit, sentiment: sentimentFilter ?? undefined }).then((r) => {
-          if (!search) return r;
-          const q = search.toLowerCase();
-          const filtered = r.data.data.filter((t) => t.text.toLowerCase().includes(q));
-          return { ...r, data: { ...r.data, data: filtered } };
-        })
-      }
-      filters={filters}
-      onRemoveFilter={() => setSentimentFilter(null)}
-      onClearFilters={() => setSentimentFilter(null)}
-      onOpenFilters={() => {
-        setSentimentFilter((prev) =>
-          prev === 'positive' ? 'neutral' : prev === 'neutral' ? 'negative' : prev === 'negative' ? null : 'positive');
+      fetcher={({ page, limit, search }) => {
+        // Backend is FTS-only — it 400s on an empty query, so don't call it
+        // until the user has typed something.
+        if (!search.trim()) {
+          return Promise.resolve({ data: { data: [], pagination: { total: 0 } } });
+        }
+        return voipApi.transcripts.search({ q: search, page, limit });
       }}
       searchPlaceholder="Search transcripts…"
       columns={[
@@ -78,17 +48,17 @@ export default function TranscriptSearchPage() {
           cell: (t) => (
             <div className="flex items-center gap-ds-2">
               <FileText className="size-3.5 shrink-0 text-ds-foreground-muted" aria-hidden="true" />
-              <span className="font-mono text-sm">{t.callId}</span>
+              <span className="text-sm">{t.contactName || t.fromNumber || t.toNumber || t.callId}</span>
             </div>
           ),
         },
         {
           key: 'snippet', header: 'Snippet',
-          cell: (t) => <span className="line-clamp-2 text-sm text-ds-foreground-muted">{getSnippet(t.text, '')}</span>,
+          cell: (t) => <span className="line-clamp-2 text-sm text-ds-foreground-muted">{t.snippet.replace(/<\/?mark>/g, '')}</span>,
         },
         {
-          key: 'sentiment', header: 'Sentiment',
-          cell: (t) => (t.sentiment ? <Tag tone={sentimentTone(t.sentiment)}>{t.sentiment}</Tag> : <span className="text-xs text-ds-foreground-subtle">—</span>),
+          key: 'direction', header: 'Direction',
+          cell: (t) => (t.direction ? <Tag tone="neutral">{t.direction}</Tag> : <span className="text-xs text-ds-foreground-subtle">—</span>),
         },
         {
           key: 'language', header: 'Language',
@@ -101,7 +71,7 @@ export default function TranscriptSearchPage() {
       )}
       onRowClick={(t) => router.push(`/communication/calls/${t.callId}`)}
       emptyTitle="No transcripts found"
-      emptyDescription="Transcripts appear here once calls are recorded and transcribed."
+      emptyDescription="Type a search term to find matching call transcripts."
       emptyIcon={<FileText className="size-8" />}
     />
   );

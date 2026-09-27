@@ -386,24 +386,25 @@
       "repairAttempts": 0
     },
     "verify:calls": {
-      "status": "context-limit",
-      "timestamp": "2026-09-26T09:34:46.367Z",
-      "error": "stdout(tail): You've hit your session limit · resets 6:20pm (Asia/Kolkata)"
+      "status": "ok",
+      "timestamp": "2026-09-27T11:33:40.432Z",
+      "error": null,
+      "repairAttempts": 0
     },
     "verify:campaigns": {
       "status": "context-limit",
-      "timestamp": "2026-09-26T09:34:51.493Z",
-      "error": "stdout(tail): You've hit your session limit · resets 6:20pm (Asia/Kolkata)"
+      "timestamp": "2026-09-27T08:26:06.032Z",
+      "error": "stdout(tail): Failed to refresh OAuth token: another Claude Code process is refreshing it or exited mid-refresh. This is usually transient; retry in a minute, and if it persists close other Claude Code processes or sign in again"
     },
     "verify:chatbot": {
       "status": "context-limit",
-      "timestamp": "2026-09-26T09:34:56.648Z",
-      "error": "stdout(tail): You've hit your session limit · resets 6:20pm (Asia/Kolkata)"
+      "timestamp": "2026-09-27T08:26:15.871Z",
+      "error": "stdout(tail): Failed to refresh OAuth token: another Claude Code process is refreshing it or exited mid-refresh. This is usually transient; retry in a minute, and if it persists close other Claude Code processes or sign in again"
     }
   },
   "lastCompleted": {
-    "id": "verify:calendar",
+    "id": "verify:calls",
     "status": "ok",
-    "timestamp": "2026-09-26T15:12:06.444Z"
+    "timestamp": "2026-09-27T11:33:40.432Z"
   }
 }

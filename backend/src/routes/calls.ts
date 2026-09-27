@@ -376,7 +376,9 @@ callRoutes.post('/outbound', zValidator('json', outboundCallSchema), async (c) =
     await db.prepare("UPDATE call_logs SET status = 'failed', notes = ? WHERE id = ?")
       .bind(e.message || 'Call initiation failed', callLogId).run();
 
-    return error(c, e.message || 'Failed to initiate call', 500);
+    // The call_logs row still exists (status 'failed') — surface its id so
+    // the caller can navigate to/reference the failed call.
+    return error(c, e.message || 'Failed to initiate call', 500, { callLogId });
   }
 });
 

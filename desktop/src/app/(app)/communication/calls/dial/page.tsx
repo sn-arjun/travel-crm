@@ -41,6 +41,7 @@ function DialPadPage() {
   const searchParams = useSearchParams();
   const { enabled, reason, upgradeHref, loading: gateLoading } = useFeatureGate('voip_calling');
   const [number, setNumber] = React.useState(searchParams.get('phone') || '');
+  const [countryCode, setCountryCode] = React.useState('+91');
   const [contactId, setContactId] = React.useState<string | null>(null);
   const [isCalling, setIsCalling] = React.useState(false);
 
@@ -53,7 +54,7 @@ function DialPadPage() {
     (data: CreateOutboundCallRequest) => voipApi.calls.createOutbound(data),
   );
 
-  const recentCalls: Call[] = recentCallsResponse?.data.data ?? [];
+  const recentCalls: Call[] = recentCallsResponse?.data ?? [];
 
   function handleKeyPress(key: string) {
     setNumber((prev) => prev + key);
@@ -64,12 +65,14 @@ function DialPadPage() {
   }
 
   async function handleDial() {
-    if (!number.trim()) {
+    const digits = number.trim().replace(/[^0-9]/g, '');
+    if (!digits) {
       toast.error('Please enter a phone number');
       return;
     }
+    const toNumber = number.trim().startsWith('+') ? number.trim() : `${countryCode}${digits}`;
     setIsCalling(true);
-    const result = await makeCall({ to: number.trim(), contactId: contactId ?? undefined });
+    const result = await makeCall({ toNumber, contactId: contactId ?? undefined });
     if (result) {
       toast.success(`Calling ${number}...`);
     } else {
@@ -117,7 +120,7 @@ function DialPadPage() {
               }}
               fetcher={async (q, page) => {
                 const r = await contactsApi.list({ search: q, page, limit: 20 });
-                return { items: r.data.data.filter((c) => c.phone), total: r.data.pagination.total };
+                return { items: r.data.filter((c) => c.phone), total: r.pagination.total };
               }}
               getOptionId={(c) => c.id}
               getOptionLabel={(c) => c.name}
@@ -132,7 +135,7 @@ function DialPadPage() {
           <Card>
             <CardContent className="pt-ds-6 pb-ds-4">
               <div className="mb-ds-4">
-                <PhoneInput value={number} onChange={setNumber} placeholder="XXXXX XXXXX" />
+                <PhoneInput value={number} onChange={setNumber} countryCode={countryCode} onCountryCodeChange={setCountryCode} placeholder="XXXXX XXXXX" />
               </div>
 
               <div className="mx-auto grid max-w-[280px] grid-cols-3 gap-ds-3">
@@ -194,7 +197,7 @@ function DialPadPage() {
               <div className="flex flex-col gap-ds-1">
                 {recentCalls.map((call) => {
                   const isInbound = call.direction === 'inbound';
-                  const displayNumber = isInbound ? call.from : call.to;
+                  const displayNumber = isInbound ? call.fromNumber : call.toNumber;
                   return (
                     <div
                       key={call.id}
@@ -203,18 +206,18 @@ function DialPadPage() {
                     >
                       <div className={cn(
                         'flex size-9 shrink-0 items-center justify-center rounded-ds-full',
-                        call.status === 'no_answer' ? 'bg-ds-danger-subtle' : isInbound ? 'bg-ds-info-subtle' : 'bg-ds-success-subtle',
+                        call.status === 'no-answer' ? 'bg-ds-danger-subtle' : isInbound ? 'bg-ds-info-subtle' : 'bg-ds-success-subtle',
                       )}>
                         <Phone className={cn(
                           'size-4',
-                          call.status === 'no_answer' ? 'text-ds-danger-on-subtle' : isInbound ? 'text-ds-info-on-subtle' : 'text-ds-success-on-subtle',
+                          call.status === 'no-answer' ? 'text-ds-danger-on-subtle' : isInbound ? 'text-ds-info-on-subtle' : 'text-ds-success-on-subtle',
                         )} />
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-mono text-sm font-medium">{displayNumber}</p>
                         <p className="text-xs text-ds-foreground-muted">
-                          {new Date(call.startTime).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                          {call.duration > 0 && ` · ${formatDuration(call.duration)}`}
+                          {new Date(call.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                          {call.durationSeconds > 0 && ` · ${formatDuration(call.durationSeconds)}`}
                         </p>
                       </div>
                       <Button

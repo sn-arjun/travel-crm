@@ -76,31 +76,66 @@ export interface CallerInfo {
   lineType?: string;
 }
 
+export type CallStatus = 'initiated' | 'ringing' | 'in-progress' | 'completed' | 'busy' | 'no-answer' | 'canceled' | 'failed';
+export type CallOutcome = 'interested' | 'not_interested' | 'follow_up_needed' | 'wrong_number' | 'no_answer' | 'voicemail';
+
 export interface Call {
   id: string;
-  from: string;
-  to: string;
-  status: 'initiated' | 'ringing' | 'in_progress' | 'completed' | 'failed' | 'no_answer';
+  contactId?: string | null;
+  contactName?: string | null;
+  leadId?: string | null;
+  leadTitle?: string | null;
   direction: 'inbound' | 'outbound';
-  startTime: string;
-  endTime?: string;
-  duration: number;
-  recordingUrl?: string;
-  transcriptUrl?: string;
-  notes?: string;
-  contactId?: string;
-  leadId?: string;
+  fromNumber: string;
+  toNumber: string;
+  durationSeconds: number;
+  status: CallStatus;
+  outcome?: CallOutcome | null;
+  providerCallId?: string | null;
+  recordingUrl?: string | null;
+  recordingDuration?: number | null;
+  notes?: string | null;
+  routedTo?: string | null;
+  answeredBy?: string | null;
+  createdBy: string;
+  createdByName?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CallAnalytics {
-  totalCalls: number;
-  inboundCalls: number;
-  outboundCalls: number;
-  completedCalls: number;
-  missedCalls: number;
-  totalDuration: number;
-  avgDuration: number;
-  avgWaitTime?: number;
+  summary: {
+    totalCalls: number;
+    inboundCalls: number;
+    outboundCalls: number;
+    completedCalls: number;
+    missedCalls: number;
+    avgDurationSeconds: number;
+    totalDurationSeconds: number;
+    interestedCount: number;
+    followUpCount: number;
+    successRate: number;
+  };
+  dailyCalls: { date: string; total: number; inbound: number; outbound: number }[];
+  topAgents: { userId: string; name: string; totalCalls: number; completed: number; avgDuration: number }[];
+  outcomes: { outcome: string; count: number }[];
+  hourlyDistribution: { hour: number; count: number }[];
+}
+
+/**
+ * The calls/missed-calls endpoints return `{ success, data: T[], pagination }`
+ * — pagination is a sibling of data, not nested inside it like the generic
+ * `PaginatedResponse<T>` shape most other list endpoints use.
+ */
+export interface FlatPaginatedResponse<T> {
+  data: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasMore: boolean;
+  };
 }
 
 export interface MissedCall {
@@ -113,11 +148,32 @@ export interface MissedCall {
 
 export interface Transcript {
   id: string;
-  callId: string;
-  text: string;
+  callLogId: string;
+  fullTranscript: string;
+  speakerSegments?: { speaker: string; text: string; start: number; end: number; confidence: number }[];
   language?: string;
-  sentiment?: 'positive' | 'neutral' | 'negative';
-  keywords?: string[];
+  confidence?: number;
+  wordCount?: number;
+  durationSeconds?: number;
+  isEdited?: boolean;
+  editedByName?: string;
+  editedAt?: string;
+}
+
+export interface TranscriptSearchResult {
+  id: string;
+  callId: string;
+  snippet: string;
+  language?: string;
+  confidence?: number;
+  wordCount?: number;
+  durationSeconds?: number;
+  direction?: 'inbound' | 'outbound';
+  fromNumber?: string;
+  toNumber?: string;
+  callStatus?: string;
+  contactName?: string;
+  createdAt: string;
 }
 
 export interface UpdateVoipSettingsRequest {
@@ -134,21 +190,18 @@ export interface UpdateVoipSettingsRequest {
 }
 
 export interface CreateOutboundCallRequest {
-  to: string;
-  from?: string;
-  message?: string;
-  leadId?: string;
-  contactId?: string;
+  toNumber: string;
+  leadId?: string | null;
+  contactId?: string | null;
 }
 
 export interface UpdateCallRequest {
+  outcome?: CallOutcome;
   notes?: string;
-  contactId?: string;
-  leadId?: string;
 }
 
 export interface TransferCallRequest {
-  to: string;
+  targetNumber: string;
 }
 
 export const voipApi = {
@@ -196,30 +249,31 @@ export const voipApi = {
       limit?: number;
       direction?: 'inbound' | 'outbound';
       status?: string;
+      search?: string;
       fromDate?: string;
       toDate?: string;
       sortBy?: string;
       sortOrder?: 'asc' | 'desc';
     }) =>
-      client.get<ApiResponse<PaginatedResponse<Call>>>(API_ENDPOINTS.voip.calls, { params }),
+      client.get<FlatPaginatedResponse<Call>>(API_ENDPOINTS.voip.calls, { params }),
 
     getById: (id: string) =>
       client.get<ApiResponse<Call>>(API_ENDPOINTS.voip.callById(id)),
 
     createOutbound: (data: CreateOutboundCallRequest) =>
-      client.post<ApiResponse<Call>>(API_ENDPOINTS.voip.outbound, data),
+      client.post<ApiResponse<{ callLogId: string; providerCallId: string; status: string }>>(API_ENDPOINTS.voip.outbound, data),
 
     update: (id: string, data: UpdateCallRequest) =>
-      client.put<ApiResponse<Call>>(API_ENDPOINTS.voip.callById(id), data),
+      client.put<ApiResponse<{ message: string }>>(API_ENDPOINTS.voip.callById(id), data),
 
     remove: (id: string) =>
-      client.delete<ApiResponse<void>>(API_ENDPOINTS.voip.callById(id)),
+      client.delete<ApiResponse<{ message: string }>>(API_ENDPOINTS.voip.callById(id)),
 
     end: (id: string) =>
-      client.post<ApiResponse<Call>>(`${API_ENDPOINTS.voip.callById(id)}/end`),
+      client.post<ApiResponse<{ message: string }>>(`${API_ENDPOINTS.voip.callById(id)}/end`),
 
     transfer: (id: string, data: TransferCallRequest) =>
-      client.post<ApiResponse<Call>>(`${API_ENDPOINTS.voip.callById(id)}/transfer`, data),
+      client.post<ApiResponse<{ message: string }>>(`${API_ENDPOINTS.voip.callById(id)}/transfer`, data),
 
     getActions: (id: string) =>
       client.get<ApiResponse<{ id: string; label: string }[]>>(`${API_ENDPOINTS.voip.callById(id)}/actions`),
@@ -246,20 +300,14 @@ export const voipApi = {
   },
 
   transcripts: {
-    list: (params?: {
-      page?: number;
-      limit?: number;
-      callId?: string;
-      sentiment?: string;
-      sortBy?: string;
-      sortOrder?: 'asc' | 'desc';
-    }) =>
-      client.get<ApiResponse<PaginatedResponse<Transcript>>>(API_ENDPOINTS.voip.transcripts, { params }),
+    /** Full-text search across transcripts. Backend requires a non-empty `q`. */
+    search: (params: { q: string; page?: number; limit?: number }) =>
+      client.get<ApiResponse<PaginatedResponse<TranscriptSearchResult>>>(API_ENDPOINTS.voip.transcripts, { params }),
 
     getByCall: (callId: string) =>
       client.get<ApiResponse<Transcript>>(`${API_ENDPOINTS.voip.transcripts}/${callId}`),
 
-    update: (callLogId: string, data: { text?: string; sentiment?: Transcript['sentiment']; keywords?: string[] }) =>
-      client.put<ApiResponse<Transcript>>(`${API_ENDPOINTS.voip.transcripts}/${callLogId}`, data),
+    update: (callLogId: string, data: { fullTranscript: string }) =>
+      client.put<ApiResponse<{ message: string }>>(`${API_ENDPOINTS.voip.transcripts}/${callLogId}`, data),
   },
 };

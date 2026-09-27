@@ -66,13 +66,25 @@ const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 interface TopCaller { number: string; count: number; totalDuration: number }
 
+function periodToDateRange(period: string): { fromDate: string; toDate: string } {
+  const now = new Date();
+  const toDate = now.toISOString().slice(0, 10);
+  const from = new Date(now);
+  if (period === 'today') { /* from = now */ }
+  else if (period === 'this_week') from.setDate(now.getDate() - 7);
+  else if (period === 'this_month') from.setDate(now.getDate() - 30);
+  else if (period === 'last_month') from.setDate(now.getDate() - 60);
+  else if (period === 'last_90_days') from.setDate(now.getDate() - 90);
+  return { fromDate: from.toISOString().slice(0, 10), toDate };
+}
+
 export default function CallAnalyticsPage() {
   const router = useRouter();
   const { enabled, reason, upgradeHref, loading: gateLoading } = useFeatureGate('voip_calling');
   const [period, setPeriod] = React.useState('this_month');
 
   const { data: analyticsResponse, loading } = useApiQuery(
-    () => voipApi.analytics.get({ period }),
+    () => voipApi.analytics.get(periodToDateRange(period)),
     [period],
   );
   const { data: callsResponse } = useApiQuery(
@@ -81,18 +93,18 @@ export default function CallAnalyticsPage() {
   );
 
   const analytics: CallAnalytics | null = analyticsResponse?.data ?? null;
-  const calls: Call[] = callsResponse?.data.data ?? [];
+  const calls: Call[] = callsResponse?.data ?? [];
 
   const callsByHour = React.useMemo(() => {
     const counts = new Array(24).fill(0);
-    calls.forEach((c) => { counts[new Date(c.startTime).getHours()]++; });
+    calls.forEach((c) => { counts[new Date(c.createdAt).getHours()]++; });
     return counts;
   }, [calls]);
   const maxHourCount = Math.max(...callsByHour, 1);
 
   const callsByDay = React.useMemo(() => {
     const counts = new Array(7).fill(0);
-    calls.forEach((c) => { counts[(new Date(c.startTime).getDay() + 6) % 7]++; });
+    calls.forEach((c) => { counts[(new Date(c.createdAt).getDay() + 6) % 7]++; });
     return counts;
   }, [calls]);
   const maxDayCount = Math.max(...callsByDay, 1);
@@ -100,10 +112,10 @@ export default function CallAnalyticsPage() {
   const topCallers: TopCaller[] = React.useMemo(() => {
     const map = new Map<string, TopCaller>();
     calls.forEach((c) => {
-      const num = c.direction === 'inbound' ? c.from : c.to;
+      const num = c.direction === 'inbound' ? c.fromNumber : c.toNumber;
       const existing = map.get(num) || { number: num, count: 0, totalDuration: 0 };
       existing.count++;
-      existing.totalDuration += c.duration || 0;
+      existing.totalDuration += c.durationSeconds || 0;
       map.set(num, existing);
     });
     return Array.from(map.values()).sort((a, b) => b.count - a.count).slice(0, 10);
@@ -166,10 +178,10 @@ export default function CallAnalyticsPage() {
       ) : (
         <>
           <div className="grid grid-cols-2 gap-ds-4 lg:grid-cols-4">
-            <StatCard label="Total calls" value={analytics?.totalCalls ?? calls.length} icon={Phone} tone="primary" />
-            <StatCard label="Avg duration" value={formatDuration(analytics?.avgDuration ?? 0)} icon={Clock} tone="warning" />
-            <StatCard label="Missed calls" value={analytics?.missedCalls ?? calls.filter((c) => c.status === 'no_answer').length} icon={PhoneOff} tone="danger" />
-            <StatCard label="Completed" value={analytics?.completedCalls ?? calls.filter((c) => c.status === 'completed').length} icon={TrendingUp} tone="success" />
+            <StatCard label="Total calls" value={analytics?.summary.totalCalls ?? calls.length} icon={Phone} tone="primary" />
+            <StatCard label="Avg duration" value={formatDuration(analytics?.summary.avgDurationSeconds ?? 0)} icon={Clock} tone="warning" />
+            <StatCard label="Missed calls" value={analytics?.summary.missedCalls ?? calls.filter((c) => c.status === 'no-answer').length} icon={PhoneOff} tone="danger" />
+            <StatCard label="Completed" value={analytics?.summary.completedCalls ?? calls.filter((c) => c.status === 'completed').length} icon={TrendingUp} tone="success" />
           </div>
 
           <div className="grid grid-cols-2 gap-ds-4">
@@ -180,7 +192,7 @@ export default function CallAnalyticsPage() {
                 </div>
                 <div>
                   <p className="text-xs text-ds-foreground-muted">Inbound calls</p>
-                  <p className="text-xl font-bold">{analytics?.inboundCalls ?? calls.filter((c) => c.direction === 'inbound').length}</p>
+                  <p className="text-xl font-bold">{analytics?.summary.inboundCalls ?? calls.filter((c) => c.direction === 'inbound').length}</p>
                 </div>
               </CardContent>
             </Card>
@@ -191,7 +203,7 @@ export default function CallAnalyticsPage() {
                 </div>
                 <div>
                   <p className="text-xs text-ds-foreground-muted">Outbound calls</p>
-                  <p className="text-xl font-bold">{analytics?.outboundCalls ?? calls.filter((c) => c.direction === 'outbound').length}</p>
+                  <p className="text-xl font-bold">{analytics?.summary.outboundCalls ?? calls.filter((c) => c.direction === 'outbound').length}</p>
                 </div>
               </CardContent>
             </Card>

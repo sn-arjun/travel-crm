@@ -24,8 +24,8 @@ function formatDuration(seconds: number): string {
 
 function statusTone(status: Call['status']): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
   if (status === 'completed') return 'success';
-  if (status === 'no_answer' || status === 'failed') return 'danger';
-  if (status === 'in_progress' || status === 'ringing') return 'info';
+  if (status === 'no-answer' || status === 'failed' || status === 'busy' || status === 'canceled') return 'danger';
+  if (status === 'in-progress' || status === 'ringing') return 'info';
   return 'neutral';
 }
 
@@ -99,7 +99,7 @@ export default function CallDetailPage() {
     [callId],
   );
 
-  const { mutate: endCall, loading: ending } = useApiMutation<void, { data: Call }>(() => voipApi.calls.end(callId));
+  const { mutate: endCall, loading: ending } = useApiMutation<void, { data: { message: string } }>(() => voipApi.calls.end(callId));
   const { mutate: deleteCall } = useApiMutation<void, unknown>(() => voipApi.calls.remove(callId));
 
   const call = callResponse?.data ?? null;
@@ -155,7 +155,7 @@ export default function CallDetailPage() {
   async function handleTransfer() {
     if (!transferTo.trim()) return;
     setTransferring(true);
-    const result = await voipApi.calls.transfer(callId, { to: transferTo.trim() }).catch(() => null);
+    const result = await voipApi.calls.transfer(callId, { targetNumber: transferTo.trim() }).catch(() => null);
     setTransferring(false);
     if (result) {
       toast.success(`Transferred to ${transferTo}`);
@@ -180,11 +180,11 @@ export default function CallDetailPage() {
     <DetailPage<Call>
       entity={call}
       title={`${isInbound ? 'Inbound' : 'Outbound'} call`}
-      subtitle={new Date(call.startTime).toLocaleString('en-IN')}
-      status={<Tag tone={statusTone(call.status)}>{call.status.replace('_', ' ')}</Tag>}
+      subtitle={new Date(call.createdAt).toLocaleString('en-IN')}
+      status={<Tag tone={statusTone(call.status)}>{call.status.replace('-', ' ')}</Tag>}
       onBack={() => router.back()}
       primaryActions={
-        (call.status === 'in_progress' || call.status === 'ringing') ? (
+        (call.status === 'in-progress' || call.status === 'ringing') ? (
           <Button variant="outline" size="sm" onClick={handleEnd} disabled={ending} className="gap-ds-2">
             <PhoneOff aria-hidden="true" /> End call
           </Button>
@@ -195,7 +195,7 @@ export default function CallDetailPage() {
       ]}
       messaging={
         call.contactId
-          ? { recipientId: call.contactId, recipientName: isInbound ? call.from : call.to, phone: isInbound ? call.from : call.to }
+          ? { recipientId: call.contactId, recipientName: call.contactName ?? (isInbound ? call.fromNumber : call.toNumber), phone: isInbound ? call.fromNumber : call.toNumber }
           : undefined
       }
       overview={
@@ -208,37 +208,31 @@ export default function CallDetailPage() {
               </div>
               <div>
                 <p className="mb-ds-1 text-xs text-ds-foreground-muted">Status</p>
-                <Tag tone={statusTone(call.status)}>{call.status.replace('_', ' ')}</Tag>
+                <Tag tone={statusTone(call.status)}>{call.status.replace('-', ' ')}</Tag>
               </div>
               <div>
                 <p className="mb-ds-1 text-xs text-ds-foreground-muted">From</p>
-                <p className="font-mono text-sm font-medium">{call.from}</p>
+                <p className="font-mono text-sm font-medium">{call.fromNumber}</p>
               </div>
               <div>
                 <p className="mb-ds-1 text-xs text-ds-foreground-muted">To</p>
-                <p className="font-mono text-sm font-medium">{call.to}</p>
+                <p className="font-mono text-sm font-medium">{call.toNumber}</p>
               </div>
               <div>
                 <p className="mb-ds-1 text-xs text-ds-foreground-muted">Duration</p>
-                <p className="text-sm font-medium">{formatDuration(call.duration)}</p>
+                <p className="text-sm font-medium">{formatDuration(call.durationSeconds)}</p>
               </div>
               <div>
                 <p className="mb-ds-1 text-xs text-ds-foreground-muted">Start time</p>
-                <p className="text-sm">{new Date(call.startTime).toLocaleString('en-IN')}</p>
+                <p className="text-sm">{new Date(call.createdAt).toLocaleString('en-IN')}</p>
               </div>
-              {call.endTime && (
-                <div>
-                  <p className="mb-ds-1 text-xs text-ds-foreground-muted">End time</p>
-                  <p className="text-sm">{new Date(call.endTime).toLocaleString('en-IN')}</p>
-                </div>
-              )}
             </div>
             {call.notes && (
               <p className="mt-ds-4 border-t border-ds-border pt-ds-4 text-sm">{call.notes}</p>
             )}
           </SectionCard>
 
-          {(call.status === 'in_progress' || call.status === 'ringing') && (
+          {(call.status === 'in-progress' || call.status === 'ringing') && (
             <SectionCard title="Transfer call">
               <div className="flex items-end gap-ds-2">
                 <Input
@@ -264,22 +258,11 @@ export default function CallDetailPage() {
             {transcript ? (
               <div className="flex flex-col gap-ds-3">
                 <div className="flex items-center gap-ds-2">
-                  {transcript.sentiment && (
-                    <Tag tone={transcript.sentiment === 'positive' ? 'success' : transcript.sentiment === 'negative' ? 'danger' : 'neutral'}>
-                      {transcript.sentiment}
-                    </Tag>
-                  )}
                   {transcript.language && <Tag tone="neutral">{transcript.language}</Tag>}
+                  {transcript.isEdited && <Tag tone="info">Edited{transcript.editedByName ? ` by ${transcript.editedByName}` : ''}</Tag>}
                 </div>
-                {transcript.keywords && transcript.keywords.length > 0 && (
-                  <div className="flex flex-wrap gap-ds-1">
-                    {transcript.keywords.map((kw) => (
-                      <Tag key={kw} tone="info">{kw}</Tag>
-                    ))}
-                  </div>
-                )}
                 <div className="rounded-ds-md bg-ds-surface-sunken p-ds-4 text-sm leading-relaxed whitespace-pre-wrap">
-                  {transcript.text}
+                  {transcript.fullTranscript}
                 </div>
               </div>
             ) : (
@@ -301,7 +284,7 @@ export default function CallDetailPage() {
                     </div>
                     <div>
                       <p className="text-sm font-medium">Contact</p>
-                      <p className="text-xs text-ds-foreground-muted">{call.contactId}</p>
+                      <p className="text-xs text-ds-foreground-muted">{call.contactName ?? call.contactId}</p>
                     </div>
                   </div>
                   <Button variant="outline" size="sm" onClick={() => router.push(`/contacts/${call.contactId}`)}>View</Button>
@@ -319,7 +302,7 @@ export default function CallDetailPage() {
                     </div>
                     <div>
                       <p className="text-sm font-medium">Lead</p>
-                      <p className="text-xs text-ds-foreground-muted">{call.leadId}</p>
+                      <p className="text-xs text-ds-foreground-muted">{call.leadTitle ?? call.leadId}</p>
                     </div>
                   </div>
                   <Button variant="outline" size="sm" onClick={() => router.push(`/leads/${call.leadId}`)}>View</Button>

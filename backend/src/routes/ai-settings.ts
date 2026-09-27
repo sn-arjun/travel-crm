@@ -31,6 +31,7 @@ const AI_FEATURE_KEYS = [
   // Gated surfaces checked via useFeatureGate() on the desktop app —
   // must stay listed here or the gate always reports "not_in_plan".
   'ai_assistant', 'ai_extraction', 'ai_intelligence', 'ai_chatbot', 'whatsapp_campaigns',
+  'voip_calling',
 ] as const;
 
 // Usage cap keys for AI features
