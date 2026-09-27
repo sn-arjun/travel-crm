@@ -65,13 +65,16 @@ export default function ComposeEmailPage() {
                   onChange={(id) => form.setValue('contactId', id ?? '', { shouldDirty: true })}
                   fetcher={async (q, page) => {
                     const r = await contactsApi.list({ search: q, page, limit: 20 });
-                    return { items: r.data.data, total: r.data.pagination.total };
+                    const items = r.data?.data ?? (Array.isArray(r.data) ? r.data : []);
+                    const total = r.data?.pagination?.total ?? items.length;
+                    return { items, total };
                   }}
                   getOptionId={(c) => c.id}
                   getOptionLabel={(c) => c.name}
                   getOptionDescription={(c) => c.email ?? undefined}
                   resolveSelected={async (id) => (await contactsApi.getById(id)).data}
                   placeholder="Search contacts…"
+                  searchPlaceholder="Search contacts…"
                   error={form.formState.errors.contactId?.message}
                 />
               </FormRow>

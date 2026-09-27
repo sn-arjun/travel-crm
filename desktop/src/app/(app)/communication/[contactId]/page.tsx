@@ -69,7 +69,7 @@ export default function ContactCommunicationHubPage() {
     }),
     [contactId, channelFilter],
   );
-  const logs = (logResponse?.data?.data ?? []) as CommunicationLog[];
+  const logs = (Array.isArray(logResponse?.data) ? logResponse.data : (logResponse?.data?.data ?? [])) as CommunicationLog[];
 
   const contactName = contact?.name ?? `Contact ${contactId.slice(0, 8)}`;
 

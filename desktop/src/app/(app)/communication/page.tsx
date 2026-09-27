@@ -14,6 +14,32 @@ import {
 } from '@/components/ui/select';
 
 import { communicationsApi, type CommunicationLog } from '@/lib/api/communications';
+import { contactsApi } from '@/lib/api/contacts';
+
+// The log endpoint returns raw contactId only — resolve display names client-side
+// for the page of rows currently shown, caching across re-fetches.
+const contactNameCache = new Map<string, string>();
+
+async function resolveRecipients(rows: CommunicationLog[]): Promise<CommunicationLog[]> {
+  const idsToFetch = [...new Set(
+    rows.filter((r) => r.contactId && !r.recipient && !contactNameCache.has(r.contactId)).map((r) => r.contactId!),
+  )];
+  if (idsToFetch.length > 0) {
+    await Promise.all(idsToFetch.map(async (id) => {
+      try {
+        const res = await contactsApi.getById(id);
+        if (res.data?.name) contactNameCache.set(id, res.data.name);
+      } catch {
+        // Leave unresolved — row falls back to "Unknown contact".
+      }
+    }));
+  }
+  return rows.map((r) => (
+    r.contactId && !r.recipient && contactNameCache.has(r.contactId)
+      ? { ...r, recipient: contactNameCache.get(r.contactId) }
+      : r
+  ));
+}
 
 function getInitials(name: string) {
   return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
@@ -82,14 +108,24 @@ export default function CommunicationPage() {
       title="Inbox"
       description="All messages sent and received across every channel."
       getRowId={(l) => l.id}
-      fetcher={({ page, limit, search }) => communicationsApi.getLog({
-        page,
-        limit,
-        search: search || undefined,
-        channel: channel !== 'all' ? channel : undefined,
-        sortBy: 'sentAt',
-        sortOrder: 'desc',
-      })}
+      fetcher={async ({ page, limit, search }) => {
+        const res = await communicationsApi.getLog({
+          page,
+          limit,
+          search: search || undefined,
+          channel: channel !== 'all' ? channel : undefined,
+          sortBy: 'sentAt',
+          sortOrder: 'desc',
+        });
+        const rows = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
+        const resolved = await resolveRecipients(rows);
+        if (Array.isArray(res.data)) {
+          (res as { data: unknown }).data = resolved;
+        } else if (res.data) {
+          res.data.data = resolved;
+        }
+        return res;
+      }}
       searchPlaceholder="Search conversations…"
       filters={filters}
       onRemoveFilter={() => setChannel('all')}

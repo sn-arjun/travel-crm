@@ -52,13 +52,15 @@ export default function BulkSendPage() {
     () => (selectedTag ? contactsApi.list({ tag: selectedTag, limit: 100 }) : Promise.resolve(null)),
     [selectedTag],
   );
-  const tagContacts: Contact[] = (tagContactsResponse?.data?.data ?? []) as Contact[];
+  const tagContacts: Contact[] = (tagContactsResponse?.data?.data
+    ?? (Array.isArray(tagContactsResponse?.data) ? tagContactsResponse.data : [])) as Contact[];
 
   const { data: manualContactsResponse, loading: loadingManualContacts } = useApiQuery(
     () => contactsApi.list({ search: manualSearch || undefined, limit: 30 }),
     [manualSearch],
   );
-  const manualContacts: Contact[] = (manualContactsResponse?.data?.data ?? []) as Contact[];
+  const manualContacts: Contact[] = (manualContactsResponse?.data?.data
+    ?? (Array.isArray(manualContactsResponse?.data) ? manualContactsResponse.data : [])) as Contact[];
 
   const { data: templatesResponse } = useApiQuery(
     () => templatesApi.list({ channel, limit: 50 }),
