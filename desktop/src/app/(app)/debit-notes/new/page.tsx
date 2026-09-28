@@ -97,13 +97,21 @@ export default function NewDebitNotePage() {
                   value={form.watch('invoiceId') || null}
                   onChange={(id) => form.setValue('invoiceId', id ?? '', { shouldDirty: true, shouldValidate: true })}
                   fetcher={async (q, page) => {
-                    const r = await invoicesApi.list({ search: q, page, limit: 20 });
-                    return { items: r.data.data, total: r.data.pagination.total };
+                    const r: any = await invoicesApi.list({ search: q, page, limit: 20 });
+                    const items = r.data.map((inv: any) => ({
+                      ...inv,
+                      invoiceNumber: inv.invoiceNumber ?? inv.invoice_number,
+                      contactName: inv.contactName ?? inv.contact_name ?? inv.contact?.name,
+                    }));
+                    return { items, total: r.pagination?.total ?? items.length };
                   }}
                   getOptionId={(inv) => inv.id}
                   getOptionLabel={(inv) => inv.invoiceNumber}
-                  getOptionDescription={(inv) => inv.contact?.name ?? undefined}
-                  resolveSelected={async (id) => (await invoicesApi.getById(id)).data}
+                  getOptionDescription={(inv) => inv.contactName ?? undefined}
+                  resolveSelected={async (id) => {
+                    const inv: any = (await invoicesApi.getById(id)).data;
+                    return { ...inv, invoiceNumber: inv.invoiceNumber ?? inv.invoice_number, contactName: inv.contactName ?? inv.contact_name ?? inv.contact?.name };
+                  }}
                   placeholder="Select an invoice"
                   searchPlaceholder="Search invoices..."
                   required

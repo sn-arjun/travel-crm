@@ -140,11 +140,10 @@ export default function CreditNotesPage() {
           const limit = 200;
           let total = Infinity;
           while (all.length < total) {
-            const res = await creditNotesApi.list({ page, limit });
-            const data = res.data;
-            all.push(...data.data);
-            total = data.pagination.total;
-            if (data.data.length === 0) break;
+            const res: any = await creditNotesApi.list({ page, limit });
+            all.push(...res.data);
+            total = res.pagination.total;
+            if (res.data.length === 0) break;
             page += 1;
           }
           const csv = toCsv(all.length > 0 ? all : rows);

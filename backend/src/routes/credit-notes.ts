@@ -195,6 +195,7 @@ creditNoteRoutes.get('/', async (c) => {
   const offset = (page - 1) * limit;
 
   const contactId = url.searchParams.get('contactId');
+  const search = url.searchParams.get('search');
 
   try {
     let whereClause = "i.type = 'credit_note'";
@@ -204,10 +205,14 @@ creditNoteRoutes.get('/', async (c) => {
       whereClause += ' AND i.contact_id = ?';
       params.push(contactId);
     }
+    if (search) {
+      whereClause += ' AND (i.invoice_number LIKE ? OR c.name LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`);
+    }
 
     // Get total count
     const countResult = await tenantDb
-      .prepare(`SELECT COUNT(*) as count FROM invoices i WHERE ${whereClause}`)
+      .prepare(`SELECT COUNT(*) as count FROM invoices i LEFT JOIN contacts c ON i.contact_id = c.id WHERE ${whereClause}`)
       .bind(...params)
       .first<{ count: number }>();
     const total = countResult?.count || 0;
@@ -477,6 +482,7 @@ debitNoteRoutes.get('/', async (c) => {
   const offset = (page - 1) * limit;
 
   const contactId = url.searchParams.get('contactId');
+  const search = url.searchParams.get('search');
 
   try {
     let whereClause = "i.type = 'debit_note'";
@@ -486,10 +492,14 @@ debitNoteRoutes.get('/', async (c) => {
       whereClause += ' AND i.contact_id = ?';
       params.push(contactId);
     }
+    if (search) {
+      whereClause += ' AND (i.invoice_number LIKE ? OR c.name LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`);
+    }
 
     // Get total count
     const countResult = await tenantDb
-      .prepare(`SELECT COUNT(*) as count FROM invoices i WHERE ${whereClause}`)
+      .prepare(`SELECT COUNT(*) as count FROM invoices i LEFT JOIN contacts c ON i.contact_id = c.id WHERE ${whereClause}`)
       .bind(...params)
       .first<{ count: number }>();
     const total = countResult?.count || 0;
