@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { stickyNotesApi } from '@/lib/api/sticky-notes';
+import { stickyNotesApi, type StickyNote as StickyNoteRecord } from '@/lib/api/sticky-notes';
 
 interface StickyNote {
   id: string;
@@ -38,7 +38,8 @@ export function StickyNotesWidget() {
   React.useEffect(() => {
     stickyNotesApi.list({ limit: 50 })
       .then((res) => {
-        const list = res.data.data ?? [];
+        const data = res.data as unknown;
+        const list = Array.isArray(data) ? data : ((data as { data?: StickyNoteRecord[] })?.data ?? []);
         setNotes(list.map((n) => ({
           id: n.id,
           content: n.content || n.title || '',

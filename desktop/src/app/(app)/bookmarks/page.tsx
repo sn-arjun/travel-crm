@@ -84,10 +84,12 @@ export default function BookmarksPage() {
       fetcher={async ({ page, limit, search }) => {
         const res = await bookmarksApi.list({ page, limit, entityType: filterType ?? undefined });
         if (!search) return res;
-        const filtered = res.data.data.filter((b) =>
+        const data = res.data as unknown;
+        const items = Array.isArray(data) ? data : ((data as { data?: Bookmark[] })?.data ?? []);
+        const filtered = items.filter((b) =>
           b.entityName.toLowerCase().includes(search.toLowerCase()),
         );
-        return { ...res, data: { ...res.data, data: filtered } };
+        return { ...res, data: filtered, pagination: { ...(res as any).pagination, total: filtered.length } };
       }}
       searchPlaceholder="Search bookmarks..."
       filters={filters}

@@ -416,9 +416,10 @@
       "repairAttempts": 0
     },
     "verify:dashboard": {
-      "status": "context-limit",
-      "timestamp": "2026-09-27T13:29:58.386Z",
-      "error": "stdout(tail): You've hit your session limit · resets 9:30pm (Asia/Kolkata)"
+      "status": "ok",
+      "timestamp": "2026-09-28T12:05:12.689Z",
+      "error": null,
+      "repairAttempts": 0
     },
     "verify:documents": {
       "status": "context-limit",
@@ -432,8 +433,8 @@
     }
   },
   "lastCompleted": {
-    "id": "verify:credit-debit-notes",
+    "id": "verify:dashboard",
     "status": "ok",
-    "timestamp": "2026-09-28T11:44:29.357Z"
+    "timestamp": "2026-09-28T12:05:12.689Z"
   }
 }

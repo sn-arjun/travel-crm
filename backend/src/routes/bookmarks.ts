@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { AppContext } from '../types';
 import { generateId } from '../utils/uuid';
-import { success, error } from '../utils/response';
+import { success, error, paginated } from '../utils/response';
 
 const bookmarkRoutes = new Hono<AppContext>();
 
@@ -14,10 +14,10 @@ const MAX_BOOKMARKS = 50;
 bookmarkRoutes.post('/', async (c) => {
   const userId = c.get('userId');
   const db = c.get('tenantDb');
-  const { entity_type, entity_id } = await c.req.json();
+  const { entityType, entityId } = await c.req.json();
 
-  if (!entity_type || !entity_id) {
-    return error(c, 'entity_type and entity_id are required', 400);
+  if (!entityType || !entityId) {
+    return error(c, 'entityType and entityId are required', 400);
   }
 
   // Check limit
@@ -32,18 +32,19 @@ bookmarkRoutes.post('/', async (c) => {
   // Check duplicate
   const existing = await db.prepare(
     'SELECT id FROM bookmarks WHERE user_id = ? AND entity_type = ? AND entity_id = ?'
-  ).bind(userId, entity_type, entity_id).first();
+  ).bind(userId, entityType, entityId).first();
 
   if (existing) {
     return error(c, 'Already bookmarked', 409);
   }
 
   const id = generateId();
+  const now = new Date().toISOString();
   await db.prepare(
-    'INSERT INTO bookmarks (id, user_id, entity_type, entity_id) VALUES (?, ?, ?, ?)'
-  ).bind(id, userId, entity_type, entity_id).run();
+    'INSERT INTO bookmarks (id, user_id, entity_type, entity_id, created_at) VALUES (?, ?, ?, ?, ?)'
+  ).bind(id, userId, entityType, entityId, now).run();
 
-  return success(c, { id, entity_type, entity_id }, 201);
+  return success(c, { id, entityType, entityId, createdAt: now }, 201);
 });
 
 // ============================================================
@@ -53,19 +54,27 @@ bookmarkRoutes.post('/', async (c) => {
 bookmarkRoutes.get('/', async (c) => {
   const userId = c.get('userId');
   const db = c.get('tenantDb');
-  const entityType = c.req.query('entity_type');
+  const entityType = c.req.query('entityType') || c.req.query('entity_type');
+  const page = Math.max(1, parseInt(c.req.query('page') || '1', 10));
+  const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '20', 10)));
+  const offset = (page - 1) * limit;
 
-  let query = 'SELECT * FROM bookmarks WHERE user_id = ?';
+  let whereClause = 'WHERE user_id = ?';
   const params: string[] = [userId];
 
   if (entityType) {
-    query += ' AND entity_type = ?';
+    whereClause += ' AND entity_type = ?';
     params.push(entityType);
   }
 
-  query += ' ORDER BY created_at DESC';
+  const totalRow = await db.prepare(
+    `SELECT COUNT(*) as cnt FROM bookmarks ${whereClause}`
+  ).bind(...params).first<{ cnt: number }>();
+  const total = totalRow?.cnt || 0;
 
-  const rows = await db.prepare(query).bind(...params).all();
+  const rows = await db.prepare(
+    `SELECT * FROM bookmarks ${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?`
+  ).bind(...params, limit, offset).all();
   const bookmarks = rows.results || [];
 
   // Enrich with entity preview
@@ -85,35 +94,43 @@ bookmarkRoutes.get('/', async (c) => {
       } else if (bm.entity_type === 'invoice') {
         const inv = await db.prepare('SELECT invoice_number FROM invoices WHERE id = ?').bind(bm.entity_id).first<{ invoice_number: string }>();
         entityName = inv?.invoice_number || 'Unknown Invoice';
+      } else if (bm.entity_type === 'task') {
+        const task = await db.prepare('SELECT title FROM tasks WHERE id = ?').bind(bm.entity_id).first<{ title: string }>();
+        entityName = task?.title || 'Unknown Task';
       }
     } catch {
       entityName = 'Unknown';
     }
-    enriched.push({ ...bm, entity_name: entityName });
+    enriched.push({
+      id: bm.id,
+      entityType: bm.entity_type,
+      entityId: bm.entity_id,
+      entityName,
+      createdAt: bm.created_at,
+    });
   }
 
-  return success(c, enriched);
+  return paginated(c, enriched, total, page, limit);
 });
 
 // ============================================================
 // GET /check — Check if entity is bookmarked
 // ============================================================
 
-bookmarkRoutes.get('/check', async (c) => {
+bookmarkRoutes.post('/check', async (c) => {
   const userId = c.get('userId');
   const db = c.get('tenantDb');
-  const entityType = c.req.query('entity_type');
-  const entityId = c.req.query('entity_id');
+  const { entityType, entityId } = await c.req.json();
 
   if (!entityType || !entityId) {
-    return error(c, 'entity_type and entity_id are required', 400);
+    return error(c, 'entityType and entityId are required', 400);
   }
 
   const existing = await db.prepare(
     'SELECT id FROM bookmarks WHERE user_id = ? AND entity_type = ? AND entity_id = ?'
   ).bind(userId, entityType, entityId).first();
 
-  return success(c, { bookmarked: !!existing, bookmark_id: existing?.id || null });
+  return success(c, { bookmarked: !!existing, bookmarkId: existing?.id || null });
 });
 
 // ============================================================

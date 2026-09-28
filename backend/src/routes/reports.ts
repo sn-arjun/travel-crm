@@ -46,7 +46,7 @@ reportRoutes.get('/dashboard', async (c) => {
       ).bind(userId).all(),
       // 4. Recent activities
       tenantDb.prepare(
-        `SELECT id, lead_id as leadId, type, description, created_at as createdAt, created_by as createdBy
+        `SELECT id, lead_id as leadId, type, content as description, created_at as createdAt, created_by as createdBy
          FROM lead_activities
          ORDER BY created_at DESC LIMIT 10`
       ).all(),
