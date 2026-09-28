@@ -428,14 +428,15 @@
       "repairAttempts": 0
     },
     "verify:driver-app-api": {
-      "status": "context-limit",
-      "timestamp": "2026-09-27T13:30:12.314Z",
-      "error": "stdout(tail): You've hit your session limit · resets 9:30pm (Asia/Kolkata)"
+      "status": "ok",
+      "timestamp": "2026-09-28T12:39:09.847Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "verify:documents",
+    "id": "verify:driver-app-api",
     "status": "ok",
-    "timestamp": "2026-09-28T12:36:16.519Z"
+    "timestamp": "2026-09-28T12:39:09.847Z"
   }
 }
