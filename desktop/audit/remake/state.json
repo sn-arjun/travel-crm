@@ -476,9 +476,10 @@
       "repairAttempts": 0
     },
     "verify:itineraries": {
-      "status": "context-limit",
-      "timestamp": "2026-09-29T08:03:09.085Z",
-      "error": "stderr: \"claude-sonnet-5-5\" isn't described by this version's model catalog; update Claude Code, or map it with behavesAs on a modelPicker row (or modelOverrides, if it is a provider id of a model this version knows). Until then auto-compact keeps this session within 200k tokens (the context window "
+      "status": "ok",
+      "timestamp": "2026-09-29T16:15:27.628Z",
+      "error": null,
+      "repairAttempts": 0
     },
     "verify:itinerary-templates": {
       "status": "context-limit",
@@ -497,8 +498,8 @@
     }
   },
   "lastCompleted": {
-    "id": "verify:import-export",
+    "id": "verify:itineraries",
     "status": "ok",
-    "timestamp": "2026-09-29T16:00:43.230Z"
+    "timestamp": "2026-09-29T16:15:27.628Z"
   }
 }

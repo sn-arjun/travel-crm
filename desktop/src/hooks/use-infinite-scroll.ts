@@ -26,6 +26,7 @@ export function useInfiniteScroll<T>({
   const [total, setTotal] = useState(0);
   const [error, setError] = useState<ApiError | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const requestIdRef = useRef(0);
 
   const defaultExtractItems = useCallback((res: any): T[] => {
     const data = res?.data;
@@ -42,11 +43,15 @@ export function useInfiniteScroll<T>({
   const getTotal = extractTotal || defaultExtractTotal;
 
   const loadPage = useCallback(async (pageNum: number, append: boolean) => {
+    const requestId = ++requestIdRef.current;
     if (append) setLoadingMore(true);
     else setLoading(true);
 
     try {
       const response = await fetcher(pageNum, limit);
+      // A newer request (e.g. from a filter change) has since superseded this one — drop this stale response.
+      if (requestId !== requestIdRef.current) return;
+
       const newItems = getItems(response);
       const totalCount = getTotal(response);
 
@@ -55,13 +60,16 @@ export function useInfiniteScroll<T>({
       setHasMore(pageNum * limit < totalCount);
       setError(null);
     } catch (err) {
+      if (requestId !== requestIdRef.current) return;
       const apiError = err instanceof Object && 'status' in err
         ? (err as ApiError)
         : { status: 0, message: 'Unknown error' };
       setError(apiError);
     } finally {
-      setLoading(false);
-      setLoadingMore(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
   }, [fetcher, limit, getItems, getTotal]);
 

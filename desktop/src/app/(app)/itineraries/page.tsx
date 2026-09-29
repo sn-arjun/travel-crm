@@ -61,7 +61,7 @@ export default function ItinerariesPage() {
   });
 
   const { mutate: cloneItinerary, loading: cloneLoading } = useApiMutation(
-    (id: string) => itinerariesApi.clone(id).then(res => {
+    (id: string) => itinerariesApi.clone(id, {}).then(res => {
       if (res && typeof res === 'object' && 'data' in res) {
         return (res as any).data;
       }

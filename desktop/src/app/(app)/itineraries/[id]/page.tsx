@@ -61,7 +61,7 @@ export default function ItineraryDetailPage() {
   );
 
   const { mutate: cloneItinerary, loading: cloneLoading } = useApiMutation(
-    (itemId: string) => itinerariesApi.clone(itemId).then(res => {
+    (itemId: string) => itinerariesApi.clone(itemId, {}).then(res => {
       if (res && typeof res === 'object' && 'data' in res) {
         return (res as any).data;
       }
@@ -86,7 +86,7 @@ export default function ItineraryDetailPage() {
   const versions = versionsData ?? [];
 
   const { mutate: createVersion, loading: createVersionLoading } = useApiMutation(
-    (itemId: string) => itinerariesApi.createNewVersion(itemId).then(res => {
+    (itemId: string) => itinerariesApi.createNewVersion(itemId, {}).then(res => {
       if (res && typeof res === 'object' && 'data' in res) {
         return (res as any).data;
       }
