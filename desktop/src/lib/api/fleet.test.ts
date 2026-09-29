@@ -148,7 +148,7 @@ describe('fleetApi', () => {
 
     describe('recordMaintenance', () => {
       it('should call POST /fleet/vehicles/:id/maintenance', async () => {
-        const data = { serviceType: 'oil_change', serviceDate: '2026-03-01' };
+        const data = { serviceType: 'oil_change' as const, serviceDate: '2026-03-01' };
         vi.mocked(client.post).mockResolvedValue({ data: { id: 'm1' } });
         await fleetApi.vehicles.recordMaintenance('v1', data);
         expect(client.post).toHaveBeenCalledWith('/fleet/vehicles/v1/maintenance', data);
@@ -167,7 +167,7 @@ describe('fleetApi', () => {
       it('should call PUT /fleet/vehicles/:id/odometer', async () => {
         vi.mocked(client.put).mockResolvedValue({ data: {} });
         await fleetApi.vehicles.updateOdometer('v1', 50000);
-        expect(client.put).toHaveBeenCalledWith('/fleet/vehicles/v1/odometer', { odometerKm: 50000 });
+        expect(client.put).toHaveBeenCalledWith('/fleet/vehicles/v1/odometer', { km: 50000 });
       });
     });
 

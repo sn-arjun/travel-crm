@@ -5,9 +5,10 @@ import { useParams, useRouter } from 'next/navigation';
 import { z } from 'zod';
 import { EntityForm, FormRow } from '@/components/domain';
 import {
-  Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SectionCard, Skeleton,
+  Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SectionCard, Skeleton, Textarea,
 } from '@/components/ui';
 import { fleetApi } from '@/lib/api/fleet';
+import type { CreateVehicleRequest } from '@/lib/api/fleet';
 import { useApiQuery } from '@/hooks/use-api';
 import { toast } from 'sonner';
 import { VEHICLE_TYPE_LABELS, VEHICLE_STATUS_LABELS } from '@travelcrm/shared';
@@ -16,13 +17,15 @@ const VEHICLE_COLORS = ['White', 'Silver', 'Black', 'Grey', 'Blue', 'Red', 'Brow
 
 const schema = z.object({
   registrationNumber: z.string().min(1, 'Registration number is required'),
+  type: z.string().min(1, 'Vehicle type is required'),
   make: z.string().optional(),
   model: z.string().optional(),
   year: z.number().optional(),
-  capacity: z.number().optional(),
+  seatingCapacity: z.number().optional(),
   color: z.string().optional(),
+  notes: z.string().optional(),
   status: z.string().optional(),
-  mileage: z.number().optional(),
+  odometerKm: z.number().optional(),
 });
 type VehicleForm = z.infer<typeof schema>;
 
@@ -54,6 +57,12 @@ export default function EditVehiclePage() {
     );
   }
 
+  const initialOdometer = vehicle.odometerKm ?? undefined;
+  const initialStatus = vehicle.status || 'available';
+  const colorOptions: string[] = vehicle.color && !(VEHICLE_COLORS as readonly string[]).includes(vehicle.color)
+    ? [...VEHICLE_COLORS, vehicle.color]
+    : [...VEHICLE_COLORS];
+
   return (
     <EntityForm<VehicleForm>
       title="Edit vehicle"
@@ -61,26 +70,35 @@ export default function EditVehiclePage() {
       schema={schema}
       defaultValues={{
         registrationNumber: vehicle.registrationNumber || '',
+        type: vehicle.type || 'sedan',
         make: vehicle.make || '',
         model: vehicle.model || '',
-        year: vehicle.year || new Date().getFullYear(),
-        capacity: vehicle.seatingCapacity ?? vehicle.capacity ?? 4,
+        year: vehicle.year ?? undefined,
+        seatingCapacity: vehicle.seatingCapacity ?? undefined,
         color: vehicle.color || '',
-        status: vehicle.status || 'active',
-        mileage: vehicle.odometerKm ?? vehicle.mileage ?? 0,
+        notes: vehicle.notes || '',
+        status: initialStatus,
+        odometerKm: initialOdometer,
       }}
       onCancel={() => router.back()}
       onSubmit={async (v) => {
         try {
           await fleetApi.vehicles.update(vehicleId, {
             registrationNumber: v.registrationNumber.toUpperCase(),
+            type: v.type as CreateVehicleRequest['type'],
             make: v.make || undefined,
             model: v.model || undefined,
             year: v.year || undefined,
-            capacity: v.capacity || undefined,
-            status: v.status as 'active' | 'maintenance' | 'inactive' | undefined,
-            mileage: v.mileage,
+            seatingCapacity: v.seatingCapacity || undefined,
+            color: v.color || undefined,
+            notes: v.notes || undefined,
           });
+          if (v.status && v.status !== initialStatus) {
+            await fleetApi.vehicles.updateStatus(vehicleId, v.status);
+          }
+          if (v.odometerKm && v.odometerKm !== initialOdometer) {
+            await fleetApi.vehicles.updateOdometer(vehicleId, v.odometerKm);
+          }
           toast.success('Vehicle updated successfully');
           router.push(`/fleet/vehicles/${vehicleId}`);
         } catch {
@@ -92,38 +110,41 @@ export default function EditVehiclePage() {
           <div className="grid gap-ds-4 sm:grid-cols-2">
             <FormRow name="registrationNumber" label="Registration number" required>
               <Input
+                id="registrationNumber"
                 {...form.register('registrationNumber')}
                 placeholder="e.g., KA01AB1234"
                 onChange={(e) => form.setValue('registrationNumber', e.target.value.toUpperCase(), { shouldDirty: true })}
               />
             </FormRow>
-            <FormRow name="status" label="Status">
-              <Select value={form.watch('status')} onValueChange={(v) => form.setValue('status', v, { shouldDirty: true })}>
-                <SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger>
+            <FormRow name="type" label="Vehicle type" required>
+              <Select value={form.watch('type')} onValueChange={(v) => form.setValue('type', v, { shouldDirty: true })}>
+                <SelectTrigger id="type"><SelectValue placeholder="Select type" /></SelectTrigger>
                 <SelectContent>
-                  {Object.entries(VEHICLE_STATUS_LABELS).map(([value, label]) => (
+                  {Object.entries(VEHICLE_TYPE_LABELS).map(([value, label]) => (
                     <SelectItem key={value} value={value}>{label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </FormRow>
             <FormRow name="make" label="Make">
-              <Input {...form.register('make')} placeholder="e.g., Toyota" />
+              <Input id="make" {...form.register('make')} placeholder="e.g., Toyota" />
             </FormRow>
             <FormRow name="model" label="Model">
-              <Input {...form.register('model')} placeholder="e.g., Innova Crysta" />
+              <Input id="model" {...form.register('model')} placeholder="e.g., Innova Crysta" />
             </FormRow>
-            <FormRow name="capacity" label="Seating capacity">
+            <FormRow name="seatingCapacity" label="Seating capacity">
               <Input
+                id="seatingCapacity"
                 type="number"
                 min={1}
                 max={100}
-                value={form.watch('capacity') ?? ''}
-                onChange={(e) => form.setValue('capacity', e.target.value ? Number(e.target.value) : undefined, { shouldDirty: true })}
+                value={form.watch('seatingCapacity') ?? ''}
+                onChange={(e) => form.setValue('seatingCapacity', e.target.value ? Number(e.target.value) : undefined, { shouldDirty: true })}
               />
             </FormRow>
             <FormRow name="year" label="Year">
               <Input
+                id="year"
                 type="number"
                 min={1990}
                 max={2030}
@@ -133,19 +154,33 @@ export default function EditVehiclePage() {
             </FormRow>
             <FormRow name="color" label="Color">
               <Select value={form.watch('color') || undefined} onValueChange={(v) => form.setValue('color', v, { shouldDirty: true })}>
-                <SelectTrigger><SelectValue placeholder="Select color" /></SelectTrigger>
+                <SelectTrigger id="color"><SelectValue placeholder="Select color" /></SelectTrigger>
                 <SelectContent>
-                  {VEHICLE_COLORS.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  {colorOptions.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                 </SelectContent>
               </Select>
             </FormRow>
-            <FormRow name="mileage" label="Odometer (km)">
+            <FormRow name="status" label="Status">
+              <Select value={form.watch('status')} onValueChange={(v) => form.setValue('status', v, { shouldDirty: true })}>
+                <SelectTrigger id="status"><SelectValue placeholder="Select status" /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(VEHICLE_STATUS_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormRow>
+            <FormRow name="odometerKm" label="Odometer (km)">
               <Input
+                id="odometerKm"
                 type="number"
                 min={0}
-                value={form.watch('mileage') ?? ''}
-                onChange={(e) => form.setValue('mileage', e.target.value ? Number(e.target.value) : undefined, { shouldDirty: true })}
+                value={form.watch('odometerKm') ?? ''}
+                onChange={(e) => form.setValue('odometerKm', e.target.value ? Number(e.target.value) : undefined, { shouldDirty: true })}
               />
+            </FormRow>
+            <FormRow name="notes" label="Notes" wide>
+              <Textarea id="notes" rows={3} {...form.register('notes')} placeholder="Any notes about the vehicle..." />
             </FormRow>
           </div>
         </SectionCard>

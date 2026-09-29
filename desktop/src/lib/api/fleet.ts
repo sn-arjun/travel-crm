@@ -11,9 +11,12 @@ export interface Vehicle {
   seatingCapacity?: number;
   type?: string;
   color?: string;
-  status: 'active' | 'maintenance' | 'inactive' | 'on_trip';
+  status: 'available' | 'on_trip' | 'under_maintenance' | 'out_of_service' | 'active' | 'maintenance' | 'inactive';
   mileage: number;
-  odometerKm?: number;
+  odometerKm?: number | null;
+  notes?: string | null;
+  lastServiceDate?: string | null;
+  nextServiceDue?: string | null;
   purchaseDate?: string;
   photoUrl?: string;
   insuranceExpiry?: string;
@@ -30,17 +33,34 @@ export interface VehicleDocument {
   vehicleId: string;
   type: 'rc' | 'insurance' | 'permit' | 'pollution';
   documentUrl?: string;
-  expiryDate?: string;
+  documentNumber?: string | null;
+  fileUrl?: string | null;
+  fileName?: string | null;
+  issuedDate?: string | null;
+  expiryDate?: string | null;
   isExpired?: boolean;
-  daysUntilExpiry?: number;
+  daysUntilExpiry?: number | null;
   notes?: string;
   createdAt: string;
+}
+
+export interface RecordMaintenanceRequest {
+  serviceType: 'regular_service' | 'oil_change' | 'tyre_replacement' | 'brake_service' | 'ac_service' | 'other';
+  serviceDate: string;
+  description?: string;
+  odometerAtService?: number;
+  cost?: number;
+  vendorName?: string;
+  nextServiceDueDate?: string;
+  nextServiceDueKm?: number;
+  notes?: string;
 }
 
 export interface VehicleMaintenance {
   id: string;
   vehicleId: string;
   serviceType: string;
+  description?: string;
   serviceDate: string;
   odometer?: number;
   cost?: number;
@@ -243,13 +263,13 @@ export interface CreateVehicleRequest {
 
 export interface UpdateVehicleRequest {
   registrationNumber?: string;
+  type?: CreateVehicleRequest['type'];
   make?: string;
   model?: string;
   year?: number;
-  capacity?: number;
-  status?: 'active' | 'maintenance' | 'inactive';
-  mileage?: number;
-  customFields?: Record<string, unknown>;
+  seatingCapacity?: number;
+  color?: string;
+  notes?: string;
 }
 
 export interface CreateDriverRequest {
@@ -475,6 +495,30 @@ function mapTripTimelineEntry(t: any): TripTimeline {
   };
 }
 
+function mapMaintenanceRow(row: any): VehicleMaintenance {
+  return {
+    id: row.id,
+    vehicleId: row.vehicle_id ?? row.vehicleId,
+    serviceType: row.service_type ?? row.serviceType,
+    description: row.description ?? undefined,
+    serviceDate: row.service_date ?? row.serviceDate,
+    odometer: row.odometer_at_service ?? row.odometer ?? undefined,
+    cost: row.cost ?? undefined,
+    vendor: row.vendor_name ?? row.vendor ?? undefined,
+    notes: row.notes ?? undefined,
+    nextServiceDate: row.next_service_due_date ?? row.nextServiceDate ?? undefined,
+    nextServiceKm: row.next_service_due_km ?? row.nextServiceKm ?? undefined,
+    createdAt: row.created_at ?? row.createdAt,
+  };
+}
+
+function mapMaintenanceResponse(res: any): any {
+  if (!res) return res;
+  if (Array.isArray(res.data)) return { ...res, data: res.data.map(mapMaintenanceRow) };
+  if (res.data && typeof res.data === 'object') return { ...res, data: mapMaintenanceRow(res.data) };
+  return res;
+}
+
 function mapTripsResponse(res: any): any {
   if (!res) return res;
   const data = res.data;
@@ -646,7 +690,7 @@ export const fleetApi = {
       client.post<ApiResponse<VehicleDocument>>(FLEET.vehicleDocs(id), formData),
 
     downloadDocument: (vehicleId: string, docId: string) =>
-      client.get<ApiResponse<{ url: string }>>(FLEET.vehicleDocDownload(vehicleId, docId)),
+      client.get<ApiResponse<{ downloadUrl: string; fileName?: string }>>(FLEET.vehicleDocDownload(vehicleId, docId)),
 
     deleteDocument: (vehicleId: string, docId: string) =>
       client.delete<ApiResponse<void>>(FLEET.vehicleDocById(vehicleId, docId)),
@@ -656,17 +700,17 @@ export const fleetApi = {
         FLEET.expiringDocs, { params: { days } }
       ),
 
-    recordMaintenance: (id: string, data: { serviceType: string; serviceDate: string; odometer?: number; cost?: number; vendor?: string; notes?: string; nextServiceDate?: string; nextServiceKm?: number }) =>
-      client.post<ApiResponse<VehicleMaintenance>>(FLEET.vehicleMaintenance(id), data),
+    recordMaintenance: (id: string, data: RecordMaintenanceRequest) =>
+      client.post<ApiResponse<VehicleMaintenance>>(FLEET.vehicleMaintenance(id), data).then(mapMaintenanceResponse),
 
     getMaintenanceHistory: (id: string) =>
-      client.get<ApiResponse<VehicleMaintenance[]>>(FLEET.vehicleMaintenance(id)),
+      client.get<ApiResponse<VehicleMaintenance[]>>(FLEET.vehicleMaintenance(id)).then(mapMaintenanceResponse),
 
     getMaintenanceDue: (days = 7) =>
       client.get<ApiResponse<(Vehicle & { daysTillService?: number })[]>>(FLEET.maintenanceDue, { params: { days } }),
 
     updateOdometer: (id: string, km: number) =>
-      client.put<ApiResponse<Vehicle>>(FLEET.vehicleOdometer(id), { odometerKm: km }),
+      client.put<ApiResponse<{ odometerKm: number }>>(FLEET.vehicleOdometer(id), { km }),
 
     getAvailability: (params: { from: string; to: string; type?: string }) =>
       client.get<ApiResponse<Record<string, VehicleAvailability[]>>>(FLEET.vehiclesAvailability, { params }),

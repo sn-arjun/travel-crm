@@ -457,14 +457,15 @@
       "repairAttempts": 1
     },
     "verify:fleet-vehicles": {
-      "status": "context-limit",
-      "timestamp": "2026-09-28T13:03:02.952Z",
-      "error": "stdout(tail): You've hit your session limit · resets 10pm (Asia/Kolkata)"
+      "status": "ok",
+      "timestamp": "2026-09-29T07:32:59.887Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "verify:fleet-trips",
+    "id": "verify:fleet-vehicles",
     "status": "ok",
-    "timestamp": "2026-09-29T07:12:07.453Z"
+    "timestamp": "2026-09-29T07:32:59.887Z"
   }
 }

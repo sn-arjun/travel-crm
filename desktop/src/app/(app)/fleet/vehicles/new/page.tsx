@@ -64,6 +64,7 @@ export default function NewVehiclePage() {
           <div className="grid gap-ds-4 sm:grid-cols-2">
             <FormRow name="registrationNumber" label="Registration number" required>
               <Input
+                id="registrationNumber"
                 {...form.register('registrationNumber')}
                 placeholder="e.g., KA01AB1234"
                 onChange={(e) => form.setValue('registrationNumber', e.target.value.toUpperCase(), { shouldDirty: true })}
@@ -71,7 +72,7 @@ export default function NewVehiclePage() {
             </FormRow>
             <FormRow name="type" label="Vehicle type" required>
               <Select value={form.watch('type')} onValueChange={(v) => form.setValue('type', v, { shouldDirty: true })}>
-                <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+                <SelectTrigger id="type"><SelectValue placeholder="Select type" /></SelectTrigger>
                 <SelectContent>
                   {Object.entries(VEHICLE_TYPE_LABELS).map(([value, label]) => (
                     <SelectItem key={value} value={value}>{label}</SelectItem>
@@ -80,13 +81,14 @@ export default function NewVehiclePage() {
               </Select>
             </FormRow>
             <FormRow name="make" label="Make">
-              <Input {...form.register('make')} placeholder="e.g., Toyota" />
+              <Input id="make" {...form.register('make')} placeholder="e.g., Toyota" />
             </FormRow>
             <FormRow name="model" label="Model">
-              <Input {...form.register('model')} placeholder="e.g., Innova Crysta" />
+              <Input id="model" {...form.register('model')} placeholder="e.g., Innova Crysta" />
             </FormRow>
             <FormRow name="seatingCapacity" label="Seating capacity">
               <Input
+                id="seatingCapacity"
                 type="number"
                 min={1}
                 max={100}
@@ -96,6 +98,7 @@ export default function NewVehiclePage() {
             </FormRow>
             <FormRow name="year" label="Year">
               <Input
+                id="year"
                 type="number"
                 min={1990}
                 max={2030}
@@ -105,14 +108,14 @@ export default function NewVehiclePage() {
             </FormRow>
             <FormRow name="color" label="Color">
               <Select value={form.watch('color') || undefined} onValueChange={(v) => form.setValue('color', v, { shouldDirty: true })}>
-                <SelectTrigger><SelectValue placeholder="Select color" /></SelectTrigger>
+                <SelectTrigger id="color"><SelectValue placeholder="Select color" /></SelectTrigger>
                 <SelectContent>
                   {VEHICLE_COLORS.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                 </SelectContent>
               </Select>
             </FormRow>
             <FormRow name="notes" label="Notes" wide>
-              <Textarea rows={3} {...form.register('notes')} placeholder="Any notes about the vehicle..." />
+              <Textarea id="notes" rows={3} {...form.register('notes')} placeholder="Any notes about the vehicle..." />
             </FormRow>
           </div>
         </SectionCard>

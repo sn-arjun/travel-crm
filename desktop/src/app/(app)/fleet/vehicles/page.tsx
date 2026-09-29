@@ -13,11 +13,20 @@ import { toast } from 'sonner';
 import { VEHICLE_TYPE_LABELS, VEHICLE_STATUS_LABELS } from '@travelcrm/shared';
 
 function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
-  if (status === 'active') return 'success';
-  if (status === 'inactive') return 'danger';
+  if (status === 'available') return 'success';
+  if (status === 'out_of_service') return 'danger';
   if (status === 'on_trip') return 'info';
-  if (status === 'maintenance') return 'warning';
+  if (status === 'under_maintenance') return 'warning';
   return 'neutral';
+}
+
+function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex justify-between gap-ds-4 border-b border-ds-border py-ds-2 text-sm">
+      <span className="text-ds-foreground-muted">{label}</span>
+      <span className="text-right font-medium">{value}</span>
+    </div>
+  );
 }
 
 function toCsvValue(v: unknown) {
@@ -30,6 +39,8 @@ export default function VehiclesPage() {
   const { confirm, dialog } = useConfirm();
   const [statusFilter, setStatusFilter] = React.useState('');
   const [typeFilter, setTypeFilter] = React.useState('');
+  // ListPage refetches whenever `fetcher` changes identity, i.e. on any re-render of this page.
+  const [, reload] = React.useReducer((n: number) => n + 1, 0);
 
   async function handleDelete(vehicle: Vehicle) {
     const ok = await confirm({
@@ -45,6 +56,7 @@ export default function VehiclesPage() {
     } catch {
       toast.error('Failed to delete vehicle');
     }
+    reload();
   }
 
   const filters = [
@@ -157,15 +169,36 @@ export default function VehiclesPage() {
             </Button>
           </>
         )}
-        onRowClick={(v) => router.push(`/fleet/vehicles/${v.id}`)}
+        detailTitle={(v) => v.registrationNumber}
+        renderDetail={(v) => (
+          <div className="flex flex-col gap-ds-4">
+            <div>
+              <DetailRow label="Registration" value={<span className="font-mono">{v.registrationNumber}</span>} />
+              <DetailRow label="Make" value={v.make || '—'} />
+              <DetailRow label="Model" value={v.model || '—'} />
+              <DetailRow label="Type" value={VEHICLE_TYPE_LABELS[v.type as keyof typeof VEHICLE_TYPE_LABELS] || v.type || '—'} />
+              <DetailRow label="Year" value={v.year ?? '—'} />
+              <DetailRow label="Color" value={v.color || '—'} />
+              <DetailRow label="Seating capacity" value={`${v.seatingCapacity ?? v.capacity ?? 0} seats`} />
+              <DetailRow label="Odometer" value={`${(v.odometerKm ?? v.mileage)?.toLocaleString() ?? 0} km`} />
+              <DetailRow label="Status" value={<Tag tone={statusTone(v.status)}>{VEHICLE_STATUS_LABELS[v.status as keyof typeof VEHICLE_STATUS_LABELS] || v.status}</Tag>} />
+              {v.notes && <DetailRow label="Notes" value={v.notes} />}
+            </div>
+            <Button size="sm" onClick={() => router.push(`/fleet/vehicles/${v.id}`)}>Open full details</Button>
+          </div>
+        )}
         bulkActions={[
           {
             label: 'Delete',
             icon: <Trash2 aria-hidden="true" />,
             destructive: true,
             onSelect: async (rows) => {
-              await Promise.all(rows.map((r) => fleetApi.vehicles.delete(r.id)));
-              toast.success(`${rows.length} vehicle${rows.length !== 1 ? 's' : ''} deleted`);
+              const results = await Promise.allSettled(rows.map((r) => fleetApi.vehicles.delete(r.id)));
+              const failed = results.filter((r) => r.status === 'rejected').length;
+              const ok = rows.length - failed;
+              if (ok > 0) toast.success(`${ok} vehicle${ok !== 1 ? 's' : ''} deleted`);
+              if (failed > 0) toast.error(`Failed to delete ${failed} vehicle${failed !== 1 ? 's' : ''}`);
+              reload();
             },
           },
         ]}
@@ -177,7 +210,7 @@ export default function VehiclesPage() {
               const data: any = first.data;
               all = Array.isArray(data) ? data : (data?.data ?? rows);
             }
-            const header = ['Registration', 'Make', 'Model', 'Year', 'Type', 'Capacity', 'Odometer (km)', 'Status'];
+            const header = ['Registration', 'Make', 'Model', 'Year', 'Type', 'Color', 'Capacity', 'Odometer (km)', 'Status', 'Notes'];
             const lines = [header.join(',')];
             for (const v of all) {
               lines.push([
@@ -186,9 +219,11 @@ export default function VehiclesPage() {
                 toCsvValue(v.model),
                 toCsvValue(v.year),
                 toCsvValue(VEHICLE_TYPE_LABELS[v.type as keyof typeof VEHICLE_TYPE_LABELS] || v.type || ''),
+                toCsvValue(v.color),
                 toCsvValue(v.seatingCapacity ?? v.capacity),
                 toCsvValue(v.odometerKm ?? v.mileage ?? 0),
                 toCsvValue(VEHICLE_STATUS_LABELS[v.status as keyof typeof VEHICLE_STATUS_LABELS] || v.status),
+                toCsvValue(v.notes),
               ].join(','));
             }
             const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
