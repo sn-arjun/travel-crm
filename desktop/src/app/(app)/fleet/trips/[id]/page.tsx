@@ -20,12 +20,13 @@ import {
   TRIP_STATUS_LABELS, FLEET_TRIP_TYPE_LABELS, VEHICLE_TYPE_LABELS,
 } from '@travelcrm/shared';
 import type { TimelineItem } from '@/components/ui/timeline';
+import { formatTripDate, formatTripDateTime } from '@/components/domain/fleet/trip-format';
 
 const TRIP_STATUS_ORDER = ['assigned', 'accepted', 'en_route', 'started', 'completed'] as const;
 
 const COST_TYPE_LABELS: Record<string, string> = {
   fuel: 'Fuel', toll: 'Toll', parking: 'Parking',
-  driver_allowance: 'Driver Allowance', maintenance: 'Maintenance', other: 'Other',
+  driver_allowance: 'Driver Allowance', other: 'Other',
 };
 
 function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
@@ -57,12 +58,8 @@ export default function TripDetailPage() {
   const { mutate: deleteCost } = useApiMutation<any, any>(
     (costId: string) => fleetApi.trips.deleteCost(tripId, costId),
   );
-  const { mutate: generateInvoice, loading: isGeneratingInvoice } = useApiMutation<void, any>(
-    () => fleetApi.trips.generateInvoice(tripId),
-  );
-  const { mutate: generateVoucher, loading: isGeneratingVoucher } = useApiMutation<void, any>(
-    () => fleetApi.trips.generateVoucher(tripId),
-  );
+  const [isGeneratingInvoice, setIsGeneratingInvoice] = React.useState(false);
+  const [isGeneratingVoucher, setIsGeneratingVoucher] = React.useState(false);
 
   React.useEffect(() => {
     if (tripQuery.error) toast.error('Failed to load trip details');
@@ -128,22 +125,42 @@ export default function TripDetailPage() {
   }
 
   async function handleGenerateInvoice() {
-    const result = await generateInvoice();
-    if (result) {
+    const existing = (trip as any)?.invoiceId as string | null | undefined;
+    if (existing) {
+      router.push(`/invoices/${existing}`);
+      return;
+    }
+    setIsGeneratingInvoice(true);
+    try {
+      const res = await fleetApi.trips.generateInvoice(tripId);
       toast.success('Invoice generated');
-      router.push(`/invoices/${(result as any).id}`);
-    } else {
-      toast.error('Failed to generate invoice');
+      const id = res.data?.id;
+      if (id) router.push(`/invoices/${id}`);
+      else tripQuery.refetch();
+    } catch (e) {
+      toast.error((e as { message?: string })?.message || 'Failed to generate invoice');
+    } finally {
+      setIsGeneratingInvoice(false);
     }
   }
 
   async function handleGenerateVoucher() {
-    const result = await generateVoucher();
-    if (result) {
+    const existing = (trip as any)?.voucherId as string | null | undefined;
+    if (existing) {
+      router.push(`/vouchers/${existing}`);
+      return;
+    }
+    setIsGeneratingVoucher(true);
+    try {
+      const res = await fleetApi.trips.generateVoucher(tripId);
       toast.success('Voucher generated');
-      if ((result as any).id) router.push(`/vouchers/${(result as any).id}`);
-    } else {
-      toast.error('Failed to generate voucher');
+      const id = res.data?.id;
+      if (id) router.push(`/vouchers/${id}`);
+      else tripQuery.refetch();
+    } catch (e) {
+      toast.error((e as { message?: string })?.message || 'Failed to generate voucher');
+    } finally {
+      setIsGeneratingVoucher(false);
     }
   }
 
@@ -180,7 +197,7 @@ export default function TripDetailPage() {
     id: `${h.status}-${i}`,
     title: TRIP_STATUS_LABELS[h.status as keyof typeof TRIP_STATUS_LABELS] || h.status,
     description: h.notes || h.userName,
-    timestamp: h.timestamp,
+    timestamp: formatTripDateTime(h.timestamp),
   }));
 
   return (
@@ -189,7 +206,7 @@ export default function TripDetailPage() {
       <DetailPage
         entity={trip}
         title={`${trip.startLocation} → ${trip.endLocation}`}
-        subtitle={`${trip.passengerName || 'No passenger'} · ${tripTypeLabel} · ${(trip.startTime || '').split('T')[0] || '—'}`}
+        subtitle={`${trip.passengerName || 'No passenger'} · ${tripTypeLabel} · ${formatTripDate(trip.startTime)}`}
         status={<Tag tone={statusTone(trip.status)}>{TRIP_STATUS_LABELS[trip.status as keyof typeof TRIP_STATUS_LABELS] || trip.status}</Tag>}
         onBack={() => router.push('/fleet/trips')}
         messaging={driver ? {
@@ -199,7 +216,7 @@ export default function TripDetailPage() {
         } : undefined}
         primaryActions={
           <>
-            {!isFinal && (
+            {trip.status === 'assigned' && (
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/fleet/trips/${tripId}/edit`}><Pencil aria-hidden="true" />Edit</Link>
               </Button>
@@ -213,13 +230,13 @@ export default function TripDetailPage() {
         }
         actions={[
           {
-            label: 'Generate invoice',
+            label: (trip as any).invoiceId ? 'View invoice' : 'Generate invoice',
             icon: <FileText aria-hidden="true" />,
             onSelect: () => void handleGenerateInvoice(),
             disabled: isGeneratingInvoice,
           },
           {
-            label: 'Generate voucher',
+            label: (trip as any).voucherId ? 'View voucher' : 'Generate voucher',
             icon: <Receipt aria-hidden="true" />,
             onSelect: () => void handleGenerateVoucher(),
             disabled: isGeneratingVoucher,
@@ -229,7 +246,7 @@ export default function TripDetailPage() {
             icon: <XCircle aria-hidden="true" />,
             onSelect: () => void handleStatusUpdate('cancelled'),
             destructive: true,
-            disabled: isFinal || isUpdatingStatus,
+            disabled: (trip.status !== 'assigned' && trip.status !== 'accepted') || isUpdatingStatus,
             separatorBefore: true,
           },
         ]}
@@ -292,11 +309,11 @@ export default function TripDetailPage() {
               <div className="grid grid-cols-3 gap-ds-4 mt-ds-4 pt-ds-4 border-t border-ds-border">
                 <div>
                   <p className="text-xs text-ds-foreground-muted">Start</p>
-                  <p className="text-sm font-medium mt-0.5">{(trip.startTime || '').split('T')[0] || '—'}</p>
+                  <p className="text-sm font-medium mt-0.5">{formatTripDateTime(trip.startTime)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-ds-foreground-muted">End</p>
-                  <p className="text-sm font-medium mt-0.5">{(trip.endTime || '').split('T')[0] || '—'}</p>
+                  <p className="text-sm font-medium mt-0.5">{formatTripDateTime(trip.endTime)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-ds-foreground-muted">Est. distance</p>

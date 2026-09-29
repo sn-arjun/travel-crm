@@ -77,6 +77,16 @@ export default function EditTripPage() {
     );
   }
 
+  if (trip.status !== 'assigned') {
+    return (
+      <EmptyState
+        title="This trip can no longer be edited"
+        description="Only trips with status Assigned can be edited."
+        action={<Button variant="outline" onClick={() => router.push(`/fleet/trips/${tripId}`)}>Back to trip</Button>}
+      />
+    );
+  }
+
   const start = splitDateTime(trip.startTime);
   const end = splitDateTime(trip.endTime);
 
@@ -106,6 +116,9 @@ export default function EditTripPage() {
           await fleetApi.trips.update(tripId, {
             vehicleId: v.vehicleId,
             driverId: v.driverId,
+            passengerName: v.passengerName ?? '',
+            passengerPhone: v.passengerPhone ?? '',
+            specialInstructions: v.specialInstructions ?? '',
             startLocation: v.startLocation,
             endLocation: v.endLocation,
             startTime: toIso(v.startDate, v.startClock),
@@ -115,8 +128,8 @@ export default function EditTripPage() {
           });
           toast.success('Trip updated successfully');
           router.push(`/fleet/trips/${tripId}`);
-        } catch {
-          toast.error('Failed to update trip');
+        } catch (e) {
+          toast.error((e as { message?: string })?.message || 'Failed to update trip');
         }
       }}
       renderSections={(form) => (
@@ -140,7 +153,6 @@ export default function EditTripPage() {
                   resolveSelected={async (id) => (await fleetApi.vehicles.getById(id)).data}
                   placeholder="Select vehicle"
                   searchPlaceholder="Registration or make/model..."
-                  error={form.formState.errors.vehicleId?.message}
                   required
                 />
               </FormRow>
@@ -161,7 +173,6 @@ export default function EditTripPage() {
                   resolveSelected={async (id) => (await fleetApi.drivers.getById(id)).data}
                   placeholder="Select driver"
                   searchPlaceholder="Driver name or phone..."
-                  error={form.formState.errors.driverId?.message}
                   required
                 />
               </FormRow>
@@ -188,7 +199,7 @@ export default function EditTripPage() {
                 <DatePicker value={form.watch('startDate')} onChange={(d) => form.setValue('startDate', d as Date, { shouldDirty: true })} />
               </FormRow>
               <FormRow name="startClock" label="Start time" required>
-                <Input type="time" {...form.register('startClock')} />
+                <Input id="startClock" type="time" {...form.register('startClock')} />
               </FormRow>
               <FormRow name="endDate" label="End date" required>
                 <DatePicker
@@ -198,7 +209,7 @@ export default function EditTripPage() {
                 />
               </FormRow>
               <FormRow name="endClock" label="End time" required>
-                <Input type="time" {...form.register('endClock')} />
+                <Input id="endClock" type="time" {...form.register('endClock')} />
               </FormRow>
             </div>
           </SectionCard>
@@ -206,7 +217,7 @@ export default function EditTripPage() {
           <SectionCard title="Passenger details">
             <div className="grid gap-ds-4 sm:grid-cols-2">
               <FormRow name="passengerName" label="Passenger name">
-                <Input {...form.register('passengerName')} placeholder="Full name" />
+                <Input id="passengerName" {...form.register('passengerName')} placeholder="Full name" />
               </FormRow>
               <FormRow name="passengerPhone" label="Passenger phone">
                 <PhoneInput
@@ -216,6 +227,7 @@ export default function EditTripPage() {
               </FormRow>
               <FormRow name="specialInstructions" label="Special instructions" wide>
                 <Textarea
+                  id="specialInstructions"
                   rows={3}
                   {...form.register('specialInstructions')}
                   placeholder="Any special requirements or instructions..."
@@ -228,6 +240,7 @@ export default function EditTripPage() {
             <div className="grid gap-ds-4 sm:grid-cols-2">
               <FormRow name="distance" label="Estimated distance (km)">
                 <Input
+                  id="distance"
                   type="number"
                   min={0}
                   value={form.watch('distance') ?? ''}
@@ -236,6 +249,7 @@ export default function EditTripPage() {
               </FormRow>
               <FormRow name="fare" label="Estimated fare">
                 <Input
+                  id="fare"
                   type="number"
                   min={0}
                   value={form.watch('fare') ?? ''}

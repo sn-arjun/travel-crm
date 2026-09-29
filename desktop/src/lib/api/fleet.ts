@@ -143,7 +143,7 @@ export interface TripTimeline {
 export interface TripCost {
   id: string;
   tripId: string;
-  costType: 'fuel' | 'toll' | 'parking' | 'driver_allowance' | 'maintenance' | 'other';
+  costType: 'fuel' | 'toll' | 'parking' | 'driver_allowance' | 'other';
   amount: number;
   receiptUrl?: string;
   notes?: string;
@@ -311,6 +311,10 @@ export interface CreateTripRequest {
 export interface UpdateTripRequest {
   vehicleId?: string;
   driverId?: string;
+  leadId?: string;
+  passengerName?: string;
+  passengerPhone?: string;
+  specialInstructions?: string;
   startLocation?: string;
   endLocation?: string;
   startTime?: string;
@@ -378,7 +382,7 @@ export interface RateCardEstimateResult {
 }
 
 export interface CreateTripCostRequest {
-  costType: 'fuel' | 'toll' | 'parking' | 'driver_allowance' | 'maintenance' | 'other';
+  costType: 'fuel' | 'toll' | 'parking' | 'driver_allowance' | 'other';
   amount: number;
   notes?: string;
 }
@@ -444,6 +448,30 @@ function mapTripFields(t: any): any {
     leadId: t.leadId || t.lead_id || null,
     estimatedCost: t.estimatedCost || t.estimated_cost || t.fare || 0,
     estimatedDistanceKm: t.estimatedDistanceKm || t.estimated_distance_km || t.distance || 0,
+  };
+}
+
+// Backend sends raw snake_case rows for trip costs and timeline entries.
+function mapTripCost(c: any): TripCost {
+  return {
+    id: c.id,
+    tripId: c.tripId ?? c.trip_id,
+    costType: c.costType ?? c.cost_type,
+    amount: c.amount ?? 0,
+    receiptUrl: c.receiptUrl ?? c.receipt_url ?? undefined,
+    notes: c.notes ?? c.description ?? undefined,
+    createdAt: c.createdAt ?? c.created_at ?? '',
+  };
+}
+
+function mapTripTimelineEntry(t: any): TripTimeline {
+  return {
+    status: t.status,
+    timestamp: t.timestamp ?? t.createdAt ?? t.created_at ?? '',
+    userName: t.userName ?? '',
+    notes: t.notes ?? undefined,
+    latitude: t.latitude ?? undefined,
+    longitude: t.longitude ?? undefined,
   };
 }
 
@@ -741,8 +769,26 @@ export const fleetApi = {
         estimatedCost: data.fare || undefined,
       }),
 
-    update: (id: string, data: UpdateTripRequest) =>
-      client.put<ApiResponse<Trip>>(API_ENDPOINTS.fleet.trips.byId(id), data),
+    update: (id: string, data: UpdateTripRequest) => {
+      const body: Record<string, unknown> = {
+        vehicleId: data.vehicleId,
+        driverId: data.driverId,
+        leadId: data.leadId,
+        passengerName: data.passengerName,
+        passengerPhone: data.passengerPhone,
+        specialInstructions: data.specialInstructions,
+        pickupLocation: data.startLocation,
+        dropLocation: data.endLocation,
+        pickupDatetime: data.startTime ? new Date(data.startTime).toISOString() : undefined,
+        dropDatetime: data.endTime ? new Date(data.endTime).toISOString() : undefined,
+        estimatedDistanceKm: data.distance,
+        estimatedCost: data.fare,
+        status: data.status,
+        customFields: data.customFields,
+      };
+      for (const k of Object.keys(body)) if (body[k] === undefined) delete body[k];
+      return client.put<ApiResponse<Trip>>(API_ENDPOINTS.fleet.trips.byId(id), body);
+    },
 
     delete: (id: string) =>
       client.delete<ApiResponse<void>>(API_ENDPOINTS.fleet.trips.byId(id)),
@@ -751,13 +797,24 @@ export const fleetApi = {
       client.put<ApiResponse<Trip>>(FLEET.tripStatus(id), { status, notes }),
 
     getTimeline: (id: string) =>
-      client.get<ApiResponse<TripTimeline[]>>(FLEET.tripTimeline(id)),
+      client.get<ApiResponse<TripTimeline[]>>(FLEET.tripTimeline(id)).then((res: any) => {
+        const rows = Array.isArray(res?.data) ? res.data : [];
+        return { ...res, data: rows.map(mapTripTimelineEntry) } as ApiResponse<TripTimeline[]>;
+      }),
 
     addCost: (tripId: string, data: CreateTripCostRequest) =>
-      client.post<ApiResponse<TripCost>>(FLEET.tripCosts(tripId), data),
+      client.post<ApiResponse<TripCost>>(FLEET.tripCosts(tripId), {
+        costType: data.costType,
+        amount: data.amount,
+        description: data.notes,
+      }),
 
     listCosts: (tripId: string) =>
-      client.get<ApiResponse<TripCost[]>>(FLEET.tripCosts(tripId)),
+      client.get<ApiResponse<TripCost[]>>(FLEET.tripCosts(tripId)).then((res: any) => {
+        const raw = res?.data;
+        const rows = Array.isArray(raw) ? raw : (raw?.costs ?? []);
+        return { ...res, data: rows.map(mapTripCost) } as ApiResponse<TripCost[]>;
+      }),
 
     deleteCost: (tripId: string, costId: string) =>
       client.delete<ApiResponse<void>>(FLEET.tripCostById(tripId, costId)),
@@ -766,10 +823,14 @@ export const fleetApi = {
       client.get<ApiResponse<{ total: number; byType: Record<string, number> }>>(FLEET.tripCostSummary(tripId)),
 
     generateInvoice: (tripId: string) =>
-      client.post<ApiResponse<{ id: string; invoiceNumber?: string }>>(FLEET.tripGenerateInvoice(tripId)),
+      client.post<ApiResponse<{ id: string; invoiceNumber?: string }>>(FLEET.tripGenerateInvoice(tripId)).then((res: any) => (
+        res?.data ? { ...res, data: { ...res.data, id: res.data.id ?? res.data.invoiceId } } : res
+      ) as ApiResponse<{ id: string; invoiceNumber?: string }>),
 
     generateVoucher: (tripId: string) =>
-      client.post<ApiResponse<{ id: string; voucherNumber?: string; url?: string }>>(FLEET.tripGenerateVoucher(tripId)),
+      client.post<ApiResponse<{ id: string; voucherNumber?: string; url?: string }>>(FLEET.tripGenerateVoucher(tripId)).then((res: any) => (
+        res?.data ? { ...res, data: { ...res.data, id: res.data.id ?? res.data.voucherId } } : res
+      ) as ApiResponse<{ id: string; voucherNumber?: string; url?: string }>),
 
     calculateDistance: (data: { startLocation: string; endLocation: string }) =>
       client.post<ApiResponse<{ distanceKm: number; durationMinutes?: number }>>(FLEET.calculateDistance, data),

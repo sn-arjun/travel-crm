@@ -11,6 +11,7 @@ import { fleetApi } from '@/lib/api/fleet';
 import type { Trip } from '@/lib/api/fleet';
 import { toast } from 'sonner';
 import { TRIP_STATUS_LABELS } from '@travelcrm/shared';
+import { formatTripDateTime } from '@/components/domain/fleet/trip-format';
 
 function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
   if (status === 'completed') return 'success';
@@ -29,6 +30,15 @@ export default function TripsPage() {
   const router = useRouter();
   const { confirm, dialog } = useConfirm();
   const [statusFilter, setStatusFilter] = React.useState('');
+  const [refreshKey, setRefreshKey] = React.useState(0);
+
+  const fetchTrips = React.useCallback(
+    ({ page, limit, search }: { page: number; limit: number; search?: string }) =>
+      fleetApi.trips.list({ page, limit, search: search || undefined, status: statusFilter || undefined }),
+    // refreshKey re-creates the fetcher so the list reloads after a mutation
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [statusFilter, refreshKey],
+  );
 
   async function handleDelete(trip: Trip) {
     const ok = await confirm({
@@ -41,6 +51,7 @@ export default function TripsPage() {
     try {
       await fleetApi.trips.delete(trip.id);
       toast.success('Trip deleted');
+      setRefreshKey((k) => k + 1);
     } catch {
       toast.error('Failed to delete trip');
     }
@@ -53,10 +64,8 @@ export default function TripsPage() {
         title="Trips"
         description="Assign vehicles and drivers to trips, and track them to completion."
         getRowId={(t) => t.id}
-        fetcher={({ page, limit, search }) =>
-          fleetApi.trips.list({ page, limit, search: search || undefined, status: statusFilter || undefined })
-        }
-        searchPlaceholder="Search trips by route, vehicle, or driver..."
+        fetcher={fetchTrips}
+        searchPlaceholder="Search trips by passenger, vehicle, or driver..."
         columns={[
           {
             key: 'route',
@@ -82,7 +91,7 @@ export default function TripsPage() {
             key: 'startTime',
             header: 'Start',
             sortable: true,
-            cell: (t) => (t.startTime || '').split('T')[0] || '—',
+            cell: (t) => formatTripDateTime(t.startTime),
           },
           {
             key: 'distance',
@@ -146,6 +155,7 @@ export default function TripsPage() {
             onSelect: async (rows) => {
               await Promise.all(rows.map((r) => fleetApi.trips.delete(r.id)));
               toast.success(`${rows.length} trip${rows.length !== 1 ? 's' : ''} deleted`);
+              setRefreshKey((k) => k + 1);
             },
           },
         ]}
@@ -164,7 +174,7 @@ export default function TripsPage() {
                 toCsvValue(`${t.startLocation || ''} -> ${t.endLocation || ''}`),
                 toCsvValue(t.vehicle?.registrationNumber || t.vehicleRegistration || ''),
                 toCsvValue(t.driver?.name || t.driverName || ''),
-                toCsvValue(t.startTime || ''),
+                toCsvValue(formatTripDateTime(t.startTime)),
                 toCsvValue(t.distance ?? 0),
                 toCsvValue(t.fare ?? 0),
                 toCsvValue(TRIP_STATUS_LABELS[t.status as keyof typeof TRIP_STATUS_LABELS] || t.status),

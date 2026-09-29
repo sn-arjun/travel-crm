@@ -79,8 +79,8 @@ export default function NewTripPage() {
           });
           toast.success('Trip created successfully');
           router.push('/fleet/trips');
-        } catch {
-          toast.error('Failed to create trip');
+        } catch (e) {
+          toast.error((e as { message?: string })?.message || 'Failed to create trip');
         }
       }}
       renderSections={(form) => (
@@ -92,7 +92,7 @@ export default function NewTripPage() {
                   value={form.watch('vehicleId') || null}
                   onChange={(id) => form.setValue('vehicleId', id ?? '', { shouldDirty: true })}
                   fetcher={async (q, page) => {
-                    const r = await fleetApi.vehicles.list({ search: q, page, limit: 20, status: 'active' });
+                    const r = await fleetApi.vehicles.list({ search: q, page, limit: 20, status: 'available' });
                     const data: any = r.data;
                     const items = Array.isArray(data) ? data : (data?.data ?? []);
                     const total = Array.isArray(data) ? items.length : (data?.pagination?.total ?? items.length);
@@ -104,7 +104,6 @@ export default function NewTripPage() {
                   resolveSelected={async (id) => (await fleetApi.vehicles.getById(id)).data}
                   placeholder="Select vehicle"
                   searchPlaceholder="Registration or make/model..."
-                  error={form.formState.errors.vehicleId?.message}
                   required
                 />
               </FormRow>
@@ -125,7 +124,6 @@ export default function NewTripPage() {
                   resolveSelected={async (id) => (await fleetApi.drivers.getById(id)).data}
                   placeholder="Select driver"
                   searchPlaceholder="Driver name or phone..."
-                  error={form.formState.errors.driverId?.message}
                   required
                 />
               </FormRow>
@@ -152,7 +150,7 @@ export default function NewTripPage() {
                 <DatePicker value={form.watch('startDate')} onChange={(d) => form.setValue('startDate', d as Date, { shouldDirty: true })} />
               </FormRow>
               <FormRow name="startClock" label="Start time" required>
-                <Input type="time" {...form.register('startClock')} />
+                <Input id="startClock" type="time" {...form.register('startClock')} />
               </FormRow>
               <FormRow name="endDate" label="End date" required>
                 <DatePicker
@@ -162,7 +160,7 @@ export default function NewTripPage() {
                 />
               </FormRow>
               <FormRow name="endClock" label="End time" required>
-                <Input type="time" {...form.register('endClock')} />
+                <Input id="endClock" type="time" {...form.register('endClock')} />
               </FormRow>
             </div>
           </SectionCard>
@@ -170,7 +168,7 @@ export default function NewTripPage() {
           <SectionCard title="Passenger details">
             <div className="grid gap-ds-4 sm:grid-cols-2">
               <FormRow name="passengerName" label="Passenger name">
-                <Input {...form.register('passengerName')} placeholder="Full name" />
+                <Input id="passengerName" {...form.register('passengerName')} placeholder="Full name" />
               </FormRow>
               <FormRow name="passengerPhone" label="Passenger phone">
                 <PhoneInput
@@ -180,6 +178,7 @@ export default function NewTripPage() {
               </FormRow>
               <FormRow name="specialInstructions" label="Special instructions" wide>
                 <Textarea
+                  id="specialInstructions"
                   rows={3}
                   {...form.register('specialInstructions')}
                   placeholder="Any special requirements or instructions..."
@@ -192,6 +191,7 @@ export default function NewTripPage() {
             <div className="grid gap-ds-4 sm:grid-cols-2">
               <FormRow name="distance" label="Estimated distance (km)">
                 <Input
+                  id="distance"
                   type="number"
                   min={0}
                   value={form.watch('distance') ?? ''}
@@ -200,6 +200,7 @@ export default function NewTripPage() {
               </FormRow>
               <FormRow name="fare" label="Estimated fare">
                 <Input
+                  id="fare"
                   type="number"
                   min={0}
                   value={form.watch('fare') ?? ''}

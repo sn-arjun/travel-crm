@@ -110,10 +110,14 @@ class HttpClient {
       }
     }
 
+    const envelope = errorData.error as { message?: string; code?: string } | string | undefined;
+    const envelopeMessage = typeof envelope === 'string' ? envelope : envelope?.message;
+    const envelopeCode = typeof envelope === 'object' ? envelope?.code : undefined;
+
     const error: ApiError = {
       status: response.status,
-      message: (errorData.message as string) || `HTTP ${response.status}`,
-      code: (errorData.code as string | undefined) || undefined,
+      message: (errorData.message as string) || envelopeMessage || `HTTP ${response.status}`,
+      code: (errorData.code as string | undefined) || envelopeCode || undefined,
       errors: (errorData.errors as Record<string, string[]> | undefined) || undefined,
     };
 
@@ -218,6 +222,11 @@ class HttpClient {
       return this.handleResponse<T>(response, responseType);
     } catch (error) {
       clearTimeout(timeoutId);
+
+      if (!(error instanceof Error) && typeof error === 'object' && error !== null
+        && typeof (error as ApiError).status === 'number' && typeof (error as ApiError).message === 'string') {
+        throw error as ApiError;
+      }
 
       if (error instanceof Error) {
         if (error.name === 'AbortError') {

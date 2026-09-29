@@ -4,7 +4,7 @@
  * Covers:
  *   A. Vehicle CRUD Lifecycle (create → list → detail → edit → deactivate)
  *   B. Driver CRUD Lifecycle (create → list → detail → edit → deactivate)
- *   C. Trip Assignment CRUD (create with combobox selectors → list → detail → status)
+ *   C. Trip Assignment CRUD — moved to e2e/fleet-trips.spec.ts
  *   D. Vehicle Detail Tabs (Overview, Documents, Maintenance, Trip History)
  *   E. Driver Detail Tabs (Overview, Documents, Trips, Schedule)
  *   F. Fleet Dashboard (loads, stats visible, alerts banner)
@@ -107,153 +107,8 @@ test.describe('M18-A: Vehicle CRUD Lifecycle', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────────
-// C. Trip Assignment CRUD
+// C. Trip Assignment CRUD — moved to e2e/fleet-trips.spec.ts
 // ─────────────────────────────────────────────────────────────────────────────
-
-test.describe('M18-C: Trip Assignment', () => {
-  test('create trip with vehicle/driver combobox + passenger fields → visible in list', async ({ page }) => {
-    // Seed vehicle and driver via API first
-    const ts = Date.now();
-    const vehicleReg = `E2E-TP-${ts.toString(36).toUpperCase()}`;
-    const driverName = `E2E Trip Driver ${ts}`;
-
-    const vehicle = await seedVehicle({
-      make: 'Honda',
-      model: 'City',
-      registrationNumber: vehicleReg,
-    });
-    const driver = await seedDriver({
-      name: driverName,
-      phone: `+9198765${ts.toString().slice(-5)}`,
-      licenseNumber: `DL-TP-${ts}`,
-      licenseExpiry: '2028-01-01',
-    });
-
-    // Validate seeds succeeded
-    expect(vehicle?.id || vehicle?.registrationNumber).toBeTruthy();
-    expect(driver?.id || driver?.name).toBeTruthy();
-
-    const data = {
-      startLocation: 'Mumbai Airport',
-      endLocation: 'Pune City Center',
-      passengerName: `E2E Passenger ${ts}`,
-      specialInstructions: 'E2E test trip — please ignore',
-      distance: '150',
-      fare: '3500',
-    };
-
-    await goTo(page, '/fleet/trips/new');
-    await expect(page.locator('h1')).toContainText(/New Trip Assignment/i);
-
-    // ── Start & End Locations ──
-    await page.locator('#startLocation').fill(data.startLocation);
-    await page.locator('#endLocation').fill(data.endLocation);
-
-    // ── Start Time & End Time ──
-    const tomorrow = new Date(Date.now() + 86400000);
-    const startTime = `${tomorrow.toISOString().slice(0, 10)}T09:00`;
-    await page.locator('#startTime').fill(startTime);
-    const endTime = `${tomorrow.toISOString().slice(0, 10)}T18:00`;
-    await page.locator('#endTime').fill(endTime);
-
-    // ── Vehicle Combobox ──
-    // The Combobox renders as Button[role="combobox"] (text="Search vehicles..." when empty)
-    // Find it by role=combobox and placeholder text content
-    const vehicleComboBtn = page.getByRole('combobox').filter({ hasText: /search vehicles/i });
-    await vehicleComboBtn.click();
-    await page.waitForTimeout(400);
-
-    // CommandInput opens in popover
-    const vehicleSearchInput = page.locator('input[placeholder="Registration or make/model..."]');
-    if (await vehicleSearchInput.isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await vehicleSearchInput.fill(vehicleReg.slice(0, 6));
-      await page.waitForTimeout(600);
-    }
-
-    // Select first CommandItem
-    const vehicleItem = page.locator('[cmdk-item]').first();
-    if (await vehicleItem.isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await vehicleItem.click();
-    } else {
-      // Fallback: press ArrowDown + Enter
-      await page.keyboard.press('ArrowDown');
-      await page.keyboard.press('Enter');
-    }
-    await page.waitForTimeout(300);
-
-    // ── Driver Combobox ──
-    const driverComboBtn = page.getByRole('combobox').filter({ hasText: /search drivers/i });
-    await driverComboBtn.click();
-    await page.waitForTimeout(400);
-
-    const driverSearchInput = page.locator('input[placeholder="Driver name or phone..."]');
-    if (await driverSearchInput.isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await driverSearchInput.fill(driverName.slice(0, 12));
-      await page.waitForTimeout(600);
-    }
-
-    const driverItem = page.locator('[cmdk-item]').first();
-    if (await driverItem.isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await driverItem.click();
-    } else {
-      await page.keyboard.press('ArrowDown');
-      await page.keyboard.press('Enter');
-    }
-    await page.waitForTimeout(300);
-
-    // ── Passenger Name ──
-    await page.locator('#passengerName').fill(data.passengerName);
-
-    // ── Special Instructions ──
-    await page.locator('#specialInstructions').fill(data.specialInstructions);
-
-    // ── Distance & Fare ──
-    await page.locator('#distance').fill(data.distance);
-    await page.locator('#fare').fill(data.fare);
-
-    // ── Submit ──
-    await page.getByRole('button', { name: /Create Trip/i }).click();
-    await waitForLoad(page);
-
-    // Should redirect to trips list (or show error if vehicle/driver not selected)
-    // Either redirect succeeded OR we're still on form (combobox selection may vary in E2E)
-    const currentUrl = page.url();
-    if (currentUrl.includes('/fleet/trips/new')) {
-      // Form didn't submit — vehicle/driver combobox interaction is environment-specific
-      // Verify the form fields are present and the passenger section exists
-      await expect(page.locator('#passengerName')).toBeVisible();
-      await expect(page.locator('#specialInstructions')).toBeVisible();
-    } else {
-      await expect(page).toHaveURL(/\/fleet\/trips$/);
-      await expect(page.locator('h1').filter({ hasText: /Trip Assignments/i })).toBeVisible();
-    }
-  });
-
-  test('trip form uses Combobox (not raw Select) for vehicle and driver', async ({ page }) => {
-    await goTo(page, '/fleet/trips/new');
-    await expect(page.locator('h1')).toContainText(/New Trip Assignment/i);
-
-    // The vehicle and driver fields use Combobox — they render as buttons with combobox role
-    // or popover triggers, NOT as native <select> elements
-    // Verify combobox triggers are present (placeholder text on buttons)
-    const vehicleField = page.locator('label', { hasText: /^Vehicle/i }).locator('..');
-    const driverField = page.locator('label', { hasText: /^Driver/i }).locator('..');
-
-    await expect(vehicleField).toBeVisible();
-    await expect(driverField).toBeVisible();
-
-    // Should NOT have raw ID text inputs for vehicle/driver
-    await expect(page.getByPlaceholder(/enter.*vehicle.*id/i)).toHaveCount(0);
-    await expect(page.getByPlaceholder(/enter.*driver.*id/i)).toHaveCount(0);
-
-    // Should have passenger fields (added in fix milestone)
-    await expect(page.locator('#passengerName')).toBeVisible();
-    await expect(page.locator('#specialInstructions')).toBeVisible();
-
-    // Should have Passenger section card
-    await expect(page.getByText(/Passenger Details/i)).toBeVisible();
-  });
-});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // D. Vehicle Detail Tabs
@@ -492,46 +347,6 @@ test.describe('M18-H: Fleet List Pages UX', () => {
     await expect(searchInput).toBeVisible();
   });
 
-  test('trips list has FilterBar and Kanban/Table view toggle', async ({ page }) => {
-    await goTo(page, '/fleet/trips');
-    await expect(page.locator('h1')).toContainText(/Trip Assignments/i);
-
-    // FilterBar search input
-    const searchInput = page.getByPlaceholder(/search trips/i);
-    await expect(searchInput).toBeVisible();
-
-    // View toggle buttons
-    const viewToggles = page.locator('.border.rounded-md').filter({ has: page.getByRole('button') });
-    await expect(viewToggles.first()).toBeVisible({ timeout: 5_000 });
-  });
-
-  test('trips list table shows Vehicle column header', async ({ page }) => {
-    await goTo(page, '/fleet/trips');
-    await waitForLoad(page);
-
-    // Switch to table view — find the table/list icon button
-    const tableViewBtn = page.locator('button').filter({ has: page.locator('svg') }).last();
-    if (await tableViewBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      // Try to find the second toggle button (table view)
-      const toggleContainer = page.locator('.border.rounded-md').first();
-      if (await toggleContainer.isVisible({ timeout: 2_000 }).catch(() => false)) {
-        const buttons = toggleContainer.getByRole('button');
-        const btnCount = await buttons.count();
-        if (btnCount >= 2) {
-          await buttons.last().click(); // Table view button
-          await waitForLoad(page);
-        }
-      }
-    }
-
-    // In table view, column header should say "Vehicle" not "Vehicle ID"
-    const vehicleHeader = page.getByRole('columnheader', { name: /^Vehicle$/i });
-    if (await vehicleHeader.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      await expect(vehicleHeader).toBeVisible();
-    }
-    // Table mode may not show if no trips — that's fine
-  });
-
   test('vehicles list grid cards show document expiry badges', async ({ page }) => {
     // Seed a vehicle with insurance expiry coming up
     const futureExpiry = new Date(Date.now() + 20 * 86400000).toISOString().split('T')[0]; // 20 days from now
@@ -619,12 +434,6 @@ test.describe('M18-J: Fleet Navigation', () => {
   test('fleet drivers sub-page loads without error', async ({ page }) => {
     await goTo(page, '/fleet/drivers');
     await expect(page.locator('h1')).toContainText(/Drivers/i);
-    await expect(page.getByText(/Something went wrong|Error: |404/i)).toHaveCount(0);
-  });
-
-  test('fleet trips sub-page loads without error', async ({ page }) => {
-    await goTo(page, '/fleet/trips');
-    await expect(page.locator('h1')).toContainText(/Trip Assignments/i);
     await expect(page.getByText(/Something went wrong|Error: |404/i)).toHaveCount(0);
   });
 
