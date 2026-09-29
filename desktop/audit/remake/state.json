@@ -461,11 +461,17 @@
       "timestamp": "2026-09-29T07:32:59.887Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "verify:follow-ups": {
+      "status": "ok",
+      "timestamp": "2026-09-29T07:40:19.993Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "verify:fleet-vehicles",
+    "id": "verify:follow-ups",
     "status": "ok",
-    "timestamp": "2026-09-29T07:32:59.887Z"
+    "timestamp": "2026-09-29T07:40:19.993Z"
   }
 }

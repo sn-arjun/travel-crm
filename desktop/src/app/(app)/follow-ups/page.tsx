@@ -46,6 +46,38 @@ function statusLabel(f: FollowUpRow) {
   return 'Pending';
 }
 
+// GET /follow-ups returns every pending follow-up as a plain array and ignores
+// paging/search/type/status params, so narrowing and paging happen here.
+async function queryFollowUps(params: { search?: string; status?: string; type?: string }): Promise<FollowUpRow[]> {
+  const res = await followUpsApi.list();
+  const data: any = res.data;
+  const all: FollowUpRow[] = Array.isArray(data) ? data : (data?.data ?? []);
+  const q = params.search?.trim().toLowerCase();
+  return all.filter((f) => {
+    if (params.type && f.type !== params.type) return false;
+    if (params.status === 'overdue' && !isOverdue(f)) return false;
+    if (params.status === 'pending' && isOverdue(f)) return false;
+    if (q) {
+      const haystack = [f.leadTitle, f.contactName, f.notes, f.type].filter(Boolean).join(' ').toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+function startOfToday() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+const OUTCOME_LABELS: Record<string, string> = {
+  positive: 'Positive',
+  neutral: 'Neutral',
+  negative: 'Negative',
+  no_response: 'No response',
+};
+
 function toCsvValue(v: unknown) {
   const s = String(v ?? '');
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -76,9 +108,12 @@ function ScheduleDialog({
 }) {
   const [form, setForm] = React.useState<ScheduleFormState>(EMPTY_FORM);
   const [saving, setSaving] = React.useState(false);
+  // Remounts the picker once the form is populated so its time selects start from the pre-filled value.
+  const [pickerKey, setPickerKey] = React.useState(0);
 
   React.useEffect(() => {
     if (!open) return;
+    setPickerKey((k) => k + 1);
     if (mode === 'reschedule' && followUp) {
       setForm({
         leadId: followUp.leadId,
@@ -100,7 +135,7 @@ function ScheduleDialog({
     setSaving(true);
     try {
       if (mode === 'reschedule' && followUp) {
-        await followUpsApi.update(followUp.id, { dueDate: form.scheduledAt.toISOString() } as never);
+        await followUpsApi.update(followUp.id, { scheduledAt: form.scheduledAt.toISOString() });
       } else {
         await followUpsApi.create({
           leadId: form.leadId,
@@ -158,10 +193,11 @@ function ScheduleDialog({
                 Date &amp; time<span aria-hidden="true" className="ml-0.5 text-ds-danger">*</span>
               </Label>
               <DateTimePicker
+                key={pickerKey}
                 value={form.scheduledAt}
                 onChange={(d) => setForm((f) => ({ ...f, scheduledAt: d }))}
                 placeholder="Pick date & time"
-                minDate={mode === 'create' ? new Date() : undefined}
+                minDate={mode === 'create' ? startOfToday() : undefined}
               />
             </div>
             <div className="flex flex-col gap-ds-1">
@@ -226,11 +262,8 @@ function CompleteDialog({
     if (!followUp) return;
     setSaving(true);
     try {
-      await followUpsApi.complete(followUp.id, {
-        completedAt: new Date().toISOString(),
-        outcome: outcome || undefined,
-        notes: notes || undefined,
-      });
+      const outcomeNotes = [OUTCOME_LABELS[outcome], notes.trim()].filter(Boolean).join(' — ');
+      await followUpsApi.complete(followUp.id, { outcomeNotes: outcomeNotes || undefined });
       toast.success('Follow-up completed');
       onOpenChange(false);
       onSaved();
@@ -296,6 +329,15 @@ export default function FollowUpsPage() {
 
   const bump = () => setRefreshKey((k) => k + 1);
 
+  const fetchPage = React.useCallback(
+    async ({ page, limit, search }: { page: number; limit: number; search: string }) => {
+      const rows = await queryFollowUps({ search, status: statusFilter, type: typeFilter });
+      const start = (page - 1) * limit;
+      return { data: { data: rows.slice(start, start + limit), pagination: { total: rows.length, page, limit } } };
+    },
+    [statusFilter, typeFilter],
+  );
+
   async function handleDelete(f: FollowUpRow) {
     const ok = await confirm({
       title: 'Cancel follow-up',
@@ -326,15 +368,7 @@ export default function FollowUpsPage() {
         title="Follow-ups"
         description="Stay on top of scheduled outreach across your pipeline."
         getRowId={(f) => f.id}
-        fetcher={({ page, limit, search }) =>
-          followUpsApi.list({
-            page,
-            limit,
-            search: search || undefined,
-            status: (statusFilter || undefined) as never,
-            type: typeFilter || undefined,
-          })
-        }
+        fetcher={fetchPage}
         searchPlaceholder="Search follow-ups..."
         columns={[
           {
@@ -373,7 +407,6 @@ export default function FollowUpsPage() {
           {
             key: 'scheduledAt',
             header: 'Scheduled',
-            sortable: true,
             cell: (f) => (
               <span className={isOverdue(f) ? 'text-sm font-medium text-ds-danger' : 'text-sm'}>
                 {f.scheduledAt
@@ -413,7 +446,6 @@ export default function FollowUpsPage() {
               <SelectContent>
                 <SelectItem value="all">All statuses</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
                 <SelectItem value="overdue">Overdue</SelectItem>
               </SelectContent>
             </Select>
@@ -448,26 +480,22 @@ export default function FollowUpsPage() {
             icon: <Trash2 aria-hidden="true" />,
             destructive: true,
             onSelect: async (rows) => {
-              await Promise.all(rows.map((r) => followUpsApi.delete(r.id)));
-              toast.success(`${rows.length} follow-up${rows.length !== 1 ? 's' : ''} cancelled`);
+              try {
+                await Promise.all(rows.map((r) => followUpsApi.delete(r.id)));
+                toast.success(`${rows.length} follow-up${rows.length !== 1 ? 's' : ''} cancelled`);
+              } catch {
+                toast.error('Failed to cancel selected follow-ups');
+              }
               bump();
             },
           },
         ]}
         onExport={async (rows) => {
           try {
-            let all = rows;
-            const first = await followUpsApi.list({
-              page: 1,
-              limit: 500,
-              status: (statusFilter || undefined) as never,
-              type: typeFilter || undefined,
-            });
-            const data: any = first.data;
-            all = Array.isArray(data) ? data : (data?.data ?? rows);
+            const all = await queryFollowUps({ status: statusFilter, type: typeFilter });
             const header = ['Type', 'Lead', 'Contact', 'Notes', 'Scheduled', 'Status'];
             const lines = [header.join(',')];
-            for (const f of all as FollowUpRow[]) {
+            for (const f of all) {
               lines.push([
                 toCsvValue(f.type),
                 toCsvValue(f.leadTitle ?? f.leadId),
