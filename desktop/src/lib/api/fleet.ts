@@ -158,8 +158,8 @@ export interface FleetRateCard {
   baseFare: number;
   perKmRate: number;
   perHourRate?: number;
-  minimumKm?: number;
-  minimumHours?: number;
+  minKm?: number;
+  minHours?: number;
   extraKmRate?: number;
   extraHourRate?: number;
   nightCharge?: number;
@@ -324,12 +324,12 @@ export interface UpdateTripRequest {
 export interface CreateFleetRateCardRequest {
   name: string;
   vehicleType: string;
-  tripType?: string;
+  tripType: string;
   baseFare: number;
   perKmRate: number;
   perHourRate?: number;
-  minimumKm?: number;
-  minimumHours?: number;
+  minKm?: number;
+  minHours?: number;
   extraKmRate?: number;
   extraHourRate?: number;
   nightCharge?: number;
@@ -349,8 +349,8 @@ export interface UpdateFleetRateCardRequest {
   baseFare?: number;
   perKmRate?: number;
   perHourRate?: number;
-  minimumKm?: number;
-  minimumHours?: number;
+  minKm?: number;
+  minHours?: number;
   extraKmRate?: number;
   extraHourRate?: number;
   nightCharge?: number;
@@ -366,16 +366,15 @@ export interface UpdateFleetRateCardRequest {
 export interface RateCardEstimateRequest {
   rateCardId: string;
   distanceKm: number;
-  hours?: number;
+  durationMinutes: number;
+  numDays?: number;
+  numNights?: number;
+  isNightTrip?: boolean;
 }
 
 export interface RateCardEstimateResult {
-  baseFare: number;
-  distanceCost: number;
-  timeCost: number;
-  nightCharge: number;
-  driverAllowance: number;
-  total: number;
+  rateCard: FleetRateCard;
+  breakdown: Record<string, unknown> & { total?: number };
 }
 
 export interface CreateTripCostRequest {
@@ -782,27 +781,29 @@ export const fleetApi = {
       limit?: number;
       search?: string;
       vehicleType?: string;
+      tripType?: string;
+      isActive?: '1' | '0';
       sortBy?: string;
       sortOrder?: 'asc' | 'desc';
     }) =>
-      client.get<ApiResponse<PaginatedResponse<FleetRateCard>>>(API_ENDPOINTS.fleet.rateCards.list, { params }),
+      client.get<ApiResponse<PaginatedResponse<FleetRateCard>>>('/fleet/vehicle-rate-cards', { params }),
 
     getById: (id: string) =>
-      client.get<ApiResponse<FleetRateCard>>(API_ENDPOINTS.fleet.rateCards.byId(id)),
+      client.get<ApiResponse<FleetRateCard>>(`/fleet/vehicle-rate-cards/${id}`),
 
     create: (data: CreateFleetRateCardRequest) =>
-      client.post<ApiResponse<FleetRateCard>>(API_ENDPOINTS.fleet.rateCards.create, data),
+      client.post<ApiResponse<FleetRateCard>>('/fleet/vehicle-rate-cards', data),
 
     update: (id: string, data: UpdateFleetRateCardRequest) =>
-      client.put<ApiResponse<FleetRateCard>>(API_ENDPOINTS.fleet.rateCards.byId(id), data),
+      client.put<ApiResponse<FleetRateCard>>(`/fleet/vehicle-rate-cards/${id}`, data),
 
     delete: (id: string) =>
-      client.delete<ApiResponse<void>>(API_ENDPOINTS.fleet.rateCards.byId(id)),
+      client.delete<ApiResponse<void>>(`/fleet/vehicle-rate-cards/${id}`),
 
-    lookup: (params: { vehicleType: string; tripType?: string }) =>
-      client.get<ApiResponse<FleetRateCard | null>>('/fleet/rate-cards/lookup', { params }),
+    lookup: (params: { vehicleType: string; tripType: string }) =>
+      client.get<ApiResponse<FleetRateCard | null>>('/fleet/vehicle-rate-cards/lookup', { params }),
 
     estimate: (data: RateCardEstimateRequest) =>
-      client.post<ApiResponse<RateCardEstimateResult>>('/fleet/rate-cards/estimate', data),
+      client.post<ApiResponse<RateCardEstimateResult>>('/fleet/vehicle-rate-cards/estimate', data),
   },
 };

@@ -24,7 +24,7 @@ function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' |
   if (status === 'active') return 'success';
   if (status === 'on_trip') return 'info';
   if (status === 'on_leave') return 'warning';
-  return 'neutral';
+  return 'neutral'; // off_duty
 }
 
 function licenseTone(licenseExpiry?: string): { tone: 'success' | 'danger' | 'warning' | 'neutral'; label: string } {
@@ -48,6 +48,7 @@ export default function DriverDetailPage() {
   const [showRateDialog, setShowRateDialog] = React.useState(false);
   const [showUploadDialog, setShowUploadDialog] = React.useState(false);
   const [ratingValue, setRatingValue] = React.useState('5');
+  const [ratingTripId, setRatingTripId] = React.useState('');
   const [uploadType, setUploadType] = React.useState<'license' | 'id_proof' | 'police_verification'>('license');
   const [uploadFiles, setUploadFiles] = React.useState<File[]>([]);
 
@@ -58,7 +59,7 @@ export default function DriverDetailPage() {
   const { mutate: updateStatus, loading: isUpdatingStatus } = useApiMutation<{ status: string }, any>(
     (data) => fleetApi.drivers.updateStatus(driverId, data.status),
   );
-  const { mutate: rateDriver, loading: isRating } = useApiMutation<{ rating: number }, any>(
+  const { mutate: rateDriver, loading: isRating } = useApiMutation<{ rating: number; tripId: string }, any>(
     (data) => fleetApi.drivers.rate(driverId, data),
   );
   const { mutate: uploadDoc, loading: isUploading } = useApiMutation<FormData, any>(
@@ -78,10 +79,10 @@ export default function DriverDetailPage() {
   const totalRevenue = driverTrips.reduce((sum: number, t: any) => sum + (t.fare ?? 0), 0);
 
   async function handleDeactivate() {
-    const newStatus = driver?.status === 'inactive' ? 'active' : 'inactive';
+    const newStatus = driver?.status === 'off_duty' ? 'active' : 'off_duty';
     const result = await updateStatus({ status: newStatus });
     if (result) {
-      toast.success(`Driver ${newStatus === 'inactive' ? 'deactivated' : 'activated'}`);
+      toast.success(`Driver ${newStatus === 'off_duty' ? 'deactivated' : 'activated'}`);
       driverQuery.refetch();
       setShowDeactivateDialog(false);
     } else {
@@ -90,11 +91,17 @@ export default function DriverDetailPage() {
   }
 
   async function handleRate() {
-    const result = await rateDriver({ rating: Number(ratingValue) });
+    if (!ratingTripId) {
+      toast.error('Select a completed trip to rate');
+      return;
+    }
+    const result = await rateDriver({ rating: Number(ratingValue), tripId: ratingTripId });
     if (result) {
       toast.success('Driver rated successfully');
       driverQuery.refetch();
+      tripsQuery.refetch();
       setShowRateDialog(false);
+      setRatingTripId('');
     } else {
       toast.error('Failed to rate driver');
     }
@@ -103,7 +110,7 @@ export default function DriverDetailPage() {
   async function handleUpload() {
     if (uploadFiles.length === 0) return;
     const fd = new FormData();
-    fd.append('document', uploadFiles[0] as File);
+    fd.append('file', uploadFiles[0] as File);
     fd.append('type', uploadType);
     const result = await uploadDoc(fd);
     if (result) {
@@ -135,7 +142,7 @@ export default function DriverDetailPage() {
     );
   }
 
-  const isInactive = driver.status === 'inactive';
+  const isInactive = driver.status === 'off_duty';
   const license = licenseTone(driver.licenseExpiry);
   const activity: TimelineItem[] = driverTrips.slice(0, 20).map((t: any) => ({
     id: t.id,
@@ -163,7 +170,7 @@ export default function DriverDetailPage() {
             <Button variant="outline" size="sm" asChild>
               <Link href={`/fleet/drivers/${driverId}/edit`}><Pencil aria-hidden="true" />Edit</Link>
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setShowRateDialog(true)}>
+            <Button variant="outline" size="sm" onClick={() => setShowRateDialog(true)} disabled={completedTrips.length === 0}>
               <Star aria-hidden="true" />Rate
             </Button>
           </>
@@ -309,18 +316,30 @@ export default function DriverDetailPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showRateDialog} onOpenChange={setShowRateDialog}>
+      <Dialog open={showRateDialog} onOpenChange={(v) => { setShowRateDialog(v); if (!v) setRatingTripId(''); }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Rate Driver</DialogTitle></DialogHeader>
-          <Select value={ratingValue} onValueChange={setRatingValue}>
-            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {[5, 4, 3, 2, 1].map((n) => <SelectItem key={n} value={String(n)}>{n} star{n === 1 ? '' : 's'}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <div className="flex flex-col gap-ds-3">
+            <Select value={ratingTripId} onValueChange={setRatingTripId}>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Select a completed trip" /></SelectTrigger>
+              <SelectContent>
+                {completedTrips.map((t: any) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {(t.startLocation || 'Trip')} → {t.endLocation || ''} ({new Date(t.startTime || t.createdAt).toLocaleDateString('en-IN')})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={ratingValue} onValueChange={setRatingValue}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {[5, 4, 3, 2, 1].map((n) => <SelectItem key={n} value={String(n)}>{n} star{n === 1 ? '' : 's'}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowRateDialog(false)}>Cancel</Button>
-            <Button onClick={handleRate} disabled={isRating}>
+            <Button onClick={handleRate} disabled={isRating || !ratingTripId}>
               {isRating && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
               Submit rating
             </Button>

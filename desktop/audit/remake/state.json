@@ -438,11 +438,32 @@
       "timestamp": "2026-09-28T12:42:03.800Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "verify:fleet-drivers": {
+      "status": "failed",
+      "timestamp": "2026-09-29T06:37:56.327Z",
+      "error": "no-op: agent completed without modifying any file"
+    },
+    "verify:fleet-rate-cards": {
+      "status": "ok",
+      "timestamp": "2026-09-29T06:48:40.615Z",
+      "error": null,
+      "repairAttempts": 1
+    },
+    "verify:fleet-trips": {
+      "status": "context-limit",
+      "timestamp": "2026-09-28T13:02:57.718Z",
+      "error": "stdout(tail): You've hit your session limit · resets 10pm (Asia/Kolkata)"
+    },
+    "verify:fleet-vehicles": {
+      "status": "context-limit",
+      "timestamp": "2026-09-28T13:03:02.952Z",
+      "error": "stdout(tail): You've hit your session limit · resets 10pm (Asia/Kolkata)"
     }
   },
   "lastCompleted": {
-    "id": "verify:fleet-dashboard",
+    "id": "verify:fleet-rate-cards",
     "status": "ok",
-    "timestamp": "2026-09-28T12:42:03.800Z"
+    "timestamp": "2026-09-29T06:48:40.615Z"
   }
 }

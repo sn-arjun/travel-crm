@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { ListPage } from '@/components/domain';
-import { Button, Tag, useConfirm } from '@/components/ui';
+import { Button, Tag, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, useConfirm } from '@/components/ui';
 import { fleetApi } from '@/lib/api/fleet';
 import type { FleetRateCard } from '@/lib/api/fleet';
 import { toast } from 'sonner';
@@ -34,6 +34,29 @@ function exportRateCardsCsv(rows: FleetRateCard[]) {
 export default function RateCardsPage() {
   const router = useRouter();
   const { confirm, dialog } = useConfirm();
+  const [vehicleTypeFilter, setVehicleTypeFilter] = React.useState('');
+  const [refreshKey, setRefreshKey] = React.useState(0);
+
+  const fetcher = React.useCallback(
+    ({ page, limit, search }: { page: number; limit: number; search: string }) => {
+      void refreshKey;
+      return fleetApi.rateCards.list({
+        page,
+        limit,
+        search: search || undefined,
+        vehicleType: vehicleTypeFilter || undefined,
+      });
+    },
+    [vehicleTypeFilter, refreshKey],
+  );
+
+  const filters = vehicleTypeFilter
+    ? [{
+        id: 'vehicleType',
+        label: 'Vehicle type',
+        value: VEHICLE_TYPE_LABELS[vehicleTypeFilter as keyof typeof VEHICLE_TYPE_LABELS] || vehicleTypeFilter,
+      }]
+    : [];
 
   async function handleDelete(rc: FleetRateCard) {
     const ok = await confirm({
@@ -46,6 +69,7 @@ export default function RateCardsPage() {
     try {
       await fleetApi.rateCards.delete(rc.id);
       toast.success('Rate card deleted');
+      setRefreshKey((k) => k + 1);
     } catch {
       toast.error('Failed to delete rate card');
     }
@@ -58,8 +82,20 @@ export default function RateCardsPage() {
       title="Rate Cards"
       description="Pricing for vehicle and trip type combinations."
       getRowId={(rc) => rc.id}
-      fetcher={({ page, limit, search }) =>
-        fleetApi.rateCards.list({ page, limit, search: search || undefined })
+      fetcher={fetcher}
+      filters={filters}
+      onRemoveFilter={() => setVehicleTypeFilter('')}
+      onClearFilters={() => setVehicleTypeFilter('')}
+      headerActions={
+        <Select value={vehicleTypeFilter || 'all'} onValueChange={(v) => setVehicleTypeFilter(v === 'all' ? '' : v)}>
+          <SelectTrigger className="w-44 h-9" aria-label="Filter by vehicle type"><SelectValue placeholder="All vehicle types" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All vehicle types</SelectItem>
+            {Object.entries(VEHICLE_TYPE_LABELS).map(([value, label]) => (
+              <SelectItem key={value} value={value}>{label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       }
       columns={[
         { key: 'name', header: 'Name', sortable: true },
@@ -132,6 +168,7 @@ export default function RateCardsPage() {
           onSelect: (rows) =>
             Promise.all(rows.map((r) => fleetApi.rateCards.delete(r.id))).then(() => {
               toast.success(`${rows.length} rate card${rows.length !== 1 ? 's' : ''} deleted`);
+              setRefreshKey((k) => k + 1);
             }),
         },
       ]}

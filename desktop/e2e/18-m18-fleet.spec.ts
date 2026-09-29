@@ -103,68 +103,8 @@ test.describe('M18-A: Vehicle CRUD Lifecycle', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// B. Driver CRUD Lifecycle
+// B. Driver CRUD Lifecycle — moved to e2e/fleet-drivers.spec.ts
 // ─────────────────────────────────────────────────────────────────────────────
-
-test.describe('M18-B: Driver CRUD Lifecycle', () => {
-  test('create driver → visible in list → detail shows tabs → deactivate/activate', async ({ page }) => {
-    const ts = Date.now();
-    const data = {
-      name: `E2E Driver ${ts}`,
-      phone: `+919800${ts.toString().slice(-6)}`,
-      email: `driver-${ts}@test.com`,
-      licenseNumber: `DL${ts.toString().slice(-8)}`,
-      licenseExpiry: '2027-12-31',
-    };
-
-    // ── CREATE ──
-    await goTo(page, '/fleet/drivers/new');
-    await expect(page.locator('h1')).toContainText(/Add Driver/i);
-
-    await page.locator('#name').fill(data.name);
-    await page.locator('#phone').fill(data.phone);
-
-    const emailInput = page.locator('#email');
-    if (await emailInput.isVisible()) {
-      await emailInput.fill(data.email);
-    }
-
-    await page.locator('#licenseNumber').fill(data.licenseNumber);
-    await page.locator('#licenseExpiry').fill(data.licenseExpiry);
-
-    await page.getByRole('button', { name: /Save Driver/i }).click();
-    await waitForLoad(page);
-
-    // Should redirect to /fleet/drivers
-    await expect(page).toHaveURL(/\/fleet\/drivers$/);
-    await waitForLoad(page);
-
-    // ── VERIFY IN LIST ── (driver name is unique)
-    await expect(page.getByText(data.name)).toBeVisible({ timeout: 10_000 });
-
-    // ── NAVIGATE TO DETAIL ──
-    await page.getByText(data.name).first().click();
-    await waitForLoad(page);
-
-    // Driver name in h1
-    await expect(page.locator('h1').filter({ hasText: data.name })).toBeVisible();
-
-    // ── VERIFY TABS EXIST ──
-    await expect(page.getByRole('tab', { name: /Overview/i })).toBeVisible();
-    await expect(page.getByRole('tab', { name: /Documents/i })).toBeVisible();
-    await expect(page.getByRole('tab', { name: /Trip History/i })).toBeVisible();
-    await expect(page.getByRole('tab', { name: /Schedule/i })).toBeVisible();
-
-    // ── DEACTIVATE ──
-    const deactivateBtn = page.getByRole('button', { name: /Deactivate/i });
-    await expect(deactivateBtn).toBeVisible();
-    await deactivateBtn.click();
-    await expect(page.getByRole('dialog')).toBeVisible();
-    await page.getByRole('dialog').getByRole('button', { name: /Deactivate/i }).click();
-    await waitForLoad(page);
-    await expect(page.getByRole('button', { name: /Activate/i })).toBeVisible({ timeout: 8_000 });
-  });
-});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // C. Trip Assignment CRUD
@@ -412,77 +352,8 @@ test.describe('M18-D: Vehicle Detail Tabs', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// E. Driver Detail Tabs
+// E. Driver Detail Tabs — moved to e2e/fleet-drivers.spec.ts
 // ─────────────────────────────────────────────────────────────────────────────
-
-test.describe('M18-E: Driver Detail Tabs', () => {
-  test('driver detail has Schedule tab with calendar component', async ({ page }) => {
-    const driver = await seedDriver({
-      name: `E2E Sched Driver ${Date.now()}`,
-      phone: `+91960${Date.now().toString().slice(-7)}`,
-      licenseNumber: `SCHED-${Date.now()}`,
-      licenseExpiry: '2027-06-30',
-    });
-    expect(driver?.id).toBeTruthy();
-
-    await goTo(page, `/fleet/drivers/${driver.id}`);
-
-    // All expected tabs — driver detail has: Overview, Documents, Schedule, Trip History, Performance
-    await expect(page.getByRole('tab', { name: /Overview/i })).toBeVisible();
-    await expect(page.getByRole('tab', { name: /Documents/i })).toBeVisible();
-    await expect(page.getByRole('tab', { name: /Trip History/i })).toBeVisible();
-    await expect(page.getByRole('tab', { name: /Schedule/i })).toBeVisible();
-
-    // Click Schedule tab
-    await page.getByRole('tab', { name: /Schedule/i }).click();
-    await waitForLoad(page);
-
-    // Tab panel should be active and rendered
-    const activePanel = page.locator('[role="tabpanel"][data-state="active"]');
-    await expect(activePanel).toBeVisible({ timeout: 5_000 });
-  });
-
-  test('driver documents tab — shows content not blank area', async ({ page }) => {
-    const driver = await seedDriver({
-      name: `E2E Doc Driver ${Date.now()}`,
-      phone: `+91961${Date.now().toString().slice(-7)}`,
-      licenseNumber: `DOC-${Date.now()}`,
-      licenseExpiry: '2027-06-30',
-    });
-    expect(driver?.id).toBeTruthy();
-
-    await goTo(page, `/fleet/drivers/${driver.id}`);
-
-    await page.getByRole('tab', { name: /Documents/i }).click();
-    await waitForLoad(page);
-
-    // The active tab panel should be visible and not blank
-    const activePanel = page.locator('[role="tabpanel"][data-state="active"]');
-    await expect(activePanel).toBeVisible({ timeout: 5_000 });
-
-    // Should show some content in the docs tab — "No documents uploaded yet" is the empty state
-    // Use page.locator scoped to the active panel to avoid cross-tab matches
-    const docsPanelText = await activePanel.textContent();
-    expect(docsPanelText).toMatch(/No documents|Upload|license|ID Proof|document/i);
-  });
-
-  test('driver overview shows driver name in h1 heading', async ({ page }) => {
-    const driver = await seedDriver({
-      name: `E2E Rating Driver ${Date.now()}`,
-      phone: `+91962${Date.now().toString().slice(-7)}`,
-      licenseNumber: `RATE-${Date.now()}`,
-      licenseExpiry: '2027-12-31',
-    });
-    expect(driver?.id).toBeTruthy();
-
-    await goTo(page, `/fleet/drivers/${driver.id}`);
-
-    // Overview tab should have driver name in h1
-    await expect(page.locator('h1').filter({ hasText: driver.name })).toBeVisible();
-    // License number should be visible somewhere on overview
-    await expect(page.getByText(driver.licenseNumber || 'RATE-', { exact: false }).first()).toBeVisible({ timeout: 5_000 });
-  });
-});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // F. Fleet Dashboard

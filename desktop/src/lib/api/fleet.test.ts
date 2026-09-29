@@ -347,49 +347,68 @@ describe('fleetApi', () => {
   // ─── rateCards ─────────────────────────────────────────────────
   describe('rateCards', () => {
     describe('list', () => {
-      it('should call GET /fleet/rate-cards', async () => {
+      it('should call GET /fleet/vehicle-rate-cards', async () => {
         vi.mocked(client.get).mockResolvedValue({ data: { data: [], pagination: {} } });
         await fleetApi.rateCards.list();
-        expect(client.get).toHaveBeenCalledWith('/fleet/rate-cards', { params: undefined });
+        expect(client.get).toHaveBeenCalledWith('/fleet/vehicle-rate-cards', { params: undefined });
       });
 
       it('should pass filter params', async () => {
         vi.mocked(client.get).mockResolvedValue({ data: { data: [], pagination: {} } });
         await fleetApi.rateCards.list({ vehicleType: 'sedan' });
-        expect(client.get).toHaveBeenCalledWith('/fleet/rate-cards', { params: { vehicleType: 'sedan' } });
+        expect(client.get).toHaveBeenCalledWith('/fleet/vehicle-rate-cards', { params: { vehicleType: 'sedan' } });
       });
     });
 
     describe('getById', () => {
-      it('should call GET /fleet/rate-cards/:id', async () => {
+      it('should call GET /fleet/vehicle-rate-cards/:id', async () => {
         vi.mocked(client.get).mockResolvedValue({ data: { id: 'rc1' } });
         await fleetApi.rateCards.getById('rc1');
-        expect(client.get).toHaveBeenCalledWith('/fleet/rate-cards/rc1');
+        expect(client.get).toHaveBeenCalledWith('/fleet/vehicle-rate-cards/rc1');
       });
     });
 
     describe('create', () => {
-      it('should call POST /fleet/rate-cards', async () => {
-        const data = { name: 'Standard', vehicleType: 'sedan', baseFare: 500, perKmRate: 15 };
+      it('should call POST /fleet/vehicle-rate-cards', async () => {
+        const data = { name: 'Standard', vehicleType: 'sedan', tripType: 'one_way', baseFare: 500, perKmRate: 15 };
         vi.mocked(client.post).mockResolvedValue({ data: { id: 'rc1' } });
         await fleetApi.rateCards.create(data);
-        expect(client.post).toHaveBeenCalledWith('/fleet/rate-cards', data);
+        expect(client.post).toHaveBeenCalledWith('/fleet/vehicle-rate-cards', data);
       });
     });
 
     describe('update', () => {
-      it('should call PUT /fleet/rate-cards/:id', async () => {
+      it('should call PUT /fleet/vehicle-rate-cards/:id', async () => {
         vi.mocked(client.put).mockResolvedValue({ data: {} });
         await fleetApi.rateCards.update('rc1', { baseFare: 600 });
-        expect(client.put).toHaveBeenCalledWith('/fleet/rate-cards/rc1', { baseFare: 600 });
+        expect(client.put).toHaveBeenCalledWith('/fleet/vehicle-rate-cards/rc1', { baseFare: 600 });
       });
     });
 
     describe('delete', () => {
-      it('should call DELETE /fleet/rate-cards/:id', async () => {
+      it('should call DELETE /fleet/vehicle-rate-cards/:id', async () => {
         vi.mocked(client.delete).mockResolvedValue({ data: undefined });
         await fleetApi.rateCards.delete('rc1');
-        expect(client.delete).toHaveBeenCalledWith('/fleet/rate-cards/rc1');
+        expect(client.delete).toHaveBeenCalledWith('/fleet/vehicle-rate-cards/rc1');
+      });
+    });
+
+    describe('lookup', () => {
+      it('should call GET /fleet/vehicle-rate-cards/lookup', async () => {
+        vi.mocked(client.get).mockResolvedValue({ data: { data: null } });
+        await fleetApi.rateCards.lookup({ vehicleType: 'sedan', tripType: 'one_way' });
+        expect(client.get).toHaveBeenCalledWith('/fleet/vehicle-rate-cards/lookup', {
+          params: { vehicleType: 'sedan', tripType: 'one_way' },
+        });
+      });
+    });
+
+    describe('estimate', () => {
+      it('should call POST /fleet/vehicle-rate-cards/estimate', async () => {
+        const data = { rateCardId: 'rc1', distanceKm: 300, durationMinutes: 360 };
+        vi.mocked(client.post).mockResolvedValue({ data: {} });
+        await fleetApi.rateCards.estimate(data);
+        expect(client.post).toHaveBeenCalledWith('/fleet/vehicle-rate-cards/estimate', data);
       });
     });
   });

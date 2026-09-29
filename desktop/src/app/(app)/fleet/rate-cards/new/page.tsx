@@ -11,12 +11,12 @@ import { VEHICLE_TYPE_LABELS, FLEET_TRIP_TYPE_LABELS } from '@travelcrm/shared';
 const schema = z.object({
   name: z.string().min(1, 'Rate card name is required'),
   vehicleType: z.string().min(1, 'Vehicle type is required'),
-  tripType: z.string().optional(),
+  tripType: z.string().min(1, 'Trip type is required'),
   baseFare: z.number({ error: 'Base fare is required' }),
   perKmRate: z.number({ error: 'Per km rate is required' }),
   perHourRate: z.number().optional(),
-  minimumKm: z.number().optional(),
-  minimumHours: z.number().optional(),
+  minKm: z.number().optional(),
+  minHours: z.number().optional(),
   extraKmRate: z.number().optional(),
   extraHourRate: z.number().optional(),
   nightCharge: z.number().optional(),
@@ -30,7 +30,9 @@ const schema = z.object({
 type RateCardForm = z.infer<typeof schema>;
 
 function toIso(d: Date | undefined) {
-  return d ? d.toISOString().slice(0, 10) : undefined;
+  if (!d) return undefined;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 export default function NewRateCardPage() {
@@ -48,8 +50,8 @@ export default function NewRateCardPage() {
         baseFare: 0,
         perKmRate: 0,
         perHourRate: undefined,
-        minimumKm: undefined,
-        minimumHours: undefined,
+        minKm: undefined,
+        minHours: undefined,
         extraKmRate: undefined,
         extraHourRate: undefined,
         nightCharge: undefined,
@@ -67,12 +69,12 @@ export default function NewRateCardPage() {
           await fleetApi.rateCards.create({
             name: v.name,
             vehicleType: v.vehicleType,
-            tripType: v.tripType || undefined,
+            tripType: v.tripType,
             baseFare: v.baseFare,
             perKmRate: v.perKmRate,
             perHourRate: v.perHourRate,
-            minimumKm: v.minimumKm,
-            minimumHours: v.minimumHours,
+            minKm: v.minKm,
+            minHours: v.minHours,
             extraKmRate: v.extraKmRate,
             extraHourRate: v.extraHourRate,
             nightCharge: v.nightCharge,
@@ -106,7 +108,7 @@ export default function NewRateCardPage() {
                   </SelectContent>
                 </Select>
               </FormRow>
-              <FormRow name="tripType" label="Trip type">
+              <FormRow name="tripType" label="Trip type" required>
                 <Select value={form.watch('tripType')} onValueChange={(v) => form.setValue('tripType', v, { shouldDirty: true })}>
                   <SelectTrigger id="tripType"><SelectValue placeholder="Select trip type" /></SelectTrigger>
                   <SelectContent>
@@ -122,28 +124,30 @@ export default function NewRateCardPage() {
           <SectionCard title="Base pricing" required>
             <div className="grid gap-ds-4 sm:grid-cols-3">
               <FormRow name="baseFare" label="Base fare" required>
-                <CurrencyInput value={form.watch('baseFare')} onChange={(v) => form.setValue('baseFare', v ?? 0, { shouldDirty: true })} />
+                <CurrencyInput id="baseFare" value={form.watch('baseFare')} onChange={(v) => form.setValue('baseFare', v ?? 0, { shouldDirty: true })} />
               </FormRow>
               <FormRow name="perKmRate" label="Per km rate" required>
-                <CurrencyInput value={form.watch('perKmRate')} onChange={(v) => form.setValue('perKmRate', v ?? 0, { shouldDirty: true })} />
+                <CurrencyInput id="perKmRate" value={form.watch('perKmRate')} onChange={(v) => form.setValue('perKmRate', v ?? 0, { shouldDirty: true })} />
               </FormRow>
               <FormRow name="perHourRate" label="Per hour rate">
-                <CurrencyInput value={form.watch('perHourRate')} onChange={(v) => form.setValue('perHourRate', v, { shouldDirty: true })} />
+                <CurrencyInput id="perHourRate" value={form.watch('perHourRate')} onChange={(v) => form.setValue('perHourRate', v, { shouldDirty: true })} />
               </FormRow>
-              <FormRow name="minimumKm" label="Minimum km">
+              <FormRow name="minKm" label="Minimum km">
                 <Input
+                  id="minKm"
                   type="number"
                   min={0}
-                  value={form.watch('minimumKm') ?? ''}
-                  onChange={(e) => form.setValue('minimumKm', e.target.value ? Number(e.target.value) : undefined, { shouldDirty: true })}
+                  value={form.watch('minKm') ?? ''}
+                  onChange={(e) => form.setValue('minKm', e.target.value ? Number(e.target.value) : undefined, { shouldDirty: true })}
                 />
               </FormRow>
-              <FormRow name="minimumHours" label="Minimum hours">
+              <FormRow name="minHours" label="Minimum hours">
                 <Input
+                  id="minHours"
                   type="number"
                   min={0}
-                  value={form.watch('minimumHours') ?? ''}
-                  onChange={(e) => form.setValue('minimumHours', e.target.value ? Number(e.target.value) : undefined, { shouldDirty: true })}
+                  value={form.watch('minHours') ?? ''}
+                  onChange={(e) => form.setValue('minHours', e.target.value ? Number(e.target.value) : undefined, { shouldDirty: true })}
                 />
               </FormRow>
             </div>
@@ -152,16 +156,16 @@ export default function NewRateCardPage() {
           <SectionCard title="Extra & additional charges">
             <div className="grid gap-ds-4 sm:grid-cols-2">
               <FormRow name="extraKmRate" label="Extra km rate" hint="Charged per km beyond minimum">
-                <CurrencyInput value={form.watch('extraKmRate')} onChange={(v) => form.setValue('extraKmRate', v, { shouldDirty: true })} />
+                <CurrencyInput id="extraKmRate" value={form.watch('extraKmRate')} onChange={(v) => form.setValue('extraKmRate', v, { shouldDirty: true })} />
               </FormRow>
               <FormRow name="extraHourRate" label="Extra hour rate" hint="Charged per hour beyond minimum">
-                <CurrencyInput value={form.watch('extraHourRate')} onChange={(v) => form.setValue('extraHourRate', v, { shouldDirty: true })} />
+                <CurrencyInput id="extraHourRate" value={form.watch('extraHourRate')} onChange={(v) => form.setValue('extraHourRate', v, { shouldDirty: true })} />
               </FormRow>
               <FormRow name="nightCharge" label="Night charge" hint="Applied for trips after 10 PM">
-                <CurrencyInput value={form.watch('nightCharge')} onChange={(v) => form.setValue('nightCharge', v, { shouldDirty: true })} />
+                <CurrencyInput id="nightCharge" value={form.watch('nightCharge')} onChange={(v) => form.setValue('nightCharge', v, { shouldDirty: true })} />
               </FormRow>
               <FormRow name="driverAllowance" label="Driver allowance" hint="Per-day driver allowance">
-                <CurrencyInput value={form.watch('driverAllowance')} onChange={(v) => form.setValue('driverAllowance', v, { shouldDirty: true })} />
+                <CurrencyInput id="driverAllowance" value={form.watch('driverAllowance')} onChange={(v) => form.setValue('driverAllowance', v, { shouldDirty: true })} />
               </FormRow>
             </div>
           </SectionCard>
@@ -184,13 +188,13 @@ export default function NewRateCardPage() {
           <SectionCard title="Inclusions & status">
             <div className="space-y-ds-4">
               <FormRow name="tollIncluded" label="Toll included" hint="Include toll charges in the rate">
-                <Switch checked={form.watch('tollIncluded')} onCheckedChange={(v) => form.setValue('tollIncluded', v, { shouldDirty: true })} />
+                <Switch id="tollIncluded" checked={form.watch('tollIncluded')} onCheckedChange={(v) => form.setValue('tollIncluded', v, { shouldDirty: true })} />
               </FormRow>
               <FormRow name="parkingIncluded" label="Parking included" hint="Include parking charges in the rate">
-                <Switch checked={form.watch('parkingIncluded')} onCheckedChange={(v) => form.setValue('parkingIncluded', v, { shouldDirty: true })} />
+                <Switch id="parkingIncluded" checked={form.watch('parkingIncluded')} onCheckedChange={(v) => form.setValue('parkingIncluded', v, { shouldDirty: true })} />
               </FormRow>
               <FormRow name="isActive" label="Active" hint="Enable this rate card for use">
-                <Switch checked={form.watch('isActive')} onCheckedChange={(v) => form.setValue('isActive', v, { shouldDirty: true })} />
+                <Switch id="isActive" checked={form.watch('isActive')} onCheckedChange={(v) => form.setValue('isActive', v, { shouldDirty: true })} />
               </FormRow>
             </div>
           </SectionCard>
