@@ -56,7 +56,12 @@ export class FileParser {
             for (let colIndex = 0; colIndex < headers.length; colIndex++) {
                 // Some rows might be shorter than the headers array
                 const cellValue = colIndex < rowArr.length ? rowArr[colIndex] : null;
-                rowObj[headers[colIndex]] = cellValue;
+                // XLSX auto-detects numeric-looking cells (e.g. phone numbers) as
+                // JS numbers, which strips leading zeros/plus signs and breaks
+                // string-typed validation downstream. Normalize to string.
+                rowObj[headers[colIndex]] = cellValue === null || cellValue === undefined
+                    ? cellValue
+                    : String(cellValue);
             }
 
             data.push(rowObj);

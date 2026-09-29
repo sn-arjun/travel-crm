@@ -1,3 +1,7 @@
+import { eq } from 'drizzle-orm';
+import type { DrizzleD1Database } from 'drizzle-orm/d1';
+import * as schema from '../../db/tenant-schema';
+
 export class RowInserter {
     public async insertRow(
         db: DrizzleD1Database<typeof schema>,

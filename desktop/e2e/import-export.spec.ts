@@ -473,7 +473,7 @@ test('settings/import wizard: upload → map → configure → start → history
   await expect(radios.nth(1)).toBeChecked();
   await page.getByText('Skip duplicates', { exact: true }).click();
 
-  await page.getByRole('button', { name: 'Back' }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.getByText(`Uploaded: ${SETTINGS_FILE}`)).toBeVisible();
   await page.getByRole('button', { name: /^Next/ }).click();
   await page.getByRole('button', { name: 'Start Import' }).click();

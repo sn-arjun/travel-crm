@@ -15,7 +15,16 @@ exportRoutes.get('/contacts', async (c) => {
 
     const contacts = await db.query.contacts.findMany();
 
+    const format = c.req.query('format') === 'csv' ? 'csv' : 'xlsx';
     const ws = XLSX.utils.json_to_sheet(contacts);
+
+    if (format === 'csv') {
+        const csv = XLSX.utils.sheet_to_csv(ws);
+        c.header('Content-Type', 'text/csv');
+        c.header('Content-Disposition', 'attachment; filename="contacts_export.csv"');
+        return c.body(csv);
+    }
+
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Contacts');
 
@@ -67,7 +76,16 @@ exportRoutes.get('/leads', async (c) => {
         CreatedAt: l.createdAt
     }));
 
+    const format = c.req.query('format') === 'csv' ? 'csv' : 'xlsx';
     const ws = XLSX.utils.json_to_sheet(flatData);
+
+    if (format === 'csv') {
+        const csv = XLSX.utils.sheet_to_csv(ws);
+        c.header('Content-Type', 'text/csv');
+        c.header('Content-Disposition', 'attachment; filename="leads_export.csv"');
+        return c.body(csv);
+    }
+
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Leads');
 

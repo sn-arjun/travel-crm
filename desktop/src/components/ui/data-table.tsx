@@ -302,7 +302,6 @@ export function DataTable<T>({
                           : undefined
                       }
                       tabIndex={onRowClick ? 0 : undefined}
-                      role={onRowClick ? 'button' : undefined}
                       className={cn(
                         'group border-b border-ds-border transition-colors',
                         'hover:bg-ds-surface-sunken',

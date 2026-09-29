@@ -15,7 +15,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { importsApi } from '@/lib/api/imports';
-import { useRealtimeEvent, useRealtimeConnected } from '@/hooks/use-realtime-event';
+import { useRealtimeEvent } from '@/hooks/use-realtime-event';
 
 type EntityType = 'contacts' | 'leads' | 'suppliers' | 'rate_cards' | 'travellers';
 type DuplicateStrategy = 'skip' | 'merge' | 'create';
@@ -148,9 +148,6 @@ export default function ImportPage() {
   const [importDone, setImportDone] = React.useState(false);
   const [isCancelling, setIsCancelling] = React.useState(false);
   const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
-  const wsConnected = useRealtimeConnected();
-  const useRealtimeConnectedRef = React.useRef(wsConnected);
-  React.useEffect(() => { useRealtimeConnectedRef.current = wsConnected; }, [wsConnected]);
 
   // Real-time import progress via WebSocket
   useRealtimeEvent(['import:progress', 'import:completed', 'import:failed'], (data: any) => {
@@ -264,9 +261,9 @@ export default function ImportPage() {
         duplicateStrategy,
       });
 
-      // Start fallback polling (only active when WS is disconnected; WS events handle it otherwise)
+      // Always poll as a safety net — WS events update progress faster when they
+      // arrive, but polling must not depend on the WS connection flag being accurate.
       pollRef.current = setInterval(async () => {
-        if (useRealtimeConnectedRef.current) return; // WS handles it
         try {
           const res = await importsApi.getProgress(uploadedJobId) as any;
           const job = res?.data ?? res;
