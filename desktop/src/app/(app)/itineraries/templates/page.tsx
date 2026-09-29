@@ -2,14 +2,16 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Copy, Eye, FileText, MapPin, Calendar, Wallet, Trash2 } from 'lucide-react';
+import { Copy, Eye, FileText, MapPin, Trash2 } from 'lucide-react';
 import { ListPage } from '@/components/domain';
 import { Button, Tag, Input, Label, useConfirm } from '@/components/ui';
+import { Combobox } from '@/components/ui/combobox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import type { DataTableColumn } from '@/components/ui/data-table';
-import { useApiMutation } from '@/hooks/use-api';
+import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { client, type ApiResponse, type PaginatedResponse } from '@/lib/api/client';
 import { API_ENDPOINTS } from '@/lib/api/config';
+import { leadsApi } from '@/lib/api/leads';
 import { toast } from 'sonner';
 
 interface ItineraryTemplate {
@@ -17,22 +19,20 @@ interface ItineraryTemplate {
   title: string;
   description?: string;
   destination?: string;
-  duration?: number;
-  budget?: number;
+  durationDays?: number;
   category?: string;
-  items?: unknown[];
+  templateData?: { days?: unknown[] } | null;
   createdAt: string;
   updatedAt: string;
 }
 
 function exportTemplatesCsv(rows: ItineraryTemplate[]) {
-  const header = ['Title', 'Category', 'Destination', 'Duration (days)', 'Budget', 'Created'];
+  const header = ['Title', 'Category', 'Destination', 'Duration (days)', 'Created'];
   const lines = rows.map((t) => [
     t.title,
     t.category ?? '',
     t.destination ?? '',
-    t.duration != null ? String(t.duration) : '',
-    t.budget != null ? String(t.budget) : '',
+    t.durationDays != null ? String(t.durationDays) : '',
     new Date(t.createdAt).toLocaleDateString('en-IN'),
   ]);
   const csv = [header, ...lines]
@@ -53,9 +53,26 @@ export default function ItineraryTemplatesPage() {
   const [selectedTemplate, setSelectedTemplate] = React.useState<ItineraryTemplate | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
   const [newTitle, setNewTitle] = React.useState('');
+  const [newLeadId, setNewLeadId] = React.useState('');
+  const [leadSearch, setLeadSearch] = React.useState('');
+
+  const { data: leadsResponse } = useApiQuery(
+    () => leadsApi.list({ page: 1, limit: 20, search: leadSearch || undefined }),
+    [leadSearch],
+  );
+
+  const leadOptions = React.useMemo(() => {
+    if (!leadsResponse) return [];
+    const data = (leadsResponse as any)?.data;
+    const items = Array.isArray(data) ? data : (data as any)?.data ?? [];
+    return items.map((l: any) => ({
+      value: l.id,
+      label: `${l.title}${l.contactName ? ` - ${l.contactName}` : ''}`,
+    }));
+  }, [leadsResponse]);
 
   const { mutate: createFromTemplate, loading: isCreating } = useApiMutation<
-    { templateId: string; title: string },
+    { templateId: string; leadId: string; title: string },
     ApiResponse<{ id: string }>
   >((data) => client.post<ApiResponse<{ id: string }>>(API_ENDPOINTS.itineraryTemplates.createFrom, data));
 
@@ -63,18 +80,30 @@ export default function ItineraryTemplatesPage() {
     client.delete<ApiResponse<void>>(API_ENDPOINTS.itineraryTemplates.byId(id)),
   );
 
+  async function openPreview(t: ItineraryTemplate) {
+    setSelectedTemplate(t);
+    const res = await client.get<ApiResponse<ItineraryTemplate>>(API_ENDPOINTS.itineraryTemplates.byId(t.id));
+    if (res.data) setSelectedTemplate(res.data);
+  }
+
   async function handleCreateFromTemplate() {
     if (!selectedTemplate || !newTitle.trim()) {
       toast.error('Please enter a title');
       return;
     }
+    if (!newLeadId) {
+      toast.error('Please select a lead');
+      return;
+    }
 
-    const result = await createFromTemplate({ templateId: selectedTemplate.id, title: newTitle });
+    const result = await createFromTemplate({ templateId: selectedTemplate.id, leadId: newLeadId, title: newTitle });
 
     if (result) {
       toast.success('Itinerary created from template');
       setIsCreateDialogOpen(false);
       setSelectedTemplate(null);
+      setNewLeadId('');
+      setLeadSearch('');
       const id = result.data?.id;
       router.push(id ? `/itineraries/${id}` : '/itineraries');
     } else {
@@ -87,6 +116,7 @@ export default function ItineraryTemplatesPage() {
       title: 'Delete template',
       description: `Delete "${template.title}"? This cannot be undone.`,
       tone: 'destructive',
+      confirmLabel: 'Delete',
     });
     if (!ok) return;
     const result = await deleteTemplate(template.id);
@@ -118,17 +148,10 @@ export default function ItineraryTemplatesPage() {
         ),
     },
     {
-      key: 'duration',
+      key: 'durationDays',
       header: 'Duration',
       align: 'right',
-      cell: (t) => (t.duration ? `${t.duration} days` : '—'),
-    },
-    {
-      key: 'budget',
-      header: 'Budget',
-      align: 'right',
-      sortable: true,
-      cell: (t) => (t.budget != null ? t.budget.toLocaleString('en-IN', { style: 'currency', currency: 'INR' }) : '—'),
+      cell: (t) => (t.durationDays ? `${t.durationDays} days` : '—'),
     },
     {
       key: 'createdAt',
@@ -159,7 +182,7 @@ export default function ItineraryTemplatesPage() {
               aria-label="Preview"
               onClick={(e) => {
                 e.stopPropagation();
-                setSelectedTemplate(t);
+                void openPreview(t);
               }}
             >
               <Eye aria-hidden="true" />
@@ -190,7 +213,7 @@ export default function ItineraryTemplatesPage() {
             </Button>
           </>
         )}
-        onRowClick={(t) => setSelectedTemplate(t)}
+        onRowClick={(t) => void openPreview(t)}
         bulkActions={[
           {
             label: 'Delete',
@@ -201,6 +224,7 @@ export default function ItineraryTemplatesPage() {
                 title: 'Delete templates',
                 description: `Delete ${rows.length} template${rows.length === 1 ? '' : 's'}? This cannot be undone.`,
                 tone: 'destructive',
+                confirmLabel: 'Delete',
               });
               if (!ok) return;
               await Promise.all(rows.map((r) => deleteTemplate(r.id)));
@@ -250,20 +274,12 @@ export default function ItineraryTemplatesPage() {
                   <div>
                     <span className="text-ds-foreground-muted">Duration:</span>
                     <p className="font-medium">
-                      {selectedTemplate.duration ? `${selectedTemplate.duration} days` : '—'}
+                      {selectedTemplate.durationDays ? `${selectedTemplate.durationDays} days` : '—'}
                     </p>
                   </div>
                   <div>
-                    <span className="text-ds-foreground-muted">Budget:</span>
-                    <p className="font-medium">
-                      {selectedTemplate.budget != null
-                        ? selectedTemplate.budget.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })
-                        : '—'}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-ds-foreground-muted">Items:</span>
-                    <p className="font-medium">{selectedTemplate.items?.length ?? 0} day items</p>
+                    <span className="text-ds-foreground-muted">Days planned:</span>
+                    <p className="font-medium">{selectedTemplate.templateData?.days?.length ?? 0} day items</p>
                   </div>
                 </div>
               </div>
@@ -304,9 +320,29 @@ export default function ItineraryTemplatesPage() {
                 placeholder="Enter title for the new itinerary"
               />
             </div>
+            <div className="space-y-ds-2">
+              <Label htmlFor="newLead">Link to lead *</Label>
+              <Combobox
+                options={leadOptions}
+                value={newLeadId}
+                onValueChange={setNewLeadId}
+                onSearch={setLeadSearch}
+                placeholder="Search leads by name…"
+                searchPlaceholder="Search leads…"
+                emptyText="No leads found"
+              />
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)} disabled={isCreating}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsCreateDialogOpen(false);
+                setNewLeadId('');
+                setLeadSearch('');
+              }}
+              disabled={isCreating}
+            >
               Cancel
             </Button>
             <Button onClick={handleCreateFromTemplate} disabled={isCreating}>
