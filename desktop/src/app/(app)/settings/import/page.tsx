@@ -160,6 +160,40 @@ export default function ImportSettingsPage() {
   const headers: string[] = uploadedJob?.headers ?? [];
   const availableFields = CRM_FIELDS[importType] ?? [];
 
+  // GET /imports returns the latest jobs as a flat array with raw column names
+  // (importType, totalRows, ...) and ignores page/type/status/search, so map,
+  // filter and paginate here.
+  const historyFetcher = React.useCallback(
+    async ({ page, limit, search }: { page: number; limit: number; search: string }) => {
+      const res = (await importsApi.list()) as unknown as { data?: unknown };
+      const raw = Array.isArray(res.data) ? (res.data as Array<Record<string, any>>) : [];
+      const needle = search.trim().toLowerCase();
+      const jobs: ImportJob[] = raw
+        .map((j) => ({
+          id: j.id,
+          type: j.importType ?? j.type,
+          fileName: j.fileName,
+          totalRecords: j.totalRows ?? j.totalRecords ?? 0,
+          processedRecords: j.processedRows ?? j.processedRecords ?? 0,
+          failedRecords: j.errorCount ?? j.failedRecords ?? 0,
+          status: j.status,
+          createdAt: j.createdAt,
+          completedAt: j.completedAt ?? undefined,
+        }))
+        .filter((j) => filterType === 'all' || j.type === filterType)
+        .filter((j) => filterStatus === 'all' || j.status === filterStatus)
+        .filter((j) => !needle || j.fileName?.toLowerCase().includes(needle));
+      const start = (page - 1) * limit;
+      return {
+        data: {
+          data: jobs.slice(start, start + limit),
+          pagination: { page, limit, total: jobs.length, totalPages: Math.max(1, Math.ceil(jobs.length / limit)) },
+        },
+      };
+    },
+    [filterType, filterStatus],
+  );
+
   const activeFilters: ListFilter[] = [
     ...(filterType !== 'all' ? [{ id: 'type', label: 'Type', value: IMPORT_TYPES.find(t => t.value === filterType)?.label ?? filterType }] : []),
     ...(filterStatus !== 'all' ? [{ id: 'status', label: 'Status', value: statusConfig[filterStatus]?.label ?? filterStatus }] : []),
@@ -482,16 +516,7 @@ export default function ImportSettingsPage() {
             title="Import History"
             description="Recent import jobs and their status"
             getRowId={(j) => j.id}
-            fetcher={({ page, limit }) =>
-              importsApi.list({
-                page,
-                limit,
-                type: filterType !== 'all' ? filterType : undefined,
-                status: filterStatus !== 'all' ? filterStatus : undefined,
-                sortBy: 'createdAt',
-                sortOrder: 'desc',
-              })
-            }
+            fetcher={historyFetcher}
             columns={[
               { key: 'fileName', header: 'File', sortable: false },
               {
