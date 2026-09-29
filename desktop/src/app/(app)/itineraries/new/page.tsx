@@ -206,8 +206,7 @@ export default function ItineraryBuilderPage() {
   const [destination, setDestination] = React.useState('');
   const [leadId, setLeadId] = React.useState(prefillLeadId);
   const [leadSearch, setLeadSearch] = React.useState('');
-  const [startDate, setStartDate] = React.useState('');
-  const [endDate, setEndDate] = React.useState('');
+  const [validityDate, setValidityDate] = React.useState('');
   const [version, setVersion] = React.useState<'v1' | 'v2' | 'v3'>('v1');
   const [gstPercent, setGstPercent] = React.useState('18');
   const [markupPercent, setMarkupPercent] = React.useState('15');
@@ -509,7 +508,7 @@ export default function ItineraryBuilderPage() {
       const payload: CreateItineraryRequest = {
         leadId: leadId.trim(),
         title: title.trim(),
-        validityDate: endDate || undefined,
+        validityDate: validityDate || undefined,
         notes: description.trim() || undefined,
         inclusions: inclusions.map(i => i.text),
         exclusions: exclusions.map(e => e.text),
@@ -748,27 +747,15 @@ export default function ItineraryBuilderPage() {
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label htmlFor="start" className="text-xs">Start Date</Label>
-                  <Input
-                    id="start"
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="h-8 text-sm"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="end" className="text-xs">End Date</Label>
-                  <Input
-                    id="end"
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="h-8 text-sm"
-                  />
-                </div>
+              <div className="space-y-1 max-w-xs">
+                <Label htmlFor="validity" className="text-xs">Valid Until</Label>
+                <Input
+                  id="validity"
+                  type="date"
+                  value={validityDate}
+                  onChange={(e) => setValidityDate(e.target.value)}
+                  className="h-8 text-sm"
+                />
               </div>
               <div className="space-y-1">
                 <Label htmlFor="desc" className="text-xs">Description (optional)</Label>

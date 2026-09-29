@@ -18,9 +18,9 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { itinerariesApi, type UpdateItineraryRequest } from '@/lib/api/itineraries';
+import { itinerariesApi, type UpdateItineraryRequest, type ItineraryItem, type ItineraryDay } from '@/lib/api/itineraries';
 import { client, type ApiResponse } from '@/lib/api/client';
-import { API_ENDPOINTS } from '@/lib/api/config';
+import { API_ENDPOINTS, API_BASE_URL } from '@/lib/api/config';
 import { useUnsavedChanges } from '@/hooks/use-unsaved-changes';
 import type { Itinerary } from '@travelcrm/shared';
 import { toast } from 'sonner';
@@ -37,9 +37,15 @@ interface DayItem {
   title: string;
   description: string;
   location?: string;
-  meals?: string;
-  accommodation?: string;
+  overnightCity?: string;
+  isFreeDay?: boolean;
   images?: DayImage[];
+  items?: ItineraryItem[];
+}
+
+function imageFromKey(key: string): DayImage {
+  const url = /^https?:\/\//.test(key) ? key : `${API_BASE_URL}${API_ENDPOINTS.files.get(key)}`;
+  return { key, url, name: key.split('/').pop() ?? key };
 }
 
 let editIdCounter = 0;
@@ -130,27 +136,6 @@ function SortableDayCard({
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <Label className="text-xs">Meals</Label>
-            <Input
-              value={item.meals ?? ''}
-              onChange={(e) => updateDayItem(index, 'meals', e.target.value)}
-              placeholder="e.g., Breakfast, Lunch, Dinner"
-              className="h-8 text-sm"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Accommodation</Label>
-            <Input
-              value={item.accommodation ?? ''}
-              onChange={(e) => updateDayItem(index, 'accommodation', e.target.value)}
-              placeholder="e.g., Hotel Name"
-              className="h-8 text-sm"
-            />
-          </div>
-        </div>
-
         {/* Images */}
         <div className="space-y-2">
           <div className="flex items-center gap-2">
@@ -212,10 +197,8 @@ export default function ItineraryEditPage() {
   const [form, setForm] = React.useState<{
     title?: string;
     description?: string;
-    startDate?: string;
-    endDate?: string;
+    validityDate?: string;
     destination?: string;
-    budget?: number;
     status?: string;
     termsConditions?: string;
     currency?: string;
@@ -288,25 +271,31 @@ export default function ItineraryEditPage() {
   React.useEffect(() => {
     if (itinerary) {
       const itin = itinerary as any;
+      const rawDays: ItineraryDay[] = itin.days ?? [];
       setForm({
         title: itin.title ?? '',
-        description: itin.description ?? '',
-        startDate: itin.startDate ?? '',
-        endDate: itin.endDate ?? '',
-        destination: itin.destination ?? '',
-        budget: itin.budget ?? undefined,
+        description: itin.notes ?? '',
+        validityDate: itin.validityDate ?? '',
+        destination: rawDays.find((d) => d.city)?.city ?? itin.lead?.destination ?? '',
         status: itin.status ?? 'draft',
+        currency: itin.currency ?? undefined,
+        markupType: itin.markupType ?? undefined,
+        markupValue: itin.markupValue ?? undefined,
       });
-      // Ensure each dayItem has a stable id for dnd-kit
-      const rawItems: DayItem[] = itin.dayItems ?? itin.items ?? [];
-      setDayItems(rawItems.map((item) => ({
-        ...item,
-        id: item.id || generateEditId(),
-        images: item.images ?? [],
+      setDayItems(rawDays.map((d) => ({
+        id: d.id || generateEditId(),
+        dayNumber: d.dayNumber,
+        title: d.title ?? '',
+        description: d.description ?? '',
+        location: d.city ?? '',
+        overnightCity: d.overnightCity ?? undefined,
+        isFreeDay: d.isFreeDay ?? false,
+        images: (d.images ?? []).map(imageFromKey),
+        items: d.items ?? [],
       })));
       setInclusions(itin.inclusions ?? []);
       setExclusions(itin.exclusions ?? []);
-      setTerms(itin.terms ?? itin.termsAndConditions ?? '');
+      setTerms(itin.termsConditions ?? '');
       // Allow dirty tracking after initial data load
       setTimeout(() => { isInitializedRef.current = true; }, 100);
     }
@@ -317,6 +306,15 @@ export default function ItineraryEditPage() {
     markDirty();
   }
 
+  // Destination is a convenience over the per-day location: days that still carry the old destination follow it.
+  function updateDestination(value: string) {
+    const previous = form.destination ?? '';
+    setDayItems((prev) => prev.map((d) => (
+      (d.location ?? '') === previous ? { ...d, location: value } : d
+    )));
+    updateField('destination', value);
+  }
+
   function addDayItem() {
     const nextDay = dayItems.length > 0 ? Math.max(...dayItems.map((d) => d.dayNumber)) + 1 : 1;
     setDayItems((prev) => [...prev, {
@@ -324,10 +322,9 @@ export default function ItineraryEditPage() {
       dayNumber: nextDay,
       title: '',
       description: '',
-      location: '',
-      meals: '',
-      accommodation: '',
+      location: form.destination ?? '',
       images: [],
+      items: [],
     }]);
     markDirty();
   }
@@ -413,6 +410,7 @@ export default function ItineraryEditPage() {
     return {
       title: form.title,
       notes: form.description,
+      validityDate: form.validityDate || undefined,
       status: form.status as any,
       currency: form.currency,
       markupType: form.markupType as any,
@@ -420,6 +418,17 @@ export default function ItineraryEditPage() {
       inclusions,
       exclusions,
       termsConditions: terms,
+      days: dayItems.map((d, i) => ({
+        id: d.id.startsWith('edit-day-') ? undefined : d.id,
+        dayNumber: i + 1,
+        title: d.title,
+        description: d.description,
+        city: d.location || undefined,
+        overnightCity: d.overnightCity,
+        isFreeDay: d.isFreeDay,
+        images: (d.images ?? []).map((img) => img.key),
+        items: d.items ?? [],
+      })),
     };
   }
 
