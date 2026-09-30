@@ -70,7 +70,9 @@ export default function NewFlyerPage() {
                   onChange={(id) => form.setValue('templateId', id ?? '', { shouldDirty: true })}
                   fetcher={async (query, page) => {
                     const r = await marketingApi.flyerTemplates.list({ search: query, page, limit: 20 });
-                    return { items: r.data.data, total: r.data.pagination.total };
+                    const items = Array.isArray(r.data) ? r.data : r.data.data;
+                    const total = (r as unknown as { pagination?: { total: number } }).pagination?.total ?? r.data.pagination?.total ?? items.length;
+                    return { items, total };
                   }}
                   getOptionId={(t) => t.id}
                   getOptionLabel={(t) => t.name}

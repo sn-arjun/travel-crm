@@ -170,6 +170,7 @@ export default function BrandingPage() {
                   />
                   <FormRow name="logoUrl" label="Logo URL (alternative)" hint="Paste a URL instead of uploading">
                     <Input
+                      id="logoUrl"
                       placeholder="https://example.com/logo.png"
                       value={logoUrl}
                       onChange={(e) => {

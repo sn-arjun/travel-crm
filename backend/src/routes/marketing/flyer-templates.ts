@@ -12,6 +12,28 @@ import {
 
 const flyerTemplateRoutes = new Hono<AppContext>();
 
+// Raw D1 SQL returns snake_case columns; the desktop app expects camelCase.
+function parseFlyerTemplate(row: Record<string, unknown>) {
+  return {
+    id: row.id,
+    name: row.name,
+    category: row.category,
+    description: row.description ?? undefined,
+    thumbnailUrl: row.thumbnail_url ?? undefined,
+    previewUrl: row.preview_url ?? undefined,
+    layoutJson: row.layout_json ?? undefined,
+    width: row.width ?? undefined,
+    height: row.height ?? undefined,
+    sizePreset: row.size_preset ?? undefined,
+    placeholders: row.placeholders ?? undefined,
+    isSystem: row.is_system === 1,
+    isQuickCreate: row.is_quick_create === 1,
+    isActive: row.is_active === 1,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 // ============================================================
 // LIST FLYER TEMPLATES
 // ============================================================
@@ -62,12 +84,7 @@ flyerTemplateRoutes.get(
 
     return paginated(
       c,
-      (results.results || []).map((t: any) => ({
-        ...t,
-        is_system: t.is_system === 1,
-        is_quick_create: t.is_quick_create === 1,
-        is_active: t.is_active === 1,
-      })),
+      (results.results || []).map((t: any) => parseFlyerTemplate(t)),
       total,
       page,
       limit
@@ -100,10 +117,7 @@ flyerTemplateRoutes.get(
       .all();
 
     return success(c, {
-      ...template,
-      is_system: (template as any).is_system === 1,
-      is_quick_create: (template as any).is_quick_create === 1,
-      is_active: (template as any).is_active === 1,
+      ...parseFlyerTemplate(template as any),
       assets: assets.results || [],
     });
   }
@@ -128,22 +142,23 @@ flyerTemplateRoutes.post(
     await db
       .prepare(
         `INSERT INTO flyer_templates (
-        id, tenant_id, name, category, description, thumbnail_url, layout_json,
+        id, tenant_id, name, category, description, thumbnail_url, preview_url, layout_json,
         width, height, size_preset, placeholders, is_system, is_quick_create,
         is_active, created_by, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 1, ?, ?, ?)`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 1, ?, ?, ?)`
       )
       .bind(
         id,
         tenantId,
         body.name,
-        body.category,
+        body.category || 'general',
         body.description || null,
         body.thumbnailUrl || null,
+        body.previewUrl || null,
         body.layoutJson || null,
-        body.width,
-        body.height,
-        body.sizePreset,
+        body.width || null,
+        body.height || null,
+        body.sizePreset || null,
         body.placeholders || null,
         body.isQuickCreate ? 1 : 0,
         userId,
@@ -153,7 +168,7 @@ flyerTemplateRoutes.post(
       .run();
 
     const inserted = await db.prepare('SELECT * FROM flyer_templates WHERE id = ?').bind(id).first();
-    return created(c, inserted);
+    return created(c, parseFlyerTemplate(inserted as any));
   }
 );
 
@@ -190,6 +205,7 @@ flyerTemplateRoutes.put(
       category: 'category',
       description: 'description',
       thumbnailUrl: 'thumbnail_url',
+      previewUrl: 'preview_url',
       layoutJson: 'layout_json',
       width: 'width',
       height: 'height',
@@ -213,7 +229,7 @@ flyerTemplateRoutes.put(
     }
 
     const updated = await db.prepare('SELECT * FROM flyer_templates WHERE id = ?').bind(id).first();
-    return success(c, updated);
+    return success(c, parseFlyerTemplate(updated as any));
   }
 );
 

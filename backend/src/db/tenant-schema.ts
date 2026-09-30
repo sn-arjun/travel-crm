@@ -1137,10 +1137,11 @@ export const flyerTemplates = sqliteTable('flyer_templates', {
   category: text('category').notNull(),  // festival, destination, offer, general
   description: text('description'),
   thumbnailUrl: text('thumbnail_url'),
+  previewUrl: text('preview_url'),
   layoutJson: text('layout_json'),  // Full canvas JSON definition
-  width: integer('width').notNull(),
-  height: integer('height').notNull(),
-  sizePreset: text('size_preset').notNull(),  // instagram_post, instagram_story, facebook_cover, whatsapp_status, custom
+  width: integer('width'),
+  height: integer('height'),
+  sizePreset: text('size_preset'),  // instagram_post, instagram_story, facebook_cover, whatsapp_status, custom
   placeholders: text('placeholders'),  // JSON array of editable field defs
   isSystem: integer('is_system').default(0),
   isQuickCreate: integer('is_quick_create').default(0),
@@ -1298,11 +1299,15 @@ export const generatedFlyers = sqliteTable('generated_flyers', {
   tenantId: text('tenant_id'),
   templateId: text('template_id').references(() => flyerTemplates.id),
   name: text('name').notNull(),
+  title: text('title'),
+  contentJson: text('content_json'),  // structured form fields: headline/subheadline/offerText/etc
+  imageUrl: text('image_url'),
+  status: text('status').default('draft'),  // draft, published
   layoutJson: text('layout_json'),  // Final canvas state JSON
   r2Key: text('r2_key'),
   url: text('url'),
   thumbnailUrl: text('thumbnail_url'),
-  exportFormat: text('export_format').default('png'),  // png, jpeg, pdf
+  format: text('format').default('png'),  // png, jpeg, pdf
   sizePreset: text('size_preset'),  // instagram_square, instagram_story, facebook, whatsapp, a4, etc.
   width: integer('width'),
   height: integer('height'),
@@ -1322,6 +1327,7 @@ export const flyerShares = sqliteTable('flyer_shares', {
   channel: text('channel').notNull(),  // whatsapp, email, download, link
   recipientInfo: text('recipient_info'),  // phone/email/etc
   contactId: text('contact_id').references(() => contacts.id),  // for per-contact share tracking
+  segmentId: text('segment_id').references(() => contactSegments.id),  // for segment-based sharing
   createdBy: text('created_by').references(() => users.id),
   createdAt: text('created_at').default(timestamp),
 }, (table) => [

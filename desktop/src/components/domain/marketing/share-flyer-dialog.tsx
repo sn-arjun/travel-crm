@@ -76,7 +76,9 @@ export function ShareFlyerDialog({ flyer, open, onOpenChange }: ShareFlyerDialog
               onChange={(id) => setSegmentId(id)}
               fetcher={async (query, page) => {
                 const r = await marketingApi.segments.list({ search: query, page, limit: 20 });
-                return { items: r.data.data, total: r.data.pagination.total };
+                const items = Array.isArray(r.data) ? r.data : r.data.data;
+                const total = (r as unknown as { pagination?: { total: number } }).pagination?.total ?? r.data.pagination?.total ?? items.length;
+                return { items, total };
               }}
               getOptionId={(s) => s.id}
               getOptionLabel={(s) => s.name}

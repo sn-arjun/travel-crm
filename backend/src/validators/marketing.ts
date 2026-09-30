@@ -6,13 +6,14 @@ import { z } from 'zod';
 
 export const createFlyerTemplateSchema = z.object({
   name: z.string().min(1, 'Name is required'),
-  category: z.enum(['festival', 'destination', 'offer', 'general']),
+  category: z.enum(['festival', 'seasonal', 'promotional', 'general']).optional(),
   description: z.string().optional(),
   thumbnailUrl: z.string().optional(),
+  previewUrl: z.string().optional(),
   layoutJson: z.string().optional(),
-  width: z.number().int().positive(),
-  height: z.number().int().positive(),
-  sizePreset: z.enum(['instagram_post', 'instagram_story', 'facebook_cover', 'whatsapp_status', 'custom']),
+  width: z.number().int().positive().optional(),
+  height: z.number().int().positive().optional(),
+  sizePreset: z.enum(['instagram_post', 'instagram_story', 'facebook_cover', 'whatsapp_status', 'custom']).optional(),
   placeholders: z.string().optional(),
   isQuickCreate: z.boolean().optional(),
 });
@@ -68,8 +69,10 @@ export const updateBrandingSchema = z.object({
   primaryColor: z.string().optional(),
   secondaryColor: z.string().optional(),
   accentColor: z.string().optional(),
+  fontFamily: z.string().optional(),
   primaryFont: z.string().optional(),
   secondaryFont: z.string().optional(),
+  customCss: z.string().optional(),
   agencyName: z.string().optional(),
   agencyPhone: z.string().optional(),
   agencyEmail: z.string().optional(),
@@ -107,18 +110,31 @@ export const campaignListSchema = z.object({
 // ============================================================
 
 export const createGeneratedFlyerSchema = z.object({
-  templateId: z.string().optional(),
-  name: z.string().min(1, 'Name is required'),
+  templateId: z.string().min(1, 'Pick a template'),
+  title: z.string().min(1, 'Title is required'),
+  content: z.record(z.string(), z.unknown()).optional(),
+  imageUrl: z.string().optional(),
+  name: z.string().optional(),
   layoutJson: z.string().optional(),
   format: z.enum(['png', 'jpeg', 'pdf']).optional(),
   width: z.number().int().positive().optional(),
   height: z.number().int().positive().optional(),
 });
 
+export const updateGeneratedFlyerSchema = z.object({
+  title: z.string().min(1).optional(),
+  content: z.record(z.string(), z.unknown()).optional(),
+  imageUrl: z.string().optional(),
+  status: z.enum(['draft', 'published']).optional(),
+});
+
 export const flyerListSchema = z.object({
   page: z.string().regex(/^\d+$/).transform(Number).default(1),
   limit: z.string().regex(/^\d+$/).transform(Number).default(20),
+  status: z.string().optional(),
   search: z.string().optional(),
+  sortBy: z.string().optional(),
+  sortOrder: z.enum(['asc', 'desc']).optional(),
 });
 
 // ============================================================
@@ -127,6 +143,8 @@ export const flyerListSchema = z.object({
 
 export const createFlyerShareSchema = z.object({
   flyerId: z.string().min(1),
-  channel: z.enum(['whatsapp', 'email', 'download', 'link']),
+  channel: z.enum(['whatsapp', 'email', 'sms', 'download', 'link']),
+  segmentId: z.string().optional(),
+  contactIds: z.array(z.string()).optional(),
   recipientInfo: z.string().optional(),
 });

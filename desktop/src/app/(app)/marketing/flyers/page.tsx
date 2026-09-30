@@ -22,9 +22,11 @@ async function exportAllFlyers(search: string, status?: string) {
   let all: MarketingFlyer[] = [];
   for (;;) {
     const res = await marketingApi.flyers.list({ page, limit: pageSize, search: search || undefined, status });
-    const items = res.data.data;
+    const raw = res.data as unknown as MarketingFlyer[] | { data: MarketingFlyer[] };
+    const items = Array.isArray(raw) ? raw : raw.data;
+    const total = (res as unknown as { pagination?: { total: number } }).pagination?.total ?? res.data.pagination?.total ?? items.length;
     all = all.concat(items);
-    if (all.length >= res.data.pagination.total || items.length === 0) break;
+    if (all.length >= total || items.length === 0) break;
     page += 1;
   }
   const csv = toCsv(all);

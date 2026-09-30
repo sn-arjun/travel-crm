@@ -8,6 +8,25 @@ import { updateBrandingSchema } from '../../validators/marketing';
 
 const brandingRoutes = new Hono<AppContext>();
 
+// Raw D1 SQL returns snake_case columns; the desktop app expects camelCase.
+// The desktop's single "fontFamily" field maps to primary_font on write/read.
+function parseBranding(row: Record<string, unknown>) {
+  return {
+    id: row.id,
+    logoUrl: row.logo_url ?? undefined,
+    primaryColor: row.primary_color,
+    secondaryColor: row.secondary_color,
+    accentColor: row.accent_color ?? undefined,
+    fontFamily: row.primary_font,
+    customCss: row.custom_css ?? undefined,
+    agencyName: row.agency_name ?? undefined,
+    agencyPhone: row.agency_phone ?? undefined,
+    agencyEmail: row.agency_email ?? undefined,
+    agencyWebsite: row.agency_website ?? undefined,
+    tagline: row.tagline ?? undefined,
+  };
+}
+
 // ============================================================
 // GET TENANT BRANDING
 // ============================================================
@@ -26,17 +45,17 @@ brandingRoutes.get(
 
     if (!branding) {
       // Return defaults if no branding set
-      return success(c, {
+      return success(c, parseBranding({
         tenant_id: tenantId,
         primary_color: '#1976D2',
         secondary_color: '#424242',
         accent_color: '#FF9800',
         primary_font: 'Roboto',
         secondary_font: 'Open Sans',
-      });
+      }));
     }
 
-    return success(c, branding);
+    return success(c, parseBranding(branding as any));
   }
 );
 
@@ -69,8 +88,10 @@ brandingRoutes.put(
         primaryColor: 'primary_color',
         secondaryColor: 'secondary_color',
         accentColor: 'accent_color',
+        fontFamily: 'primary_font',
         primaryFont: 'primary_font',
         secondaryFont: 'secondary_font',
+        customCss: 'custom_css',
         agencyName: 'agency_name',
         agencyPhone: 'agency_phone',
         agencyEmail: 'agency_email',
@@ -101,9 +122,9 @@ brandingRoutes.put(
         .prepare(
           `INSERT INTO tenant_branding (
             id, tenant_id, logo_url, primary_color, secondary_color, accent_color,
-            primary_font, secondary_font, agency_name, agency_phone, agency_email,
+            primary_font, secondary_font, custom_css, agency_name, agency_phone, agency_email,
             agency_website, tagline, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .bind(
           id,
@@ -112,8 +133,9 @@ brandingRoutes.put(
           body.primaryColor || '#1976D2',
           body.secondaryColor || '#424242',
           body.accentColor || '#FF9800',
-          body.primaryFont || 'Roboto',
+          body.fontFamily || body.primaryFont || 'Roboto',
           body.secondaryFont || 'Open Sans',
+          body.customCss || null,
           body.agencyName || null,
           body.agencyPhone || null,
           body.agencyEmail || null,
