@@ -246,24 +246,24 @@ describe('marketingApi', () => {
   // ─── optedOut ──────────────────────────────────────────────────
   describe('optedOut', () => {
     describe('list', () => {
-      it('should call GET /contacts with opted_out=true', async () => {
+      it('should call GET /marketing/opt-out', async () => {
         vi.mocked(client.get).mockResolvedValue({ data: { data: [], pagination: {} } });
         await marketingApi.optedOut.list();
-        expect(client.get).toHaveBeenCalledWith('/contacts', { params: { opted_out: true } });
+        expect(client.get).toHaveBeenCalledWith('/marketing/opt-out', { params: undefined });
       });
 
       it('should pass additional params', async () => {
         vi.mocked(client.get).mockResolvedValue({ data: { data: [], pagination: {} } });
         await marketingApi.optedOut.list({ page: 1, limit: 20, search: 'john' });
-        expect(client.get).toHaveBeenCalledWith('/contacts', { params: { page: 1, limit: 20, search: 'john', opted_out: true } });
+        expect(client.get).toHaveBeenCalledWith('/marketing/opt-out', { params: { page: 1, limit: 20, search: 'john' } });
       });
     });
 
     describe('resubscribe', () => {
-      it('should call PUT /contacts/:id to clear opt-out fields', async () => {
-        vi.mocked(client.put).mockResolvedValue({ data: { message: 'Resubscribed' } });
+      it('should call POST /marketing/opt-out/:id/opt-in', async () => {
+        vi.mocked(client.post).mockResolvedValue({ data: { message: 'Resubscribed' } });
         await marketingApi.optedOut.resubscribe('c1');
-        expect(client.put).toHaveBeenCalledWith('/contacts/c1', { optedOut: 0, optedOutAt: null, optOutChannel: null, optOutReason: null });
+        expect(client.post).toHaveBeenCalledWith('/marketing/opt-out/c1/opt-in', {});
       });
     });
   });

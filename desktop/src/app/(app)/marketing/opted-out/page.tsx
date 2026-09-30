@@ -51,9 +51,9 @@ async function exportAllOptedOut(search: string, channel?: string) {
   let all: OptedOutContact[] = [];
   for (;;) {
     const res = await marketingApi.optedOut.list({ page, limit: pageSize, search: search || undefined, channel });
-    const items = res.data.data;
+    const items = res.data;
     all = all.concat(items);
-    if (all.length >= res.data.pagination.total || items.length === 0) break;
+    if (all.length >= res.pagination.total || items.length === 0) break;
     page += 1;
   }
   const csv = toCsv(all);

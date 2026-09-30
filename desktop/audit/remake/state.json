@@ -500,9 +500,10 @@
       "repairAttempts": 0
     },
     "verify:marketing-opt-out": {
-      "status": "context-limit",
-      "timestamp": "2026-09-30T14:32:28.219Z",
-      "error": "stdout(tail): Failed to refresh OAuth token: another Claude Code process is refreshing it or exited mid-refresh. This is usually transient; retry in a minute, and if it persists close other Claude Code processes or sign in again"
+      "status": "ok",
+      "timestamp": "2026-09-30T15:27:09.880Z",
+      "error": null,
+      "repairAttempts": 1
     },
     "verify:marketing-segments": {
       "status": "context-limit",
@@ -511,8 +512,8 @@
     }
   },
   "lastCompleted": {
-    "id": "verify:marketing-flyers",
+    "id": "verify:marketing-opt-out",
     "status": "ok",
-    "timestamp": "2026-09-30T15:18:30.055Z"
+    "timestamp": "2026-09-30T15:27:09.881Z"
   }
 }

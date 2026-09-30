@@ -611,8 +611,8 @@ export const marketingApi = {
       search?: string;
       channel?: string;
     }) =>
-      client.get<ApiResponse<PaginatedResponse<OptedOutContact>>>('/contacts', {
-        params: { ...params, opted_out: true },
+      client.get<PaginatedResponse<OptedOutContact>>(API_ENDPOINTS.marketing.optOut, {
+        params,
       }),
 
     optOutContact: (contactId: string, data?: OptOutRequest) =>
@@ -622,9 +622,9 @@ export const marketingApi = {
       ),
 
     resubscribe: (contactId: string) =>
-      client.put<ApiResponse<{ message: string }>>(
-        `/contacts/${contactId}`,
-        { optedOut: 0, optedOutAt: null, optOutChannel: null, optOutReason: null },
+      client.post<ApiResponse<{ message: string }>>(
+        `${API_ENDPOINTS.marketing.optOut}/${contactId}/opt-in`,
+        {},
       ),
   },
 
