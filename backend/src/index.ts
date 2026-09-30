@@ -78,6 +78,7 @@ import aiSettingsRoutes from './routes/ai-settings';
 import whatsappCampaignRoutes from './routes/whatsapp-campaigns';
 import socialContentRoutes from './routes/social-content';
 import marketingSuggestionRoutes from './routes/marketing-suggestions';
+import festivalCampaignRoutes from './routes/festival-campaigns';
 import driverRoutes from './routes/driver';
 import publicRoutes from './routes/public';
 import hsnCodeRoutes from './routes/hsn-codes';
@@ -260,6 +261,7 @@ const routeMounts: Array<[string, typeof authRoutes]> = [
   ['whatsapp-campaigns', whatsappCampaignRoutes],
   ['marketing/social-content', socialContentRoutes],
   ['marketing/suggestions', marketingSuggestionRoutes],
+  ['marketing/festivals', festivalCampaignRoutes],
   ['hsn-codes', hsnCodeRoutes],
   ['admin', adminRoutes],
 ];

@@ -622,10 +622,11 @@ export const marketingApi = {
       limit?: number;
       platform?: string;
       status?: string;
+      search?: string;
       sortBy?: string;
       sortOrder?: 'asc' | 'desc';
     }) =>
-      client.get<ApiResponse<PaginatedResponse<SocialContent>>>(API_ENDPOINTS.marketing.socialContent, { params }),
+      client.get<PaginatedResponse<SocialContent>>(API_ENDPOINTS.marketing.socialContent, { params }),
 
     get: (id: string) =>
       client.get<ApiResponse<SocialContent>>(`${API_ENDPOINTS.marketing.socialContent}/${id}`),
@@ -648,7 +649,7 @@ export const marketingApi = {
 
   suggestions: {
     list: (params?: { page?: number; limit?: number; status?: string }) =>
-      client.get<ApiResponse<PaginatedResponse<MarketingSuggestion>>>('/marketing/suggestions', { params }),
+      client.get<PaginatedResponse<MarketingSuggestion>>('/marketing/suggestions', { params }),
 
     generate: () =>
       client.post<ApiResponse<MarketingSuggestion[]>>('/marketing/suggestions/generate', {}),

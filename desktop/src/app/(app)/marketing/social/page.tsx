@@ -44,14 +44,16 @@ function statusTone(status: string): 'success' | 'info' | 'warning' {
   return 'info';
 }
 
+function csvRow(values: unknown[]) {
+  return values.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',');
+}
+
 function toCsv(rows: SocialContent[]) {
-  const header = ['Platform', 'Content', 'Status', 'Scheduled for', 'Created'];
+  const header = csvRow(['Platform', 'Content', 'Status', 'Scheduled for', 'Created']);
   const lines = rows.map((p) =>
-    [p.platform, p.content, p.status, p.scheduledFor ?? '', p.createdAt ?? '']
-      .map((v) => `"${String(v).replace(/"/g, '""')}"`)
-      .join(','),
+    csvRow([p.platform, p.content, p.status, p.scheduledFor ?? '', p.createdAt ?? '']),
   );
-  return [header.join(','), ...lines].join('\n');
+  return [header, ...lines].join('\n');
 }
 
 async function exportAllPosts(platform: string | undefined) {
@@ -60,9 +62,9 @@ async function exportAllPosts(platform: string | undefined) {
   let all: SocialContent[] = [];
   for (;;) {
     const res = await marketingApi.socialContent.list({ page, limit: pageSize, platform });
-    const items = res.data.data;
+    const items = res.data;
     all = all.concat(items);
-    if (all.length >= res.data.pagination.total || items.length === 0) break;
+    if (all.length >= res.pagination.total || items.length === 0) break;
     page += 1;
   }
   const csv = toCsv(all);
@@ -291,7 +293,7 @@ function SuggestionsPanel() {
     setLoading(true);
     try {
       const res = await marketingApi.suggestions.list({ status: 'pending', limit: 20 });
-      setSuggestions(res.data.data);
+      setSuggestions(res.data);
     } catch {
       setSuggestions([]);
     } finally {
@@ -461,10 +463,7 @@ export default function SocialPage() {
             limit,
             platform: platformFilter,
             status: undefined,
-          }).then((res) => {
-            if (!q) return res;
-            const filtered = res.data.data.filter((p) => p.content.toLowerCase().includes(q.toLowerCase()));
-            return { ...res, data: { ...res.data, data: filtered, pagination: { ...res.data.pagination, total: filtered.length } } };
+            search: q || undefined,
           });
         }}
         columns={[

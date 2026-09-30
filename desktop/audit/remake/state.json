@@ -510,11 +510,17 @@
       "timestamp": "2026-09-30T15:37:45.584Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "verify:marketing-social": {
+      "status": "ok",
+      "timestamp": "2026-09-30T16:08:15.930Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "verify:marketing-segments",
+    "id": "verify:marketing-social",
     "status": "ok",
-    "timestamp": "2026-09-30T15:37:45.584Z"
+    "timestamp": "2026-09-30T16:08:15.931Z"
   }
 }
