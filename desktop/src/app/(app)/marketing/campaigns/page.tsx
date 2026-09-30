@@ -85,11 +85,13 @@ export default function MarketingCampaignsPage() {
   const [statusFilter, setStatusFilter] = React.useState<string | undefined>(undefined);
   const [channelFilter, setChannelFilter] = React.useState<string | undefined>(undefined);
   const [search, setSearch] = React.useState('');
+  const [refreshKey, setRefreshKey] = React.useState(0);
 
   async function handleDelete(id: string) {
     try {
       await marketingApi.campaigns.delete(id);
       toast.success('Campaign deleted');
+      setRefreshKey((k) => k + 1);
     } catch {
       toast.error('Failed to delete campaign');
     }
@@ -189,8 +191,6 @@ export default function MarketingCampaignsPage() {
               <SelectItem value="email">Email</SelectItem>
               <SelectItem value="sms">SMS</SelectItem>
               <SelectItem value="whatsapp">WhatsApp</SelectItem>
-              <SelectItem value="push">Push</SelectItem>
-              <SelectItem value="social">Social</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -219,7 +219,7 @@ export default function MarketingCampaignsPage() {
             variant="ghost"
             size="icon-sm"
             aria-label="Edit"
-            onClick={() => router.push(`/marketing/campaigns/${c.id}?edit=1`)}
+            onClick={() => router.push(`/marketing/campaigns/${c.id}/edit`)}
           >
             <Pencil aria-hidden="true" />
           </Button>
@@ -238,7 +238,10 @@ export default function MarketingCampaignsPage() {
         {
           label: 'Delete',
           destructive: true,
-          onSelect: (rows) => Promise.all(rows.map((r) => marketingApi.campaigns.delete(r.id))).then(() => {}),
+          onSelect: (rows) =>
+            Promise.all(rows.map((r) => marketingApi.campaigns.delete(r.id))).then(() => {
+              setRefreshKey((k) => k + 1);
+            }),
         },
       ]}
       onExport={async () => {

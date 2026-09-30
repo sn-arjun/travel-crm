@@ -14,7 +14,7 @@ import { marketingApi, type MarketingSegment } from '@/lib/api/marketing';
 const schema = z.object({
   name: z.string().min(1, 'Name is required'),
   description: z.string().optional(),
-  channel: z.enum(['email', 'sms', 'whatsapp', 'push', 'social']),
+  channel: z.enum(['email', 'sms', 'whatsapp']),
   subject: z.string().optional(),
   content: z.string().optional(),
   segmentId: z.string().optional(),
@@ -77,8 +77,6 @@ export default function NewMarketingCampaignPage() {
                     <SelectItem value="email">Email</SelectItem>
                     <SelectItem value="sms">SMS</SelectItem>
                     <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                    <SelectItem value="push">Push</SelectItem>
-                    <SelectItem value="social">Social</SelectItem>
                   </SelectContent>
                 </Select>
               </FormRow>
@@ -88,7 +86,10 @@ export default function NewMarketingCampaignPage() {
                   onChange={(id) => form.setValue('segmentId', id ?? '', { shouldDirty: true })}
                   fetcher={async (query, page) => {
                     const r = await marketingApi.segments.list({ search: query, page, limit: 20 });
-                    return { items: r.data.data, total: r.data.pagination.total };
+                    const data = r.data as any;
+                    const items = Array.isArray(data) ? data : (data?.data ?? []);
+                    const total = data?.pagination?.total ?? items.length;
+                    return { items, total };
                   }}
                   getOptionId={(s) => s.id}
                   getOptionLabel={(s) => s.name}
