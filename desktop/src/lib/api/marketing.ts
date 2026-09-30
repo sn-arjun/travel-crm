@@ -312,6 +312,45 @@ export interface FestivalCampaign {
   createdAt: string;
 }
 
+/** Raw wire shape from /marketing/segments/* — backend returns SQLite rows as-is (snake_case, filtersJson stored as a JSON string), not the camelCase MarketingSegment the UI works with. */
+interface RawMarketingSegment {
+  id: string;
+  name: string;
+  description?: string | null;
+  filters_json?: string | null;
+  contact_count?: number | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+function fromRawSegment(raw: RawMarketingSegment): MarketingSegment {
+  let criteria: Record<string, unknown> = {};
+  if (raw.filters_json) {
+    try {
+      criteria = JSON.parse(raw.filters_json);
+    } catch {
+      criteria = {};
+    }
+  }
+  return {
+    id: raw.id,
+    name: raw.name,
+    description: raw.description ?? undefined,
+    criteria,
+    contactCount: raw.contact_count ?? 0,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at ?? undefined,
+  };
+}
+
+function toRawSegment(data: CreateSegmentRequest) {
+  return {
+    name: data.name,
+    description: data.description || undefined,
+    filtersJson: data.criteria ? JSON.stringify(data.criteria) : undefined,
+  };
+}
+
 const CAMPAIGNS_BASE = '/marketing/campaigns';
 
 export const marketingApi = {
@@ -415,23 +454,41 @@ export const marketingApi = {
   },
 
   segments: {
-    list: (params?: {
+    list: async (params?: {
       page?: number;
       limit?: number;
       search?: string;
       sortBy?: string;
       sortOrder?: 'asc' | 'desc';
-    }) =>
-      client.get<ApiResponse<PaginatedResponse<MarketingSegment>>>(API_ENDPOINTS.marketing.segments, { params }),
+    }) => {
+      const res = await client.get<{ success: boolean; data: RawMarketingSegment[] | { data: RawMarketingSegment[] }; pagination?: { total: number } }>(
+        API_ENDPOINTS.marketing.segments,
+        { params },
+      );
+      const rows = extractList<RawMarketingSegment>(res.data);
+      const total = extractTotal(res.data, res.pagination?.total ?? rows.length);
+      return {
+        data: {
+          data: rows.map(fromRawSegment),
+          pagination: { page: params?.page ?? 1, limit: params?.limit ?? rows.length, total, totalPages: Math.ceil(total / ((params?.limit ?? rows.length) || 1)) },
+        },
+      } as ApiResponse<PaginatedResponse<MarketingSegment>>;
+    },
 
-    get: (id: string) =>
-      client.get<ApiResponse<MarketingSegment>>(`${API_ENDPOINTS.marketing.segments}/${id}`),
+    get: async (id: string) => {
+      const res = await client.get<ApiResponse<RawMarketingSegment>>(`${API_ENDPOINTS.marketing.segments}/${id}`);
+      return { data: fromRawSegment(res.data) } as ApiResponse<MarketingSegment>;
+    },
 
-    create: (data: CreateSegmentRequest) =>
-      client.post<ApiResponse<MarketingSegment>>(API_ENDPOINTS.marketing.segments, data),
+    create: async (data: CreateSegmentRequest) => {
+      const res = await client.post<ApiResponse<RawMarketingSegment>>(API_ENDPOINTS.marketing.segments, toRawSegment(data));
+      return { data: fromRawSegment(res.data) } as ApiResponse<MarketingSegment>;
+    },
 
-    update: (id: string, data: UpdateSegmentRequest) =>
-      client.put<ApiResponse<MarketingSegment>>(`${API_ENDPOINTS.marketing.segments}/${id}`, data),
+    update: async (id: string, data: UpdateSegmentRequest) => {
+      const res = await client.put<ApiResponse<RawMarketingSegment>>(`${API_ENDPOINTS.marketing.segments}/${id}`, toRawSegment(data as CreateSegmentRequest));
+      return { data: fromRawSegment(res.data) } as ApiResponse<MarketingSegment>;
+    },
 
     delete: (id: string) =>
       client.delete<ApiResponse<void>>(`${API_ENDPOINTS.marketing.segments}/${id}`),
@@ -442,8 +499,10 @@ export const marketingApi = {
         { params },
       ),
 
-    refreshCount: (id: string) =>
-      client.post<ApiResponse<MarketingSegment>>(`${API_ENDPOINTS.marketing.segments}/${id}/refresh-count`, {}),
+    refreshCount: async (id: string) => {
+      const res = await client.post<ApiResponse<{ contact_count: number }>>(`${API_ENDPOINTS.marketing.segments}/${id}/refresh-count`, {});
+      return { data: { contactCount: res.data.contact_count } } as ApiResponse<Pick<MarketingSegment, 'contactCount'>>;
+    },
   },
 
   branding: {

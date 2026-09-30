@@ -31,13 +31,13 @@ function summarizeCriteria(criteria: Record<string, unknown> | null | undefined)
 }
 
 function toCsv(rows: MarketingSegment[]) {
-  const header = ['Name', 'Description', 'Criteria', 'Contacts', 'Created'];
+  const quoteRow = (values: string[]) =>
+    values.map((v) => `"${v.replace(/"/g, '""')}"`).join(',');
+  const header = quoteRow(['Name', 'Description', 'Criteria', 'Contacts', 'Created']);
   const lines = rows.map((s) =>
-    [s.name, s.description ?? '', summarizeCriteria(s.criteria), String(s.contactCount ?? 0), s.createdAt]
-      .map((v) => `"${String(v).replace(/"/g, '""')}"`)
-      .join(','),
+    quoteRow([s.name, s.description ?? '', summarizeCriteria(s.criteria), String(s.contactCount ?? 0), s.createdAt]),
   );
-  return [header.join(','), ...lines].join('\n');
+  return [header, ...lines].join('\n');
 }
 
 async function exportAllSegments(search: string) {

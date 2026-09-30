@@ -506,14 +506,15 @@
       "repairAttempts": 1
     },
     "verify:marketing-segments": {
-      "status": "context-limit",
-      "timestamp": "2026-09-29T16:40:32.222Z",
-      "error": "stdout(tail): You've hit your session limit · resets 12am (Asia/Kolkata)"
+      "status": "ok",
+      "timestamp": "2026-09-30T15:37:45.584Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "verify:marketing-opt-out",
+    "id": "verify:marketing-segments",
     "status": "ok",
-    "timestamp": "2026-09-30T15:27:09.881Z"
+    "timestamp": "2026-09-30T15:37:45.584Z"
   }
 }
