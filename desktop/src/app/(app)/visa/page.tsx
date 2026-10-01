@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { DataTableColumn } from '@/components/ui/data-table';
 import type { ListFilter } from '@/components/domain/list-page';
 import { useApiMutation } from '@/hooks/use-api';
-import { visaApi, type VisaRecord } from '@/lib/api/visa';
+import { useConfirm } from '@/components/ui/confirm-dialog';
+import { visaApi, visaService, visaTypeLabel, parseDateOnly, type VisaRecord } from '@/lib/api/visa';
 import { toast } from 'sonner';
 
 const STATUS_OPTIONS = [
@@ -44,7 +45,7 @@ const STATUS_LABEL: Record<string, string> = {
 function toCsv(rows: VisaRecord[]): string {
   const header = ['Traveller', 'Destination', 'Visa Type', 'Application Date', 'Expiry Date', 'Status'];
   const lines = rows.map((r) =>
-    [r.travellerName, r.countryName, r.visaType ?? '', r.applicationDate ?? '', r.expiryDate ?? '', r.status]
+    [r.travellerName, r.countryName, visaTypeLabel(r.visaType), r.applicationDate ?? '', r.expiryDate ?? '', r.status]
       .map((v) => `"${String(v).replace(/"/g, '""')}"`)
       .join(','),
   );
@@ -66,6 +67,9 @@ function downloadCsv(csv: string, filename: string) {
 export default function VisaTrackingPage() {
   const router = useRouter();
   const [statusFilter, setStatusFilter] = React.useState<string | undefined>(undefined);
+  // Bumping this re-creates the fetcher, which makes ListPage reload from page 1.
+  const [reloadKey, setReloadKey] = React.useState(0);
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const { mutate: deleteVisa } = useApiMutation<string, unknown>((id) => visaApi.delete(id));
 
@@ -75,14 +79,23 @@ export default function VisaTrackingPage() {
 
   const fetcher = React.useCallback(
     ({ page, limit, search }: { page: number; limit: number; search: string; filters: ListFilter[] }) =>
-      visaApi.list({ page, limit, search: search || undefined, status: statusFilter }),
-    [statusFilter],
+      visaService.list({ page, limit, search: search || undefined, status: statusFilter }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [statusFilter, reloadKey],
   );
 
   async function handleDelete(v: VisaRecord) {
+    const ok = await confirm({
+      title: 'Delete Visa Record',
+      description: `Are you sure you want to delete the visa record for ${v.travellerName}? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      tone: 'destructive',
+    });
+    if (!ok) return;
     const result = await deleteVisa(v.id);
     if (result !== undefined) {
       toast.success('Visa record deleted');
+      setReloadKey((k) => k + 1);
     } else {
       toast.error('Failed to delete visa record');
     }
@@ -91,7 +104,7 @@ export default function VisaTrackingPage() {
   async function handleExport(rows: VisaRecord[]) {
     let allRows = rows;
     try {
-      const res = await visaApi.list({ page: 1, limit: 1000, status: statusFilter });
+      const res = await visaService.list({ page: 1, limit: 100, status: statusFilter });
       const data = res.data as unknown;
       allRows = Array.isArray(data)
         ? (data as VisaRecord[])
@@ -105,13 +118,13 @@ export default function VisaTrackingPage() {
   const columns: DataTableColumn<VisaRecord>[] = [
     { key: 'travellerName', header: 'Traveller', sortable: true },
     { key: 'countryName', header: 'Destination', sortable: true },
-    { key: 'visaType', header: 'Type', cell: (v) => v.visaType ?? 'N/A' },
+    { key: 'visaType', header: 'Type', cell: (v) => visaTypeLabel(v.visaType) || 'N/A' },
     {
       key: 'applicationDate',
       header: 'Applied',
       cell: (v) =>
         v.applicationDate
-          ? new Date(v.applicationDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+          ? parseDateOnly(v.applicationDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
           : 'N/A',
     },
     {
@@ -122,6 +135,7 @@ export default function VisaTrackingPage() {
   ];
 
   return (
+    <>
     <ListPage<VisaRecord>
       title="Visa Tracking"
       description="Track visa applications for your travellers."
@@ -155,7 +169,7 @@ export default function VisaTrackingPage() {
           </SelectContent>
         </Select>
       }
-      searchPlaceholder="Search by traveller or destination…"
+      searchPlaceholder="Search by destination…"
       filters={filters}
       onClearFilters={() => setStatusFilter(undefined)}
       rowActions={(v) => (
@@ -176,7 +190,11 @@ export default function VisaTrackingPage() {
         {
           label: 'Delete',
           destructive: true,
-          onSelect: (rows) => Promise.all(rows.map((r) => deleteVisa(r.id))).then(() => {}),
+          onSelect: async (rows) => {
+            await Promise.all(rows.map((r) => deleteVisa(r.id)));
+            toast.success(`${rows.length} visa record(s) deleted`);
+            setReloadKey((k) => k + 1);
+          },
         },
       ]}
       onExport={handleExport}
@@ -189,5 +207,7 @@ export default function VisaTrackingPage() {
         </Button>
       }
     />
+      {confirmDialog}
+    </>
   );
 }

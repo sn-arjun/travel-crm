@@ -19,7 +19,15 @@ import { FileDropzone } from '@/components/ui/file-dropzone';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { visaApi, type VisaChecklistItem, type VisaDocument, type VisaRecord } from '@/lib/api/visa';
+import {
+  visaApi,
+  visaService,
+  visaTypeLabel,
+  parseDateOnly,
+  type VisaChecklistItem,
+  type VisaDocument,
+  type VisaRecord,
+} from '@/lib/api/visa';
 
 const STATUS_TONE: Record<string, 'neutral' | 'success' | 'danger' | 'warning' | 'info'> = {
   not_started: 'neutral',
@@ -61,7 +69,7 @@ function formatFileSize(bytes: number): string {
 }
 
 function formatDate(s?: string) {
-  return s ? new Date(s).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+  return s ? parseDateOnly(s).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 }
 
 export default function VisaDetailPage() {
@@ -76,9 +84,15 @@ export default function VisaDetailPage() {
   const [isUploading, setIsUploading] = React.useState(false);
   const [deletingDocId, setDeletingDocId] = React.useState<string | null>(null);
 
-  const { data: visaResponse, loading, error } = useApiQuery(() => visaApi.getById(visaId), [visaId]);
-  const { data: checklistResponse, refetch: refetchChecklist } = useApiQuery(() => visaApi.getChecklist(visaId), [visaId]);
-  const { data: notesResponse } = useApiQuery(() => visaApi.getNotes(visaId), [visaId]);
+  const { data: loadedVisa, loading, error } = useApiQuery(() => visaService.getById(visaId), [visaId]);
+  const { data: loadedChecklist } = useApiQuery(() => visaService.getChecklist(visaId), [visaId]);
+
+  // Local copies so a checklist toggle updates in place instead of re-running the
+  // loading state (which would flash the skeleton and drop the active tab).
+  const [visa, setVisa] = React.useState<VisaRecord | null>(null);
+  const [checklist, setChecklist] = React.useState<VisaChecklistItem[]>([]);
+  React.useEffect(() => { if (loadedVisa) setVisa(loadedVisa); }, [loadedVisa]);
+  React.useEffect(() => { if (loadedChecklist) setChecklist(loadedChecklist); }, [loadedChecklist]);
   const { data: documentsResponse, refetch: refetchDocuments } = useApiQuery(() => visaApi.getDocuments(visaId), [visaId]);
 
   const documents: VisaDocument[] = React.useMemo(() => {
@@ -91,34 +105,18 @@ export default function VisaDetailPage() {
     return [];
   }, [documentsResponse]);
 
-  const checklist: VisaChecklistItem[] = React.useMemo(() => {
-    const d = checklistResponse?.data;
-    return Array.isArray(d) ? d : [];
-  }, [checklistResponse]);
 
   const { mutate: deleteVisa } = useApiMutation<string, unknown>(() => visaApi.delete(visaId));
   const { mutate: updateChecklistItem } = useApiMutation<{ itemId: string; completed: boolean }, unknown>(
-    ({ itemId, completed }) => visaApi.updateChecklistItem(visaId, itemId, { completed }),
+    ({ itemId, completed }) => visaService.setChecklistItem(visaId, itemId, completed),
   );
   const { mutate: saveNotes, loading: isSavingNotes } = useApiMutation<{ notes: string }, unknown>(
-    (data) => visaApi.updateNotes(visaId, data),
+    (data) => visaService.update(visaId, data),
   );
 
-  const visaRaw = visaResponse?.data as unknown as VisaRecord | undefined;
-  const visa = visaRaw
-    ? {
-        ...visaRaw,
-        travellerName: visaRaw.travellerName ?? '',
-        countryName: visaRaw.countryName ?? '',
-        status: visaRaw.status ?? 'not_started',
-      }
-    : undefined;
-
   React.useEffect(() => {
-    if (notesResponse?.data) {
-      setNotes((notesResponse.data as { notes?: string }).notes ?? '');
-    }
-  }, [notesResponse]);
+    setNotes(visa?.notes ?? '');
+  }, [visa?.notes]);
 
   const completedCount = checklist.filter((c) => c.completed).length;
   const progressPercent = checklist.length > 0 ? Math.round((completedCount / checklist.length) * 100) : 0;
@@ -132,7 +130,7 @@ export default function VisaDetailPage() {
     });
     if (!ok) return;
     const result = await deleteVisa(visaId);
-    if (result !== undefined) {
+    if (result !== null) {
       toast.success('Visa record deleted');
       router.push('/visa');
     } else {
@@ -144,7 +142,9 @@ export default function VisaDetailPage() {
     const result = await updateChecklistItem({ itemId: item.id, completed: !item.completed });
     if (result) {
       toast.success(item.completed ? 'Item unchecked' : 'Item completed');
-      refetchChecklist();
+      setChecklist((prev) => prev.map((c) => (c.id === item.id ? { ...c, completed: !item.completed } : c)));
+      // The backend may advance the status when required documents are all received.
+      void visaService.getById(visaId).then(setVisa).catch(() => {});
     }
   }
 
@@ -153,6 +153,7 @@ export default function VisaDetailPage() {
     if (result) {
       toast.success('Notes saved');
       setIsEditingNotes(false);
+      setVisa((prev) => (prev ? { ...prev, notes } : prev));
     } else {
       toast.error('Failed to save notes');
     }
@@ -220,7 +221,7 @@ export default function VisaDetailPage() {
     }
   }
 
-  if (loading) {
+  if (loading || (!visa && !error)) {
     return (
       <div className="flex flex-col gap-ds-4 p-ds-4">
         <Skeleton className="h-9 w-64" />
@@ -249,7 +250,7 @@ export default function VisaDetailPage() {
       <DetailPage<VisaRecord>
         entity={visa}
         title={visa.travellerName}
-        subtitle={`${visa.countryName}${visa.visaType ? ` · ${visa.visaType}` : ''}`}
+        subtitle={`${visa.countryName}${visa.visaType ? ` · ${visaTypeLabel(visa.visaType)}` : ''}`}
         status={<Tag tone={STATUS_TONE[visa.status] ?? 'info'}>{STATUS_LABEL[visa.status] ?? visa.status}</Tag>}
         onBack={() => router.push('/visa')}
         actions={actions}
@@ -276,7 +277,7 @@ export default function VisaDetailPage() {
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-ds-foreground-muted">Visa Type</dt>
-                  <dd className="font-medium">{visa.visaType || '—'}</dd>
+                  <dd className="font-medium">{visaTypeLabel(visa.visaType) || '—'}</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-ds-foreground-muted">Application Date</dt>
@@ -327,7 +328,16 @@ export default function VisaDetailPage() {
                 <div className="flex flex-col gap-ds-3">
                   <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={5} placeholder="Add notes about this visa application…" />
                   <div className="flex justify-end gap-ds-2">
-                    <Button variant="outline" size="sm" onClick={() => setIsEditingNotes(false)}>Cancel</Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setNotes(visa.notes ?? '');
+                        setIsEditingNotes(false);
+                      }}
+                    >
+                      Cancel
+                    </Button>
                     <Button size="sm" onClick={handleSaveNotes} disabled={isSavingNotes}>Save</Button>
                   </div>
                 </div>

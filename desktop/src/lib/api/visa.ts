@@ -5,13 +5,14 @@ import { API_ENDPOINTS } from './config';
 export interface VisaRecord {
   id: string;
   travelerId?: string;
+  travellerId?: string;
   passportNumber: string;
   travellerName: string;
   countryName: string;
   visaType?: string;
   applicationDate?: string;
   expiryDate?: string;
-  status: 'applied' | 'approved' | 'rejected' | 'processing';
+  status: 'not_started' | 'documents_collecting' | 'applied' | 'processing' | 'approved' | 'rejected';
   notes?: string;
   customFields?: Record<string, unknown>;
   createdBy: string;
@@ -196,6 +197,165 @@ export const travellersApi = {
 
   unlinkContact: (id: string) =>
     client.put<ApiResponse<Traveller>>(`${API_ENDPOINTS.travellers.byId(id)}/unlink-contact`, {}),
+};
+
+// ---------------------------------------------------------------------------
+// Backend-contract adapter
+//
+// The visa endpoints speak the DB contract (travellerId, destinationCountry,
+// lowercase visaType enum, appliedDate / visaExpiryDate, snake_case rows with
+// no traveller name). The pages work in a flat camelCase VisaRecord, so this
+// layer translates both ways. The raw `visaApi` above stays a thin wire client.
+// ---------------------------------------------------------------------------
+
+export const VISA_TYPE_OPTIONS = [
+  { value: 'tourist', label: 'Tourist' },
+  { value: 'business', label: 'Business' },
+  { value: 'transit', label: 'Transit' },
+  { value: 'student', label: 'Student' },
+  { value: 'work', label: 'Work' },
+  { value: 'medical', label: 'Medical' },
+] as const;
+
+export function visaTypeLabel(value?: string | null): string {
+  if (!value) return '';
+  return VISA_TYPE_OPTIONS.find((o) => o.value === value.toLowerCase())?.label ?? value;
+}
+
+const TRAVELLER_TTL_MS = 30_000;
+const travellerCache = new Map<string, { at: number; value: Promise<Traveller | null> }>();
+
+function lookupTraveller(id: string): Promise<Traveller | null> {
+  const hit = travellerCache.get(id);
+  if (hit && Date.now() - hit.at < TRAVELLER_TTL_MS) return hit.value;
+  const value = travellersApi
+    .getById(id)
+    .then((r) => normalizeTraveller((r as any)?.data))
+    .catch(() => null);
+  travellerCache.set(id, { at: Date.now(), value });
+  return value;
+}
+
+export function normalizeVisa(v: any, traveller?: Traveller | null): VisaRecord {
+  const travellerName = traveller
+    ? `${traveller.firstName} ${traveller.lastName}`.trim()
+    : (v.travellerName ?? '');
+  return {
+    ...v,
+    id: v.id,
+    travellerId: v.travellerId ?? v.traveller_id,
+    travellerName,
+    passportNumber: traveller?.passportNumber ?? v.passportNumber ?? '',
+    countryName: v.countryName ?? v.destinationCountry ?? v.destination_country ?? v.country ?? '',
+    visaType: v.visaType ?? v.visa_type ?? undefined,
+    applicationDate: v.applicationDate ?? v.appliedDate ?? v.applied_date ?? undefined,
+    expiryDate: v.expiryDate ?? v.visaExpiryDate ?? v.visa_expiry_date ?? undefined,
+    status: v.status ?? 'not_started',
+    notes: v.notes ?? undefined,
+    createdBy: v.createdBy ?? v.created_by ?? '',
+    createdAt: v.createdAt ?? v.created_at ?? '',
+    updatedAt: v.updatedAt ?? v.updated_at ?? '',
+  };
+}
+
+async function withTravellers(rows: any[]): Promise<VisaRecord[]> {
+  const idOf = (r: any): string | undefined => r.travellerId ?? r.traveller_id;
+  const ids = [...new Set(rows.map(idOf).filter(Boolean))] as string[];
+  const found = new Map<string, Traveller | null>();
+  await Promise.all(ids.map(async (id) => found.set(id, await lookupTraveller(id))));
+  return rows.map((r) => normalizeVisa(r, found.get(idOf(r) ?? '')));
+}
+
+export interface CreateVisaApplicationInput {
+  travellerId: string;
+  destinationCountry: string;
+  visaType: string;
+  applicationDate?: string;
+  expiryDate?: string;
+  notes?: string;
+}
+
+export interface UpdateVisaApplicationInput {
+  status?: VisaRecord['status'];
+  applicationDate?: string;
+  expiryDate?: string;
+  notes?: string;
+}
+
+export const visaService = {
+  /** Same envelope as visaApi.list, with rows normalised and traveller names resolved. */
+  async list(params?: { page?: number; limit?: number; search?: string; status?: string; traveller_id?: string }) {
+    const res = await visaApi.list(params);
+    const inner = (res as any)?.data;
+    const rows: any[] = Array.isArray(inner) ? inner : (inner?.data ?? []);
+    const data = await withTravellers(rows);
+    return { ...res, data: { data, pagination: inner?.pagination } };
+  },
+
+  async getById(id: string): Promise<VisaRecord> {
+    const res: any = await visaApi.getById(id);
+    const raw = res?.data;
+    const traveller = raw?.traveller_id ? await lookupTraveller(raw.traveller_id) : null;
+    // GET /visa/:id overwrites the `notes` column with the timeline-notes array, so the
+    // application's own notes only come back from the list endpoint.
+    let notes = raw?.notes;
+    if (Array.isArray(notes)) {
+      const list: any = await visaApi.list({ traveller_id: raw.traveller_id, limit: 100 }).catch(() => null);
+      const rows: any[] = list?.data?.data ?? [];
+      notes = rows.find((r) => r.id === raw.id)?.notes ?? undefined;
+    }
+    return normalizeVisa({ ...raw, notes }, traveller);
+  },
+
+  async getChecklist(id: string): Promise<VisaChecklistItem[]> {
+    const res: any = await visaApi.getById(id);
+    const items: any[] = res?.data?.checklist ?? [];
+    return items.map((i) => ({
+      id: i.id,
+      item: i.document_name ?? i.item ?? '',
+      completed: Boolean(i.is_received ?? i.completed),
+      completedAt: i.received_date ?? undefined,
+    }));
+  },
+
+  setChecklistItem: (id: string, itemId: string, isReceived: boolean) =>
+    client.put<{ success: boolean }>(API_ENDPOINTS.visa.checklist(id, itemId), { isReceived }),
+
+  /** Creates the application, then applies the fields the create endpoint does not accept. */
+  async create(input: CreateVisaApplicationInput): Promise<{ id: string }> {
+    const res: any = await client.post(API_ENDPOINTS.visa.create, {
+      travellerId: input.travellerId,
+      destinationCountry: input.destinationCountry,
+      visaType: input.visaType,
+      status: 'not_started',
+    });
+    const id: string = res?.data?.id;
+    const extra: Record<string, string> = {};
+    if (input.applicationDate) extra.appliedDate = input.applicationDate;
+    if (input.expiryDate) extra.visaExpiryDate = input.expiryDate;
+    if (input.notes) extra.notes = input.notes;
+    if (id && Object.keys(extra).length > 0) {
+      await client.put(API_ENDPOINTS.visa.byId(id), extra);
+    }
+    return { id };
+  },
+
+  update: (id: string, input: UpdateVisaApplicationInput) =>
+    client.put(API_ENDPOINTS.visa.byId(id), {
+      status: input.status,
+      appliedDate: input.applicationDate,
+      visaExpiryDate: input.expiryDate,
+      notes: input.notes,
+    }),
+
+  async dashboard(): Promise<{ total: number; statusCounts: Record<string, number>; expiringSoon: number }> {
+    const res: any = await client.get(`${API_ENDPOINTS.visa.list}/dashboard`);
+    return {
+      total: res?.data?.total ?? 0,
+      statusCounts: res?.data?.statusCounts ?? {},
+      expiringSoon: res?.data?.expiringSoon ?? 0,
+    };
+  },
 };
 
 /** Formats a Date as YYYY-MM-DD in local time (toISOString would shift the day for UTC+ zones). */

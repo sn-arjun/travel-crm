@@ -6,12 +6,18 @@ import { toast } from 'sonner';
 
 import { EntityForm, FormRow } from '@/components/domain/entity-form';
 import { RelationCombobox } from '@/components/domain/relation-combobox';
-import { Input } from '@/components/ui/input';
 import { SectionCard } from '@/components/ui/section-card';
 import { Textarea } from '@/components/ui/textarea';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { visaApi, travellersApi, type CreateVisaRequest, type Traveller } from '@/lib/api/visa';
+import {
+  visaService,
+  travellersApi,
+  normalizeTraveller,
+  toDateOnly,
+  VISA_TYPE_OPTIONS,
+  type Traveller,
+} from '@/lib/api/visa';
 
 const DESTINATION_COUNTRIES = [
   'Australia', 'Bahrain', 'Canada', 'China', 'Dubai (UAE)', 'Egypt', 'France', 'Germany',
@@ -21,30 +27,21 @@ const DESTINATION_COUNTRIES = [
   'Switzerland', 'Thailand', 'Turkey', 'United Kingdom', 'United States', 'Vietnam',
 ];
 
-const VISA_TYPES = ['Tourist', 'Business', 'Student', 'Work', 'Medical', 'Transit', 'Visit', 'Residence'];
-
 const schema = z.object({
   travellerId: z.string().min(1, 'Traveller is required'),
-  travellerName: z.string().min(1),
-  passportNumber: z.string().optional(),
   destinationCountry: z.string().min(1, 'Destination country is required'),
-  visaType: z.string().optional(),
+  visaType: z.string().min(1, 'Visa type is required'),
   applicationDate: z.date().optional(),
   expiryDate: z.date().optional(),
   notes: z.string().optional(),
 });
 type VisaForm = z.infer<typeof schema>;
 
-function toDateOnly(d?: Date): string | undefined {
-  return d ? d.toISOString().split('T')[0] : undefined;
-}
-
 async function fetchTravellers(query: string, page: number) {
   const r = await travellersApi.list({ search: query || undefined, page, limit: 20 });
   const data = r.data as unknown;
-  const items = Array.isArray(data)
-    ? (data as Traveller[])
-    : ((data as { data?: Traveller[] })?.data ?? []);
+  const raw = Array.isArray(data) ? data : ((data as { data?: unknown[] })?.data ?? []);
+  const items = raw.map(normalizeTraveller);
   const total = (data as { pagination?: { total?: number } })?.pagination?.total ?? items.length;
   return { items, total };
 }
@@ -59,27 +56,23 @@ export default function NewVisaApplicationPage() {
       schema={schema}
       defaultValues={{
         travellerId: '',
-        travellerName: '',
-        passportNumber: '',
         destinationCountry: '',
         visaType: '',
         applicationDate: new Date(),
         notes: '',
       }}
+      submitLabel="Create Application"
       prefillFromParams={{ travellerId: 'travellerId' }}
       onCancel={() => router.back()}
       onSubmit={async (v) => {
-        const payload: CreateVisaRequest = {
-          travellerName: v.travellerName,
-          passportNumber: v.passportNumber ?? '',
-          countryName: v.destinationCountry,
-          visaType: v.visaType || undefined,
-          applicationDate: toDateOnly(v.applicationDate),
-          expiryDate: toDateOnly(v.expiryDate),
+        await visaService.create({
+          travellerId: v.travellerId,
+          destinationCountry: v.destinationCountry,
+          visaType: v.visaType,
+          applicationDate: v.applicationDate ? toDateOnly(v.applicationDate) : undefined,
+          expiryDate: v.expiryDate ? toDateOnly(v.expiryDate) : undefined,
           notes: v.notes || undefined,
-          status: 'not_started',
-        };
-        await visaApi.create(payload);
+        });
         toast.success('Visa application created successfully!');
         router.push('/visa');
       }}
@@ -90,27 +83,18 @@ export default function NewVisaApplicationPage() {
               <FormRow name="travellerId" label="Traveller" required wide>
                 <RelationCombobox<Traveller>
                   value={form.watch('travellerId') || null}
-                  onChange={(id, item) => {
-                    form.setValue('travellerId', id ?? '', { shouldDirty: true, shouldValidate: true });
-                    form.setValue('travellerName', item ? `${item.firstName} ${item.lastName}` : '', { shouldDirty: true });
-                    form.setValue('passportNumber', item?.passportNumber ?? '', { shouldDirty: true });
-                  }}
+                  onChange={(id) => form.setValue('travellerId', id ?? '', { shouldDirty: true, shouldValidate: true })}
                   fetcher={fetchTravellers}
                   getOptionId={(t) => t.id}
                   getOptionLabel={(t) => `${t.firstName} ${t.lastName}`}
                   getOptionDescription={(t) => t.passportNumber}
-                  resolveSelected={async (id) => (await travellersApi.getById(id)).data}
+                  resolveSelected={async (id) => normalizeTraveller((await travellersApi.getById(id)).data)}
                   placeholder="Select a traveller…"
                   searchPlaceholder="Search by name or passport…"
                   required
                   error={form.formState.errors.travellerId?.message}
                 />
               </FormRow>
-              {form.watch('passportNumber') && (
-                <FormRow name="passportNumber" label="Passport Number" wide>
-                  <Input value={form.watch('passportNumber')} disabled readOnly />
-                </FormRow>
-              )}
             </div>
           </SectionCard>
 
@@ -137,14 +121,14 @@ export default function NewVisaApplicationPage() {
                 />
               </FormRow>
 
-              <FormRow name="visaType" label="Visa Type">
-                <Select value={form.watch('visaType')} onValueChange={(val) => form.setValue('visaType', val, { shouldDirty: true })}>
+              <FormRow name="visaType" label="Visa Type" required>
+                <Select value={form.watch('visaType')} onValueChange={(val) => form.setValue('visaType', val, { shouldDirty: true, shouldValidate: true })}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select visa type…" />
                   </SelectTrigger>
                   <SelectContent>
-                    {VISA_TYPES.map((t) => (
-                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    {VISA_TYPE_OPTIONS.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

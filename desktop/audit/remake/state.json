@@ -588,11 +588,17 @@
       "timestamp": "2026-10-01T17:29:31.854Z",
       "error": "spec:travellers: Running 26 tests using 1 worker\n\n  ✓   1 [setup] › e2e\\global-setup.ts:8:6 › authenticate as admin (1.8s)\n  ✓   2 [chromium] › e2e\\travellers.spec.ts:95:7 › Travellers: full round trip › create with every field -> list -> detail -> edit pre-fill -> edit -> delete (10.5s)\n  ✘   3 [ch",
       "repairAttempts": 2
+    },
+    "verify:visa": {
+      "status": "ok",
+      "timestamp": "2026-10-01T17:41:56.846Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "verify:travellers",
-    "status": "gate-failed",
-    "timestamp": "2026-10-01T17:29:31.854Z"
+    "id": "verify:visa",
+    "status": "ok",
+    "timestamp": "2026-10-01T17:41:56.846Z"
   }
 }

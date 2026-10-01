@@ -11,10 +11,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 import { useApiQuery } from '@/hooks/use-api';
-import { visaApi, type UpdateVisaRequest, type VisaRecord } from '@/lib/api/visa';
+import { visaService, visaTypeLabel, parseDateOnly, toDateOnly } from '@/lib/api/visa';
 
-const VISA_TYPES = ['Tourist', 'Business', 'Student', 'Work', 'Medical', 'Transit', 'Visit', 'Residence'];
 const STATUS_OPTIONS = [
   { label: 'Not Started', value: 'not_started' },
   { label: 'Documents Collecting', value: 'documents_collecting' },
@@ -25,7 +25,6 @@ const STATUS_OPTIONS = [
 ];
 
 const schema = z.object({
-  visaType: z.string().optional(),
   status: z.enum(['not_started', 'documents_collecting', 'applied', 'approved', 'rejected', 'processing']),
   applicationDate: z.date().optional(),
   expiryDate: z.date().optional(),
@@ -33,12 +32,8 @@ const schema = z.object({
 });
 type VisaEditForm = z.infer<typeof schema>;
 
-function toDateOnly(d?: Date): string | undefined {
-  return d ? d.toISOString().split('T')[0] : undefined;
-}
-
 function parseDate(s?: string): Date | undefined {
-  return s ? new Date(s) : undefined;
+  return s ? parseDateOnly(s) : undefined;
 }
 
 export default function EditVisaApplicationPage() {
@@ -46,8 +41,7 @@ export default function EditVisaApplicationPage() {
   const params = useParams();
   const visaId = params.id as string;
 
-  const { data: response, loading } = useApiQuery(() => visaApi.getById(visaId), [visaId]);
-  const visa = (response?.data as unknown as VisaRecord) ?? undefined;
+  const { data: visa, loading } = useApiQuery(() => visaService.getById(visaId), [visaId]);
 
   if (loading || !visa) {
     return (
@@ -65,39 +59,36 @@ export default function EditVisaApplicationPage() {
       description="Update visa application details."
       schema={schema}
       defaultValues={{
-        visaType: visa.visaType ?? '',
         status: visa.status,
         applicationDate: parseDate(visa.applicationDate),
         expiryDate: parseDate(visa.expiryDate),
         notes: visa.notes ?? '',
       }}
+      submitLabel="Save Changes"
       onCancel={() => router.back()}
       onSubmit={async (v) => {
-        const payload: UpdateVisaRequest = {
-          visaType: v.visaType || undefined,
+        await visaService.update(visaId, {
           status: v.status,
-          applicationDate: toDateOnly(v.applicationDate),
-          expiryDate: toDateOnly(v.expiryDate),
-          notes: v.notes || undefined,
-        };
-        await visaApi.update(visaId, payload);
+          applicationDate: v.applicationDate ? toDateOnly(v.applicationDate) : undefined,
+          expiryDate: v.expiryDate ? toDateOnly(v.expiryDate) : undefined,
+          notes: v.notes ?? '',
+        });
         toast.success('Visa application updated');
         router.push(`/visa/${visaId}`);
       }}
       renderSections={(form) => (
         <SectionCard title="Visa Details" required>
           <div className="grid gap-ds-4 sm:grid-cols-2">
-            <FormRow name="visaType" label="Visa Type">
-              <Select value={form.watch('visaType')} onValueChange={(val) => form.setValue('visaType', val, { shouldDirty: true })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select visa type…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {VISA_TYPES.map((t) => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <FormRow name="travellerName" label="Traveller" hint="Fixed once the application is created.">
+              <Input id="travellerName" value={visa.travellerName} disabled readOnly />
+            </FormRow>
+
+            <FormRow name="countryName" label="Destination Country" hint="Fixed once the application is created.">
+              <Input id="countryName" value={visa.countryName} disabled readOnly />
+            </FormRow>
+
+            <FormRow name="visaType" label="Visa Type" hint="Fixed once the application is created.">
+              <Input id="visaType" value={visaTypeLabel(visa.visaType)} disabled readOnly />
             </FormRow>
 
             <FormRow name="status" label="Status" required>

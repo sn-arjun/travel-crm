@@ -12,7 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Stat } from '@/components/ui/stat';
 import { useApiQuery } from '@/hooks/use-api';
-import { visaApi, type VisaRecord } from '@/lib/api/visa';
+import { visaService, parseDateOnly, type VisaRecord } from '@/lib/api/visa';
 import { cn } from '@/lib/utils';
 
 const STATUS_TONE: Record<string, 'neutral' | 'success' | 'danger' | 'warning' | 'info'> = {
@@ -24,10 +24,20 @@ const STATUS_TONE: Record<string, 'neutral' | 'success' | 'danger' | 'warning' |
   rejected: 'danger',
 };
 
+const STATUS_LABEL: Record<string, string> = {
+  not_started: 'Not Started',
+  documents_collecting: 'Docs Collecting',
+  applied: 'Applied',
+  processing: 'Processing',
+  approved: 'Approved',
+  rejected: 'Rejected',
+};
+
 export default function VisaDashboardPage() {
   const router = useRouter();
 
-  const { data: response, loading } = useApiQuery(() => visaApi.list({ page: 1, limit: 200 }), []);
+  const { data: response, loading } = useApiQuery(() => visaService.list({ page: 1, limit: 100 }), []);
+  const { data: summary } = useApiQuery(() => visaService.dashboard(), []);
 
   const records: VisaRecord[] = React.useMemo(() => {
     const data = response?.data as unknown;
@@ -36,18 +46,23 @@ export default function VisaDashboardPage() {
   }, [response]);
 
   const stats = React.useMemo(() => {
-    const applied = records.filter((r) => r.status === 'applied').length;
-    const processing = records.filter((r) => r.status === 'processing').length;
-    const approved = records.filter((r) => r.status === 'approved').length;
-    const rejected = records.filter((r) => r.status === 'rejected').length;
-    return { applied, processing, approved, rejected, total: records.length };
-  }, [records]);
+    const counts = summary?.statusCounts ?? {};
+    return {
+      notStarted: counts.not_started ?? 0,
+      collecting: counts.documents_collecting ?? 0,
+      applied: counts.applied ?? 0,
+      processing: counts.processing ?? 0,
+      approved: counts.approved ?? 0,
+      rejected: counts.rejected ?? 0,
+      total: summary?.total ?? records.length,
+    };
+  }, [summary, records]);
 
   const upcomingDeadlines = React.useMemo(() => {
     const now = new Date();
     return records
-      .filter((r) => r.expiryDate && new Date(r.expiryDate) > now && r.status !== 'rejected')
-      .sort((a, b) => new Date(a.expiryDate!).getTime() - new Date(b.expiryDate!).getTime())
+      .filter((r) => r.expiryDate && parseDateOnly(r.expiryDate!) > now && r.status !== 'rejected')
+      .sort((a, b) => parseDateOnly(a.expiryDate!).getTime() - parseDateOnly(b.expiryDate!).getTime())
       .slice(0, 10);
   }, [records]);
 
@@ -92,7 +107,9 @@ export default function VisaDashboardPage() {
         actions={<Button onClick={() => router.push('/visa')}>View All Applications</Button>}
       />
 
-      <div className="grid grid-cols-2 gap-ds-4 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-ds-4 sm:grid-cols-3 lg:grid-cols-6">
+        <Stat label="Not Started" value={stats.notStarted} />
+        <Stat label="Docs Collecting" value={stats.collecting} />
         <Stat label="Applied" value={stats.applied} />
         <Stat label="Processing" value={stats.processing} />
         <Stat label="Approved" value={stats.approved} />
@@ -106,7 +123,7 @@ export default function VisaDashboardPage() {
           ) : (
             <ul className="divide-y divide-ds-border">
               {upcomingDeadlines.map((r) => {
-                const daysUntil = Math.ceil((new Date(r.expiryDate!).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                const daysUntil = Math.ceil((parseDateOnly(r.expiryDate!).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                 return (
                   <li key={r.id}>
                     <button
@@ -125,9 +142,9 @@ export default function VisaDashboardPage() {
                             daysUntil <= 7 ? 'font-semibold text-ds-danger' : daysUntil <= 30 ? 'text-ds-warning' : 'text-ds-foreground-muted',
                           )}
                         >
-                          {new Date(r.expiryDate!).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} ({daysUntil}d)
+                          {parseDateOnly(r.expiryDate!).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} ({daysUntil}d)
                         </span>
-                        <Tag tone={STATUS_TONE[r.status] ?? 'info'} size="sm">{r.status}</Tag>
+                        <Tag tone={STATUS_TONE[r.status] ?? 'info'} size="sm">{STATUS_LABEL[r.status] ?? r.status}</Tag>
                       </div>
                     </button>
                   </li>
