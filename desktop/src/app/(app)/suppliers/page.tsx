@@ -64,7 +64,7 @@ async function exportSuppliersCsv(params: { category?: string; status?: string; 
     });
     const items: SupplierRow[] = res?.data?.data ?? (Array.isArray(res?.data) ? res.data : []);
     rows.push(...items);
-    const total = res?.data?.pagination?.total ?? items.length;
+    const total = res?.pagination?.total ?? res?.data?.pagination?.total ?? items.length;
     if (rows.length >= total || items.length === 0) break;
     page += 1;
   }
@@ -261,7 +261,7 @@ export default function SuppliersPage() {
           });
         }}
         extractItems={(r: any) => r?.data?.data ?? (Array.isArray(r?.data) ? r.data : [])}
-        extractTotal={(r: any) => r?.data?.pagination?.total ?? 0}
+        extractTotal={(r: any) => r?.pagination?.total ?? r?.data?.pagination?.total ?? 0}
         columns={columns}
         searchPlaceholder="Search suppliers..."
         filters={activeFilters}

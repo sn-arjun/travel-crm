@@ -34,7 +34,7 @@ const schema = z.object({
   state: z.string().optional(),
   country: z.string().optional(),
   postalCode: z.string().optional(),
-  gstNumber: z.string().optional(),
+  gstNumber: z.string().regex(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/, 'Enter a valid 15-character GST number').optional().or(z.literal('')),
   taxId: z.string().optional(),
   notes: z.string().optional(),
   status: z.enum(['active', 'inactive']),

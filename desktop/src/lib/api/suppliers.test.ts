@@ -34,7 +34,7 @@ describe('suppliersApi', () => {
       await suppliersApi.list({ category: 'hotel', status: 'active', isPreferred: true });
 
       expect(client.get).toHaveBeenCalledWith('/suppliers', {
-        params: { category: 'hotel', status: 'active', isPreferred: true },
+        params: { category: 'hotel', status: 'active', is_preferred: true },
       });
     });
 

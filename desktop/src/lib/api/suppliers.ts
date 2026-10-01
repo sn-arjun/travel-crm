@@ -104,8 +104,16 @@ export const suppliersApi = {
     isPreferred?: boolean;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
-  }) =>
-    client.get<ApiResponse<PaginatedResponse<Supplier>>>(API_ENDPOINTS.suppliers.list, { params }),
+  }) => {
+    // The backend list endpoint reads snake_case `is_preferred`.
+    if (params?.isPreferred === undefined) {
+      return client.get<ApiResponse<PaginatedResponse<Supplier>>>(API_ENDPOINTS.suppliers.list, { params });
+    }
+    const { isPreferred, ...rest } = params;
+    return client.get<ApiResponse<PaginatedResponse<Supplier>>>(API_ENDPOINTS.suppliers.list, {
+      params: { ...rest, is_preferred: isPreferred } as any,
+    });
+  },
 
   getById: (id: string) =>
     client.get<ApiResponse<Supplier>>(API_ENDPOINTS.suppliers.byId(id)),

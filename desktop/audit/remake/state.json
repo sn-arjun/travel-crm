@@ -564,11 +564,17 @@
       "timestamp": "2026-10-01T12:45:51.069Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "verify:suppliers": {
+      "status": "ok",
+      "timestamp": "2026-10-01T13:00:17.474Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "verify:super-admin",
+    "id": "verify:suppliers",
     "status": "ok",
-    "timestamp": "2026-10-01T12:45:51.069Z"
+    "timestamp": "2026-10-01T13:00:17.474Z"
   }
 }

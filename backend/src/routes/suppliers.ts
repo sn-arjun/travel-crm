@@ -112,9 +112,18 @@ supplierRouter.get('/compare-rates', zValidator('query', compareRatesSchema), as
     if (season) { query += ' AND rc.season = ?'; params.push(season); }
     if (date) { query += ' AND rc.valid_from <= ? AND rc.valid_to >= ?'; params.push(date, date); }
 
-    query += ' ORDER BY rc.rate ASC';
+    query += ' ORDER BY rc.cost_price ASC';
     const results = await db.prepare(query).bind(...params).all();
-    return c.json({ data: results.results });
+    const data = (results.results as any[]).map((r) => ({
+        supplierId: r.supplier_id,
+        supplierName: r.company_name,
+        rate: r.cost_price,
+        currency: r.currency,
+        season: r.season,
+        unit: r.unit,
+        isPreferred: !!r.is_preferred,
+    }));
+    return c.json({ data });
 });
 
 // Get Supplier by ID
@@ -127,7 +136,7 @@ supplierRouter.get('/:id', async (c) => {
 
     // Aggregate stats
     const rateCardsCount = await db.prepare('SELECT COUNT(*) as count FROM rate_cards WHERE supplier_id = ?').bind(id).first();
-    const totalPayments = await db.prepare('SELECT SUM(amount) as total FROM payments WHERE contact_id = ? AND type = "outgoing"').bind(id).first();
+    const totalPayments = await db.prepare('SELECT SUM(amount) as total FROM payments WHERE supplier_id = ? AND type = "outgoing"').bind(id).first();
 
     return c.json({
         data: {
@@ -282,7 +291,7 @@ supplierRouter.post('/:id/payments', zValidator('json', supplierPaymentSchema), 
 
     await db.prepare(`
     INSERT INTO payments (
-      id, contact_id, amount, method, reference, date, type, notes, created_by, created_at
+      id, supplier_id, amount, method, reference, date, type, notes, created_by, created_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
         paymentId, supplierId, body.amount, body.method, body.reference_number || null,
@@ -297,7 +306,7 @@ supplierRouter.get('/:id/payments', async (c) => {
     const supplierId = c.req.param('id');
 
     const results = await db.prepare(
-        'SELECT * FROM payments WHERE contact_id = ? AND type = "outgoing" ORDER BY date DESC'
+        'SELECT * FROM payments WHERE supplier_id = ? AND type = "outgoing" ORDER BY date DESC'
     ).bind(supplierId).all();
 
     return c.json({ data: results.results });
@@ -309,7 +318,7 @@ supplierRouter.get('/:id/ledger', async (c) => {
 
     // Fetch payments (credits - outgoing money to supplier reduces balance)
     const payments = await db.prepare(
-        "SELECT id, amount, date, method, reference as description, 'credit' as entry_type, notes FROM payments WHERE contact_id = ? AND type = 'outgoing' ORDER BY date ASC"
+        "SELECT id, amount, date, method, reference as description, 'credit' as entry_type, notes FROM payments WHERE supplier_id = ? AND type = 'outgoing' ORDER BY date ASC"
     ).bind(supplierId).all();
 
     // In a real system, we'd fetch actual vendor bills/itinerary costs (debits)

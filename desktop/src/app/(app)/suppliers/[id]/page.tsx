@@ -287,11 +287,11 @@ export default function SupplierDetailPage() {
                   <span className="text-ds-foreground-muted">Website</span>
                   <span className="font-medium">{supplier.website || '—'}</span>
                 </div>
-                {(supplier.city || supplier.state || supplier.country) && (
+                {(supplier.address || supplier.city || supplier.state || supplier.country || supplier.postal_code || supplier.postalCode) && (
                   <div className="flex justify-between">
                     <span className="text-ds-foreground-muted">Location</span>
                     <span className="font-medium text-right max-w-[220px]">
-                      {[supplier.address, supplier.city, supplier.state, supplier.country].filter(Boolean).join(', ')}
+                      {[supplier.address, supplier.city, supplier.state, supplier.country, supplier.postal_code || supplier.postalCode].filter(Boolean).join(', ')}
                     </span>
                   </div>
                 )}
