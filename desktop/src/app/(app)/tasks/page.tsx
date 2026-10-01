@@ -195,9 +195,17 @@ export default function TasksPage() {
   const loadKanban = React.useCallback(async () => {
     setKanbanLoading(true);
     try {
-      const res = await tasksApi.list({ limit: 200, view: 'all' });
-      const raw = (res as any)?.data?.data ?? (res as any)?.data ?? [];
-      setKanbanTasks((Array.isArray(raw) ? raw : []).map(normalizeTask));
+      // The board shows every task, so walk all pages (capped) rather than truncating at one page.
+      const all: any[] = [];
+      for (let pageNum = 1; pageNum <= 10; pageNum++) {
+        const res = (await tasksApi.list({ page: pageNum, limit: 200, view: 'all' })) as any;
+        const raw = res?.data?.data ?? res?.data ?? [];
+        const items = Array.isArray(raw) ? raw : [];
+        all.push(...items);
+        const total = res?.pagination?.total ?? res?.data?.pagination?.total ?? 0;
+        if (items.length === 0 || all.length >= total) break;
+      }
+      setKanbanTasks(all.map(normalizeTask));
     } catch {
       toast.error('Failed to load tasks');
     } finally {
@@ -345,7 +353,7 @@ export default function TasksPage() {
             return tasksApi.list({ page, limit, search, status, priority, view: 'all' });
           }}
           extractItems={(r: any) => (r?.data?.data ?? r?.data ?? []).map(normalizeTask)}
-          extractTotal={(r: any) => r?.data?.pagination?.total ?? 0}
+          extractTotal={(r: any) => r?.pagination?.total ?? r?.data?.pagination?.total ?? 0}
           columns={columns}
           primaryAction={
             <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-ds-2">
@@ -437,7 +445,7 @@ export default function TasksPage() {
               columns={[
                 { id: 'todo', title: 'To Do', color: 'var(--ds-color-foreground-muted)', count: kanbanTasks.filter((t) => t.status === 'todo').length,
                   children: (
-                    <div className="space-y-ds-3" onDragOver={(e) => e.preventDefault()} onDrop={() => handleDrop('todo')}>
+                    <div className="min-h-32 space-y-ds-3" onDragOver={(e) => e.preventDefault()} onDrop={() => handleDrop('todo')}>
                       {kanbanTasks.filter((t) => t.status === 'todo').map((t) => (
                         <TaskCard key={t.id} task={t} onSelect={(task) => router.push(`/tasks/${task.id}`)} onDragStart={handleDragStart} />
                       ))}
@@ -445,7 +453,7 @@ export default function TasksPage() {
                   ) },
                 { id: 'in_progress', title: 'In Progress', color: 'var(--ds-color-info)', count: kanbanTasks.filter((t) => t.status === 'in_progress').length,
                   children: (
-                    <div className="space-y-ds-3" onDragOver={(e) => e.preventDefault()} onDrop={() => handleDrop('in_progress')}>
+                    <div className="min-h-32 space-y-ds-3" onDragOver={(e) => e.preventDefault()} onDrop={() => handleDrop('in_progress')}>
                       {kanbanTasks.filter((t) => t.status === 'in_progress').map((t) => (
                         <TaskCard key={t.id} task={t} onSelect={(task) => router.push(`/tasks/${task.id}`)} onDragStart={handleDragStart} />
                       ))}
@@ -453,7 +461,7 @@ export default function TasksPage() {
                   ) },
                 { id: 'done', title: 'Done', color: 'var(--ds-color-success)', count: kanbanTasks.filter((t) => t.status === 'done').length,
                   children: (
-                    <div className="space-y-ds-3" onDragOver={(e) => e.preventDefault()} onDrop={() => handleDrop('done')}>
+                    <div className="min-h-32 space-y-ds-3" onDragOver={(e) => e.preventDefault()} onDrop={() => handleDrop('done')}>
                       {kanbanTasks.filter((t) => t.status === 'done').map((t) => (
                         <TaskCard key={t.id} task={t} onSelect={(task) => router.push(`/tasks/${task.id}`)} onDragStart={handleDragStart} />
                       ))}
@@ -524,8 +532,9 @@ export default function TasksPage() {
                 onChange={(id) => setNewTask((p) => ({ ...p, assignedTo: id ?? '' }))}
                 fetcher={async (q, page) => {
                   const r = await usersApi.list({ search: q, page, limit: 20 });
-                  const data = (r as any)?.data;
-                  return { items: data?.data ?? [], total: data?.pagination?.total ?? 0 };
+                  const body = r as any;
+                  const items = Array.isArray(body?.data) ? body.data : (body?.data?.data ?? []);
+                  return { items, total: body?.pagination?.total ?? body?.data?.pagination?.total ?? items.length };
                 }}
                 getOptionId={(u: any) => u.id}
                 getOptionLabel={(u: any) => u.name || u.email}
@@ -542,8 +551,9 @@ export default function TasksPage() {
                 onChange={(id, item: any) => setNewTask((p) => ({ ...p, leadId: id ?? '', leadTitle: item?.title || item?.name || '' }))}
                 fetcher={async (q, page) => {
                   const r = await leadsApi.list({ search: q, page, limit: 20 } as any);
-                  const data = (r as any)?.data;
-                  return { items: data?.data ?? [], total: data?.pagination?.total ?? 0 };
+                  const body = r as any;
+                  const items = Array.isArray(body?.data) ? body.data : (body?.data?.data ?? []);
+                  return { items, total: body?.pagination?.total ?? body?.data?.pagination?.total ?? items.length };
                 }}
                 getOptionId={(l: any) => l.id}
                 getOptionLabel={(l: any) => l.title || l.name || l.id}

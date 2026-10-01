@@ -570,11 +570,27 @@
       "timestamp": "2026-10-01T13:00:17.474Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "verify:tasks": {
+      "status": "ok",
+      "timestamp": "2026-10-01T16:45:36.658Z",
+      "error": null,
+      "repairAttempts": 0
+    },
+    "verify:test-harness": {
+      "status": "context-limit",
+      "timestamp": "2026-10-01T13:00:42.250Z",
+      "error": "stdout(tail): You've hit your session limit · resets 9:30pm (Asia/Kolkata)"
+    },
+    "verify:travellers": {
+      "status": "context-limit",
+      "timestamp": "2026-10-01T13:00:47.683Z",
+      "error": "stdout(tail): You've hit your session limit · resets 9:30pm (Asia/Kolkata)"
     }
   },
   "lastCompleted": {
-    "id": "verify:suppliers",
+    "id": "verify:tasks",
     "status": "ok",
-    "timestamp": "2026-10-01T13:00:17.474Z"
+    "timestamp": "2026-10-01T16:45:36.658Z"
   }
 }

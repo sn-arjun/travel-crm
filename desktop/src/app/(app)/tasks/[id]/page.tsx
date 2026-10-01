@@ -597,8 +597,9 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
                   onChange={(v) => setEditForm((p) => p && { ...p, assignedTo: v ?? '' })}
                   fetcher={async (q, page) => {
                     const r = await usersApi.list({ search: q, page, limit: 20 });
-                    const data = (r as any)?.data;
-                    return { items: data?.data ?? [], total: data?.pagination?.total ?? 0 };
+                    const body = r as any;
+                    const items = Array.isArray(body?.data) ? body.data : (body?.data?.data ?? []);
+                    return { items, total: body?.pagination?.total ?? body?.data?.pagination?.total ?? items.length };
                   }}
                   getOptionId={(u: any) => u.id}
                   getOptionLabel={(u: any) => u.name || u.email}
@@ -614,8 +615,9 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
                   onChange={(v) => setEditForm((p) => p && { ...p, leadId: v ?? '' })}
                   fetcher={async (q, page) => {
                     const r = await leadsApi.list({ search: q, page, limit: 20 } as any);
-                    const data = (r as any)?.data;
-                    return { items: data?.data ?? [], total: data?.pagination?.total ?? 0 };
+                    const body = r as any;
+                    const items = Array.isArray(body?.data) ? body.data : (body?.data?.data ?? []);
+                    return { items, total: body?.pagination?.total ?? body?.data?.pagination?.total ?? items.length };
                   }}
                   getOptionId={(l: any) => l.id}
                   getOptionLabel={(l: any) => l.title || l.name || l.id}

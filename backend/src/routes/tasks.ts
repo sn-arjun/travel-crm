@@ -4,7 +4,7 @@
  */
 import { Hono } from 'hono';
 import type { AppContext } from '../types';
-import { success, error } from '../utils/response';
+import { success, error, paginated } from '../utils/response';
 import { broadcastToTenant } from '../utils/realtime';
 
 const taskRoutes = new Hono<AppContext>();
@@ -58,15 +58,20 @@ taskRoutes.get('/', async (c) => {
             params.push(today);
         }
 
+        const countQuery = 'SELECT COUNT(*) as total ' + query.slice(query.indexOf('FROM tasks t'));
+        const countRow = await db.prepare(countQuery).bind(...params).first<{ total: number }>();
+        const total = countRow?.total ?? 0;
+
         query += ' ORDER BY CASE WHEN t.due_date IS NULL THEN 1 ELSE 0 END, t.due_date ASC';
 
         const limit = parseInt(lim || '20');
-        const offset = (parseInt(page || '1') - 1) * limit;
+        const pageNum = parseInt(page || '1');
+        const offset = (pageNum - 1) * limit;
         query += ' LIMIT ? OFFSET ?';
         params.push(limit, offset);
 
         const result = await db.prepare(query).bind(...params).all();
-        return success(c, result.results || []);
+        return paginated(c, result.results || [], total, pageNum, limit);
     } catch (e: any) {
         console.error('Tasks list error:', e);
         return error(c, e.message || 'Failed to fetch tasks', 500);
