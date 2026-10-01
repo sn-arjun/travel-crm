@@ -540,11 +540,17 @@
       "timestamp": "2026-10-01T12:12:26.246Z",
       "error": null,
       "repairAttempts": 1
+    },
+    "verify:reports": {
+      "status": "ok",
+      "timestamp": "2026-10-01T12:17:54.161Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "verify:rate-cards",
+    "id": "verify:reports",
     "status": "ok",
-    "timestamp": "2026-10-01T12:12:26.246Z"
+    "timestamp": "2026-10-01T12:17:54.161Z"
   }
 }
