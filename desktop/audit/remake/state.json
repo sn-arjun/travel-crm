@@ -516,11 +516,32 @@
       "timestamp": "2026-09-30T16:08:15.930Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "verify:message-templates": {
+      "status": "ok",
+      "timestamp": "2026-10-01T11:16:07.658Z",
+      "error": null,
+      "repairAttempts": 0
+    },
+    "verify:notifications": {
+      "status": "context-limit",
+      "timestamp": "2026-09-30T16:13:18.229Z",
+      "error": "stdout(tail): You've hit your session limit · resets 1:20am (Asia/Kolkata)"
+    },
+    "verify:payments": {
+      "status": "context-limit",
+      "timestamp": "2026-09-30T16:13:24.675Z",
+      "error": "stdout(tail): You've hit your session limit · resets 1:20am (Asia/Kolkata)"
+    },
+    "verify:rate-cards": {
+      "status": "context-limit",
+      "timestamp": "2026-09-30T16:13:31.086Z",
+      "error": "stdout(tail): You've hit your session limit · resets 1:20am (Asia/Kolkata)"
     }
   },
   "lastCompleted": {
-    "id": "verify:marketing-social",
+    "id": "verify:message-templates",
     "status": "ok",
-    "timestamp": "2026-09-30T16:08:15.931Z"
+    "timestamp": "2026-10-01T11:16:07.658Z"
   }
 }
