@@ -578,9 +578,10 @@
       "repairAttempts": 0
     },
     "verify:test-harness": {
-      "status": "context-limit",
-      "timestamp": "2026-10-01T13:00:42.250Z",
-      "error": "stdout(tail): You've hit your session limit · resets 9:30pm (Asia/Kolkata)"
+      "status": "gate-failed",
+      "timestamp": "2026-10-01T16:53:25.261Z",
+      "error": "spec:test-harness: Running 5 tests using 1 worker\n\n  ✓  1 [setup] › e2e\\global-setup.ts:8:6 › authenticate as admin (3.6s)\n  ✘  2 [chromium] › e2e\\test-harness.spec.ts:10:7 › Test harness — /test/reset › reset succeeds and the demo admin can still authenticate (2.9s)\n  -  3 [chromium] › e2e\\test-har",
+      "repairAttempts": 2
     },
     "verify:travellers": {
       "status": "context-limit",
@@ -589,8 +590,8 @@
     }
   },
   "lastCompleted": {
-    "id": "verify:tasks",
-    "status": "ok",
-    "timestamp": "2026-10-01T16:45:36.658Z"
+    "id": "verify:test-harness",
+    "status": "gate-failed",
+    "timestamp": "2026-10-01T16:53:25.261Z"
   }
 }
