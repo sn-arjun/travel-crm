@@ -600,11 +600,17 @@
       "timestamp": "2026-10-01T17:47:40.997Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "verify:vouchers": {
+      "status": "ok",
+      "timestamp": "2026-10-01T18:06:32.163Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "verify:voip-settings",
+    "id": "verify:vouchers",
     "status": "ok",
-    "timestamp": "2026-10-01T17:47:40.997Z"
+    "timestamp": "2026-10-01T18:06:32.163Z"
   }
 }

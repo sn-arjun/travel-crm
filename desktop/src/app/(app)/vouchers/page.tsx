@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Eye, Pencil, Send, Trash2, Plus, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { ListPage } from '@/components/domain';
-import { Button, Tag, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui';
+import { Button, ConfirmDialog, Tag, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui';
 import { vouchersApi, type Voucher } from '@/lib/api/vouchers';
 
 function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
@@ -57,6 +57,9 @@ export default function VouchersPage() {
   const router = useRouter();
   const [typeFilter, setTypeFilter] = React.useState('');
   const [statusFilter, setStatusFilter] = React.useState('');
+  const [pendingDelete, setPendingDelete] = React.useState<Voucher | null>(null);
+  // Bumping this re-renders the page, which hands ListPage a fresh fetcher and refetches page 1.
+  const [, setRefreshTick] = React.useState(0);
 
   const activeFilters = [
     typeFilter && { id: 'type', label: 'Type', value: typeFilter },
@@ -79,9 +82,10 @@ export default function VouchersPage() {
         type: typeFilter || undefined,
         status: statusFilter || undefined,
       });
-      const items = res.data.data ?? [];
+      const body = (res as any).data;
+      const items: Voucher[] = Array.isArray(body) ? body : (body?.data ?? []);
       all.push(...items);
-      const total = res.data.pagination?.total ?? all.length;
+      const total = (res as any).pagination?.total ?? body?.pagination?.total ?? all.length;
       if (all.length >= total || items.length === 0) break;
       page += 1;
     }
@@ -89,6 +93,7 @@ export default function VouchersPage() {
   }
 
   return (
+    <>
     <ListPage<Voucher>
       title="Vouchers"
       description="Hotel, transport, flight & activity vouchers for your leads."
@@ -197,14 +202,7 @@ export default function VouchersPage() {
             variant="ghost"
             size="icon-sm"
             aria-label="Delete"
-            onClick={async () => {
-              try {
-                await vouchersApi.delete(v.id);
-                toast.success('Voucher deleted');
-              } catch {
-                toast.error('Failed to delete voucher');
-              }
-            }}
+            onClick={() => setPendingDelete(v)}
           >
             <Trash2 />
           </Button>
@@ -219,6 +217,7 @@ export default function VouchersPage() {
           onSelect: async (rows) => {
             await Promise.all(rows.map((r) => vouchersApi.delete(r.id)));
             toast.success(`${rows.length} voucher(s) deleted`);
+            setRefreshTick((n) => n + 1);
           },
         },
       ]}
@@ -240,5 +239,24 @@ export default function VouchersPage() {
         </Button>
       }
     />
+    <ConfirmDialog
+      open={pendingDelete !== null}
+      onOpenChange={(open) => !open && setPendingDelete(null)}
+      title="Delete voucher?"
+      description={`"${pendingDelete?.title ?? ''}" will be permanently deleted. This cannot be undone.`}
+      confirmLabel="Delete"
+      tone="destructive"
+      onConfirm={async () => {
+        if (!pendingDelete) return;
+        try {
+          await vouchersApi.delete(pendingDelete.id);
+          toast.success('Voucher deleted');
+          setRefreshTick((n) => n + 1);
+        } catch {
+          toast.error('Failed to delete voucher');
+        }
+      }}
+    />
+    </>
   );
 }

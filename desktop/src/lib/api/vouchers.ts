@@ -57,6 +57,31 @@ export interface BulkSendVoucherRequest {
   to: string;
 }
 
+/**
+ * GET/PUT /vouchers rows come back as raw snake_case DB rows (lead_name, created_at, ...);
+ * POST returns camelCase. Add the camelCase fields the pages read, keeping the raw ones.
+ */
+function normalizeVoucher(raw: any): Voucher {
+  if (!raw || typeof raw !== 'object') return raw;
+  return {
+    ...raw,
+    leadId: raw.leadId ?? raw.lead_id,
+    leadName: raw.leadName ?? raw.lead_name ?? undefined,
+    supplierId: raw.supplierId ?? raw.supplier_id ?? undefined,
+    supplierName: raw.supplierName ?? raw.supplier_name ?? undefined,
+    itineraryItemId: raw.itineraryItemId ?? raw.itinerary_item_id ?? undefined,
+    pdfR2Key: raw.pdfR2Key ?? raw.pdf_r2_key ?? undefined,
+    sentVia: raw.sentVia ?? raw.sent_via ?? undefined,
+    sentAt: raw.sentAt ?? raw.sent_at ?? undefined,
+    confirmedAt: raw.confirmedAt ?? raw.confirmed_at ?? undefined,
+    notes: raw.notes ?? undefined,
+    createdBy: raw.createdBy ?? raw.created_by,
+    createdAt: raw.createdAt ?? raw.created_at,
+    updatedAt: raw.updatedAt ?? raw.updated_at,
+    details: raw.details ?? {},
+  } as Voucher;
+}
+
 export const vouchersApi = {
   list: (params?: {
     page?: number;
@@ -69,10 +94,17 @@ export const vouchersApi = {
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
   }) =>
-    client.get<ApiResponse<PaginatedResponse<Voucher>>>(API_ENDPOINTS.vouchers.list, { params }),
+    client
+      .get<ApiResponse<PaginatedResponse<Voucher>>>(API_ENDPOINTS.vouchers.list, { params })
+      .then((res: any) => ({
+        ...res,
+        data: Array.isArray(res?.data) ? res.data.map(normalizeVoucher) : res?.data,
+      })) as Promise<ApiResponse<PaginatedResponse<Voucher>>>,
 
   getById: (id: string) =>
-    client.get<ApiResponse<Voucher>>(API_ENDPOINTS.vouchers.byId(id)),
+    client
+      .get<ApiResponse<Voucher>>(API_ENDPOINTS.vouchers.byId(id))
+      .then((res: any) => ({ ...res, data: normalizeVoucher(res?.data) })) as Promise<ApiResponse<Voucher>>,
 
   create: (data: CreateVoucherRequest) =>
     client.post<ApiResponse<Voucher>>(API_ENDPOINTS.vouchers.create, data),

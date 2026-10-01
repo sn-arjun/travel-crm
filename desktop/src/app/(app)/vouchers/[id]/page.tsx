@@ -9,6 +9,16 @@ import { SectionCard } from '@/components/ui/section-card';
 import { Tag, Spinner, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, Button } from '@/components/ui';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { vouchersApi, type Voucher, type UpdateVoucherStatusRequest } from '@/lib/api/vouchers';
+import { fromDateOnly } from '../_date';
+
+const DATE_FMT: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' };
+
+/** Renders stored date-only or ISO datetime strings as a readable date; leaves unparseable text as-is. */
+function fmtDate(s?: string): string | undefined {
+  if (!s) return s;
+  const d = fromDateOnly(s);
+  return d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString('en-IN', DATE_FMT) : s;
+}
 
 function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
   if (status === 'confirmed') return 'success';
@@ -54,8 +64,8 @@ function VoucherOverview({ voucher }: { voucher: Voucher }) {
           <div className="grid grid-cols-2 gap-ds-4">
             <DetailRow label="Hotel name" value={d.hotelName} />
             <DetailRow label="Address" value={d.hotelAddress} />
-            <DetailRow label="Check-in" value={d.checkIn} />
-            <DetailRow label="Check-out" value={d.checkOut} />
+            <DetailRow label="Check-in" value={fmtDate(d.checkIn)} />
+            <DetailRow label="Check-out" value={fmtDate(d.checkOut)} />
             <DetailRow label="Room type" value={d.roomType} />
             <DetailRow label="Meal plan" value={d.mealPlan} />
             <DetailRow label="Confirmation #" value={d.confirmationNumber} />
@@ -80,7 +90,7 @@ function VoucherOverview({ voucher }: { voucher: Voucher }) {
             <DetailRow label="Driver" value={d.driverName} />
             <DetailRow label="Driver phone" value={d.driverPhone} />
             <DetailRow label="Pickup location" value={d.pickupLocation} />
-            <DetailRow label="Pickup time" value={d.pickupTime} />
+            <DetailRow label="Pickup time" value={fmtDate(d.pickupTime)} />
             <DetailRow label="Drop location" value={d.dropLocation} />
             {d.route && (
               <div className="col-span-2">
@@ -101,8 +111,8 @@ function VoucherOverview({ voucher }: { voucher: Voucher }) {
             <DetailRow label="Class" value={d.travelClass} />
             <DetailRow label="From" value={d.departureAirport} />
             <DetailRow label="To" value={d.arrivalAirport} />
-            <DetailRow label="Departure" value={d.departureTime} />
-            <DetailRow label="Arrival" value={d.arrivalTime} />
+            <DetailRow label="Departure" value={fmtDate(d.departureTime)} />
+            <DetailRow label="Arrival" value={fmtDate(d.arrivalTime)} />
             {d.passengers?.length > 0 && (
               <div className="col-span-2">
                 <p className="text-xs text-ds-foreground-muted mb-1">Passengers</p>
@@ -121,7 +131,7 @@ function VoucherOverview({ voucher }: { voucher: Voucher }) {
         <SectionCard title="Activity details">
           <div className="grid grid-cols-2 gap-ds-4">
             <DetailRow label="Activity" value={d.activityName} />
-            <DetailRow label="Date/Time" value={d.dateTime} />
+            <DetailRow label="Date/Time" value={fmtDate(d.dateTime)} />
             <DetailRow label="Meeting point" value={d.meetingPoint} />
             <DetailRow label="Duration" value={d.duration} />
           </div>

@@ -12,8 +12,11 @@ import {
 import { vouchersApi, type CreateVoucherRequest } from '@/lib/api/vouchers';
 import { leadsApi } from '@/lib/api/leads';
 import { suppliersApi } from '@/lib/api/suppliers';
+import { fetchSupplierOptions, supplierLabel } from '@/lib/api/rate-cards';
+import { fetchLeadOptions } from '../_relations';
 import type { Lead, Supplier } from '@travelcrm/shared';
 import { toast } from 'sonner';
+import { toDateOnly } from '../_date';
 
 const VOUCHER_TYPES = ['hotel', 'transport', 'flight', 'activity'] as const;
 
@@ -65,6 +68,7 @@ const schema = z
       if (!v.hotelName) ctx.addIssue({ code: 'custom', path: ['hotelName'], message: 'Hotel name is required' });
       if (!v.checkIn) ctx.addIssue({ code: 'custom', path: ['checkIn'], message: 'Check-in date is required' });
       if (!v.checkOut) ctx.addIssue({ code: 'custom', path: ['checkOut'], message: 'Check-out date is required' });
+      if (!v.guestNames?.split(',').some((n) => n.trim())) ctx.addIssue({ code: 'custom', path: ['guestNames'], message: 'At least one guest name is required' });
     }
     if (v.voucherType === 'transport') {
       if (!v.vehicleType) ctx.addIssue({ code: 'custom', path: ['vehicleType'], message: 'Vehicle type is required' });
@@ -74,6 +78,8 @@ const schema = z
     }
     if (v.voucherType === 'flight') {
       if (!v.airline) ctx.addIssue({ code: 'custom', path: ['airline'], message: 'Airline is required' });
+      if (!v.flightNumber) ctx.addIssue({ code: 'custom', path: ['flightNumber'], message: 'Flight number is required' });
+      if (!v.passengerNames?.split(',').some((n) => n.trim())) ctx.addIssue({ code: 'custom', path: ['passengerNames'], message: 'At least one passenger is required' });
       if (!v.departureAirport) ctx.addIssue({ code: 'custom', path: ['departureAirport'], message: 'Departure airport is required' });
       if (!v.arrivalAirport) ctx.addIssue({ code: 'custom', path: ['arrivalAirport'], message: 'Arrival airport is required' });
       if (!v.departureTime) ctx.addIssue({ code: 'custom', path: ['departureTime'], message: 'Departure time is required' });
@@ -94,8 +100,8 @@ function buildDetails(v: VoucherFormValues): Record<string, unknown> {
       return {
         hotelName: v.hotelName,
         hotelAddress: v.hotelAddress || undefined,
-        checkIn: v.checkIn?.toISOString().slice(0, 10),
-        checkOut: v.checkOut?.toISOString().slice(0, 10),
+        checkIn: toDateOnly(v.checkIn),
+        checkOut: toDateOnly(v.checkOut),
         roomType: v.roomType || 'Deluxe',
         roomCount: v.roomCount || 1,
         mealPlan: v.mealPlan || 'EP',
@@ -199,15 +205,11 @@ export default function NewVoucherPage() {
                   <RelationCombobox
                     value={form.watch('leadId') || null}
                     onChange={(id) => form.setValue('leadId', id ?? '', { shouldDirty: true, shouldValidate: true })}
-                    fetcher={async (q, page) => {
-                      const r = await leadsApi.list({ search: q, page, limit: 20 });
-                      return { items: r.data.data, total: r.data.pagination.total };
-                    }}
+                    fetcher={fetchLeadOptions}
                     getOptionId={(l: Lead) => l.id}
                     getOptionLabel={(l: Lead) => l.title}
                     getOptionDescription={(l: Lead) => l.destination ?? undefined}
                     resolveSelected={async (id) => (await leadsApi.getById(id)).data}
-                    error={form.formState.errors.leadId?.message}
                   />
                 </FormRow>
                 <FormRow name="voucherType" label="Voucher type" required>
@@ -228,13 +230,10 @@ export default function NewVoucherPage() {
                   <RelationCombobox
                     value={form.watch('supplierId') || null}
                     onChange={(id) => form.setValue('supplierId', id ?? '', { shouldDirty: true })}
-                    fetcher={async (q, page) => {
-                      const r = await suppliersApi.list({ search: q, page, limit: 20 });
-                      return { items: r.data.data, total: r.data.pagination.total };
-                    }}
+                    fetcher={fetchSupplierOptions}
                     getOptionId={(s: Supplier) => s.id}
-                    getOptionLabel={(s: Supplier) => s.name}
-                    getOptionDescription={(s: Supplier) => s.type}
+                    getOptionLabel={(s: Supplier) => supplierLabel(s)}
+                    getOptionDescription={(s: Supplier) => (s as any).category}
                     resolveSelected={async (id) => (await suppliersApi.getById(id)).data}
                     placeholder="Select supplier (optional)"
                   />
@@ -282,7 +281,7 @@ export default function NewVoucherPage() {
                   <FormRow name="confirmationNumber" label="Confirmation number">
                     <Input id="confirmationNumber" {...form.register('confirmationNumber')} placeholder="Hotel confirmation #" />
                   </FormRow>
-                  <FormRow name="guestNames" label="Guest names" hint="Comma-separated" wide>
+                  <FormRow name="guestNames" label="Guest names" required hint="Comma-separated" wide>
                     <Input id="guestNames" {...form.register('guestNames')} placeholder="e.g., John Doe, Jane Doe" />
                   </FormRow>
                   <FormRow name="specialRequests" label="Special requests" wide>
@@ -333,7 +332,7 @@ export default function NewVoucherPage() {
                   <FormRow name="airline" label="Airline" required>
                     <Input id="airline" {...form.register('airline')} />
                   </FormRow>
-                  <FormRow name="flightNumber" label="Flight number">
+                  <FormRow name="flightNumber" label="Flight number" required>
                     <Input id="flightNumber" {...form.register('flightNumber')} />
                   </FormRow>
                   <FormRow name="departureAirport" label="From airport" required>
@@ -362,7 +361,7 @@ export default function NewVoucherPage() {
                   <FormRow name="pnr" label="PNR">
                     <Input id="pnr" {...form.register('pnr')} />
                   </FormRow>
-                  <FormRow name="passengerNames" label="Passengers" hint="Comma-separated" wide>
+                  <FormRow name="passengerNames" label="Passengers" required hint="Comma-separated" wide>
                     <Input id="passengerNames" {...form.register('passengerNames')} placeholder="e.g., John Doe, Jane Doe" />
                   </FormRow>
                 </div>
