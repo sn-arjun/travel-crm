@@ -47,6 +47,7 @@ export const notificationsApi = {
     limit?: number;
     unreadOnly?: boolean;
     type?: string;
+    search?: string;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
   }) =>

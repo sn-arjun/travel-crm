@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { ListPage, type ListFilter } from '@/components/domain';
 import { Button } from '@/components/ui/button';
 import { Tag } from '@/components/ui/tag';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { DataTableColumn } from '@/components/ui/data-table';
 import { useApiMutation } from '@/hooks/use-api';
 import { notificationsApi, type Notification } from '@/lib/api/notifications';
@@ -69,6 +70,11 @@ export default function NotificationsPage() {
   const [unreadOnly, setUnreadOnly] = React.useState(false);
   const [refreshKey, setRefreshKey] = React.useState(0);
 
+  const refresh = React.useCallback(() => {
+    setRefreshKey((k) => k + 1);
+    window.dispatchEvent(new Event('badge-counts:refresh'));
+  }, []);
+
   const { mutate: markAsRead } = useApiMutation((id: string) => notificationsApi.markAsRead(id));
   const { mutate: markAllAsRead } = useApiMutation(() => notificationsApi.markAllAsRead());
   const { mutate: deleteNotification } = useApiMutation((id: string) => notificationsApi.delete(id));
@@ -80,16 +86,7 @@ export default function NotificationsPage() {
         limit,
         type: typeFilter ?? undefined,
         unreadOnly: unreadOnly || undefined,
-        // search is applied client-side by the archetype's fetch contract via title/message match server-side if supported
-      }).then((res) => {
-        if (!search) return res;
-        const data = res.data;
-        const items = (data.data ?? []).filter(
-          (n) =>
-            n.title.toLowerCase().includes(search.toLowerCase()) ||
-            n.message.toLowerCase().includes(search.toLowerCase()),
-        );
-        return { ...res, data: { ...data, data: items } };
+        search: search || undefined,
       }),
     // refreshKey forces ListPage's internal infinite-scroll to refetch after mutations
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -98,20 +95,20 @@ export default function NotificationsPage() {
 
   const handleMarkRead = async (id: string) => {
     await markAsRead(id);
-    setRefreshKey((k) => k + 1);
+    refresh();
   };
 
   const handleDelete = async (id: string) => {
     await deleteNotification(id);
     toast.success('Notification deleted');
-    setRefreshKey((k) => k + 1);
+    refresh();
   };
 
   const handleMarkAllAsRead = async () => {
     const result = await markAllAsRead(undefined);
     if (result) {
       toast.success('All notifications marked as read');
-      setRefreshKey((k) => k + 1);
+      refresh();
     }
   };
 
@@ -194,6 +191,17 @@ export default function NotificationsPage() {
       onClearFilters={() => { setTypeFilter(null); setUnreadOnly(false); }}
       headerActions={
         <>
+          <Select value={typeFilter ?? 'all'} onValueChange={(v) => setTypeFilter(v === 'all' ? null : v)}>
+            <SelectTrigger size="sm" aria-label="Filter by type" className="w-44">
+              <SelectValue placeholder="All types" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types</SelectItem>
+              {NOTIFICATION_TYPES.map((t) => (
+                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             variant={unreadOnly ? 'default' : 'outline'}
             size="sm"
@@ -238,7 +246,7 @@ export default function NotificationsPage() {
           onSelect: async (rows) => {
             await Promise.all(rows.map((r) => deleteNotification(r.id)));
             toast.success(`${rows.length} notification${rows.length !== 1 ? 's' : ''} deleted`);
-            setRefreshKey((k) => k + 1);
+            refresh();
           },
         },
         {
@@ -246,7 +254,7 @@ export default function NotificationsPage() {
           icon: <CheckCheck aria-hidden="true" />,
           onSelect: async (rows) => {
             await Promise.all(rows.filter((r) => !r.read).map((r) => markAsRead(r.id)));
-            setRefreshKey((k) => k + 1);
+            refresh();
           },
         },
       ]}

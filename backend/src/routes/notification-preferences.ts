@@ -114,7 +114,9 @@ preferencesRoutes.get('/me/quiet-hours', async (c) => {
       .bind(`quiet_hours_${userId}`)
       .first<{ value: string }>();
 
-    const quietHours = result?.value ? JSON.parse(result.value) : { startHour: 22, endHour: 8 };
+    const quietHours = result?.value
+      ? { ...JSON.parse(result.value), enabled: true }
+      : { startHour: 22, endHour: 8, enabled: false };
 
     return success(c, quietHours);
   } catch (err) {
@@ -150,6 +152,27 @@ preferencesRoutes.put('/me/quiet-hours', async (c) => {
   } catch (err) {
     console.error('Failed to set quiet hours:', err);
     return error(c, 'Failed to update quiet hours', 500);
+  }
+});
+
+// ============================================================
+// DELETE /api/v1/notification-preferences/me/quiet-hours
+// Disable quiet hours for the current user
+// ============================================================
+
+preferencesRoutes.delete('/me/quiet-hours', async (c) => {
+  const tenantDb = c.get('tenantDb');
+  const userId = c.get('userId');
+
+  try {
+    await tenantDb
+      .prepare(`DELETE FROM settings WHERE key = ?`)
+      .bind(`quiet_hours_${userId}`)
+      .run();
+    return success(c, { enabled: false });
+  } catch (err) {
+    console.error('Failed to disable quiet hours:', err);
+    return error(c, 'Failed to disable quiet hours', 500);
   }
 });
 

@@ -187,10 +187,10 @@ function useBadgeCounts() {
       if (res && 'data' in res && res.data) {
         const data = res.data as any;
         setCounts({
-          unread_notifications: data.unread_notifications ?? data.notifications ?? 0,
-          pending_tasks: data.pending_tasks ?? data.tasks ?? 0,
-          overdue_followups: data.overdue_followups ?? data.followUps ?? 0,
-          overdue_invoices: data.overdue_invoices ?? 0,
+          unread_notifications: data.unreadNotifications ?? data.unread_notifications ?? data.notifications ?? 0,
+          pending_tasks: data.pendingTasks ?? data.pending_tasks ?? data.tasks ?? 0,
+          overdue_followups: data.overdueFollowups ?? data.overdue_followups ?? data.followUps ?? 0,
+          overdue_invoices: data.overdueInvoices ?? data.overdue_invoices ?? 0,
         });
       }
     } catch {
@@ -200,6 +200,12 @@ function useBadgeCounts() {
 
   // Initial fetch
   React.useEffect(() => { fetchCounts(); }, [fetchCounts]);
+
+  // Pages that change read/delete state (e.g. Notifications) ask for a refresh
+  React.useEffect(() => {
+    window.addEventListener('badge-counts:refresh', fetchCounts);
+    return () => window.removeEventListener('badge-counts:refresh', fetchCounts);
+  }, [fetchCounts]);
 
   // Real-time updates via WebSocket
   useRealtimeEvent('badge_counts:update', (data) => {

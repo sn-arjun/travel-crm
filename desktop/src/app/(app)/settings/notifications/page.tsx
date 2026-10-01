@@ -34,6 +34,7 @@ type NotificationPreferences = Record<string, ChannelPrefs>;
 interface QuietHours {
   startHour: number;
   endHour: number;
+  enabled?: boolean;
 }
 
 // UI quiet hours state (for time inputs)
@@ -100,7 +101,7 @@ export default function NotificationSettingsPage() {
     if (qhResponse && 'data' in qhResponse && qhResponse.data) {
       const qh = qhResponse.data as QuietHours;
       if (qh.startHour !== undefined) {
-        setQuietHoursUi({ enabled: true, startHour: qh.startHour, endHour: qh.endHour });
+        setQuietHoursUi({ enabled: qh.enabled ?? true, startHour: qh.startHour, endHour: qh.endHour });
       }
     }
   }, [qhResponse]);
@@ -128,11 +129,7 @@ export default function NotificationSettingsPage() {
     setSavingQh(true);
     try {
       if (!quietHoursUi.enabled) {
-        // Backend has no "enabled" flag — delete quiet hours by sending null/empty or a special call
-        // Use DELETE if the endpoint supports it, otherwise send empty object
-        await client.delete(API_ENDPOINTS.notificationPreferences.quietHours).catch(() => {
-          // Fallback: send hours that effectively disable (equal hours = no quiet period)
-        });
+        await client.delete(API_ENDPOINTS.notificationPreferences.quietHours);
         toast.success('Quiet hours disabled');
       } else {
         const payload: QuietHours = {
