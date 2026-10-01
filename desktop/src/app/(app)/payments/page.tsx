@@ -3,8 +3,8 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Eye, Trash2, Receipt, DollarSign } from 'lucide-react';
-import { ListPage } from '@/components/domain';
-import { Button, Tag, useConfirm } from '@/components/ui';
+import { ListPage, type ListFilter } from '@/components/domain';
+import { Button, Tag, useConfirm, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui';
 import { toast } from 'sonner';
 import { paymentsApi } from '@/lib/api/payments';
 import { PaymentReceipt } from '@/components/domain/payment-receipt';
@@ -12,6 +12,13 @@ import type { Payment } from '@travelcrm/shared';
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
+}
+
+// Payment dates are date-only strings (YYYY-MM-DD); parse them as local dates so
+// the displayed day does not shift with the viewer's timezone.
+function parsePaymentDate(value: string): Date {
+  const m = /^(d{4})-(d{2})-(d{2})/.exec(value);
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(value);
 }
 
 const methodTone: Record<string, 'info' | 'success' | 'warning' | 'neutral'> = {
@@ -29,11 +36,30 @@ const methodLabel: Record<string, string> = {
   cash: 'Cash', card: 'Card', cheque: 'Cheque', check: 'Cheque', other: 'Other',
 };
 
+const METHOD_FILTERS = [
+  { value: 'cash', label: 'Cash' },
+  { value: 'check', label: 'Cheque' },
+  { value: 'card', label: 'Card' },
+  { value: 'bank_transfer', label: 'Bank Transfer' },
+  { value: 'upi', label: 'UPI' },
+  { value: 'other', label: 'Other' },
+];
+
 export default function PaymentsPage() {
   const router = useRouter();
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [methodFilter, setMethodFilter] = React.useState<string | null>(null);
   const [receiptPayment, setReceiptPayment] = React.useState<any>(null);
+  const [refreshKey, setRefreshKey] = React.useState(0);
+
+  // Stable identity: ListPage refetches whenever the fetcher changes, so refreshKey
+  // is how mutations force a reload.
+  const fetcher = React.useCallback(
+    ({ page, limit, search }: { page: number; limit: number; search: string; filters: ListFilter[] }) =>
+      paymentsApi.list({ page, limit, search: search || undefined, paymentMethod: methodFilter ?? undefined }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [methodFilter, refreshKey],
+  );
 
   const handleDelete = async (payment: any) => {
     const ok = await confirm({
@@ -46,6 +72,7 @@ export default function PaymentsPage() {
     try {
       await paymentsApi.delete(payment.id);
       toast.success('Payment deleted');
+      setRefreshKey((k) => k + 1);
     } catch {
       toast.error('Failed to delete payment');
     }
@@ -57,16 +84,24 @@ export default function PaymentsPage() {
         title="Payments"
         description="Every payment recorded against an invoice."
         getRowId={(p) => p.id}
-        fetcher={({ page, limit, search, filters }) => {
-          const method = filters.find((f) => f.id === 'method')?.value;
-          return paymentsApi.list({ page, limit, search, paymentMethod: method });
-        }}
+        fetcher={fetcher}
+        extractItems={(r) => ((r as any)?.data as Payment[]) ?? []}
+        extractTotal={(r) => (r as any)?.pagination?.total ?? 0}
         searchPlaceholder="Search payments..."
-        filters={methodFilter ? [{ id: 'method', label: 'Method', value: methodFilter }] : []}
-        onOpenFilters={() => {
-          const next = window.prompt('Filter by method (bank_transfer, upi, cash, card, cheque):', methodFilter ?? '');
-          if (next !== null) setMethodFilter(next.trim() || null);
-        }}
+        filters={methodFilter ? [{ id: 'method', label: 'Method', value: methodLabel[methodFilter] ?? methodFilter }] : []}
+        headerActions={
+          <Select value={methodFilter ?? 'all'} onValueChange={(v) => setMethodFilter(v === 'all' ? null : v)}>
+            <SelectTrigger size="sm" aria-label="Filter by method" className="w-44">
+              <SelectValue placeholder="All methods" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All methods</SelectItem>
+              {METHOD_FILTERS.map((m) => (
+                <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        }
         onRemoveFilter={() => setMethodFilter(null)}
         onClearFilters={() => setMethodFilter(null)}
         columns={[
@@ -74,7 +109,7 @@ export default function PaymentsPage() {
             key: 'date', header: 'Date', sortable: true,
             cell: (p: any) => {
               const d = p.paidAt ?? p.paymentDate ?? p.date;
-              return d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+              return d ? parsePaymentDate(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
             },
           },
           {
@@ -133,6 +168,7 @@ export default function PaymentsPage() {
               if (!ok) return;
               await Promise.all(rows.map((r) => paymentsApi.delete(r.id)));
               toast.success('Payments deleted');
+              setRefreshKey((k) => k + 1);
             },
           },
         ]}

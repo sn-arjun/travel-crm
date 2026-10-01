@@ -30,6 +30,31 @@ const schema = z.object({
 
 type PaymentForm = z.infer<typeof schema>;
 
+/**
+ * When the invoice id arrives via ?invoiceId= (or any path other than the
+ * combobox), load the invoice so the summary card and default amount appear.
+ */
+function InvoicePrefill({
+  invoiceId,
+  loaded,
+  onLoaded,
+}: {
+  invoiceId: string;
+  loaded: boolean;
+  onLoaded: (invoice: any) => void;
+}) {
+  React.useEffect(() => {
+    if (!invoiceId || loaded) return;
+    let cancelled = false;
+    invoicesApi.getById(invoiceId).then((res) => {
+      if (!cancelled && res?.data) onLoaded(res.data);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoiceId, loaded]);
+  return null;
+}
+
 export default function NewPaymentPage() {
   const router = useRouter();
   const [selectedInvoice, setSelectedInvoice] = React.useState<any>(null);
@@ -63,7 +88,11 @@ export default function NewPaymentPage() {
           invoiceId: v.invoiceId || '',
           amount: v.amount,
           method: v.paymentMethod,
-          date: v.paymentDate.toISOString().split('T')[0],
+          date: [
+            v.paymentDate.getFullYear(),
+            String(v.paymentDate.getMonth() + 1).padStart(2, '0'),
+            String(v.paymentDate.getDate()).padStart(2, '0'),
+          ].join('-'),
           reference: v.reference || undefined,
           notes: v.notes || undefined,
           isAdvance: v.isAdvance || undefined,
@@ -134,8 +163,9 @@ export default function NewPaymentPage() {
                   value={form.watch('leadId') || null}
                   onChange={(id) => form.setValue('leadId', id ?? '', { shouldDirty: true })}
                   fetcher={async (q, page) => {
-                    const r = await leadsApi.list({ search: q, page, limit: 20 });
-                    return { items: r.data.data, total: r.data.pagination.total };
+                    // client.get resolves to the response body: { data: rows[], pagination }
+                    const r = (await leadsApi.list({ search: q, page, limit: 20 })) as unknown as { data: any[]; pagination?: { total: number } };
+                    return { items: r.data ?? [], total: r.pagination?.total ?? r.data?.length ?? 0 };
                   }}
                   getOptionId={(l: any) => l.id}
                   getOptionLabel={(l: any) => l.title ?? l.id}
@@ -146,6 +176,17 @@ export default function NewPaymentPage() {
             </SectionCard>
           ) : (
             <SectionCard title="Link to invoice" required>
+              <InvoicePrefill
+                invoiceId={form.watch('invoiceId') || ''}
+                loaded={!!selectedInvoice}
+                onLoaded={(inv) => {
+                  setSelectedInvoice(inv);
+                  const balance = inv.balanceDue ?? inv.balance_due ?? 0;
+                  if (balance > 0 && form.getValues('amount') === undefined) {
+                    form.setValue('amount', balance, { shouldDirty: true, shouldValidate: true });
+                  }
+                }}
+              />
               <FormRow name="invoiceId" label="Invoice" required>
                 <RelationCombobox
                   value={form.watch('invoiceId') || null}
@@ -158,8 +199,8 @@ export default function NewPaymentPage() {
                     }
                   }}
                   fetcher={async (q, page) => {
-                    const r = await invoicesApi.list({ search: q, page, limit: 20 });
-                    return { items: r.data.data, total: r.data.pagination.total };
+                    const r = (await invoicesApi.list({ search: q, page, limit: 20 })) as unknown as { data: any[]; pagination?: { total: number } };
+                    return { items: r.data ?? [], total: r.pagination?.total ?? r.data?.length ?? 0 };
                   }}
                   getOptionId={(inv: any) => inv.id}
                   getOptionLabel={(inv: any) => inv.invoiceNumber ?? inv.invoice_number ?? inv.id}

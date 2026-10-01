@@ -208,39 +208,50 @@ paymentRoutes.get('/', async (c) => {
   const dateFrom = url.searchParams.get('dateFrom');
   const dateTo = url.searchParams.get('dateTo');
 
-  // Build WHERE clause
+  const search = url.searchParams.get('search')?.trim();
+
+  // Build WHERE clause (columns are qualified: contacts/invoices share names like type, contact_id)
   let whereClause = '1=1';
   const params: any[] = [];
 
   if (type) {
-    whereClause += ' AND type = ?';
+    whereClause += ' AND p.type = ?';
     params.push(type);
   }
   if (contactId) {
-    whereClause += ' AND contact_id = ?';
+    whereClause += ' AND p.contact_id = ?';
     params.push(contactId);
   }
   if (invoiceId) {
-    whereClause += ' AND invoice_id = ?';
+    whereClause += ' AND p.invoice_id = ?';
     params.push(invoiceId);
   }
   if (method) {
-    whereClause += ' AND method = ?';
+    whereClause += ' AND p.method = ?';
     params.push(method);
   }
   if (dateFrom) {
-    whereClause += ' AND DATE(date) >= DATE(?)';
+    whereClause += ' AND DATE(p.date) >= DATE(?)';
     params.push(dateFrom);
   }
   if (dateTo) {
-    whereClause += ' AND DATE(date) <= DATE(?)';
+    whereClause += ' AND DATE(p.date) <= DATE(?)';
     params.push(dateTo);
   }
+  if (search) {
+    whereClause += ' AND (p.reference LIKE ? OR c.name LIKE ? OR i.invoice_number LIKE ?)';
+    const like = `%${search}%`;
+    params.push(like, like, like);
+  }
+
+  const fromClause = `FROM payments p
+      LEFT JOIN contacts c ON p.contact_id = c.id
+      LEFT JOIN invoices i ON p.invoice_id = i.id`;
 
   try {
     // Get total count
     const countResult = await tenantDb
-      .prepare(`SELECT COUNT(*) as count FROM payments WHERE ${whereClause}`)
+      .prepare(`SELECT COUNT(*) as count ${fromClause} WHERE ${whereClause}`)
       .bind(...params)
       .first<{ count: number }>();
     const total = countResult?.count || 0;
@@ -251,11 +262,9 @@ paymentRoutes.get('/', async (c) => {
         p.id, p.invoice_id, p.contact_id, p.amount, p.currency, p.method,
         p.reference, p.type, p.date, p.notes, p.receipt_url, p.created_by, p.created_at,
         c.name as contact_name, i.invoice_number
-      FROM payments p
-      LEFT JOIN contacts c ON p.contact_id = c.id
-      LEFT JOIN invoices i ON p.invoice_id = i.id
+      ${fromClause}
       WHERE ${whereClause}
-      ORDER BY p.date DESC
+      ORDER BY p.date DESC, p.created_at DESC
       LIMIT ? OFFSET ?
     `;
 

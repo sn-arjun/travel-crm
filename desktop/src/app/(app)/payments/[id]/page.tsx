@@ -14,6 +14,13 @@ function formatCurrency(amount: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(amount);
 }
 
+// Payment dates are date-only strings (YYYY-MM-DD); parse them as local dates so
+// the displayed day does not shift with the viewer's timezone.
+function parsePaymentDate(value: string): Date {
+  const m = /^(d{4})-(d{2})-(d{2})/.exec(value);
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(value);
+}
+
 const methodTone: Record<string, 'info' | 'success' | 'warning' | 'neutral'> = {
   bank_transfer: 'info', transfer: 'info', upi: 'info',
   cash: 'success', card: 'warning', cheque: 'neutral', check: 'neutral',
@@ -114,7 +121,7 @@ export default function PaymentDetailPage() {
                 </div>
                 <div>
                   <p className="text-sm text-ds-foreground-muted mb-ds-1">Date</p>
-                  <p className="text-sm font-medium">{payment.paidAt ? new Date(payment.paidAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}</p>
+                  <p className="text-sm font-medium">{payment.paidAt ? parsePaymentDate(payment.paidAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-ds-foreground-muted mb-ds-1">Method</p>
