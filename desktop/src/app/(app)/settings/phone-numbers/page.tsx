@@ -22,11 +22,6 @@ import {
   SectionCard,
   DataTable,
   type DataTableColumn,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -42,14 +37,13 @@ import { toast } from 'sonner';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { voipApi, type VoipNumber, type AvailableNumber } from '@/lib/api/voip';
 import { useFeatureGate } from '@/hooks/use-feature-gate';
-import { cn } from '@/lib/utils';
 
 export default function PhoneNumbersPage() {
   const router = useRouter();
   const { enabled, reason, upgradeHref, loading: gateLoading } = useFeatureGate('voip_calling');
 
   const [searchOpen, setSearchOpen] = React.useState(false);
-  const [searchForm, setSearchForm] = React.useState({ areaCode: '', type: 'local' as 'local' | 'toll_free' });
+  const [searchForm, setSearchForm] = React.useState({ areaCode: '', contains: '' });
   const [searchResults, setSearchResults] = React.useState<AvailableNumber[] | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<VoipNumber | null>(null);
 
@@ -63,19 +57,19 @@ export default function PhoneNumbersPage() {
     return (numbersResponse.data as VoipNumber[]) ?? [];
   }, [numbersResponse]);
 
-  const searchMutation = useApiMutation((data: { areaCode?: string; type?: 'local' | 'toll_free' }) =>
+  const searchMutation = useApiMutation((data: { areaCode?: string; contains?: string }) =>
     voipApi.numbers.search(data),
   );
-  const purchaseMutation = useApiMutation((data: { number: string; friendlyName?: string }) =>
+  const purchaseMutation = useApiMutation((data: { phoneNumber: string; friendlyName?: string }) =>
     voipApi.numbers.purchase(data),
   );
-  const updateMutation = useApiMutation((input: { id: string; assignedTo?: string; status?: 'active' | 'inactive' }) =>
-    voipApi.numbers.update(input.id, { assignedTo: input.assignedTo, status: input.status }),
+  const updateMutation = useApiMutation((input: { id: string; isDefault: boolean }) =>
+    voipApi.numbers.update(input.id, { isDefault: input.isDefault }),
   );
   const removeMutation = useApiMutation((id: string) => voipApi.numbers.remove(id));
 
   const primaryId = React.useMemo(
-    () => numbers.find((n) => n.status === 'active')?.id ?? null,
+    () => numbers.find((n) => n.isDefault)?.id ?? null,
     [numbers],
   );
 
@@ -83,7 +77,7 @@ export default function PhoneNumbersPage() {
     setSearchResults(null);
     const result = await searchMutation.mutate({
       areaCode: searchForm.areaCode || undefined,
-      type: searchForm.type,
+      contains: searchForm.contains || undefined,
     });
     if (result && 'data' in result) {
       setSearchResults((result.data as AvailableNumber[]) ?? []);
@@ -93,12 +87,12 @@ export default function PhoneNumbersPage() {
   };
 
   const handlePurchase = async (n: AvailableNumber) => {
-    const result = await purchaseMutation.mutate({ number: n.number, friendlyName: n.friendlyName });
+    const result = await purchaseMutation.mutate({ phoneNumber: n.phoneNumber, friendlyName: n.friendlyName });
     if (result) {
       toast.success('Phone number purchased');
       setSearchOpen(false);
       setSearchResults(null);
-      setSearchForm({ areaCode: '', type: 'local' });
+      setSearchForm({ areaCode: '', contains: '' });
       refetch();
     } else {
       toast.error(purchaseMutation.error?.message ?? 'Failed to purchase phone number');
@@ -106,7 +100,7 @@ export default function PhoneNumbersPage() {
   };
 
   const handleSetPrimary = async (num: VoipNumber) => {
-    const result = await updateMutation.mutate({ id: num.id, status: 'active' });
+    const result = await updateMutation.mutate({ id: num.id, isDefault: true });
     if (result) {
       toast.success('Primary number updated');
       refetch();
@@ -133,7 +127,7 @@ export default function PhoneNumbersPage() {
       header: 'Number',
       cell: (num) => (
         <div className="flex items-center gap-ds-2">
-          <span className="font-mono text-sm font-medium text-ds-foreground">{num.number}</span>
+          <span className="font-mono text-sm font-medium text-ds-foreground">{num.phoneNumber}</span>
           {num.id === primaryId && (
             <Badge className="bg-ds-warning-subtle text-ds-warning-on-subtle text-xs">Primary</Badge>
           )}
@@ -141,18 +135,9 @@ export default function PhoneNumbersPage() {
       ),
     },
     {
-      key: 'friendly_name',
+      key: 'friendlyName',
       header: 'Friendly Name',
-      cell: (num) => <span className="text-sm text-ds-foreground-muted">{num.friendly_name ?? '-'}</span>,
-    },
-    {
-      key: 'type',
-      header: 'Type',
-      cell: (num) => (
-        <Badge variant="outline" className="capitalize text-xs">
-          {num.type?.replace('_', ' ') ?? 'local'}
-        </Badge>
-      ),
+      cell: (num) => <span className="text-sm text-ds-foreground-muted">{num.friendlyName ?? '-'}</span>,
     },
     {
       key: 'capabilities',
@@ -165,19 +150,9 @@ export default function PhoneNumbersPage() {
       ),
     },
     {
-      key: 'status',
-      header: 'Status',
-      cell: (num) => (
-        <Badge
-          className={cn(
-            num.status === 'active'
-              ? 'bg-ds-success-subtle text-ds-success-on-subtle'
-              : 'bg-ds-surface-sunken text-ds-foreground-muted',
-          )}
-        >
-          {num.status}
-        </Badge>
-      ),
+      key: 'assignedName',
+      header: 'Assigned To',
+      cell: (num) => <span className="text-sm text-ds-foreground-muted">{num.assignedName ?? '-'}</span>,
     },
   ];
 
@@ -291,20 +266,14 @@ export default function PhoneNumbersPage() {
                   placeholder="e.g., 415"
                 />
               </div>
-              <div className="w-40 flex flex-col gap-ds-2">
-                <Label>Type</Label>
-                <Select
-                  value={searchForm.type}
-                  onValueChange={(v) => setSearchForm((p) => ({ ...p, type: v as 'local' | 'toll_free' }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="local">Local</SelectItem>
-                    <SelectItem value="toll_free">Toll Free</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="flex-1 flex flex-col gap-ds-2">
+                <Label htmlFor="contains">Contains digits</Label>
+                <Input
+                  id="contains"
+                  value={searchForm.contains}
+                  onChange={(e) => setSearchForm((p) => ({ ...p, contains: e.target.value }))}
+                  placeholder="e.g., 777"
+                />
               </div>
               <Button onClick={handleSearch} disabled={searchMutation.loading} className="gap-ds-2">
                 {searchMutation.loading ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
@@ -321,13 +290,13 @@ export default function PhoneNumbersPage() {
                 ) : (
                   searchResults.map((n) => (
                     <div
-                      key={n.number}
+                      key={n.phoneNumber}
                       className="flex items-center justify-between rounded-ds-md border border-ds-border px-ds-3 py-ds-2"
                     >
                       <div>
-                        <p className="font-mono text-sm font-medium text-ds-foreground">{n.number}</p>
+                        <p className="font-mono text-sm font-medium text-ds-foreground">{n.phoneNumber}</p>
                         <p className="text-xs text-ds-foreground-muted">
-                          {[n.locality, n.region].filter(Boolean).join(', ') || n.type}
+                          {n.region || n.friendlyName || 'Available'}
                         </p>
                       </div>
                       <Button
@@ -353,7 +322,7 @@ export default function PhoneNumbersPage() {
         open={deleteTarget !== null}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
         title="Remove phone number"
-        description={`This will release ${deleteTarget?.number ?? 'this number'}. This action cannot be undone.`}
+        description={`This will release ${deleteTarget?.phoneNumber ?? 'this number'}. This action cannot be undone.`}
         confirmLabel="Remove"
         tone="destructive"
         onConfirm={handleDelete}

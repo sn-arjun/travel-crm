@@ -1,19 +1,25 @@
 import { client, type ApiResponse, type PaginatedResponse } from './client';
 import { API_ENDPOINTS } from './config';
 
+export type VoipProviderName = 'twilio' | 'plivo';
+export type VoipRecordingPolicy = 'all' | 'inbound' | 'outbound' | 'none';
+export type VoipRoutingStrategy = 'assigned' | 'round_robin' | 'least_recent';
+
+/** Shape returned by GET /voip/settings — secrets come back masked (`****abcd`). */
 export interface VoipSettings {
   id: string;
-  provider: 'twilio' | 'vonage' | 'other';
-  accountSid?: string;
-  apiKey?: string;
-  connected: boolean;
-  features: {
-    inboundCalls: boolean;
-    outboundCalls: boolean;
-    voicemail: boolean;
-    transcription: boolean;
-    recording: boolean;
-  };
+  voipProvider: VoipProviderName;
+  providerAccountId?: string | null;
+  providerAuthToken?: string | null;
+  twilioAccountSid?: string | null;
+  twilioAuthToken?: string | null;
+  defaultCallerId?: string | null;
+  recordingPolicy: VoipRecordingPolicy;
+  ivrEnabled: boolean;
+  businessHoursEnabled: boolean;
+  voicemailEnabled: boolean;
+  maxRingDuration: number;
+  routingStrategy: VoipRoutingStrategy;
 }
 
 export interface VoipToken {
@@ -23,48 +29,41 @@ export interface VoipToken {
 
 export interface VoipNumber {
   id: string;
-  number: string;
-  friendly_name?: string;
-  status: 'active' | 'inactive';
-  type: 'local' | 'toll_free';
-  capabilities: {
-    sms: boolean;
-    voice: boolean;
-    fax: boolean;
-  };
-  assignedTo?: string;
+  phoneNumber: string;
+  friendlyName?: string | null;
+  provider?: VoipProviderName;
+  assignedTo?: string | null;
+  assignedName?: string | null;
+  purpose?: string | null;
+  isDefault: boolean;
+  monthlyCost?: number | null;
+  capabilities?: { sms?: boolean; voice?: boolean } | null;
 }
 
 export interface AvailableNumber {
-  number: string;
+  phoneNumber: string;
   friendlyName?: string;
-  locality?: string;
   region?: string;
-  type: 'local' | 'toll_free';
-  capabilities: {
-    sms: boolean;
-    voice: boolean;
-    fax: boolean;
-  };
-  monthlyCost?: number;
+  capabilities: { sms: boolean; voice: boolean };
+  monthlyPrice?: number;
 }
 
 export interface SearchNumbersRequest {
   areaCode?: string;
   country?: string;
-  type?: 'local' | 'toll_free';
   contains?: string;
 }
 
 export interface PurchaseNumberRequest {
-  number: string;
+  phoneNumber: string;
   friendlyName?: string;
 }
 
 export interface UpdateNumberRequest {
-  friendly_name?: string;
-  status?: 'active' | 'inactive';
+  friendlyName?: string;
   assignedTo?: string;
+  purpose?: string;
+  isDefault?: boolean;
 }
 
 export interface CallerInfo {
@@ -177,16 +176,16 @@ export interface TranscriptSearchResult {
 }
 
 export interface UpdateVoipSettingsRequest {
-  provider?: 'twilio' | 'vonage' | 'other';
-  accountSid?: string;
-  apiKey?: string;
-  features?: {
-    inboundCalls?: boolean;
-    outboundCalls?: boolean;
-    voicemail?: boolean;
-    transcription?: boolean;
-    recording?: boolean;
-  };
+  voipProvider?: VoipProviderName;
+  providerAccountId?: string | null;
+  providerAuthToken?: string | null;
+  defaultCallerId?: string | null;
+  recordingPolicy?: VoipRecordingPolicy;
+  ivrEnabled?: boolean;
+  businessHoursEnabled?: boolean;
+  voicemailEnabled?: boolean;
+  maxRingDuration?: number;
+  routingStrategy?: VoipRoutingStrategy;
 }
 
 export interface CreateOutboundCallRequest {
@@ -210,10 +209,10 @@ export const voipApi = {
       client.get<ApiResponse<VoipSettings>>(API_ENDPOINTS.voip.settings),
 
     update: (data: UpdateVoipSettingsRequest) =>
-      client.put<ApiResponse<VoipSettings>>(API_ENDPOINTS.voip.settings, data),
+      client.put<ApiResponse<{ message: string }>>(API_ENDPOINTS.voip.settings, data),
 
     testConnection: () =>
-      client.post<ApiResponse<{ connected: boolean; message: string }>>(API_ENDPOINTS.voip.testConnection),
+      client.get<ApiResponse<{ connected: boolean; accountName?: string; error?: string }>>(API_ENDPOINTS.voip.testConnection),
   },
 
   token: {
@@ -229,10 +228,10 @@ export const voipApi = {
       client.post<ApiResponse<AvailableNumber[]>>(`${API_ENDPOINTS.voip.numbers}/search`, data),
 
     purchase: (data: PurchaseNumberRequest) =>
-      client.post<ApiResponse<VoipNumber>>(`${API_ENDPOINTS.voip.numbers}/purchase`, data),
+      client.post<ApiResponse<{ id: string; phoneNumber: string; providerNumberId: string }>>(`${API_ENDPOINTS.voip.numbers}/purchase`, data),
 
     update: (id: string, data: UpdateNumberRequest) =>
-      client.put<ApiResponse<VoipNumber>>(`${API_ENDPOINTS.voip.numbers}/${id}`, data),
+      client.put<ApiResponse<{ message: string }>>(`${API_ENDPOINTS.voip.numbers}/${id}`, data),
 
     remove: (id: string) =>
       client.delete<ApiResponse<void>>(`${API_ENDPOINTS.voip.numbers}/${id}`),

@@ -594,11 +594,17 @@
       "timestamp": "2026-10-01T17:41:56.846Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "verify:voip-settings": {
+      "status": "ok",
+      "timestamp": "2026-10-01T17:47:40.997Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "verify:visa",
+    "id": "verify:voip-settings",
     "status": "ok",
-    "timestamp": "2026-10-01T17:41:56.846Z"
+    "timestamp": "2026-10-01T17:47:40.997Z"
   }
 }

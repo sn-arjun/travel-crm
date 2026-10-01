@@ -22,53 +22,53 @@ describe('voipApi', () => {
   describe('settings', () => {
     describe('get', () => {
       it('should call GET /voip/settings', async () => {
-        vi.mocked(client.get).mockResolvedValue({ data: { id: 'vs1', provider: 'twilio', connected: true } });
+        vi.mocked(client.get).mockResolvedValue({ data: { id: 'vs1', voipProvider: 'twilio' } });
         const result = await voipApi.settings.get();
         expect(client.get).toHaveBeenCalledWith('/voip/settings');
-        expect(result.data.connected).toBe(true);
+        expect(result.data.voipProvider).toBe('twilio');
       });
 
       it('should return settings data', async () => {
-        vi.mocked(client.get).mockResolvedValue({ data: { id: 'vs1', provider: 'vonage', features: { inboundCalls: true } } });
+        vi.mocked(client.get).mockResolvedValue({ data: { id: 'vs1', voipProvider: 'plivo', recordingPolicy: 'all' } });
         const result = await voipApi.settings.get();
-        expect(result.data).toHaveProperty('provider');
-        expect(result.data).toHaveProperty('features');
+        expect(result.data).toHaveProperty('voipProvider');
+        expect(result.data).toHaveProperty('recordingPolicy');
       });
     });
 
     describe('update', () => {
       it('should call PUT /voip/settings', async () => {
         vi.mocked(client.put).mockResolvedValue({ data: { id: 'vs1' } });
-        await voipApi.settings.update({ provider: 'twilio', accountSid: 'AC123' });
-        expect(client.put).toHaveBeenCalledWith('/voip/settings', { provider: 'twilio', accountSid: 'AC123' });
+        await voipApi.settings.update({ voipProvider: 'twilio', providerAccountId: 'AC123' });
+        expect(client.put).toHaveBeenCalledWith('/voip/settings', { voipProvider: 'twilio', providerAccountId: 'AC123' });
       });
 
-      it('should pass features', async () => {
+      it('should pass recording policy and voicemail', async () => {
         vi.mocked(client.put).mockResolvedValue({ data: {} });
-        await voipApi.settings.update({ features: { recording: true, transcription: true } });
-        expect(client.put).toHaveBeenCalledWith('/voip/settings', { features: { recording: true, transcription: true } });
+        await voipApi.settings.update({ recordingPolicy: 'none', voicemailEnabled: true });
+        expect(client.put).toHaveBeenCalledWith('/voip/settings', { recordingPolicy: 'none', voicemailEnabled: true });
       });
 
       it('should return updated settings', async () => {
-        vi.mocked(client.put).mockResolvedValue({ data: { id: 'vs1', provider: 'twilio', connected: true } });
-        const result = await voipApi.settings.update({ provider: 'twilio' });
-        expect(result.data.provider).toBe('twilio');
+        vi.mocked(client.put).mockResolvedValue({ data: { message: 'VoIP settings updated' } });
+        const result = await voipApi.settings.update({ voipProvider: 'twilio' });
+        expect(result.data.message).toBe('VoIP settings updated');
       });
     });
 
     describe('testConnection', () => {
-      it('should call POST /voip/test-connection', async () => {
-        vi.mocked(client.post).mockResolvedValue({ data: { connected: true, message: 'Success' } });
+      it('should call GET /voip/test-connection', async () => {
+        vi.mocked(client.get).mockResolvedValue({ data: { connected: true, accountName: 'Acme' } });
         const result = await voipApi.settings.testConnection();
-        expect(client.post).toHaveBeenCalledWith('/voip/test-connection');
+        expect(client.get).toHaveBeenCalledWith('/voip/test-connection');
         expect(result.data.connected).toBe(true);
       });
 
       it('should return connection status', async () => {
-        vi.mocked(client.post).mockResolvedValue({ data: { connected: false, message: 'Invalid credentials' } });
+        vi.mocked(client.get).mockResolvedValue({ data: { connected: false, error: 'Invalid credentials' } });
         const result = await voipApi.settings.testConnection();
         expect(result.data.connected).toBe(false);
-        expect(result.data.message).toBe('Invalid credentials');
+        expect(result.data.error).toBe('Invalid credentials');
       });
     });
   });

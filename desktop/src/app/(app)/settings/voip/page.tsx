@@ -31,18 +31,24 @@ import {
 } from '@/components/ui';
 import { toast } from 'sonner';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { voipApi, type UpdateVoipSettingsRequest } from '@/lib/api/voip';
+import {
+  voipApi,
+  type UpdateVoipSettingsRequest,
+  type VoipProviderName,
+  type VoipRecordingPolicy,
+  type VoipRoutingStrategy,
+} from '@/lib/api/voip';
 import { useFeatureGate } from '@/hooks/use-feature-gate';
 
-type VoipFeatureKey = keyof NonNullable<UpdateVoipSettingsRequest['features']>;
+type VoipToggleKey = 'voicemailEnabled' | 'ivrEnabled' | 'businessHoursEnabled';
 
-const FEATURE_ROWS: { key: VoipFeatureKey; label: string; description: string }[] = [
-  { key: 'inboundCalls', label: 'Inbound Calls', description: 'Receive incoming calls in the CRM' },
-  { key: 'outboundCalls', label: 'Outbound Calls', description: 'Make calls directly from the CRM' },
-  { key: 'voicemail', label: 'Voicemail', description: 'Enable voicemail for missed calls' },
-  { key: 'transcription', label: 'Call Transcription', description: 'Automatically transcribe call recordings' },
-  { key: 'recording', label: 'Call Recording', description: 'Record calls for quality and training' },
+const TOGGLE_ROWS: { key: VoipToggleKey; label: string; description: string }[] = [
+  { key: 'voicemailEnabled', label: 'Voicemail', description: 'Enable voicemail for missed calls' },
+  { key: 'ivrEnabled', label: 'IVR Menu', description: 'Greet callers with an interactive voice menu' },
+  { key: 'businessHoursEnabled', label: 'Business Hours', description: 'Route calls differently outside business hours' },
 ];
+
+const MASKED = /^\*{4}/;
 
 export default function VoipSettingsPage() {
   const router = useRouter();
@@ -51,7 +57,7 @@ export default function VoipSettingsPage() {
   const [testing, setTesting] = React.useState(false);
   const [testResult, setTestResult] = React.useState<{ connected: boolean; message: string } | null>(null);
 
-  const { data: settingsResponse, loading } = useApiQuery(
+  const { data: settingsResponse, loading, refetch } = useApiQuery(
     () => voipApi.settings.get(),
     [],
   );
@@ -62,48 +68,63 @@ export default function VoipSettingsPage() {
   }, [settingsResponse]);
 
   const [form, setForm] = React.useState({
-    provider: 'twilio' as 'twilio' | 'vonage' | 'other',
-    accountSid: '',
-    apiKey: '',
-    features: {
-      inboundCalls: true,
-      outboundCalls: true,
-      voicemail: false,
-      transcription: false,
-      recording: false,
-    },
+    voipProvider: 'twilio' as VoipProviderName,
+    providerAccountId: '',
+    providerAuthToken: '',
+    defaultCallerId: '',
+    recordingPolicy: 'all' as VoipRecordingPolicy,
+    routingStrategy: 'assigned' as VoipRoutingStrategy,
+    maxRingDuration: 30,
+    voicemailEnabled: true,
+    ivrEnabled: false,
+    businessHoursEnabled: false,
   });
+
+  // The backend masks secrets (`****abcd`); keep the mask out of the input and
+  // only send a token when the user typed a new one.
+  const savedAccountId = voipSettings?.providerAccountId ?? voipSettings?.twilioAccountSid ?? '';
+  const savedTokenMask = voipSettings?.providerAuthToken ?? voipSettings?.twilioAuthToken ?? '';
 
   React.useEffect(() => {
     if (voipSettings) {
       setForm({
-        provider: voipSettings.provider ?? 'twilio',
-        accountSid: voipSettings.accountSid ?? '',
-        apiKey: voipSettings.apiKey ?? '',
-        features: {
-          inboundCalls: voipSettings.features?.inboundCalls ?? true,
-          outboundCalls: voipSettings.features?.outboundCalls ?? true,
-          voicemail: voipSettings.features?.voicemail ?? false,
-          transcription: voipSettings.features?.transcription ?? false,
-          recording: voipSettings.features?.recording ?? false,
-        },
+        voipProvider: voipSettings.voipProvider ?? 'twilio',
+        providerAccountId: savedAccountId,
+        providerAuthToken: '',
+        defaultCallerId: voipSettings.defaultCallerId ?? '',
+        recordingPolicy: voipSettings.recordingPolicy ?? 'all',
+        routingStrategy: voipSettings.routingStrategy ?? 'assigned',
+        maxRingDuration: voipSettings.maxRingDuration ?? 30,
+        voicemailEnabled: voipSettings.voicemailEnabled ?? true,
+        ivrEnabled: voipSettings.ivrEnabled ?? false,
+        businessHoursEnabled: voipSettings.businessHoursEnabled ?? false,
       });
     }
-  }, [voipSettings]);
+  }, [voipSettings, savedAccountId]);
 
   const updateMutation = useApiMutation<UpdateVoipSettingsRequest, unknown>((data) =>
     voipApi.settings.update(data),
   );
 
   const handleSave = async () => {
-    const result = await updateMutation.mutate({
-      provider: form.provider,
-      accountSid: form.accountSid,
-      apiKey: form.apiKey,
-      features: form.features,
-    });
+    const payload: UpdateVoipSettingsRequest = {
+      voipProvider: form.voipProvider,
+      providerAccountId: form.providerAccountId || null,
+      defaultCallerId: form.defaultCallerId || null,
+      recordingPolicy: form.recordingPolicy,
+      routingStrategy: form.routingStrategy,
+      maxRingDuration: form.maxRingDuration,
+      voicemailEnabled: form.voicemailEnabled,
+      ivrEnabled: form.ivrEnabled,
+      businessHoursEnabled: form.businessHoursEnabled,
+    };
+    if (form.providerAuthToken && !MASKED.test(form.providerAuthToken)) {
+      payload.providerAuthToken = form.providerAuthToken;
+    }
+    const result = await updateMutation.mutate(payload);
     if (result) {
       toast.success('VoIP settings saved');
+      refetch();
     } else {
       toast.error(updateMutation.error?.message ?? 'Failed to save VoIP settings');
     }
@@ -114,24 +135,23 @@ export default function VoipSettingsPage() {
     setTestResult(null);
     try {
       const result = await voipApi.settings.testConnection();
-      const data = (result as { data?: { connected: boolean; message: string } })?.data;
+      const data = (result as { data?: { connected: boolean; accountName?: string; error?: string } })?.data;
       if (data) {
-        setTestResult(data);
-        if (data.connected) {
-          toast.success('Connection successful');
-        } else {
-          toast.error(data.message ?? 'Connection failed');
-        }
+        const message = data.connected
+          ? data.accountName
+            ? `Connected to ${data.accountName}`
+            : 'Connection successful'
+          : (data.error ?? 'Connection failed');
+        setTestResult({ connected: data.connected, message });
       }
-    } catch {
-      setTestResult({ connected: false, message: 'Connection test failed' });
-      toast.error('Connection test failed');
+    } catch (e) {
+      setTestResult({ connected: false, message: (e as Error)?.message || 'Connection test failed' });
     } finally {
       setTesting(false);
     }
   };
 
-  const isConnected = voipSettings?.connected ?? false;
+  const isConnected = testResult?.connected ?? false;
 
   const backButton = (
     <Button variant="ghost" size="icon" onClick={() => router.push('/settings')} aria-label="Back to settings">
@@ -175,11 +195,11 @@ export default function VoipSettingsPage() {
         back={backButton}
         status={
           <Badge
-            variant={isConnected ? 'default' : 'destructive'}
+            variant={testResult === null ? 'outline' : isConnected ? 'default' : 'destructive'}
             className={isConnected ? 'gap-ds-1 bg-ds-success-subtle text-ds-success-on-subtle' : 'gap-ds-1'}
           >
             {isConnected ? <Wifi className="size-3" /> : <WifiOff className="size-3" />}
-            {isConnected ? 'Connected' : 'Disconnected'}
+            {testResult === null ? 'Not tested' : isConnected ? 'Connected' : 'Disconnected'}
           </Badge>
         }
       />
@@ -192,46 +212,45 @@ export default function VoipSettingsPage() {
           <div className="flex flex-col gap-ds-2">
             <Label>Provider</Label>
             <Select
-              value={form.provider}
-              onValueChange={(v) => setForm((p) => ({ ...p, provider: v as typeof form.provider }))}
+              value={form.voipProvider}
+              onValueChange={(v) => setForm((p) => ({ ...p, voipProvider: v as VoipProviderName }))}
             >
-              <SelectTrigger className="w-60">
+              <SelectTrigger className="w-60" aria-label="Provider">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="twilio">Twilio</SelectItem>
-                <SelectItem value="vonage">Plivo / Vonage</SelectItem>
-                <SelectItem value="other">Other</SelectItem>
+                <SelectItem value="plivo">Plivo</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div className="flex flex-col gap-ds-2">
-            <Label htmlFor="accountSid">Account SID / ID</Label>
+            <Label htmlFor="providerAccountId">Account SID / ID</Label>
             <Input
-              id="accountSid"
-              value={form.accountSid}
-              onChange={(e) => setForm((p) => ({ ...p, accountSid: e.target.value }))}
+              id="providerAccountId"
+              value={form.providerAccountId}
+              onChange={(e) => setForm((p) => ({ ...p, providerAccountId: e.target.value }))}
               placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
             />
           </div>
 
           <div className="flex flex-col gap-ds-2">
-            <Label htmlFor="apiKey">Auth Token / API Key</Label>
+            <Label htmlFor="providerAuthToken">Auth Token</Label>
             <div className="relative">
               <Input
-                id="apiKey"
+                id="providerAuthToken"
                 type={showApiKey ? 'text' : 'password'}
-                value={form.apiKey}
-                onChange={(e) => setForm((p) => ({ ...p, apiKey: e.target.value }))}
-                placeholder="Enter your API key"
+                value={form.providerAuthToken}
+                onChange={(e) => setForm((p) => ({ ...p, providerAuthToken: e.target.value }))}
+                placeholder={savedTokenMask ? `Saved (${savedTokenMask}) — type to replace` : 'Enter your auth token'}
               />
               <Button
                 variant="ghost"
                 size="icon-sm"
                 className="absolute right-2 top-1/2 -translate-y-1/2"
                 onClick={() => setShowApiKey(!showApiKey)}
-                aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
+                aria-label={showApiKey ? 'Hide auth token' : 'Show auth token'}
               >
                 {showApiKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </Button>
@@ -242,14 +261,14 @@ export default function VoipSettingsPage() {
             <Button
               variant="outline"
               onClick={handleTestConnection}
-              disabled={testing || !form.accountSid || !form.apiKey}
+              disabled={testing || !savedAccountId}
               className="gap-ds-2"
             >
               {testing ? <Spinner className="size-4" /> : <TestTube2 className="size-4" />}
               Test Connection
             </Button>
             {testResult && (
-              <div className="flex items-center gap-ds-2 text-sm">
+              <div className="flex items-center gap-ds-2 text-sm" data-testid="voip-test-result">
                 {testResult.connected ? (
                   <CheckCircle2 className="size-4 text-ds-success" />
                 ) : (
@@ -264,22 +283,77 @@ export default function VoipSettingsPage() {
         </div>
       </SectionCard>
 
+      <SectionCard title="Calling Behaviour" description="Caller ID, recording and routing for calls">
+        <div className="flex flex-col gap-ds-4">
+          <div className="flex flex-col gap-ds-2">
+            <Label htmlFor="defaultCallerId">Default caller ID</Label>
+            <Input
+              id="defaultCallerId"
+              value={form.defaultCallerId}
+              onChange={(e) => setForm((p) => ({ ...p, defaultCallerId: e.target.value }))}
+              placeholder="+15550001234"
+            />
+          </div>
+          <div className="flex flex-col gap-ds-2">
+            <Label htmlFor="maxRingDuration">Max ring duration (seconds)</Label>
+            <Input
+              id="maxRingDuration"
+              type="number"
+              min={10}
+              max={60}
+              className="w-40"
+              value={form.maxRingDuration}
+              onChange={(e) => setForm((p) => ({ ...p, maxRingDuration: Number(e.target.value) }))}
+            />
+          </div>
+          <div className="flex flex-col gap-ds-2">
+            <Label>Call recording</Label>
+            <Select
+              value={form.recordingPolicy}
+              onValueChange={(v) => setForm((p) => ({ ...p, recordingPolicy: v as VoipRecordingPolicy }))}
+            >
+              <SelectTrigger className="w-60" aria-label="Call recording">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Record all calls</SelectItem>
+                <SelectItem value="inbound">Inbound only</SelectItem>
+                <SelectItem value="outbound">Outbound only</SelectItem>
+                <SelectItem value="none">Do not record</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-ds-2">
+            <Label>Routing strategy</Label>
+            <Select
+              value={form.routingStrategy}
+              onValueChange={(v) => setForm((p) => ({ ...p, routingStrategy: v as VoipRoutingStrategy }))}
+            >
+              <SelectTrigger className="w-60" aria-label="Routing strategy">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="assigned">Assigned agent</SelectItem>
+                <SelectItem value="round_robin">Round robin</SelectItem>
+                <SelectItem value="least_recent">Least recent</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </SectionCard>
+
       <SectionCard title="Calling Features" description="Enable or disable specific VoIP capabilities">
         <div className="flex flex-col divide-y divide-ds-border">
-          {FEATURE_ROWS.map((feature) => (
+          {TOGGLE_ROWS.map((feature) => (
             <div key={feature.key} className="flex items-center justify-between py-ds-3 first:pt-0 last:pb-0">
               <div>
                 <p className="text-sm font-medium text-ds-foreground">{feature.label}</p>
                 <p className="text-xs text-ds-foreground-muted">{feature.description}</p>
               </div>
               <Switch
-                checked={form.features[feature.key]}
-                onCheckedChange={(v) =>
-                  setForm((p) => ({
-                    ...p,
-                    features: { ...p.features, [feature.key]: v },
-                  }))
-                }
+                aria-label={feature.label}
+                checked={form[feature.key]}
+                onCheckedChange={(v) => setForm((p) => ({ ...p, [feature.key]: v }))}
               />
             </div>
           ))}
