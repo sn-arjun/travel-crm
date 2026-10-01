@@ -4,29 +4,41 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { z } from 'zod';
 import { EntityForm, FormRow } from '@/components/domain';
-import { Input, SectionCard, Skeleton, Switch, Textarea } from '@/components/ui';
+import {
+  Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  SectionCard,
+  Skeleton,
+  Textarea,
+} from '@/components/ui';
 import { toast } from 'sonner';
 import { settingsApi } from '@/lib/api/settings';
 import { useApiQuery } from '@/hooks/use-api';
 
+const percent = (message: string) =>
+  z.string().refine((v) => v !== '' && Number(v) >= 0 && Number(v) <= 100, message);
+
 const schema = z.object({
-  defaultValidityDays: z.string(),
-  defaultTerms: z.string().optional(),
-  defaultNotes: z.string().optional(),
+  defaultCurrency: z.string().min(1),
+  validityDays: z.string().refine((v) => /^\d+$/.test(v) && Number(v) >= 1 && Number(v) <= 365, 'Enter 1–365 days'),
+  childPricePercent: percent('Enter a percentage between 0 and 100'),
+  groupDiscountThreshold: z.string().refine((v) => /^\d+$/.test(v) && Number(v) >= 1, 'Enter a whole number of at least 1'),
+  groupDiscountPercent: percent('Enter a percentage between 0 and 100'),
   defaultInclusions: z.string().optional(),
   defaultExclusions: z.string().optional(),
-  showPricePerPerson: z.boolean(),
+  defaultTerms: z.string().optional(),
 });
 type ItineraryDefaultsForm = z.infer<typeof schema>;
 
-const defaultValues: ItineraryDefaultsForm = {
-  defaultValidityDays: '7',
-  defaultTerms: '',
-  defaultNotes: '',
-  defaultInclusions: '',
-  defaultExclusions: '',
-  showPricePerPerson: true,
-};
+const toLines = (text: string | undefined) =>
+  (text ?? '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
 
 export default function ItineraryDefaultsPage() {
   const router = useRouter();
@@ -52,57 +64,80 @@ export default function ItineraryDefaultsPage() {
       description="Default values applied to newly created itineraries."
       schema={schema}
       defaultValues={{
-        defaultValidityDays: String(d?.defaultValidityDays ?? defaultValues.defaultValidityDays),
+        defaultCurrency: d?.defaultCurrency ?? 'INR',
+        validityDays: String(d?.validityDays ?? 7),
+        childPricePercent: String(d?.childPricePercent ?? 50),
+        groupDiscountThreshold: String(d?.groupDiscountThreshold ?? 10),
+        groupDiscountPercent: String(d?.groupDiscountPercent ?? 5),
+        defaultInclusions: (d?.defaultInclusions ?? []).join('\n'),
+        defaultExclusions: (d?.defaultExclusions ?? []).join('\n'),
         defaultTerms: d?.defaultTerms ?? '',
-        defaultNotes: d?.defaultNotes ?? '',
-        defaultInclusions: d?.defaultInclusions ?? '',
-        defaultExclusions: d?.defaultExclusions ?? '',
-        showPricePerPerson: d?.showPricePerPerson ?? true,
       }}
       onCancel={() => router.push('/settings')}
       onSubmit={async (v) => {
-        const result = await settingsApi.itineraryDefaults.update({
-          ...v,
-          defaultValidityDays: parseInt(v.defaultValidityDays, 10),
-        });
-        if (result && 'data' in result) {
-          toast.success('Itinerary defaults saved successfully');
-          router.push('/settings');
-        } else {
+        try {
+          await settingsApi.itineraryDefaults.update({
+            defaultCurrency: v.defaultCurrency,
+            validityDays: Number(v.validityDays),
+            childPricePercent: Number(v.childPricePercent),
+            groupDiscountThreshold: Number(v.groupDiscountThreshold),
+            groupDiscountPercent: Number(v.groupDiscountPercent),
+            defaultInclusions: toLines(v.defaultInclusions),
+            defaultExclusions: toLines(v.defaultExclusions),
+            defaultTerms: v.defaultTerms ?? '',
+          });
+        } catch {
           toast.error('Failed to save itinerary defaults');
+          return;
         }
+        toast.success('Itinerary defaults saved successfully');
+        router.push('/settings');
       }}
       renderSections={(form) => (
-        <SectionCard title="Itinerary Defaults" required>
-          <div className="grid gap-ds-4 sm:grid-cols-2">
-            <FormRow name="defaultValidityDays" label="Default Validity (days)" required>
-              <Input {...form.register('defaultValidityDays')} id="defaultValidityDays" type="number" min="1" placeholder="7" />
-            </FormRow>
-            <FormRow name="showPricePerPerson" label="Show Price Per Person" wide>
-              <div className="flex items-center gap-ds-3">
-                <Switch
-                  checked={form.watch('showPricePerPerson')}
-                  onCheckedChange={(v) => form.setValue('showPricePerPerson', v, { shouldDirty: true })}
-                />
-                <span className="text-sm text-ds-foreground-muted">
-                  {form.watch('showPricePerPerson') ? 'Per-person pricing shown by default' : 'Total pricing shown by default'}
-                </span>
-              </div>
-            </FormRow>
-            <FormRow name="defaultInclusions" label="Default Inclusions" wide>
-              <Textarea {...form.register('defaultInclusions')} id="defaultInclusions" rows={3} placeholder="Standard inclusions for new itineraries..." />
-            </FormRow>
-            <FormRow name="defaultExclusions" label="Default Exclusions" wide>
-              <Textarea {...form.register('defaultExclusions')} id="defaultExclusions" rows={3} placeholder="Standard exclusions for new itineraries..." />
-            </FormRow>
-            <FormRow name="defaultNotes" label="Default Notes" wide>
-              <Textarea {...form.register('defaultNotes')} id="defaultNotes" rows={3} placeholder="Notes shown on every itinerary by default..." />
-            </FormRow>
-            <FormRow name="defaultTerms" label="Default Terms & Conditions" wide>
-              <Textarea {...form.register('defaultTerms')} id="defaultTerms" rows={4} placeholder="Terms & conditions shown on every itinerary by default..." />
-            </FormRow>
-          </div>
-        </SectionCard>
+        <>
+          <SectionCard title="Pricing & Validity" required>
+            <div className="grid gap-ds-4 sm:grid-cols-2">
+              <FormRow name="defaultCurrency" label="Default Currency" required>
+                <Select value={form.watch('defaultCurrency')} onValueChange={(v) => form.setValue('defaultCurrency', v, { shouldDirty: true })}>
+                  <SelectTrigger id="defaultCurrency"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="INR">INR - Indian Rupee</SelectItem>
+                    <SelectItem value="USD">USD - US Dollar</SelectItem>
+                    <SelectItem value="EUR">EUR - Euro</SelectItem>
+                    <SelectItem value="GBP">GBP - British Pound</SelectItem>
+                    <SelectItem value="AED">AED - UAE Dirham</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FormRow>
+              <FormRow name="validityDays" label="Quote Validity (days)" required>
+                <Input {...form.register('validityDays')} id="validityDays" type="number" min="1" max="365" placeholder="7" />
+              </FormRow>
+              <FormRow name="childPricePercent" label="Child Price (% of adult)" required>
+                <Input {...form.register('childPricePercent')} id="childPricePercent" type="number" min="0" max="100" placeholder="50" />
+              </FormRow>
+              <FormRow name="groupDiscountThreshold" label="Group Discount From (travellers)" required>
+                <Input {...form.register('groupDiscountThreshold')} id="groupDiscountThreshold" type="number" min="1" placeholder="10" />
+              </FormRow>
+              <FormRow name="groupDiscountPercent" label="Group Discount (%)" required>
+                <Input {...form.register('groupDiscountPercent')} id="groupDiscountPercent" type="number" min="0" max="100" placeholder="5" />
+              </FormRow>
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Default Content" description="Pre-filled on every new itinerary">
+            <div className="grid gap-ds-4 sm:grid-cols-2">
+              <FormRow name="defaultInclusions" label="Default Inclusions" hint="One item per line.">
+                <Textarea {...form.register('defaultInclusions')} id="defaultInclusions" rows={5} placeholder="Airport transfers&#10;Daily breakfast" />
+              </FormRow>
+              <FormRow name="defaultExclusions" label="Default Exclusions" hint="One item per line.">
+                <Textarea {...form.register('defaultExclusions')} id="defaultExclusions" rows={5} placeholder="Airfare&#10;Travel insurance" />
+              </FormRow>
+              <FormRow name="defaultTerms" label="Default Terms & Conditions" wide>
+                <Textarea {...form.register('defaultTerms')} id="defaultTerms" rows={4} placeholder="Terms & conditions shown on every itinerary by default..." />
+              </FormRow>
+            </div>
+          </SectionCard>
+        </>
       )}
     />
   );

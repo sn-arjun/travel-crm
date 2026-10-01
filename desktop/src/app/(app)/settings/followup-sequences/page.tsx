@@ -2,9 +2,10 @@
 
 import * as React from 'react';
 import {
-  CheckSquare,
   ListOrdered,
   Mail,
+  MapPin,
+  MessageCircle,
   MessageSquare,
   Pencil,
   Phone,
@@ -13,7 +14,7 @@ import {
   PowerOff,
   Trash2,
 } from 'lucide-react';
-import { ListPage } from '@/components/domain';
+import { ListPage, RelationCombobox } from '@/components/domain';
 import {
   Button,
   Dialog,
@@ -34,37 +35,66 @@ import {
   Textarea,
 } from '@/components/ui';
 import { toast } from 'sonner';
-import { settingsApi, type FollowUpSequence } from '@/lib/api/settings';
+import { LEAD_STATUS_LABELS } from '@travelcrm/shared';
+import { settingsApi, type FollowUpSequence, type FollowUpStepType } from '@/lib/api/settings';
+import { templatesApi, type MessageTemplate } from '@/lib/api/templates';
 
-type StepType = 'email' | 'sms' | 'call' | 'task';
+type StepType = FollowUpStepType;
 
 interface StepForm {
-  order: number;
-  delayDays: number;
+  day: number;
   type: StepType;
-  message: string;
-  template: string;
+  notes: string;
+  templateId: string;
 }
 
 interface SequenceForm {
   name: string;
-  description: string;
+  triggerStatus: string;
   steps: StepForm[];
   isActive: boolean;
 }
 
+const STEP_TYPES: Array<{ value: StepType; label: string }> = [
+  { value: 'email', label: 'Email' },
+  { value: 'sms', label: 'SMS' },
+  { value: 'whatsapp', label: 'WhatsApp' },
+  { value: 'call', label: 'Call' },
+  { value: 'visit', label: 'Visit' },
+];
+
+const TRIGGER_STATUSES = Object.entries(LEAD_STATUS_LABELS) as Array<[string, string]>;
+
+// GET /templates answers { data: [...], pagination } with the page info beside data, not inside it.
+const fetchTemplates = async (q: string, page: number) => {
+  const r = (await templatesApi.list({ search: q, page, limit: 20 })) as unknown as {
+    data?: MessageTemplate[] | { data?: MessageTemplate[]; pagination?: { total?: number } };
+    pagination?: { total?: number };
+  };
+  const nested = Array.isArray(r.data) ? undefined : r.data;
+  const items = (Array.isArray(r.data) ? r.data : nested?.data) ?? [];
+  const total = r.pagination?.total ?? nested?.pagination?.total ?? items.length;
+  return { items, total };
+};
+
+const resolveTemplate = async (id: string) => {
+  const r = await templatesApi.getById(id);
+  return 'data' in r ? r.data : null;
+};
+
 const stepTypeIcons: Record<StepType, React.ReactNode> = {
   email: <Mail className="h-4 w-4" aria-hidden="true" />,
   sms: <MessageSquare className="h-4 w-4" aria-hidden="true" />,
+  whatsapp: <MessageCircle className="h-4 w-4" aria-hidden="true" />,
   call: <Phone className="h-4 w-4" aria-hidden="true" />,
-  task: <CheckSquare className="h-4 w-4" aria-hidden="true" />,
+  visit: <MapPin className="h-4 w-4" aria-hidden="true" />,
 };
 
-const emptyStep: StepForm = { order: 1, delayDays: 1, type: 'email', message: '', template: '' };
+const emptyStep: StepForm = { day: 1, type: 'email', notes: '', templateId: '' };
 
 const emptyForm: SequenceForm = {
   name: '',
-  description: '',
+  triggerStatus: 'new',
   steps: [{ ...emptyStep }],
   isActive: true,
 };
@@ -74,15 +104,21 @@ export default function FollowUpSequencesPage() {
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [form, setForm] = React.useState<SequenceForm>(emptyForm);
   const [refreshKey, setRefreshKey] = React.useState(0);
-  const [cachedSequences, setCachedSequences] = React.useState<FollowUpSequence[]>([]);
 
-  const fetchAll = React.useCallback(async (page: number) => {
-    if (page > 1) return { data: [], pagination: { total: cachedSequences.length } };
+  // The API returns every sequence in one response, so search runs client-side.
+  const fetchAll = React.useCallback(async ({ page, search }: { page: number; search: string }) => {
+    if (page > 1) return { data: [], pagination: { total: 0 } };
     const res = await settingsApi.followUpSequences.list();
-    const sequences = ('data' in res ? (res.data as FollowUpSequence[]) : []) ?? [];
-    setCachedSequences(sequences);
-    return { data: sequences, pagination: { total: sequences.length } };
-  }, [cachedSequences.length]);
+    const all = ('data' in res ? res.data : []) ?? [];
+    const q = search.trim().toLowerCase();
+    const data = q
+      ? all.filter((s) => {
+          const trigger = LEAD_STATUS_LABELS[s.triggerStatus as keyof typeof LEAD_STATUS_LABELS] ?? s.triggerStatus;
+          return s.name.toLowerCase().includes(q) || trigger.toLowerCase().includes(q);
+        })
+      : all;
+    return { data, pagination: { total: data.length } };
+  }, []);
 
   const openCreate = () => {
     setEditingId(null);
@@ -94,13 +130,12 @@ export default function FollowUpSequencesPage() {
     setEditingId(seq.id);
     setForm({
       name: seq.name,
-      description: seq.description ?? '',
+      triggerStatus: seq.triggerStatus,
       steps: seq.steps.map((s) => ({
-        order: s.order,
-        delayDays: s.delayDays,
+        day: s.day,
         type: s.type,
-        message: s.message ?? '',
-        template: s.template ?? '',
+        notes: s.notes ?? '',
+        templateId: s.templateId ?? '',
       })),
       isActive: seq.isActive,
     });
@@ -108,13 +143,13 @@ export default function FollowUpSequencesPage() {
   };
 
   const addStep = () => {
-    setForm((p) => ({ ...p, steps: [...p.steps, { ...emptyStep, order: p.steps.length + 1 }] }));
+    setForm((p) => ({ ...p, steps: [...p.steps, { ...emptyStep, day: (p.steps[p.steps.length - 1]?.day ?? 0) + 1 }] }));
   };
 
   const removeStep = (idx: number) => {
     setForm((p) => ({
       ...p,
-      steps: p.steps.filter((_, i) => i !== idx).map((s, i) => ({ ...s, order: i + 1 })),
+      steps: p.steps.filter((_, i) => i !== idx),
     }));
   };
 
@@ -133,9 +168,14 @@ export default function FollowUpSequencesPage() {
     }
     try {
       const payload = {
-        name: form.name,
-        description: form.description || undefined,
-        steps: form.steps,
+        name: form.name.trim(),
+        triggerStatus: form.triggerStatus,
+        steps: form.steps.map((st) => ({
+          day: st.day,
+          type: st.type,
+          ...(st.notes.trim() && { notes: st.notes.trim() }),
+          ...(st.templateId && { templateId: st.templateId }),
+        })),
         isActive: form.isActive,
       };
       if (editingId) {
@@ -179,7 +219,8 @@ export default function FollowUpSequencesPage() {
         title="Follow-up Sequences"
         description="Configure automated follow-up workflows for leads."
         getRowId={(s) => s.id}
-        fetcher={({ page }) => fetchAll(page)}
+        fetcher={fetchAll}
+        searchPlaceholder="Search sequences…"
         extractItems={(r) => (r as { data: FollowUpSequence[] }).data}
         extractTotal={(r) => (r as { pagination: { total: number } }).pagination.total}
         primaryAction={
@@ -190,9 +231,9 @@ export default function FollowUpSequencesPage() {
         columns={[
           { key: 'name', header: 'Name', sortable: true },
           {
-            key: 'description',
-            header: 'Description',
-            cell: (s) => <span className="text-ds-foreground-muted truncate max-w-[200px] block">{s.description || '-'}</span>,
+            key: 'triggerStatus',
+            header: 'Trigger',
+            cell: (s) => <span>{LEAD_STATUS_LABELS[s.triggerStatus as keyof typeof LEAD_STATUS_LABELS] ?? s.triggerStatus}</span>,
           },
           {
             key: 'steps',
@@ -200,7 +241,7 @@ export default function FollowUpSequencesPage() {
             cell: (s) => (
               <div className="flex items-center gap-ds-1">
                 {s.steps.map((step, i) => (
-                  <span key={i} title={`Day ${step.delayDays}: ${step.type}`}>
+                  <span key={i} title={`Day ${step.day}: ${step.type}`}>
                     {stepTypeIcons[step.type]}
                   </span>
                 ))}
@@ -239,8 +280,8 @@ export default function FollowUpSequencesPage() {
         ]}
         onExport={(rows) => {
           const csv = [
-            ['Name', 'Description', 'Steps', 'Status'].join(','),
-            ...rows.map((s) => [`"${s.name}"`, `"${s.description ?? ''}"`, s.steps.length, s.isActive ? 'Active' : 'Disabled'].join(',')),
+            ['Name', 'Trigger', 'Steps', 'Status'].join(','),
+            ...rows.map((s) => [`"${s.name}"`, `"${s.triggerStatus}"`, s.steps.length, s.isActive ? 'Active' : 'Disabled'].join(',')),
           ].join('\n');
           const blob = new Blob([csv], { type: 'text/csv' });
           const url = URL.createObjectURL(blob);
@@ -275,19 +316,22 @@ export default function FollowUpSequencesPage() {
                 placeholder="e.g., New Lead Welcome Sequence"
               />
             </div>
-            <div className="space-y-ds-2">
-              <Label htmlFor="seqDesc">Description</Label>
-              <Textarea
-                id="seqDesc"
-                value={form.description}
-                onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
-                rows={2}
-                placeholder="Describe what this sequence does"
-              />
-            </div>
-            <div className="flex items-center gap-ds-3">
-              <Switch checked={form.isActive} onCheckedChange={(v) => setForm((p) => ({ ...p, isActive: v }))} />
-              <Label>Active</Label>
+            <div className="grid grid-cols-2 gap-ds-4">
+              <div className="space-y-ds-2">
+                <Label htmlFor="seqTrigger">Trigger Status</Label>
+                <Select value={form.triggerStatus} onValueChange={(v) => setForm((p) => ({ ...p, triggerStatus: v }))}>
+                  <SelectTrigger id="seqTrigger"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {TRIGGER_STATUSES.map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-end gap-ds-3 pb-ds-2">
+                <Switch id="seqActive" checked={form.isActive} onCheckedChange={(v) => setForm((p) => ({ ...p, isActive: v }))} />
+                <Label htmlFor="seqActive">Active</Label>
+              </div>
             </div>
 
             <Separator />
@@ -300,11 +344,11 @@ export default function FollowUpSequencesPage() {
                 </Button>
               </div>
               {form.steps.map((step, idx) => (
-                <div key={idx} className="rounded-ds-md border border-ds-border p-ds-4 space-y-ds-3">
+                <div key={idx} className="rounded-ds-md border border-ds-border p-ds-4 space-y-ds-3" data-testid="sequence-step">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">Step {idx + 1}</span>
                     {form.steps.length > 1 && (
-                      <Button variant="ghost" size="icon-sm" className="text-ds-danger" onClick={() => removeStep(idx)} aria-label="Remove step">
+                      <Button variant="ghost" size="icon-sm" className="text-ds-danger" onClick={() => removeStep(idx)} aria-label={`Remove step ${idx + 1}`}>
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     )}
@@ -313,40 +357,47 @@ export default function FollowUpSequencesPage() {
                     <div className="space-y-ds-1">
                       <Label className="text-xs">Type</Label>
                       <Select value={step.type} onValueChange={(v) => updateStep(idx, { type: v as StepType })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectTrigger aria-label={`Step ${idx + 1} type`}><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="email">Email</SelectItem>
-                          <SelectItem value="sms">SMS</SelectItem>
-                          <SelectItem value="call">Call</SelectItem>
-                          <SelectItem value="task">Task</SelectItem>
+                          {STEP_TYPES.map((t) => (
+                            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-ds-1">
-                      <Label className="text-xs">Delay (days)</Label>
+                      <Label className="text-xs">Day</Label>
                       <Input
                         type="number"
                         min={0}
-                        value={step.delayDays}
-                        onChange={(e) => updateStep(idx, { delayDays: parseInt(e.target.value, 10) || 0 })}
+                        aria-label={`Step ${idx + 1} day`}
+                        value={step.day}
+                        onChange={(e) => updateStep(idx, { day: parseInt(e.target.value, 10) || 0 })}
                       />
                     </div>
                     <div className="space-y-ds-1">
                       <Label className="text-xs">Template (optional)</Label>
-                      <Input
-                        value={step.template}
-                        onChange={(e) => updateStep(idx, { template: e.target.value })}
-                        placeholder="template-id"
+                      <RelationCombobox<MessageTemplate>
+                        value={step.templateId || null}
+                        onChange={(id) => updateStep(idx, { templateId: id ?? '' })}
+                        fetcher={fetchTemplates}
+                        getOptionId={(t) => t.id}
+                        getOptionLabel={(t) => t.name}
+                        getOptionDescription={(t) => t.channel}
+                        resolveSelected={resolveTemplate}
+                        placeholder="Select a template"
+                        aria-label={`Step ${idx + 1} template`}
                       />
                     </div>
                   </div>
                   <div className="space-y-ds-1">
-                    <Label className="text-xs">Message</Label>
+                    <Label className="text-xs">Notes</Label>
                     <Textarea
-                      value={step.message}
-                      onChange={(e) => updateStep(idx, { message: e.target.value })}
+                      aria-label={`Step ${idx + 1} notes`}
+                      value={step.notes}
+                      onChange={(e) => updateStep(idx, { notes: e.target.value })}
                       rows={2}
-                      placeholder="Message content or description"
+                      placeholder="What should happen at this step"
                     />
                   </div>
                 </div>

@@ -53,7 +53,7 @@ export async function rateLimit(
   await kv.put(
     key,
     JSON.stringify({ count: entry.count + 1, firstAt: entry.firstAt }),
-    { expirationTtl: Math.ceil(windowSecs - elapsed) }
+    { expirationTtl: Math.max(60, Math.ceil(windowSecs - elapsed)) } // KV rejects TTLs under 60s
   );
 
   return { allowed: true, remaining: max - entry.count - 1 };

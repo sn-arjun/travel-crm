@@ -16,7 +16,7 @@ import {
   Textarea,
 } from '@/components/ui';
 import { toast } from 'sonner';
-import { settingsApi } from '@/lib/api/settings';
+import { settingsApi, type TaxSystem } from '@/lib/api/settings';
 import { useApiQuery } from '@/hooks/use-api';
 
 const schema = z.object({
@@ -26,27 +26,14 @@ const schema = z.object({
   branch: z.string().optional(),
   accountHolderName: z.string().optional(),
   upiId: z.string().optional(),
-  defaultCurrency: z.string(),
-  defaultTaxSystem: z.string(),
-  defaultPaymentTerms: z.string(),
-  defaultNotes: z.string().optional(),
-  defaultTerms: z.string().optional(),
+  gstin: z.string().optional(),
+  companyState: z.string().optional(),
+  taxSystem: z.enum(['gst', 'vat', 'sales_tax', 'none']),
+  defaultTaxRate: z.string().refine((v) => v !== '' && Number(v) >= 0 && Number(v) <= 100, 'Enter a rate between 0 and 100'),
+  defaultDueDays: z.string().refine((v) => /^\d+$/.test(v) && Number(v) >= 1 && Number(v) <= 365, 'Enter 1–365 days'),
+  defaultPaymentTerms: z.string().optional(),
 });
 type InvoiceDefaultsForm = z.infer<typeof schema>;
-
-const defaultValues: InvoiceDefaultsForm = {
-  bankName: '',
-  accountNumber: '',
-  ifsc: '',
-  branch: '',
-  accountHolderName: '',
-  upiId: '',
-  defaultCurrency: 'INR',
-  defaultTaxSystem: 'GST',
-  defaultPaymentTerms: '30',
-  defaultNotes: '',
-  defaultTerms: '',
-};
 
 export default function InvoiceDefaultsPage() {
   const router = useRouter();
@@ -70,7 +57,7 @@ export default function InvoiceDefaultsPage() {
   return (
     <EntityForm<InvoiceDefaultsForm>
       title="Invoice Defaults"
-      description="Bank details and default values applied to new invoices."
+      description="Bank details, tax and payment defaults applied to new invoices."
       schema={schema}
       defaultValues={{
         bankName: d?.bankName ?? '',
@@ -79,24 +66,36 @@ export default function InvoiceDefaultsPage() {
         branch: d?.branch ?? '',
         accountHolderName: d?.accountHolderName ?? '',
         upiId: d?.upiId ?? '',
-        defaultCurrency: d?.defaultCurrency ?? 'INR',
-        defaultTaxSystem: d?.defaultTaxSystem ?? 'GST',
-        defaultPaymentTerms: String(d?.defaultPaymentTerms ?? '30'),
-        defaultNotes: d?.defaultNotes ?? '',
-        defaultTerms: d?.defaultTerms ?? '',
+        gstin: d?.gstin ?? '',
+        companyState: d?.companyState ?? '',
+        taxSystem: d?.taxSystem ?? 'gst',
+        defaultTaxRate: String(d?.defaultTaxRate ?? 18),
+        defaultDueDays: String(d?.defaultDueDays ?? 30),
+        defaultPaymentTerms: d?.defaultPaymentTerms ?? '',
       }}
       onCancel={() => router.push('/settings')}
       onSubmit={async (v) => {
-        const result = await settingsApi.invoiceDefaults.update({
-          ...v,
-          defaultPaymentTerms: parseInt(v.defaultPaymentTerms, 10),
-        });
-        if (result && 'data' in result) {
-          toast.success('Invoice defaults saved successfully');
-          router.push('/settings');
-        } else {
+        try {
+          await settingsApi.invoiceDefaults.update({
+            bankName: v.bankName ?? '',
+            accountNumber: v.accountNumber ?? '',
+            ifsc: v.ifsc ?? '',
+            branch: v.branch ?? '',
+            accountHolderName: v.accountHolderName ?? '',
+            upiId: v.upiId ?? '',
+            gstin: v.gstin ?? '',
+            companyState: v.companyState ?? '',
+            taxSystem: v.taxSystem as TaxSystem,
+            defaultTaxRate: Number(v.defaultTaxRate),
+            defaultDueDays: Number(v.defaultDueDays),
+            defaultPaymentTerms: v.defaultPaymentTerms ?? '',
+          });
+        } catch {
           toast.error('Failed to save invoice defaults');
+          return;
         }
+        toast.success('Invoice defaults saved successfully');
+        router.push('/settings');
       }}
       renderSections={(form) => (
         <>
@@ -123,43 +122,38 @@ export default function InvoiceDefaultsPage() {
             </div>
           </SectionCard>
 
-          <SectionCard title="Invoice Defaults" description="Default values applied to new invoices" required>
-            <div className="grid gap-ds-4 sm:grid-cols-3">
-              <FormRow name="defaultCurrency" label="Default Currency" required>
-                <Select value={form.watch('defaultCurrency')} onValueChange={(v) => form.setValue('defaultCurrency', v, { shouldDirty: true })}>
-                  <SelectTrigger id="defaultCurrency"><SelectValue /></SelectTrigger>
+          <SectionCard title="Tax" description="Registration and default tax applied to new invoices" required>
+            <div className="grid gap-ds-4 sm:grid-cols-2">
+              <FormRow name="taxSystem" label="Tax System" required>
+                <Select value={form.watch('taxSystem')} onValueChange={(v) => form.setValue('taxSystem', v as TaxSystem, { shouldDirty: true })}>
+                  <SelectTrigger id="taxSystem"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="INR">INR - Indian Rupee</SelectItem>
-                    <SelectItem value="USD">USD - US Dollar</SelectItem>
-                    <SelectItem value="EUR">EUR - Euro</SelectItem>
-                    <SelectItem value="GBP">GBP - British Pound</SelectItem>
+                    <SelectItem value="gst">GST</SelectItem>
+                    <SelectItem value="vat">VAT</SelectItem>
+                    <SelectItem value="sales_tax">Sales Tax</SelectItem>
+                    <SelectItem value="none">None</SelectItem>
                   </SelectContent>
                 </Select>
               </FormRow>
-              <FormRow name="defaultTaxSystem" label="Default Tax System" required>
-                <Select value={form.watch('defaultTaxSystem')} onValueChange={(v) => form.setValue('defaultTaxSystem', v, { shouldDirty: true })}>
-                  <SelectTrigger id="defaultTaxSystem"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="GST">GST</SelectItem>
-                    <SelectItem value="VAT">VAT</SelectItem>
-                    <SelectItem value="None">None</SelectItem>
-                  </SelectContent>
-                </Select>
+              <FormRow name="defaultTaxRate" label="Default Tax Rate (%)" required>
+                <Input {...form.register('defaultTaxRate')} id="defaultTaxRate" type="number" min="0" max="100" step="0.01" placeholder="18" />
               </FormRow>
-              <FormRow name="defaultPaymentTerms" label="Payment Terms (days)" required>
-                <Input
-                  {...form.register('defaultPaymentTerms')}
-                  id="defaultPaymentTerms"
-                  type="number"
-                  min="0"
-                  placeholder="30"
-                />
+              <FormRow name="gstin" label="GSTIN">
+                <Input {...form.register('gstin')} id="gstin" placeholder="22AAAAA0000A1Z5" />
               </FormRow>
-              <FormRow name="defaultNotes" label="Default Notes" wide>
-                <Textarea {...form.register('defaultNotes')} id="defaultNotes" rows={3} placeholder="Notes that appear on every invoice by default..." />
+              <FormRow name="companyState" label="Company State" hint="Used to decide between CGST/SGST and IGST.">
+                <Input {...form.register('companyState')} id="companyState" placeholder="e.g., Karnataka" />
               </FormRow>
-              <FormRow name="defaultTerms" label="Default Terms & Conditions" wide>
-                <Textarea {...form.register('defaultTerms')} id="defaultTerms" rows={4} placeholder="Terms & conditions that appear on every invoice by default..." />
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Payment" description="Default due date and terms for new invoices" required>
+            <div className="grid gap-ds-4 sm:grid-cols-2">
+              <FormRow name="defaultDueDays" label="Payment Due (days)" required>
+                <Input {...form.register('defaultDueDays')} id="defaultDueDays" type="number" min="1" max="365" placeholder="30" />
+              </FormRow>
+              <FormRow name="defaultPaymentTerms" label="Payment Terms" wide>
+                <Textarea {...form.register('defaultPaymentTerms')} id="defaultPaymentTerms" rows={3} placeholder="Terms that appear on every invoice by default..." />
               </FormRow>
             </div>
           </SectionCard>

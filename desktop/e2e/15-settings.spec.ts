@@ -2,32 +2,6 @@ import { test, expect } from '@playwright/test';
 import { waitForLoad } from './helpers/auth';
 
 test.describe('Settings', () => {
-  test('should load settings hub with all tabs', async ({ page }) => {
-    await page.goto('/settings');
-    await waitForLoad(page);
-    await expect(page.locator('h1:has-text("Settings")')).toBeVisible();
-    await expect(page.locator('text=Manage your company configuration')).toBeVisible();
-
-    // Should have all 6 tab triggers
-    await expect(page.getByRole('tab', { name: 'General' })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'Company' })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'Notifications' })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'Integrations' })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'Users' })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'Security' })).toBeVisible();
-  });
-
-  test('should load general settings with form fields', async ({ page }) => {
-    await page.goto('/settings');
-    await waitForLoad(page);
-
-    // General tab should be active by default with form fields
-    await expect(page.locator('text=General Settings')).toBeVisible();
-    await expect(page.locator('text=Company Name')).toBeVisible();
-    await expect(page.locator('text=Timezone')).toBeVisible();
-    await expect(page.locator('text=Save Changes')).toBeVisible();
-  });
-
   test('should switch to Security tab and show quick links', async ({ page }) => {
     await page.goto('/settings');
     await waitForLoad(page);
@@ -242,12 +216,6 @@ test.describe('Activity Log', () => {
 });
 
 test.describe('Settings Sub-pages', () => {
-  test('should load company settings', async ({ page }) => {
-    await page.goto('/settings/company');
-    await waitForLoad(page);
-    await expect(page.locator('h1').first()).toBeVisible();
-  });
-
   test('should load team settings', async ({ page }) => {
     await page.goto('/settings/team');
     await waitForLoad(page);

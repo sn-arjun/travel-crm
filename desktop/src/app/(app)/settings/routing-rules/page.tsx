@@ -1,291 +1,177 @@
 'use client';
 
 import * as React from 'react';
-import { Pencil, Plus, Power, PowerOff, Route, Trash2 } from 'lucide-react';
-import { ListPage, RelationCombobox } from '@/components/domain';
+import { Plus, Route, Trash2 } from 'lucide-react';
+import { RelationCombobox } from '@/components/domain';
 import {
   Button,
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  Input,
+  EmptyState,
   Label,
-  Switch,
-  Tag,
-  Textarea,
+  PageHeader,
+  SectionCard,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Skeleton,
+  Spinner,
 } from '@/components/ui';
 import { toast } from 'sonner';
-import { settingsApi, type RoutingRule } from '@/lib/api/settings';
-import { usersApi } from '@/lib/api/users';
+import { fetchUserOptions, resolveUserOption, settingsApi, type LeadSource } from '@/lib/api/settings';
+import { useApiQuery } from '@/hooks/use-api';
 import type { User } from '@travelcrm/shared';
 
-interface RuleForm {
-  name: string;
-  priority: number;
-  condition: string;
-  destination: string;
-  isActive: boolean;
+interface RuleRow {
+  key: number;
+  source: LeadSource | '';
+  assignToUserId: string;
 }
 
-const emptyForm: RuleForm = {
-  name: '',
-  priority: 1,
-  condition: '{}',
-  destination: '',
-  isActive: true,
-};
+const SOURCES: Array<{ value: LeadSource; label: string }> = [
+  { value: 'manual', label: 'Manual entry' },
+  { value: 'website', label: 'Website' },
+  { value: 'facebook', label: 'Facebook' },
+  { value: 'google', label: 'Google' },
+  { value: 'referral', label: 'Referral' },
+  { value: 'walkin', label: 'Walk-in' },
+];
 
 export default function RoutingRulesPage() {
-  const [dialogOpen, setDialogOpen] = React.useState(false);
-  const [editingId, setEditingId] = React.useState<string | null>(null);
-  const [form, setForm] = React.useState<RuleForm>(emptyForm);
-  const [refreshKey, setRefreshKey] = React.useState(0);
-  const [cachedRules, setCachedRules] = React.useState<RoutingRule[]>([]);
+  const { data: response, loading } = useApiQuery(() => settingsApi.routingRules.get(), []);
+  const [rows, setRows] = React.useState<RuleRow[]>([]);
+  const [saving, setSaving] = React.useState(false);
+  const nextKey = React.useRef(1);
 
-  const fetchAll = React.useCallback(async (page: number) => {
-    if (page > 1) return { data: [], pagination: { total: cachedRules.length } };
-    const res = await settingsApi.routingRules.list();
-    const rules = ('data' in res ? (res.data as RoutingRule[]) : []) ?? [];
-    setCachedRules(rules);
-    return { data: rules.sort((a, b) => a.priority - b.priority), pagination: { total: rules.length } };
-  }, [cachedRules.length]);
+  React.useEffect(() => {
+    if (!response || !('data' in response) || !Array.isArray(response.data)) return;
+    setRows(
+      response.data.map((r) => ({
+        key: nextKey.current++,
+        source: r.source,
+        assignToUserId: r.assignToUserId,
+      })),
+    );
+  }, [response]);
 
-  const openCreate = () => {
-    setEditingId(null);
-    setForm({ ...emptyForm, priority: cachedRules.length + 1 });
-    setDialogOpen(true);
-  };
+  const updateRow = (key: number, patch: Partial<RuleRow>) =>
+    setRows((list) => list.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
-  const openEdit = (rule: RoutingRule) => {
-    setEditingId(rule.id);
-    setForm({
-      name: rule.name,
-      priority: rule.priority,
-      condition: JSON.stringify(rule.condition, null, 2),
-      destination: rule.destination,
-      isActive: rule.isActive,
+  const addRow = () =>
+    setRows((list) => {
+      const used = new Set(list.map((r) => r.source));
+      const free = SOURCES.find((s) => !used.has(s.value));
+      return [...list, { key: nextKey.current++, source: free?.value ?? '', assignToUserId: '' }];
     });
-    setDialogOpen(true);
-  };
 
   const handleSave = async () => {
-    if (!form.name.trim()) {
-      toast.error('Rule name is required');
+    if (rows.some((r) => !r.source)) {
+      toast.error('Pick a lead source for every rule');
       return;
     }
-    if (!form.destination) {
-      toast.error('Pick a destination user');
+    if (rows.some((r) => !r.assignToUserId)) {
+      toast.error('Pick a user to assign to for every rule');
       return;
     }
-    let parsedCondition: Record<string, unknown> = {};
+    if (new Set(rows.map((r) => r.source)).size !== rows.length) {
+      toast.error('Each lead source can only have one rule');
+      return;
+    }
+    setSaving(true);
     try {
-      parsedCondition = JSON.parse(form.condition);
+      await settingsApi.routingRules.update(
+        rows.map((r) => ({ source: r.source as LeadSource, assignToUserId: r.assignToUserId })),
+      );
+      toast.success('Routing rules saved successfully');
     } catch {
-      toast.error('Condition must be valid JSON');
-      return;
-    }
-    try {
-      if (editingId) {
-        await settingsApi.routingRules.update(editingId, {
-          name: form.name,
-          priority: form.priority,
-          condition: parsedCondition,
-          destination: form.destination,
-          isActive: form.isActive,
-        });
-        toast.success('Routing rule updated');
-      } else {
-        await settingsApi.routingRules.create({
-          name: form.name,
-          priority: form.priority,
-          condition: parsedCondition,
-          destination: form.destination,
-          isActive: form.isActive,
-        });
-        toast.success('Routing rule created');
-      }
-      setDialogOpen(false);
-      setRefreshKey((k) => k + 1);
-    } catch {
-      toast.error('Failed to save routing rule');
+      toast.error('Failed to save routing rules');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleDelete = async (rule: RoutingRule) => {
-    try {
-      await settingsApi.routingRules.delete(rule.id);
-      toast.success('Routing rule deleted');
-      setRefreshKey((k) => k + 1);
-    } catch {
-      toast.error('Failed to delete routing rule');
-    }
-  };
-
-  const handleToggle = async (rule: RoutingRule) => {
-    try {
-      await settingsApi.routingRules.update(rule.id, { isActive: !rule.isActive });
-      toast.success(`Rule ${rule.isActive ? 'disabled' : 'enabled'}`);
-      setRefreshKey((k) => k + 1);
-    } catch {
-      toast.error('Failed to update rule');
-    }
-  };
+  if (loading) {
+    return (
+      <div className="space-y-ds-4 p-ds-6">
+        <Skeleton className="h-9 w-64" />
+        <Skeleton className="h-48 w-full" />
+      </div>
+    );
+  }
 
   return (
-    <>
-      <ListPage<RoutingRule>
-        key={refreshKey}
+    <div className="flex flex-col gap-ds-4">
+      <PageHeader
         title="Lead Routing Rules"
-        description="Rules are evaluated in priority order (lowest number first)."
-        getRowId={(r) => r.id}
-        fetcher={({ page }) => fetchAll(page)}
-        extractItems={(r) => (r as { data: RoutingRule[] }).data}
-        extractTotal={(r) => (r as { pagination: { total: number } }).pagination.total}
-        primaryAction={
-          <Button size="sm" onClick={openCreate} className="gap-ds-2">
-            <Plus className="h-4 w-4" aria-hidden="true" /> Add Rule
-          </Button>
-        }
-        columns={[
-          { key: 'priority', header: 'Priority', width: '90px', cell: (r) => <span className="font-mono text-sm">{r.priority}</span> },
-          { key: 'name', header: 'Name', sortable: true },
-          {
-            key: 'condition',
-            header: 'Condition',
-            cell: (r) => (
-              <code className="text-xs bg-ds-surface-sunken px-ds-2 py-ds-1 rounded-ds-sm">
-                {JSON.stringify(r.condition).slice(0, 50)}
-                {JSON.stringify(r.condition).length > 50 ? '…' : ''}
-              </code>
-            ),
-          },
-          { key: 'destination', header: 'Destination' },
-          {
-            key: 'isActive',
-            header: 'Status',
-            cell: (r) => <Tag tone={r.isActive ? 'success' : 'neutral'}>{r.isActive ? 'Active' : 'Disabled'}</Tag>,
-          },
-        ]}
-        rowActions={(r) => (
-          <>
-            <Button variant="ghost" size="icon-sm" aria-label={r.isActive ? 'Disable' : 'Enable'} onClick={() => handleToggle(r)}>
-              {r.isActive ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
-            </Button>
-            <Button variant="ghost" size="icon-sm" aria-label="Edit" onClick={() => openEdit(r)}>
-              <Pencil className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon-sm" aria-label="Delete" onClick={() => handleDelete(r)}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </>
-        )}
-        bulkActions={[
-          {
-            label: 'Delete',
-            destructive: true,
-            onSelect: async (rows) => {
-              await Promise.all(rows.map((r) => settingsApi.routingRules.delete(r.id)));
-              setRefreshKey((k) => k + 1);
-            },
-          },
-        ]}
-        onExport={(rows) => {
-          const csv = [
-            ['Priority', 'Name', 'Condition', 'Destination', 'Status'].join(','),
-            ...rows.map((r) =>
-              [r.priority, `"${r.name}"`, `"${JSON.stringify(r.condition)}"`, r.destination, r.isActive ? 'Active' : 'Disabled'].join(','),
-            ),
-          ].join('\n');
-          const blob = new Blob([csv], { type: 'text/csv' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = 'routing-rules.csv';
-          a.click();
-          URL.revokeObjectURL(url);
-        }}
-        emptyTitle="No routing rules configured"
-        emptyDescription="Create rules to automatically route leads to the right team or user."
-        emptyIcon={<Route className="h-10 w-10" aria-hidden="true" />}
-        emptyAction={
-          <Button onClick={openCreate} variant="outline" className="gap-ds-2">
-            <Plus className="h-4 w-4" aria-hidden="true" /> Create First Rule
+        description="Send leads from a given source straight to a specific user."
+        sticky
+        actions={
+          <Button onClick={handleSave} disabled={saving} className="gap-ds-2">
+            {saving && <Spinner className="size-4" />}
+            Save Routing Rules
           </Button>
         }
       />
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{editingId ? 'Edit Routing Rule' : 'Create Routing Rule'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-ds-4 py-ds-4">
-            <div className="space-y-ds-2">
-              <Label htmlFor="ruleName">Rule Name</Label>
-              <Input
-                id="ruleName"
-                value={form.name}
-                onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-                placeholder="e.g., Route high-value leads to senior agent"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-ds-4">
-              <div className="space-y-ds-2">
-                <Label htmlFor="rulePriority">Priority</Label>
-                <Input
-                  id="rulePriority"
-                  type="number"
-                  min={1}
-                  value={form.priority}
-                  onChange={(e) => setForm((p) => ({ ...p, priority: parseInt(e.target.value, 10) || 1 }))}
-                />
+      <SectionCard title="Source Routing" description="Each lead source can route to one user.">
+        {rows.length === 0 ? (
+          <EmptyState
+            icon={<Route className="h-10 w-10" aria-hidden="true" />}
+            title="No routing rules configured"
+            description="Create a rule to route leads from a source to the right user."
+            action={
+              <Button variant="outline" onClick={addRow} className="gap-ds-2">
+                <Plus className="h-4 w-4" aria-hidden="true" /> Add Rule
+              </Button>
+            }
+          />
+        ) : (
+          <div className="flex flex-col gap-ds-3">
+            {rows.map((r, idx) => (
+              <div key={r.key} className="grid grid-cols-[200px_1fr_auto] items-end gap-ds-3" data-testid="routing-rule-row">
+                <div className="flex flex-col gap-ds-1">
+                  <Label>Lead Source</Label>
+                  <Select value={r.source} onValueChange={(v) => updateRow(r.key, { source: v as LeadSource })}>
+                    <SelectTrigger aria-label={`Lead source ${idx + 1}`}><SelectValue placeholder="Select source" /></SelectTrigger>
+                    <SelectContent>
+                      {SOURCES.map((s) => (
+                        <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-ds-1">
+                  <Label>Assign To</Label>
+                  <RelationCombobox<User>
+                    value={r.assignToUserId || null}
+                    onChange={(id) => updateRow(r.key, { assignToUserId: id ?? '' })}
+                    fetcher={fetchUserOptions}
+                    getOptionId={(u) => u.id}
+                    getOptionLabel={(u) => u.name}
+                    getOptionDescription={(u) => u.email}
+                    resolveSelected={resolveUserOption}
+                    placeholder="Select a user"
+                    aria-label={`Assign to ${idx + 1}`}
+                  />
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Remove rule ${idx + 1}`}
+                  onClick={() => setRows((list) => list.filter((x) => x.key !== r.key))}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
               </div>
-              <div className="space-y-ds-2">
-                <Label htmlFor="ruleDestination">Destination</Label>
-                <RelationCombobox<User>
-                  value={form.destination || null}
-                  onChange={(id) => setForm((p) => ({ ...p, destination: id ?? '' }))}
-                  fetcher={async (q, page) => {
-                    const r = await usersApi.list({ search: q, page, limit: 20 });
-                    const items = ('data' in r ? r.data.data : []) ?? [];
-                    const total = ('data' in r ? r.data.pagination?.total : 0) ?? 0;
-                    return { items, total };
-                  }}
-                  getOptionId={(u) => u.id}
-                  getOptionLabel={(u) => u.name}
-                  getOptionDescription={(u) => u.email}
-                  resolveSelected={async (id) => {
-                    const r = await usersApi.getById(id);
-                    return 'data' in r ? r.data : null;
-                  }}
-                  placeholder="Select a user or team"
-                />
-              </div>
-            </div>
-            <div className="space-y-ds-2">
-              <Label htmlFor="ruleCondition">Condition (JSON)</Label>
-              <Textarea
-                id="ruleCondition"
-                value={form.condition}
-                onChange={(e) => setForm((p) => ({ ...p, condition: e.target.value }))}
-                rows={5}
-                className="font-mono text-sm"
-                placeholder='{"source": "website", "budget": {"$gt": 50000}}'
-              />
-            </div>
-            <div className="flex items-center gap-ds-3">
-              <Switch checked={form.isActive} onCheckedChange={(v) => setForm((p) => ({ ...p, isActive: v }))} />
-              <Label>Active</Label>
+            ))}
+            <div>
+              <Button variant="outline" size="sm" onClick={addRow} disabled={rows.length >= SOURCES.length} className="gap-ds-2">
+                <Plus className="h-4 w-4" aria-hidden="true" /> Add Rule
+              </Button>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSave}>{editingId ? 'Update' : 'Create'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+        )}
+      </SectionCard>
+    </div>
   );
 }

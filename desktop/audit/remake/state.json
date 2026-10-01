@@ -546,11 +546,17 @@
       "timestamp": "2026-10-01T12:17:54.161Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "verify:settings-company": {
+      "status": "ok",
+      "timestamp": "2026-10-01T12:33:07.890Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "verify:reports",
+    "id": "verify:settings-company",
     "status": "ok",
-    "timestamp": "2026-10-01T12:17:54.161Z"
+    "timestamp": "2026-10-01T12:33:07.890Z"
   }
 }

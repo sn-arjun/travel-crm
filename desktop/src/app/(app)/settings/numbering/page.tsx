@@ -34,7 +34,7 @@ type NumberingForm = z.infer<typeof schema>;
 const defaultValues: NumberingForm = {
   invoicePrefix: 'INV',
   proformaPrefix: 'PI',
-  receiptPrefix: 'RCT',
+  receiptPrefix: 'RCP',
   creditNotePrefix: 'CN',
   debitNotePrefix: 'DN',
   voucherPrefix: 'VCH',
@@ -83,16 +83,17 @@ export default function NumberingSettingsPage() {
       }}
       onCancel={() => router.push('/settings')}
       onSubmit={async (v) => {
-        const result = await settingsApi.numberingConfig.update({
-          ...v,
-          fyStartMonth: parseInt(v.fyStartMonth, 10),
-        });
-        if (result && 'data' in result) {
-          toast.success('Numbering configuration saved successfully');
-          router.push('/settings');
-        } else {
+        try {
+          await settingsApi.numberingConfig.update({
+            ...v,
+            fyStartMonth: parseInt(v.fyStartMonth, 10),
+          });
+        } catch {
           toast.error('Failed to save numbering configuration');
+          return;
         }
+        toast.success('Numbering configuration saved successfully');
+        router.push('/settings');
       }}
       renderSections={(form) => (
         <SectionCard title="Document Prefixes" required>
@@ -104,7 +105,7 @@ export default function NumberingSettingsPage() {
               <Input {...form.register('proformaPrefix')} id="proformaPrefix" placeholder="PI" />
             </FormRow>
             <FormRow name="receiptPrefix" label="Receipt Prefix" required>
-              <Input {...form.register('receiptPrefix')} id="receiptPrefix" placeholder="RCT" />
+              <Input {...form.register('receiptPrefix')} id="receiptPrefix" placeholder="RCP" />
             </FormRow>
             <FormRow name="creditNotePrefix" label="Credit Note Prefix" required>
               <Input {...form.register('creditNotePrefix')} id="creditNotePrefix" placeholder="CN" />

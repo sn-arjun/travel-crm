@@ -8,6 +8,7 @@ import { EntityForm, FormRow } from '@/components/domain';
 import {
   Avatar,
   AvatarFallback,
+  AvatarImage,
   Button,
   Input,
   PhoneInput,
@@ -23,12 +24,14 @@ import {
 import { toast } from 'sonner';
 import { settingsApi, type UpdateCompanySettingsRequest } from '@/lib/api/settings';
 import { useApiQuery } from '@/hooks/use-api';
+import { API_BASE_URL } from '@/lib/api/config';
 
 const schema = z.object({
   name: z.string().min(1, 'Company name is required'),
   email: z.string().email('Enter a valid email').or(z.literal('')),
   phone: z.string().optional(),
   website: z.string().optional(),
+  gstin: z.string().optional(),
   address: z.string().optional(),
   city: z.string().optional(),
   state: z.string().optional(),
@@ -45,6 +48,7 @@ const defaultValues: CompanyForm = {
   email: '',
   phone: '',
   website: '',
+  gstin: '',
   address: '',
   city: '',
   state: '',
@@ -55,8 +59,15 @@ const defaultValues: CompanyForm = {
   language: 'en',
 };
 
+// The stored phone is "<country code> <number>"; the form edits the two halves separately.
+function splitPhone(stored: string | undefined): { code: string; number: string } {
+  const m = (stored ?? '').trim().match(/^(\+\d{1,4})\s+(.*)$/);
+  return m ? { code: m[1]!, number: m[2]! } : { code: '+91', number: (stored ?? '').trim() };
+}
+
 export default function CompanySettingsPage() {
   const router = useRouter();
+  const [countryCode, setCountryCode] = React.useState('+91');
   const { data: settingsResponse, loading, refetch } = useApiQuery(
     () => settingsApi.company.get(),
     [],
@@ -66,6 +77,10 @@ export default function CompanySettingsPage() {
     if (!settingsResponse || !('data' in settingsResponse)) return null;
     return settingsResponse.data ?? null;
   }, [settingsResponse]);
+
+  React.useEffect(() => {
+    if (companySettings) setCountryCode(splitPhone(companySettings.phone).code);
+  }, [companySettings]);
 
   const companyInitials = (companySettings?.name || 'TC')
     .split(' ')
@@ -105,8 +120,9 @@ export default function CompanySettingsPage() {
         ...defaultValues,
         name: companySettings?.name ?? '',
         email: companySettings?.email ?? '',
-        phone: companySettings?.phone ?? '',
+        phone: splitPhone(companySettings?.phone).number,
         website: companySettings?.website ?? '',
+        gstin: companySettings?.gstin ?? '',
         address: companySettings?.address ?? '',
         city: companySettings?.city ?? '',
         state: companySettings?.state ?? '',
@@ -118,14 +134,18 @@ export default function CompanySettingsPage() {
       }}
       onCancel={() => router.push('/settings')}
       onSubmit={async (v) => {
-        const payload: UpdateCompanySettingsRequest = v;
-        const result = await settingsApi.company.update(payload);
-        if (result && 'data' in result) {
-          toast.success('Company settings saved successfully');
-          router.push('/settings');
-        } else {
+        const payload: UpdateCompanySettingsRequest = {
+          ...v,
+          phone: v.phone?.trim() ? `${countryCode} ${v.phone.trim()}` : '',
+        };
+        try {
+          await settingsApi.company.update(payload);
+        } catch {
           toast.error('Failed to save settings');
+          return;
         }
+        toast.success('Company settings saved successfully');
+        router.push('/settings');
       }}
       renderSections={(form) => (
         <>
@@ -133,6 +153,12 @@ export default function CompanySettingsPage() {
             <div className="space-y-ds-4">
               <div className="flex items-center gap-ds-4">
                 <Avatar className="h-16 w-16">
+                  {companySettings?.logoUrl && (
+                    <AvatarImage
+                      src={`${API_BASE_URL}${companySettings.logoUrl}`}
+                      alt="Company logo"
+                    />
+                  )}
                   <AvatarFallback className="bg-primary-subtle text-primary-on-subtle font-bold">
                     {companyInitials}
                   </AvatarFallback>
@@ -165,11 +191,16 @@ export default function CompanySettingsPage() {
                 <FormRow name="phone" label="Phone">
                   <PhoneInput
                     value={form.watch('phone') || ''}
+                    countryCode={countryCode}
+                    onCountryCodeChange={setCountryCode}
                     onChange={(v) => form.setValue('phone', v, { shouldDirty: true })}
                   />
                 </FormRow>
-                <FormRow name="website" label="Website" wide>
+                <FormRow name="website" label="Website">
                   <Input {...form.register('website')} id="website" placeholder="https://yourcompany.com" />
+                </FormRow>
+                <FormRow name="gstin" label="GSTIN">
+                  <Input {...form.register('gstin')} id="gstin" placeholder="22AAAAA0000A1Z5" />
                 </FormRow>
               </div>
             </div>
