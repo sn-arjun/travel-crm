@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { toast } from 'sonner';
 import { EntityForm, FormRow, RelationCombobox } from '@/components/domain';
 import { CurrencyInput, DatePicker, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } from '@/components/ui';
-import { rateCardsApi } from '@/lib/api/rate-cards';
+import { fetchSupplierOptions, rateCardsApi, supplierLabel, toDateOnly } from '@/lib/api/rate-cards';
 import { suppliersApi } from '@/lib/api/suppliers';
 import type { Supplier } from '@travelcrm/shared';
 
@@ -58,8 +58,8 @@ export default function NewRateCardPage() {
             currency: v.currency,
             season: v.season,
             unit: v.unit,
-            validFrom: v.validFrom ? v.validFrom.toISOString().slice(0, 10) : undefined,
-            validTo: v.validTo ? v.validTo.toISOString().slice(0, 10) : undefined,
+            validFrom: v.validFrom ? toDateOnly(v.validFrom) : undefined,
+            validTo: v.validTo ? toDateOnly(v.validTo) : undefined,
             description: v.description,
           });
           toast.success('Rate card created');
@@ -91,12 +91,9 @@ export default function NewRateCardPage() {
             <RelationCombobox<Supplier>
               value={form.watch('supplierId')}
               onChange={(id) => form.setValue('supplierId', id, { shouldDirty: true })}
-              fetcher={async (q, page) => {
-                const r = await suppliersApi.list({ search: q, page, limit: 20 });
-                return { items: r.data.data, total: r.data.pagination.total };
-              }}
+              fetcher={fetchSupplierOptions}
               getOptionId={(s) => s.id}
-              getOptionLabel={(s) => s.name}
+              getOptionLabel={(s) => supplierLabel(s)}
               resolveSelected={async (id) => (await suppliersApi.getById(id)).data}
               placeholder="Select supplier (optional)"
               searchPlaceholder="Search suppliers..."
@@ -117,6 +114,7 @@ export default function NewRateCardPage() {
 
           <FormRow name="costPrice" label="Cost Price" required>
             <CurrencyInput
+              id="costPrice"
               value={form.watch('costPrice')}
               onChange={(v) => form.setValue('costPrice', v as number, { shouldDirty: true })}
               currency={form.watch('currency')}
@@ -125,6 +123,7 @@ export default function NewRateCardPage() {
 
           <FormRow name="sellingPrice" label="Selling Price" hint="Optional — defaults to cost price">
             <CurrencyInput
+              id="sellingPrice"
               value={form.watch('sellingPrice')}
               onChange={(v) => form.setValue('sellingPrice', v, { shouldDirty: true })}
               currency={form.watch('currency')}

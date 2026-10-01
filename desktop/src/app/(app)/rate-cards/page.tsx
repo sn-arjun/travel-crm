@@ -6,7 +6,7 @@ import { CreditCard, Pencil, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ListPage } from '@/components/domain';
 import { Badge, Button, SectionCard, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, useConfirm } from '@/components/ui';
-import { rateCardsApi, type RateCard } from '@/lib/api/rate-cards';
+import { fromDateOnly, rateCardsApi, type RateCard } from '@/lib/api/rate-cards';
 
 const CATEGORY_OPTIONS = [
   { label: 'Hotel', value: 'hotel' },
@@ -27,7 +27,7 @@ function isExpired(validTo?: string | null) {
 
 function formatDate(value?: string | null) {
   return value
-    ? new Date(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+    ? fromDateOnly(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
     : '—';
 }
 
@@ -68,7 +68,23 @@ function downloadCsv(csv: string) {
 export default function RateCardsPage() {
   const router = useRouter();
   const [categoryFilter, setCategoryFilter] = React.useState('');
+  const [refreshKey, setRefreshKey] = React.useState(0);
   const { confirm, dialog: confirmDialog } = useConfirm();
+
+  // Stable identity: ListPage refetches whenever the fetcher changes, so refreshKey
+  // is how mutations force a reload.
+  const fetcher = React.useCallback(
+    ({ page, limit, search }: { page: number; limit: number; search: string }) =>
+      rateCardsApi.list({
+        page,
+        limit,
+        search: search || undefined,
+        serviceType: categoryFilter || undefined,
+        isActive: true,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [categoryFilter, refreshKey],
+  );
 
   const filters = categoryFilter
     ? [{ id: 'category', label: 'Category', value: CATEGORY_OPTIONS.find((o) => o.value === categoryFilter)?.label ?? categoryFilter }]
@@ -85,6 +101,7 @@ export default function RateCardsPage() {
     try {
       await rateCardsApi.delete(rc.id);
       toast.success('Rate card deleted');
+      setRefreshKey((k) => k + 1);
     } catch {
       toast.error('Failed to delete rate card');
     }
@@ -110,15 +127,7 @@ export default function RateCardsPage() {
         title="Rate Cards"
         description="Manage supplier pricing and seasonal rates."
         getRowId={(rc) => rc.id}
-        fetcher={({ page, limit, search }) =>
-          rateCardsApi.list({
-            page,
-            limit,
-            search: search || undefined,
-            serviceType: categoryFilter || undefined,
-            isActive: true,
-          })
-        }
+        fetcher={fetcher}
         searchPlaceholder="Search rate cards..."
         filters={filters}
         onRemoveFilter={() => setCategoryFilter('')}
@@ -246,6 +255,7 @@ export default function RateCardsPage() {
               if (!ok) return;
               await Promise.all(rows.map((r) => rateCardsApi.delete(r.id)));
               toast.success('Rate cards deleted');
+              setRefreshKey((k) => k + 1);
             },
           },
         ]}

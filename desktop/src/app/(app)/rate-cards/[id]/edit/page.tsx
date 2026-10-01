@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { toast } from 'sonner';
 import { EntityForm, FormRow, RelationCombobox } from '@/components/domain';
 import { Button, CurrencyInput, DatePicker, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Textarea } from '@/components/ui';
-import { rateCardsApi } from '@/lib/api/rate-cards';
+import { fetchSupplierOptions, fromDateOnly, rateCardsApi, supplierLabel, toDateOnly } from '@/lib/api/rate-cards';
 import { suppliersApi } from '@/lib/api/suppliers';
 import type { Supplier } from '@travelcrm/shared';
 
@@ -49,8 +49,8 @@ export default function EditRateCardPage() {
           currency: rc.currency,
           season: rc.season ?? null,
           unit: rc.unit ?? null,
-          validFrom: rc.validFrom ? new Date(rc.validFrom) : undefined,
-          validTo: rc.validTo ? new Date(rc.validTo) : undefined,
+          validFrom: rc.validFrom ? fromDateOnly(rc.validFrom) : undefined,
+          validTo: rc.validTo ? fromDateOnly(rc.validTo) : undefined,
           description: rc.description ?? '',
         });
       })
@@ -98,8 +98,8 @@ export default function EditRateCardPage() {
             currency: v.currency,
             season: v.season,
             unit: v.unit,
-            validFrom: v.validFrom ? v.validFrom.toISOString().slice(0, 10) : undefined,
-            validTo: v.validTo ? v.validTo.toISOString().slice(0, 10) : undefined,
+            validFrom: v.validFrom ? toDateOnly(v.validFrom) : undefined,
+            validTo: v.validTo ? toDateOnly(v.validTo) : undefined,
             description: v.description,
           });
           toast.success('Rate card updated');
@@ -131,12 +131,9 @@ export default function EditRateCardPage() {
             <RelationCombobox<Supplier>
               value={form.watch('supplierId')}
               onChange={(sid) => form.setValue('supplierId', sid, { shouldDirty: true })}
-              fetcher={async (q, page) => {
-                const r = await suppliersApi.list({ search: q, page, limit: 20 });
-                return { items: r.data.data, total: r.data.pagination.total };
-              }}
+              fetcher={fetchSupplierOptions}
               getOptionId={(s) => s.id}
-              getOptionLabel={(s) => s.name}
+              getOptionLabel={(s) => supplierLabel(s)}
               resolveSelected={async (sid) => (await suppliersApi.getById(sid)).data}
               placeholder="Select supplier (optional)"
               searchPlaceholder="Search suppliers..."
@@ -157,6 +154,7 @@ export default function EditRateCardPage() {
 
           <FormRow name="costPrice" label="Cost Price" required>
             <CurrencyInput
+              id="costPrice"
               value={form.watch('costPrice')}
               onChange={(v) => form.setValue('costPrice', v as number, { shouldDirty: true })}
               currency={form.watch('currency')}
@@ -165,6 +163,7 @@ export default function EditRateCardPage() {
 
           <FormRow name="sellingPrice" label="Selling Price" hint="Optional — defaults to cost price">
             <CurrencyInput
+              id="sellingPrice"
               value={form.watch('sellingPrice')}
               onChange={(v) => form.setValue('sellingPrice', v, { shouldDirty: true })}
               currency={form.watch('currency')}
