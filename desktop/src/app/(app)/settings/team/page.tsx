@@ -190,7 +190,16 @@ export default function TeamSettingsPage() {
         title="Team"
         description="Manage team members, roles, and access."
         getRowId={(u) => u.id}
-        fetcher={async () => usersApi.list()}
+        fetcher={async ({ search }) => {
+          const res = await usersApi.list();
+          const term = search.trim().toLowerCase();
+          const data = (res as { data?: unknown })?.data;
+          if (!term || !Array.isArray(data)) return res;
+          const matches = (data as User[]).filter(
+            (u) => (u.name ?? '').toLowerCase().includes(term) || (u.email ?? '').toLowerCase().includes(term),
+          );
+          return { ...(res as object), data: matches };
+        }}
         extractItems={(r) => {
           const data = (r as { data?: unknown })?.data as unknown;
           if (Array.isArray(data)) return data as User[];
@@ -340,6 +349,15 @@ export default function TeamSettingsPage() {
               <PhoneInput
                 value={inviteForm.phone}
                 onChange={(v) => setInviteForm((p) => ({ ...p, phone: v }))}
+              />
+            </div>
+            <div className="flex flex-col gap-ds-1">
+              <Label htmlFor="invite-department">Department</Label>
+              <Input
+                id="invite-department"
+                value={inviteForm.department}
+                onChange={(e) => setInviteForm((p) => ({ ...p, department: e.target.value }))}
+                placeholder="e.g., Sales"
               />
             </div>
             <div className="flex flex-col gap-ds-1">

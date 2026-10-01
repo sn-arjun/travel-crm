@@ -108,23 +108,30 @@ export default function ActivityLogPage() {
       title="Activity log"
       description="Track all actions performed in the system."
       getRowId={(e) => e.id}
-      fetcher={({ page, limit }) =>
-        activityLogsApi.list({
+      fetcher={async ({ page, limit, search }) => {
+        const res = await activityLogsApi.list({
           page,
           limit,
           ...(action !== 'all' ? { action } : {}),
           ...(entityType !== 'all' ? { entityType } : {}),
           ...(presetUserId ? { userId: presetUserId } : {}),
-        })
-      }
+        });
+        // Backend has no free-text search; narrow each fetched page client-side.
+        const term = search.trim().toLowerCase();
+        const rows = (res as unknown as { data?: ActivityLogEntry[] })?.data;
+        if (!term || !Array.isArray(rows)) return res;
+        const matches = rows.filter((e) =>
+          [e.userName, e.userId, e.entityType, e.entityName, e.action, e.details].some((v) =>
+            (v ?? '').toLowerCase().includes(term),
+          ),
+        );
+        return { ...(res as object), data: matches };
+      }}
       extractItems={(r) => {
-        const data = (r as { data?: { data?: ActivityLogEntry[] } })?.data;
-        return data?.data ?? [];
+        const data = (r as { data?: unknown })?.data;
+        return Array.isArray(data) ? (data as ActivityLogEntry[]) : [];
       }}
-      extractTotal={(r) => {
-        const data = (r as { data?: { pagination?: { total?: number } } })?.data;
-        return data?.pagination?.total ?? 0;
-      }}
+      extractTotal={(r) => (r as { pagination?: { total?: number } })?.pagination?.total ?? 0}
       columns={columns}
       searchPlaceholder="Search user or entity…"
       filters={filters}
