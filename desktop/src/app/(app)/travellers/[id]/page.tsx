@@ -12,29 +12,10 @@ import {
 } from '@/components/ui';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { travellersApi, visaApi, type Traveller, type VisaRecord } from '@/lib/api/visa';
+import { travellersApi, visaApi, parseDateOnly, normalizeTraveller, travellerDocumentsApi, type Traveller, type VisaRecord } from '@/lib/api/visa';
 import { documentsApi, type Document as DocType } from '@/lib/api/documents';
 import { contactsApi } from '@/lib/api/contacts';
 import { toast } from 'sonner';
-
-function normalizeTraveller(t: any): Traveller {
-  return {
-    ...t,
-    firstName: t.firstName ?? t.first_name ?? '',
-    lastName: t.lastName ?? t.last_name ?? '',
-    passportNumber: t.passportNumber ?? t.passport_number ?? '',
-    dateOfBirth: t.dateOfBirth ?? t.date_of_birth,
-    nationality: t.nationality,
-    email: t.email,
-    phone: t.phone,
-    passportExpiryDate: t.passportExpiryDate ?? t.passport_expiry_date,
-    contactId: t.contactId ?? t.contact_id,
-    contactName: t.contactName ?? t.contact_name,
-    createdBy: t.createdBy ?? t.created_by ?? '',
-    createdAt: t.createdAt ?? t.created_at ?? '',
-    updatedAt: t.updatedAt ?? t.updated_at ?? '',
-  };
-}
 
 function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
   if (status === 'approved') return 'success';
@@ -45,7 +26,7 @@ function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' |
 
 function formatDate(value?: string) {
   return value
-    ? new Date(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+    ? parseDateOnly(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
     : '—';
 }
 
@@ -65,7 +46,10 @@ export default function TravellerDetailPage() {
     [travellerId],
   );
 
-  const { data: visaResponse } = useApiQuery(() => visaApi.list({ page: 1, limit: 100 }), []);
+  const { data: visaResponse } = useApiQuery(
+    () => visaApi.list({ traveller_id: travellerId, page: 1, limit: 100 }),
+    [travellerId],
+  );
 
   const { mutate: deleteTraveller, loading: isDeleting } = useApiMutation<string, any>(
     () => travellersApi.delete(travellerId),
@@ -80,7 +64,7 @@ export default function TravellerDetailPage() {
   );
 
   const { data: docsResponse, refetch: refetchDocs } = useApiQuery(
-    () => documentsApi.list({ search: travellerId, limit: 100 }),
+    () => travellerDocumentsApi.list(travellerId),
     [travellerId],
   );
 
@@ -95,11 +79,29 @@ export default function TravellerDetailPage() {
     return raw ? normalizeTraveller(raw) : undefined;
   }, [travellerResponse]);
 
+  // The traveller endpoint returns only contact_id; resolve the name for display.
+  const linkedContactId = traveller?.contactId;
+  const { data: contactResponse } = useApiQuery(
+    () => (linkedContactId ? contactsApi.getById(linkedContactId) : Promise.resolve(null)),
+    [linkedContactId],
+  );
+  const linkedContactName: string | undefined = React.useMemo(() => {
+    const c = ((contactResponse as any)?.data?.data ?? (contactResponse as any)?.data) as any;
+    return c?.name || `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() || undefined;
+  }, [contactResponse]);
+
   const visaRecords: VisaRecord[] = React.useMemo(() => {
     if (!visaResponse?.data) return [];
     const all = Array.isArray(visaResponse.data) ? visaResponse.data : (visaResponse.data as any)?.data ?? [];
-    return all.filter((v: VisaRecord) => v.passportNumber === traveller?.passportNumber || v.travelerId === travellerId);
-  }, [visaResponse, traveller, travellerId]);
+    // The visa endpoint filters by traveller_id server-side and returns snake_case rows.
+    return all.map((v: any): VisaRecord => ({
+      ...v,
+      countryName: v.countryName ?? v.destination_country ?? v.country ?? '',
+      visaType: v.visaType ?? v.visa_type,
+      applicationDate: v.applicationDate ?? v.application_date ?? v.created_at,
+      expiryDate: v.expiryDate ?? v.expiry_date ?? v.expected_date,
+    }));
+  }, [visaResponse]);
 
   async function handleDelete() {
     const result = await deleteTraveller(travellerId);
@@ -139,12 +141,7 @@ export default function TravellerDetailPage() {
     if (!file) return;
     setIsUploading(true);
     try {
-      await documentsApi.upload({
-        file,
-        name: file.name,
-        category: 'traveller',
-        tags: [travellerId, 'traveller-document'],
-      });
+      await travellerDocumentsApi.upload(travellerId, file);
       toast.success('Document uploaded');
       refetchDocs();
     } catch {
@@ -287,7 +284,7 @@ export default function TravellerDetailPage() {
             >
               {traveller.contactId ? (
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">{traveller.contactName || traveller.contactId}</p>
+                  <p className="text-sm font-medium">{traveller.contactName || linkedContactName || 'Loading contact…'}</p>
                   <Button variant="ghost" size="sm" onClick={() => router.push(`/contacts/${traveller.contactId}`)}>View contact</Button>
                 </div>
               ) : (

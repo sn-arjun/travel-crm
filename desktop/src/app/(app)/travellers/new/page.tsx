@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { z } from 'zod';
 import { EntityForm, FormRow, RelationCombobox } from '@/components/domain';
 import { Input, SectionCard, Combobox, PhoneInput, DatePicker } from '@/components/ui';
-import { travellersApi } from '@/lib/api/visa';
+import { travellersApi, toDateOnly } from '@/lib/api/visa';
 import { contactsApi } from '@/lib/api/contacts';
 import { toast } from 'sonner';
 
@@ -34,7 +34,7 @@ const COUNTRIES = [
 
 const schema = z.object({
   firstName: z.string().min(1, 'First name is required'),
-  lastName: z.string().optional(),
+  lastName: z.string().min(1, 'Last name is required'),
   passportNumber: z.string().min(1, 'Passport number is required'),
   dateOfBirth: z.date().optional(),
   passportExpiryDate: z.date().optional(),
@@ -71,7 +71,8 @@ export default function NewTravellerPage() {
           firstName: v.firstName,
           lastName: v.lastName || '',
           passportNumber: v.passportNumber,
-          dateOfBirth: v.dateOfBirth ? v.dateOfBirth.toISOString().split('T')[0] : undefined,
+          dateOfBirth: v.dateOfBirth ? toDateOnly(v.dateOfBirth) : undefined,
+          passportExpiryDate: v.passportExpiryDate ? toDateOnly(v.passportExpiryDate) : undefined,
           nationality: v.nationality || undefined,
           email: v.email || undefined,
           phone: v.phone || undefined,
@@ -116,7 +117,7 @@ export default function NewTravellerPage() {
               <FormRow name="firstName" label="First Name" required>
                 <Input id="firstName" placeholder="First name" {...form.register('firstName')} />
               </FormRow>
-              <FormRow name="lastName" label="Last Name">
+              <FormRow name="lastName" label="Last Name" required>
                 <Input id="lastName" placeholder="Last name" {...form.register('lastName')} />
               </FormRow>
               <FormRow name="dateOfBirth" label="Date of Birth">

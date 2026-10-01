@@ -4,13 +4,16 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, Pencil, Trash2, Plus, UserRound } from 'lucide-react';
 import { ListPage } from '@/components/domain';
-import { Button, Tag } from '@/components/ui';
-import { travellersApi, type Traveller } from '@/lib/api/visa';
+import {
+  Button, Tag,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui';
+import { travellersApi, parseDateOnly, normalizeTraveller, type Traveller } from '@/lib/api/visa';
 import { toast } from 'sonner';
 
 function expiryTone(expiry?: string): 'success' | 'warning' | 'danger' | 'neutral' {
   if (!expiry) return 'neutral';
-  const diff = new Date(expiry).getTime() - Date.now();
+  const diff = parseDateOnly(expiry).getTime() - Date.now();
   if (diff < 0) return 'danger';
   if (diff < 180 * 86400000) return 'warning';
   return 'success';
@@ -18,19 +21,46 @@ function expiryTone(expiry?: string): 'success' | 'warning' | 'danger' | 'neutra
 
 function formatDate(value?: string) {
   return value
-    ? new Date(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+    ? parseDateOnly(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
     : '—';
 }
 
 export default function TravellersPage() {
   const router = useRouter();
+  // Bumping the key remounts ListPage so the list refetches after a delete.
+  const [listKey, setListKey] = React.useState(0);
+  const [pendingDelete, setPendingDelete] = React.useState<Traveller | null>(null);
+  const [deleting, setDeleting] = React.useState(false);
+
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    try {
+      await travellersApi.delete(pendingDelete.id);
+      toast.success(`${pendingDelete.firstName} ${pendingDelete.lastName} deleted`);
+      setPendingDelete(null);
+      setListKey((k) => k + 1);
+    } catch {
+      toast.error('Failed to delete traveller');
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   return (
+    <>
     <ListPage<Traveller>
+      key={listKey}
       title="Travellers"
       description="Passenger records with passport and travel document details."
       getRowId={(t) => t.id}
-      fetcher={({ page, limit, search }) => travellersApi.list({ page, limit, search: search || undefined })}
+      fetcher={async ({ page, limit, search }) => {
+        const res = await travellersApi.list({ page, limit, search: search || undefined });
+        const d = res.data as any;
+        const rows = Array.isArray(d) ? d : d?.data ?? [];
+        const items = rows.map(normalizeTraveller);
+        return { ...res, data: Array.isArray(d) ? items : { ...d, data: items } };
+      }}
       searchPlaceholder="Search by name or passport number..."
       columns={[
         {
@@ -69,12 +99,7 @@ export default function TravellersPage() {
           <Button variant="ghost" size="icon-sm" aria-label="Edit" onClick={() => router.push(`/travellers/${t.id}/edit`)}>
             <Pencil />
           </Button>
-          <Button variant="ghost" size="icon-sm" aria-label="Delete" onClick={async () => {
-            try {
-              await travellersApi.delete(t.id);
-              toast.success(`${t.firstName} ${t.lastName} deleted`);
-            } catch { toast.error('Failed to delete traveller'); }
-          }}>
+          <Button variant="ghost" size="icon-sm" aria-label="Delete" onClick={() => setPendingDelete(t)}>
             <Trash2 />
           </Button>
         </>
@@ -88,6 +113,7 @@ export default function TravellersPage() {
           onSelect: async (rows) => {
             await Promise.all(rows.map((r) => travellersApi.delete(r.id)));
             toast.success(`${rows.length} traveller(s) deleted`);
+            setListKey((k) => k + 1);
           },
         },
       ]}
@@ -117,5 +143,20 @@ export default function TravellersPage() {
         </Button>
       }
     />
+    <Dialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete Traveller</DialogTitle>
+          <DialogDescription>
+            Are you sure you want to delete {pendingDelete?.firstName} {pendingDelete?.lastName}? This cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setPendingDelete(null)} disabled={deleting}>Cancel</Button>
+          <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>Delete</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

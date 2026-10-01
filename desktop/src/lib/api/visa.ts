@@ -79,6 +79,7 @@ export interface CreateTravellerRequest {
   lastName: string;
   passportNumber: string;
   dateOfBirth?: string;
+  passportExpiryDate?: string;
   nationality?: string;
   email?: string;
   phone?: string;
@@ -119,6 +120,7 @@ export const visaApi = {
     search?: string;
     status?: string;
     countryName?: string;
+    traveller_id?: string;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
   }) =>
@@ -194,4 +196,58 @@ export const travellersApi = {
 
   unlinkContact: (id: string) =>
     client.put<ApiResponse<Traveller>>(`${API_ENDPOINTS.travellers.byId(id)}/unlink-contact`, {}),
+};
+
+/** Formats a Date as YYYY-MM-DD in local time (toISOString would shift the day for UTC+ zones). */
+export function toDateOnly(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** Parses a YYYY-MM-DD (or ISO) string as a local calendar date, avoiding UTC day shifts. */
+export function parseDateOnly(value: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(value);
+}
+
+/** The travellers endpoints return snake_case rows; the UI works in camelCase. */
+export function normalizeTraveller(t: any): Traveller {
+  return {
+    ...t,
+    firstName: t.firstName ?? t.first_name ?? '',
+    lastName: t.lastName ?? t.last_name ?? '',
+    passportNumber: t.passportNumber ?? t.passport_number ?? '',
+    dateOfBirth: t.dateOfBirth ?? t.date_of_birth,
+    nationality: t.nationality,
+    email: t.email,
+    phone: t.phone,
+    passportExpiryDate: t.passportExpiryDate ?? t.passport_expiry_date,
+    contactId: t.contactId ?? t.contact_id,
+    contactName: t.contactName ?? t.contact_name,
+    createdBy: t.createdBy ?? t.created_by ?? '',
+    createdAt: t.createdAt ?? t.created_at ?? '',
+    updatedAt: t.updatedAt ?? t.updated_at ?? '',
+  };
+}
+
+/**
+ * Traveller documents are stored through the documents endpoints, linked by
+ * entity_type=traveller / entity_id=<travellerId>. (The generic documentsApi
+ * helper only knows lead/itinerary links, and the backend ignores `tags`.)
+ */
+export const travellerDocumentsApi = {
+  list: (travellerId: string) =>
+    client.get<ApiResponse<PaginatedResponse<any>>>(API_ENDPOINTS.documents.list, {
+      params: { entity_type: 'traveller', entity_id: travellerId, limit: 100 },
+    }),
+
+  upload: (travellerId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('name', file.name);
+    formData.append('category', 'traveller');
+    formData.append('entity_type', 'traveller');
+    formData.append('entity_id', travellerId);
+    return client.post<ApiResponse<any>>(API_ENDPOINTS.documents.upload, formData as any);
+  },
 };

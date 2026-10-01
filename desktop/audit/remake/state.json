@@ -584,14 +584,15 @@
       "repairAttempts": 2
     },
     "verify:travellers": {
-      "status": "context-limit",
-      "timestamp": "2026-10-01T13:00:47.683Z",
-      "error": "stdout(tail): You've hit your session limit · resets 9:30pm (Asia/Kolkata)"
+      "status": "gate-failed",
+      "timestamp": "2026-10-01T17:29:31.854Z",
+      "error": "spec:travellers: Running 26 tests using 1 worker\n\n  ✓   1 [setup] › e2e\\global-setup.ts:8:6 › authenticate as admin (1.8s)\n  ✓   2 [chromium] › e2e\\travellers.spec.ts:95:7 › Travellers: full round trip › create with every field -> list -> detail -> edit pre-fill -> edit -> delete (10.5s)\n  ✘   3 [ch",
+      "repairAttempts": 2
     }
   },
   "lastCompleted": {
-    "id": "verify:test-harness",
+    "id": "verify:travellers",
     "status": "gate-failed",
-    "timestamp": "2026-10-01T16:53:25.261Z"
+    "timestamp": "2026-10-01T17:29:31.854Z"
   }
 }
