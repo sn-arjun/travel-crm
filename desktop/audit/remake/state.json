@@ -606,11 +606,17 @@
       "timestamp": "2026-10-01T18:06:32.163Z",
       "error": null,
       "repairAttempts": 0
+    },
+    "verify:webhooks-integrations": {
+      "status": "ok",
+      "timestamp": "2026-10-01T18:08:13.197Z",
+      "error": null,
+      "repairAttempts": 0
     }
   },
   "lastCompleted": {
-    "id": "verify:vouchers",
+    "id": "verify:webhooks-integrations",
     "status": "ok",
-    "timestamp": "2026-10-01T18:06:32.163Z"
+    "timestamp": "2026-10-01T18:08:13.197Z"
   }
 }

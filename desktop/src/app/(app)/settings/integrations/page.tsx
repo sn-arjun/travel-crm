@@ -47,7 +47,7 @@ const WEBHOOKS: WebhookInfo[] = [
   },
 ];
 
-function CopyableUrl({ url }: { url: string }) {
+function CopyableUrl({ id, url }: { id: string; url: string }) {
   const [copied, setCopied] = React.useState(false);
 
   const handleCopy = async () => {
@@ -63,7 +63,7 @@ function CopyableUrl({ url }: { url: string }) {
 
   return (
     <div className="flex items-center gap-ds-2">
-      <Input value={url} readOnly className="font-mono text-xs" />
+      <Input id={id} value={url} readOnly className="font-mono text-xs" />
       <Button variant="outline" size="icon" aria-label="Copy webhook URL" onClick={handleCopy}>
         {copied ? <Check className="size-4 text-ds-success" /> : <Copy className="size-4" />}
       </Button>
@@ -110,7 +110,7 @@ export default function IntegrationsSettingsPage() {
               </div>
               <div className="flex flex-col gap-ds-2">
                 <Label htmlFor={`${wh.key}-url`}>Endpoint URL</Label>
-                <CopyableUrl url={`${API_BASE_URL}${wh.path}`} />
+                <CopyableUrl id={`${wh.key}-url`} url={`${API_BASE_URL}${wh.path}`} />
               </div>
               <p className="text-xs text-ds-foreground-muted">{wh.authNote}</p>
             </div>
