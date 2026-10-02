@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useNotifications } from './useNotifications';
+import { useNotifications } from './use-notifications';
 import { useNotificationStore } from '@/stores/notification-store';
 
 // Mock sonner toast

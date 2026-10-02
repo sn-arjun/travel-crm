@@ -1,42 +1,43 @@
 # TravelCRM Pro
 
-Multi-tenant SaaS CRM for tours & travels companies. Flutter (Web + Mobile + Windows) frontend, Cloudflare Workers backend, D1 (SQLite) database-per-tenant, Oracle Cloud for WordPress hosting, Terraform for infrastructure.
+Multi-tenant SaaS CRM for tours & travels companies. **Electron + Next.js** desktop app, Flutter mobile apps, Cloudflare Workers backend, D1 (SQLite) database-per-tenant, Oracle Cloud for WordPress hosting, Terraform for infrastructure.
 
 ---
 
 ## Architecture
 
 ```
-Flutter App (packages/crm_app)         Super Admin (super-admin/)
-  Riverpod + GoRouter + ScreenUtil       Next.js + Tailwind + Shadcn
-          │                                       │
-          ▼                                       ▼
-   Shared Package (packages/shared)      Cloudflare Pages
-   Dio HTTP + Freezed models + API endpoints
-          │
-          ▼
-   Cloudflare Workers (backend/)
-   Hono.js + Zod validation + JWT auth
-          │
-          ├── D1 (master)     ── tenant registry, subscriptions, billing
-          ├── D1 (per-tenant) ── isolated SQLite per customer
-          ├── R2              ── file storage
-          ├── KV              ── cache, sessions, report cache
-          ├── Queues          ── email, sms, push, import/export, campaigns
-          ├── Durable Objects ── real-time WebSocket rooms
-          └── Workers AI      ── AI bindings
+Desktop App (desktop/)                  Mobile Apps (packages/)              Super Admin (super-admin/)
+  Electron + Next.js 16 + React 19        Flutter (iOS/Android)               Next.js + Tailwind + Shadcn
+  Shadcn UI + TailwindCSS                 Riverpod + GoRouter + ScreenUtil    Zustand
+          │                                         │                                   │
+          └─────────────────────────────────────────┴───────────────────────────────┬──┘
+                                                                                      │
+                                                                                      ▼
+                                                           Cloudflare Workers (backend/)
+                                                           Hono.js + Zod validation + JWT auth
+                                                                      │
+                                                          ├── D1 (master)     ── tenant registry, subscriptions, billing
+                                                          ├── D1 (per-tenant) ── isolated SQLite per customer
+                                                          ├── R2              ── file storage
+                                                          ├── KV              ── cache, sessions, report cache
+                                                          ├── Queues          ── email, sms, push, import/export, campaigns
+                                                          ├── Durable Objects ── real-time WebSocket rooms
+                                                          └── Workers AI      ── AI bindings
 
-   Oracle Cloud (terraform/modules/oracle-cloud)
-   ARM instance ── WordPress hosting for tenant sites via Caddy + Docker
+                                                           Oracle Cloud (terraform/modules/oracle-cloud)
+                                                           ARM instance ── WordPress hosting for tenant sites via Caddy + Docker
 ```
 
 ### Tech Stack
 
 | Layer | Technology |
 |---|---|
-| Frontend | Flutter 3.41.1 / Dart 3.11.0 |
-| State | Riverpod 2.0 + code generation |
-| Routing | GoRouter |
+| **Primary Frontend** | **Electron + Next.js 16 + React 19** (desktop) |
+| **Mobile Frontend** | Flutter 3.41.1 / Dart 3.11.0 (iOS/Android) |
+| UI Components | Shadcn UI + TailwindCSS |
+| State Management | Zustand (desktop), Riverpod 2.0 (Flutter) |
+| Routing | Next.js App Router (desktop), GoRouter (Flutter) |
 | Backend | Cloudflare Workers + Hono.js 4.x |
 | Validation | Zod 4.x |
 | Database | Cloudflare D1 (SQLite), Drizzle ORM for schema, raw SQL in routes |
@@ -48,7 +49,7 @@ Flutter App (packages/crm_app)         Super Admin (super-admin/)
 | IaC | Terraform (Oracle Cloud + Cloudflare) |
 | CI/CD | GitHub Actions |
 | Super Admin | Next.js 16 + React 19 + Zustand |
-| Monorepo | Melos (Flutter) + npm workspaces |
+| Monorepo | npm workspaces |
 
 ---
 
@@ -56,6 +57,27 @@ Flutter App (packages/crm_app)         Super Admin (super-admin/)
 
 ```
 .
+├── desktop/                    # ★ PRIMARY FRONTEND: Electron + Next.js 16 + React 19
+│   ├── src/
+│   │   ├── app/               # Next.js App Router
+│   │   │   ├── (auth)/        # Login, password reset
+│   │   │   ├── (app)/         # CRM pages (contacts, leads, itineraries, etc.)
+│   │   │   └── api/           # Internal API routes
+│   │   ├── components/        # React components (domain + UI)
+│   │   ├── hooks/             # Custom React hooks
+│   │   ├── lib/api/           # API client methods (contacts.ts, leads.ts, etc.)
+│   │   ├── lib/               # Utilities (format, validation, helpers)
+│   │   ├── stores/            # Zustand state (auth, notifications, etc.)
+│   │   └── styles/            # Global CSS, Tailwind config
+│   ├── electron/              # Electron main + preload scripts
+│   ├── e2e/                   # Playwright E2E tests (one per feature slice)
+│   ├── public/                # Static assets
+│   ├── desktop/audit/         # Milestone reports + coverage data
+│   ├── next.config.js
+│   ├── tailwind.config.ts
+│   ├── playwright.config.ts
+│   └── package.json
+│
 ├── backend/                    # Cloudflare Workers API
 │   ├── src/
 │   │   ├── index.ts           # Entry point — route mounts, queue consumers, cron
@@ -76,6 +98,9 @@ Flutter App (packages/crm_app)         Super Admin (super-admin/)
 │   └── package.json
 │
 ├── packages/
+│   ├── shared-ts/             # Shared TypeScript types (used by desktop)
+│   │   └── src/types/         # Shared model definitions
+│   │
 │   ├── shared/                # Shared Dart package (models + API client)
 │   │   └── lib/
 │   │       ├── api_client/
@@ -84,7 +109,7 @@ Flutter App (packages/crm_app)         Super Admin (super-admin/)
 │   │       ├── models/        # 30+ Freezed model files
 │   │       └── shared.dart    # Barrel export
 │   │
-│   ├── crm_app/               # Main CRM — Flutter (Web, Android, iOS, Windows)
+│   ├── crm_app/               # Main CRM — Flutter (mobile: iOS/Android)
 │   │   └── lib/
 │   │       ├── app/
 │   │       │   └── router.dart          # GoRouter routes
@@ -108,7 +133,7 @@ Flutter App (packages/crm_app)         Super Admin (super-admin/)
 │   │
 │   └── driver_app/            # Driver companion app (Flutter mobile)
 │
-├── super-admin/               # Platform admin dashboard
+├── super-admin/               # Platform admin dashboard (Next.js)
 │   ├── src/app/               # Next.js App Router
 │   │   ├── (authenticated)/   # Tenant mgmt, subscriptions, reports, audit
 │   │   ├── api/               # API routes (D1 direct access)
@@ -185,22 +210,28 @@ npm run infra:sync       # generates backend/.dev.vars from terraform.tfvars
 # 3. Run database migrations (local D1)
 npm run db:migrate
 
-# 4. Start everything
+# 4. Start everything (desktop app is default)
 npm run dev
 ```
 
 This starts concurrently:
-- **API** at `http://localhost:8787` (wrangler dev)
-- **Code generation** in watch mode (Freezed + Riverpod)
-- **Flutter web** at `http://localhost:8080` (Chrome)
+- **Desktop app** (Electron + Next.js) at `http://localhost:3000`
+- **Backend API** at `http://localhost:8787` (wrangler dev)
 
 ### Individual services
 
 ```bash
 npm run dev:api          # Backend only
-npm run dev:web          # Flutter CRM only
-npm run dev:admin        # Super Admin only (Next.js on :3000)
-npm run dev:codegen      # Run code generation once
+npm run dev:desktop      # Desktop app only (Electron + Next.js)
+npm run dev:admin        # Super Admin only (Next.js on :3001)
+npm run dev:flutter      # Flutter mobile (iOS/Android)
+```
+
+### Flutter mobile development
+
+```bash
+# Mobile apps (iOS/Android) — requires x86 PowerShell on Windows
+"C:/Windows/SysWOW64/WindowsPowerShell/v1.0/powershell.exe" -Command "cd packages/crm_app && flutter run"
 ```
 
 ---

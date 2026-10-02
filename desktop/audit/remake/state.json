@@ -620,9 +620,10 @@
       "repairAttempts": 0
     },
     "cleanup": {
-      "status": "context-limit",
-      "timestamp": "2026-10-01T18:09:11.865Z",
-      "error": "stdout(tail): You've hit your session limit · resets 2:50am (Asia/Kolkata)"
+      "status": "gate-failed",
+      "timestamp": "2026-10-02T07:41:50.080Z",
+      "error": "backendFrozen: Backend freeze violated. These files must not change:\n  backend/drizzle/tenant/0031_leads_fts_repair.sql\n  backend/drizzle/tenant/0032_import_export_jobs_tenant_id.sql\n  backend/drizzle/tenant/0033_flyers_simplify.sql\n  backend/drizzle/tenant/0034_users_invite_signature.sql",
+      "repairAttempts": 2
     },
     "showcase": {
       "status": "context-limit",
@@ -631,8 +632,8 @@
     }
   },
   "lastCompleted": {
-    "id": "verify:whatsapp-campaigns",
-    "status": "ok",
-    "timestamp": "2026-10-02T07:37:46.599Z"
+    "id": "cleanup",
+    "status": "gate-failed",
+    "timestamp": "2026-10-02T07:41:50.080Z"
   }
 }
