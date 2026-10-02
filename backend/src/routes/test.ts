@@ -22,29 +22,38 @@ testApp.post('/reset', async (c) => {
     // 1. Wipe all data (SQLite PRAGMA or DROP TABLE sequence might be needed, but for D1 dropping/recreating via migrations is pure. 
     // For the sake of E2E speed, let's just delete from all known tables in sequence)
     try {
-        const tables = [
-            'tenant_users', 'shared_contacts', 'activities',
-            'invoice_items', 'payments', 'invoices',
-            'hotel_voucher_details', 'transport_voucher_details', 'flight_voucher_details', 'activity_voucher_details', 'vouchers',
-            'reconciliations', 'supplier_ledger', 'supplier_documents', 'rate_cards', 'suppliers',
-            'visa_checklist_items', 'visa_documents', 'visa_notes', 'visa_applications',
-            'traveller_documents', 'travellers',
-            'leads', 'contacts', 'expiry_alerts_log', 'users', 'tenants'
-        ];
+        // Discover every real table (local dev shares one DB between master and tenant
+        // schemas, so a hardcoded list misses tables that reference users/tenants).
+        const found = await db.all<{ name: string; sql: string | null }>(
+            sql`SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name NOT LIKE 'd1_%'`,
+        );
+        let pending = found
+            .filter((r) => !/^CREATE VIRTUAL/i.test(r.sql ?? '') && !r.name.includes('_fts'))
+            .map((r) => r.name);
 
-        // Disable foreign keys temporarily for aggressive wiping
-        await db.run(sql`PRAGMA foreign_keys = OFF`);
-        for (const table of tables) {
-            try {
-                await db.run(sql.raw(`DELETE FROM ${table}`));
-            } catch (e: any) {
-                // Ignore errors if the table doesn't exist yet
-                if (!e.message.includes('no such table')) {
-                    console.error(`Error deleting from ${table}:`, e.message);
+        // PRAGMA foreign_keys does not persist across D1 statements, so delete in
+        // repeated passes: children succeed first, parents succeed once children are gone.
+        for (let pass = 0; pass < 10 && pending.length > 0; pass++) {
+            const failed: string[] = [];
+            let lastError = '';
+            for (const table of pending) {
+                try {
+                    await db.run(sql.raw(`DELETE FROM "${table}"`));
+                } catch (e: any) {
+                    if (/FOREIGN KEY/i.test(e?.message ?? '') || /FOREIGN KEY/i.test(e?.cause?.message ?? '')) {
+                        failed.push(table);
+                        lastError = e.message;
+                    } else {
+                        console.error(`Error deleting from ${table}:`, e.message);
+                    }
                 }
             }
+            if (failed.length === pending.length) {
+                console.error(`Reset could not clear: ${failed.join(', ')} — ${lastError}`);
+                break;
+            }
+            pending = failed;
         }
-        await db.run(sql`PRAGMA foreign_keys = ON`);
 
         // 2. Seed Tenant and Admin User (use INSERT OR REPLACE for idempotency in shared-storage test envs)
         const tenantId = '00000000-0000-0000-0000-000000000000';
