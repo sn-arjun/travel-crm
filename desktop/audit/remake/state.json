@@ -626,14 +626,15 @@
       "repairAttempts": 2
     },
     "showcase": {
-      "status": "context-limit",
-      "timestamp": "2026-10-01T18:09:16.963Z",
-      "error": "stdout(tail): You've hit your session limit · resets 2:50am (Asia/Kolkata)"
+      "status": "gate-failed",
+      "timestamp": "2026-10-02T10:09:39.225Z",
+      "error": "showcase: Running 2 tests using 1 worker\n\n  ✓  1 [showcase-setup] › e2e\\global-setup.ts:8:6 › authenticate as admin (3.0s)\n  [00:05] section: Authentication & App Shell\n  [00:27] section: Dashboard",
+      "repairAttempts": 2
     }
   },
   "lastCompleted": {
-    "id": "cleanup",
+    "id": "showcase",
     "status": "gate-failed",
-    "timestamp": "2026-10-02T07:41:50.080Z"
+    "timestamp": "2026-10-02T10:09:39.225Z"
   }
 }

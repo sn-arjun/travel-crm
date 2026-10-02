@@ -38,6 +38,7 @@ interface DayItem {
   description: string;
   location?: string;
   overnightCity?: string;
+  accommodation?: string;
   isFreeDay?: boolean;
   images?: DayImage[];
   items?: ItineraryItem[];
@@ -202,6 +203,9 @@ export default function ItineraryEditPage() {
     status?: string;
     termsConditions?: string;
     currency?: string;
+    startDate?: string;
+    endDate?: string;
+    budget?: number;
     markupType?: string;
     markupValue?: number;
   }>({});

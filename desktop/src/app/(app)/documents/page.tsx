@@ -387,7 +387,7 @@ export default function DocumentsPage() {
                 onChange={(id) => setUploadForm((f) => ({ ...f, leadId: id }))}
                 fetcher={async (query, page) => {
                   const r = await leadsApi.list({ search: query, page, limit: 20 });
-                  return { items: r.data, total: r.pagination.total };
+                  return { items: r.data?.data ?? [], total: r.data?.pagination?.total ?? 0 };
                 }}
                 getOptionId={(l) => l.id}
                 getOptionLabel={(l) => l.title}
@@ -402,7 +402,7 @@ export default function DocumentsPage() {
                 onChange={(id) => setUploadForm((f) => ({ ...f, itineraryId: id }))}
                 fetcher={async (query, page) => {
                   const r = await itinerariesApi.list({ search: query, page, limit: 20 });
-                  return { items: r.data, total: r.pagination.total };
+                  return { items: r.data?.data ?? [], total: r.data?.pagination?.total ?? 0 };
                 }}
                 getOptionId={(i) => i.id}
                 getOptionLabel={(i) => i.title}

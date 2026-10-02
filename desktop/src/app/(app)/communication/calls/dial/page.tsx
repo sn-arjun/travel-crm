@@ -120,7 +120,8 @@ function DialPadPage() {
               }}
               fetcher={async (q, page) => {
                 const r = await contactsApi.list({ search: q, page, limit: 20 });
-                return { items: r.data.filter((c) => c.phone), total: r.pagination.total };
+                const items = r.data?.data ?? [];
+                return { items: items.filter((c) => c.phone), total: r.data?.pagination?.total ?? items.length };
               }}
               getOptionId={(c) => c.id}
               getOptionLabel={(c) => c.name}

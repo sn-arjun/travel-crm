@@ -93,7 +93,7 @@ export default function NewDebitNotePage() {
           <SectionCard title="Invoice" required>
             <div className="grid gap-ds-4 sm:grid-cols-2">
               <FormRow name="invoiceId" label="Invoice" required wide>
-                <RelationCombobox
+                <RelationCombobox<any>
                   value={form.watch('invoiceId') || null}
                   onChange={(id) => form.setValue('invoiceId', id ?? '', { shouldDirty: true, shouldValidate: true })}
                   fetcher={async (q, page) => {
