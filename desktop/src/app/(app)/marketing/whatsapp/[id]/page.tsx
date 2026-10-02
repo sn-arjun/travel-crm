@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Ban, Lock, Pause, Send, Trash2 } from 'lucide-react';
+import { Ban, Lock, Pause, Pencil, Send, Trash2 } from 'lucide-react';
 import { DetailPage } from '@/components/domain';
 import { DataTable } from '@/components/ui/data-table';
 import { SectionCard } from '@/components/ui/section-card';
@@ -213,13 +213,22 @@ export default function WhatsappCampaignDetailPage() {
           ...(campaign.status === 'sending' || campaign.status === 'scheduled' || campaign.status === 'paused'
             ? [{ label: 'Cancel campaign', icon: <Ban aria-hidden="true" />, onSelect: handleCancel }]
             : []),
-          {
-            label: 'Delete',
-            icon: <Trash2 aria-hidden="true" />,
-            onSelect: handleDelete,
-            destructive: true,
-            separatorBefore: true,
-          },
+          ...(campaign.status === 'draft'
+            ? [
+                {
+                  label: 'Edit',
+                  icon: <Pencil aria-hidden="true" />,
+                  onSelect: () => router.push(`/marketing/whatsapp/${campaign.id}/edit`),
+                },
+                {
+                  label: 'Delete',
+                  icon: <Trash2 aria-hidden="true" />,
+                  onSelect: handleDelete,
+                  destructive: true,
+                  separatorBefore: true,
+                },
+              ]
+            : []),
         ]}
         overview={
           <div className="grid gap-ds-4">

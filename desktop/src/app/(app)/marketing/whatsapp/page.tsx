@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Eye, Lock, MessageCircle, Pause, Plus, Send, Trash2, X } from 'lucide-react';
+import { Eye, Lock, MessageCircle, Pause, Pencil, Plus, Send, Trash2, X } from 'lucide-react';
 import { ListPage } from '@/components/domain';
 import { Button, Skeleton, Tag } from '@/components/ui';
 import { useConfirm } from '@/components/ui/confirm-dialog';
@@ -30,6 +30,8 @@ function statusTone(status: WhatsappCampaignStatus): 'success' | 'danger' | 'war
       return 'neutral';
   }
 }
+
+const STATUS_OPTIONS: WhatsappCampaignStatus[] = ['draft', 'sending', 'paused', 'sent', 'cancelled', 'failed'];
 
 function toCsv(rows: WhatsappCampaign[]) {
   const header = ['Name', 'Template', 'Status', 'Sent', 'Delivered', 'Read', 'Replied', 'Scheduled for', 'Created'];
@@ -210,6 +212,19 @@ export default function WhatsappCampaignsPage() {
                 : '—',
           },
         ]}
+        headerActions={
+          <select
+            aria-label="Filter by status"
+            value={statusFilter ?? ''}
+            onChange={(e) => setStatusFilter(e.target.value || undefined)}
+            className="h-8 rounded-ds-md border border-ds-border bg-ds-surface px-ds-2 text-sm text-ds-foreground"
+          >
+            <option value="">All statuses</option>
+            {STATUS_OPTIONS.map((s) => (
+              <option key={s} value={s} className="capitalize">{s}</option>
+            ))}
+          </select>
+        }
         primaryAction={
           <Button size="sm" onClick={() => router.push('/marketing/whatsapp/new')} className="gap-ds-2">
             <Plus aria-hidden="true" /> New campaign
@@ -253,9 +268,21 @@ export default function WhatsappCampaignsPage() {
                 <X aria-hidden="true" />
               </Button>
             )}
-            <Button variant="ghost" size="icon-sm" aria-label="Delete" onClick={() => void handleDelete(c)}>
-              <Trash2 aria-hidden="true" />
-            </Button>
+            {c.status === 'draft' && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Edit"
+                onClick={() => router.push(`/marketing/whatsapp/${c.id}/edit`)}
+              >
+                <Pencil aria-hidden="true" />
+              </Button>
+            )}
+            {c.status === 'draft' && (
+              <Button variant="ghost" size="icon-sm" aria-label="Delete" onClick={() => void handleDelete(c)}>
+                <Trash2 aria-hidden="true" />
+              </Button>
+            )}
           </>
         )}
         bulkActions={[
