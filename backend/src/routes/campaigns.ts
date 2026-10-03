@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
 import type { AppContext } from '../types';
@@ -551,12 +551,13 @@ campaignRoutes.get(
         .prepare(`
           SELECT
             m.id, m.contact_id, m.recipient_email, m.status,
-            m.opened_at, m.clicked_at, m.sent_at, m.error_message,
+            m.opened_at, m.clicked_at, m.created_at AS sent_at,
+            COALESCE(m.failure_reason, m.bounce_reason) AS error_message,
             c.name AS contact_name, c.email AS contact_email
           FROM email_message_log m
           LEFT JOIN contacts c ON c.id = m.contact_id
           WHERE m.campaign_id = ?
-          ORDER BY m.sent_at DESC
+          ORDER BY m.created_at DESC
           LIMIT ? OFFSET ?
         `)
         .bind(campaignId, limit, offset)

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import type { AppContext } from '../types';
 import { success, created, paginated, error, notFound } from '../utils/response';
 import { generateId } from '../utils/uuid';
@@ -66,6 +66,65 @@ fleet.get('/vehicles', zValidator('query', vehicleListSchema), async (c) => {
   `).bind(...params, limit, offset).all();
 
   return paginated(c, (rows.results || []).map(parseVehicle), total, page, limit);
+});
+
+// ============================================================================
+// VEHICLE AVAILABILITY CALENDAR (TICKET-312)
+// ============================================================================
+
+fleet.get('/vehicles/availability', zValidator('query', availabilitySchema), async (c) => {
+  const db = c.get('tenantDb');
+  const { from, to, type } = c.req.valid('query');
+
+  // Validate max 90 days
+  const fromDate = new Date(from);
+  const toDate = new Date(to);
+  if ((toDate.getTime() - fromDate.getTime()) / 86400000 > 90) {
+    return error(c, 'Date range cannot exceed 90 days', 400);
+  }
+
+  const vehicleConditions = ['v.is_deleted = 0'];
+  const vehicleParams: any[] = [];
+  if (type) { vehicleConditions.push('v.type = ?'); vehicleParams.push(type); }
+
+  const allVehicles = await db.prepare(
+    `SELECT v.id, v.registration_number, v.type, v.status, v.seating_capacity
+     FROM vehicles v WHERE ${vehicleConditions.join(' AND ')}
+     ORDER BY v.registration_number`
+  ).bind(...vehicleParams).all();
+
+  // Get overlapping trips
+  const trips = await db.prepare(`
+    SELECT ta.vehicle_id, ta.pickup_datetime, ta.drop_datetime, ta.passenger_name, ta.status as trip_status, ta.id as trip_id
+    FROM trip_assignments ta
+    WHERE ta.is_deleted = 0 AND ta.status NOT IN ('completed', 'cancelled')
+      AND ta.pickup_datetime <= ? AND ta.drop_datetime >= ?
+      AND ta.vehicle_id IS NOT NULL
+  `).bind(to, from).all();
+
+  const tripsByVehicle = new Map<string, any[]>();
+  for (const trip of (trips.results || [])) {
+    const arr = tripsByVehicle.get(trip.vehicle_id as string) || [];
+    arr.push(trip);
+    tripsByVehicle.set(trip.vehicle_id as string, arr);
+  }
+
+  const result = (allVehicles.results || []).map((v: any) => ({
+    vehicleId: v.id,
+    registrationNumber: v.registration_number,
+    type: v.type,
+    status: v.status,
+    seatingCapacity: v.seating_capacity,
+    trips: (tripsByVehicle.get(v.id) || []).map((t: any) => ({
+      tripId: t.trip_id,
+      pickupDatetime: t.pickup_datetime,
+      dropDatetime: t.drop_datetime,
+      passengerName: t.passenger_name,
+      status: t.trip_status,
+    })),
+  }));
+
+  return success(c, result);
 });
 
 // Get vehicle by ID
@@ -514,65 +573,6 @@ fleet.put('/vehicles/:id/odometer', async (c) => {
   return success(c, { odometerKm: km });
 });
 
-// ============================================================================
-// VEHICLE AVAILABILITY CALENDAR (TICKET-312)
-// ============================================================================
-
-fleet.get('/vehicles/availability', zValidator('query', availabilitySchema), async (c) => {
-  const db = c.get('tenantDb');
-  const { from, to, type } = c.req.valid('query');
-
-  // Validate max 90 days
-  const fromDate = new Date(from);
-  const toDate = new Date(to);
-  if ((toDate.getTime() - fromDate.getTime()) / 86400000 > 90) {
-    return error(c, 'Date range cannot exceed 90 days', 400);
-  }
-
-  const vehicleConditions = ['v.is_deleted = 0'];
-  const vehicleParams: any[] = [];
-  if (type) { vehicleConditions.push('v.type = ?'); vehicleParams.push(type); }
-
-  const allVehicles = await db.prepare(
-    `SELECT v.id, v.registration_number, v.type, v.status, v.seating_capacity
-     FROM vehicles v WHERE ${vehicleConditions.join(' AND ')}
-     ORDER BY v.registration_number`
-  ).bind(...vehicleParams).all();
-
-  // Get overlapping trips
-  const trips = await db.prepare(`
-    SELECT ta.vehicle_id, ta.pickup_datetime, ta.drop_datetime, ta.passenger_name, ta.status as trip_status, ta.id as trip_id
-    FROM trip_assignments ta
-    WHERE ta.is_deleted = 0 AND ta.status NOT IN ('completed', 'cancelled')
-      AND ta.pickup_datetime <= ? AND ta.drop_datetime >= ?
-      AND ta.vehicle_id IS NOT NULL
-  `).bind(to, from).all();
-
-  const tripsByVehicle = new Map<string, any[]>();
-  for (const trip of (trips.results || [])) {
-    const arr = tripsByVehicle.get(trip.vehicle_id as string) || [];
-    arr.push(trip);
-    tripsByVehicle.set(trip.vehicle_id as string, arr);
-  }
-
-  const result = (allVehicles.results || []).map((v: any) => ({
-    vehicleId: v.id,
-    registrationNumber: v.registration_number,
-    type: v.type,
-    status: v.status,
-    seatingCapacity: v.seating_capacity,
-    trips: (tripsByVehicle.get(v.id) || []).map((t: any) => ({
-      tripId: t.trip_id,
-      pickupDatetime: t.pickup_datetime,
-      dropDatetime: t.drop_datetime,
-      passengerName: t.passenger_name,
-      status: t.trip_status,
-    })),
-  }));
-
-  return success(c, result);
-});
-
 // Single vehicle availability
 fleet.get('/vehicles/:id/availability', async (c) => {
   const db = c.get('tenantDb');
@@ -645,6 +645,59 @@ fleet.get('/drivers', zValidator('query', driverListSchema), async (c) => {
   `).bind(...params, limit, offset).all();
 
   return paginated(c, (rows.results || []).map(parseDriver), total, page, limit);
+});
+
+// ============================================================================
+// DRIVER SCHEDULE (TICKET-315)
+// ============================================================================
+
+fleet.get('/drivers/schedule', zValidator('query', scheduleSchema), async (c) => {
+  const db = c.get('tenantDb');
+  const { from, to } = c.req.valid('query');
+
+  const fromDate = new Date(from);
+  const toDate = new Date(to);
+  if ((toDate.getTime() - fromDate.getTime()) / 86400000 > 90) {
+    return error(c, 'Date range cannot exceed 90 days', 400);
+  }
+
+  const allDrivers = await db.prepare(
+    'SELECT id, name, phone, status, rating FROM drivers WHERE is_deleted = 0 ORDER BY name'
+  ).all();
+
+  const trips = await db.prepare(`
+    SELECT ta.driver_id, ta.id as trip_id, ta.pickup_datetime, ta.drop_datetime,
+           ta.pickup_location, ta.passenger_name, ta.status as trip_status
+    FROM trip_assignments ta
+    WHERE ta.is_deleted = 0 AND ta.status NOT IN ('completed', 'cancelled')
+      AND ta.pickup_datetime <= ? AND ta.drop_datetime >= ?
+      AND ta.driver_id IS NOT NULL
+  `).bind(to, from).all();
+
+  const tripsByDriver = new Map<string, any[]>();
+  for (const trip of (trips.results || [])) {
+    const arr = tripsByDriver.get(trip.driver_id as string) || [];
+    arr.push(trip);
+    tripsByDriver.set(trip.driver_id as string, arr);
+  }
+
+  const result = (allDrivers.results || []).map((d: any) => ({
+    driverId: d.id,
+    name: d.name,
+    phone: d.phone,
+    status: d.status,
+    rating: d.rating,
+    trips: (tripsByDriver.get(d.id) || []).map((t: any) => ({
+      tripId: t.trip_id,
+      pickupDatetime: t.pickup_datetime,
+      dropDatetime: t.drop_datetime,
+      pickupLocation: t.pickup_location,
+      passengerName: t.passenger_name,
+      status: t.trip_status,
+    })),
+  }));
+
+  return success(c, result);
 });
 
 fleet.get('/drivers/:id', async (c) => {
@@ -995,59 +1048,6 @@ fleet.get('/documents/drivers/expiring', async (c) => {
   });
 
   return success(c, data);
-});
-
-// ============================================================================
-// DRIVER SCHEDULE (TICKET-315)
-// ============================================================================
-
-fleet.get('/drivers/schedule', zValidator('query', scheduleSchema), async (c) => {
-  const db = c.get('tenantDb');
-  const { from, to } = c.req.valid('query');
-
-  const fromDate = new Date(from);
-  const toDate = new Date(to);
-  if ((toDate.getTime() - fromDate.getTime()) / 86400000 > 90) {
-    return error(c, 'Date range cannot exceed 90 days', 400);
-  }
-
-  const allDrivers = await db.prepare(
-    'SELECT id, name, phone, status, rating FROM drivers WHERE is_deleted = 0 ORDER BY name'
-  ).all();
-
-  const trips = await db.prepare(`
-    SELECT ta.driver_id, ta.id as trip_id, ta.pickup_datetime, ta.drop_datetime,
-           ta.pickup_location, ta.passenger_name, ta.status as trip_status
-    FROM trip_assignments ta
-    WHERE ta.is_deleted = 0 AND ta.status NOT IN ('completed', 'cancelled')
-      AND ta.pickup_datetime <= ? AND ta.drop_datetime >= ?
-      AND ta.driver_id IS NOT NULL
-  `).bind(to, from).all();
-
-  const tripsByDriver = new Map<string, any[]>();
-  for (const trip of (trips.results || [])) {
-    const arr = tripsByDriver.get(trip.driver_id as string) || [];
-    arr.push(trip);
-    tripsByDriver.set(trip.driver_id as string, arr);
-  }
-
-  const result = (allDrivers.results || []).map((d: any) => ({
-    driverId: d.id,
-    name: d.name,
-    phone: d.phone,
-    status: d.status,
-    rating: d.rating,
-    trips: (tripsByDriver.get(d.id) || []).map((t: any) => ({
-      tripId: t.trip_id,
-      pickupDatetime: t.pickup_datetime,
-      dropDatetime: t.drop_datetime,
-      pickupLocation: t.pickup_location,
-      passengerName: t.passenger_name,
-      status: t.trip_status,
-    })),
-  }));
-
-  return success(c, result);
 });
 
 fleet.get('/drivers/:id/schedule', async (c) => {
@@ -1661,8 +1661,20 @@ fleet.get('/dashboard', async (c) => {
       WHERE ta.is_deleted = 0 AND ta.status = 'completed'
       ORDER BY ta.completed_at DESC LIMIT 5
     `).all(),
-    // Top drivers by rating
-    db.prepare("SELECT id, name, phone, rating, total_trips FROM drivers WHERE is_deleted = 0 AND total_trips > 0 ORDER BY rating DESC LIMIT 5").all(),
+    // Top drivers: active drivers ranked by completed trips, then rating. Drivers with no trips yet are
+    // still listed (a fresh fleet must not show an empty widget); trips are counted from the assignments
+    // themselves so the figure does not depend on the denormalised drivers.total_trips counter.
+    db.prepare(`
+      SELECT d.id, d.name, d.phone, d.rating,
+             MAX(COALESCE(d.total_trips, 0), COUNT(ta.id)) AS total_trips
+      FROM drivers d
+      LEFT JOIN trip_assignments ta
+        ON ta.driver_id = d.id AND ta.is_deleted = 0 AND ta.status = 'completed'
+      WHERE d.is_deleted = 0 AND d.status IN ('active', 'on_trip')
+      GROUP BY d.id
+      ORDER BY total_trips DESC, d.rating DESC, d.name ASC
+      LIMIT 5
+    `).all(),
     // Revenue this month (from invoices linked to trips)
     db.prepare(`
       SELECT COALESCE(SUM(i.total), 0) as revenue, COUNT(DISTINCT ta.id) as trips,
@@ -1931,15 +1943,6 @@ fleet.get('/vehicle-rate-cards', zValidator('query', rateCardListSchema), async 
   return paginated(c, (rows.results || []).map(parseRateCardRow), countResult?.total ?? 0, page, limit);
 });
 
-// Get single rate card
-fleet.get('/vehicle-rate-cards/:id', async (c) => {
-  const db = c.get('tenantDb');
-  const id = c.req.param('id');
-  const row = await db.prepare('SELECT * FROM vehicle_rate_cards WHERE id = ? AND is_deleted = 0').bind(id).first();
-  if (!row) return notFound(c, 'Rate card');
-  return success(c, parseRateCardRow(row));
-});
-
 // Lookup rate card by vehicle type + trip type
 fleet.get('/vehicle-rate-cards/lookup', zValidator('query', rateCardLookupSchema), async (c) => {
   const db = c.get('tenantDb');
@@ -1955,6 +1958,15 @@ fleet.get('/vehicle-rate-cards/lookup', zValidator('query', rateCardLookupSchema
   `).bind(vehicleType, tripType, now, now).first();
 
   if (!row) return success(c, null);
+  return success(c, parseRateCardRow(row));
+});
+
+// Get single rate card
+fleet.get('/vehicle-rate-cards/:id', async (c) => {
+  const db = c.get('tenantDb');
+  const id = c.req.param('id');
+  const row = await db.prepare('SELECT * FROM vehicle_rate_cards WHERE id = ? AND is_deleted = 0').bind(id).first();
+  if (!row) return notFound(c, 'Rate card');
   return success(c, parseRateCardRow(row));
 });
 

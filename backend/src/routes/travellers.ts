@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import { authMiddleware } from '../middleware/auth';
 import type { AppContext } from '../types';
 import { createTravellerSchema, updateTravellerSchema } from '../validators/traveller';

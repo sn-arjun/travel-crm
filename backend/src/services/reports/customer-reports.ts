@@ -68,26 +68,33 @@ const customerReports: ReportDefinition[] = [
         allowedFilters: [],
         allowedGroupBy: [],
         defaultSort: { column: 'days_until_birthday', order: 'asc' },
+        // An "as of today" report: the date range never narrows it, so bind the filter to today.
+        dateColumn: "date('now')",
         baseQuery: `
       SELECT
         c.name as customer_name,
         c.email,
         c.phone,
-        c.date_of_birth,
+        c.birthday as date_of_birth,
         CAST(
-          (julianday(date(date('now'), '+0 years',
-            substr(date_of_birth, 5)) < date('now')
-            OR substr(date_of_birth, 5) = strftime('-%m-%d', 'now')
-          ) * 365 +
-          (julianday(date(strftime('%Y', 'now') || substr(date_of_birth, 5))) - julianday('now'))
-          AS INTEGER)
-        as days_until_birthday
+          julianday(
+            CASE WHEN strftime('%m-%d', c.birthday) >= strftime('%m-%d', 'now')
+              THEN strftime('%Y', 'now') || '-' || strftime('%m-%d', c.birthday)
+              ELSE (CAST(strftime('%Y', 'now') AS INTEGER) + 1) || '-' || strftime('%m-%d', c.birthday)
+            END
+          ) - julianday(date('now'))
+        AS INTEGER) as days_until_birthday
       FROM contacts c
-      WHERE c.is_deleted = 0 AND c.date_of_birth IS NOT NULL
-        AND (
-          strftime('%m-%d', c.date_of_birth) >= strftime('%m-%d', 'now')
-          AND strftime('%m-%d', c.date_of_birth) <= strftime('%m-%d', date('now', '+30 days'))
-        )
+      WHERE c.is_deleted = 0 AND c.birthday IS NOT NULL AND c.birthday != ''
+        AND CAST(
+          julianday(
+            CASE WHEN strftime('%m-%d', c.birthday) >= strftime('%m-%d', 'now')
+              THEN strftime('%Y', 'now') || '-' || strftime('%m-%d', c.birthday)
+              ELSE (CAST(strftime('%Y', 'now') AS INTEGER) + 1) || '-' || strftime('%m-%d', c.birthday)
+            END
+          ) - julianday(date('now'))
+        AS INTEGER) <= 30
+      {DATE_FILTER}
       {ORDER_BY}
     `,
         columns: [
@@ -107,6 +114,8 @@ const customerReports: ReportDefinition[] = [
         allowedFilters: [],
         allowedGroupBy: [],
         defaultSort: { column: 'last_booking_date', order: 'asc' },
+        // An "as of today" report: the date range never narrows it, so bind the filter to today.
+        dateColumn: "date('now')",
         baseQuery: `
       SELECT
         c.name as customer_name,
@@ -117,7 +126,7 @@ const customerReports: ReportDefinition[] = [
         CAST(julianday('now') - julianday(MAX(l.created_at)) AS INTEGER) as days_since_last_booking
       FROM contacts c
       LEFT JOIN leads l ON c.id = l.contact_id AND l.status = 'won' AND l.is_deleted = 0
-      WHERE c.is_deleted = 0
+      WHERE c.is_deleted = 0 {DATE_FILTER}
       GROUP BY c.id
       HAVING MAX(l.created_at) IS NULL
         OR CAST(julianday('now') - julianday(MAX(l.created_at)) AS INTEGER) > 180

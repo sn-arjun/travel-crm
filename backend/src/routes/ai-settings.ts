@@ -9,7 +9,7 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import type { AppContext } from '../types';
 import { success, error, forbidden } from '../utils/response';
 import { getTenantFeatures, PLAN_DEFAULTS } from '../middleware/feature-gate';

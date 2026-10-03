@@ -148,6 +148,7 @@ documentRoutes.get('/', async (c) => {
   // Support frontend aliases: leadId, itineraryId map to entity_type + entity_id
   const leadId = c.req.query('leadId');
   const itineraryId = c.req.query('itineraryId');
+  const contactId = c.req.query('contactId');
   const category = c.req.query('category');
   const search = c.req.query('search');
   const page = parseInt(c.req.query('page') || '1');
@@ -172,6 +173,11 @@ documentRoutes.get('/', async (c) => {
       where += ' AND d.related_id = ?';
       params.push(entityId);
     }
+  }
+  // A contact's documents: files attached to the contact itself plus files on any of its leads
+  if (contactId) {
+    where += " AND ((d.related_to = 'contact' AND d.related_id = ?) OR (d.related_to = 'lead' AND d.related_id IN (SELECT id FROM leads WHERE contact_id = ? AND is_deleted = 0)))";
+    params.push(contactId, contactId);
   }
   if (category) {
     where += ' AND d.category = ?';

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { AppContext } from '../types';
 import { success, error, notFound, paginated } from '../utils/response';
-import { requireSuperAdmin } from '../middleware/require-super-admin';
+import { requireSuperAdmin, isSuperAdminEmail } from '../middleware/require-super-admin';
 import { PLAN_DEFAULTS } from '../middleware/feature-gate';
 
 /**
@@ -12,6 +12,22 @@ import { PLAN_DEFAULTS } from '../middleware/feature-gate';
  * The whole mount sits behind `requireSuperAdmin`.
  */
 const app = new Hono<AppContext>();
+
+/**
+ * GET /whoami — "am I a platform super admin?" for ANY authenticated user.
+ *
+ * The desktop shell calls this for every signed-in user to decide whether to
+ * show the Super Admin link, so it must answer 200 for tenant users too and
+ * must NOT sit behind `requireSuperAdmin`. Hono runs handlers in registration
+ * order and this one answers without calling next(), so registering it above
+ * the guard below keeps it out of the guarded chain. Authentication itself is
+ * the global authMiddleware applied to /api/v1/*.
+ */
+app.get('/whoami', async (c) => {
+  const email = c.get('jwtPayload')?.email;
+  const env = c.env as unknown as { MASTER_DB: D1Database; SUPER_ADMIN_EMAIL?: string };
+  return success(c, { isSuperAdmin: await isSuperAdminEmail(env, email) });
+});
 
 app.use('*', requireSuperAdmin);
 

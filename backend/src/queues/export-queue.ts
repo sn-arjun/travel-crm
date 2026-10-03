@@ -1,4 +1,4 @@
-import { drizzle } from 'drizzle-orm/d1';
+import { drizzle, type DrizzleD1Database } from 'drizzle-orm/d1';
 import { eq, inArray } from 'drizzle-orm';
 import * as schema from '../db/tenant-schema';
 import * as XLSX from 'xlsx';
@@ -28,10 +28,12 @@ function toXlsxBuffer(data: Record<string, unknown>[], sheetName: string): Uint8
     return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Uint8Array;
 }
 
-function resolveTenantDb(env: Env, tenantId?: string): ReturnType<typeof drizzle> {
+type TenantDb = DrizzleD1Database<typeof schema>;
+
+function resolveTenantDb(env: Env, tenantId?: string): TenantDb {
     if (tenantId) {
         const bindingKey = `TENANT_DB_${tenantId}` as `TENANT_DB_${string}`;
-        const binding = (env as any)[bindingKey];
+        const binding: D1Database | undefined = env[bindingKey];
         if (binding) return drizzle(binding, { schema });
     }
     return drizzle(env.MASTER_DB, { schema });
@@ -139,7 +141,7 @@ export async function handleExportQueue(batch: MessageBatch<ExportQueueMessage>,
 
                 const wb = XLSX.utils.book_new();
 
-                const sheets: { name: string; data: any[] }[] = [
+                const sheets: { name: string; data: Record<string, unknown>[] }[] = [
                     { name: 'Contacts', data: contactsData },
                     { name: 'Leads', data: leadsData },
                     { name: 'Invoices', data: invoicesData },

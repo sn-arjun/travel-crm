@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import { SignJWT, jwtVerify } from 'jose';
 import type { AppContext } from '../types';
 import { generateId } from '../utils/uuid';

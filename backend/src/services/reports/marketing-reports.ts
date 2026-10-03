@@ -79,8 +79,15 @@ const marketingReports: ReportDefinition[] = [
         SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) as delivered_count,
         SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count,
         COALESCE(SUM(CASE WHEN status = 'delivered' THEN 1.0 ELSE 0.0 END) / NULLIF(COUNT(id), 0) * 100, 0) as delivery_rate
-      FROM communication_logs
-      WHERE campaign_id IS NOT NULL {DATE_FILTER}
+      FROM (
+        SELECT 'email' AS channel, status, id, created_at FROM email_message_log WHERE campaign_id IS NOT NULL
+        UNION ALL
+        SELECT 'whatsapp' AS channel, status, id, created_at FROM whatsapp_campaign_recipients
+        UNION ALL
+        SELECT COALESCE(mc.type, 'unknown') AS channel, cr.status, cr.id, cr.created_at
+        FROM campaign_recipients cr LEFT JOIN marketing_campaigns mc ON mc.id = cr.campaign_id
+      ) m
+      WHERE 1 = 1 {DATE_FILTER}
       GROUP BY channel, status
       {ORDER_BY}
     `,

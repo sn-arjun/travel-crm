@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, desc, and, sql, inArray, isNull } from 'drizzle-orm';
@@ -225,6 +225,7 @@ leadRoutes.get('/', requirePermission('leads', 'view'), async (c) => {
     status: statusFilter,
     priority: priorityFilter,
     assignedTo: assigned_to,
+    contactId: contactIdFilter,
     source: sourceFilter,
     tripType: trip_type,
     travelDateFrom: travel_from,
@@ -273,6 +274,11 @@ leadRoutes.get('/', requirePermission('leads', 'view'), async (c) => {
   if (assigned_to) {
     conditions.push('l.assigned_to = ?');
     bindings.push(assigned_to);
+  }
+
+  if (contactIdFilter) {
+    conditions.push('l.contact_id = ?');
+    bindings.push(contactIdFilter);
   }
 
   if (sourceFilter) {
@@ -573,8 +579,12 @@ leadRoutes.post(
     const userId = c.get('userId');
     const tenantId = c.get('tenantId');
 
-    // Resolve assignee: explicit → source rule → round-robin
-    const assignedTo = await resolveAssignee(tenantDb, c.env.CACHE, tenantId, body.source, body.assignedTo);
+    // Resolve assignee. An explicit `assignedTo: null` means "leave unassigned" (no routing rule,
+    // no round-robin). Omitting the field keeps auto-assignment: explicit → source rule → round-robin.
+    const leaveUnassigned = 'assignedTo' in body && body.assignedTo === null;
+    const assignedTo = leaveUnassigned
+      ? null
+      : await resolveAssignee(tenantDb, c.env.CACHE, tenantId, body.source, body.assignedTo);
 
     const id = generateId();
     const now = new Date().toISOString();

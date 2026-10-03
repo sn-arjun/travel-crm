@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, desc, and, like, sql, count, isNull } from 'drizzle-orm';
@@ -207,11 +207,16 @@ itineraryRoutes.get('/', requirePermission('itineraries', 'view'), async (c) => 
   const statusFilter = url.searchParams.get('status');
   const leadIdFilter = url.searchParams.get('leadId');
   const createdByFilter = url.searchParams.get('createdBy');
+  const contactIdFilter = url.searchParams.get('contactId');
 
   const conditions = [eq(itineraries.isDeleted, 0)];
 
   if (statusFilter) conditions.push(eq(itineraries.status, statusFilter));
   if (leadIdFilter) conditions.push(eq(itineraries.leadId, leadIdFilter));
+  // Itineraries hang off a lead, so a contact's itineraries are those of its leads
+  if (contactIdFilter) {
+    conditions.push(sql`${itineraries.leadId} IN (SELECT id FROM leads WHERE contact_id = ${contactIdFilter} AND is_deleted = 0)`);
+  }
   if (createdByFilter) conditions.push(eq(itineraries.createdBy, createdByFilter));
   if (search) conditions.push(like(itineraries.title, `%${search}%`));
 

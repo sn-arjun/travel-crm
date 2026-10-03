@@ -17,12 +17,38 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
     'done': ['in_progress', 'todo'],
 };
 
+// ─── camelCase aliases (additive) ───────────────────────────
+// The desktop client and the Flutter apps send camelCase keys; the original contract is snake_case.
+// Both are accepted. When both are present the snake_case value wins.
+
+const CAMEL_TO_SNAKE: Record<string, string> = {
+    dueDate: 'due_date',
+    assignedTo: 'assigned_to',
+    relatedLeadId: 'related_lead_id',
+    leadId: 'related_lead_id',
+    parentTaskId: 'parent_task_id',
+};
+
+function normalizeTaskBody(body: Record<string, any>): Record<string, any> {
+    const out: Record<string, any> = { ...body };
+    for (const [camel, snake] of Object.entries(CAMEL_TO_SNAKE)) {
+        if (out[snake] === undefined && body[camel] !== undefined) out[snake] = body[camel];
+    }
+    return out;
+}
+
 // ─── List Tasks ─────────────────────────────────────────────
 
 taskRoutes.get('/', async (c) => {
     try {
-        const { status, priority, category, assigned_to, related_lead_id,
-            due_date_from, due_date_to, overdue, view, page, limit: lim, search } = c.req.query();
+        const q = c.req.query();
+        const { status, priority, category, view, page, limit: lim, search, contactId } = q;
+        // snake_case wins over camelCase when both are sent
+        const assigned_to = q.assigned_to ?? q.assignedTo;
+        const related_lead_id = q.related_lead_id ?? q.relatedLeadId;
+        const due_date_from = q.due_date_from ?? q.dueDateFrom;
+        const due_date_to = q.due_date_to ?? q.dueDateTo;
+        const overdue = q.overdue;
         const userId = c.get('userId');
         const role = c.get('role');
         const db = c.get('tenantDb');
@@ -50,6 +76,11 @@ taskRoutes.get('/', async (c) => {
         if (category) { query += ' AND t.category = ?'; params.push(category); }
         if (assigned_to) { query += ' AND t.assigned_to = ?'; params.push(assigned_to); }
         if (related_lead_id) { query += ' AND t.related_lead_id = ?'; params.push(related_lead_id); }
+        // Tasks relate to a contact through their lead
+        if (contactId) {
+            query += ' AND t.related_lead_id IN (SELECT id FROM leads WHERE contact_id = ? AND is_deleted = 0)';
+            params.push(contactId);
+        }
         if (due_date_from) { query += ' AND t.due_date >= ?'; params.push(due_date_from); }
         if (due_date_to) { query += ' AND t.due_date <= ?'; params.push(due_date_to); }
         if (overdue === 'true') {
@@ -106,7 +137,7 @@ taskRoutes.get('/:id', async (c) => {
 
 taskRoutes.post('/', async (c) => {
     try {
-        const body = await c.req.json();
+        const body = normalizeTaskBody(await c.req.json());
         const userId = c.get('userId');
         const db = c.get('tenantDb');
 
@@ -191,7 +222,7 @@ taskRoutes.post('/', async (c) => {
 taskRoutes.put('/:id', async (c) => {
     try {
         const { id } = c.req.param();
-        const body = await c.req.json();
+        const body = normalizeTaskBody(await c.req.json());
         const userId = c.get('userId');
         const db = c.get('tenantDb');
 

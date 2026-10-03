@@ -11,9 +11,36 @@ function generateId(): string {
   return crypto.randomUUID();
 }
 
+/** Single-tenant deployments bind the tenant database as DB (or TENANT_DB). */
+interface SchedulerEnv extends Env {
+  DB?: D1Database;
+  TENANT_DB?: D1Database;
+}
+
+interface CampaignRow {
+  id: string;
+  name: string;
+  type: string | null;
+  segment_id: string | null;
+  email_subject: string | null;
+  message_body: string | null;
+  template_id: string | null;
+}
+
+interface ContactRow {
+  id: string;
+  email: string | null;
+  name: string | null;
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 export async function processCampaignScheduler(env: Env): Promise<void> {
   // Get tenant DB — for single-tenant setups use DB binding
-  const tenantDb = (env as any).DB || (env as any).TENANT_DB;
+  const schedulerEnv = env as SchedulerEnv;
+  const tenantDb = schedulerEnv.DB || schedulerEnv.TENANT_DB;
   if (!tenantDb) {
     console.error('[CAMPAIGN SCHEDULER] No database available');
     return;
@@ -31,7 +58,7 @@ export async function processCampaignScheduler(env: Env): Promise<void> {
       LIMIT 10
     `)
     .bind(now)
-    .all<any>();
+    .all<CampaignRow>();
 
   const campaigns = dueCampaigns.results ?? [];
 
@@ -80,7 +107,7 @@ export async function processCampaignScheduler(env: Env): Promise<void> {
           const contact = await tenantDb
             .prepare('SELECT id, email, name FROM contacts WHERE id = ?')
             .bind(contactId)
-            .first<any>();
+            .first<ContactRow>();
 
           if (!contact || !contact.email) {
             failureCount++;
@@ -98,7 +125,7 @@ export async function processCampaignScheduler(env: Env): Promise<void> {
             .run();
 
           // Queue campaign via CAMPAIGN_QUEUE
-          await (env as any).CAMPAIGN_QUEUE.send({
+          await env.CAMPAIGN_QUEUE.send({
             type: campaign.type || 'email',
             campaignId: campaign.id,
             contactId: contactId,
@@ -110,8 +137,8 @@ export async function processCampaignScheduler(env: Env): Promise<void> {
           });
 
           queuedCount++;
-        } catch (contactErr: any) {
-          console.error(`[CAMPAIGN SCHEDULER] Failed to queue for contact ${contactId}:`, contactErr.message);
+        } catch (contactErr: unknown) {
+          console.error(`[CAMPAIGN SCHEDULER] Failed to queue for contact ${contactId}:`, errorMessage(contactErr));
           failureCount++;
         }
       }
@@ -127,8 +154,8 @@ export async function processCampaignScheduler(env: Env): Promise<void> {
         .run();
 
       console.log(`[CAMPAIGN SCHEDULER] Campaign ${campaign.id} sent: ${queuedCount} queued, ${failureCount} failed`);
-    } catch (err: any) {
-      console.error(`[CAMPAIGN SCHEDULER] Error processing campaign ${campaign.id}:`, err.message);
+    } catch (err: unknown) {
+      console.error(`[CAMPAIGN SCHEDULER] Error processing campaign ${campaign.id}:`, errorMessage(err));
       // Roll back to scheduled so it can be retried
       await tenantDb
         .prepare(`UPDATE marketing_campaigns SET status = 'scheduled', updated_at = ? WHERE id = ?`)

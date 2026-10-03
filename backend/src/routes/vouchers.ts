@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import { z } from 'zod';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import type { AppContext } from '../types';

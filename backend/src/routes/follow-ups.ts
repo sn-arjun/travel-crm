@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, and, lt, gte, lte, desc } from 'drizzle-orm';
@@ -40,6 +40,7 @@ function buildFollowUpQuery(
   role: string,
   teamView: boolean,
   now: string,
+  contactId?: string,
 ): { sql: string; params: unknown[] } {
   const today = now.split('T')[0];
   const todayStart = `${today}T00:00:00.000Z`;
@@ -54,6 +55,12 @@ function buildFollowUpQuery(
   if (!canSeeTeam) {
     whereClause += ` AND f.created_by = ?`;
     params.push(userId);
+  }
+
+  // Follow-ups belong to a lead; a contact's follow-ups are those of its leads
+  if (contactId) {
+    whereClause += ` AND l.contact_id = ?`;
+    params.push(contactId);
   }
 
   if (filter === 'today') {
@@ -96,7 +103,9 @@ followUpRoutes.get('/', requirePermission('leads', 'view'), async (c) => {
   const teamView = c.req.query('team') === 'true';
   const now = new Date().toISOString();
 
-  const { sql, params } = buildFollowUpQuery(tenantDb, filter, userId, role, teamView, now);
+  const contactId = c.req.query('contactId') || undefined;
+
+  const { sql, params } = buildFollowUpQuery(tenantDb, filter, userId, role, teamView, now, contactId);
 
   const result = await tenantDb.prepare(sql).bind(...params).all();
 

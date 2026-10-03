@@ -413,7 +413,7 @@ test.describe('Leads', () => {
   test('unassigned leads page lists leads with no owner and bulk-assigns them', async ({ page }) => {
     const contact = await seedContact();
     const marker = `Unassigned-${Date.now()}`;
-    const lead = await seedLead(contact.id, { title: marker });
+    const lead = await seedLead(contact.id, { title: marker, assignedTo: null });
     expect(lead.assignedTo ?? null).toBeFalsy();
 
     const usersRes = await api('GET', '/users');

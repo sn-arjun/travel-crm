@@ -265,7 +265,7 @@ const salesReports: ReportDefinition[] = [
         requiredRole: ['admin', 'sales_manager'],
         allowedFilters: [],
         allowedGroupBy: [],
-        defaultSort: { column: 'month', order: 'asc' },
+        defaultSort: { column: 'month_num ASC, year', order: 'asc' },
         baseQuery: `
       SELECT
         strftime('%m', created_at) as month_num,

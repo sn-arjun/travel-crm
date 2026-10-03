@@ -134,6 +134,7 @@ const leadReports: ReportDefinition[] = [
         allowedFilters: ['assigned_to'],
         allowedGroupBy: ['assigned_to'],
         defaultSort: { column: 'avg_response_hours', order: 'asc' },
+        dateColumn: 'l.created_at',
         baseQuery: `
       SELECT
         l.assigned_to,
@@ -161,6 +162,7 @@ const leadReports: ReportDefinition[] = [
         allowedFilters: ['assigned_to'],
         allowedGroupBy: ['assigned_to'],
         defaultSort: { column: 'compliance_rate', order: 'desc' },
+        dateColumn: 'l.created_at',
         baseQuery: `
       SELECT
         l.assigned_to,

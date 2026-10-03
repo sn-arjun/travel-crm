@@ -7,7 +7,7 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator';
 import type { AppContext } from '../types';
 import { generateId } from '../utils/uuid';
 import { success, created, paginated, error, notFound } from '../utils/response';
@@ -164,6 +164,135 @@ callRoutes.get('/', async (c) => {
       hasMore: page * limit < total,
     },
   });
+});
+
+// ── GET /analytics — Call analytics dashboard (TICKET-389) ────
+
+callRoutes.get('/analytics', rbac(['admin', 'sales_manager']), async (c) => {
+  const db = c.get('tenantDb');
+  const url = new URL(c.req.url);
+
+  const fromDate = url.searchParams.get('fromDate') || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const toDate = url.searchParams.get('toDate') || new Date().toISOString().slice(0, 10);
+
+  // Total calls
+  const totals = await db.prepare(`
+    SELECT
+      COUNT(*) as total_calls,
+      SUM(CASE WHEN direction = 'inbound' THEN 1 ELSE 0 END) as inbound_calls,
+      SUM(CASE WHEN direction = 'outbound' THEN 1 ELSE 0 END) as outbound_calls,
+      SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_calls,
+      SUM(CASE WHEN status IN ('no-answer', 'busy', 'canceled') THEN 1 ELSE 0 END) as missed_calls,
+      ROUND(AVG(CASE WHEN duration_seconds > 0 THEN duration_seconds END), 1) as avg_duration,
+      SUM(duration_seconds) as total_duration,
+      SUM(CASE WHEN outcome = 'interested' THEN 1 ELSE 0 END) as interested_count,
+      SUM(CASE WHEN outcome = 'follow_up_needed' THEN 1 ELSE 0 END) as follow_up_count
+    FROM call_logs
+    WHERE created_at >= ? AND created_at <= ?
+  `).bind(fromDate, toDate + 'T23:59:59Z').first<Record<string, any>>();
+
+  // Calls per day
+  const dailyCalls = await db.prepare(`
+    SELECT
+      DATE(created_at) as date,
+      COUNT(*) as total,
+      SUM(CASE WHEN direction = 'inbound' THEN 1 ELSE 0 END) as inbound,
+      SUM(CASE WHEN direction = 'outbound' THEN 1 ELSE 0 END) as outbound
+    FROM call_logs
+    WHERE created_at >= ? AND created_at <= ?
+    GROUP BY DATE(created_at)
+    ORDER BY date ASC
+  `).bind(fromDate, toDate + 'T23:59:59Z').all();
+
+  // Top callers (agents)
+  const topAgents = await db.prepare(`
+    SELECT u.name, u.id as user_id,
+      COUNT(*) as total_calls,
+      SUM(CASE WHEN cl.status = 'completed' THEN 1 ELSE 0 END) as completed,
+      ROUND(AVG(CASE WHEN cl.duration_seconds > 0 THEN cl.duration_seconds END), 1) as avg_duration
+    FROM call_logs cl
+    JOIN users u ON cl.created_by = u.id
+    WHERE cl.created_at >= ? AND cl.created_at <= ?
+    GROUP BY u.id, u.name
+    ORDER BY total_calls DESC
+    LIMIT 10
+  `).bind(fromDate, toDate + 'T23:59:59Z').all();
+
+  // Outcome distribution
+  const outcomes = await db.prepare(`
+    SELECT outcome, COUNT(*) as count
+    FROM call_logs
+    WHERE outcome IS NOT NULL AND created_at >= ? AND created_at <= ?
+    GROUP BY outcome
+    ORDER BY count DESC
+  `).bind(fromDate, toDate + 'T23:59:59Z').all();
+
+  // Hourly distribution
+  const hourly = await db.prepare(`
+    SELECT
+      CAST(strftime('%H', created_at) AS INTEGER) as hour,
+      COUNT(*) as count
+    FROM call_logs
+    WHERE created_at >= ? AND created_at <= ?
+    GROUP BY hour
+    ORDER BY hour ASC
+  `).bind(fromDate, toDate + 'T23:59:59Z').all();
+
+  const totalCalls = (totals?.total_calls as number) || 0;
+  const completedCalls = (totals?.completed_calls as number) || 0;
+
+  return success(c, {
+    summary: {
+      totalCalls,
+      inboundCalls: totals?.inbound_calls || 0,
+      outboundCalls: totals?.outbound_calls || 0,
+      completedCalls,
+      missedCalls: totals?.missed_calls || 0,
+      avgDurationSeconds: totals?.avg_duration || 0,
+      totalDurationSeconds: totals?.total_duration || 0,
+      interestedCount: totals?.interested_count || 0,
+      followUpCount: totals?.follow_up_count || 0,
+      successRate: totalCalls > 0 ? Math.round((completedCalls / totalCalls) * 100) : 0,
+    },
+    dailyCalls: (dailyCalls.results || []).map((r: any) => ({
+      date: r.date,
+      total: r.total,
+      inbound: r.inbound,
+      outbound: r.outbound,
+    })),
+    topAgents: (topAgents.results || []).map((r: any) => ({
+      userId: r.user_id,
+      name: r.name,
+      totalCalls: r.total_calls,
+      completed: r.completed,
+      avgDuration: r.avg_duration || 0,
+    })),
+    outcomes: (outcomes.results || []).map((r: any) => ({
+      outcome: r.outcome,
+      count: r.count,
+    })),
+    hourlyDistribution: (hourly.results || []).map((r: any) => ({
+      hour: r.hour,
+      count: r.count,
+    })),
+  });
+});
+
+// ── GET /missed — Get missed call count (TICKET-381) ──────────
+
+callRoutes.get('/missed', async (c) => {
+  const db = c.get('tenantDb');
+  const userId = c.get('userId');
+
+  const count = await db.prepare(`
+    SELECT COUNT(*) as count FROM call_logs
+    WHERE direction = 'inbound'
+      AND status IN ('no-answer', 'busy', 'canceled')
+      AND routed_to = ?
+      AND outcome IS NULL
+  `).bind(userId).first<{ count: number }>();
+
+  return success(c, { count: count?.count || 0 });
 });
 
 // ── GET /:id — Single call log detail ─────────────────────────
@@ -430,135 +559,6 @@ callRoutes.post('/:id/end', async (c) => {
     .bind(id).run();
 
   return success(c, { message: 'Call ended' });
-});
-
-// ── GET /analytics — Call analytics dashboard (TICKET-389) ────
-
-callRoutes.get('/analytics', rbac(['admin', 'sales_manager']), async (c) => {
-  const db = c.get('tenantDb');
-  const url = new URL(c.req.url);
-
-  const fromDate = url.searchParams.get('fromDate') || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-  const toDate = url.searchParams.get('toDate') || new Date().toISOString().slice(0, 10);
-
-  // Total calls
-  const totals = await db.prepare(`
-    SELECT
-      COUNT(*) as total_calls,
-      SUM(CASE WHEN direction = 'inbound' THEN 1 ELSE 0 END) as inbound_calls,
-      SUM(CASE WHEN direction = 'outbound' THEN 1 ELSE 0 END) as outbound_calls,
-      SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_calls,
-      SUM(CASE WHEN status IN ('no-answer', 'busy', 'canceled') THEN 1 ELSE 0 END) as missed_calls,
-      ROUND(AVG(CASE WHEN duration_seconds > 0 THEN duration_seconds END), 1) as avg_duration,
-      SUM(duration_seconds) as total_duration,
-      SUM(CASE WHEN outcome = 'interested' THEN 1 ELSE 0 END) as interested_count,
-      SUM(CASE WHEN outcome = 'follow_up_needed' THEN 1 ELSE 0 END) as follow_up_count
-    FROM call_logs
-    WHERE created_at >= ? AND created_at <= ?
-  `).bind(fromDate, toDate + 'T23:59:59Z').first<Record<string, any>>();
-
-  // Calls per day
-  const dailyCalls = await db.prepare(`
-    SELECT
-      DATE(created_at) as date,
-      COUNT(*) as total,
-      SUM(CASE WHEN direction = 'inbound' THEN 1 ELSE 0 END) as inbound,
-      SUM(CASE WHEN direction = 'outbound' THEN 1 ELSE 0 END) as outbound
-    FROM call_logs
-    WHERE created_at >= ? AND created_at <= ?
-    GROUP BY DATE(created_at)
-    ORDER BY date ASC
-  `).bind(fromDate, toDate + 'T23:59:59Z').all();
-
-  // Top callers (agents)
-  const topAgents = await db.prepare(`
-    SELECT u.name, u.id as user_id,
-      COUNT(*) as total_calls,
-      SUM(CASE WHEN cl.status = 'completed' THEN 1 ELSE 0 END) as completed,
-      ROUND(AVG(CASE WHEN cl.duration_seconds > 0 THEN cl.duration_seconds END), 1) as avg_duration
-    FROM call_logs cl
-    JOIN users u ON cl.created_by = u.id
-    WHERE cl.created_at >= ? AND cl.created_at <= ?
-    GROUP BY u.id, u.name
-    ORDER BY total_calls DESC
-    LIMIT 10
-  `).bind(fromDate, toDate + 'T23:59:59Z').all();
-
-  // Outcome distribution
-  const outcomes = await db.prepare(`
-    SELECT outcome, COUNT(*) as count
-    FROM call_logs
-    WHERE outcome IS NOT NULL AND created_at >= ? AND created_at <= ?
-    GROUP BY outcome
-    ORDER BY count DESC
-  `).bind(fromDate, toDate + 'T23:59:59Z').all();
-
-  // Hourly distribution
-  const hourly = await db.prepare(`
-    SELECT
-      CAST(strftime('%H', created_at) AS INTEGER) as hour,
-      COUNT(*) as count
-    FROM call_logs
-    WHERE created_at >= ? AND created_at <= ?
-    GROUP BY hour
-    ORDER BY hour ASC
-  `).bind(fromDate, toDate + 'T23:59:59Z').all();
-
-  const totalCalls = (totals?.total_calls as number) || 0;
-  const completedCalls = (totals?.completed_calls as number) || 0;
-
-  return success(c, {
-    summary: {
-      totalCalls,
-      inboundCalls: totals?.inbound_calls || 0,
-      outboundCalls: totals?.outbound_calls || 0,
-      completedCalls,
-      missedCalls: totals?.missed_calls || 0,
-      avgDurationSeconds: totals?.avg_duration || 0,
-      totalDurationSeconds: totals?.total_duration || 0,
-      interestedCount: totals?.interested_count || 0,
-      followUpCount: totals?.follow_up_count || 0,
-      successRate: totalCalls > 0 ? Math.round((completedCalls / totalCalls) * 100) : 0,
-    },
-    dailyCalls: (dailyCalls.results || []).map((r: any) => ({
-      date: r.date,
-      total: r.total,
-      inbound: r.inbound,
-      outbound: r.outbound,
-    })),
-    topAgents: (topAgents.results || []).map((r: any) => ({
-      userId: r.user_id,
-      name: r.name,
-      totalCalls: r.total_calls,
-      completed: r.completed,
-      avgDuration: r.avg_duration || 0,
-    })),
-    outcomes: (outcomes.results || []).map((r: any) => ({
-      outcome: r.outcome,
-      count: r.count,
-    })),
-    hourlyDistribution: (hourly.results || []).map((r: any) => ({
-      hour: r.hour,
-      count: r.count,
-    })),
-  });
-});
-
-// ── GET /missed — Get missed call count (TICKET-381) ──────────
-
-callRoutes.get('/missed', async (c) => {
-  const db = c.get('tenantDb');
-  const userId = c.get('userId');
-
-  const count = await db.prepare(`
-    SELECT COUNT(*) as count FROM call_logs
-    WHERE direction = 'inbound'
-      AND status IN ('no-answer', 'busy', 'canceled')
-      AND routed_to = ?
-      AND outcome IS NULL
-  `).bind(userId).first<{ count: number }>();
-
-  return success(c, { count: count?.count || 0 });
 });
 
 // ── POST /missed/:id/mark-returned — Mark missed call as returned ─

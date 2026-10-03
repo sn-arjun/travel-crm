@@ -35,22 +35,24 @@ const visaReports: ReportDefinition[] = [
         requiredRole: ['admin', 'manager', 'salesperson'],
         allowedFilters: ['country'],
         allowedGroupBy: ['country'],
-        defaultSort: { column: 'created_at', order: 'asc' },
+        defaultSort: { column: 'va.created_at', order: 'asc' },
+        dateColumn: 'va.created_at',
         baseQuery: `
       SELECT
         va.id as application_id,
         va.country,
         va.status,
         va.created_at,
-        va.travel_date,
+        ld.travel_date as travel_date,
         COUNT(vc.id) as total_checklist_items,
-        SUM(CASE WHEN vc.completed = 0 THEN 1 ELSE 0 END) as pending_items,
+        SUM(CASE WHEN vc.is_received = 0 THEN 1 ELSE 0 END) as pending_items,
         CAST(julianday('now') - julianday(va.created_at) AS INTEGER) as age_days
       FROM visa_applications va
-      LEFT JOIN visa_checklists vc ON vc.visa_application_id = va.id
-      WHERE va.status NOT IN ('approved', 'rejected', 'cancelled') {DATE_FILTER}
+      LEFT JOIN leads ld ON ld.id = va.lead_id
+      LEFT JOIN visa_checklist_items vc ON vc.visa_application_id = va.id
+      WHERE va.is_deleted = 0 AND va.status NOT IN ('approved', 'rejected', 'cancelled') {DATE_FILTER}
       GROUP BY va.id
-      HAVING SUM(CASE WHEN vc.completed = 0 THEN 1 ELSE 0 END) > 0
+      HAVING SUM(CASE WHEN vc.is_received = 0 THEN 1 ELSE 0 END) > 0
       {ORDER_BY}
     `,
         columns: [
