@@ -476,6 +476,8 @@ export const travellers = sqliteTable('travellers', {
   firstName: text('first_name').notNull(),
   lastName: text('last_name').notNull(),
   fullNamePassport: text('full_name_passport').notNull(),
+  email: text('email'),
+  phone: text('phone'),
   dateOfBirth: text('date_of_birth'),
   gender: text('gender'), // male, female, other
   nationality: text('nationality'),

@@ -5,6 +5,8 @@ import type { AppContext } from '../types';
 import { generateId } from '../utils/uuid';
 import { success, created, paginated, error, notFound, forbidden } from '../utils/response';
 import { driverAuth } from '../middleware/driver-auth';
+import { phoneLookupVariants, inPlaceholders } from '../utils/phone';
+import { localDayWindowUtc, isValidTimeZone, DEFAULT_TIMEZONE } from '../utils/tz';
 import {
   loginSchema,
   verifyOtpSchema,
@@ -22,6 +24,20 @@ const driver = new Hono<AppContext>();
 // ============================================================================
 // HELPER: JWT signing for driver tokens
 // ============================================================================
+
+/** Tenant calendar timezone from settings (key 'timezone' / 'company_timezone'); defaults to Asia/Kolkata. */
+async function getTenantTimeZone(db: D1Database): Promise<string> {
+  try {
+    const row = await db.prepare(
+      `SELECT value FROM settings WHERE key IN ('timezone', 'company_timezone') AND value IS NOT NULL AND value != ''
+       ORDER BY CASE key WHEN 'timezone' THEN 0 ELSE 1 END LIMIT 1`
+    ).first() as { value: string } | null;
+    if (row && isValidTimeZone(row.value)) return row.value;
+  } catch {
+    // settings table unavailable — fall through to default
+  }
+  return DEFAULT_TIMEZONE;
+}
 
 function getSecretKey(secret: string): Uint8Array {
   return new TextEncoder().encode(secret);
@@ -90,118 +106,166 @@ async function resolveTenantDb(c: any, tenantId: string): Promise<D1Database | n
 // AUTH: OTP LOGIN (PUBLIC — no driverAuth middleware)
 // ============================================================================
 
+// Fixed OTP accepted ONLY when env TEST_MODE === 'true' (local / demo / e2e). Never echoed in responses.
+const TEST_OTP = '123456';
+
+function isTestMode(c: any): boolean {
+  return c.env.TEST_MODE === 'true';
+}
+
+function twilioConfigured(c: any): boolean {
+  return Boolean(c.env.TWILIO_ACCOUNT_SID && c.env.TWILIO_AUTH_TOKEN && c.env.TWILIO_VERIFY_SERVICE_SID);
+}
+
 // Send OTP
 driver.post('/login', zValidator('json', loginSchema), async (c) => {
-  const { phone, tenantId } = c.req.valid('json');
+  const body = c.req.valid('json');
+  const phone = body.phone;
+  const tenantId = body.tenantId ?? c.req.header('X-Tenant-Id');
+  if (!tenantId) return error(c, 'tenantId is required', 400);
 
   const db = await resolveTenantDb(c, tenantId);
   if (!db) return error(c, 'Tenant not found or inactive', 404);
 
+  // Phones are stored as E.164 (from the app / fleet routes) or digits-only (older rows)
+  const variants = phoneLookupVariants(phone);
+  if (variants.length === 0) return error(c, 'Phone number is required', 400);
+  const e164 = variants[0];
+  const inList = inPlaceholders(variants);
+
   // Find driver by phone
   const driverRecord = await db.prepare(
-    'SELECT id, name, phone, status FROM drivers WHERE phone = ? AND is_deleted = 0'
-  ).bind(phone).first() as { id: string; name: string; phone: string; status: string } | null;
+    `SELECT id, name, phone, status FROM drivers WHERE phone IN (${inList}) AND is_deleted = 0`
+  ).bind(...variants).first() as { id: string; name: string; phone: string; status: string } | null;
 
   if (!driverRecord) return notFound(c, 'Driver');
   if (driverRecord.status !== 'active' && driverRecord.status !== 'on_trip') {
     return forbidden(c, 'Account is inactive. Contact your company.');
   }
 
-  // Rate limit: max 3 OTP requests per phone per 10 minutes
+  // Rate limit: max 3 OTP requests per phone per 10 minutes (20 under TEST_MODE).
+  // created_at is stored as an ISO string, so compare against an ISO cutoff.
+  const testMode = isTestMode(c);
+  const cutoff = new Date(Date.now() - 10 * 60_000).toISOString();
   const recentOtps = await db.prepare(
     `SELECT COUNT(*) as cnt FROM driver_otp_log
-     WHERE phone = ? AND created_at > datetime('now', '-10 minutes')`
-  ).bind(phone).first() as { cnt: number } | null;
+     WHERE phone IN (${inList}) AND created_at > ?`
+  ).bind(...variants, cutoff).first() as { cnt: number } | null;
 
-  if (recentOtps && recentOtps.cnt >= 3) {
+  if (recentOtps && recentOtps.cnt >= (testMode ? 20 : 3)) {
     return error(c, 'Too many OTP requests. Please wait 10 minutes.', 429);
   }
 
-  // Send OTP via Twilio Verify
-  try {
-    const resp = await fetch(
-      `https://verify.twilio.com/v2/Services/${c.env.TWILIO_VERIFY_SERVICE_SID}/Verifications`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Basic ${btoa(`${c.env.TWILIO_ACCOUNT_SID}:${c.env.TWILIO_AUTH_TOKEN}`)}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({ To: phone, Channel: 'sms' }),
-      }
-    );
+  if (!testMode) {
+    if (!twilioConfigured(c)) return error(c, 'SMS provider not configured', 503);
 
-    if (!resp.ok) {
-      const err = await resp.text();
-      console.error('Twilio Verify error:', err);
+    // Send OTP via Twilio Verify
+    try {
+      const resp = await fetch(
+        `https://verify.twilio.com/v2/Services/${c.env.TWILIO_VERIFY_SERVICE_SID}/Verifications`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${btoa(`${c.env.TWILIO_ACCOUNT_SID}:${c.env.TWILIO_AUTH_TOKEN}`)}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({ To: e164, Channel: 'sms' }),
+        }
+      );
+
+      if (!resp.ok) {
+        const err = await resp.text();
+        console.error('Twilio Verify error:', err);
+        return error(c, 'Failed to send OTP', 500);
+      }
+    } catch (e) {
+      console.error('Twilio Verify error:', e);
       return error(c, 'Failed to send OTP', 500);
     }
-  } catch (e) {
-    console.error('Twilio Verify error:', e);
-    return error(c, 'Failed to send OTP', 500);
   }
 
-  // Log OTP request
+  // Log OTP request (E.164)
   const clientIp = c.req.header('CF-Connecting-IP')
     || c.req.header('X-Forwarded-For')?.split(',')[0]?.trim()
     || 'unknown';
 
   await db.prepare(
     'INSERT INTO driver_otp_log (id, phone, tenant_id, status, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-  ).bind(generateId(), phone, tenantId, 'sent', clientIp, new Date().toISOString()).run();
+  ).bind(generateId(), e164, tenantId, 'sent', clientIp, new Date().toISOString()).run();
 
-  return success(c, { message: 'OTP sent', driverId: driverRecord.id });
+  return success(c, {
+    message: 'OTP sent',
+    driverId: driverRecord.id,
+    ...(testMode ? { testMode: true } : {}),
+  });
 });
 
 // Verify OTP
 driver.post('/login/verify', zValidator('json', verifyOtpSchema), async (c) => {
-  const { phone, tenantId, otp } = c.req.valid('json');
+  const body = c.req.valid('json');
+  const { phone, otp } = body;
+  const tenantId = body.tenantId ?? c.req.header('X-Tenant-Id');
+  if (!tenantId) return error(c, 'tenantId is required', 400);
 
   const db = await resolveTenantDb(c, tenantId);
   if (!db) return error(c, 'Tenant not found or inactive', 404);
 
-  // Verify OTP via Twilio
-  try {
-    const resp = await fetch(
-      `https://verify.twilio.com/v2/Services/${c.env.TWILIO_VERIFY_SERVICE_SID}/VerificationChecks`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Basic ${btoa(`${c.env.TWILIO_ACCOUNT_SID}:${c.env.TWILIO_AUTH_TOKEN}`)}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({ To: phone, Code: otp }),
-      }
-    );
+  const variants = phoneLookupVariants(phone);
+  if (variants.length === 0) return error(c, 'Phone number is required', 400);
+  const e164 = variants[0];
+  const inList = inPlaceholders(variants);
 
-    const result = await resp.json<{ status: string }>();
-    if (result.status !== 'approved') {
-      return error(c, 'Invalid or expired OTP', 401);
+  if (isTestMode(c)) {
+    // Local / demo: only the fixed test OTP is accepted; Twilio is never called.
+    if (otp !== TEST_OTP) return error(c, 'Invalid or expired OTP', 401);
+  } else {
+    if (!twilioConfigured(c)) return error(c, 'SMS provider not configured', 503);
+
+    // Verify OTP via Twilio
+    try {
+      const resp = await fetch(
+        `https://verify.twilio.com/v2/Services/${c.env.TWILIO_VERIFY_SERVICE_SID}/VerificationChecks`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${btoa(`${c.env.TWILIO_ACCOUNT_SID}:${c.env.TWILIO_AUTH_TOKEN}`)}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({ To: e164, Code: otp }),
+        }
+      );
+
+      const result = await resp.json<{ status: string }>();
+      if (result.status !== 'approved') {
+        return error(c, 'Invalid or expired OTP', 401);
+      }
+    } catch (e) {
+      console.error('Twilio Verify check error:', e);
+      return error(c, 'OTP verification failed', 500);
     }
-  } catch (e) {
-    console.error('Twilio Verify check error:', e);
-    return error(c, 'OTP verification failed', 500);
   }
 
   // Fetch driver
   const driverRecord = await db.prepare(
-    'SELECT id, name, phone, email, photo_url, rating, total_trips, status FROM drivers WHERE phone = ? AND is_deleted = 0'
-  ).bind(phone).first();
+    `SELECT id, name, phone, email, photo_url, rating, total_trips, status FROM drivers WHERE phone IN (${inList}) AND is_deleted = 0`
+  ).bind(...variants).first();
 
   if (!driverRecord) return notFound(c, 'Driver');
   if (driverRecord.status !== 'active' && driverRecord.status !== 'on_trip') {
     return forbidden(c, 'Account is inactive');
   }
 
-  // Update OTP log
+  // Update OTP log (UPDATE ... ORDER BY/LIMIT is unsupported in D1, so select the row id first)
   await db.prepare(
-    `UPDATE driver_otp_log SET status = 'verified' WHERE phone = ? AND status = 'sent'
-     ORDER BY created_at DESC LIMIT 1`
-  ).bind(phone).run();
+    `UPDATE driver_otp_log SET status = 'verified'
+     WHERE id = (SELECT id FROM driver_otp_log WHERE phone IN (${inList}) AND status = 'sent'
+                 ORDER BY created_at DESC LIMIT 1)`
+  ).bind(...variants).run();
 
-  // Generate tokens
+  // Generate tokens (token phone is the E.164 login phone)
+  const phoneForToken = e164;
   const accessToken = await signDriverAccessToken(
-    { driverId: driverRecord.id as string, tenantId, phone },
+    { driverId: driverRecord.id as string, tenantId, phone: phoneForToken },
     c.env.JWT_SECRET
   );
 
@@ -309,18 +373,26 @@ driver.get('/trips', zValidator('query', tripListSchema), async (c) => {
   const { tab, page, limit } = c.req.valid('query');
   const offset = (page - 1) * limit;
 
+  // "Today" follows the tenant's calendar day (trips are stored as UTC ISO strings).
+  const timeZone = await getTenantTimeZone(db);
+  const { startIso, endIso } = localDayWindowUtc(timeZone);
+
   let dateFilter = '';
+  const dateParams: string[] = [];
   let orderBy = 'ta.pickup_datetime ASC';
 
   switch (tab) {
     case 'today':
-      dateFilter = `AND date(ta.pickup_datetime) = date('now')`;
+      dateFilter = 'AND ta.pickup_datetime >= ? AND ta.pickup_datetime < ?';
+      dateParams.push(startIso, endIso);
       break;
     case 'upcoming':
-      dateFilter = `AND date(ta.pickup_datetime) > date('now') AND ta.status IN ('assigned', 'accepted')`;
+      dateFilter = `AND ta.pickup_datetime >= ? AND ta.status IN ('assigned', 'accepted')`;
+      dateParams.push(endIso);
       break;
     case 'past':
-      dateFilter = `AND (ta.status IN ('completed', 'cancelled') OR date(ta.pickup_datetime) < date('now'))`;
+      dateFilter = `AND (ta.status IN ('completed', 'cancelled') OR ta.pickup_datetime < ?)`;
+      dateParams.push(startIso);
       orderBy = 'ta.pickup_datetime DESC';
       break;
   }
@@ -328,13 +400,14 @@ driver.get('/trips', zValidator('query', tripListSchema), async (c) => {
   const countResult = await db.prepare(`
     SELECT COUNT(*) as count FROM trip_assignments ta
     WHERE ta.driver_id = ? AND ta.is_deleted = 0 ${dateFilter}
-  `).bind(driverId).first() as { count: number } | null;
+  `).bind(driverId, ...dateParams).first() as { count: number } | null;
   const total = countResult?.count ?? 0;
 
   const rows = await db.prepare(`
     SELECT ta.id, ta.pickup_location, ta.drop_location, ta.pickup_datetime, ta.drop_datetime,
            ta.status, ta.passenger_name, ta.passenger_phone, ta.special_instructions,
-           ta.accepted_at, ta.en_route_at, ta.started_at, ta.completed_at,
+           ta.pickup_lat, ta.pickup_lng, ta.drop_lat, ta.drop_lng,
+           ta.accepted_at, ta.en_route_at, ta.started_at, ta.completed_at, ta.created_at,
            v.registration_number as vehicle_registration, v.type as vehicle_type,
            v.make as vehicle_make, v.model as vehicle_model,
            l.title as lead_title
@@ -344,7 +417,7 @@ driver.get('/trips', zValidator('query', tripListSchema), async (c) => {
     WHERE ta.driver_id = ? AND ta.is_deleted = 0 ${dateFilter}
     ORDER BY ${orderBy}
     LIMIT ? OFFSET ?
-  `).bind(driverId, limit, offset).all();
+  `).bind(driverId, ...dateParams, limit, offset).all();
 
   const trips = (rows.results || []).map(formatTripForDriver);
   return paginated(c, trips, total, page, limit);
@@ -872,6 +945,10 @@ function formatTripForDriver(row: any) {
     passengerName: row.passenger_name,
     passengerPhone: row.passenger_phone,
     specialInstructions: row.special_instructions,
+    pickupLat: row.pickup_lat ?? null,
+    pickupLng: row.pickup_lng ?? null,
+    dropLat: row.drop_lat ?? null,
+    dropLng: row.drop_lng ?? null,
     acceptedAt: row.accepted_at,
     enRouteAt: row.en_route_at,
     startedAt: row.started_at,

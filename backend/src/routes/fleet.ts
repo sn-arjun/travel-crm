@@ -3,6 +3,7 @@ import { zValidator } from '@hono/zod-validator';
 import type { AppContext } from '../types';
 import { success, created, paginated, error, notFound } from '../utils/response';
 import { generateId } from '../utils/uuid';
+import { normalizePhone, phoneLookupVariants, inPlaceholders } from '../utils/phone';
 import { logActivity } from '../utils/activity-logger';
 import {
   createVehicleSchema, updateVehicleSchema, vehicleStatusSchema, vehicleListSchema,
@@ -722,17 +723,21 @@ fleet.post('/drivers', zValidator('json', createDriverSchema), async (c) => {
   const id = generateId();
   const now = new Date().toISOString();
 
-  // Check unique phone
+  // Store phones as E.164 so the driver app (+91...) and desktop (digits-only) agree
+  const phone = normalizePhone(data.phone) || data.phone;
+  const phoneVariants = phoneLookupVariants(data.phone);
+
+  // Check unique phone (any stored format)
   const existing = await db.prepare(
-    'SELECT id FROM drivers WHERE phone = ? AND is_deleted = 0'
-  ).bind(data.phone).first();
+    `SELECT id FROM drivers WHERE phone IN (${inPlaceholders(phoneVariants)}) AND is_deleted = 0`
+  ).bind(...phoneVariants).first();
   if (existing) return error(c, 'Driver with this phone number already exists', 409);
 
   await db.prepare(`
     INSERT INTO drivers (id, tenant_id, name, phone, email, license_number, license_expiry, address, emergency_contact_name, emergency_contact_phone, date_of_joining, notes, created_by, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
-    id, tenantId, data.name, data.phone,
+    id, tenantId, data.name, phone,
     data.email ?? null, data.licenseNumber ?? null, data.licenseExpiry ?? null,
     data.address ?? null, data.emergencyContactName ?? null, data.emergencyContactPhone ?? null,
     data.dateOfJoining ?? null, data.notes ?? null, userId, now, now,
@@ -757,8 +762,12 @@ fleet.put('/drivers/:id', zValidator('json', updateDriverSchema), async (c) => {
   const existing = await db.prepare('SELECT * FROM drivers WHERE id = ? AND is_deleted = 0').bind(id).first();
   if (!existing) return notFound(c, 'Driver');
 
-  if (data.phone && data.phone !== existing.phone) {
-    const dup = await db.prepare('SELECT id FROM drivers WHERE phone = ? AND is_deleted = 0 AND id != ?').bind(data.phone, id).first();
+  const normalizedPhone = data.phone ? (normalizePhone(data.phone) || data.phone) : undefined;
+  if (data.phone && normalizedPhone !== existing.phone) {
+    const phoneVariants = phoneLookupVariants(data.phone);
+    const dup = await db.prepare(
+      `SELECT id FROM drivers WHERE phone IN (${inPlaceholders(phoneVariants)}) AND is_deleted = 0 AND id != ?`
+    ).bind(...phoneVariants, id).first();
     if (dup) return error(c, 'Driver with this phone number already exists', 409);
   }
 
@@ -766,7 +775,7 @@ fleet.put('/drivers/:id', zValidator('json', updateDriverSchema), async (c) => {
   const params: any[] = [now];
 
   if (data.name !== undefined) { sets.push('name = ?'); params.push(data.name); }
-  if (data.phone !== undefined) { sets.push('phone = ?'); params.push(data.phone); }
+  if (data.phone !== undefined) { sets.push('phone = ?'); params.push(normalizedPhone ?? data.phone); }
   if (data.email !== undefined) { sets.push('email = ?'); params.push(data.email); }
   if (data.licenseNumber !== undefined) { sets.push('license_number = ?'); params.push(data.licenseNumber); }
   if (data.licenseExpiry !== undefined) { sets.push('license_expiry = ?'); params.push(data.licenseExpiry); }

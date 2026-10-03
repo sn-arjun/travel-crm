@@ -117,14 +117,25 @@ app.use('*', secureHeaders());
 app.use(
   '*',
   cors({
-    origin: [
-      'http://localhost:3000',
-      'http://localhost:3100',
-      'http://localhost:8080',
-      'https://*.pages.dev',
-    ],
+    origin: (origin, c) => {
+      if (!origin) return origin;
+      const fixed = [
+        'http://localhost:3000',
+        'http://localhost:3100',
+        'http://localhost:8080',
+      ];
+      if (fixed.includes(origin)) return origin;
+      if (/^https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*\.pages\.dev$/i.test(origin)) return origin;
+      // Parallel dev / e2e stacks run the web app on arbitrary localhost ports
+      // (3100, 3110, 3120, ...). Only allowed outside production.
+      const bindings = (c.env ?? {}) as { TEST_MODE?: string; ENVIRONMENT?: string };
+      const devLike = bindings.TEST_MODE === 'true'
+        || ['development', 'dev', 'local', 'test'].includes(bindings.ENVIRONMENT ?? '');
+      if (devLike && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) return origin;
+      return null;
+    },
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization', 'X-Refresh-Token'],
+    allowHeaders: ['Content-Type', 'Authorization', 'X-Refresh-Token', 'X-Tenant-Id'],
     exposeHeaders: ['Content-Length', 'X-Request-Id', 'X-RateLimit-Remaining', 'X-RateLimit-Reset'],
     maxAge: 86400,
     credentials: true,
