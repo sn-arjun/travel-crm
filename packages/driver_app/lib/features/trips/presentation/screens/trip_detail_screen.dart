@@ -5,6 +5,7 @@ import 'package:driver_app/l10n/app_localizations.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/map_launcher.dart';
 import '../../data/trip_provider.dart';
+import '../../data/trip_view.dart';
 import '../widgets/trip_status_badge.dart';
 
 class TripDetailScreen extends ConsumerWidget {
@@ -45,7 +46,8 @@ class TripDetailScreen extends ConsumerWidget {
     }
 
     final trip = state.trip!;
-    final status = trip['status'] as String? ?? 'assigned';
+    final view = TripView(trip);
+    final status = view.status;
 
     return Scaffold(
       appBar: AppBar(
@@ -69,23 +71,23 @@ class TripDetailScreen extends ConsumerWidget {
             const SizedBox(height: 16),
 
             // Passenger info
-            if (trip['passengerName'] != null) ...[
+            if (view.passengerName != null) ...[
               _SectionCard(
                 icon: Icons.person,
                 title: l10n.passenger,
                 children: [
                   Text(
-                    trip['passengerName'] ?? '',
+                    view.passengerName ?? '',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  if (trip['passengerPhone'] != null)
+                  if (view.passengerPhone != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
                       child: Text(
-                        trip['passengerPhone'],
+                        view.passengerPhone!,
                         style: TextStyle(color: Colors.grey[600]),
                       ),
                     ),
@@ -101,24 +103,27 @@ class TripDetailScreen extends ConsumerWidget {
               children: [
                 _LocationTile(
                   label: l10n.pickupLocation,
-                  address: trip['pickupLocation'] ?? '—',
+                  address: view.pickupLocation.isEmpty
+                      ? '—'
+                      : view.pickupLocation,
                   color: AppColors.success,
-                  onNavigate: trip['pickupLat'] != null
+                  onNavigate: view.pickupLat != null && view.pickupLng != null
                       ? () => MapLauncher.navigate(
-                            lat: (trip['pickupLat'] as num).toDouble(),
-                            lng: (trip['pickupLng'] as num).toDouble(),
+                            lat: view.pickupLat!,
+                            lng: view.pickupLng!,
                           )
                       : null,
                 ),
                 const Divider(height: 24),
                 _LocationTile(
                   label: l10n.dropLocation,
-                  address: trip['dropLocation'] ?? '—',
+                  address:
+                      view.dropLocation.isEmpty ? '—' : view.dropLocation,
                   color: AppColors.error,
-                  onNavigate: trip['dropLat'] != null
+                  onNavigate: view.dropLat != null && view.dropLng != null
                       ? () => MapLauncher.navigate(
-                            lat: (trip['dropLat'] as num).toDouble(),
-                            lng: (trip['dropLng'] as num).toDouble(),
+                            lat: view.dropLat!,
+                            lng: view.dropLng!,
                           )
                       : null,
                 ),
@@ -127,24 +132,49 @@ class TripDetailScreen extends ConsumerWidget {
             const SizedBox(height: 12),
 
             // Vehicle
-            if (trip['vehicleRegistration'] != null) ...[
+            if (view.vehicleRegistration != null) ...[
               _SectionCard(
                 icon: Icons.directions_car,
                 title: l10n.vehicle,
                 children: [
                   Text(
-                    trip['vehicleRegistration'] ?? '',
+                    view.vehicleRegistration ?? '',
                     style: const TextStyle(
                         fontSize: 16, fontWeight: FontWeight.w600),
                   ),
-                  if (trip['vehicleType'] != null)
+                  if (view.vehicleName != null || view.vehicleType != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
                       child: Text(
-                        trip['vehicleType'],
+                        [view.vehicleName, view.vehicleType]
+                            .whereType<String>()
+                            .join(' · '),
                         style: TextStyle(color: Colors.grey[600]),
                       ),
                     ),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
+
+            // Schedule
+            if (view.pickupAt != null || view.dropAt != null) ...[
+              _SectionCard(
+                icon: Icons.schedule,
+                title: 'Schedule',
+                children: [
+                  if (view.pickupAt != null)
+                    _InfoRow(
+                      label: 'Pickup',
+                      value: TripView.formatDateTime(view.pickupAt!),
+                    ),
+                  if (view.dropAt != null)
+                    _InfoRow(
+                      label: 'Drop',
+                      value: TripView.formatDateTime(view.dropAt!),
+                    ),
+                  if (view.leadTitle != null)
+                    _InfoRow(label: 'Booking', value: view.leadTitle!),
                 ],
               ),
               const SizedBox(height: 12),
@@ -281,7 +311,7 @@ class TripDetailScreen extends ConsumerWidget {
   }
 
   String _formatTimestamp(String iso) {
-    final dt = DateTime.tryParse(iso);
+    final dt = DateTime.tryParse(iso)?.toLocal();
     if (dt == null) return iso;
     final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
     final amPm = dt.hour >= 12 ? 'PM' : 'AM';
@@ -478,6 +508,7 @@ class _ActionBar extends ConsumerWidget {
           Expanded(
             flex: 2,
             child: FilledButton(
+              key: const Key('action-accept'),
               onPressed: loading
                   ? null
                   : () => _showAcceptDialog(context, ref, l10n),
@@ -502,6 +533,7 @@ class _ActionBar extends ConsumerWidget {
           Expanded(
             flex: 2,
             child: FilledButton(
+              key: const Key('action-en-route'),
               onPressed: loading
                   ? null
                   : () async {
@@ -527,6 +559,7 @@ class _ActionBar extends ConsumerWidget {
           Expanded(
             flex: 2,
             child: FilledButton(
+              key: const Key('action-check-in'),
               onPressed: loading
                   ? null
                   : () => context.push('/trips/$tripId/check-in'),
@@ -555,6 +588,7 @@ class _ActionBar extends ConsumerWidget {
           Expanded(
             flex: 2,
             child: FilledButton(
+              key: const Key('action-complete'),
               onPressed: loading
                   ? null
                   : () async {
@@ -598,6 +632,7 @@ class _ActionBar extends ConsumerWidget {
             child: Text(l10n.cancel),
           ),
           FilledButton(
+            key: const Key('confirm-accept'),
             onPressed: () async {
               Navigator.pop(ctx);
               final ok = await ref
@@ -733,15 +768,14 @@ class _NavButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final hasPickup = trip['pickupLat'] != null;
-    if (!hasPickup) return const SizedBox.shrink();
+    final view = TripView(trip);
+    final lat = view.pickupLat;
+    final lng = view.pickupLng;
+    if (lat == null || lng == null) return const SizedBox.shrink();
 
     return Expanded(
       child: OutlinedButton.icon(
-        onPressed: () => MapLauncher.navigate(
-          lat: (trip['pickupLat'] as num).toDouble(),
-          lng: (trip['pickupLng'] as num).toDouble(),
-        ),
+        onPressed: () => MapLauncher.navigate(lat: lat, lng: lng),
         icon: const Icon(Icons.navigation_outlined),
         label: Text(l10n.navigate),
         style: OutlinedButton.styleFrom(

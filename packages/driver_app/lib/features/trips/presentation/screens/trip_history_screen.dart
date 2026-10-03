@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:driver_app/l10n/app_localizations.dart';
 import '../../data/trip_provider.dart';
+import '../../data/trip_view.dart';
 import '../widgets/trip_card.dart';
 
 enum DateFilter { last7, last30, thisMonth, allTime }
@@ -127,10 +128,19 @@ class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
 
     return RefreshIndicator(
       onRefresh: () => ref.read(tripListProvider('past').notifier).refresh(),
-      child: ListView.builder(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        itemCount: trips.length,
-        itemBuilder: (context, index) => TripCard(trip: trips[index]),
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          if (notification is ScrollEndNotification &&
+              notification.metrics.extentAfter < 200) {
+            ref.read(tripListProvider('past').notifier).loadMore();
+          }
+          return false;
+        },
+        child: ListView.builder(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          itemCount: trips.length,
+          itemBuilder: (context, index) => TripCard(trip: trips[index]),
+        ),
       ),
     );
   }
@@ -144,18 +154,18 @@ class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
       case DateFilter.last7:
         final cutoff = now.subtract(const Duration(days: 7));
         filtered = filtered.where((t) {
-          final dt = DateTime.tryParse(t['pickupDatetime'] ?? '');
+          final dt = t.view.pickupAt;
           return dt != null && dt.isAfter(cutoff);
         }).toList();
       case DateFilter.last30:
         final cutoff = now.subtract(const Duration(days: 30));
         filtered = filtered.where((t) {
-          final dt = DateTime.tryParse(t['pickupDatetime'] ?? '');
+          final dt = t.view.pickupAt;
           return dt != null && dt.isAfter(cutoff);
         }).toList();
       case DateFilter.thisMonth:
         filtered = filtered.where((t) {
-          final dt = DateTime.tryParse(t['pickupDatetime'] ?? '');
+          final dt = t.view.pickupAt;
           return dt != null && dt.month == now.month && dt.year == now.year;
         }).toList();
       case DateFilter.allTime:
@@ -166,12 +176,11 @@ class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
     final query = _searchController.text.trim().toLowerCase();
     if (query.isNotEmpty) {
       filtered = filtered.where((t) {
-        final pickup = (t['pickupLocation'] ?? '').toString().toLowerCase();
-        final drop = (t['dropLocation'] ?? '').toString().toLowerCase();
-        final passenger = (t['passengerName'] ?? '').toString().toLowerCase();
-        return pickup.contains(query) ||
-            drop.contains(query) ||
-            passenger.contains(query);
+        final v = t.view;
+        return v.pickupLocation.toLowerCase().contains(query) ||
+            v.dropLocation.toLowerCase().contains(query) ||
+            (v.passengerName ?? '').toLowerCase().contains(query) ||
+            (v.vehicleRegistration ?? '').toLowerCase().contains(query);
       }).toList();
     }
 

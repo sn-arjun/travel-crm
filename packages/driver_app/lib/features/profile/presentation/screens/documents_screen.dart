@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:driver_app/l10n/app_localizations.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../data/profile_provider.dart';
@@ -12,6 +13,8 @@ class DocumentsScreen extends ConsumerStatefulWidget {
 }
 
 class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
+  final ImagePicker _picker = ImagePicker();
+
   @override
   void initState() {
     super.initState();
@@ -26,6 +29,15 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.documents),
+        bottom: state.isUploading
+            ? PreferredSize(
+                preferredSize: const Size.fromHeight(4),
+                child: LinearProgressIndicator(
+                  key: const Key('document-upload-progress'),
+                  value: state.uploadProgress,
+                ),
+              )
+            : null,
       ),
       body: state.documents.isEmpty
           ? Center(
@@ -51,15 +63,23 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
               },
             ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showUploadSheet(context, l10n),
+        key: const Key('upload-document'),
+        onPressed: state.isUploading ? null : () => _showTypeSheet(l10n),
         icon: const Icon(Icons.upload_file),
         label: Text(l10n.uploadDocument),
       ),
     );
   }
 
-  void _showUploadSheet(BuildContext context, AppLocalizations l10n) {
-    showModalBottomSheet(
+  /// Step 1: which document is being uploaded.
+  void _showTypeSheet(AppLocalizations l10n) {
+    final types = <(String, IconData, String)>[
+      ('license', Icons.badge, l10n.license),
+      ('id_proof', Icons.credit_card, l10n.idProof),
+      ('police_verification', Icons.verified_user, l10n.policeVerification),
+    ];
+
+    showModalBottomSheet<void>(
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
@@ -73,31 +93,119 @@ class _DocumentsScreenState extends ConsumerState<DocumentsScreen> {
                 style:
                     const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
+            for (final (type, icon, label) in types)
+              ListTile(
+                key: Key('document-type-$type'),
+                leading: Icon(icon),
+                title: Text(label),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showSourceSheet(type);
+                },
+              ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Step 2: camera or gallery.
+  void _showSourceSheet(String type) {
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 16),
+            const Text('Add a photo of the document',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
             ListTile(
-              leading: const Icon(Icons.badge),
-              title: Text(l10n.license),
+              key: const Key('document-source-camera'),
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take a photo'),
               onTap: () {
                 Navigator.pop(ctx);
-                // TODO: implement document upload
+                _pickAndUpload(type, ImageSource.camera);
               },
             ),
             ListTile(
-              leading: const Icon(Icons.credit_card),
-              title: Text(l10n.idProof),
+              key: const Key('document-source-gallery'),
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choose from gallery'),
               onTap: () {
                 Navigator.pop(ctx);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.verified_user),
-              title: Text(l10n.policeVerification),
-              onTap: () {
-                Navigator.pop(ctx);
+                _pickAndUpload(type, ImageSource.gallery);
               },
             ),
             const SizedBox(height: 16),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Step 3: pick the image, ask for an optional expiry date, upload.
+  Future<void> _pickAndUpload(String type, ImageSource source) async {
+    final messenger = ScaffoldMessenger.of(context);
+
+    XFile? picked;
+    try {
+      picked = await _picker.pickImage(
+        source: source,
+        maxWidth: 2000,
+        maxHeight: 2000,
+        imageQuality: 85,
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(source == ImageSource.camera
+              ? 'Could not open the camera.'
+              : 'Could not open the gallery.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+    if (picked == null || !mounted) return;
+
+    String? expiry;
+    if (type != 'police_verification') {
+      final now = DateTime.now();
+      final date = await showDatePicker(
+        context: context,
+        initialDate: now.add(const Duration(days: 365)),
+        firstDate: now.subtract(const Duration(days: 365)),
+        lastDate: DateTime(now.year + 30),
+        helpText: 'Expiry date (optional)',
+        cancelText: 'Skip',
+      );
+      if (!mounted) return;
+      if (date != null) {
+        expiry = '${date.year.toString().padLeft(4, '0')}-'
+            '${date.month.toString().padLeft(2, '0')}-'
+            '${date.day.toString().padLeft(2, '0')}';
+      }
+    }
+
+    final error = await ref.read(profileProvider.notifier).uploadDocument(
+          type: type,
+          filePath: picked.path,
+          fileName: picked.name,
+          expiryDate: expiry,
+        );
+    if (!mounted) return;
+
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(error ?? 'Document uploaded'),
+        backgroundColor: error == null ? AppColors.success : AppColors.error,
       ),
     );
   }

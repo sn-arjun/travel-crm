@@ -7,7 +7,9 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:driver_app/l10n/app_localizations.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/utils/location_capture.dart';
 import '../../data/trip_provider.dart';
+import '../widgets/location_card.dart';
 
 class CheckOutScreen extends ConsumerStatefulWidget {
   final String tripId;
@@ -20,7 +22,7 @@ class CheckOutScreen extends ConsumerStatefulWidget {
 
 class _CheckOutScreenState extends ConsumerState<CheckOutScreen> {
   Position? _position;
-  String? _locationError;
+  LocationFailure? _failure;
   bool _gettingLocation = true;
   XFile? _photo;
   bool _submitting = false;
@@ -34,50 +36,35 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen> {
   Future<void> _getLocation() async {
     setState(() {
       _gettingLocation = true;
-      _locationError = null;
+      _failure = null;
     });
 
-    try {
-      final permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        final requested = await Geolocator.requestPermission();
-        if (requested == LocationPermission.denied ||
-            requested == LocationPermission.deniedForever) {
-          setState(() {
-            _locationError = 'Location permission denied';
-            _gettingLocation = false;
-          });
-          return;
-        }
-      }
-
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-        ),
-      );
-      setState(() {
-        _position = position;
-        _gettingLocation = false;
-      });
-    } catch (e) {
-      setState(() {
-        _locationError = e.toString();
-        _gettingLocation = false;
-      });
-    }
+    final result = await captureLocation();
+    if (!mounted) return;
+    setState(() {
+      _position = result.position;
+      _failure = result.failure;
+      _gettingLocation = false;
+    });
   }
 
   Future<void> _takePhoto() async {
-    final picker = ImagePicker();
-    final photo = await picker.pickImage(
-      source: ImageSource.camera,
-      maxWidth: 1280,
-      maxHeight: 1280,
-      imageQuality: 80,
-    );
-    if (photo != null) {
-      setState(() => _photo = photo);
+    try {
+      final picker = ImagePicker();
+      final photo = await picker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1280,
+        maxHeight: 1280,
+        imageQuality: 80,
+      );
+      if (photo != null && mounted) {
+        setState(() => _photo = photo);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open the camera.')),
+      );
     }
   }
 
@@ -111,6 +98,15 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen> {
       if (mounted) context.pop();
     } else {
       setState(() => _submitting = false);
+      final error = ref.read(tripDetailProvider(widget.tripId)).error;
+      if (error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
     }
   }
 
@@ -126,42 +122,12 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // GPS section
-            Card(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    Icon(
-                      _position != null
-                          ? Icons.location_on
-                          : Icons.location_searching,
-                      size: 48,
-                      color:
-                          _position != null ? AppColors.success : Colors.grey,
-                    ),
-                    const SizedBox(height: 12),
-                    if (_gettingLocation)
-                      Text(l10n.gettingLocation,
-                          style: TextStyle(color: Colors.grey[600]))
-                    else if (_locationError != null) ...[
-                      Text(l10n.locationError,
-                          style: const TextStyle(color: AppColors.error)),
-                      const SizedBox(height: 8),
-                      TextButton(
-                        onPressed: _getLocation,
-                        child: Text(l10n.retryLocation),
-                      ),
-                    ] else if (_position != null)
-                      Text(
-                        '${_position!.latitude.toStringAsFixed(6)}, ${_position!.longitude.toStringAsFixed(6)}',
-                        style: TextStyle(
-                            color: Colors.grey[600], fontSize: 13),
-                      ),
-                  ],
-                ),
-              ),
+            LocationCard(
+              position: _position,
+              loading: _gettingLocation,
+              failure: _failure,
+              onRetry: _getLocation,
+              coordsKey: const Key('check-out-coords'),
             ),
             const SizedBox(height: 16),
 
@@ -217,6 +183,7 @@ class _CheckOutScreenState extends ConsumerState<CheckOutScreen> {
 
             // Submit
             FilledButton(
+              key: const Key('confirm-check-out'),
               onPressed:
                   _position != null && !_submitting ? _submit : null,
               style: FilledButton.styleFrom(

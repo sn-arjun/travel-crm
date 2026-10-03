@@ -1,12 +1,66 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/api_client_provider.dart';
 import '../../../core/storage/hive_storage.dart';
+import '../../../core/utils/api_error.dart';
 import 'trip_repository.dart';
 import 'trip_state.dart';
 
 final tripRepositoryProvider = Provider<TripRepository>((ref) {
   return TripRepository(ref.watch(dioProvider));
 });
+
+// ── Pagination helpers ──────────────────────────────────
+
+const int kTripPageSize = 20;
+
+int? _asInt(dynamic v) {
+  if (v is num) return v.toInt();
+  if (v is String) return int.tryParse(v);
+  return null;
+}
+
+/// Whether another page exists after [page].
+///
+/// Uses the backend envelope `{page, limit, total}` (null-safe); falls back to
+/// "the page was full" when the envelope is missing or incomplete.
+bool computeHasMore({
+  required dynamic pagination,
+  required int page,
+  required int limit,
+  required int itemCount,
+}) {
+  if (itemCount == 0) return false;
+  if (pagination is Map) {
+    final total = _asInt(pagination['total']);
+    if (total != null) {
+      final p = _asInt(pagination['page']) ?? page;
+      final l = _asInt(pagination['limit']) ?? limit;
+      return p * l < total;
+    }
+  }
+  return itemCount >= limit;
+}
+
+/// Appends [incoming] to [existing], skipping trips whose id is already there.
+List<Map<String, dynamic>> mergeTrips(
+  List<Map<String, dynamic>> existing,
+  List<Map<String, dynamic>> incoming,
+) {
+  final seen = existing.map((t) => t['id']).toSet();
+  final merged = [...existing];
+  for (final trip in incoming) {
+    if (seen.add(trip['id'])) merged.add(trip);
+  }
+  return merged;
+}
+
+List<Map<String, dynamic>> _toTripList(dynamic data) {
+  if (data is! List) return const [];
+  return data
+      .whereType<Map>()
+      .map((m) => Map<String, dynamic>.from(m))
+      .toList();
+}
 
 // ── Trip List per Tab ───────────────────────────────────
 
@@ -25,37 +79,45 @@ class TripListNotifier extends StateNotifier<TripListState> {
 
   Future<void> loadTrips({bool refresh = false}) async {
     if (state.isLoading) return;
-    final offset = refresh ? 0 : state.offset;
+    final page = refresh ? 1 : state.page + 1;
     state = state.copyWith(isLoading: true);
 
     try {
-      final response = await _repo.getTrips(tab: _tab, offset: offset);
-      final data = response['data'] as List? ?? [];
-      final trips = data.cast<Map<String, dynamic>>();
-      final pagination = response['pagination'];
-      final hasMore = pagination != null
-          ? (pagination['offset'] + pagination['limit']) < pagination['total']
-          : trips.length >= 20;
+      final response = await _repo.getTrips(
+        tab: _tab,
+        page: page,
+        limit: kTripPageSize,
+      );
+      if (!mounted) return;
+      final trips = _toTripList(response['data']);
+      final hasMore = computeHasMore(
+        pagination: response['pagination'],
+        page: page,
+        limit: kTripPageSize,
+        itemCount: trips.length,
+      );
 
-      // Cache for offline
-      if (refresh || offset == 0) {
-        HiveStorage.cacheTrips(_tab, trips);
-      }
+      final merged = page == 1 ? mergeTrips(const [], trips) : mergeTrips(state.trips, trips);
+
+      // Cache the first page for offline use (cache is per tab).
+      if (page == 1) _cacheTrips(merged);
 
       state = state.copyWith(
         isLoading: false,
-        trips: refresh || offset == 0 ? trips : [...state.trips, ...trips],
+        trips: merged,
         hasMore: hasMore,
-        offset: offset + trips.length,
+        page: page,
       );
     } catch (e) {
+      if (!mounted) return;
       // Try offline cache
       if (state.trips.isEmpty) {
-        final cached = HiveStorage.getCachedTrips(_tab);
-        if (cached is List) {
+        final cached = _readCache();
+        if (cached.isNotEmpty) {
           state = state.copyWith(
             isLoading: false,
-            trips: cached.cast<Map<String, dynamic>>(),
+            trips: cached,
+            hasMore: false,
             error: 'Showing cached data',
           );
           return;
@@ -63,8 +125,22 @@ class TripListNotifier extends StateNotifier<TripListState> {
       }
       state = state.copyWith(
         isLoading: false,
-        error: e.toString(),
+        error: extractApiError(e),
       );
+    }
+  }
+
+  void _cacheTrips(List<Map<String, dynamic>> trips) {
+    try {
+      HiveStorage.cacheTrips(_tab, trips);
+    } catch (_) {}
+  }
+
+  List<Map<String, dynamic>> _readCache() {
+    try {
+      return _toTripList(HiveStorage.getCachedTrips(_tab));
+    } catch (_) {
+      return const [];
     }
   }
 
@@ -101,7 +177,7 @@ class TripDetailNotifier extends StateNotifier<TripDetailState> {
         trip: response['data'],
       );
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(isLoading: false, error: extractApiError(e));
     }
   }
 
@@ -112,7 +188,7 @@ class TripDetailNotifier extends StateNotifier<TripDetailState> {
       await loadDetail();
       return true;
     } catch (e) {
-      state = state.copyWith(isActionLoading: false, error: e.toString());
+      state = state.copyWith(isActionLoading: false, error: extractApiError(e));
       return false;
     }
   }
@@ -124,7 +200,7 @@ class TripDetailNotifier extends StateNotifier<TripDetailState> {
       await loadDetail();
       return true;
     } catch (e) {
-      state = state.copyWith(isActionLoading: false, error: e.toString());
+      state = state.copyWith(isActionLoading: false, error: extractApiError(e));
       return false;
     }
   }
@@ -138,7 +214,7 @@ class TripDetailNotifier extends StateNotifier<TripDetailState> {
       await loadDetail();
       return true;
     } catch (e) {
-      state = state.copyWith(isActionLoading: false, error: e.toString());
+      state = state.copyWith(isActionLoading: false, error: extractApiError(e));
       return false;
     }
   }
@@ -152,7 +228,7 @@ class TripDetailNotifier extends StateNotifier<TripDetailState> {
       await loadDetail();
       return true;
     } catch (e) {
-      state = state.copyWith(isActionLoading: false, error: e.toString());
+      state = state.copyWith(isActionLoading: false, error: extractApiError(e));
       return false;
     }
   }
@@ -166,7 +242,7 @@ class TripDetailNotifier extends StateNotifier<TripDetailState> {
       await loadDetail();
       return true;
     } catch (e) {
-      state = state.copyWith(isActionLoading: false, error: e.toString());
+      state = state.copyWith(isActionLoading: false, error: extractApiError(e));
       return false;
     }
   }

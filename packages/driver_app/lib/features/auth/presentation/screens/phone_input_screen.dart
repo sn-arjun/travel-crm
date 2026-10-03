@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:driver_app/l10n/app_localizations.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/storage/hive_storage.dart';
+import '../../../../core/utils/phone.dart';
 import '../../data/driver_auth_provider.dart';
 import '../../data/driver_auth_state.dart';
 
@@ -23,9 +24,13 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
   @override
   void initState() {
     super.initState();
-    final lastPhone = HiveStorage.lastPhone;
-    if (lastPhone != null) {
-      _phoneController.text = lastPhone;
+    try {
+      final lastPhone = HiveStorage.lastPhone;
+      if (lastPhone != null) {
+        _phoneController.text = nationalDigits(lastPhone);
+      }
+    } catch (_) {
+      // Storage not available yet; start with an empty field.
     }
   }
 
@@ -41,6 +46,8 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
     final authState = ref.watch(driverAuthProvider);
 
     ref.listen<DriverAuthState>(driverAuthProvider, (prev, next) {
+      // Ignore updates while the OTP screen is on top (e.g. "Resend OTP").
+      if (ModalRoute.of(context)?.isCurrent == false) return;
       if (next.status == AuthStatus.otpSent) {
         context.push('/login/otp', extra: '$_countryCode${_phoneController.text.trim()}');
       } else if (next.status == AuthStatus.error && next.errorMessage != null) {
@@ -113,6 +120,7 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: TextFormField(
+                        key: const Key('phone-field'),
                         controller: _phoneController,
                         keyboardType: TextInputType.phone,
                         inputFormatters: [
@@ -126,7 +134,7 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                           ),
                         ),
                         validator: (value) {
-                          if (value == null || value.length < 7) {
+                          if (value == null || value.trim().length < 7) {
                             return l10n.invalidPhone;
                           }
                           return null;
@@ -137,6 +145,7 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                 ),
                 const SizedBox(height: 24),
                 FilledButton(
+                  key: const Key('send-otp'),
                   onPressed: isSending ? null : _sendOtp,
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),

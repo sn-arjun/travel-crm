@@ -118,6 +118,7 @@ class _OtpVerificationScreenState
                   return SizedBox(
                     width: 48,
                     child: TextFormField(
+                      key: Key('otp-$index'),
                       controller: _controllers[index],
                       focusNode: _focusNodes[index],
                       keyboardType: TextInputType.number,
@@ -143,10 +144,9 @@ class _OtpVerificationScreenState
                         if (value.isEmpty && index > 0) {
                           _focusNodes[index - 1].requestFocus();
                         }
-                        // Auto-submit on 6th digit
-                        if (index == 5 && value.isNotEmpty && _otp.length == 6) {
-                          _verify();
-                        }
+                        // Re-evaluate whether the Verify button is enabled.
+                        // Verification is always an explicit tap on Verify.
+                        setState(() {});
                       },
                     ),
                   );
@@ -154,6 +154,7 @@ class _OtpVerificationScreenState
               ),
               const SizedBox(height: 32),
               FilledButton(
+                key: const Key('verify-otp'),
                 onPressed: isVerifying || _otp.length < 6 ? null : _verify,
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
@@ -189,6 +190,7 @@ class _OtpVerificationScreenState
   }
 
   void _verify() {
+    if (ref.read(driverAuthProvider).status == AuthStatus.verifying) return;
     ref.read(driverAuthProvider.notifier).verifyOtp(_otp);
   }
 

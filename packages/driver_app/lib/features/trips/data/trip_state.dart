@@ -3,14 +3,16 @@ class TripListState {
   final List<Map<String, dynamic>> trips;
   final String? error;
   final bool hasMore;
-  final int offset;
+
+  /// Last page successfully loaded (0 = nothing loaded yet).
+  final int page;
 
   const TripListState({
     this.isLoading = false,
     this.trips = const [],
     this.error,
     this.hasMore = true,
-    this.offset = 0,
+    this.page = 0,
   });
 
   TripListState copyWith({
@@ -18,14 +20,14 @@ class TripListState {
     List<Map<String, dynamic>>? trips,
     String? error,
     bool? hasMore,
-    int? offset,
+    int? page,
   }) {
     return TripListState(
       isLoading: isLoading ?? this.isLoading,
       trips: trips ?? this.trips,
       error: error,
       hasMore: hasMore ?? this.hasMore,
-      offset: offset ?? this.offset,
+      page: page ?? this.page,
     );
   }
 }

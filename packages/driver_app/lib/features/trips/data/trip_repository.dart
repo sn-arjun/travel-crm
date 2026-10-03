@@ -8,12 +8,12 @@ class TripRepository {
 
   Future<Map<String, dynamic>> getTrips({
     required String tab,
+    int page = 1,
     int limit = 20,
-    int offset = 0,
   }) async {
     final response = await _dio.get(
       ApiEndpoints.driverAppTrips,
-      queryParameters: {'tab': tab, 'limit': limit, 'offset': offset},
+      queryParameters: {'tab': tab, 'page': page, 'limit': limit},
     );
     return response.data;
   }

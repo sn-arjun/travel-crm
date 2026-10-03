@@ -25,6 +25,7 @@ class BottomNavShell extends StatelessWidget {
             label: 'Trips',
           ),
           NavigationDestination(
+            key: Key('nav-history'),
             icon: Icon(Icons.history_outlined),
             selectedIcon: Icon(Icons.history),
             label: 'History',

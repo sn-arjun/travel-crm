@@ -30,18 +30,30 @@ class ProfileRepository {
     return response.data;
   }
 
+  /// Uploads a document with the multipart fields the backend expects:
+  /// `file`, `type` (license | id_proof | police_verification) and the optional
+  /// `documentNumber`, `expiryDate` and `issuedDate`.
   Future<Map<String, dynamic>> uploadDocument({
     required String type,
-    required String base64File,
+    required String filePath,
+    required String fileName,
+    String? documentNumber,
     String? expiryDate,
+    String? issuedDate,
+    void Function(int sent, int total)? onProgress,
   }) async {
+    final form = FormData.fromMap({
+      'type': type,
+      'file': await MultipartFile.fromFile(filePath, filename: fileName),
+      'documentNumber': ?documentNumber,
+      'expiryDate': ?expiryDate,
+      'issuedDate': ?issuedDate,
+    });
     final response = await _dio.post(
       ApiEndpoints.driverProfileDocuments,
-      data: {
-        'type': type,
-        'file': base64File,
-        'expiryDate': ?expiryDate,
-      },
+      data: form,
+      options: Options(contentType: 'multipart/form-data'),
+      onSendProgress: onProgress,
     );
     return response.data;
   }

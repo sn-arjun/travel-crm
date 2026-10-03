@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:shared/shared.dart';
+import '../../../core/constants/app_config.dart';
+import '../../../core/utils/phone.dart';
 
 class DriverAuthRepository {
   final Dio _dio;
@@ -9,7 +11,10 @@ class DriverAuthRepository {
   Future<Map<String, dynamic>> sendOtp(String phone) async {
     final response = await _dio.post(
       ApiEndpoints.driverLogin,
-      data: {'phone': phone},
+      data: {
+        'phone': normalizePhone(phone),
+        'tenantId': AppConfig.tenantId,
+      },
     );
     return response.data;
   }
@@ -17,7 +22,11 @@ class DriverAuthRepository {
   Future<Map<String, dynamic>> verifyOtp(String phone, String otp) async {
     final response = await _dio.post(
       ApiEndpoints.driverLoginVerify,
-      data: {'phone': phone, 'otp': otp},
+      data: {
+        'phone': normalizePhone(phone),
+        'tenantId': AppConfig.tenantId,
+        'otp': otp,
+      },
     );
     return response.data;
   }

@@ -60,8 +60,8 @@ class _MyTripsScreenState extends ConsumerState<MyTripsScreen>
         bottom: TabBar(
           controller: _tabController,
           tabs: [
-            Tab(text: l10n.today),
-            Tab(text: l10n.upcoming),
+            Tab(key: const Key('tab-today'), text: l10n.today),
+            Tab(key: const Key('tab-upcoming'), text: l10n.upcoming),
             Tab(text: l10n.past),
           ],
         ),

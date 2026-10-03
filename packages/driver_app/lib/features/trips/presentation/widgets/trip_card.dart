@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../data/trip_view.dart';
 import 'trip_status_badge.dart';
 
 class TripCard extends StatelessWidget {
@@ -10,19 +11,21 @@ class TripCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final status = trip['status'] as String? ?? 'assigned';
-    final pickup = trip['pickupLocation'] as String? ?? '';
-    final drop = trip['dropLocation'] as String? ?? '';
-    final passenger = trip['passengerName'] as String? ?? '';
-    final vehicle = trip['vehicleRegistration'] as String? ?? '';
-    final dateTime = trip['pickupDatetime'] as String? ?? '';
+    final view = TripView(trip);
+    final status = view.status;
+    final pickup = view.pickupLocation;
+    final drop = view.dropLocation;
+    final passenger = view.passengerName ?? '';
+    final vehicle = view.vehicleRegistration ?? '';
+    final pickupAt = view.pickupAt;
 
     return Card(
+      key: Key('trip-card-${view.id}'),
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => context.push('/trips/${trip['id']}'),
+        onTap: () => context.push('/trips/${view.id}'),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -32,8 +35,8 @@ class TripCard extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      dateTime.isNotEmpty
-                          ? _formatDateTime(dateTime)
+                      pickupAt != null
+                          ? TripView.formatDateTime(pickupAt)
                           : 'No date',
                       style: const TextStyle(
                         fontWeight: FontWeight.w600,
@@ -91,19 +94,6 @@ class TripCard extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  String _formatDateTime(String iso) {
-    final dt = DateTime.tryParse(iso);
-    if (dt == null) return iso;
-    final months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-    ];
-    final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
-    final amPm = dt.hour >= 12 ? 'PM' : 'AM';
-    final min = dt.minute.toString().padLeft(2, '0');
-    return '${dt.day} ${months[dt.month - 1]} ${dt.year}, $hour:$min $amPm';
   }
 }
 

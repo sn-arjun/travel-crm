@@ -1,7 +1,8 @@
-import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/api_client_provider.dart';
 import '../../../core/storage/hive_storage.dart';
+import '../../../core/utils/api_error.dart';
 import 'driver_auth_repository.dart';
 import 'driver_auth_state.dart';
 
@@ -23,7 +24,7 @@ class DriverAuthNotifier extends StateNotifier<DriverAuthState> {
     state = state.copyWith(status: AuthStatus.sendingOtp, phone: phone);
     try {
       await _repo.sendOtp(phone);
-      HiveStorage.lastPhone = phone;
+      _rememberPhone(phone);
       state = state.copyWith(status: AuthStatus.otpSent);
     } catch (e) {
       state = state.copyWith(
@@ -61,7 +62,9 @@ class DriverAuthNotifier extends StateNotifier<DriverAuthState> {
     try {
       await _repo.logout();
     } catch (_) {}
-    await HiveStorage.clearAuth();
+    try {
+      await HiveStorage.clearAuth();
+    } catch (_) {}
     state = const DriverAuthState();
   }
 
@@ -69,10 +72,21 @@ class DriverAuthNotifier extends StateNotifier<DriverAuthState> {
     state = state.copyWith(status: AuthStatus.initial);
   }
 
-  String _extractError(dynamic e) {
-    if (e is DioException && e.response?.data is Map) {
-      return e.response?.data['error'] ?? 'Something went wrong';
-    }
-    return 'Something went wrong';
+  /// Remembering the last phone is a convenience; a storage failure must
+  /// never turn a successful OTP request into an error.
+  void _rememberPhone(String phone) {
+    try {
+      HiveStorage.lastPhone = phone;
+    } catch (_) {}
   }
+
+  String _extractError(dynamic e) => extractAuthError(e);
+
+  /// Exposed so the error mapping can be unit tested. Never throws.
+  @visibleForTesting
+  static String extractError(dynamic e) => extractAuthError(e);
 }
+
+/// Maps any failure from the auth endpoints to a driver-facing message.
+String extractAuthError(Object? e) =>
+    extractApiError(e, fallback: 'Something went wrong');
