@@ -26,12 +26,12 @@ describe('useNotificationStore', () => {
 
       const state = useNotificationStore.getState();
       expect(state.notifications).toHaveLength(1);
-      expect(state.notifications[0].title).toBe('Test Alert');
-      expect(state.notifications[0].message).toBe('Something happened');
-      expect(state.notifications[0].type).toBe('info');
-      expect(state.notifications[0].read).toBe(false);
-      expect(state.notifications[0].id).toBeDefined();
-      expect(state.notifications[0].createdAt).toBeDefined();
+      expect(state.notifications[0]?.title).toBe('Test Alert');
+      expect(state.notifications[0]?.message).toBe('Something happened');
+      expect(state.notifications[0]?.type).toBe('info');
+      expect(state.notifications[0]?.read).toBe(false);
+      expect(state.notifications[0]!.id).toBeDefined();
+      expect(state.notifications[0]?.createdAt).toBeDefined();
       expect(state.unreadCount).toBe(1);
     });
 
@@ -42,8 +42,8 @@ describe('useNotificationStore', () => {
       addNotification({ title: 'Second', message: 'msg2', type: 'success' });
 
       const state = useNotificationStore.getState();
-      expect(state.notifications[0].title).toBe('Second');
-      expect(state.notifications[1].title).toBe('First');
+      expect(state.notifications[0]?.title).toBe('Second');
+      expect(state.notifications[1]?.title).toBe('First');
     });
 
     it('should increment unread count', () => {
@@ -64,7 +64,7 @@ describe('useNotificationStore', () => {
         link: '/invoices/001',
       });
 
-      expect(useNotificationStore.getState().notifications[0].link).toBe('/invoices/001');
+      expect(useNotificationStore.getState().notifications[0]?.link).toBe('/invoices/001');
     });
   });
 
@@ -76,11 +76,11 @@ describe('useNotificationStore', () => {
         type: 'info',
       });
 
-      const id = useNotificationStore.getState().notifications[0].id;
+      const id = useNotificationStore.getState().notifications[0]!.id;
       useNotificationStore.getState().markAsRead(id);
 
       const state = useNotificationStore.getState();
-      expect(state.notifications[0].read).toBe(true);
+      expect(state.notifications[0]?.read).toBe(true);
       expect(state.unreadCount).toBe(0);
     });
 
@@ -91,7 +91,7 @@ describe('useNotificationStore', () => {
         type: 'info',
       });
 
-      const id = useNotificationStore.getState().notifications[0].id;
+      const id = useNotificationStore.getState().notifications[0]!.id;
       useNotificationStore.getState().markAsRead(id);
       useNotificationStore.getState().markAsRead(id); // marking again
 
@@ -132,7 +132,7 @@ describe('useNotificationStore', () => {
         type: 'info',
       });
 
-      const id = useNotificationStore.getState().notifications[0].id;
+      const id = useNotificationStore.getState().notifications[0]!.id;
       useNotificationStore.getState().removeNotification(id);
 
       expect(useNotificationStore.getState().notifications).toHaveLength(0);
@@ -145,7 +145,7 @@ describe('useNotificationStore', () => {
         type: 'info',
       });
 
-      const id = useNotificationStore.getState().notifications[0].id;
+      const id = useNotificationStore.getState().notifications[0]!.id;
       expect(useNotificationStore.getState().unreadCount).toBe(1);
 
       useNotificationStore.getState().removeNotification(id);
@@ -159,7 +159,7 @@ describe('useNotificationStore', () => {
         type: 'info',
       });
 
-      const id = useNotificationStore.getState().notifications[0].id;
+      const id = useNotificationStore.getState().notifications[0]!.id;
       useNotificationStore.getState().markAsRead(id);
 
       // Add another unread

@@ -108,7 +108,7 @@ describe('followUpsApi', () => {
     it('should return updated follow-up', async () => {
       vi.mocked(client.put).mockResolvedValue({ data: { id: 'f1', title: 'Updated' } });
       const result = await followUpsApi.update('f1', { title: 'Updated' });
-      expect(result.data.title).toBe('Updated');
+      expect(result.data).toMatchObject({ title: 'Updated' });
     });
   });
 
@@ -148,7 +148,7 @@ describe('followUpsApi', () => {
     it('should return completed follow-up', async () => {
       vi.mocked(client.put).mockResolvedValue({ data: { id: 'f1', status: 'completed' } });
       const result = await followUpsApi.complete('f1');
-      expect(result.data.status).toBe('completed');
+      expect(result.data).toMatchObject({ status: 'completed' });
     });
   });
 });

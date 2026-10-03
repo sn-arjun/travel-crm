@@ -67,22 +67,22 @@ describe('exportsApi', () => {
   });
 
   describe('invoicesBulkPdf', () => {
-    it('should call POST /exports/invoices/bulk-pdf with blob responseType', async () => {
-      vi.mocked(client.post).mockResolvedValue(new Blob());
+    it('should call POST /exports/invoices/bulk-pdf', async () => {
+      vi.mocked(client.post).mockResolvedValue({ data: { id: 'job1', status: 'pending' } });
       await exportsApi.invoicesBulkPdf({ invoiceIds: ['inv1', 'inv2'] });
-      expect(client.post).toHaveBeenCalledWith('/exports/invoices/bulk-pdf', { invoiceIds: ['inv1', 'inv2'] }, { responseType: 'blob' });
+      expect(client.post).toHaveBeenCalledWith('/exports/invoices/bulk-pdf', { invoiceIds: ['inv1', 'inv2'] });
     });
 
     it('should pass combineIntoSinglePdf', async () => {
-      vi.mocked(client.post).mockResolvedValue(new Blob());
+      vi.mocked(client.post).mockResolvedValue({ data: { id: 'job1', status: 'pending' } });
       await exportsApi.invoicesBulkPdf({ invoiceIds: ['inv1'], combineIntoSinglePdf: true });
-      expect(client.post).toHaveBeenCalledWith('/exports/invoices/bulk-pdf', { invoiceIds: ['inv1'], combineIntoSinglePdf: true }, { responseType: 'blob' });
+      expect(client.post).toHaveBeenCalledWith('/exports/invoices/bulk-pdf', { invoiceIds: ['inv1'], combineIntoSinglePdf: true });
     });
 
-    it('should return blob', async () => {
-      vi.mocked(client.post).mockResolvedValue(new Blob(['pdf']));
+    it('should return the queued export job', async () => {
+      vi.mocked(client.post).mockResolvedValue({ data: { id: 'job2', status: 'pending' } });
       const result = await exportsApi.invoicesBulkPdf({ invoiceIds: ['inv1'] });
-      expect(result).toBeInstanceOf(Blob);
+      expect(result.data.id).toBe('job2');
     });
   });
 

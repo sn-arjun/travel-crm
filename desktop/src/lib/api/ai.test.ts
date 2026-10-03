@@ -83,19 +83,19 @@ describe('aiApi', () => {
   describe('generateItinerary', () => {
     it('should call POST /ai/generate-itinerary', async () => {
       vi.mocked(client.post).mockResolvedValue({ data: { title: 'Bali 5D', items: [] } });
-      await aiApi.generateItinerary({ destination: 'Bali', duration: 5 });
-      expect(client.post).toHaveBeenCalledWith('/ai/generate-itinerary', { destination: 'Bali', duration: 5 });
+      await aiApi.generateItinerary({ prompt: 'Relaxed beach holiday', destination: 'Bali', duration: 5 });
+      expect(client.post).toHaveBeenCalledWith('/ai/generate-itinerary', { prompt: 'Relaxed beach holiday', destination: 'Bali', duration: 5 });
     });
 
     it('should pass budget and preferences', async () => {
       vi.mocked(client.post).mockResolvedValue({ data: {} });
-      await aiApi.generateItinerary({ destination: 'Paris', duration: 7, budget: 50000, preferences: ['culture', 'food'] });
-      expect(client.post).toHaveBeenCalledWith('/ai/generate-itinerary', { destination: 'Paris', duration: 7, budget: 50000, preferences: ['culture', 'food'] });
+      await aiApi.generateItinerary({ prompt: 'Culture and food week', destination: 'Paris', duration: 7, budget: 50000, preferences: ['culture', 'food'] });
+      expect(client.post).toHaveBeenCalledWith('/ai/generate-itinerary', { prompt: 'Culture and food week', destination: 'Paris', duration: 7, budget: 50000, preferences: ['culture', 'food'] });
     });
 
     it('should return generated itinerary', async () => {
       vi.mocked(client.post).mockResolvedValue({ data: { title: 'Trip', items: [{ day: 1, title: 'Arrival' }] } });
-      const result = await aiApi.generateItinerary({ destination: 'Tokyo', duration: 3 });
+      const result = await aiApi.generateItinerary({ prompt: 'Short city break', destination: 'Tokyo', duration: 3 });
       expect(result.data.items).toHaveLength(1);
     });
   });
@@ -104,20 +104,21 @@ describe('aiApi', () => {
   describe('composeMessage', () => {
     it('should call POST /ai/compose-message', async () => {
       vi.mocked(client.post).mockResolvedValue({ data: { body: 'Hello!' } });
-      await aiApi.composeMessage({ context: 'Follow up on booking inquiry' });
-      expect(client.post).toHaveBeenCalledWith('/ai/compose-message', { context: 'Follow up on booking inquiry' });
+      await aiApi.composeMessage({ channel: 'whatsapp', purpose: 'Follow up on booking inquiry' });
+      expect(client.post).toHaveBeenCalledWith('/ai/compose-message', { channel: 'whatsapp', purpose: 'Follow up on booking inquiry' });
     });
 
     it('should pass tone and language', async () => {
       vi.mocked(client.post).mockResolvedValue({ data: {} });
-      await aiApi.composeMessage({ context: 'Thank customer', tone: 'professional', language: 'en' });
-      expect(client.post).toHaveBeenCalledWith('/ai/compose-message', { context: 'Thank customer', tone: 'professional', language: 'en' });
+      await aiApi.composeMessage({ channel: 'email', purpose: 'Thank customer', tone: 'professional', language: 'en' });
+      expect(client.post).toHaveBeenCalledWith('/ai/compose-message', { channel: 'email', purpose: 'Thank customer', tone: 'professional', language: 'en' });
     });
 
-    it('should pass maxLength', async () => {
+    it('should pass structured context', async () => {
       vi.mocked(client.post).mockResolvedValue({ data: {} });
-      await aiApi.composeMessage({ context: 'Brief reply', maxLength: 100 });
-      expect(client.post).toHaveBeenCalledWith('/ai/compose-message', { context: 'Brief reply', maxLength: 100 });
+      const context = { customerName: 'Asha Rao', destination: 'Goa', leadStatus: 'quoted' };
+      await aiApi.composeMessage({ channel: 'sms', purpose: 'Brief reply', context });
+      expect(client.post).toHaveBeenCalledWith('/ai/compose-message', { channel: 'sms', purpose: 'Brief reply', context });
     });
   });
 
@@ -190,7 +191,7 @@ describe('aiApi', () => {
       it('should return score data', async () => {
         vi.mocked(client.get).mockResolvedValue({ data: { score: 92, factors: [{ name: 'budget', weight: 0.3, contribution: 28 }] } });
         const result = await aiApi.intelligence.getLeadScore('l1');
-        expect(result.data.score).toBe(92);
+        expect(result.data?.score).toBe(92);
       });
     });
 
@@ -234,15 +235,15 @@ describe('aiApi', () => {
   describe('bi', () => {
     describe('getBriefing', () => {
       it('should call GET /ai/bi/briefings', async () => {
-        vi.mocked(client.get).mockResolvedValue({ data: { summary: 'Good day' } });
+        vi.mocked(client.get).mockResolvedValue({ data: [] });
         await aiApi.bi.getBriefing();
-        expect(client.get).toHaveBeenCalledWith('/ai/bi/briefings', { params: undefined });
+        expect(client.get).toHaveBeenCalledWith('/ai/bi/briefings', { params: { limit: 1 } });
       });
 
       it('should pass params', async () => {
-        vi.mocked(client.get).mockResolvedValue({ data: {} });
+        vi.mocked(client.get).mockResolvedValue({ data: [] });
         await aiApi.bi.getBriefing({ type: 'daily', dateRange: 'today' });
-        expect(client.get).toHaveBeenCalledWith('/ai/bi/briefings', { params: { type: 'daily', dateRange: 'today' } });
+        expect(client.get).toHaveBeenCalledWith('/ai/bi/briefings', { params: { type: 'daily', dateRange: 'today', limit: 1 } });
       });
     });
 

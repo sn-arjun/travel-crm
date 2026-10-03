@@ -88,7 +88,23 @@ describe('paymentsApi', () => {
 
       const result = await paymentsApi.getById('p1');
 
-      expect(result.data).toEqual(payment);
+      expect(result.data).toMatchObject(payment);
+    });
+
+    it('should add camelCase fields from snake_case rows', async () => {
+      vi.mocked(client.get).mockResolvedValue({
+        data: { id: 'p1', invoice_id: 'inv1', contact_id: 'c1', invoice_number: 'INV-0001', contact_name: 'Asha Rao', created_at: '2026-03-01T10:00:00Z' },
+      });
+
+      const result = await paymentsApi.getById('p1');
+
+      expect(result.data).toMatchObject({
+        invoiceId: 'inv1',
+        contactId: 'c1',
+        invoiceNumber: 'INV-0001',
+        clientName: 'Asha Rao',
+        createdAt: '2026-03-01T10:00:00Z',
+      });
     });
   });
 

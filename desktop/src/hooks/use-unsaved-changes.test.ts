@@ -87,7 +87,7 @@ describe('useUnsavedChanges', () => {
     const allBeforeUnloadCalls = addEventListenerSpy.mock.calls.filter(
       (call) => call[0] === 'beforeunload',
     );
-    const latestHandler = allBeforeUnloadCalls[allBeforeUnloadCalls.length - 1][1] as EventListener;
+    const latestHandler = allBeforeUnloadCalls[allBeforeUnloadCalls.length - 1]![1] as EventListener;
 
     const event = new Event('beforeunload') as BeforeUnloadEvent;
     const preventDefaultSpy = vi.spyOn(event, 'preventDefault');
@@ -114,7 +114,7 @@ describe('useUnsavedChanges', () => {
     const allBeforeUnloadCalls = addEventListenerSpy.mock.calls.filter(
       (call) => call[0] === 'beforeunload',
     );
-    const latestHandler = allBeforeUnloadCalls[allBeforeUnloadCalls.length - 1][1] as EventListener;
+    const latestHandler = allBeforeUnloadCalls[allBeforeUnloadCalls.length - 1]![1] as EventListener;
 
     const event = new Event('beforeunload') as BeforeUnloadEvent;
     const preventDefaultSpy = vi.spyOn(event, 'preventDefault');

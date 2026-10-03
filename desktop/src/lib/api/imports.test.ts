@@ -57,7 +57,7 @@ describe('importsApi', () => {
       vi.mocked(client.post).mockResolvedValue({ data: { id: 'imp2' } });
       await importsApi.upload({ file, type: 'leads' });
       const callArgs = vi.mocked(client.post).mock.calls[0];
-      expect(callArgs[0]).toBe('/imports/upload');
+      expect(callArgs?.[0]).toBe('/imports/upload');
     });
 
     it('should return import job', async () => {
@@ -131,7 +131,7 @@ describe('importsApi', () => {
     it('should return error details', async () => {
       vi.mocked(client.get).mockResolvedValue({ data: { data: [{ row: 5, column: 'email', error: 'Invalid format' }], pagination: {} } });
       const result = await importsApi.getErrors('imp1');
-      expect(result.data.data[0].row).toBe(5);
+      expect(result.data.data[0]?.row).toBe(5);
     });
   });
 

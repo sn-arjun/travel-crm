@@ -29,11 +29,11 @@ describe('useBookmarksStore', () => {
 
       const { bookmarks } = useBookmarksStore.getState();
       expect(bookmarks).toHaveLength(1);
-      expect(bookmarks[0].entityType).toBe('contact');
-      expect(bookmarks[0].entityId).toBe('contact-1');
-      expect(bookmarks[0].entityName).toBe('John Doe');
-      expect(bookmarks[0].id).toBeDefined();
-      expect(bookmarks[0].createdAt).toBeDefined();
+      expect(bookmarks[0]?.entityType).toBe('contact');
+      expect(bookmarks[0]?.entityId).toBe('contact-1');
+      expect(bookmarks[0]?.entityName).toBe('John Doe');
+      expect(bookmarks[0]!.id).toBeDefined();
+      expect(bookmarks[0]?.createdAt).toBeDefined();
     });
 
     it('should prepend new bookmark to the list', () => {
@@ -44,8 +44,8 @@ describe('useBookmarksStore', () => {
 
       const { bookmarks } = useBookmarksStore.getState();
       expect(bookmarks).toHaveLength(2);
-      expect(bookmarks[0].entityName).toBe('Second');
-      expect(bookmarks[1].entityName).toBe('First');
+      expect(bookmarks[0]?.entityName).toBe('Second');
+      expect(bookmarks[1]?.entityName).toBe('First');
     });
 
     it('should not add duplicate bookmark for same entity', () => {
@@ -106,7 +106,7 @@ describe('useBookmarksStore', () => {
       addBookmark('lead', 'l-1', 'Trip');
 
       const { bookmarks } = useBookmarksStore.getState();
-      const idToRemove = bookmarks[0].id;
+      const idToRemove = bookmarks[0]!.id;
 
       useBookmarksStore.getState().removeBookmark(idToRemove);
 
@@ -123,7 +123,7 @@ describe('useBookmarksStore', () => {
       addBookmark('invoice', 'i-1', 'C');
 
       const { bookmarks } = useBookmarksStore.getState();
-      useBookmarksStore.getState().removeBookmark(bookmarks[1].id);
+      useBookmarksStore.getState().removeBookmark(bookmarks[1]!.id);
 
       const updated = useBookmarksStore.getState().bookmarks;
       expect(updated).toHaveLength(2);
@@ -167,7 +167,7 @@ describe('useBookmarksStore', () => {
       addBookmark('contact', 'c-1', 'John');
 
       const { bookmarks } = useBookmarksStore.getState();
-      useBookmarksStore.getState().removeBookmark(bookmarks[0].id);
+      useBookmarksStore.getState().removeBookmark(bookmarks[0]!.id);
 
       const { isBookmarked } = useBookmarksStore.getState();
       expect(isBookmarked('contact', 'c-1')).toBe(false);

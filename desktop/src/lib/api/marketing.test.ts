@@ -44,7 +44,7 @@ describe('marketingApi', () => {
       it('should call POST /marketing/segments', async () => {
         vi.mocked(client.post).mockResolvedValue({ data: { id: 'seg1' } });
         await marketingApi.segments.create({ name: 'New Segment', criteria: { type: 'customer' } });
-        expect(client.post).toHaveBeenCalledWith('/marketing/segments', { name: 'New Segment', criteria: { type: 'customer' } });
+        expect(client.post).toHaveBeenCalledWith('/marketing/segments', { name: 'New Segment', filtersJson: JSON.stringify({ type: 'customer' }) });
       });
 
       it('should return created segment', async () => {

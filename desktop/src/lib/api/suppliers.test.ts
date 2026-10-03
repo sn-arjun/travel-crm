@@ -65,7 +65,7 @@ describe('suppliersApi', () => {
       const result = await suppliersApi.getById('s1');
 
       expect(client.get).toHaveBeenCalledWith('/suppliers/s1');
-      expect(result.data.companyName).toBe('Taj Hotels');
+      expect(result.data).toMatchObject({ companyName: 'Taj Hotels' });
     });
 
     it('should return full supplier data', async () => {
@@ -150,7 +150,7 @@ describe('suppliersApi', () => {
 
       const result = await suppliersApi.update('s1', { companyName: 'Updated' });
 
-      expect(result.data.companyName).toBe('Updated');
+      expect(result.data).toMatchObject({ companyName: 'Updated' });
     });
   });
 
@@ -233,7 +233,7 @@ describe('suppliersApi', () => {
 
       const result = await suppliersApi.getPayments('s1');
 
-      expect(result.data.data[0].amount).toBe(50000);
+      expect(result.data.data[0]?.amount).toBe(50000);
     });
   });
 
@@ -289,7 +289,7 @@ describe('suppliersApi', () => {
 
       const result = await suppliersApi.togglePreferred('s1', { isPreferred: true });
 
-      expect(result.data.isPreferred).toBe(true);
+      expect(result.data).toMatchObject({ isPreferred: true });
     });
   });
 
@@ -337,7 +337,7 @@ describe('suppliersApi', () => {
 
       const result = await suppliersApi.getCategorySummary();
 
-      expect(result.data[0].category).toBe('hotel');
+      expect(result.data[0]?.category).toBe('hotel');
     });
 
     it('should not require parameters', async () => {

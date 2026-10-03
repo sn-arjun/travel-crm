@@ -314,7 +314,7 @@ describe('leadsApi', () => {
 
       const result = await leadsApi.getNotes('l1');
 
-      expect(result.data.data[0].content).toBe('A note');
+      expect(result.data.data[0]?.content).toBe('A note');
     });
   });
 

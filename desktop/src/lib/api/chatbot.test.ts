@@ -19,39 +19,82 @@ describe('chatbotApi', () => {
   });
 
   describe('config', () => {
+    // The backend returns one row per channel (snake_case); the client folds them into one ChatbotConfig.
+    const webRow = {
+      id: 'cb1',
+      channel: 'web',
+      enabled: 1,
+      greeting: 'Hi there!',
+      branding_color: '#0f766e',
+      widget_position: 'bottom-right',
+      auto_reply: 1,
+    };
+    const whatsappRow = { id: 'cb2', channel: 'whatsapp', enabled: 0, greeting: 'Welcome on WhatsApp' };
+
     describe('get', () => {
       it('should call GET /chatbot/config', async () => {
-        vi.mocked(client.get).mockResolvedValue({ data: { id: 'cb1', enabled: true, name: 'Travel Bot' } });
+        vi.mocked(client.get).mockResolvedValue({ data: [webRow] });
         const result = await chatbotApi.config.get();
         expect(client.get).toHaveBeenCalledWith('/chatbot/config');
         expect(result.data.enabled).toBe(true);
       });
 
-      it('should return config data', async () => {
-        vi.mocked(client.get).mockResolvedValue({ data: { id: 'cb1', name: 'Bot', channels: [] } });
+      it('should fold channel rows into one config', async () => {
+        vi.mocked(client.get).mockResolvedValue({ data: [webRow, whatsappRow] });
         const result = await chatbotApi.config.get();
-        expect(result.data).toHaveProperty('name');
-        expect(result.data).toHaveProperty('channels');
+        expect(result.data).toMatchObject({ id: 'cb1', welcomeMessage: 'Hi there!' });
+        expect(result.data.channels).toHaveLength(2);
+        expect(result.data.channels[0]).toMatchObject({
+          platform: 'web',
+          enabled: true,
+          config: { primaryColor: '#0f766e', position: 'bottom-right', greetingMessage: 'Hi there!' },
+        });
+        expect(result.data.channels[1]).toMatchObject({ platform: 'whatsapp', enabled: false });
+      });
+
+      it('should fall back to an empty disabled config when no rows exist', async () => {
+        vi.mocked(client.get).mockResolvedValue({ data: [] });
+        const result = await chatbotApi.config.get();
+        expect(result.data.enabled).toBe(false);
+        expect(result.data.channels).toEqual([]);
       });
     });
 
     describe('update', () => {
-      it('should call PUT /chatbot/config', async () => {
-        vi.mocked(client.put).mockResolvedValue({ data: { id: 'cb1' } });
-        await chatbotApi.config.update({ enabled: false, name: 'Updated Bot' });
-        expect(client.put).toHaveBeenCalledWith('/chatbot/config', { enabled: false, name: 'Updated Bot' });
-      });
-
-      it('should pass welcome message', async () => {
+      it('should PUT the web channel config and re-read the config', async () => {
         vi.mocked(client.put).mockResolvedValue({ data: {} });
-        await chatbotApi.config.update({ welcomeMessage: 'Hello! How can I help?' });
-        expect(client.put).toHaveBeenCalledWith('/chatbot/config', { welcomeMessage: 'Hello! How can I help?' });
+        vi.mocked(client.get).mockResolvedValue({ data: [{ ...webRow, enabled: 0 }] });
+        const result = await chatbotApi.config.update({
+          enabled: false,
+          welcomeMessage: 'Hi there!',
+          channels: [{ platform: 'web', enabled: true, config: { primaryColor: '#0f766e' } }],
+        });
+        expect(client.put).toHaveBeenCalledWith('/chatbot/config/web', {
+          enabled: false,
+          greeting: 'Hi there!',
+          brandingColor: '#0f766e',
+        });
+        expect(client.get).toHaveBeenCalledWith('/chatbot/config');
+        expect(result.data.enabled).toBe(false);
       });
 
-      it('should return updated config', async () => {
-        vi.mocked(client.put).mockResolvedValue({ data: { id: 'cb1', enabled: true } });
-        const result = await chatbotApi.config.update({ enabled: true });
-        expect(result.data.enabled).toBe(true);
+      it('should PUT the whatsapp channel greeting', async () => {
+        vi.mocked(client.put).mockResolvedValue({ data: {} });
+        vi.mocked(client.get).mockResolvedValue({ data: [whatsappRow] });
+        await chatbotApi.config.update({
+          channels: [{ platform: 'whatsapp', enabled: true, config: { greetingMessage: 'Welcome on WhatsApp' } }],
+        });
+        expect(client.put).toHaveBeenCalledWith('/chatbot/config/whatsapp', {
+          enabled: true,
+          greeting: 'Welcome on WhatsApp',
+        });
+      });
+
+      it('should not PUT anything when no channel is supplied', async () => {
+        vi.mocked(client.get).mockResolvedValue({ data: [webRow] });
+        await chatbotApi.config.update({ enabled: true });
+        expect(client.put).not.toHaveBeenCalled();
+        expect(client.get).toHaveBeenCalledWith('/chatbot/config');
       });
     });
   });
@@ -138,10 +181,10 @@ describe('chatbotApi', () => {
         expect(client.post).toHaveBeenCalledWith('/chatbot/conversations/conv1/reply', expect.objectContaining({ attachments: expect.any(Array) }));
       });
 
-      it('should return sent message', async () => {
-        vi.mocked(client.post).mockResolvedValue({ data: { id: 'msg2', sender: 'bot', text: 'Hello' } });
+      it('should return the reply acknowledgement', async () => {
+        vi.mocked(client.post).mockResolvedValue({ data: { replied: true } });
         const result = await chatbotApi.reply.send('conv1', { message: 'Hello' });
-        expect(result.data.sender).toBe('bot');
+        expect(result.data.replied).toBe(true);
       });
     });
   });
@@ -160,10 +203,10 @@ describe('chatbotApi', () => {
         expect(client.post).toHaveBeenCalledWith('/chatbot/conversations/conv1/handoff', { assignTo: 'u1', reason: 'Complex query', note: 'Customer needs special attention' });
       });
 
-      it('should return updated conversation', async () => {
-        vi.mocked(client.post).mockResolvedValue({ data: { id: 'conv1', status: 'handed_off', handedOffTo: 'u1' } });
+      it('should return the handoff result', async () => {
+        vi.mocked(client.post).mockResolvedValue({ data: { handedOff: true, assignedTo: 'u1' } });
         const result = await chatbotApi.handoff.send('conv1', { assignTo: 'u1' });
-        expect(result.data.status).toBe('handed_off');
+        expect(result.data).toEqual({ handedOff: true, assignedTo: 'u1' });
       });
     });
   });
