@@ -29,7 +29,8 @@
     "GET /api/v1/admin/whoami: authenticated (tenant auth middleware) but NOT behind requireSuperAdmin; returns {success:true, data:{isSuperAdmin:boolean}} using a helper exported from middleware/require-super-admin.ts (same registry query). Register it so the admin mount's `use('*')` does not intercept (e.g. mount a tiny router before the admin route in index.ts routeMounts, or route it from auth). Tests: demo admin -> false; a registry email -> true.",
     "contactId filters (additive): GET /leads, /itineraries (via itineraries.contact_id if present, else JOIN leads), /follow-ups, /tasks (related contact), /documents (if documents reference contacts or leads; support entityType+entityId if that is the model) accept `contactId`. Tests.",
     "Fleet dashboard top drivers: if the endpoint returns [] while active drivers exist, fix the SQL to list active drivers ordered by completed trips (zero allowed); document the endpoint + response in your report for B23.",
-    "Run backend vitest (>= previous passed count, 0 failed files) and typecheck."
+    "Run backend vitest (>= previous passed count, 0 failed files) and typecheck.",
+    "Backend typecheck to zero (from B02 hand-off): `cd backend && npx tsc --noEmit` reports pre-existing errors in src/cron/campaign-scheduler.ts (3), src/queues/export-queue.ts (13), src/queues/import-queue.ts (3). Fix them with correct types (no `any`, no behaviour change unless it is a real bug - if so add a test). After this batch `npx tsc --noEmit` in backend must be 0 errors."
   ],
   "filesAllowlist": [
     "backend/src/routes/** (validator import swap everywhere; logic changes only in calls, fleet, campaigns, leads, tasks, itineraries, follow-ups, documents, admin)",
@@ -38,7 +39,10 @@
     "backend/src/middleware/require-super-admin.ts",
     "backend/src/index.ts (route mount for whoami only)",
     "backend/test/**",
-    "desktop/e2e/leads.spec.ts (the :413 seed payload only)"
+    "desktop/e2e/leads.spec.ts (the :413 seed payload only)",
+    "backend/src/cron/campaign-scheduler.ts",
+    "backend/src/queues/export-queue.ts",
+    "backend/src/queues/import-queue.ts"
   ],
   "mustNotTouch": [
     "packages/**",
@@ -58,7 +62,8 @@
     "POST /leads with assignedTo:null stays unassigned; GET /leads/unassigned lists it.",
     "GET /admin/whoami returns isSuperAdmin false for admin@demo.com.",
     "GET /leads?contactId=<id> filters.",
-    "backend vitest green."
+    "backend vitest green.",
+    "`cd backend && npx tsc --noEmit` exits 0."
   ],
   "gates": {
     "typecheck": false,

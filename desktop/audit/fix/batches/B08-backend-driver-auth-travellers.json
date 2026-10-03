@@ -33,7 +33,8 @@
     "Travellers: new migration backend/drizzle/tenant/0036_travellers_email_phone.sql (`ALTER TABLE travellers ADD COLUMN email TEXT;` and `... phone TEXT;`), tenant-schema travellers gets email/phone, validator accepts optional email (valid email or empty) and phone, create/update persist them (normalizePhone for phone), GET/detail return them in the existing shape (add email/phone keys in whatever casing that response already uses), PUT maps frequentFlyerNumbers/frequent_flyer_numbers -> column frequent_flyer_numbers. New ids via generateId().",
     "Tests: backend/test/driver-auth.test.ts - TEST_MODE login+verify with 123456 returns accessToken; wrong OTP 401; bypass refused when env TEST_MODE='false' (pass an env override to app.request); tenantId via header; a driver stored as '9876543210' logs in with '+919876543210' and vice versa; rate-limit uses the cutoff; trips today window for now = 00:30 IST and 23:30 IST. Extend visa-traveller.test.ts (or new travellers test) for email/phone round trip and frequent flyer update. CORS preflight from http://localhost:3110 with X-Tenant-Id allowed.",
     "Run backend `npx vitest run` (>= 901 + your new tests, 0 failed files) and `npm run typecheck`. Then curl the FR-1 check against `wrangler dev --var TEST_MODE:true` after creating a driver with phone 9876543210 via POST /fleet/drivers (paste output in the report).",
-    "Driver trip payloads (from B03 hand-off): backend/src/routes/driver.ts GET /trips and GET /trips/:id do not return trip coordinates although the trips table has pickup_lat/pickup_lng/drop_lat/drop_lng (tenant-schema.ts ~1574; fleet.ts ~1878 already maps them for the desktop). Add pickupLat, pickupLng, dropLat, dropLng (number|null) to the driver trip list/detail responses (additive only) and cover with a test, so the driver app's Navigate buttons (which read trip['pickupLat'] etc.) appear."
+    "Driver trip payloads (from B03 hand-off): backend/src/routes/driver.ts GET /trips and GET /trips/:id do not return trip coordinates although the trips table has pickup_lat/pickup_lng/drop_lat/drop_lng (tenant-schema.ts ~1574; fleet.ts ~1878 already maps them for the desktop). Add pickupLat, pickupLng, dropLat, dropLng (number|null) to the driver trip list/detail responses (additive only) and cover with a test, so the driver app's Navigate buttons (which read trip['pickupLat'] etc.) appear.",
+    "Backend typecheck (from B02 hand-off): `cd backend && npx tsc --noEmit` reports 1 error in src/routes/travellers.ts (~line 106, passportExpiry type). Fix it as part of the travellers work."
   ],
   "filesAllowlist": [
     "backend/src/routes/driver.ts",
@@ -64,7 +65,8 @@
     "OPTIONS preflight from http://localhost:3110 with X-Tenant-Id succeeds.",
     "Travellers POST with email/phone -> GET returns them; frequent flyer numbers update persists.",
     "backend vitest: 0 failed files, passed >= 901 + new tests.",
-    "GET /api/v1/driver/trips/:id returns pickupLat/pickupLng/dropLat/dropLng (null when unset)."
+    "GET /api/v1/driver/trips/:id returns pickupLat/pickupLng/dropLat/dropLng (null when unset).",
+    "`cd backend && npx tsc --noEmit` shows 0 errors in src/routes/travellers.ts and src/routes/driver.ts."
   ],
   "gates": {
     "typecheck": false,
