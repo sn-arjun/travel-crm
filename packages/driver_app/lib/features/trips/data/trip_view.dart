@@ -22,6 +22,8 @@ class TripView {
   String? get specialInstructions => _str(raw['specialInstructions']);
   String? get leadTitle => _str(raw['leadTitle']);
 
+  /// When dispatch assigned the trip to this driver.
+  DateTime? get assignedAt => _date(raw['createdAt']);
   DateTime? get acceptedAt => _date(raw['acceptedAt']);
   DateTime? get enRouteAt => _date(raw['enRouteAt']);
   DateTime? get startedAt => _date(raw['startedAt']);
@@ -77,16 +79,36 @@ class TripView {
     return DateTime.tryParse(s)?.toLocal();
   }
 
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+  ];
+
   /// "3 Oct 2026, 4:30 PM" in the device time zone.
-  static String formatDateTime(DateTime dt) {
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-    ];
+  static String formatDateTime(DateTime dt) =>
+      '${formatDate(dt)}, ${formatTime(dt)}';
+
+  /// "4:30 PM".
+  static String formatTime(DateTime dt) {
     final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
     final amPm = dt.hour >= 12 ? 'PM' : 'AM';
     final min = dt.minute.toString().padLeft(2, '0');
-    return '${dt.day} ${months[dt.month - 1]} ${dt.year}, $hour:$min $amPm';
+    return '$hour:$min $amPm';
+  }
+
+  /// "3 Oct 2026".
+  static String formatDate(DateTime dt) =>
+      '${dt.day} ${_months[dt.month - 1]} ${dt.year}';
+
+  /// "Today", "Tomorrow", "Yesterday" or "3 Oct 2026" relative to [now].
+  static String relativeDate(DateTime dt, DateTime now) {
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(dt.year, dt.month, dt.day);
+    final diff = day.difference(today).inDays;
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Tomorrow';
+    if (diff == -1) return 'Yesterday';
+    return formatDate(dt);
   }
 }
 

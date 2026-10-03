@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:driver_app/l10n/app_localizations.dart';
 import '../../data/trip_provider.dart';
+import '../../../../core/widgets/app_widgets.dart';
 import '../widgets/trip_card.dart';
 
 class MyTripsScreen extends ConsumerStatefulWidget {
@@ -83,49 +84,78 @@ class _TripTabView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context)!;
     final state = ref.watch(tripListProvider(tab));
+    final notifier = ref.read(tripListProvider(tab).notifier);
 
     if (state.isLoading && state.trips.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+      return const TripListSkeleton();
     }
 
     if (state.trips.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.directions_car_outlined,
-                size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              _emptyMessage(tab, l10n),
-              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-            ),
-          ],
-        ),
+      final failed = state.error != null;
+      return RefreshIndicator(
+        onRefresh: notifier.refresh,
+        child: failed
+            ? StateMessage(
+                key: Key('trips-error-$tab'),
+                icon: Icons.cloud_off_outlined,
+                isError: true,
+                title: l10n.tripsLoadError,
+                message: state.error,
+                actionLabel: l10n.retry,
+                onAction: notifier.refresh,
+              )
+            : StateMessage(
+                key: Key('trips-empty-$tab'),
+                icon: Icons.directions_car_outlined,
+                title: _emptyMessage(tab, l10n),
+                message: l10n.emptyTripsHint,
+                actionLabel: l10n.refresh,
+                onAction: notifier.refresh,
+              ),
       );
     }
 
+    // Trips are showing but the last request failed (e.g. offline cache).
+    final showNotice = state.error != null;
+    final headerCount = showNotice ? 1 : 0;
+
     return RefreshIndicator(
-      onRefresh: () => ref.read(tripListProvider(tab).notifier).refresh(),
+      onRefresh: notifier.refresh,
       child: NotificationListener<ScrollNotification>(
         onNotification: (notification) {
           if (notification is ScrollEndNotification &&
               notification.metrics.extentAfter < 200) {
-            ref.read(tripListProvider(tab).notifier).loadMore();
+            notifier.loadMore();
           }
           return false;
         },
-        child: ListView.builder(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          itemCount: state.trips.length + (state.hasMore ? 1 : 0),
+        child: ListView.separated(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          itemCount: headerCount + state.trips.length + (state.hasMore ? 1 : 0),
+          separatorBuilder: (_, _) => const SizedBox(height: 12),
           itemBuilder: (context, index) {
-            if (index >= state.trips.length) {
-              return const Padding(
-                padding: EdgeInsets.all(16),
-                child: Center(child: CircularProgressIndicator()),
+            if (showNotice && index == 0) {
+              return InfoBanner(
+                key: Key('trips-notice-$tab'),
+                icon: Icons.cloud_off_outlined,
+                message: l10n.showingSavedTrips,
               );
             }
-            return TripCard(trip: state.trips[index]);
+            final tripIndex = index - headerCount;
+            if (tripIndex >= state.trips.length) {
+              return const Padding(
+                padding: EdgeInsets.all(8),
+                child: Center(
+                  child: SizedBox(
+                    height: 24,
+                    width: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                  ),
+                ),
+              );
+            }
+            return TripCard(trip: state.trips[tripIndex]);
           },
         ),
       ),

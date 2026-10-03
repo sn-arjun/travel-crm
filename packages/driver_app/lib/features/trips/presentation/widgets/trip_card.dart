@@ -12,19 +12,16 @@ class TripCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final view = TripView(trip);
-    final status = view.status;
-    final pickup = view.pickupLocation;
-    final drop = view.dropLocation;
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
     final passenger = view.passengerName ?? '';
     final vehicle = view.vehicleRegistration ?? '';
     final pickupAt = view.pickupAt;
 
     return Card(
       key: Key('trip-card-${view.id}'),
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
         onTap: () => context.push('/trips/${view.id}'),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -32,63 +29,67 @@ class TripCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: Text(
-                      pickupAt != null
-                          ? TripView.formatDateTime(pickupAt)
-                          : 'No date',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                    ),
+                    child: pickupAt == null
+                        ? Text('No date', style: text.titleMedium)
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                TripView.formatTime(pickupAt),
+                                style: text.headlineSmall,
+                              ),
+                              Text(
+                                TripView.relativeDate(
+                                    pickupAt, DateTime.now()),
+                                style: text.bodySmall?.copyWith(
+                                    color: scheme.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
                   ),
-                  TripStatusBadge(status: status),
+                  const SizedBox(width: 8),
+                  TripStatusBadge(status: view.status),
                 ],
               ),
-              const SizedBox(height: 12),
-              _LocationRow(
-                icon: Icons.trip_origin,
-                color: AppColors.success,
-                text: pickup,
-              ),
-              Padding(
-                padding: const EdgeInsets.only(left: 11),
-                child: Container(
-                  width: 2,
-                  height: 16,
-                  color: Colors.grey[300],
+              const SizedBox(height: 16),
+              TripRoute(pickup: view.pickupLocation, drop: view.dropLocation),
+              if (passenger.isNotEmpty || vehicle.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Divider(color: scheme.outlineVariant),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    if (passenger.isNotEmpty)
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Icon(Icons.person_outline,
+                                size: 18, color: scheme.onSurfaceVariant),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                passenger,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: text.bodyMedium?.copyWith(
+                                    color: scheme.onSurfaceVariant),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      const Spacer(),
+                    if (vehicle.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      VehicleChip(registration: vehicle),
+                    ],
+                  ],
                 ),
-              ),
-              _LocationRow(
-                icon: Icons.location_on,
-                color: AppColors.error,
-                text: drop,
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  if (passenger.isNotEmpty) ...[
-                    Icon(Icons.person_outline, size: 16, color: Colors.grey[600]),
-                    const SizedBox(width: 4),
-                    Text(
-                      passenger,
-                      style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-                    ),
-                    const Spacer(),
-                  ],
-                  if (vehicle.isNotEmpty) ...[
-                    Icon(Icons.directions_car_outlined,
-                        size: 16, color: Colors.grey[600]),
-                    const SizedBox(width: 4),
-                    Text(
-                      vehicle,
-                      style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-                    ),
-                  ],
-                ],
-              ),
+              ],
             ],
           ),
         ),
@@ -97,32 +98,103 @@ class TripCard extends StatelessWidget {
   }
 }
 
-class _LocationRow extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final String text;
+/// Pickup -> drop with route dots and a connecting line.
+class TripRoute extends StatelessWidget {
+  final String pickup;
+  final String drop;
 
-  const _LocationRow({
-    required this.icon,
-    required this.color,
-    required this.text,
-  });
+  const TripRoute({super.key, required this.pickup, required this.drop});
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 22, color: color),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            text.isEmpty ? '—' : text,
-            style: const TextStyle(fontSize: 14),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+    final scheme = Theme.of(context).colorScheme;
+    final semantic = AppSemantic.of(context);
+    final text = Theme.of(context).textTheme;
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 20,
+            child: Column(
+              children: [
+                const SizedBox(height: 3),
+                Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border:
+                        Border.all(color: semantic.success.color, width: 3.5),
+                  ),
+                ),
+                Expanded(
+                  child: Container(width: 2, color: scheme.outlineVariant),
+                ),
+                Icon(Icons.location_on, size: 20, color: semantic.danger.color),
+              ],
+            ),
           ),
-        ),
-      ],
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  pickup.isEmpty ? '—' : pickup,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: text.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  drop.isEmpty ? '—' : drop,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: text.bodyLarge,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Number-plate style chip for a vehicle registration.
+class VehicleChip extends StatelessWidget {
+  final String registration;
+
+  const VehicleChip({super.key, required this.registration});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: scheme.outline),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.directions_car_outlined,
+              size: 16, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 6),
+          Text(
+            registration,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.4,
+                  color: scheme.onSurface,
+                ),
+          ),
+        ],
+      ),
     );
   }
 }

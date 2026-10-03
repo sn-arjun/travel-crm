@@ -729,6 +729,168 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Hindi'**
   String get hindi;
+
+  /// No description provided for @loginTagline.
+  ///
+  /// In en, this message translates to:
+  /// **'Your trips, check-ins and navigation in one place'**
+  String get loginTagline;
+
+  /// No description provided for @tripsLoadError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load your trips'**
+  String get tripsLoadError;
+
+  /// No description provided for @tripLoadError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load this trip'**
+  String get tripLoadError;
+
+  /// No description provided for @refresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh'**
+  String get refresh;
+
+  /// No description provided for @emptyTripsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'New assignments from dispatch will appear here.'**
+  String get emptyTripsHint;
+
+  /// No description provided for @showingSavedTrips.
+  ///
+  /// In en, this message translates to:
+  /// **'Showing saved trips. Pull down to refresh.'**
+  String get showingSavedTrips;
+
+  /// No description provided for @noMatchingTrips.
+  ///
+  /// In en, this message translates to:
+  /// **'No trips match your search'**
+  String get noMatchingTrips;
+
+  /// No description provided for @tryDifferentFilter.
+  ///
+  /// In en, this message translates to:
+  /// **'Try a different search or date range.'**
+  String get tryDifferentFilter;
+
+  /// No description provided for @route.
+  ///
+  /// In en, this message translates to:
+  /// **'Route'**
+  String get route;
+
+  /// No description provided for @openInMaps.
+  ///
+  /// In en, this message translates to:
+  /// **'Open in Maps'**
+  String get openInMaps;
+
+  /// No description provided for @callPassenger.
+  ///
+  /// In en, this message translates to:
+  /// **'Call passenger'**
+  String get callPassenger;
+
+  /// No description provided for @tripDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'Trip details'**
+  String get tripDetails;
+
+  /// No description provided for @dropTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Drop time'**
+  String get dropTime;
+
+  /// No description provided for @booking.
+  ///
+  /// In en, this message translates to:
+  /// **'Booking'**
+  String get booking;
+
+  /// No description provided for @tripType.
+  ///
+  /// In en, this message translates to:
+  /// **'Trip type'**
+  String get tripType;
+
+  /// No description provided for @estimatedCost.
+  ///
+  /// In en, this message translates to:
+  /// **'Estimated cost'**
+  String get estimatedCost;
+
+  /// No description provided for @actualCost.
+  ///
+  /// In en, this message translates to:
+  /// **'Actual cost'**
+  String get actualCost;
+
+  /// No description provided for @distance.
+  ///
+  /// In en, this message translates to:
+  /// **'Distance'**
+  String get distance;
+
+  /// No description provided for @profileLoadError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load your profile'**
+  String get profileLoadError;
+
+  /// No description provided for @documentsLoadError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load your documents'**
+  String get documentsLoadError;
+
+  /// No description provided for @noDocuments.
+  ///
+  /// In en, this message translates to:
+  /// **'No documents uploaded'**
+  String get noDocuments;
+
+  /// No description provided for @noDocumentsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload your licence and ID so dispatch can verify them.'**
+  String get noDocumentsHint;
+
+  /// No description provided for @docValid.
+  ///
+  /// In en, this message translates to:
+  /// **'Valid'**
+  String get docValid;
+
+  /// No description provided for @docExpiringSoon.
+  ///
+  /// In en, this message translates to:
+  /// **'Expiring soon'**
+  String get docExpiringSoon;
+
+  /// No description provided for @docExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'Expired'**
+  String get docExpired;
+
+  /// No description provided for @docNoExpiry.
+  ///
+  /// In en, this message translates to:
+  /// **'No expiry'**
+  String get docNoExpiry;
+
+  /// No description provided for @expiresOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Expires {date}'**
+  String expiresOn(String date);
 }
 
 class _AppLocalizationsDelegate

@@ -330,4 +330,90 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get hindi => 'الهندية';
+
+  @override
+  String get loginTagline =>
+      'Your trips, check-ins and navigation in one place';
+
+  @override
+  String get tripsLoadError => 'Couldn\'t load your trips';
+
+  @override
+  String get tripLoadError => 'Couldn\'t load this trip';
+
+  @override
+  String get refresh => 'Refresh';
+
+  @override
+  String get emptyTripsHint =>
+      'New assignments from dispatch will appear here.';
+
+  @override
+  String get showingSavedTrips => 'Showing saved trips. Pull down to refresh.';
+
+  @override
+  String get noMatchingTrips => 'No trips match your search';
+
+  @override
+  String get tryDifferentFilter => 'Try a different search or date range.';
+
+  @override
+  String get route => 'Route';
+
+  @override
+  String get openInMaps => 'Open in Maps';
+
+  @override
+  String get callPassenger => 'Call passenger';
+
+  @override
+  String get tripDetails => 'Trip details';
+
+  @override
+  String get dropTime => 'Drop time';
+
+  @override
+  String get booking => 'Booking';
+
+  @override
+  String get tripType => 'Trip type';
+
+  @override
+  String get estimatedCost => 'Estimated cost';
+
+  @override
+  String get actualCost => 'Actual cost';
+
+  @override
+  String get distance => 'Distance';
+
+  @override
+  String get profileLoadError => 'Couldn\'t load your profile';
+
+  @override
+  String get documentsLoadError => 'Couldn\'t load your documents';
+
+  @override
+  String get noDocuments => 'No documents uploaded';
+
+  @override
+  String get noDocumentsHint =>
+      'Upload your licence and ID so dispatch can verify them.';
+
+  @override
+  String get docValid => 'Valid';
+
+  @override
+  String get docExpiringSoon => 'Expiring soon';
+
+  @override
+  String get docExpired => 'Expired';
+
+  @override
+  String get docNoExpiry => 'No expiry';
+
+  @override
+  String expiresOn(String date) {
+    return 'Expires $date';
+  }
 }

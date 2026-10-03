@@ -9,6 +9,7 @@ import 'package:driver_app/l10n/app_localizations.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/location_capture.dart';
 import '../../data/trip_provider.dart';
+import '../../../../core/widgets/app_widgets.dart';
 import '../widgets/location_card.dart';
 
 class CheckInScreen extends ConsumerStatefulWidget {
@@ -190,21 +191,9 @@ class _CheckInScreenState extends ConsumerState<CheckInScreen> {
               key: const Key('confirm-check-in'),
               onPressed:
                   _position != null && !_submitting ? _submit : null,
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.success,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
               child: _submitting
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
-                    )
-                  : Text(l10n.confirmCheckIn,
-                      style: const TextStyle(fontSize: 16)),
+                  ? const ButtonSpinner()
+                  : Text(l10n.confirmCheckIn),
             ),
           ],
         ),

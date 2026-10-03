@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:driver_app/l10n/app_localizations.dart';
 import '../../data/trip_provider.dart';
+import '../../data/trip_state.dart';
 import '../../data/trip_view.dart';
+import '../../../../core/widgets/app_widgets.dart';
 import '../widgets/trip_card.dart';
 
 enum DateFilter { last7, last30, thisMonth, allTime }
@@ -37,7 +39,7 @@ class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
         children: [
           // Search bar
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
@@ -91,7 +93,9 @@ class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
               alignment: Alignment.centerLeft,
               child: Text(
                 l10n.tripCount(_filteredTrips(state.trips).length),
-                style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
               ),
             ),
           ),
@@ -99,7 +103,7 @@ class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
           // Trip list
           Expanded(
             child: state.isLoading && state.trips.isEmpty
-                ? const Center(child: CircularProgressIndicator())
+                ? const TripListSkeleton()
                 : _buildList(state, l10n),
           ),
         ],
@@ -107,38 +111,55 @@ class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
     );
   }
 
-  Widget _buildList(dynamic state, AppLocalizations l10n) {
-    final trips = _filteredTrips(state.trips as List<Map<String, dynamic>>);
+  Widget _buildList(TripListState state, AppLocalizations l10n) {
+    final notifier = ref.read(tripListProvider('past').notifier);
+    final trips = _filteredTrips(state.trips);
+
+    if (state.trips.isEmpty && state.error != null) {
+      return RefreshIndicator(
+        onRefresh: notifier.refresh,
+        child: StateMessage(
+          key: const Key('history-error'),
+          icon: Icons.cloud_off_outlined,
+          isError: true,
+          title: l10n.tripsLoadError,
+          message: state.error,
+          actionLabel: l10n.retry,
+          onAction: notifier.refresh,
+        ),
+      );
+    }
 
     if (trips.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.history, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              l10n.noPastTrips,
-              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-            ),
-          ],
+      final filtering = state.trips.isNotEmpty;
+      return RefreshIndicator(
+        onRefresh: notifier.refresh,
+        child: StateMessage(
+          key: const Key('history-empty'),
+          icon: filtering ? Icons.search_off : Icons.history,
+          title: filtering ? l10n.noMatchingTrips : l10n.noPastTrips,
+          message: filtering ? l10n.tryDifferentFilter : l10n.emptyTripsHint,
+          actionLabel: filtering ? null : l10n.refresh,
+          onAction: filtering ? null : notifier.refresh,
         ),
       );
     }
 
     return RefreshIndicator(
-      onRefresh: () => ref.read(tripListProvider('past').notifier).refresh(),
+      onRefresh: notifier.refresh,
       child: NotificationListener<ScrollNotification>(
         onNotification: (notification) {
           if (notification is ScrollEndNotification &&
               notification.metrics.extentAfter < 200) {
-            ref.read(tripListProvider('past').notifier).loadMore();
+            notifier.loadMore();
           }
           return false;
         },
-        child: ListView.builder(
-          padding: const EdgeInsets.symmetric(vertical: 4),
+        child: ListView.separated(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
           itemCount: trips.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 12),
           itemBuilder: (context, index) => TripCard(trip: trips[index]),
         ),
       ),

@@ -20,6 +20,7 @@ class BottomNavShell extends StatelessWidget {
         },
         destinations: const [
           NavigationDestination(
+            key: Key('nav-trips'),
             icon: Icon(Icons.directions_car_outlined),
             selectedIcon: Icon(Icons.directions_car),
             label: 'Trips',
@@ -31,6 +32,7 @@ class BottomNavShell extends StatelessWidget {
             label: 'History',
           ),
           NavigationDestination(
+            key: Key('nav-profile'),
             icon: Icon(Icons.person_outline),
             selectedIcon: Icon(Icons.person),
             label: 'Profile',

@@ -28,29 +28,58 @@ class LocationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
+    final semantic = AppSemantic.of(context);
+    final text = Theme.of(context).textTheme;
+
+    final hasFix = position != null;
+    final failed = failure != null && !loading;
+    final tone = hasFix
+        ? semantic.success
+        : failed
+            ? semantic.danger
+            : null;
 
     return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            Icon(
-              position != null
-                  ? Icons.location_on
-                  : Icons.location_searching,
-              size: 48,
-              color: position != null ? AppColors.success : Colors.grey,
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: tone?.container ?? scheme.primaryContainer,
+                shape: BoxShape.circle,
+              ),
+              child: loading
+                  ? Padding(
+                      padding: const EdgeInsets.all(22),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 3,
+                        color: scheme.primary,
+                      ),
+                    )
+                  : Icon(
+                      hasFix
+                          ? Icons.location_on
+                          : failed
+                              ? Icons.location_off_outlined
+                              : Icons.location_searching,
+                      size: 36,
+                      color: tone?.color ?? scheme.primary,
+                    ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             if (loading)
               Text(l10n.gettingLocation,
-                  style: TextStyle(color: Colors.grey[600]))
+                  style: text.bodyLarge
+                      ?.copyWith(color: scheme.onSurfaceVariant))
             else if (failure != null) ...[
               Text(
                 locationFailureMessage(failure!),
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: AppColors.error),
+                style: text.bodyMedium?.copyWith(color: semantic.danger.color),
               ),
               const SizedBox(height: 8),
               if (failure == LocationFailure.deniedForever)
@@ -72,7 +101,8 @@ class LocationCard extends StatelessWidget {
                 '${position!.latitude.toStringAsFixed(4)}, '
                 '${position!.longitude.toStringAsFixed(4)}',
                 key: coordsKey,
-                style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                style: text.titleMedium
+                    ?.copyWith(color: scheme.onSurfaceVariant),
               ),
           ],
         ),

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:driver_app/l10n/app_localizations.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/storage/hive_storage.dart';
+import '../../../../core/widgets/app_widgets.dart';
 import '../../../auth/data/driver_auth_provider.dart';
 import '../../data/profile_provider.dart';
 
@@ -13,6 +14,9 @@ class ProfileScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final semantic = AppSemantic.of(context);
     final state = ref.watch(profileProvider);
     final profile = state.profile;
 
@@ -23,12 +27,31 @@ class ProfileScreen extends ConsumerWidget {
       );
     }
 
+    if (profile == null && state.error != null) {
+      return Scaffold(
+        appBar: AppBar(title: Text(l10n.profile)),
+        body: StateMessage(
+          key: const Key('profile-error'),
+          icon: Icons.cloud_off_outlined,
+          isError: true,
+          title: l10n.profileLoadError,
+          actionLabel: l10n.retry,
+          onAction: () => ref.read(profileProvider.notifier).loadProfile(),
+        ),
+      );
+    }
+
+    final name = (profile?['name'] ?? HiveStorage.driverName ?? '').toString();
+    final phone =
+        (profile?['phone'] ?? HiveStorage.driverPhone ?? '').toString();
+
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.profile),
         actions: [
           IconButton(
             icon: const Icon(Icons.edit_outlined),
+            tooltip: l10n.editProfile,
             onPressed: () => context.push('/profile/edit'),
           ),
         ],
@@ -36,108 +59,135 @@ class ProfileScreen extends ConsumerWidget {
       body: RefreshIndicator(
         onRefresh: () => ref.read(profileProvider.notifier).loadProfile(),
         child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16),
           children: [
             // Avatar + name
-            Center(
-              child: Column(
-                children: [
-                  CircleAvatar(
-                    radius: 50,
-                    backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                    backgroundImage: profile?['photoUrl'] != null
-                        ? NetworkImage(profile!['photoUrl'])
-                        : null,
-                    child: profile?['photoUrl'] == null
-                        ? const Icon(Icons.person,
-                            size: 50, color: AppColors.primary)
-                        : null,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    profile?['name'] ?? HiveStorage.driverName ?? '',
-                    style: const TextStyle(
-                        fontSize: 22, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    profile?['phone'] ?? HiveStorage.driverPhone ?? '',
-                    style: TextStyle(color: Colors.grey[600]),
-                  ),
-                ],
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Column(
+                  children: [
+                    CircleAvatar(
+                      radius: 44,
+                      backgroundColor: scheme.primaryContainer,
+                      backgroundImage: profile?['photoUrl'] != null
+                          ? NetworkImage(profile!['photoUrl'])
+                          : null,
+                      child: profile?['photoUrl'] == null
+                          ? (name.isNotEmpty
+                              ? Text(
+                                  String.fromCharCode(name.runes.first).toUpperCase(),
+                                  style: text.headlineMedium?.copyWith(
+                                      color: scheme.onPrimaryContainer),
+                                )
+                              : Icon(Icons.person,
+                                  size: 44, color: scheme.onPrimaryContainer))
+                          : null,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(name, style: text.titleLarge),
+                    const SizedBox(height: 2),
+                    Text(
+                      phone,
+                      style: text.bodyMedium
+                          ?.copyWith(color: scheme.onSurfaceVariant),
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 12),
 
             // Stats row
             Row(
               children: [
                 _StatCard(
-                  icon: Icons.star,
+                  icon: Icons.star_rounded,
                   label: l10n.rating,
                   value: '${profile?['rating'] ?? '—'}',
-                  color: AppColors.warning,
+                  tone: semantic.warning,
                 ),
                 const SizedBox(width: 12),
                 _StatCard(
                   icon: Icons.directions_car,
                   label: l10n.totalTrips,
                   value: '${profile?['totalTrips'] ?? 0}',
-                  color: AppColors.primary,
+                  tone: SemanticTone(
+                    color: scheme.primary,
+                    container: scheme.primaryContainer,
+                    onContainer: scheme.onPrimaryContainer,
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 12),
 
-            // Info sections
-            if (profile?['email'] != null) ...[
-              _InfoTile(
-                icon: Icons.email_outlined,
-                label: l10n.email,
-                value: profile!['email'],
+            // Info
+            if (profile?['email'] != null ||
+                profile?['address'] != null ||
+                profile?['emergencyContactName'] != null)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      if (profile?['email'] != null)
+                        _InfoTile(
+                          icon: Icons.email_outlined,
+                          label: l10n.email,
+                          value: profile!['email'],
+                        ),
+                      if (profile?['address'] != null)
+                        _InfoTile(
+                          icon: Icons.location_on_outlined,
+                          label: l10n.address,
+                          value: profile!['address'],
+                        ),
+                      if (profile?['emergencyContactName'] != null)
+                        _InfoTile(
+                          icon: Icons.emergency_outlined,
+                          label: l10n.emergencyContact,
+                          value:
+                              '${profile!['emergencyContactName']} — ${profile['emergencyContactPhone'] ?? ''}',
+                        ),
+                    ],
+                  ),
+                ),
               ),
-            ],
-            if (profile?['address'] != null) ...[
-              _InfoTile(
-                icon: Icons.location_on_outlined,
-                label: l10n.address,
-                value: profile!['address'],
-              ),
-            ],
-            if (profile?['emergencyContactName'] != null) ...[
-              _InfoTile(
-                icon: Icons.emergency_outlined,
-                label: l10n.emergencyContact,
-                value:
-                    '${profile!['emergencyContactName']} — ${profile['emergencyContactPhone'] ?? ''}',
-              ),
-            ],
-            const Divider(height: 32),
+            const SizedBox(height: 12),
 
-            // Documents
-            ListTile(
-              leading: const Icon(Icons.description_outlined),
-              title: Text(l10n.documents),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.push('/profile/documents'),
+            Card(
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.description_outlined),
+                    title: Text(l10n.documents),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => context.push('/profile/documents'),
+                  ),
+                  const Divider(),
+                  ListTile(
+                    leading: const Icon(Icons.language),
+                    title: Text(l10n.language),
+                    subtitle: Text(_currentLanguageName(l10n)),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _showLanguagePicker(context, ref, l10n),
+                  ),
+                ],
+              ),
             ),
-
-            // Language
-            ListTile(
-              leading: const Icon(Icons.language),
-              title: Text(l10n.language),
-              subtitle: Text(_currentLanguageName(l10n)),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => _showLanguagePicker(context, ref, l10n),
-            ),
-            const Divider(height: 32),
+            const SizedBox(height: 12),
 
             // Logout
-            ListTile(
-              leading: const Icon(Icons.logout, color: AppColors.error),
-              title: Text(l10n.logout,
-                  style: const TextStyle(color: AppColors.error)),
-              onTap: () => _confirmLogout(context, ref, l10n),
+            Card(
+              clipBehavior: Clip.antiAlias,
+              child: ListTile(
+                leading: Icon(Icons.logout, color: scheme.error),
+                title: Text(l10n.logout, style: TextStyle(color: scheme.error)),
+                onTap: () => _confirmLogout(context, ref, l10n),
+              ),
             ),
           ],
         ),
@@ -160,26 +210,11 @@ class ProfileScreen extends ConsumerWidget {
       BuildContext context, WidgetRef ref, AppLocalizations l10n) {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: 8),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(l10n.language,
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(l10n.language, style: Theme.of(ctx).textTheme.titleLarge),
             const SizedBox(height: 8),
             RadioGroup<String>(
               groupValue: HiveStorage.locale,
@@ -230,7 +265,11 @@ class ProfileScreen extends ConsumerWidget {
               ref.read(driverAuthProvider.notifier).logout();
               context.go('/login');
             },
-            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(96, 44),
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+              foregroundColor: Theme.of(ctx).colorScheme.onError,
+            ),
             child: Text(l10n.logout),
           ),
         ],
@@ -243,33 +282,40 @@ class _StatCard extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
-  final Color color;
+  final SemanticTone tone;
 
   const _StatCard({
     required this.icon,
     required this.label,
     required this.value,
-    required this.color,
+    required this.tone,
   });
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
     return Expanded(
       child: Card(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              Icon(icon, color: color, size: 28),
-              const SizedBox(height: 8),
-              Text(
-                value,
-                style:
-                    const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: tone.container,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: tone.color, size: 24),
               ),
-              const SizedBox(height: 4),
-              Text(label, style: TextStyle(color: Colors.grey[600])),
+              const SizedBox(height: 10),
+              Text(value, style: text.headlineSmall),
+              const SizedBox(height: 2),
+              Text(label,
+                  style:
+                      text.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
             ],
           ),
         ),
@@ -291,19 +337,25 @@ class _InfoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 20, color: Colors.grey[600]),
+          Icon(icon, size: 20, color: scheme.onSurfaceVariant),
           const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label,
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-              Text(value, style: const TextStyle(fontSize: 14)),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: text.labelMedium
+                        ?.copyWith(color: scheme.onSurfaceVariant)),
+                Text(value, style: text.bodyLarge),
+              ],
+            ),
           ),
         ],
       ),
