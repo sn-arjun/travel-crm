@@ -161,6 +161,10 @@ cp C:/Users/Admin/Downloads/pro/CRM/desktop/.env.local <WT>/desktop/.env.local
 "C:/Windows/SysWOW64/WindowsPowerShell/v1.0/powershell.exe" -Command "cd <WT>/packages/driver_app; flutter pub get"
 ```
 
+For driver batches also copy the gitignored generated Dart files from the main checkout before `flutter test`: `packages/shared/**/*.g.dart` and `packages/shared/**/*.freezed.dart` (or run build_runner).
+
+**Teardown (orchestrator):** unlink every node_modules junction with `cmd //c rmdir` BEFORE `git worktree remove` — `--force` removal follows junctions and deletes the main checkout's node_modules.
+
 A fresh worktree has no local D1 state. Its first `fix-stack up` therefore creates it, applies migrations and seeds the admin (`admin@demo.com` / `Admin@123`, tenant `01960000-0000-7000-8000-000000000001`).
 
 ### 4.2 Stack slots (after B00)
