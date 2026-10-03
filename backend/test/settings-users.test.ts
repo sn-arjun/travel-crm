@@ -113,7 +113,7 @@ describe('Settings & User Management Integration Tests', () => {
         timezone: 'Asia/Kolkata',
         gst_number: '22AAAAA0000A1Z5',
       });
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
 
     it('should persist settings after update', async () => {
@@ -147,26 +147,20 @@ describe('Settings & User Management Integration Tests', () => {
   describe('User Profile', () => {
     it('should get own profile (admin)', async () => {
       const res = await authRequest('GET', '/users/me', adminToken);
-      if (res.status === 200) {
-        const body: any = await res.json();
-        expect(body.data).toHaveProperty('id');
-        expect(body.data).toHaveProperty('email', 'admin@e2e.test');
-        expect(body.data).toHaveProperty('role', 'admin');
-        expect(body.data).toHaveProperty('name');
-      } else {
-        expect([200, 500]).toContain(res.status);
-      }
+      expect(res.status).toBe(200);
+      const body: any = await res.json();
+      expect(body.data).toHaveProperty('id');
+      expect(body.data).toHaveProperty('email', 'admin@e2e.test');
+      expect(body.data).toHaveProperty('role', 'admin');
+      expect(body.data).toHaveProperty('name');
     });
 
     it('should get own profile (salesperson)', async () => {
       if (!salespersonToken) return;
       const res = await authRequest('GET', '/users/me', salespersonToken);
-      if (res.status === 200) {
-        const body: any = await res.json();
-        expect(body.data.role).toBe('salesperson');
-      } else {
-        expect([200, 500]).toContain(res.status);
-      }
+      expect(res.status).toBe(200);
+      const body: any = await res.json();
+      expect(body.data.role).toBe('salesperson');
     });
 
     it('should update own profile', async () => {
@@ -175,20 +169,17 @@ describe('Settings & User Management Integration Tests', () => {
         phone: '+919999999999',
         language: 'hi',
       });
-      if (res.status === 200) {
-        const body: any = await res.json();
-        expect(body.data.name).toBe('Admin Updated Name');
-        expect(body.data.language).toBe('hi');
-      } else {
-        expect([200, 500]).toContain(res.status);
-      }
+      expect(res.status).toBe(200);
+      const body: any = await res.json();
+      expect(body.data.name).toBe('Admin Updated Name');
+      expect(body.data.language).toBe('hi');
     });
 
     it('should reject profile update with empty name', async () => {
       const res = await authRequest('PUT', '/users/me', adminToken, {
         name: '',
       });
-      expect([400, 500]).toContain(res.status);
+      expect(res.status).toBe(400);
     });
   });
 
@@ -280,7 +271,7 @@ describe('Settings & User Management Integration Tests', () => {
         name: 'Duplicate',
         role: 'salesperson',
       });
-      expect([409, 500]).toContain(res.status);
+      expect(res.status).toBe(409);
     });
   });
 
@@ -305,7 +296,7 @@ describe('Settings & User Management Integration Tests', () => {
   describe('Login History', () => {
     it('should get own login history', async () => {
       const res = await authRequest('GET', '/users/me/login-history', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const body: any = await res.json();
         expect(body.success).toBe(true);

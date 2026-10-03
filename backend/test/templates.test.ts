@@ -102,19 +102,16 @@ describe('Message Template Routes Integration Tests', () => {
         category: 'greeting',
         language: 'en',
       });
-      if (res.status === 201) {
-        const body: any = await res.json();
-        expect(body.success).toBe(true);
-        expect(body.data).toHaveProperty('id');
-        expect(body.data).toHaveProperty('variables');
-        expect(Array.isArray(body.data.variables)).toBe(true);
-        // Should detect {customer_name} and {destination} as variables
-        expect(body.data.variables).toContain('customer_name');
-        expect(body.data.variables).toContain('destination');
-        templateId = body.data.id;
-      } else {
-        expect([201, 500]).toContain(res.status);
-      }
+      expect(res.status).toBe(201);
+      const body: any = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data).toHaveProperty('id');
+      expect(body.data).toHaveProperty('variables');
+      expect(Array.isArray(body.data.variables)).toBe(true);
+      // Should detect {customer_name} and {destination} as variables
+      expect(body.data.variables).toContain('customer_name');
+      expect(body.data.variables).toContain('destination');
+      templateId = body.data.id;
     });
 
     it('should reject template without name', async () => {
@@ -242,7 +239,7 @@ describe('Message Template Routes Integration Tests', () => {
         content: 'Hello {customer_name}!',
         category: 'greeting',
       });
-      expect([201, 500]).toContain(res1.status);
+      expect(res1.status).toBe(201);
 
       // Create SMS template
       const res2 = await authRequest('POST', '/templates', adminToken, {
@@ -251,7 +248,7 @@ describe('Message Template Routes Integration Tests', () => {
         content: 'Reminder: Your trip is tomorrow.',
         category: 'reminder',
       });
-      expect([201, 500]).toContain(res2.status);
+      expect(res2.status).toBe(201);
     });
 
     it('should filter templates by channel', async () => {
@@ -271,7 +268,7 @@ describe('Message Template Routes Integration Tests', () => {
 
     it('should paginate templates', async () => {
       const res = await authRequest('GET', '/templates?page=1&limit=1', adminToken);
-      expect([200, 400, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const body: any = await res.json();
         expect(body).toHaveProperty('pagination');

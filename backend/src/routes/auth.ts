@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '../utils/validator';
 import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
@@ -18,6 +19,16 @@ import { resetPasswordEmailHtml, accountLockedEmailHtml } from '../templates/res
 import { success, created, error } from '../utils/response';
 
 const auth = new Hono<AppContext>();
+
+// A request with a missing/malformed JSON body makes the validator throw an HTTPException(400). The app-level
+// handler turns every thrown error into a 500, so answer client errors here with their own status.
+auth.onError((err, c) => {
+  if (err instanceof HTTPException) {
+    return error(c, err.message || 'Bad request', err.status);
+  }
+  console.error('Unhandled error:', err);
+  return error(c, 'Internal server error', 500);
+});
 
 // ============================================================
 // POST /resolve-tenant — Look up tenants by email

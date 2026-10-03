@@ -115,27 +115,27 @@ describe('Payment Routes Integration Tests', () => {
 
     it('should support type filter', async () => {
       const res = await authRequest('GET', '/payments?type=incoming', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
 
     it('should support method filter', async () => {
       const res = await authRequest('GET', '/payments?method=cash', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
 
     it('should support date range filter', async () => {
       const res = await authRequest('GET', '/payments?dateFrom=2026-01-01&dateTo=2026-12-31', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
 
     it('should support contactId filter', async () => {
       const res = await authRequest('GET', '/payments?contactId=some-id', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
 
     it('should support invoiceId filter', async () => {
       const res = await authRequest('GET', '/payments?invoiceId=some-id', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
   });
 
@@ -315,12 +315,9 @@ describe('Payment Routes Integration Tests', () => {
         type: 'customer',
         source: 'manual',
       });
-      if (res.status === 201) {
-        const body: any = await res.json();
-        contactId = body.data.id;
-      } else {
-        expect([201, 500]).toContain(res.status);
-      }
+      expect(res.status).toBe(201);
+      const body: any = await res.json();
+      contactId = body.data.id;
     });
 
     it('should create an invoice', async () => {
@@ -348,15 +345,11 @@ describe('Payment Routes Integration Tests', () => {
         reference: 'TXN-001',
         notes: 'Partial payment',
       });
-      if (res.status === 201) {
-        const body: any = await res.json();
-        expect(body.success).toBe(true);
-        expect(body.data).toHaveProperty('id');
-        expect(body.data.invoiceStatus).toBe('partially_paid');
-      } else {
-        // May fail in test env due to queue dependencies
-        expect([201, 500]).toContain(res.status);
-      }
+      expect(res.status).toBe(201);
+      const body: any = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data).toHaveProperty('id');
+      expect(body.data.invoiceStatus).toBe('partially_paid');
     });
   });
 

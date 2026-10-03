@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
 import { authMiddleware } from '../middleware/auth';
 import { AppContext } from '../types';
-import { reportEngine } from '../services/report-engine';
+import { reportEngine, ForbiddenError } from '../services/report-engine';
 import { reportRegistry } from '../services/report-registry';
-import { ReportCache } from '../services/report-cache';
+import { ReportCache, reportCacheScope } from '../services/report-cache';
 import { resolveDateRange } from '../utils/date-range';
 import { success, error } from '../utils/response';
 import { excelExportService } from '../services/exports/excel-export';
@@ -253,11 +253,12 @@ reportRoutes.get('/:id', async (c) => {
       ...parsedFilters
     };
 
-    // Try cache first
+    // Try cache first (keyed by the caller's data-visibility scope, never shared across scopes)
+    const cacheScope = reportCacheScope(role, userId);
     const kv = (c.env as any).REPORT_CACHE;
     if (kv && tenantId) {
       const cache = new ReportCache(kv);
-      const cached = await cache.get(tenantId, id, params);
+      const cached = await cache.get(tenantId, id, params, cacheScope);
       if (cached) {
         c.header('X-Cache', 'HIT');
         return success(c, cached);
@@ -269,12 +270,15 @@ reportRoutes.get('/:id', async (c) => {
     // Store in cache
     if (kv && tenantId) {
       const cache = new ReportCache(kv);
-      await cache.set(tenantId, id, params, result);
+      await cache.set(tenantId, id, params, cacheScope, result);
     }
     c.header('X-Cache', 'MISS');
 
     return success(c, result);
   } catch (err: any) {
+    if (err instanceof ForbiddenError) {
+      return c.json({ success: false, error: { code: 'FORBIDDEN', message: err.message } }, 403);
+    }
     if (err.message.includes('not found')) {
       return error(c, err.message, 404, { code: 'NOT_FOUND' });
     }

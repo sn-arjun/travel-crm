@@ -100,8 +100,8 @@ describe('Infrastructure & Edge Case Tests', () => {
       const res = await rawRequest('POST', 'http://localhost/api/v1/auth/login', {
         'Content-Type': 'application/json',
       });
-      // May return 400 (validation), 401 (auth), or 500 (parse error on empty body)
-      expect([400, 401, 500]).toContain(res.status);
+      // An empty JSON body fails request validation
+      expect(res.status).toBe(400);
     });
 
     it('should reject login without email', async () => {
@@ -360,8 +360,8 @@ describe('Infrastructure & Edge Case Tests', () => {
         const res = await rawRequest('GET', `http://localhost/api/v1${route}`, {
           Authorization: `Bearer ${adminToken}`,
         });
-        // Some routes may return 500 in shared D1 test environment
-        expect([200, 500]).toContain(res.status);
+        // Every listed route answers its list endpoint for an admin
+        expect(res.status).toBe(200);
       });
 
       it(`should reject ${route} without auth`, async () => {

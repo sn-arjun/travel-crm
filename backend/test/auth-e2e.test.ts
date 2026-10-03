@@ -253,8 +253,8 @@ describe('M2 Authentication & Multi-Tenancy E2E Tests', () => {
         phone: '+919876543210',
         tenantId: '00000000-0000-0000-0000-000000000000',
       });
-      // Should not return 401 — either 404 (no user) or 500 (Twilio not configured)
-      expect(res.status).not.toBe(401);
+      // Public endpoint: no 401. The phone is not registered for this tenant, so it is a 404.
+      expect(res.status).toBe(404);
     });
   });
 
@@ -584,14 +584,11 @@ describe('M2 Authentication & Multi-Tenancy E2E Tests', () => {
         department: 'Sales',
       });
       // May fail in test env due to master DB constraints
-      if (res.status === 201) {
-        const body: any = await res.json();
-        expect(body.success).toBe(true);
-        expect(body.data).toHaveProperty('inviteToken');
-        expect(body.data).toHaveProperty('inviteUrl');
-      } else {
-        expect([201, 500]).toContain(res.status);
-      }
+      expect(res.status).toBe(201);
+      const body: any = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data).toHaveProperty('inviteToken');
+      expect(body.data).toHaveProperty('inviteUrl');
     });
 
     it('should reject duplicate email', async () => {
@@ -600,8 +597,8 @@ describe('M2 Authentication & Multi-Tenancy E2E Tests', () => {
         name: 'Duplicate User',
         role: 'salesperson',
       });
-      // Should be 409 (conflict) or 500 (DB constraint error in test env)
-      expect([409, 500]).toContain(res.status);
+      // Duplicate email within the tenant is a conflict
+      expect(res.status).toBe(409);
     });
 
     it('should reject user creation with invalid role', async () => {
@@ -663,8 +660,8 @@ describe('M2 Authentication & Multi-Tenancy E2E Tests', () => {
     it('should deactivate user', async () => {
       if (!createdUserId) return;
       const res = await authRequest('PUT', `/users/${createdUserId}/deactivate`, adminToken);
-      // May fail with 400 if trying to deactivate self, or 500 in test env
-      expect([200, 400, 500]).toContain(res.status);
+      // A different user than the caller, so deactivation succeeds
+      expect(res.status).toBe(200);
     });
 
     it('should prevent self-deactivation', async () => {

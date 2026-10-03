@@ -4,6 +4,9 @@ import { reportRegistry } from './report-registry';
 // @ts-ignore
 import { HonoRequest } from 'hono';
 
+/** Roles whose report rows are restricted to records they own (see `_buildQuery`). */
+export const OWNER_FILTERED_ROLES = ['salesperson'] as const;
+
 export class ForbiddenError extends Error {
     constructor(message: string) {
         super(message);
@@ -96,7 +99,7 @@ export class ReportEngine {
         // Auto-filter for salesperson role
         // The condition goes into WHERE, ahead of GROUP BY / ORDER BY / LIMIT. `ownerColumn` lets a
         // report name the column that records ownership (its main table may not have assigned_to).
-        if (userRole === 'salesperson') {
+        if ((OWNER_FILTERED_ROLES as readonly string[]).includes(userRole)) {
             const ownerColumn = report.ownerColumn || 'assigned_to';
             query = addWhereCondition(query, `${ownerColumn} = ?`);
             bindings.push(userId);

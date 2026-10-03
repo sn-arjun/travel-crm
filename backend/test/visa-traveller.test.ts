@@ -89,7 +89,7 @@ describe('Visa & Traveller Routes Integration Tests', () => {
 
     it('should list travellers', async () => {
       const res = await authRequest('GET', '/travellers', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const body: any = await res.json();
         expect(body).toHaveProperty('data');
@@ -111,13 +111,10 @@ describe('Visa & Traveller Routes Integration Tests', () => {
         emergencyContactName: 'Jane Doe',
         emergencyContactPhone: '+919876543210',
       });
-      if (res.status === 201) {
-        const body: any = await res.json();
-        expect(body.data).toHaveProperty('id');
-        travellerId = body.data.id;
-      } else {
-        expect([201, 400, 500]).toContain(res.status);
-      }
+      expect(res.status).toBe(201);
+      const body: any = await res.json();
+      expect(body.data).toHaveProperty('id');
+      travellerId = body.data.id;
     });
 
     it('should reject traveller without firstName', async () => {
@@ -179,17 +176,17 @@ describe('Visa & Traveller Routes Integration Tests', () => {
 
     it('should support pagination on travellers', async () => {
       const res = await authRequest('GET', '/travellers?page=1&limit=5', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
 
     it('should support search on travellers', async () => {
       const res = await authRequest('GET', '/travellers?search=John', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
 
     it('should support nationality filter', async () => {
       const res = await authRequest('GET', '/travellers?nationality=Indian', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
 
     it('should link traveller to contact', async () => {
@@ -201,7 +198,7 @@ describe('Visa & Traveller Routes Integration Tests', () => {
         source: 'manual',
       });
       if (contactRes.status !== 201) {
-        expect([201, 500]).toContain(contactRes.status);
+        expect(contactRes.status).toBe(201);
         return;
       }
       const contactBody: any = await contactRes.json();
@@ -247,17 +244,14 @@ describe('Visa & Traveller Routes Integration Tests', () => {
         passportNumber: 'B98765432',
         passportExpiryDate: '2031-06-30',
       });
-      if (res.status === 201) {
-        const body: any = await res.json();
-        travellerId = body.data.id;
-      } else {
-        expect([201, 400, 500]).toContain(res.status);
-      }
+      expect(res.status).toBe(201);
+      const body: any = await res.json();
+      travellerId = body.data.id;
     });
 
     it('should list visa applications', async () => {
       const res = await authRequest('GET', '/visa', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const body: any = await res.json();
         expect(body).toHaveProperty('data');
@@ -272,13 +266,10 @@ describe('Visa & Traveller Routes Integration Tests', () => {
         visaType: 'tourist',
         expectedDate: '2026-06-01',
       });
-      if (res.status === 201) {
-        const body: any = await res.json();
-        expect(body.data).toHaveProperty('id');
-        visaId = body.data.id;
-      } else {
-        expect([201, 500]).toContain(res.status);
-      }
+      expect(res.status).toBe(201);
+      const body: any = await res.json();
+      expect(body.data).toHaveProperty('id');
+      visaId = body.data.id;
     });
 
     it('should reject visa without travellerId', async () => {
@@ -353,22 +344,22 @@ describe('Visa & Traveller Routes Integration Tests', () => {
 
     it('should support pagination on visa list', async () => {
       const res = await authRequest('GET', '/visa?page=1&limit=5', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
 
     it('should support status filter on visa list', async () => {
       const res = await authRequest('GET', '/visa?status=not_started', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
 
     it('should support search on visa list', async () => {
       const res = await authRequest('GET', '/visa?search=United', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
 
     it('should support destination_country filter', async () => {
       const res = await authRequest('GET', '/visa?destination_country=United States', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
   });
 
@@ -390,7 +381,7 @@ describe('Visa & Traveller Routes Integration Tests', () => {
         const tBody: any = await tRes.json();
         travellerId = tBody.data.id;
       } else {
-        expect([201, 400, 500]).toContain(tRes.status);
+        expect(tRes.status).toBe(201);
         return;
       }
 
@@ -399,12 +390,9 @@ describe('Visa & Traveller Routes Integration Tests', () => {
         destinationCountry: 'Japan',
         visaType: 'tourist',
       });
-      if (vRes.status === 201) {
-        const vBody: any = await vRes.json();
-        visaId = vBody.data.id;
-      } else {
-        expect([201, 400, 500]).toContain(vRes.status);
-      }
+      expect(vRes.status).toBe(201);
+      const vBody: any = await vRes.json();
+      visaId = vBody.data.id;
     });
 
     it('should transition not_started → documents_collecting', async () => {
@@ -476,7 +464,7 @@ describe('Visa & Traveller Routes Integration Tests', () => {
       if (tRes.status === 201) {
         travellerId = (await tRes.json() as any).data.id;
       } else {
-        expect([201, 400, 500]).toContain(tRes.status);
+        expect(tRes.status).toBe(201);
         return;
       }
 
@@ -485,11 +473,8 @@ describe('Visa & Traveller Routes Integration Tests', () => {
         destinationCountry: 'UK',
         visaType: 'business',
       });
-      if (vRes.status === 201) {
-        visaId = (await vRes.json() as any).data.id;
-      } else {
-        expect([201, 400, 500]).toContain(vRes.status);
-      }
+      expect(vRes.status).toBe(201);
+      visaId = (await vRes.json() as any).data.id;
     });
 
     it('should transition to applied (go through documents_collecting first)', async () => {
@@ -537,7 +522,7 @@ describe('Visa & Traveller Routes Integration Tests', () => {
       if (tRes.status === 201) {
         travellerId = (await tRes.json() as any).data.id;
       } else {
-        expect([201, 400, 500]).toContain(tRes.status);
+        expect(tRes.status).toBe(201);
         return;
       }
 
@@ -546,11 +531,8 @@ describe('Visa & Traveller Routes Integration Tests', () => {
         destinationCountry: 'United States',
         visaType: 'tourist',
       });
-      if (vRes.status === 201) {
-        visaId = (await vRes.json() as any).data.id;
-      } else {
-        expect([201, 400, 500]).toContain(vRes.status);
-      }
+      expect(vRes.status).toBe(201);
+      visaId = (await vRes.json() as any).data.id;
     });
 
     it('should have checklist items on the visa detail', async () => {
@@ -601,21 +583,18 @@ describe('Visa & Traveller Routes Integration Tests', () => {
         lastName: 'Test',
         nationality: 'Indian',
       });
-      if (tRes.status === 201) {
-        const travellerId = (await tRes.json() as any).data.id;
+      expect(tRes.status).toBe(201);
+      const travellerId = (await tRes.json() as any).data.id;
 
-        const vRes = await authRequest('POST', '/visa', adminToken, {
-          travellerId,
-          destinationCountry: 'Canada',
-          visaType: 'tourist',
-        });
-        if (vRes.status === 201) {
-          visaId = (await vRes.json() as any).data.id;
-        } else {
-          expect([201, 400, 500]).toContain(vRes.status);
-        }
+      const vRes = await authRequest('POST', '/visa', adminToken, {
+        travellerId,
+        destinationCountry: 'Canada',
+        visaType: 'tourist',
+      });
+      if (vRes.status === 201) {
+        visaId = (await vRes.json() as any).data.id;
       } else {
-        expect([201, 400, 500]).toContain(tRes.status);
+        expect(vRes.status).toBe(201);
       }
     });
 
@@ -624,7 +603,7 @@ describe('Visa & Traveller Routes Integration Tests', () => {
       const res = await authRequest('POST', `/visa/${visaId}/notes`, adminToken, {
         content: 'Customer provided all documents',
       });
-      expect([201, 404, 500]).toContain(res.status);
+      expect(res.status).toBe(201);
     });
 
     it('should reject note without content', async () => {
@@ -655,7 +634,7 @@ describe('Visa & Traveller Routes Integration Tests', () => {
   describe('Missing Documents Report', () => {
     it('should get missing documents report', async () => {
       const res = await authRequest('GET', '/visa/missing-documents', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const body: any = await res.json();
         expect(body).toHaveProperty('data');
@@ -675,7 +654,7 @@ describe('Visa & Traveller Routes Integration Tests', () => {
         nationality: 'Indian',
       });
       if (tRes.status !== 201) {
-        expect([201, 400, 500]).toContain(tRes.status);
+        expect(tRes.status).toBe(201);
         return;
       }
       const travellerId = (await tRes.json() as any).data.id;
@@ -685,13 +664,10 @@ describe('Visa & Traveller Routes Integration Tests', () => {
         destinationCountry: 'Australia',
         visaType: 'tourist',
       });
-      if (vRes.status === 201) {
-        const visaId = (await vRes.json() as any).data.id;
-        const delRes = await authRequest('DELETE', `/visa/${visaId}`, adminToken);
-        expect([200, 404]).toContain(delRes.status);
-      } else {
-        expect([201, 400, 500]).toContain(vRes.status);
-      }
+      expect(vRes.status).toBe(201);
+      const visaId = (await vRes.json() as any).data.id;
+      const delRes = await authRequest('DELETE', `/visa/${visaId}`, adminToken);
+      expect([200, 404]).toContain(delRes.status);
     });
   });
 
@@ -707,7 +683,7 @@ describe('Visa & Traveller Routes Integration Tests', () => {
         nationality: 'Indian',
       });
       if (tRes.status !== 201) {
-        expect([201, 400, 500]).toContain(tRes.status);
+        expect(tRes.status).toBe(201);
         return;
       }
       const travellerId = (await tRes.json() as any).data.id;
@@ -717,16 +693,13 @@ describe('Visa & Traveller Routes Integration Tests', () => {
         destinationCountry: 'France',
         visaType: 'tourist',
       });
-      if (vRes.status === 201) {
-        const visaId = (await vRes.json() as any).data.id;
-        const docRes = await authRequest('GET', `/visa/${visaId}/documents`, adminToken);
-        expect([200, 404]).toContain(docRes.status);
-        if (docRes.status === 200) {
-          const docBody: any = await docRes.json();
-          expect(Array.isArray(docBody.data)).toBe(true);
-        }
-      } else {
-        expect([201, 400, 500]).toContain(vRes.status);
+      expect(vRes.status).toBe(201);
+      const visaId = (await vRes.json() as any).data.id;
+      const docRes = await authRequest('GET', `/visa/${visaId}/documents`, adminToken);
+      expect([200, 404]).toContain(docRes.status);
+      if (docRes.status === 200) {
+        const docBody: any = await docRes.json();
+        expect(Array.isArray(docBody.data)).toBe(true);
       }
     });
   });

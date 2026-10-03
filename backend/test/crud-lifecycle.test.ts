@@ -96,14 +96,11 @@ describe('CRUD Lifecycle E2E Tests', () => {
         source: 'manual',
         tags: ['vip', 'test'],
       });
-      if (res.status === 201) {
-        const body: any = await res.json();
-        expect(body.success).toBe(true);
-        contactId = body.data.id;
-        expect(contactId).toBeDefined();
-      } else {
-        expect([201, 500]).toContain(res.status);
-      }
+      expect(res.status).toBe(201);
+      const body: any = await res.json();
+      expect(body.success).toBe(true);
+      contactId = body.data.id;
+      expect(contactId).toBeDefined();
     });
 
     it('should list contacts (response structure)', async () => {
@@ -160,12 +157,9 @@ describe('CRUD Lifecycle E2E Tests', () => {
         type: 'customer',
         source: 'manual',
       });
-      if (res.status === 201) {
-        const body: any = await res.json();
-        contactId = body.data.id;
-      } else {
-        expect([201, 500]).toContain(res.status);
-      }
+      expect(res.status).toBe(201);
+      const body: any = await res.json();
+      contactId = body.data.id;
     });
 
     it('should create a lead linked to the contact', async () => {
@@ -184,14 +178,10 @@ describe('CRUD Lifecycle E2E Tests', () => {
         source: 'website',
         priority: 'hot',
       });
-      // May get 500 if D1 doesn't persist contactId across requests in test env
-      if (res.status === 201) {
-        const body: any = await res.json();
-        expect(body.success).toBe(true);
-        leadId = body.data.id;
-      } else {
-        expect([201, 400, 500]).toContain(res.status);
-      }
+      expect(res.status).toBe(201);
+      const body: any = await res.json();
+      expect(body.success).toBe(true);
+      leadId = body.data.id;
     });
 
     it('should get lead by ID', async () => {
@@ -285,7 +275,7 @@ describe('CRUD Lifecycle E2E Tests', () => {
 
     it('should list suppliers', async () => {
       const res = await authRequest('GET', '/suppliers', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
       if (res.status === 200) {
         const body: any = await res.json();
         expect(body.success).toBe(true);
@@ -352,12 +342,9 @@ describe('CRUD Lifecycle E2E Tests', () => {
         email: 'invoice@test.com',
         type: 'customer',
       });
-      if (res.status === 201) {
-        const body: any = await res.json();
-        contactId = body.data.id;
-      } else {
-        expect([201, 500]).toContain(res.status);
-      }
+      expect(res.status).toBe(201);
+      const body: any = await res.json();
+      contactId = body.data.id;
     });
 
     it('should create an invoice with line items', async () => {
@@ -372,13 +359,9 @@ describe('CRUD Lifecycle E2E Tests', () => {
         dueDate: '2026-04-01',
         notes: 'Goa trip invoice',
       });
-      if (res.status === 201) {
-        const body: any = await res.json();
-        expect(body.data).toBeDefined();
-      } else {
-        // contactId may not persist in D1 test env
-        expect([400, 404, 500]).toContain(res.status);
-      }
+      expect(res.status).toBe(201);
+      const body: any = await res.json();
+      expect(body.data).toBeDefined();
     });
 
     it('should list invoices', async () => {
@@ -401,7 +384,7 @@ describe('CRUD Lifecycle E2E Tests', () => {
   describe('Traveller CRUD', () => {
     it('should list travellers', async () => {
       const res = await authRequest('GET', '/travellers', adminToken);
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
 
     it('should create a traveller', async () => {

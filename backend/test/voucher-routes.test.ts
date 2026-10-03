@@ -209,12 +209,9 @@ describe('Voucher Routes Integration Tests', () => {
         type: 'customer',
         source: 'manual',
       });
-      if (res.status === 201) {
-        const body: any = await res.json();
-        contactId = body.data.id;
-      } else {
-        expect([201, 500]).toContain(res.status);
-      }
+      expect(res.status).toBe(201);
+      const body: any = await res.json();
+      contactId = body.data.id;
     });
 
     it('should create a lead', async () => {
@@ -227,12 +224,9 @@ describe('Voucher Routes Integration Tests', () => {
         tripType: 'family',
         source: 'website',
       });
-      if (res.status === 201) {
-        const body: any = await res.json();
-        leadId = body.data.id;
-      } else {
-        expect([201, 400, 500]).toContain(res.status);
-      }
+      expect(res.status).toBe(201);
+      const body: any = await res.json();
+      leadId = body.data.id;
     });
 
     it('should create a hotel voucher', async () => {

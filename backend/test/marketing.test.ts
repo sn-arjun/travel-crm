@@ -112,14 +112,11 @@ describe('Marketing Routes Integration Tests', () => {
         isDynamic: true,
         filtersJson: JSON.stringify({ tags: ['vip'] }),
       });
-      if (res.status === 201) {
-        const body: any = await res.json();
-        expect(body.success).toBe(true);
-        expect(body.data).toHaveProperty('id');
-        segmentId = body.data.id;
-      } else {
-        expect([201, 500]).toContain(res.status);
-      }
+      expect(res.status).toBe(201);
+      const body: any = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data).toHaveProperty('id');
+      segmentId = body.data.id;
     });
 
     it('should reject segment without name', async () => {
@@ -218,7 +215,7 @@ describe('Marketing Routes Integration Tests', () => {
         agencyName: 'Test Travel Agency',
         tagline: 'Your journey starts here',
       });
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
     });
 
     it('should persist branding changes', async () => {
@@ -256,23 +253,17 @@ describe('Marketing Routes Integration Tests', () => {
         type: 'customer',
         source: 'manual',
       });
-      if (res.status === 201) {
-        const body: any = await res.json();
-        contactId = body.data.id;
-      } else {
-        expect([201, 500]).toContain(res.status);
-      }
+      expect(res.status).toBe(201);
+      const body: any = await res.json();
+      contactId = body.data.id;
     });
 
     it('should opt out a contact', async () => {
       if (!contactId) return;
       const res = await authRequest('POST', `/marketing/opt-out/${contactId}`, adminToken);
-      if (res.status === 200) {
-        const body: any = await res.json();
-        expect(body.data).toHaveProperty('opted_out', true);
-      } else {
-        expect([200, 404, 500]).toContain(res.status);
-      }
+      expect(res.status).toBe(200);
+      const body: any = await res.json();
+      expect(body.data).toHaveProperty('opted_out', true);
     });
 
     it('should return 404 for opting out non-existent contact', async () => {
@@ -283,12 +274,9 @@ describe('Marketing Routes Integration Tests', () => {
     it('should opt in a contact (reverse opt-out)', async () => {
       if (!contactId) return;
       const res = await authRequest('POST', `/marketing/opt-out/${contactId}/opt-in`, adminToken);
-      if (res.status === 200) {
-        const body: any = await res.json();
-        expect(body.data).toHaveProperty('opted_out', false);
-      } else {
-        expect([200, 404, 500]).toContain(res.status);
-      }
+      expect(res.status).toBe(200);
+      const body: any = await res.json();
+      expect(body.data).toHaveProperty('opted_out', false);
     });
   });
 

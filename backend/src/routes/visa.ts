@@ -158,11 +158,11 @@ visaRouter.post('/', zValidator('json', createVisaApplicationSchema), async (c) 
         await db.prepare(`
       INSERT INTO visa_checklist_items (
         id, tenant_id, visa_application_id, document_name, description, 
-        is_required, is_received, sort_order, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+        is_required, is_received, sort_order, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
     `).bind(
             generateId(), tenantId, id, tItem.name, tItem.description,
-            tItem.required ? 1 : 0, i, now, now
+            tItem.required ? 1 : 0, i, now
         ).run();
     }
 

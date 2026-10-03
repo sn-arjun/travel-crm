@@ -199,7 +199,7 @@ describe('Communication Routes Integration Tests', () => {
         contact_id: 'nonexistent-contact-id',
         message: 'Hello',
       });
-      expect([404, 500]).toContain(res.status);
+      expect(res.status).toBe(404);
     });
   });
 
@@ -284,15 +284,12 @@ describe('Communication Routes Integration Tests', () => {
   describe('Bulk Send Status', () => {
     it('should get batch status', async () => {
       const res = await authRequest('GET', '/communications/bulk-send/some-batch-id/status', adminToken);
-      if (res.status === 200) {
-        const body: any = await res.json();
-        expect(body.success).toBe(true);
-        if (body.data) {
-          expect(body.data).toHaveProperty('batch_id');
-          expect(body.data).toHaveProperty('status');
-        }
-      } else {
-        expect([200, 404, 500]).toContain(res.status);
+      expect(res.status).toBe(200);
+      const body: any = await res.json();
+      expect(body.success).toBe(true);
+      if (body.data) {
+        expect(body.data).toHaveProperty('batch_id');
+        expect(body.data).toHaveProperty('status');
       }
     });
   });
