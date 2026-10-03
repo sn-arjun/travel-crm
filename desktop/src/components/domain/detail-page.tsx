@@ -16,7 +16,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { SectionCard } from '@/components/ui/section-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Timeline, type TimelineItem } from '@/components/ui/timeline';
-import { cn } from '@/lib/utils';
+import { PageContainer } from '@/components/layout/page-container';
 
 import { SendMessageDialog } from '../communication/send-message-dialog';
 
@@ -98,7 +98,7 @@ export function DetailPage<T>({
   const [messageOpen, setMessageOpen] = React.useState(false);
 
   return (
-    <div className={cn('flex flex-col gap-ds-4', className)}>
+    <PageContainer className={className}>
       <PageHeader
         title={title}
         description={subtitle}
@@ -212,6 +212,6 @@ export function DetailPage<T>({
           }}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }

@@ -82,8 +82,16 @@ export function CommandPalette() {
         setOpen((o) => !o);
       }
     }
+    // The top-bar search button asks for the palette through this event.
+    function handleOpenRequest() {
+      setOpen(true);
+    }
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('travelcrm:open-command-palette', handleOpenRequest);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('travelcrm:open-command-palette', handleOpenRequest);
+    };
   }, []);
 
   function handleKeyDown(e: React.KeyboardEvent) {

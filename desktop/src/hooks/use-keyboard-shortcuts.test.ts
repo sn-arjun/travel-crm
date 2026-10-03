@@ -131,3 +131,30 @@ describe('useKeyboardShortcuts', () => {
     expect(action2).not.toHaveBeenCalled();
   });
 });
+
+describe('KeyboardShortcutsProvider Escape handling', () => {
+  it('lets one Escape keydown through exactly once and does not throw', async () => {
+    vi.resetModules();
+    vi.doMock('next/navigation', () => ({
+      useRouter: () => ({ push: vi.fn() }),
+      usePathname: () => '/leads',
+    }));
+    const React = await import('react');
+    const { render } = await import('@testing-library/react');
+    const { KeyboardShortcutsProvider } = await import(
+      '@/components/domain/keyboard-shortcuts-provider'
+    );
+
+    const seen = vi.fn();
+    document.addEventListener('keydown', seen);
+    render(React.createElement(KeyboardShortcutsProvider, null, React.createElement('div')));
+
+    expect(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    }).not.toThrow();
+
+    document.removeEventListener('keydown', seen);
+    expect(seen).toHaveBeenCalledTimes(1);
+    vi.doUnmock('next/navigation');
+  });
+});

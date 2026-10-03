@@ -21,6 +21,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { SectionCard } from '@/components/ui/section-card';
 import { Spinner } from '@/components/ui/spinner';
 import { useUnsavedChanges } from '@/hooks/use-unsaved-changes';
+import { PageContainer } from '@/components/layout/page-container';
 import { cn } from '@/lib/utils';
 
 export interface FormSection {
@@ -116,6 +117,7 @@ export function EntityForm<T extends FieldValues>({
 
   return (
     <FormProvider {...form}>
+      <PageContainer width="narrow">
       <form onSubmit={handleSubmit(onSubmit)} className={cn('flex flex-col gap-ds-4', className)}>
         <PageHeader
           title={title}
@@ -157,6 +159,7 @@ export function EntityForm<T extends FieldValues>({
           </p>
         )}
       </form>
+      </PageContainer>
     </FormProvider>
   );
 }

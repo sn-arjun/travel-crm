@@ -33,7 +33,10 @@ const NEW_PAGE_MAP: Record<string, string> = {
  * Shortcuts:
  * - Ctrl/Cmd+K: Already handled by CommandPalette (focus search / open palette)
  * - Ctrl/Cmd+N: Navigate to "new" page for the current section
- * - Escape: Close any open dialog/sheet (by dispatching Escape key to the document)
+ *
+ * Escape is deliberately not handled here: Radix dialogs, sheets and popovers
+ * close themselves, and re-dispatching the key from a document listener
+ * re-enters this same listener forever.
  */
 export function KeyboardShortcutsProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -56,23 +59,6 @@ export function KeyboardShortcutsProvider({ children }: { children: React.ReactN
             }
             return;
           }
-        }
-      },
-    },
-    {
-      key: 'Escape',
-      description: 'Close open dialog or sheet',
-      action: () => {
-        // Dispatch an Escape keydown event so Radix UI dialogs/sheets respond.
-        // We only do this if no input/textarea is focused (to avoid interfering with form editing).
-        const active = document.activeElement;
-        const isInput = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
-        if (!isInput) {
-          document.dispatchEvent(new KeyboardEvent('keydown', {
-            key: 'Escape',
-            code: 'Escape',
-            bubbles: true,
-          }));
         }
       },
     },

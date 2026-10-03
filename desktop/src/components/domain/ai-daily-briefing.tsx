@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/stores/auth-store';
 
 interface PriorityItem {
   id: string;
@@ -21,7 +22,9 @@ interface AIDailyBriefingProps {
   onAskAI?: () => void;
 }
 
-export function AIDailyBriefing({ userName = 'Arjun', onAskAI }: AIDailyBriefingProps) {
+export function AIDailyBriefing({ userName, onAskAI }: AIDailyBriefingProps) {
+  const authName = useAuthStore((s) => s.user?.name);
+  const displayName = userName ?? authName?.trim().split(' ')[0] ?? 'there';
   const followUpsDue = 8;
   const leadsNeedAttention = 5;
   const paymentsOverdue = 2;
@@ -60,7 +63,7 @@ export function AIDailyBriefing({ userName = 'Arjun', onAskAI }: AIDailyBriefing
           <div>
             <p className="text-sm text-muted-foreground mb-1">Good morning,</p>
             <CardTitle className="text-2xl">
-              {userName}
+              {displayName}
               <span className="text-xl ml-1">👋</span>
             </CardTitle>
           </div>

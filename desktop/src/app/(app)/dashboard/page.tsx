@@ -21,6 +21,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/stores/auth-store';
 import { LEAD_STATUS_LABELS, LEAD_STATUS_COLORS } from '@travelcrm/shared';
 import { StickyNotesWidget } from '@/components/domain/dashboard/sticky-notes-widget';
 import { useApiQuery } from '@/hooks/use-api';
@@ -771,7 +772,7 @@ export default function DashboardPage() {
     <div className="flex h-full flex-col overflow-auto">
       <PageHeader
         title="Dashboard"
-        description="Welcome back, Arjun. Here's your overview."
+        description={`Welcome back, ${useAuthStore.getState().user?.name?.trim().split(' ')[0] ?? 'there'}. Here's your overview.`}
         className="px-ds-6 pt-ds-4"
         actions={
           <>

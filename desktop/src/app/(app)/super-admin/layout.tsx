@@ -50,12 +50,12 @@ export default function SuperAdminLayout({ children }: { children: ReactNode }) 
   }
 
   if (access === 'checking') {
-    return <div className="min-h-screen bg-gray-50" aria-busy="true" />;
+    return <div className="min-h-full bg-ds-background" aria-busy="true" />;
   }
 
   if (access === 'denied') {
     return (
-      <div className="min-h-screen bg-gray-50 p-ds-6" data-testid="super-admin-no-access">
+      <div className="min-h-full bg-ds-background p-ds-6" data-testid="super-admin-no-access">
         <EmptyState
           icon={<ShieldAlert className="size-6" aria-hidden="true" />}
           title="Platform administration access required"
@@ -66,7 +66,7 @@ export default function SuperAdminLayout({ children }: { children: ReactNode }) 
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-full bg-ds-background">
       {children}
     </div>
   );

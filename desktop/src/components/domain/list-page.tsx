@@ -11,7 +11,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
-import { cn } from '@/lib/utils';
+import { PageContainer } from '@/components/layout/page-container';
 
 import { FilterBar } from './filter-bar';
 
@@ -173,7 +173,7 @@ export function ListPage<T>({
   const handleRowClick = renderDetail ? (row: T) => setDetailRow(row) : onRowClick;
 
   return (
-    <div className={cn('flex flex-col gap-ds-4', className)}>
+    <PageContainer className={className}>
       <PageHeader
         title={title}
         description={description}
@@ -287,6 +287,6 @@ export function ListPage<T>({
           </SheetContent>
         </Sheet>
       )}
-    </div>
+    </PageContainer>
   );
 }

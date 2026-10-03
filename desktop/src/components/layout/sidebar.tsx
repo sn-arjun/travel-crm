@@ -2,53 +2,18 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
-  LayoutDashboard,
-  Users,
-  Briefcase,
-  FileText,
-  Calendar,
-  MessageSquare,
-  Settings,
   ChevronLeft,
   ChevronRight,
-  Map,
-  Receipt,
-  BarChart3,
-  Building2,
+  ChevronsUpDown,
   HelpCircle,
-  Bell,
-  Truck,
-  Phone,
-  Megaphone,
-  PackageSearch,
-  CreditCard,
-  CheckSquare,
-  Stamp,
-  Inbox,
-  ClipboardList,
-  Upload,
-  Bookmark,
-  Bot,
-  Sparkles,
-  UserCheck,
-  Tag,
-  Palette,
-  CalendarClock,
-  Plane,
-  UserRound,
-  Send,
-  ScanSearch,
-  Lightbulb,
-  Target,
-  ScanLine,
-  BellRing,
-  LayoutTemplate,
+  LogOut,
+  Settings,
   ShieldCheck,
-  MessageCircle,
+  UserRound,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, getInitials } from '@/lib/utils';
 import { useSidebarStore } from '@/stores/sidebar-store';
 import { useAuthStore } from '@/stores/auth-store';
 import {
@@ -57,125 +22,46 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { notificationsApi } from '@/lib/api/notifications';
 import { useRealtimeEvent, useRealtimeConnected } from '@/hooks/use-realtime-event';
+import { useIsSuperAdmin } from '@/hooks/use-is-super-admin';
+import { useElectron } from '@/hooks/use-electron';
 import { ConnectionStatus } from '@/components/layout/connection-status';
-
-interface NavItem {
-  title: string;
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  badgeKey?: 'unread_notifications' | 'pending_tasks' | 'overdue_followups' | 'overdue_invoices';
-}
-
-interface NavGroup {
-  label: string;
-  items: NavItem[];
-}
-
-const navigation: NavGroup[] = [
-  {
-    label: 'Overview',
-    items: [
-      { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-      { title: 'Calendar', href: '/calendar', icon: Calendar },
-      { title: 'Tasks', href: '/tasks', icon: CheckSquare, badgeKey: 'pending_tasks' },
-    ],
-  },
-  {
-    label: 'CRM',
-    items: [
-      { title: 'Leads', href: '/leads', icon: Briefcase, badgeKey: 'overdue_followups' },
-      { title: 'Contacts', href: '/contacts', icon: Users },
-    ],
-  },
-  {
-    label: 'Operations',
-    items: [
-      { title: 'Fleet', href: '/fleet', icon: Truck },
-      { title: 'Itineraries', href: '/itineraries', icon: Map },
-      { title: 'Itinerary Templates', href: '/itineraries/templates', icon: Bookmark },
-      { title: 'Rate Cards', href: '/rate-cards', icon: Tag },
-      { title: 'Suppliers', href: '/suppliers', icon: PackageSearch },
-      { title: 'Accounts (Suppliers view)', href: '/accounts', icon: Building2 },
-      { title: 'Rate Comparison', href: '/suppliers/compare', icon: BarChart3 },
-      { title: 'Visa & Travellers', href: '/visa', icon: Stamp },
-      { title: 'Travellers', href: '/travellers', icon: UserRound },
-      { title: 'Vouchers', href: '/vouchers', icon: ClipboardList },
-    ],
-  },
-  {
-    label: 'Revenue',
-    items: [
-      { title: 'Invoices', href: '/invoices', icon: Receipt, badgeKey: 'overdue_invoices' },
-      { title: 'Payments', href: '/payments', icon: CreditCard },
-      { title: 'Credit Notes', href: '/credit-notes', icon: FileText },
-      { title: 'Debit Notes', href: '/debit-notes', icon: FileText },
-    ],
-  },
-  {
-    label: 'Communication',
-    items: [
-      { title: 'Inbox', href: '/communication', icon: Inbox },
-      { title: 'Call Log', href: '/communication/calls', icon: Phone },
-      { title: 'Templates', href: '/communication/templates', icon: MessageSquare },
-      { title: 'Bulk Send', href: '/communication/bulk-send', icon: Send },
-    ],
-  },
-  {
-    label: 'Intelligence',
-    items: [
-      { title: 'Reports', href: '/reports', icon: BarChart3 },
-      { title: 'AI Assistant', href: '/ai', icon: Sparkles },
-      { title: 'AI Extractions', href: '/ai/extractions', icon: ScanSearch },
-      { title: 'AI Insights', href: '/ai/insights', icon: Lightbulb },
-      { title: 'AI Lead Scoring', href: '/ai/lead-score', icon: Target },
-      { title: 'AI Document Scans', href: '/ai/document-scans', icon: ScanLine },
-      { title: 'AI OCR', href: '/ai/ocr', icon: ScanSearch },
-      { title: 'AI Smart Follow-ups', href: '/ai/smart-followups', icon: BellRing },
-      { title: 'Chatbot', href: '/chatbot', icon: Bot },
-      { title: 'Notifications', href: '/notifications', icon: Bell, badgeKey: 'unread_notifications' },
-      { title: 'Documents', href: '/documents', icon: FileText },
-    ],
-  },
-  {
-    label: 'Marketing',
-    items: [
-      { title: 'Dashboard', href: '/marketing', icon: LayoutDashboard },
-      { title: 'Campaigns', href: '/marketing/campaigns', icon: Megaphone },
-      { title: 'Segments', href: '/marketing/segments', icon: Users },
-      { title: 'Flyers', href: '/marketing/flyers', icon: Palette },
-      { title: 'Flyer Templates', href: '/marketing/flyers/templates', icon: LayoutTemplate },
-      { title: 'Branding', href: '/marketing/branding', icon: Palette },
-      { title: 'Festival Offers', href: '/marketing/festivals', icon: CalendarClock },
-      { title: 'Opted-Out', href: '/marketing/opted-out', icon: UserCheck },
-      { title: 'Social Content', href: '/marketing/social', icon: Megaphone },
-      { title: 'WhatsApp Campaigns', href: '/marketing/whatsapp', icon: MessageCircle },
-    ],
-  },
-  {
-    label: 'Tools',
-    items: [
-      { title: 'Follow-ups', href: '/follow-ups', icon: CalendarClock },
-      { title: 'Import / Export', href: '/import', icon: Upload },
-      { title: 'Bookmarks', href: '/bookmarks', icon: Bookmark },
-    ],
-  },
-];
-
-const bottomNav: NavItem[] = [
-  { title: 'Help Center', href: '/help', icon: HelpCircle },
-  { title: 'Settings', href: '/settings', icon: Settings },
-];
-
-const superAdminNav: NavItem = { title: 'Super Admin', href: '/super-admin', icon: ShieldCheck };
+import {
+  navigation,
+  bottomNav,
+  superAdminNav,
+  findActiveHref,
+  type NavItem,
+} from '@/components/layout/nav-config';
 
 interface BadgeCounts {
   unread_notifications: number;
   pending_tasks: number;
   overdue_followups: number;
   overdue_invoices: number;
+}
+
+type RawCounts = Record<string, number | undefined>;
+
+function toBadgeCounts(data: RawCounts, loose: boolean): BadgeCounts {
+  return {
+    unread_notifications:
+      data.unreadNotifications ?? data.unread_notifications ?? (loose ? data.notifications : undefined) ?? 0,
+    pending_tasks: data.pendingTasks ?? data.pending_tasks ?? (loose ? data.tasks : undefined) ?? 0,
+    overdue_followups:
+      data.overdueFollowups ?? data.overdue_followups ?? (loose ? data.followUps : undefined) ?? 0,
+    overdue_invoices: data.overdueInvoices ?? data.overdue_invoices ?? 0,
+  };
 }
 
 function useBadgeCounts() {
@@ -185,13 +71,7 @@ function useBadgeCounts() {
     try {
       const res = await notificationsApi.getBadgeCounts();
       if (res && 'data' in res && res.data) {
-        const data = res.data as any;
-        setCounts({
-          unread_notifications: data.unreadNotifications ?? data.unread_notifications ?? data.notifications ?? 0,
-          pending_tasks: data.pendingTasks ?? data.pending_tasks ?? data.tasks ?? 0,
-          overdue_followups: data.overdueFollowups ?? data.overdue_followups ?? data.followUps ?? 0,
-          overdue_invoices: data.overdueInvoices ?? data.overdue_invoices ?? 0,
-        });
+        setCounts(toBadgeCounts(res.data as unknown as RawCounts, true));
       }
     } catch {
       // Non-critical
@@ -210,12 +90,7 @@ function useBadgeCounts() {
   // Real-time updates via WebSocket
   useRealtimeEvent('badge_counts:update', (data) => {
     if (data) {
-      setCounts({
-        unread_notifications: data.unreadNotifications ?? data.unread_notifications ?? 0,
-        pending_tasks: data.pendingTasks ?? data.pending_tasks ?? 0,
-        overdue_followups: data.overdueFollowups ?? data.overdue_followups ?? 0,
-        overdue_invoices: data.overdueInvoices ?? data.overdue_invoices ?? 0,
-      });
+      setCounts(toBadgeCounts(data as RawCounts, false));
     }
   });
   // Refetch on events that affect counts
@@ -235,10 +110,17 @@ function useBadgeCounts() {
   return counts;
 }
 
-function NavItemLink({ item, isCollapsed, badgeCounts }: { item: NavItem; isCollapsed: boolean; badgeCounts: BadgeCounts | null }) {
-  const pathname = usePathname();
-  const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
-
+function NavItemLink({
+  item,
+  isCollapsed,
+  isActive,
+  badgeCounts,
+}: {
+  item: NavItem;
+  isCollapsed: boolean;
+  isActive: boolean;
+  badgeCounts: BadgeCounts | null;
+}) {
   const badge = item.badgeKey && badgeCounts ? (badgeCounts[item.badgeKey] ?? 0) : 0;
   const badgeDisplay = badge > 0 ? (badge > 99 ? '99+' : badge) : null;
 
@@ -246,9 +128,10 @@ function NavItemLink({ item, isCollapsed, badgeCounts }: { item: NavItem; isColl
     <Link
       href={item.href}
       aria-current={isActive ? 'page' : undefined}
+      aria-label={isCollapsed ? item.title : undefined}
       className={cn(
-        'group flex items-center gap-3 rounded-md px-3 py-2.5 text-[13px] font-medium transition-all duration-150',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+        'group flex items-center gap-3 rounded-ds-md px-3 py-1.5 text-sm font-medium transition-colors duration-150',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring',
         isActive
           ? 'bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary'
           : 'text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -256,6 +139,7 @@ function NavItemLink({ item, isCollapsed, badgeCounts }: { item: NavItem; isColl
       )}
     >
       <item.icon
+        aria-hidden="true"
         className={cn(
           'h-4 w-4 shrink-0 transition-colors',
           isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-muted-foreground',
@@ -265,7 +149,7 @@ function NavItemLink({ item, isCollapsed, badgeCounts }: { item: NavItem; isColl
         <>
           <span className="truncate">{item.title}</span>
           {badgeDisplay && (
-            <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-white animate-pop-in">
+            <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-ds-full bg-ds-primary px-1.5 text-xs font-bold text-ds-primary-foreground animate-pop-in">
               {badgeDisplay}
             </span>
           )}
@@ -281,7 +165,7 @@ function NavItemLink({ item, isCollapsed, badgeCounts }: { item: NavItem; isColl
         <TooltipContent side="right" className="flex items-center gap-2">
           {item.title}
           {badgeDisplay && (
-            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-white">
+            <span className="flex h-5 min-w-5 items-center justify-center rounded-ds-full bg-ds-primary px-1.5 text-xs font-bold text-ds-primary-foreground">
               {badgeDisplay}
             </span>
           )}
@@ -293,45 +177,168 @@ function NavItemLink({ item, isCollapsed, badgeCounts }: { item: NavItem; isColl
   return linkContent;
 }
 
+/** Icon-only link used in the compact footer (Help, Settings, Super Admin). */
+function FooterIconLink({ item, isActive }: { item: NavItem; isActive: boolean }) {
+  return (
+    <Tooltip delayDuration={0}>
+      <TooltipTrigger asChild>
+        <Link
+          href={item.href}
+          aria-label={item.title}
+          aria-current={isActive ? 'page' : undefined}
+          className={cn(
+            'flex h-8 w-8 items-center justify-center rounded-ds-md transition-colors duration-150',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring',
+            isActive
+              ? 'bg-primary/10 text-primary dark:bg-primary/20'
+              : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+          )}
+        >
+          <item.icon aria-hidden="true" className="h-4 w-4" />
+        </Link>
+      </TooltipTrigger>
+      <TooltipContent side="right">{item.title}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function SidebarUserMenu({ isCollapsed, isSuperAdmin }: { isCollapsed: boolean; isSuperAdmin: boolean }) {
+  const router = useRouter();
+  const user = useAuthStore((s) => s.user);
+
+  const email = user?.email ?? '';
+  const displayName = user?.name?.trim() || email.split('@')[0] || 'User';
+  const initials = getInitials(displayName) || 'U';
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Account menu for ${displayName}`}
+          data-testid="sidebar-user-menu"
+          className={cn(
+            'flex w-full items-center gap-3 rounded-ds-md px-2 py-1.5 text-left transition-colors hover:bg-muted',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring',
+            isCollapsed && 'justify-center px-0',
+          )}
+        >
+          <span
+            aria-hidden="true"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-ds-full bg-primary/10 text-xs font-semibold text-primary"
+          >
+            {initials}
+          </span>
+          {!isCollapsed && (
+            <>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-sidebar-foreground">{displayName}</span>
+                {email && <span className="block truncate text-xs text-muted-foreground">{email}</span>}
+              </span>
+              <ChevronsUpDown aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
+            </>
+          )}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        side={isCollapsed ? 'right' : 'top'}
+        align={isCollapsed ? 'end' : 'start'}
+        className="w-56"
+      >
+        <DropdownMenuLabel className="font-normal">
+          <span className="block truncate text-sm font-medium">{displayName}</span>
+          {email && <span className="block truncate text-xs text-muted-foreground">{email}</span>}
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => router.push('/settings/profile')}>
+          <UserRound aria-hidden="true" /> Profile
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => router.push('/help')}>
+          <HelpCircle aria-hidden="true" /> Help Center
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => router.push('/settings')}>
+          <Settings aria-hidden="true" /> Settings
+        </DropdownMenuItem>
+        {isSuperAdmin && (
+          <DropdownMenuItem onSelect={() => router.push('/super-admin')}>
+            <ShieldCheck aria-hidden="true" /> Super Admin
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="text-destructive"
+          onSelect={() => {
+            useAuthStore.getState().logout();
+            window.location.href = '/login';
+          }}
+        >
+          <LogOut aria-hidden="true" /> Sign out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function Sidebar() {
   const { isCollapsed, toggle } = useSidebarStore();
+  const pathname = usePathname();
   const badgeCounts = useBadgeCounts();
-  const isSuperAdmin = useAuthStore((s) => s.user?.role === 'admin');
+  const { isSuperAdmin } = useIsSuperAdmin();
+  const { isElectron } = useElectron();
+
+  // Super admin pages only highlight an item the user can actually see.
+  const activeHref = React.useMemo(() => {
+    const href = findActiveHref(pathname);
+    return href === superAdminNav.href && !isSuperAdmin ? null : href;
+  }, [pathname, isSuperAdmin]);
+
+  // macOS draws its window buttons over the top-left corner of the sidebar.
+  const insetForWindowButtons =
+    isElectron && typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);
 
   return (
     <TooltipProvider>
       <aside
+        aria-label="Primary"
         className={cn(
-          'relative flex h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
-          isCollapsed ? 'w-[var(--sidebar-collapsed)]' : 'w-[240px]',
+          'relative flex h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
+          isCollapsed ? 'w-16' : 'w-60',
         )}
       >
+        {insetForWindowButtons && <div aria-hidden="true" className="h-7 shrink-0 electron-drag" />}
+
         {/* Logo */}
-        <div className={cn('flex h-14 items-center border-b border-sidebar-border px-4 gap-3', isCollapsed && 'justify-center px-2')}>
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-primary-400 via-primary-500 to-primary-600 text-white font-bold text-sm shadow-sm">
+        <div className={cn('flex h-12 shrink-0 items-center border-b border-sidebar-border px-4 gap-3', isCollapsed && 'justify-center px-2')}>
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-ds-md bg-ds-primary text-sm font-bold text-ds-primary-foreground shadow-sm">
             T
           </div>
           {!isCollapsed && (
             <div className="animate-fade-in flex items-baseline gap-0.5">
-              <span className="font-semibold text-[15px] tracking-tight text-sidebar-foreground" style={{ fontFamily: 'var(--font-display)' }}>TravelCRM</span>
+              <span className="font-semibold text-base tracking-tight text-sidebar-foreground" style={{ fontFamily: 'var(--font-display)' }}>TravelCRM</span>
               <span className="font-normal text-xs text-muted-foreground tracking-wide">Pro</span>
             </div>
           )}
         </div>
 
         {/* Navigation */}
-        <ScrollArea className="min-h-0 flex-1 px-3 py-4">
-          <nav className="space-y-6">
-            {navigation.map((group: any) => (
+        <ScrollArea className="min-h-0 flex-1 px-3 py-3">
+          <nav aria-label="Main" className="space-y-4">
+            {navigation.map((group) => (
               <div key={group.label}>
                 {!isCollapsed && (
-                  <p className="mb-2 px-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  <p className="mb-1 px-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     {group.label}
                   </p>
                 )}
                 <div className="space-y-0.5">
-                  {group.items.map((item: any) => (
-                    <NavItemLink key={item.href} item={item} isCollapsed={isCollapsed} badgeCounts={badgeCounts} />
+                  {group.items.map((item) => (
+                    <NavItemLink
+                      key={item.href}
+                      item={item}
+                      isCollapsed={isCollapsed}
+                      isActive={activeHref === item.href}
+                      badgeCounts={badgeCounts}
+                    />
                   ))}
                 </div>
               </div>
@@ -339,44 +346,38 @@ export function Sidebar() {
           </nav>
         </ScrollArea>
 
-        {/* Bottom Nav */}
-        <div className="border-t border-sidebar-border px-3 py-3 space-y-0.5">
-          {isSuperAdmin && (
-            <NavItemLink item={superAdminNav} isCollapsed={isCollapsed} badgeCounts={badgeCounts} />
-          )}
-          {bottomNav.map((item: any) => (
-            <NavItemLink key={item.href} item={item} isCollapsed={isCollapsed} badgeCounts={badgeCounts} />
-          ))}
-          <ConnectionStatus />
-        </div>
-
-        {/* User Profile Area */}
-        {!isCollapsed && (
-          <div className="border-t border-sidebar-border px-3 py-3">
-            <div className="flex items-center gap-3 rounded-md px-2 py-2 hover:bg-muted transition-colors cursor-pointer">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-semibold">
-                AS
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-sidebar-foreground truncate">Arjun S</p>
-                <p className="text-[11px] text-muted-foreground truncate">arjun@travelcrm.io</p>
-              </div>
+        {/* Compact footer: shortcuts, connection state, signed-in user */}
+        <div className="shrink-0 space-y-1 border-t border-sidebar-border p-2">
+          <div className={cn('flex items-center gap-1 px-1', isCollapsed ? 'flex-col' : 'justify-between')}>
+            <div className={cn('flex items-center gap-1', isCollapsed && 'flex-col')}>
+              {bottomNav.map((item) => (
+                <FooterIconLink key={item.href} item={item} isActive={activeHref === item.href} />
+              ))}
+              {isSuperAdmin && (
+                <FooterIconLink item={superAdminNav} isActive={activeHref === superAdminNav.href} />
+              )}
             </div>
+            <ConnectionStatus />
           </div>
-        )}
+          <SidebarUserMenu isCollapsed={isCollapsed} isSuperAdmin={isSuperAdmin} />
+        </div>
 
         {/* Collapse Toggle */}
         <button
+          type="button"
           onClick={toggle}
+          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!isCollapsed}
           className={cn(
-            'absolute -right-3 top-20 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-card shadow-sm hover:shadow-md transition-all',
+            'absolute -right-3 top-16 z-10 flex h-6 w-6 items-center justify-center rounded-ds-full border border-border bg-card shadow-sm hover:shadow-md transition-all',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring',
             'active:scale-90',
           )}
         >
           {isCollapsed ? (
-            <ChevronRight className="h-3 w-3 text-muted-foreground" />
+            <ChevronRight aria-hidden="true" className="h-3 w-3 text-muted-foreground" />
           ) : (
-            <ChevronLeft className="h-3 w-3 text-muted-foreground" />
+            <ChevronLeft aria-hidden="true" className="h-3 w-3 text-muted-foreground" />
           )}
         </button>
       </aside>

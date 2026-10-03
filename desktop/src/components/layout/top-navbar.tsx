@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import { useTheme } from 'next-themes';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Search, Bell, Moon, Sun, Command, CheckCheck,
@@ -17,49 +18,16 @@ import {
   Popover, PopoverContent, PopoverTrigger,
 } from '@/components/ui/popover';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useApiQuery } from '@/hooks/use-api';
 import { notificationsApi, type Notification } from '@/lib/api/notifications';
 import { useAuthStore } from '@/stores/auth-store';
+import { getInitials } from '@/lib/utils';
+import { getPageTitle } from '@/components/layout/nav-config';
+import { routeForNotification } from '@/lib/notifications/route';
 import { useRealtimeEvent, useRealtimeConnected } from '@/hooks/use-realtime-event';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function getPageTitle(pathname: string): string {
-  const titles: Record<string, string> = {
-    '/dashboard': 'Dashboard',
-    '/leads': 'Leads',
-    '/contacts': 'Contacts',
-    '/accounts': 'Accounts & Suppliers',
-    '/itineraries': 'Itineraries',
-    '/invoices': 'Invoices',
-    '/payments': 'Payments',
-    '/tasks': 'Tasks',
-    '/calendar': 'Calendar',
-    '/fleet': 'Fleet Management',
-    '/suppliers': 'Suppliers',
-    '/rate-cards': 'Rate Cards',
-    '/visa': 'Visa & Travellers',
-    '/vouchers': 'Vouchers',
-    '/communication': 'Inbox',
-    '/campaigns': 'Campaigns',
-    '/reports': 'Reports',
-    '/ai': 'AI Assistant',
-    '/chatbot': 'Chatbot',
-    '/notifications': 'Notifications',
-    '/documents': 'Documents',
-    '/bookmarks': 'Bookmarks',
-    '/follow-ups': 'Follow-ups',
-    '/settings': 'Settings',
-    '/marketing': 'Marketing',
-  };
-
-  for (const [path, title] of Object.entries(titles)) {
-    if (pathname === path || pathname.startsWith(path + '/')) return title;
-  }
-  return '';
-}
 
 /** Map notification type to an icon component. */
 function notificationIcon(type: string) {
@@ -118,7 +86,7 @@ function NotificationBell() {
   const fetchUnreadCount = React.useCallback(async () => {
     try {
       const res = await notificationsApi.getUnreadCount();
-      const data = (res as any)?.data;
+      const data = (res as { data?: number | { total?: number; count?: number } })?.data;
       const count = typeof data === 'number' ? data : (data?.total ?? data?.count ?? 0);
       setUnreadCount(count);
     } catch {
@@ -131,7 +99,7 @@ function NotificationBell() {
     setLoading(true);
     try {
       const res = await notificationsApi.list({ page: 1, limit: 5, sortBy: 'createdAt', sortOrder: 'desc' });
-      const data = (res as any)?.data;
+      const data = (res as { data?: Notification[] | { data?: Notification[] } })?.data;
       // The response may be paginated: { data: [...], pagination: {...} }
       const items: Notification[] = Array.isArray(data) ? data : (data?.data ?? []);
       setNotifications(items);
@@ -200,19 +168,17 @@ function NotificationBell() {
       }
     }
     setOpen(false);
-    // Navigate to action URL if available
-    if (n.actionUrl) {
-      router.push(n.actionUrl);
-    }
+    // actionUrl wins; otherwise open whatever the notification references (FR-9)
+    router.push(routeForNotification(n));
   };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon-sm" className="h-8 w-8 relative">
+        <Button variant="ghost" size="icon-sm" className="h-8 w-8 relative" aria-label="Notifications">
           <Bell className="h-4 w-4" />
           {unreadCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-white animate-pulse">
+            <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-ds-primary px-1 text-xs leading-none font-bold text-ds-primary-foreground animate-pulse">
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           )}
@@ -221,7 +187,7 @@ function NotificationBell() {
       <PopoverContent
         align="end"
         sideOffset={8}
-        className="w-[360px] p-0"
+        className="w-90 p-0"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b">
@@ -241,7 +207,7 @@ function NotificationBell() {
         </div>
 
         {/* Notification list */}
-        <div className="max-h-[320px] overflow-y-auto">
+        <div className="max-h-80 overflow-y-auto">
           {loading ? (
             <div className="p-4 space-y-3">
               {Array.from({ length: 3 }).map((_, i) => (
@@ -286,7 +252,7 @@ function NotificationBell() {
                           {n.message}
                         </p>
                       )}
-                      <p className="text-[11px] text-muted-foreground mt-1">
+                      <p className="text-xs text-muted-foreground mt-1">
                         {timeAgo(n.createdAt)}
                       </p>
                     </div>
@@ -325,37 +291,43 @@ function NotificationBell() {
 export function TopNavbar() {
   const pathname = usePathname();
   const { user } = useAuthStore();
-  const [theme, setTheme] = React.useState<'light' | 'dark'>('light');
+  const { resolvedTheme, setTheme } = useTheme();
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => { setMounted(true); }, []);
 
-  const toggleTheme = () => {
-    const next = theme === 'light' ? 'dark' : 'light';
-    setTheme(next);
-    document.documentElement.classList.toggle('dark', next === 'dark');
-  };
+  const isDark = mounted && resolvedTheme === 'dark';
+  const toggleTheme = () => setTheme(isDark ? 'light' : 'dark');
 
-  const initials = user?.name
-    ? user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
-    : 'U';
+  const displayName = user?.name?.trim() || user?.email?.split('@')[0] || 'User';
+  const initials = getInitials(displayName) || 'U';
+
+  const openSearch = () => window.dispatchEvent(new Event('travelcrm:open-command-palette'));
 
   return (
-    <header className="flex items-center justify-between h-12 px-6 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shrink-0">
+    <header className="electron-drag flex items-center justify-between h-12 px-6 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shrink-0">
       <div className="flex items-center gap-4">
         <h2 className="text-sm font-semibold text-foreground">{getPageTitle(pathname)}</h2>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="electron-no-drag flex items-center gap-2">
         {/* Search shortcut hint */}
-        <Button variant="outline" size="sm" className="h-8 gap-2 text-muted-foreground text-xs hidden md:flex" onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}>
-          <Search className="h-3.5 w-3.5" />
+        <Button variant="outline" size="sm" className="h-8 gap-2 text-muted-foreground text-xs hidden md:flex" onClick={openSearch}>
+          <Search className="h-3.5 w-3.5" aria-hidden="true" />
           <span>Search...</span>
-          <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-            <Command className="h-2.5 w-2.5" />K
+          <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-xs font-medium text-muted-foreground">
+            <Command className="h-2.5 w-2.5" aria-hidden="true" />K
           </kbd>
         </Button>
 
-        {/* Theme toggle */}
-        <Button variant="ghost" size="icon-sm" onClick={toggleTheme} className="h-8 w-8">
-          {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+        {/* Theme toggle (next-themes persists the choice) */}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={toggleTheme}
+          className="h-8 w-8"
+          aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
+        >
+          {mounted ? (isDark ? <Sun className="h-4 w-4" aria-hidden="true" /> : <Moon className="h-4 w-4" aria-hidden="true" />) : <span className="h-4 w-4" aria-hidden="true" />}
         </Button>
 
         {/* Notification Bell Dropdown */}
@@ -366,9 +338,9 @@ export function TopNavbar() {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="h-8 gap-2 px-2">
               <Avatar className="h-6 w-6">
-                <AvatarFallback className="text-[10px] bg-primary/10 text-primary">{initials}</AvatarFallback>
+                <AvatarFallback className="text-xs bg-primary/10 text-primary">{initials}</AvatarFallback>
               </Avatar>
-              <span className="text-xs font-medium hidden md:inline">{user?.name || 'User'}</span>
+              <span className="text-xs font-medium hidden md:inline">{displayName}</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
