@@ -2,6 +2,6 @@
   "tscTestErrors": 2,
   "tscSrcErrors": 0,
   "vitestFailingFiles": [],
-  "backendPassedMin": 996,
+  "backendPassedMin": 1030,
   "e2eBaseline": "audit/fix/e2e-parsed.json"
 }
