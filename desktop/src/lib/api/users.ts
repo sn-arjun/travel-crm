@@ -1,5 +1,6 @@
 import { client, type ApiResponse, type PaginatedResponse } from './client';
 import { API_ENDPOINTS } from './config';
+import { unwrapList } from './envelope';
 import type { User } from '@travelcrm/shared';
 
 export interface UpdateUserRequest {
@@ -53,9 +54,40 @@ export interface ActivityLogEntry {
   createdAt: string;
 }
 
+function userMatches(
+  u: User,
+  { search, role, status }: { search?: string; role?: string; status?: string },
+): boolean {
+  const term = search?.trim().toLowerCase();
+  if (term) {
+    const haystack = [u.name, u.email, u.role].map((v) => String(v ?? '').toLowerCase());
+    if (!haystack.some((v) => v.includes(term))) return false;
+  }
+  if (role && u.role !== role) return false;
+  if (status) {
+    const row = u as unknown as { isActive?: boolean | number; inviteStatus?: string };
+    const active = row.isActive !== false && row.isActive !== 0;
+    if (status === 'active') return active;
+    if (status === 'inactive') return !active;
+    return row.inviteStatus === status;
+  }
+  return true;
+}
+
 export const usersApi = {
-  list: (params?: { page?: number; limit?: number; search?: string; role?: string; status?: string }) =>
-    client.get<ApiResponse<PaginatedResponse<User>>>(API_ENDPOINTS.users.list, { params }),
+  /**
+   * GET /users returns every user and ignores paging and filters, so search, role,
+   * status and pagination are applied here. Always resolves to a PaginatedResponse.
+   */
+  list: async (params?: { page?: number; limit?: number; search?: string; role?: string; status?: string }): Promise<PaginatedResponse<User>> => {
+    const res = await client.get<unknown>(API_ENDPOINTS.users.list, { params });
+    return unwrapList<User>(res, {
+      page: params?.page ?? (params?.limit ? 1 : undefined),
+      limit: params?.limit,
+      clientPaginate: true,
+      filter: (u) => userMatches(u, params ?? {}),
+    });
+  },
 
   getMe: () =>
     client.get<ApiResponse<User>>(API_ENDPOINTS.users.me),

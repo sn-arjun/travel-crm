@@ -33,20 +33,10 @@ import Link from 'next/link';
 
 const STATUS_LABELS: Record<string, string> = { todo: 'To Do', in_progress: 'In Progress', done: 'Done' };
 
-function normalizeTask(t: any): Task {
+/** The tasks client already returns camelCase rows; only the status needs narrowing. */
+function normalizeTask(t: Task): Task {
   return {
     ...t,
-    dueDate: t.dueDate || t.due_date,
-    assignedTo: t.assignedTo || t.assigned_to,
-    assignee_name: t.assignee_name,
-    leadId: t.leadId || t.related_lead_id,
-    lead_title: t.lead_title,
-    related_lead_id: t.related_lead_id || t.leadId,
-    createdBy: t.createdBy || t.created_by,
-    createdAt: t.createdAt || t.created_at || '',
-    updatedAt: t.updatedAt || t.updated_at || '',
-    subtask_count: t.subtask_count ?? 0,
-    completed_subtask_count: t.completed_subtask_count ?? 0,
     status: (t.status === 'done' ? 'done' : t.status === 'in_progress' ? 'in_progress' : 'todo') as Task['status'],
   };
 }
@@ -104,7 +94,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
   );
   const deleteCommentMutation = useApiMutation((commentId: string) => tasksApi.deleteComment(id, commentId));
   const createSubtaskMutation = useApiMutation((title: string) =>
-    tasksApi.create({ title, parent_task_id: id, status: 'todo', priority: task?.priority || 'medium' }),
+    tasksApi.create({ title, parentTaskId: id, status: 'todo', priority: task?.priority || 'medium' }),
   );
   const updateSubtaskStatusMutation = useApiMutation(({ subtaskId, status }: { subtaskId: string; status: string }) =>
     tasksApi.updateStatus(subtaskId, { status: status as 'todo' | 'in_progress' | 'done' }),
@@ -135,9 +125,9 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
         description: editForm.description || undefined,
         priority: editForm.priority as 'low' | 'medium' | 'high',
         category: editForm.category,
-        due_date: editForm.dueDate ? editForm.dueDate.toISOString() : undefined,
-        assigned_to: editForm.assignedTo || undefined,
-        related_lead_id: editForm.leadId || undefined,
+        dueDate: editForm.dueDate ? editForm.dueDate.toISOString() : undefined,
+        assignedTo: editForm.assignedTo || undefined,
+        relatedLeadId: editForm.leadId || undefined,
       });
       toast.success('Task updated');
       setEditDialogOpen(false);
@@ -271,8 +261,8 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
     });
   }
   comments.forEach((comment) => {
-    const commentDate = comment.createdAt || comment.created_at || '';
-    const userName = comment.user_name || comment.createdBy || comment.created_by || 'User';
+    const commentDate = comment.createdAt || '';
+    const userName = comment.userName || comment.createdBy || 'User';
     timelineItems.push({
       id: `comment-${comment.id}`, icon: <MessageSquare className="size-4" />,
       title: `${userName} commented`,
@@ -280,10 +270,10 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
       timestamp: commentDate,
     });
   });
-  if (task.completedAt || task.completed_at) {
+  if (task.completedAt) {
     timelineItems.push({
       id: 'completed', icon: <CheckSquare className="size-4" />, title: 'Task completed',
-      timestamp: (task.completedAt || task.completed_at) as string,
+      timestamp: task.completedAt as string,
     });
   }
   if (task.updatedAt && task.updatedAt !== task.createdAt) {
@@ -357,10 +347,10 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
                   <div className="flex items-center gap-ds-2">
                     <Avatar className="size-6">
                       <AvatarFallback className="text-[9px]">
-                        {(task.assignee_name || 'U').substring(0, 2).toUpperCase()}
+                        {(task.assigneeName || 'U').substring(0, 2).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
-                    <span className="text-sm font-medium">{task.assignee_name || 'Unassigned'}</span>
+                    <span className="text-sm font-medium">{task.assigneeName || 'Unassigned'}</span>
                   </div>
                 </div>
                 <div className="flex justify-between">
@@ -369,11 +359,11 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
                     {dueDate ? formatDate(task.dueDate) : '--'}
                   </span>
                 </div>
-                {task.lead_title && (
+                {task.leadTitle && (
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-ds-foreground-muted">Linked lead</span>
                     <Link href={`/leads/${task.leadId}`} className="flex items-center gap-ds-1 text-sm text-ds-primary hover:underline">
-                      <Link2 className="size-3.5" /> {task.lead_title}
+                      <Link2 className="size-3.5" /> {task.leadTitle}
                     </Link>
                   </div>
                 )}
@@ -413,8 +403,8 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
                     <span className={cn('flex-1 text-sm', subtask.status === 'done' && 'text-ds-foreground-muted line-through')}>
                       {subtask.title}
                     </span>
-                    {subtask.assignee_name && (
-                      <span className="text-xs text-ds-foreground-muted">{subtask.assignee_name}</span>
+                    {subtask.assigneeName && (
+                      <span className="text-xs text-ds-foreground-muted">{subtask.assigneeName}</span>
                     )}
                   </div>
                 ))}
@@ -477,8 +467,8 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
                 )}
 
                 {comments.map((comment) => {
-                  const commentDate = comment.createdAt || comment.created_at || '';
-                  const userName = comment.user_name || comment.createdBy || comment.created_by || 'User';
+                  const commentDate = comment.createdAt || '';
+                  const userName = comment.userName || comment.createdBy || 'User';
                   const isEditing = editingCommentId === comment.id;
                   return (
                     <div key={comment.id} className="flex gap-ds-3 border-t border-ds-border pt-ds-3">

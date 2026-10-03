@@ -13,7 +13,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   visaService,
   travellersApi,
-  normalizeTraveller,
   toDateOnly,
   VISA_TYPE_OPTIONS,
   type Traveller,
@@ -39,11 +38,7 @@ type VisaForm = z.infer<typeof schema>;
 
 async function fetchTravellers(query: string, page: number) {
   const r = await travellersApi.list({ search: query || undefined, page, limit: 20 });
-  const data = r.data as unknown;
-  const raw = Array.isArray(data) ? data : ((data as { data?: unknown[] })?.data ?? []);
-  const items = raw.map(normalizeTraveller);
-  const total = (data as { pagination?: { total?: number } })?.pagination?.total ?? items.length;
-  return { items, total };
+  return { items: r.data, total: r.pagination.total };
 }
 
 export default function NewVisaApplicationPage() {
@@ -88,7 +83,7 @@ export default function NewVisaApplicationPage() {
                   getOptionId={(t) => t.id}
                   getOptionLabel={(t) => `${t.firstName} ${t.lastName}`}
                   getOptionDescription={(t) => t.passportNumber}
-                  resolveSelected={async (id) => normalizeTraveller((await travellersApi.getById(id)).data)}
+                  resolveSelected={async (id) => (await travellersApi.getById(id)).data}
                   placeholder="Select a traveller…"
                   searchPlaceholder="Search by name or passport…"
                   required

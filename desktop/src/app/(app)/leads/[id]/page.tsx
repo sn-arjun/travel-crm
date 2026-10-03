@@ -34,6 +34,15 @@ function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' |
   return 'info';
 }
 
+/** Short date for a note, or '' when the timestamp is missing/unparseable (never "Invalid Date"). */
+function noteDate(value?: string): string {
+  if (!value) return '';
+  const d = new Date(value);
+  return Number.isNaN(d.getTime())
+    ? ''
+    : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 export default function LeadDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -335,7 +344,7 @@ export default function LeadDetailPage() {
                     <div key={note.id} className="flex items-start justify-between gap-ds-3 border-b border-ds-border pb-ds-3 last:border-0 last:pb-0">
                       <div>
                         <p className="text-sm">{note.content}</p>
-                        <p className="text-xs text-ds-foreground-muted mt-1">{note.createdBy || 'Unknown'} · {new Date(note.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                        <p className="text-xs text-ds-foreground-muted mt-1">{note.createdByName ?? 'Unknown'}{noteDate(note.createdAt) ? ` · ${noteDate(note.createdAt)}` : ''}</p>
                       </div>
                       <Button variant="ghost" size="icon-sm" aria-label="Delete note" onClick={() => handleDeleteNote(note.id)}>
                         <Trash2 className="size-4" />

@@ -1,5 +1,6 @@
 import { client, type ApiResponse, type PaginatedResponse } from './client';
 import { API_ENDPOINTS } from './config';
+import { camelizeKeys, toApiResponse, unwrapEntity, unwrapList } from './envelope';
 import type { Lead } from '@travelcrm/shared';
 
 export interface CreateLeadRequest {
@@ -70,8 +71,27 @@ export interface LeadNote {
   id: string;
   content: string;
   createdAt: string;
+  /** User id of the author. */
   createdBy: string;
+  /** Display name of the author (joined by the backend as created_by_name). */
+  createdByName?: string;
   updatedAt: string;
+}
+
+/** Notes come back as snake_case activity rows (created_by_name, created_at). */
+export function normalizeLeadNote(raw: unknown): LeadNote {
+  const n = camelizeKeys<Record<string, unknown>>(raw) ?? {};
+  return {
+    ...n,
+    createdBy: (n.createdBy ?? '') as string,
+    createdAt: (n.createdAt ?? '') as string,
+    updatedAt: (n.updatedAt ?? n.createdAt ?? '') as string,
+  } as unknown as LeadNote;
+}
+
+function noteEntity(res: unknown): ApiResponse<LeadNote> {
+  const entity = unwrapEntity<unknown>(res);
+  return toApiResponse(entity && typeof entity === 'object' ? normalizeLeadNote(entity) : (entity as LeadNote));
 }
 
 export interface LeadFollowUp {
@@ -116,17 +136,20 @@ export const leadsApi = {
   getActivities: (id: string, params?: { page?: number; limit?: number }) =>
     client.get<ApiResponse<PaginatedResponse<LeadActivity>>>(API_ENDPOINTS.leads.activities(id), { params }),
 
-  getNotes: (id: string, params?: { page?: number; limit?: number }) =>
-    client.get<ApiResponse<PaginatedResponse<LeadNote>>>(API_ENDPOINTS.leads.notes(id), { params }),
+  getNotes: async (id: string, params?: { page?: number; limit?: number }): Promise<PaginatedResponse<LeadNote>> => {
+    const res = await client.get<unknown>(API_ENDPOINTS.leads.notes(id), { params });
+    const list = unwrapList<unknown>(res, { page: params?.page, limit: params?.limit });
+    return { ...list, data: list.data.map(normalizeLeadNote) };
+  },
 
   getFollowUps: (id: string, params?: { status?: string }) =>
     client.get<ApiResponse<LeadFollowUp[]>>(API_ENDPOINTS.leads.followUps(id), { params }),
 
-  createNote: (id: string, data: { content: string }) =>
-    client.post<ApiResponse<LeadNote>>(API_ENDPOINTS.leads.notes(id), data),
+  createNote: async (id: string, data: { content: string }): Promise<ApiResponse<LeadNote>> =>
+    noteEntity(await client.post<unknown>(API_ENDPOINTS.leads.notes(id), data)),
 
-  updateNote: (id: string, noteId: string, data: { content: string }) =>
-    client.put<ApiResponse<LeadNote>>(`${API_ENDPOINTS.leads.notes(id)}/${noteId}`, data),
+  updateNote: async (id: string, noteId: string, data: { content: string }): Promise<ApiResponse<LeadNote>> =>
+    noteEntity(await client.put<unknown>(`${API_ENDPOINTS.leads.notes(id)}/${noteId}`, data)),
 
   deleteNote: (id: string, noteId: string) =>
     client.delete<ApiResponse<void>>(`${API_ENDPOINTS.leads.notes(id)}/${noteId}`),

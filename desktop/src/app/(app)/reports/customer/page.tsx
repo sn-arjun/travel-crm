@@ -25,6 +25,7 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { reportsApi } from '@/lib/api/reports';
+import { unwrapReport } from '@/lib/api/envelope';
 import { PRESET_MAP as presetMap } from '@/components/domain/report-page-template';
 import {
   ReportExportButton,
@@ -73,7 +74,8 @@ export default function CustomerReportsPage() {
     reportsApi.execute(reportId, params)
       .then((res: any) => {
         if (cancelled) return;
-        const rows = Array.isArray(res) ? res : (res?.data ?? res?.rows ?? []);
+        // /reports/:id answers { success, data: { data: rows, columns, meta } }
+        const rows = unwrapReport(res).data;
         if (activeTab === 'repeat') setRepeatData(rows);
         else if (activeTab === 'ltv') setLtvData(rows);
         else if (activeTab === 'birthday') setBirthdayData(rows);

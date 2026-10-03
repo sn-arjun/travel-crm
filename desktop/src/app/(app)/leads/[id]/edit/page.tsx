@@ -189,10 +189,7 @@ export default function EditLeadPage() {
                     onChange={(id) => form.setValue('assignedTo', id ?? '', { shouldDirty: true })}
                     fetcher={async (q, page) => {
                       const r = await usersApi.list({ search: q, page, limit: 20 });
-                      const data = r.data as any;
-                      const items = Array.isArray(data) ? data : (data?.data ?? []);
-                      const total = data?.pagination?.total ?? items.length;
-                      return { items, total };
+                      return { items: r.data, total: r.pagination.total };
                     }}
                     getOptionId={(u: any) => u.id}
                     getOptionLabel={(u: any) => u.name || u.email}

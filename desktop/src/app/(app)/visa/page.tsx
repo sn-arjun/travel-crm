@@ -141,15 +141,6 @@ export default function VisaTrackingPage() {
       description="Track visa applications for your travellers."
       getRowId={(v) => v.id}
       fetcher={fetcher}
-      extractItems={(r) => {
-        const data = (r as { data?: unknown })?.data;
-        if (Array.isArray(data)) return data as VisaRecord[];
-        return ((data as { data?: VisaRecord[] })?.data ?? []) as VisaRecord[];
-      }}
-      extractTotal={(r) => {
-        const data = (r as { data?: unknown })?.data;
-        return (data as { pagination?: { total?: number } })?.pagination?.total ?? 0;
-      }}
       columns={columns}
       primaryAction={
         <Button size="sm" onClick={() => router.push('/visa/new')}>

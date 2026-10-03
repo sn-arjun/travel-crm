@@ -53,21 +53,10 @@ const STATUS_MAP: Record<string, string> = {
   pending: 'todo', completed: 'done', cancelled: 'todo',
 };
 
-function normalizeTask(t: any): Task {
+/** The tasks client already returns camelCase rows; only the legacy status names need mapping. */
+function normalizeTask(t: Task): Task {
   return {
     ...t,
-    dueDate: t.dueDate || t.due_date,
-    due_date: t.due_date || t.dueDate,
-    assignedTo: t.assignedTo || t.assigned_to,
-    assignee_name: t.assignee_name,
-    leadId: t.leadId || t.related_lead_id,
-    lead_title: t.lead_title,
-    related_lead_id: t.related_lead_id || t.leadId,
-    createdBy: t.createdBy || t.created_by,
-    createdAt: t.createdAt || t.created_at || '',
-    updatedAt: t.updatedAt || t.updated_at || '',
-    subtask_count: t.subtask_count ?? 0,
-    completed_subtask_count: t.completed_subtask_count ?? 0,
     status: (STATUS_MAP[t.status ?? 'todo'] || 'todo') as Task['status'],
   };
 }
@@ -79,10 +68,10 @@ function TaskCard({ task, onSelect, onDragStart }: {
 }) {
   const dueDate = task.dueDate ? new Date(task.dueDate) : null;
   const isOverdue = !!dueDate && dueDate < new Date() && task.status !== 'done';
-  const assigneeName = task.assignee_name || 'Unassigned';
-  const leadDisplay = task.lead_title || null;
-  const subtaskCount = task.subtask_count ?? 0;
-  const completedSubtasks = task.completed_subtask_count ?? 0;
+  const assigneeName = task.assigneeName || 'Unassigned';
+  const leadDisplay = task.leadTitle || null;
+  const subtaskCount = task.subtaskCount ?? 0;
+  const completedSubtasks = task.completedSubtaskCount ?? 0;
 
   return (
     <Card
@@ -228,9 +217,9 @@ export default function TasksPage() {
         description: newTask.description || undefined,
         priority: newTask.priority,
         category: newTask.category,
-        due_date: newTask.dueDate ? newTask.dueDate.toISOString() : undefined,
-        assigned_to: newTask.assignedTo || undefined,
-        related_lead_id: newTask.leadId || undefined,
+        dueDate: newTask.dueDate ? newTask.dueDate.toISOString() : undefined,
+        assignedTo: newTask.assignedTo || undefined,
+        relatedLeadId: newTask.leadId || undefined,
         status: 'todo',
       });
       toast.success('Task created');
@@ -282,9 +271,9 @@ export default function TasksPage() {
       cell: (t) => (
         <div className="flex min-w-0 items-center gap-ds-2">
           <span className="max-w-[280px] truncate text-sm font-medium">{t.title}</span>
-          {(t.subtask_count ?? 0) > 0 && (
+          {(t.subtaskCount ?? 0) > 0 && (
             <span className="shrink-0 text-[10px] text-ds-foreground-muted">
-              {t.completed_subtask_count}/{t.subtask_count}
+              {t.completedSubtaskCount}/{t.subtaskCount}
             </span>
           )}
         </div>
@@ -316,10 +305,10 @@ export default function TasksPage() {
         <div className="flex items-center gap-ds-2">
           <Avatar className="size-6">
             <AvatarFallback className="text-[9px]">
-              {(t.assignee_name || 'U').substring(0, 2).toUpperCase()}
+              {(t.assigneeName || 'U').substring(0, 2).toUpperCase()}
             </AvatarFallback>
           </Avatar>
-          <span className="max-w-[120px] truncate text-sm">{t.assignee_name || 'Unassigned'}</span>
+          <span className="max-w-[120px] truncate text-sm">{t.assigneeName || 'Unassigned'}</span>
         </div>
       ) },
     { key: 'category', header: 'Category', hideable: true,
@@ -418,7 +407,7 @@ export default function TasksPage() {
             const lines = rows.map((t) => [
               t.title, STATUS_LABELS[t.status], t.priority,
               t.dueDate ? new Date(t.dueDate).toLocaleDateString() : '',
-              t.assignee_name || '', t.category || '',
+              t.assigneeName || '', t.category || '',
             ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','));
             const csv = [header.join(','), ...lines].join('\n');
             const blob = new Blob([csv], { type: 'text/csv' });

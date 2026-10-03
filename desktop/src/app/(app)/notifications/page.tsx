@@ -183,8 +183,6 @@ export default function NotificationsPage() {
       description="Stay on top of what needs your attention."
       getRowId={(n) => n.id}
       fetcher={fetcher}
-      extractItems={(r) => (r as { data: { data: Notification[] } }).data.data}
-      extractTotal={(r) => (r as { data: { pagination: { total: number } } }).data.pagination.total}
       searchPlaceholder="Search notifications..."
       filters={activeFilters}
       onRemoveFilter={handleRemoveFilter}
@@ -266,8 +264,8 @@ export default function NotificationsPage() {
           type: typeFilter ?? undefined,
           unreadOnly: unreadOnly || undefined,
         });
-        const total = first.data.pagination.total;
-        let items = first.data.data;
+        const total = first.pagination.total;
+        let items = first.data;
         const pages = Math.ceil(total / 500);
         for (let p = 2; p <= pages; p++) {
           const next = await notificationsApi.list({
@@ -276,7 +274,7 @@ export default function NotificationsPage() {
             type: typeFilter ?? undefined,
             unreadOnly: unreadOnly || undefined,
           });
-          items = items.concat(next.data.data);
+          items = items.concat(next.data);
         }
         const csv = toCsv(items);
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

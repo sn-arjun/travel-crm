@@ -8,7 +8,7 @@ import {
   Button, Tag,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui';
-import { travellersApi, parseDateOnly, normalizeTraveller, type Traveller } from '@/lib/api/visa';
+import { travellersApi, parseDateOnly, type Traveller } from '@/lib/api/visa';
 import { toast } from 'sonner';
 
 function expiryTone(expiry?: string): 'success' | 'warning' | 'danger' | 'neutral' {
@@ -54,13 +54,9 @@ export default function TravellersPage() {
       title="Travellers"
       description="Passenger records with passport and travel document details."
       getRowId={(t) => t.id}
-      fetcher={async ({ page, limit, search }) => {
-        const res = await travellersApi.list({ page, limit, search: search || undefined });
-        const d = res.data as any;
-        const rows = Array.isArray(d) ? d : d?.data ?? [];
-        const items = rows.map(normalizeTraveller);
-        return { ...res, data: Array.isArray(d) ? items : { ...d, data: items } };
-      }}
+      fetcher={({ page, limit, search }) =>
+        travellersApi.list({ page, limit, search: search || undefined })
+      }
       searchPlaceholder="Search by name or passport number..."
       columns={[
         {

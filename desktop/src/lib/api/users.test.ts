@@ -158,3 +158,38 @@ describe('Users API Module', () => {
     });
   });
 });
+
+describe('usersApi.list envelope normalisation', () => {
+  const people = Array.from({ length: 5 }, (_, i) => ({ id: `u${i}`, name: `Person ${i}`, email: `p${i}@example.com`, role: i === 0 ? 'admin' : 'salesperson', isActive: i !== 4 }));
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn().mockImplementation(async () => new Response(
+      JSON.stringify({ success: true, data: people }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    ));
+    global.fetch = fetchMock;
+    mockGetState.mockReturnValue({ accessToken: 't', refreshToken: null, logout: vi.fn(), setTokens: vi.fn() });
+  });
+
+  it('wraps the unpaginated array in a PaginatedResponse', async () => {
+    const r = await usersApi.list();
+    expect(r.data).toHaveLength(5);
+    expect(r.pagination).toEqual({ page: 1, limit: 5, total: 5, totalPages: 1 });
+  });
+
+  it('paginates client-side so infinite scroll terminates', async () => {
+    const p1 = await usersApi.list({ page: 1, limit: 2 });
+    const p3 = await usersApi.list({ page: 3, limit: 2 });
+    expect(p1.data.map((u) => u.id)).toEqual(['u0', 'u1']);
+    expect(p3.data.map((u) => u.id)).toEqual(['u4']);
+    expect(p1.pagination).toEqual({ page: 1, limit: 2, total: 5, totalPages: 3 });
+  });
+
+  it('applies search, role and status filters client-side', async () => {
+    expect((await usersApi.list({ search: 'person 3' })).data.map((u) => u.id)).toEqual(['u3']);
+    expect((await usersApi.list({ role: 'admin' })).data.map((u) => u.id)).toEqual(['u0']);
+    expect((await usersApi.list({ status: 'inactive' })).data.map((u) => u.id)).toEqual(['u4']);
+    expect((await usersApi.list({ search: 'nobody', page: 1, limit: 20 })).pagination.total).toBe(0);
+  });
+});

@@ -77,7 +77,32 @@ describe('tasksApi', () => {
       const data = { title: 'Full Task', description: 'Desc', priority: 'high' as const, category: 'meeting', status: 'todo' as const, due_date: '2026-04-01', assigned_to: 'u1', related_lead_id: 'l1' };
       vi.mocked(client.post).mockResolvedValue({ data: { id: 't2' } });
       await tasksApi.create(data);
-      expect(client.post).toHaveBeenCalledWith('/tasks', data);
+      expect(client.post).toHaveBeenCalledWith('/tasks', {
+        title: 'Full Task', description: 'Desc', priority: 'high', category: 'meeting', status: 'todo',
+        dueDate: '2026-04-01', due_date: '2026-04-01',
+        assignedTo: 'u1', assigned_to: 'u1',
+        relatedLeadId: 'l1', related_lead_id: 'l1',
+      });
+    });
+
+    it('should send camelCase fields together with the snake_case keys the backend reads', async () => {
+      vi.mocked(client.post).mockResolvedValue({ data: { id: 't2' } });
+      await tasksApi.create({ title: 'Call client', dueDate: '2026-04-01', assignedTo: 'u1', relatedLeadId: 'l1', parentTaskId: 'p1' });
+      expect(client.post).toHaveBeenCalledWith('/tasks', {
+        title: 'Call client',
+        dueDate: '2026-04-01', due_date: '2026-04-01',
+        assignedTo: 'u1', assigned_to: 'u1',
+        relatedLeadId: 'l1', related_lead_id: 'l1',
+        parentTaskId: 'p1', parent_task_id: 'p1',
+      });
+    });
+
+    it('should return a camelCase task from the { data } envelope', async () => {
+      vi.mocked(client.post).mockResolvedValue({
+        data: { id: 't9', due_date: '2026-04-01', assignee_name: 'Asha', lead_title: 'Goa trip', subtask_count: 2 },
+      });
+      const result = await tasksApi.create({ title: 'x' });
+      expect(result.data).toMatchObject({ id: 't9', dueDate: '2026-04-01', assigneeName: 'Asha', leadTitle: 'Goa trip', subtaskCount: 2, completedSubtaskCount: 0 });
     });
 
     it('should return created task', async () => {
@@ -97,7 +122,7 @@ describe('tasksApi', () => {
     it('should pass partial fields', async () => {
       vi.mocked(client.put).mockResolvedValue({ data: {} });
       await tasksApi.update('t1', { priority: 'low', due_date: '2026-05-01' });
-      expect(client.put).toHaveBeenCalledWith('/tasks/t1', { priority: 'low', due_date: '2026-05-01' });
+      expect(client.put).toHaveBeenCalledWith('/tasks/t1', { priority: 'low', dueDate: '2026-05-01', due_date: '2026-05-01' });
     });
 
     it('should return updated task', async () => {
@@ -183,7 +208,7 @@ describe('tasksApi', () => {
     it('should return comments list', async () => {
       vi.mocked(client.get).mockResolvedValue({ data: { data: [{ id: 'cm1', content: 'Comment' }], pagination: {} } });
       const result = await tasksApi.getComments('t1');
-      expect(result.data.data).toHaveLength(1);
+      expect(result.data).toHaveLength(1);
     });
   });
 
@@ -257,5 +282,55 @@ describe('tasksApi', () => {
       await tasksApi.getByLead('l1', { page: 1, limit: 10 });
       expect(client.get).toHaveBeenCalledWith('/tasks/leads/l1/tasks', { params: { page: 1, limit: 10 } });
     });
+  });
+});
+
+describe('tasksApi envelope normalisation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('list returns a flat PaginatedResponse of camelCase tasks', async () => {
+    vi.mocked(client.get).mockResolvedValue({
+      success: true,
+      data: [{ id: 't1', title: 'A', due_date: '2026-04-01', assignee_name: 'Asha', created_at: '2026-01-01T00:00:00Z', subtask_count: 3, completed_subtask_count: 1 }],
+      pagination: { page: 1, limit: 20, total: 41, totalPages: 3 },
+    });
+    const result = await tasksApi.list({ page: 1, limit: 20 });
+    expect(result.pagination).toEqual({ page: 1, limit: 20, total: 41, totalPages: 3 });
+    expect(result.data[0]).toMatchObject({
+      id: 't1', dueDate: '2026-04-01', assigneeName: 'Asha', createdAt: '2026-01-01T00:00:00Z', subtaskCount: 3, completedSubtaskCount: 1,
+    });
+    expect(result.data[0]).not.toHaveProperty('due_date');
+  });
+
+  it('list also copes with the { data: { data, pagination } } envelope', async () => {
+    vi.mocked(client.get).mockResolvedValue({ data: { data: [{ id: 't1', related_lead_id: 'l9' }], pagination: { page: 1, limit: 5, total: 1, totalPages: 1 } } });
+    const result = await tasksApi.list({ page: 1, limit: 5 });
+    expect(result.data[0]?.relatedLeadId).toBe('l9');
+    expect(result.data[0]?.leadId).toBe('l9');
+    expect(result.pagination.total).toBe(1);
+  });
+
+  it('getById unwraps and camelizes the task', async () => {
+    vi.mocked(client.get).mockResolvedValue({ success: true, data: { id: 't1', completed_at: '2026-02-02T00:00:00Z', lead_title: 'Bali' } });
+    const result = await tasksApi.getById('t1');
+    expect(result.data).toMatchObject({ id: 't1', completedAt: '2026-02-02T00:00:00Z', leadTitle: 'Bali' });
+  });
+
+  it('getSubtasks and getComments camelize their rows', async () => {
+    vi.mocked(client.get).mockResolvedValueOnce({ data: [{ id: 's1', assignee_name: 'Ravi', due_date: '2026-01-01' }] });
+    const subs = await tasksApi.getSubtasks('t1');
+    expect(subs.data[0]).toMatchObject({ assigneeName: 'Ravi', dueDate: '2026-01-01' });
+
+    vi.mocked(client.get).mockResolvedValueOnce({ data: [{ id: 'c1', user_name: 'Asha', created_at: '2026-01-01T00:00:00Z' }] });
+    const comments = await tasksApi.getComments('t1');
+    expect(comments.data[0]).toMatchObject({ userName: 'Asha', createdAt: '2026-01-01T00:00:00Z' });
+  });
+
+  it('update sends both key spellings for legacy callers', async () => {
+    vi.mocked(client.put).mockResolvedValue({ data: { id: 't1' } });
+    await tasksApi.update('t1', { assigned_to: 'u2' });
+    expect(client.put).toHaveBeenCalledWith('/tasks/t1', { assignedTo: 'u2', assigned_to: 'u2' });
   });
 });

@@ -1,5 +1,6 @@
 import { client, type ApiResponse, type PaginatedResponse } from './client';
 import { API_ENDPOINTS } from './config';
+import { camelizeKeys, toApiResponse, unwrapEntity, unwrapList } from './envelope';
 
 // VisaRecord type not in shared package, define locally
 export interface VisaRecord {
@@ -115,7 +116,8 @@ export interface VisaDocument {
 }
 
 export const visaApi = {
-  list: (params?: {
+  /** GET /visa answers { data: { data, pagination } }; this resolves to a flat PaginatedResponse of normalised rows. */
+  list: async (params?: {
     page?: number;
     limit?: number;
     search?: string;
@@ -124,8 +126,11 @@ export const visaApi = {
     traveller_id?: string;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
-  }) =>
-    client.get<ApiResponse<PaginatedResponse<VisaRecord>>>(API_ENDPOINTS.visa.list, { params }),
+  }): Promise<PaginatedResponse<VisaRecord>> => {
+    const res = await client.get<unknown>(API_ENDPOINTS.visa.list, { params });
+    const list = unwrapList<unknown>(res, { page: params?.page, limit: params?.limit });
+    return { ...list, data: list.data.map((row) => normalizeVisa(row)) };
+  },
 
   getById: (id: string) =>
     client.get<ApiResponse<VisaRecord>>(API_ENDPOINTS.visa.byId(id)),
@@ -159,7 +164,7 @@ export const visaApi = {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('document_type', documentType);
-    return client.post<ApiResponse<VisaDocument>>(API_ENDPOINTS.visa.documents(id), formData as any);
+    return client.post<ApiResponse<VisaDocument>>(API_ENDPOINTS.visa.documents(id), formData);
   },
 
   downloadDocument: (visaId: string, docId: string) =>
@@ -170,34 +175,43 @@ export const visaApi = {
 };
 
 export const travellersApi = {
-  list: (params?: {
+  /** GET /travellers answers { data: { data: snake_case rows, pagination } }; this resolves to a flat PaginatedResponse of camelCase rows. */
+  list: async (params?: {
     page?: number;
     limit?: number;
     search?: string;
     leadId?: string;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
-  }) =>
-    client.get<ApiResponse<PaginatedResponse<Traveller>>>(API_ENDPOINTS.travellers.list, { params }),
+  }): Promise<PaginatedResponse<Traveller>> => {
+    const res = await client.get<unknown>(API_ENDPOINTS.travellers.list, { params });
+    const list = unwrapList<unknown>(res, { page: params?.page, limit: params?.limit });
+    return { ...list, data: list.data.map(normalizeTraveller) };
+  },
 
-  getById: (id: string) =>
-    client.get<ApiResponse<Traveller>>(API_ENDPOINTS.travellers.byId(id)),
+  getById: async (id: string): Promise<ApiResponse<Traveller>> =>
+    travellerEntity(await client.get<unknown>(API_ENDPOINTS.travellers.byId(id))),
 
-  create: (data: CreateTravellerRequest) =>
-    client.post<ApiResponse<Traveller>>(API_ENDPOINTS.travellers.create, data),
+  create: async (data: CreateTravellerRequest): Promise<ApiResponse<Traveller>> =>
+    travellerEntity(await client.post<unknown>(API_ENDPOINTS.travellers.create, data)),
 
-  update: (id: string, data: UpdateTravellerRequest) =>
-    client.put<ApiResponse<Traveller>>(API_ENDPOINTS.travellers.byId(id), data),
+  update: async (id: string, data: UpdateTravellerRequest): Promise<ApiResponse<Traveller>> =>
+    travellerEntity(await client.put<unknown>(API_ENDPOINTS.travellers.byId(id), data)),
 
   delete: (id: string) =>
     client.delete<ApiResponse<void>>(API_ENDPOINTS.travellers.byId(id)),
 
-  linkContact: (id: string, contactId: string) =>
-    client.put<ApiResponse<Traveller>>(`${API_ENDPOINTS.travellers.byId(id)}/link-contact`, { contactId }),
+  linkContact: async (id: string, contactId: string): Promise<ApiResponse<Traveller>> =>
+    travellerEntity(await client.put<unknown>(`${API_ENDPOINTS.travellers.byId(id)}/link-contact`, { contactId })),
 
-  unlinkContact: (id: string) =>
-    client.put<ApiResponse<Traveller>>(`${API_ENDPOINTS.travellers.byId(id)}/unlink-contact`, {}),
+  unlinkContact: async (id: string): Promise<ApiResponse<Traveller>> =>
+    travellerEntity(await client.put<unknown>(`${API_ENDPOINTS.travellers.byId(id)}/unlink-contact`, {})),
 };
+
+function travellerEntity(res: unknown): ApiResponse<Traveller> {
+  const entity = unwrapEntity<unknown>(res);
+  return toApiResponse(entity && typeof entity === 'object' ? normalizeTraveller(entity) : (entity as Traveller));
+}
 
 // ---------------------------------------------------------------------------
 // Backend-contract adapter
@@ -230,37 +244,49 @@ function lookupTraveller(id: string): Promise<Traveller | null> {
   if (hit && Date.now() - hit.at < TRAVELLER_TTL_MS) return hit.value;
   const value = travellersApi
     .getById(id)
-    .then((r) => normalizeTraveller((r as any)?.data))
+    .then((r) => r.data)
     .catch(() => null);
   travellerCache.set(id, { at: Date.now(), value });
   return value;
 }
 
-export function normalizeVisa(v: any, traveller?: Traveller | null): VisaRecord {
+type Row = Record<string, unknown>;
+
+/** Loose view of a (possibly snake_case) visa row, camelized by normalizeVisa. */
+type RawVisa = Partial<VisaRecord> & {
+  destinationCountry?: string;
+  country?: string;
+  appliedDate?: string;
+  visaExpiryDate?: string;
+  [key: string]: unknown;
+};
+
+export function normalizeVisa(raw: unknown, traveller?: Traveller | null): VisaRecord {
+  const v: RawVisa = camelizeKeys<RawVisa | null>(raw) ?? {};
   const travellerName = traveller
     ? `${traveller.firstName} ${traveller.lastName}`.trim()
     : (v.travellerName ?? '');
   return {
     ...v,
-    id: v.id,
-    travellerId: v.travellerId ?? v.traveller_id,
+    id: v.id as string,
+    travellerId: v.travellerId,
     travellerName,
     passportNumber: traveller?.passportNumber ?? v.passportNumber ?? '',
-    countryName: v.countryName ?? v.destinationCountry ?? v.destination_country ?? v.country ?? '',
-    visaType: v.visaType ?? v.visa_type ?? undefined,
-    applicationDate: v.applicationDate ?? v.appliedDate ?? v.applied_date ?? undefined,
-    expiryDate: v.expiryDate ?? v.visaExpiryDate ?? v.visa_expiry_date ?? undefined,
+    countryName: v.countryName ?? v.destinationCountry ?? v.country ?? '',
+    visaType: v.visaType ?? undefined,
+    applicationDate: v.applicationDate ?? v.appliedDate ?? undefined,
+    expiryDate: v.expiryDate ?? v.visaExpiryDate ?? undefined,
     status: v.status ?? 'not_started',
     notes: v.notes ?? undefined,
-    createdBy: v.createdBy ?? v.created_by ?? '',
-    createdAt: v.createdAt ?? v.created_at ?? '',
-    updatedAt: v.updatedAt ?? v.updated_at ?? '',
+    createdBy: v.createdBy ?? '',
+    createdAt: v.createdAt ?? '',
+    updatedAt: v.updatedAt ?? '',
   };
 }
 
-async function withTravellers(rows: any[]): Promise<VisaRecord[]> {
-  const idOf = (r: any): string | undefined => r.travellerId ?? r.traveller_id;
-  const ids = [...new Set(rows.map(idOf).filter(Boolean))] as string[];
+async function withTravellers(rows: VisaRecord[]): Promise<VisaRecord[]> {
+  const idOf = (r: VisaRecord): string | undefined => r.travellerId ?? r.travelerId;
+  const ids = [...new Set(rows.map(idOf).filter((id): id is string => Boolean(id)))];
   const found = new Map<string, Traveller | null>();
   await Promise.all(ids.map(async (id) => found.set(id, await lookupTraveller(id))));
   return rows.map((r) => normalizeVisa(r, found.get(idOf(r) ?? '')));
@@ -283,38 +309,35 @@ export interface UpdateVisaApplicationInput {
 }
 
 export const visaService = {
-  /** Same envelope as visaApi.list, with rows normalised and traveller names resolved. */
-  async list(params?: { page?: number; limit?: number; search?: string; status?: string; traveller_id?: string }) {
+  /** Same shape as visaApi.list (a PaginatedResponse), with traveller names resolved. */
+  async list(params?: { page?: number; limit?: number; search?: string; status?: string; traveller_id?: string }): Promise<PaginatedResponse<VisaRecord>> {
     const res = await visaApi.list(params);
-    const inner = (res as any)?.data;
-    const rows: any[] = Array.isArray(inner) ? inner : (inner?.data ?? []);
-    const data = await withTravellers(rows);
-    return { ...res, data: { data, pagination: inner?.pagination } };
+    return { ...res, data: await withTravellers(res.data) };
   },
 
   async getById(id: string): Promise<VisaRecord> {
-    const res: any = await visaApi.getById(id);
-    const raw = res?.data;
-    const traveller = raw?.traveller_id ? await lookupTraveller(raw.traveller_id) : null;
+    const res = await visaApi.getById(id);
+    const raw = res.data as unknown as Row;
+    const travellerId = (raw.traveller_id ?? raw.travellerId) as string | undefined;
+    const traveller = travellerId ? await lookupTraveller(travellerId) : null;
     // GET /visa/:id overwrites the `notes` column with the timeline-notes array, so the
     // application's own notes only come back from the list endpoint.
-    let notes = raw?.notes;
+    let notes = raw.notes;
     if (Array.isArray(notes)) {
-      const list: any = await visaApi.list({ traveller_id: raw.traveller_id, limit: 100 }).catch(() => null);
-      const rows: any[] = list?.data?.data ?? [];
-      notes = rows.find((r) => r.id === raw.id)?.notes ?? undefined;
+      const list = await visaApi.list({ traveller_id: travellerId, limit: 100 }).catch(() => null);
+      notes = list?.data.find((r) => r.id === raw.id)?.notes ?? undefined;
     }
     return normalizeVisa({ ...raw, notes }, traveller);
   },
 
   async getChecklist(id: string): Promise<VisaChecklistItem[]> {
-    const res: any = await visaApi.getById(id);
-    const items: any[] = res?.data?.checklist ?? [];
+    const res = await visaApi.getById(id);
+    const items = ((res.data as unknown as Row).checklist ?? []) as Row[];
     return items.map((i) => ({
-      id: i.id,
-      item: i.document_name ?? i.item ?? '',
+      id: i.id as string,
+      item: (i.document_name ?? i.item ?? '') as string,
       completed: Boolean(i.is_received ?? i.completed),
-      completedAt: i.received_date ?? undefined,
+      completedAt: (i.received_date ?? undefined) as string | undefined,
     }));
   },
 
@@ -323,13 +346,13 @@ export const visaService = {
 
   /** Creates the application, then applies the fields the create endpoint does not accept. */
   async create(input: CreateVisaApplicationInput): Promise<{ id: string }> {
-    const res: any = await client.post(API_ENDPOINTS.visa.create, {
+    const res = await client.post<{ data?: { id?: string } }>(API_ENDPOINTS.visa.create, {
       travellerId: input.travellerId,
       destinationCountry: input.destinationCountry,
       visaType: input.visaType,
       status: 'not_started',
     });
-    const id: string = res?.data?.id;
+    const id = res?.data?.id as string;
     const extra: Record<string, string> = {};
     if (input.applicationDate) extra.appliedDate = input.applicationDate;
     if (input.expiryDate) extra.visaExpiryDate = input.expiryDate;
@@ -349,7 +372,9 @@ export const visaService = {
     }),
 
   async dashboard(): Promise<{ total: number; statusCounts: Record<string, number>; expiringSoon: number }> {
-    const res: any = await client.get(`${API_ENDPOINTS.visa.list}/dashboard`);
+    const res = await client.get<{ data?: { total?: number; statusCounts?: Record<string, number>; expiringSoon?: number } }>(
+      `${API_ENDPOINTS.visa.list}/dashboard`,
+    );
     return {
       total: res?.data?.total ?? 0,
       statusCounts: res?.data?.statusCounts ?? {},
@@ -371,22 +396,17 @@ export function parseDateOnly(value: string): Date {
 }
 
 /** The travellers endpoints return snake_case rows; the UI works in camelCase. */
-export function normalizeTraveller(t: any): Traveller {
+export function normalizeTraveller(raw: unknown): Traveller {
+  const t = camelizeKeys<Partial<Traveller> | null>(raw) ?? {};
   return {
     ...t,
-    firstName: t.firstName ?? t.first_name ?? '',
-    lastName: t.lastName ?? t.last_name ?? '',
-    passportNumber: t.passportNumber ?? t.passport_number ?? '',
-    dateOfBirth: t.dateOfBirth ?? t.date_of_birth,
-    nationality: t.nationality,
-    email: t.email,
-    phone: t.phone,
-    passportExpiryDate: t.passportExpiryDate ?? t.passport_expiry_date,
-    contactId: t.contactId ?? t.contact_id,
-    contactName: t.contactName ?? t.contact_name,
-    createdBy: t.createdBy ?? t.created_by ?? '',
-    createdAt: t.createdAt ?? t.created_at ?? '',
-    updatedAt: t.updatedAt ?? t.updated_at ?? '',
+    id: t.id as string,
+    firstName: t.firstName ?? '',
+    lastName: t.lastName ?? '',
+    passportNumber: t.passportNumber ?? '',
+    createdBy: t.createdBy ?? '',
+    createdAt: t.createdAt ?? '',
+    updatedAt: t.updatedAt ?? '',
   };
 }
 
@@ -397,7 +417,7 @@ export function normalizeTraveller(t: any): Traveller {
  */
 export const travellerDocumentsApi = {
   list: (travellerId: string) =>
-    client.get<ApiResponse<PaginatedResponse<any>>>(API_ENDPOINTS.documents.list, {
+    client.get<ApiResponse<PaginatedResponse<Record<string, unknown>>>>(API_ENDPOINTS.documents.list, {
       params: { entity_type: 'traveller', entity_id: travellerId, limit: 100 },
     }),
 
@@ -408,6 +428,6 @@ export const travellerDocumentsApi = {
     formData.append('category', 'traveller');
     formData.append('entity_type', 'traveller');
     formData.append('entity_id', travellerId);
-    return client.post<ApiResponse<any>>(API_ENDPOINTS.documents.upload, formData as any);
+    return client.post<ApiResponse<Record<string, unknown>>>(API_ENDPOINTS.documents.upload, formData);
   },
 };
