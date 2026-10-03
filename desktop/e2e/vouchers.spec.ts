@@ -16,7 +16,8 @@
  * Old assertions that encoded UI that no longer exists (4-step wizard, "Change Status" panel, 3-step status
  * timeline, `.h-4` sentinel, `tr` locators) are re-expressed against the archetype UI that replaced them.
  */
-import { test, expect, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { waitForLoad } from './helpers/auth';
 import { api, seedContact, seedLead, seedSupplier, seedVoucher } from './helpers/api-seed';
 

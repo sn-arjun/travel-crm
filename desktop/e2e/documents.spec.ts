@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { waitForLoad, getAuthToken, API_URL } from './helpers/auth';
 import { seedLead, seedContact, seedItinerary, api } from './helpers/api-seed';
 

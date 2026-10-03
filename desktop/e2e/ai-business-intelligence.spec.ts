@@ -1,4 +1,5 @@
-import { test, expect, type Page, type Download } from '@playwright/test';
+import { type Page, type Download } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { waitForLoad } from './helpers/auth';
 import { seedContact } from './helpers/api-seed';
 

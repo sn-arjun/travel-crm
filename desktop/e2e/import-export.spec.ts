@@ -6,7 +6,8 @@
  * import history ListPage), /settings/export (contacts, leads, full export,
  * job table), invoice bulk PDF export, and the "no mailto/wa.me/tel" rule.
  */
-import { test, expect, type Page, type Download } from '@playwright/test';
+import { type Page, type Download } from '@playwright/test';
+import { test, expect } from './fixtures';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';

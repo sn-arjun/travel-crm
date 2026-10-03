@@ -19,7 +19,8 @@
  * N/A for this slice (no such UI exists, see slice manifest): relation comboboxes, infinite scroll,
  * export, FilterBar/search narrowing, detail view, SendMessageDialog.
  */
-import { test, expect, type Page, type Route } from '@playwright/test';
+import { type Page, type Route } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { waitForLoad } from './helpers/auth';
 import { api } from './helpers/api-seed';
 

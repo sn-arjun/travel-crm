@@ -11,7 +11,8 @@
  * mailto/wa.me/tel anchors, infinite scroll, and CSV export.
  */
 
-import { test, expect, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { waitForLoad, navigateTo } from './helpers/auth';
 import { api, seedContact } from './helpers/api-seed';
 

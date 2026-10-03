@@ -10,7 +10,8 @@
  *   → infinite scroll + bulk delete → single delete.
  */
 
-import { test, expect, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { waitForLoad } from './helpers/auth';
 import { seedVehicle, api } from './helpers/api-seed';
 

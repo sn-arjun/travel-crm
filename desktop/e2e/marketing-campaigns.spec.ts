@@ -10,7 +10,8 @@
  * and `/marketing/segments/*` (a separate slice) are out of scope here.
  */
 
-import { test, expect, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { waitForLoad, navigateTo } from './helpers/auth';
 import { api } from './helpers/api-seed';
 

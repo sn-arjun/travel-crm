@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { waitForLoad } from './helpers/auth';
 import { seedContact, seedLead, seedItinerary, api } from './helpers/api-seed';
 
@@ -37,7 +37,7 @@ test.describe('Itinerary — full lifecycle via form UI', () => {
     await leadOption.first().click();
 
     // Valid until date
-    await page.locator('#validity').fill(new Date(Date.now() + 86400000 * 10).toISOString().split('T')[0]);
+    await page.locator('#validity').fill(new Date(Date.now() + 86400000 * 10).toISOString().split('T')[0]!);
     await page.locator('#desc').fill('E2E full lifecycle description');
 
     // Add an activity to day 1 so cost/selling totals are non-trivial

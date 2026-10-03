@@ -14,7 +14,8 @@
  * E. Dashboard
  * F. Cross-entity (traveller -> new visa), sidebar, API schema
  */
-import { test, expect, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { waitForLoad } from './helpers/auth';
 import { api, seedTraveller } from './helpers/api-seed';
 import * as fs from 'node:fs';

@@ -6,7 +6,8 @@
  * seed data -> API reflects it -> hub/page renders -> filters re-query ->
  * export downloads a non-empty file.
  */
-import { test, expect, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
+import { test, expect } from './fixtures';
 import fs from 'node:fs';
 import { waitForLoad } from './helpers/auth';
 import { api, seedContact, seedInvoice, seedLead } from './helpers/api-seed';

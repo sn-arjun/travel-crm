@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { waitForLoad, API_URL } from './helpers/auth';
 import { api } from './helpers/api-seed';
 
@@ -58,7 +58,7 @@ test.describe('Webhooks & Integrations', () => {
     await expect(buttons).toHaveCount(3);
 
     for (let i = 0; i < ENDPOINTS.length; i++) {
-      const expected = await page.locator(`#${ENDPOINTS[i].key}-url`).inputValue();
+      const expected = await page.locator(`#${ENDPOINTS[i]!.key}-url`).inputValue();
       await buttons.nth(i).click();
       await expect(page.getByText('Webhook URL copied').first()).toBeVisible();
       await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(expected);

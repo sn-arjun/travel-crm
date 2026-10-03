@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { waitForLoad, getAuthToken, API_URL } from './helpers/auth';
 import { seedDriver, api } from './helpers/api-seed';
 

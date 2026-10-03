@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
-import { waitForLoad, navigateTo } from './helpers/auth';
+import { test, expect } from './fixtures';
+import { waitForLoad, navigateTo, API_URL } from './helpers/auth';
 import { api, seedContact } from './helpers/api-seed';
 
 /**
@@ -377,7 +377,7 @@ test.describe('Calls', () => {
   // ─────────────────────────────────────────────────────────────
 
   test('calls API requires authentication', async () => {
-    const res = await fetch('http://localhost:8787/api/v1/calls', { headers: { 'Content-Type': 'application/json' } });
+    const res = await fetch(`${API_URL}/calls`, { headers: { 'Content-Type': 'application/json' } });
     expect(res.status).toBe(401);
   });
 });

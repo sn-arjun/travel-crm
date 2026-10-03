@@ -18,7 +18,8 @@
  * Campaign sends are queued, not delivered, in the test worker (no WhatsApp provider), so
  * lifecycle assertions stop at the `sending` state the backend reports.
  */
-import { test, expect, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
+import { test, expect } from './fixtures';
 import * as fs from 'fs';
 import { waitForLoad } from './helpers/auth';
 import { api, seedContact } from './helpers/api-seed';

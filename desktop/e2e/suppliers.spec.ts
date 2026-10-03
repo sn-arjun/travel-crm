@@ -13,7 +13,8 @@
  *   G. Sidebar navigation + API schema
  */
 
-import { test, expect, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { waitForLoad } from './helpers/auth';
 import { api, seedSupplier } from './helpers/api-seed';
 

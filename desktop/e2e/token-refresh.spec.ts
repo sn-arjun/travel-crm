@@ -1,4 +1,5 @@
-import { test, expect, type BrowserContext, type Page } from '@playwright/test';
+import { type BrowserContext, type Page } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { loginViaUI, waitForLoad } from './helpers/auth';
 
 // This spec logs in itself and then tampers with the persisted session.

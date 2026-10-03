@@ -10,7 +10,8 @@
  *   - Quiet hours (integer hours, enable/disable, persistence)
  *   - Sidebar badge, navigation, and no mailto:/wa.me/tel: anchors
  */
-import { test, expect, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { waitForLoad } from './helpers/auth';
 import { seedContact, seedLead, api } from './helpers/api-seed';
 

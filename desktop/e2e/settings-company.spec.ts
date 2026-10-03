@@ -1,4 +1,5 @@
-import { test, expect, type Locator, type Page } from '@playwright/test';
+import { type Locator, type Page } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { waitForLoad } from './helpers/auth';
 import { api, seedEmailTemplate } from './helpers/api-seed';
 

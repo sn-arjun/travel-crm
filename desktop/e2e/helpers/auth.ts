@@ -1,11 +1,15 @@
 import { type Page, expect } from '@playwright/test';
 
-const API_URL = 'http://localhost:8787/api/v1';
+// Every stack slot has its own ports (see scripts/fix-stack.mjs); specs target one via these env vars.
+const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:3100';
+const API_URL = (process.env.E2E_API_URL ?? 'http://localhost:8787/api/v1').replace(/\/+$/, '');
+/** Bare API origin (no /api/v1), for non-versioned endpoints. */
+const API_ORIGIN = new URL(API_URL).origin;
 const ADMIN_EMAIL = 'admin@demo.com';
 const ADMIN_PASSWORD = 'Admin@123';
 const TENANT_ID = '01960000-0000-7000-8000-000000000001';
 
-export { API_URL, ADMIN_EMAIL, ADMIN_PASSWORD, TENANT_ID };
+export { BASE_URL, API_URL, API_ORIGIN, ADMIN_EMAIL, ADMIN_PASSWORD, TENANT_ID };
 
 /**
  * Login via the UI (used in global setup and auth tests).

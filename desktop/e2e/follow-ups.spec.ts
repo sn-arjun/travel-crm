@@ -1,4 +1,5 @@
-import { test, expect, type Page, type Locator } from '@playwright/test';
+import { type Page, type Locator } from '@playwright/test';
+import { test, expect } from './fixtures';
 import * as fs from 'fs';
 import { navigateTo, waitForLoad } from './helpers/auth';
 import { api, seedContact, seedLead } from './helpers/api-seed';

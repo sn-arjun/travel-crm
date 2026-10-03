@@ -12,7 +12,8 @@
  * D. Detail: tabs, link/unlink contact, messaging, visa relation, documents
  * E. API schema
  */
-import { test, expect, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { waitForLoad } from './helpers/auth';
 import { api, seedContact, seedTraveller } from './helpers/api-seed';
 import * as fs from 'node:fs';
