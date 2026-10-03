@@ -70,15 +70,15 @@ export function FilterBar({
       {/* Active Filters */}
       {activeFilters.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap animate-slide-in-from-top">
-          <span className="text-xs text-[var(--color-text-muted)]">Filters:</span>
+          <span className="text-xs text-ds-foreground-muted">Filters:</span>
           {activeFilters.map((filter: any) => (
             <Badge key={filter.id} variant="outline" className="gap-1 pr-1">
-              <span className="text-[var(--color-text-muted)]">{filter.label}:</span>
+              <span className="text-ds-foreground-muted">{filter.label}:</span>
               {filter.value}
               {onRemoveFilter && (
                 <button
                   onClick={() => onRemoveFilter(filter.id)}
-                  className="ml-0.5 rounded-full p-0.5 hover:bg-[var(--color-bg-muted)] transition-colors"
+                  className="ml-0.5 rounded-full p-0.5 hover:bg-ds-surface-sunken transition-colors"
                 >
                   <X className="h-3 w-3" />
                 </button>
@@ -86,7 +86,7 @@ export function FilterBar({
             </Badge>
           ))}
           {onClearFilters && (
-            <Button variant="ghost" size="sm" onClick={onClearFilters} className="h-6 text-xs text-[var(--color-text-muted)]">
+            <Button variant="ghost" size="sm" onClick={onClearFilters} className="h-6 text-xs text-ds-foreground-muted">
               Clear all
             </Button>
           )}

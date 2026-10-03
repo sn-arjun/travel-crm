@@ -55,15 +55,15 @@ function MiniCalendar({ selected, onSelect, minDate, maxDate }: MiniCalendarProp
   }
 
   return (
-    <div className="p-3 w-[280px]">
+    <div className="p-3 w-70">
       <div className="flex items-center justify-between mb-3">
         <Button variant="ghost" size="icon-sm" onClick={prev}><ChevronLeft className="h-4 w-4" /></Button>
         <span className="text-sm font-semibold">{MONTH_NAMES[viewMonth]} {viewYear}</span>
         <Button variant="ghost" size="icon-sm" onClick={next}><ChevronRight className="h-4 w-4" /></Button>
       </div>
       <div className="grid grid-cols-7 gap-0">
-        {DAY_NAMES.map((d: any) => (
-          <div key={d} className="text-center text-[11px] font-medium text-muted-foreground py-1">{d}</div>
+        {DAY_NAMES.map((d) => (
+          <div key={d} className="text-center text-[0.6875rem] font-medium text-muted-foreground py-1">{d}</div>
         ))}
         {Array.from({ length: firstDay }, (_, i) => (
           <div key={`empty-${i}`} />

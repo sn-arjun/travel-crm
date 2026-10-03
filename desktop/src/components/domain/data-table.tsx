@@ -94,11 +94,11 @@ export function DataTable<T extends Record<string, unknown>>({
   const totalPages = totalItems ? Math.ceil(totalItems / pageSize) : 1;
 
   return (
-    <div className={cn('rounded-[var(--radius-card)] border border-[var(--color-border-default)] bg-[var(--color-bg-card)] overflow-hidden animate-fade-in', className)}>
+    <div className={cn('rounded-ds-lg border border-ds-border bg-ds-surface overflow-hidden animate-fade-in', className)}>
       <div className="overflow-auto">
         <table className="w-full text-sm">
           <thead className={cn(stickyHeader && 'sticky top-0 z-10')}>
-            <tr className="border-b border-[var(--color-divider)] bg-[var(--color-bg-muted)]/50">
+            <tr className="border-b border-ds-border bg-ds-surface-sunken/50">
               {selectable && (
                 <th className="w-12 px-4 py-3" aria-label="Select all rows">
                   <Checkbox
@@ -112,10 +112,10 @@ export function DataTable<T extends Record<string, unknown>>({
                 <th
                   key={col.key}
                   className={cn(
-                    'px-4 py-3 text-left font-medium text-[var(--color-text-muted)] whitespace-nowrap',
+                    'px-4 py-3 text-left font-medium text-ds-foreground-muted whitespace-nowrap',
                     col.align === 'center' && 'text-center',
                     col.align === 'right' && 'text-right',
-                    col.sortable && 'cursor-pointer select-none hover:text-[var(--color-text-primary)] transition-colors',
+                    col.sortable && 'cursor-pointer select-none hover:text-ds-foreground transition-colors',
                   )}
                   style={{ width: col.width }}
                   onClick={() => col.sortable && onSort?.(col.key)}
@@ -128,9 +128,9 @@ export function DataTable<T extends Record<string, unknown>>({
                       <span className="ml-1">
                         {sortColumn === col.key ? (
                           sortDirection === 'asc' ? (
-                            <ChevronUp className="h-3.5 w-3.5 text-primary-500" />
+                            <ChevronUp className="h-3.5 w-3.5 text-ds-primary" />
                           ) : (
-                            <ChevronDown className="h-3.5 w-3.5 text-primary-500" />
+                            <ChevronDown className="h-3.5 w-3.5 text-ds-primary" />
                           )
                         ) : (
                           <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />
@@ -145,7 +145,7 @@ export function DataTable<T extends Record<string, unknown>>({
           <tbody>
             {loading
               ? Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i} className="border-b border-[var(--color-divider)]">
+                  <tr key={i} className="border-b border-ds-border">
                     {selectable && (
                       <td className="px-4 py-3">
                         <Skeleton className="h-4 w-4" />
@@ -161,7 +161,7 @@ export function DataTable<T extends Record<string, unknown>>({
               : data.length === 0
                 ? (
                     <tr>
-                      <td colSpan={columns.length + (selectable ? 1 : 0)} className="px-4 py-12 text-center text-[var(--color-text-muted)]">
+                      <td colSpan={columns.length + (selectable ? 1 : 0)} className="px-4 py-12 text-center text-ds-foreground-muted">
                         {emptyMessage}
                       </td>
                     </tr>
@@ -174,9 +174,9 @@ export function DataTable<T extends Record<string, unknown>>({
                         key={rowId}
                         onClick={() => onRowClick?.(row)}
                         className={cn(
-                          'border-b border-[var(--color-divider)] transition-colors',
-                          'hover:bg-[var(--color-bg-muted)]/50',
-                          isSelected && 'bg-primary-50/50 dark:bg-primary-950/20',
+                          'border-b border-ds-border transition-colors',
+                          'hover:bg-ds-surface-sunken/50',
+                          isSelected && 'bg-ds-primary-subtle',
                           onRowClick && 'cursor-pointer',
                           'animate-fade-in',
                         )}
@@ -208,10 +208,10 @@ export function DataTable<T extends Record<string, unknown>>({
 
       {/* Pagination */}
       {(totalItems !== undefined || onPageSizeChange) && (
-        <div className="flex items-center justify-between border-t border-[var(--color-divider)] px-4 py-3">
-          <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
+        <div className="flex items-center justify-between border-t border-ds-border px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-ds-foreground-muted">
             {selectedRows.size > 0 && (
-              <span className="font-medium text-primary-500 animate-pop-in">{selectedRows.size} selected</span>
+              <span className="font-medium text-ds-primary">{selectedRows.size} selected</span>
             )}
             {totalItems !== undefined && (
               <span>{totalItems} total</span>
@@ -220,7 +220,7 @@ export function DataTable<T extends Record<string, unknown>>({
           <div className="flex items-center gap-4">
             {onPageSizeChange && (
               <div className="flex items-center gap-2">
-                <span className="text-xs text-[var(--color-text-muted)]">Rows:</span>
+                <span className="text-xs text-ds-foreground-muted">Rows:</span>
                 <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
                   <SelectTrigger className="h-8 w-16 text-xs">
                     <SelectValue />
@@ -235,7 +235,7 @@ export function DataTable<T extends Record<string, unknown>>({
             )}
             {onPageChange && (
               <div className="flex items-center gap-1">
-                <span className="text-xs text-[var(--color-text-muted)] mr-2">
+                <span className="text-xs text-ds-foreground-muted mr-2">
                   Page {page} of {totalPages}
                 </span>
                 <Button variant="outline" size="icon-sm" onClick={() => onPageChange(1)} disabled={page <= 1}>

@@ -19,7 +19,7 @@ const tagVariants = cva(
         info: 'border-transparent bg-ds-info-subtle text-ds-info-on-subtle',
       },
       size: {
-        sm: 'px-1.5 py-0.5 text-[11px]',
+        sm: 'px-1.5 py-0.5 text-[0.6875rem]',
         md: 'px-2 py-0.5 text-xs',
         lg: 'px-2.5 py-1 text-sm',
       },

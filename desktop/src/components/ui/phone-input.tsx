@@ -94,7 +94,7 @@ export function PhoneInput({
             disabled={disabled}
             className={cn(
               'flex items-center gap-1.5 h-9 rounded-md border border-input bg-transparent px-2.5 text-sm whitespace-nowrap shadow-xs transition-colors',
-              'hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
+              'hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
               'disabled:cursor-not-allowed disabled:opacity-50',
             )}
           >
@@ -103,7 +103,7 @@ export function PhoneInput({
             <ChevronDown className="h-3.5 w-3.5 opacity-50 shrink-0" />
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-[260px] p-0" align="start">
+        <PopoverContent className="w-65 p-0" align="start">
           <Command>
             <CommandInput placeholder="Search country..." />
             <CommandList>

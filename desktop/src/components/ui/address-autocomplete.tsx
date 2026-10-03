@@ -23,7 +23,43 @@ interface AddressAutocompleteProps {
   disabled?: boolean;
 }
 
-function extractParts(addressComponents: any[]): { parts: AddressParts; streetNumber: string; route: string } {
+/** Minimal shape of the parts of the Google Maps JS API this component uses. */
+interface GeoComponent {
+  types?: string[];
+  long_name: string;
+}
+
+interface GooglePlace {
+  address_components?: GeoComponent[];
+  formatted_address?: string;
+  geometry?: { location?: { lat(): number; lng(): number } };
+}
+
+interface GoogleAutocomplete {
+  addListener(event: string, handler: () => void): void;
+  getPlace(): GooglePlace;
+}
+
+interface GoogleGeocoder {
+  geocode(
+    request: { location: { lat: number; lng: number } },
+    callback: (results: { address_components?: GeoComponent[] }[] | null, status: string) => void,
+  ): void;
+}
+
+interface GoogleMapsApi {
+  places?: {
+    Autocomplete: new (input: HTMLInputElement, options: { fields: string[] }) => GoogleAutocomplete;
+  };
+  Geocoder?: new () => GoogleGeocoder;
+}
+
+function getGoogleMaps(): GoogleMapsApi | undefined {
+  if (typeof window === 'undefined') return undefined;
+  return (window as Window & { google?: { maps?: GoogleMapsApi } }).google?.maps;
+}
+
+function extractParts(addressComponents: GeoComponent[]): { parts: AddressParts; streetNumber: string; route: string } {
   const parts: AddressParts = {
     address: '',
     city: '',
@@ -81,7 +117,7 @@ export function AddressAutocomplete({
   disabled,
 }: AddressAutocompleteProps) {
   const inputRef = React.useRef<HTMLInputElement>(null);
-  const autocompleteRef = React.useRef<any>(null);
+  const autocompleteRef = React.useRef<GoogleAutocomplete | null>(null);
   const onChangeRef = React.useRef(onChange);
   const onAddressSelectRef = React.useRef(onAddressSelect);
   const skipNextOnChange = React.useRef(false);
@@ -89,8 +125,10 @@ export function AddressAutocomplete({
   const [isLoading, setIsLoading] = React.useState(false);
 
   // Keep refs in sync to avoid re-init on every render
-  onChangeRef.current = onChange;
-  onAddressSelectRef.current = onAddressSelect;
+  React.useEffect(() => {
+    onChangeRef.current = onChange;
+    onAddressSelectRef.current = onAddressSelect;
+  }, [onChange, onAddressSelect]);
 
   const apiKey = typeof window !== 'undefined'
     ? (process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '')
@@ -108,14 +146,14 @@ export function AddressAutocomplete({
   // Load Google Maps script
   React.useEffect(() => {
     if (!apiKey) return;
-    if (typeof window !== 'undefined' && (window as any).google?.maps?.places) {
+    if (getGoogleMaps()?.places) {
       setIsLoaded(true);
       return;
     }
 
     if (document.querySelector('script[src*="maps.googleapis.com/maps/api"]')) {
       const checkLoaded = setInterval(() => {
-        if ((window as any).google?.maps?.places) {
+        if (getGoogleMaps()?.places) {
           setIsLoaded(true);
           clearInterval(checkLoaded);
         }
@@ -142,7 +180,7 @@ export function AddressAutocomplete({
   React.useEffect(() => {
     if (!isLoaded || !inputRef.current || autocompleteRef.current) return;
 
-    const gm = (window as any).google?.maps;
+    const gm = getGoogleMaps();
     if (!gm?.places) return;
 
     const autocomplete = new gm.places.Autocomplete(inputRef.current, {
@@ -174,9 +212,10 @@ export function AddressAutocomplete({
         const geocoder = new gm.Geocoder();
         geocoder.geocode(
           { location: { lat: parts.lat, lng: parts.lng } },
-          (results: any[], status: string) => {
-            if (status === 'OK' && results?.[0]?.address_components) {
-              for (const component of results[0].address_components) {
+          (results, status) => {
+            const found = results?.[0]?.address_components;
+            if (status === 'OK' && found) {
+              for (const component of found) {
                 const types: string[] = component.types || [];
                 if (types.includes('postal_code')) {
                   parts.postalCode = component.long_name;
@@ -226,7 +265,7 @@ export function AddressAutocomplete({
         className={cn(
           'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-[color,box-shadow] outline-none',
           'placeholder:text-muted-foreground',
-          'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
+          'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
           'disabled:cursor-not-allowed disabled:opacity-50',
           'pl-9',
         )}

@@ -75,11 +75,11 @@ export function FileUpload({
           }
         }}
         className={cn(
-          'relative flex flex-col items-center justify-center rounded-[var(--radius-card)] border-2 border-dashed p-8 cursor-pointer transition-all duration-200',
+          'relative flex flex-col items-center justify-center rounded-ds-lg border-2 border-dashed p-8 cursor-pointer transition-all duration-200',
           isDragging
-            ? 'border-primary-500 bg-primary-50/50 scale-[1.01] dark:bg-primary-950/20'
-            : 'border-[var(--color-border-default)] hover:border-primary-300 hover:bg-[var(--color-bg-muted)]/50',
-          'focus-visible:ring-2 focus-visible:ring-primary-500/40 focus-visible:ring-offset-2',
+            ? 'border-ds-primary bg-ds-primary-subtle scale-[1.01]'
+            : 'border-ds-border hover:border-ds-primary hover:bg-ds-surface-sunken/50',
+          'focus-visible:ring-2 focus-visible:ring-ds-ring/40 focus-visible:ring-offset-2',
         )}
         aria-label="Drag and drop file upload area"
       >
@@ -92,15 +92,15 @@ export function FileUpload({
           onChange={(e) => e.target.files && onFilesSelected?.(e.target.files)}
         />
         <div className={cn(
-          'flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-bg-muted)] mb-3 transition-all',
-          isDragging && 'bg-primary-100 animate-bounce dark:bg-primary-900/30',
+          'flex h-12 w-12 items-center justify-center rounded-full bg-ds-surface-sunken mb-3 transition-all',
+          isDragging && 'bg-ds-primary-subtle animate-bounce',
         )}>
-          <Upload className={cn('h-[var(--icon-md)] w-[var(--icon-md)] text-[var(--color-text-muted)]', isDragging && 'text-primary-500')} />
+          <Upload className={cn('size-5 text-ds-foreground-muted', isDragging && 'text-ds-primary')} />
         </div>
-        <p className="text-sm font-medium text-[var(--color-text-primary)] mb-1">
+        <p className="text-sm font-medium text-ds-foreground mb-1">
           {isDragging ? 'Drop files here' : 'Click to upload or drag & drop'}
         </p>
-        <p className="text-xs text-[var(--color-text-muted)]">
+        <p className="text-xs text-ds-foreground-muted">
           {accept ? `Accepted: ${accept}` : 'Any file type'}
           {maxSize && ` (max ${formatFileSize(maxSize)})`}
         </p>
@@ -112,22 +112,22 @@ export function FileUpload({
           {files.map((file, idx) => (
             <div
               key={file.id}
-              className="flex items-center gap-3 rounded-[var(--radius-card)] border border-[var(--color-border-default)] bg-[var(--color-bg-card)] p-3 animate-slide-up"
+              className="flex items-center gap-3 rounded-ds-lg border border-ds-border bg-ds-surface p-3 animate-slide-up"
               style={{ animationDelay: `${idx * 50}ms`, animationFillMode: 'both' }}
             >
               <div className={cn(
                 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
-                file.status === 'complete' && 'bg-[var(--color-success-bg)] text-[var(--color-success-text)]',
-                file.status === 'error' && 'bg-[var(--color-error-bg)] text-[var(--color-error-text)]',
-                file.status === 'uploading' && 'bg-[var(--color-bg-muted)] text-[var(--color-text-muted)]',
+                file.status === 'complete' && 'bg-ds-success-subtle text-ds-success-on-subtle',
+                file.status === 'error' && 'bg-ds-danger-subtle text-ds-danger-on-subtle',
+                file.status === 'uploading' && 'bg-ds-surface-sunken text-ds-foreground-muted',
               )}>
-                {file.status === 'complete' ? <CheckCircle2 className="h-[var(--icon-sm)] w-[var(--icon-sm)]" /> : file.status === 'error' ? <AlertCircle className="h-[var(--icon-sm)] w-[var(--icon-sm)]" /> : <File className="h-[var(--icon-sm)] w-[var(--icon-sm)]" />}
+                {file.status === 'complete' ? <CheckCircle2 className="size-4" /> : file.status === 'error' ? <AlertCircle className="size-4" /> : <File className="size-4" />}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">{file.name}</p>
-                <p className="text-xs text-[var(--color-text-muted)]">
+                <p className="text-sm font-medium text-ds-foreground truncate">{file.name}</p>
+                <p className="text-xs text-ds-foreground-muted">
                   {formatFileSize(file.size)}
-                  {file.error && <span className="text-error ml-2">{file.error}</span>}
+                  {file.error && <span className="text-ds-danger ml-2">{file.error}</span>}
                 </p>
                 {file.status === 'uploading' && (
                   <Progress value={file.progress} className="h-1.5 mt-1.5" />

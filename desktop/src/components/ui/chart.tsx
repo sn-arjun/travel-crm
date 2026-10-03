@@ -66,11 +66,13 @@ function useChartTheme() {
       tooltip: {
         contentStyle: {
           background: colors['surface-raised'],
-          border: `1px solid ${colors.border}`,
+          borderWidth: 1,
+          borderStyle: 'solid',
+          borderColor: colors.border,
           borderRadius: 10,
           fontSize: 12,
           color: colors.foreground,
-          boxShadow: '0 4px 12px rgb(0 0 0 / 0.1)',
+          boxShadow: 'var(--shadow-ds-3)',
         },
         labelStyle: { color: colors['foreground-muted'], marginBottom: 4 },
         cursor: { fill: colors['surface-sunken'] },

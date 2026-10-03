@@ -34,7 +34,7 @@ export function Kbd({ keys, className, children, ...props }: KbdProps) {
     <kbd
       className={cn(
         'inline-flex items-center gap-0.5 rounded-ds-sm border border-ds-border bg-ds-surface-sunken px-1.5 py-0.5',
-        'font-mono text-[11px] font-medium text-ds-foreground-muted',
+        'font-mono text-[0.6875rem] font-medium text-ds-foreground-muted',
         className,
       )}
       {...props}
