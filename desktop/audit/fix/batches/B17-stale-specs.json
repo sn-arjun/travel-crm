@@ -25,7 +25,8 @@
     "contacts.spec.ts:423: scope the \"New Field\" click to the page header region (or .first() with a comment) - one CTA per region is fine.",
     "fleet-vehicles.spec.ts:498: count rows with `tbody tr` filtered by the seeded vehicle text instead of role=button.",
     "ai-business-intelligence.spec.ts:92: mock `**/ai/bi/briefings**` with page.route returning a realistic briefing payload (match the client type in src/lib/api/ai.ts) so the spec tests rendering + type switching without an AI binding.",
-    "Run all touched specs against slot 0 (B12 must be merged for super-admin whoami; if not, note it)."
+    "Run all touched specs against slot 0 (B12 must be merged for super-admin whoami; if not, note it).",
+    "From B07 merge: auth-shell.spec.ts:246 (help center) fails with a strict-mode violation because the top bar now renders the page title as an <h2> in addition to the page <h1> (intended design: top-bar title is a breadcrumb-style label). Update the spec to target the page heading (getByRole('heading',{level:1,name:'Help Center'})); audit the other specs for the same pattern (getByRole('heading',{name}) without level) and fix them all."
   ],
   "filesAllowlist": [
     "desktop/e2e/{campaigns,communication-inbox,auth-shell,super-admin,contacts,fleet-vehicles,ai-business-intelligence}.spec.ts"

@@ -74,5 +74,5 @@
       "notifications.spec.ts:378 (B27)"
     ]
   },
-  "notes": "Runs alone in the desktop lane for W3 (its read-site edits can land in any page)."
+  "notes": "Runs alone in the desktop lane for W3 (its read-site edits can land in any page). | From B07 merge: the layout probe flags /reports/customer (errors, overflow, empty top-bar title) - if the white-screen is an envelope/case bug it is yours; confirm it renders."
 }

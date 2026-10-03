@@ -1,11 +1,7 @@
 {
-  "tscTestErrors": 37,
+  "tscTestErrors": 2,
   "tscSrcErrors": 0,
-  "vitestFailingFiles": [
-    "src/lib/api/auth.test.ts",
-    "src/lib/api/client.test.ts",
-    "src/lib/api/users.test.ts"
-  ],
-  "backendPassedMin": 965,
+  "vitestFailingFiles": [],
+  "backendPassedMin": 996,
   "e2eBaseline": "audit/fix/e2e-parsed.json"
 }

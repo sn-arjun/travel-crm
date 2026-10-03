@@ -30,7 +30,8 @@
     "contactId filters (additive): GET /leads, /itineraries (via itineraries.contact_id if present, else JOIN leads), /follow-ups, /tasks (related contact), /documents (if documents reference contacts or leads; support entityType+entityId if that is the model) accept `contactId`. Tests.",
     "Fleet dashboard top drivers: if the endpoint returns [] while active drivers exist, fix the SQL to list active drivers ordered by completed trips (zero allowed); document the endpoint + response in your report for B23.",
     "Run backend vitest (>= previous passed count, 0 failed files) and typecheck.",
-    "Backend typecheck to zero (from B02 hand-off): `cd backend && npx tsc --noEmit` reports pre-existing errors in src/cron/campaign-scheduler.ts (3), src/queues/export-queue.ts (13), src/queues/import-queue.ts (3). Fix them with correct types (no `any`, no behaviour change unless it is a real bug - if so add a test). After this batch `npx tsc --noEmit` in backend must be 0 errors."
+    "Backend typecheck to zero (from B02 hand-off): `cd backend && npx tsc --noEmit` reports pre-existing errors in src/cron/campaign-scheduler.ts (3), src/queues/export-queue.ts (13), src/queues/import-queue.ts (3). Fix them with correct types (no `any`, no behaviour change unless it is a real bug - if so add a test). After this batch `npx tsc --noEmit` in backend must be 0 errors.",
+    "From B07 merge: desktop calls GET /api/v1/admin/whoami for every authenticated user and expects 200 {\"success\":true,\"data\":{\"isSuperAdmin\":boolean}} (never 403/404 for tenant users). super-admin.spec.ts:77 currently fails only because whoami 404s. Implement it (additive, in the admin router but without the require-super-admin guard for this one route) with tests; then super-admin.spec.ts:77 must pass."
   ],
   "filesAllowlist": [
     "backend/src/routes/** (validator import swap everywhere; logic changes only in calls, fleet, campaigns, leads, tasks, itineraries, follow-ups, documents, admin)",
@@ -63,7 +64,8 @@
     "GET /admin/whoami returns isSuperAdmin false for admin@demo.com.",
     "GET /leads?contactId=<id> filters.",
     "backend vitest green.",
-    "`cd backend && npx tsc --noEmit` exits 0."
+    "`cd backend && npx tsc --noEmit` exits 0.",
+    "GET /api/v1/admin/whoami returns 200 {isSuperAdmin:false} for a tenant admin and true for a super admin; super-admin.spec.ts:77 passes."
   ],
   "gates": {
     "typecheck": false,
