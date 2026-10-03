@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { AppContext } from '../types';
+import { generateId } from '../utils/uuid';
 
 const webhookRoutes = new Hono<AppContext>();
 
@@ -59,8 +60,8 @@ webhookRoutes.post('/leads/webhook', async (c) => {
       return c.json({ error: 'CF API credentials not configured' }, 500);
     }
 
-    const leadId = crypto.randomUUID();
-    const contactId = crypto.randomUUID();
+    const leadId = generateId();
+    const contactId = generateId();
     const leadTitle = `${String(source || 'Website')} - ${String(destination || name || 'New Enquiry')}`;
 
     // Create contact if phone or email provided (parameterized query)
@@ -93,7 +94,7 @@ webhookRoutes.post('/leads/webhook', async (c) => {
     await masterDb.prepare(`
       INSERT INTO webhook_log (id, tenant_id, api_key, source, payload, status)
       VALUES (?, ?, ?, ?, ?, 'success')
-    `).bind(crypto.randomUUID(), tenantId, api_key, source || 'website', JSON.stringify(body)).run();
+    `).bind(generateId(), tenantId, api_key, source || 'website', JSON.stringify(body)).run();
 
     return c.json({ success: true, lead_id: leadId });
   } catch (error: unknown) {
@@ -103,7 +104,7 @@ webhookRoutes.post('/leads/webhook', async (c) => {
     await masterDb.prepare(`
       INSERT INTO webhook_log (id, tenant_id, api_key, source, payload, status, error_message)
       VALUES (?, ?, ?, ?, ?, 'error', ?)
-    `).bind(crypto.randomUUID(), tenantId, api_key, source || 'website', JSON.stringify(body), errMsg).run();
+    `).bind(generateId(), tenantId, api_key, source || 'website', JSON.stringify(body), errMsg).run();
 
     return c.json({ error: 'Failed to create lead' }, 500);
   }

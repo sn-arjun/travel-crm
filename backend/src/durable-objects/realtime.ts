@@ -75,6 +75,8 @@ export class RealtimeRoom {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
 
+    // Not a database id: an ephemeral in-memory WebSocket connection key that is never
+    // persisted, so crypto.randomUUID() is intentionally kept (UUIDv7 is for DB keys only).
     const sessionId = crypto.randomUUID();
 
     this.state.acceptWebSocket(server);

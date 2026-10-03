@@ -5,6 +5,7 @@ import type { AppContext } from '../types';
 import * as schema from '../db/tenant-schema';
 import { success, error } from '../utils/response';
 import * as XLSX from 'xlsx';
+import { generateId } from '../utils/uuid';
 
 const exportRoutes = new Hono<AppContext>();
 
@@ -109,7 +110,7 @@ exportRoutes.post('/invoices/bulk-pdf', async (c) => {
     }
 
     const now = new Date().toISOString();
-    const jobId = crypto.randomUUID();
+    const jobId = generateId();
     const tenantId = c.get('tenantId') || '';
     await db.insert(schema.exportJobs).values({
         id: jobId,
@@ -143,7 +144,7 @@ exportRoutes.post('/full', async (c) => {
     const userId = c.get('userId') || 'system';
 
     const now = new Date().toISOString();
-    const jobId = crypto.randomUUID();
+    const jobId = generateId();
     const tenantId = c.get('tenantId') || '';
     await db.insert(schema.exportJobs).values({
         id: jobId,

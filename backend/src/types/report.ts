@@ -54,5 +54,6 @@ export interface ReportDefinition {
     requiredRole: string[];
     columns: ReportColumn[];
     dateColumn?: string; // Qualified column for date filtering (e.g. 's.created_at')
+    ownerColumn?: string; // Column limiting a salesperson to their own rows (default 'assigned_to')
     drillDown?: DrillDownConfig[];
 }

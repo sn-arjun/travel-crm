@@ -6,6 +6,7 @@ import { Hono } from 'hono';
 import type { AppContext } from '../types';
 import { success, error, paginated } from '../utils/response';
 import { broadcastToTenant } from '../utils/realtime';
+import { generateId } from '../utils/uuid';
 
 const taskRoutes = new Hono<AppContext>();
 
@@ -143,7 +144,7 @@ taskRoutes.post('/', async (c) => {
 
         if (!body.title) return error(c, 'Title is required', 400);
 
-        const taskId = crypto.randomUUID();
+        const taskId = generateId();
         await db.prepare(`
       INSERT INTO tasks (id, title, description, status, priority, category, due_date,
         assigned_to, related_lead_id, parent_task_id, created_by)
@@ -164,7 +165,7 @@ taskRoutes.post('/', async (c) => {
 
         // Auto-create calendar event if due_date is set
         if (body.due_date) {
-            const eventId = crypto.randomUUID();
+            const eventId = generateId();
             await db.prepare(`
         INSERT INTO events (id, title, event_type, start_at, all_day, related_task_id,
           assigned_to, created_by, color)
@@ -188,7 +189,7 @@ taskRoutes.post('/', async (c) => {
         // Notify assignee if different from creator
         const assigneeId = body.assigned_to || userId;
         if (assigneeId !== userId) {
-            const notifId = crypto.randomUUID();
+            const notifId = generateId();
             await db.prepare(`
         INSERT INTO notifications (id, user_id, type, title, body, data, is_read)
         VALUES (?, ?, 'task_assigned', ?, ?, ?, 0)
@@ -262,7 +263,7 @@ taskRoutes.put('/:id', async (c) => {
                     'UPDATE events SET start_at = ?, title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
                 ).bind(body.due_date, `Task: ${body.title || existing.title}`, existingEvent.id).run();
             } else if (body.due_date && !existingEvent) {
-                const eventId = crypto.randomUUID();
+                const eventId = generateId();
                 await db.prepare(`
           INSERT INTO events (id, title, event_type, start_at, all_day, related_task_id,
             assigned_to, created_by, color)
@@ -285,7 +286,7 @@ taskRoutes.put('/:id', async (c) => {
         if (body.assigned_to && body.assigned_to !== existing.assigned_to) {
             const taskTitle = body.title || existing.title;
             // Notify new assignee
-            const notifNew = crypto.randomUUID();
+            const notifNew = generateId();
             await db.prepare(`
         INSERT INTO notifications (id, user_id, type, title, body, data, is_read)
         VALUES (?, ?, 'task_assigned', ?, ?, ?, 0)
@@ -296,7 +297,7 @@ taskRoutes.put('/:id', async (c) => {
 
             // Notify old assignee if they had the task
             if (existing.assigned_to && existing.assigned_to !== userId) {
-                const notifOld = crypto.randomUUID();
+                const notifOld = generateId();
                 await db.prepare(`
           INSERT INTO notifications (id, user_id, type, title, body, data, is_read)
           VALUES (?, ?, 'task_reassigned', ?, ?, ?, 0)
@@ -451,7 +452,7 @@ taskRoutes.post('/:taskId/comments', async (c) => {
       )
     `).run();
 
-        const id = crypto.randomUUID();
+        const id = generateId();
         await db.prepare(`
       INSERT INTO task_comments (id, task_id, user_id, content)
       VALUES (?, ?, ?, ?)

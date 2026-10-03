@@ -11,6 +11,8 @@ const visaReports: ReportDefinition[] = [
         allowedFilters: ['status', 'country'],
         allowedGroupBy: ['country', 'status'],
         defaultSort: { column: 'application_count', order: 'desc' },
+        // visa_applications have no assigned_to; a salesperson sees the applications they created
+        ownerColumn: 'created_by',
         baseQuery: `
       SELECT
         status,
@@ -37,6 +39,7 @@ const visaReports: ReportDefinition[] = [
         allowedGroupBy: ['country'],
         defaultSort: { column: 'va.created_at', order: 'asc' },
         dateColumn: 'va.created_at',
+        ownerColumn: 'va.created_by',
         baseQuery: `
       SELECT
         va.id as application_id,

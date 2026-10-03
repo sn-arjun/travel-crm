@@ -6,10 +6,7 @@
  */
 import type { Env } from '../types';
 import { resolveSegment, type SegmentFilter } from '../services/segment-resolver';
-
-function generateId(): string {
-  return crypto.randomUUID();
-}
+import { generateId } from '../utils/uuid';
 
 /** Single-tenant deployments bind the tenant database as DB (or TENANT_DB). */
 interface SchedulerEnv extends Env {

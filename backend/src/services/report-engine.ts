@@ -11,6 +11,60 @@ export class ForbiddenError extends Error {
     }
 }
 
+/**
+ * Index of the first top-level tail clause (GROUP BY / HAVING / ORDER BY / LIMIT, or the
+ * {GROUP_BY} / {ORDER_BY} placeholders that expand to them later). WHERE conditions must be
+ * spliced in before it. Anything inside parentheses (subqueries) or string literals is ignored.
+ */
+function findTailIndex(query: string): number {
+    let depth = 0;
+    let quote = '';
+    for (let i = 0; i < query.length; i++) {
+        const ch = query[i];
+        if (quote) {
+            if (ch === quote) quote = '';
+            continue;
+        }
+        if (ch === "'" || ch === '"') { quote = ch; continue; }
+        if (ch === '(') { depth++; continue; }
+        if (ch === ')') { depth--; continue; }
+        if (depth !== 0) continue;
+        const prev = i === 0 ? ' ' : query[i - 1];
+        if (!/\s/.test(prev) && ch !== '{') continue;
+        const rest = query.slice(i, i + 12);
+        if (/^(GROUP\s+BY|ORDER\s+BY)\b/i.test(rest) || /^(HAVING|LIMIT)\b/i.test(rest)
+            || rest.startsWith('{ORDER_BY}') || rest.startsWith('{GROUP_BY}')) {
+            return i;
+        }
+    }
+    return query.length;
+}
+
+/** True when the outermost SELECT already has a WHERE (a WHERE inside a subquery does not count). */
+function hasTopLevelWhere(query: string): boolean {
+    let depth = 0;
+    let quote = '';
+    for (let i = 0; i < query.length; i++) {
+        const ch = query[i];
+        if (quote) {
+            if (ch === quote) quote = '';
+            continue;
+        }
+        if (ch === "'" || ch === '"') { quote = ch; continue; }
+        if (ch === '(') { depth++; continue; }
+        if (ch === ')') { depth--; continue; }
+        if (depth === 0 && /\s/.test(i === 0 ? ' ' : query[i - 1]) && /^WHERE\b/i.test(query.slice(i, i + 6))) return true;
+    }
+    return false;
+}
+
+/** Add `condition` to the outer WHERE clause (creating it if needed), ahead of GROUP BY / ORDER BY / LIMIT. */
+function addWhereCondition(query: string, condition: string): string {
+    const idx = findTailIndex(query);
+    const joiner = hasTopLevelWhere(query) ? ' AND ' : ' WHERE ';
+    return query.slice(0, idx) + joiner + condition + ' ' + query.slice(idx);
+}
+
 export class ReportEngine {
 
     private _buildQuery(
@@ -27,19 +81,11 @@ export class ReportEngine {
         // Date range filter
         if (dateFrom && dateTo) {
             const dateColumn = params.date_column || report.dateColumn || 'created_at';
-            const hasWhere = query.toUpperCase().includes(' WHERE ');
-            const clause = hasWhere ? ' AND ' : ' WHERE ';
-
             if (query.includes('{DATE_FILTER}')) {
                 query = query.replace('{DATE_FILTER}', ` AND ${dateColumn} BETWEEN ? AND ? `);
                 bindings.push(dateFrom, dateTo);
             } else {
-                const groupByIdx = query.toUpperCase().indexOf(' GROUP BY ');
-                const orderByIdx = query.toUpperCase().indexOf(' ORDER BY ');
-                const insertIdx = groupByIdx !== -1 ? groupByIdx : (orderByIdx !== -1 ? orderByIdx : query.length);
-
-                const dateCondition = ` ${clause} ${dateColumn} BETWEEN ? AND ? `;
-                query = query.slice(0, insertIdx) + dateCondition + query.slice(insertIdx);
+                query = addWhereCondition(query, `${dateColumn} BETWEEN ? AND ?`);
                 bindings.push(dateFrom, dateTo);
             }
         } else if (query.includes('{DATE_FILTER}')) {
@@ -48,31 +94,18 @@ export class ReportEngine {
         }
 
         // Auto-filter for salesperson role
+        // The condition goes into WHERE, ahead of GROUP BY / ORDER BY / LIMIT. `ownerColumn` lets a
+        // report name the column that records ownership (its main table may not have assigned_to).
         if (userRole === 'salesperson') {
-            const hasWhere = query.toUpperCase().includes(' WHERE ');
-            const clause = hasWhere ? ' AND ' : ' WHERE ';
-            const assignedCondition = ` ${clause} assigned_to = ? `;
-
-            const groupByIdx = query.toUpperCase().indexOf(' GROUP BY ');
-            const orderByIdx = query.toUpperCase().indexOf(' ORDER BY ');
-            const insertIdx = groupByIdx !== -1 ? groupByIdx : (orderByIdx !== -1 ? orderByIdx : query.length);
-
-            query = query.slice(0, insertIdx) + assignedCondition + query.slice(insertIdx);
+            const ownerColumn = report.ownerColumn || 'assigned_to';
+            query = addWhereCondition(query, `${ownerColumn} = ?`);
             bindings.push(userId);
         }
 
         // Dynamic filters based on allowedFilters
         for (const filter of report.allowedFilters) {
             if (params[filter] !== undefined && params[filter] !== null && params[filter] !== '') {
-                const hasWhere = query.toUpperCase().includes(' WHERE ');
-                const clause = hasWhere ? ' AND ' : ' WHERE ';
-                const condition = ` ${clause} ${filter} = ? `;
-
-                const groupByIdx = query.toUpperCase().indexOf(' GROUP BY ');
-                const orderByIdx = query.toUpperCase().indexOf(' ORDER BY ');
-                const insertIdx = groupByIdx !== -1 ? groupByIdx : (orderByIdx !== -1 ? orderByIdx : query.length);
-
-                query = query.slice(0, insertIdx) + condition + query.slice(insertIdx);
+                query = addWhereCondition(query, `${filter} = ?`);
                 bindings.push(params[filter]);
             }
         }

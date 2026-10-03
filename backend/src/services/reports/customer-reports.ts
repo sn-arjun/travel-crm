@@ -70,6 +70,8 @@ const customerReports: ReportDefinition[] = [
         defaultSort: { column: 'days_until_birthday', order: 'asc' },
         // An "as of today" report: the date range never narrows it, so bind the filter to today.
         dateColumn: "date('now')",
+        // contacts have no assigned_to; a salesperson sees the customers they created
+        ownerColumn: 'c.created_by',
         baseQuery: `
       SELECT
         c.name as customer_name,

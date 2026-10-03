@@ -6,6 +6,7 @@ import { Hono } from 'hono';
 import type { AppContext } from '../types';
 import { success, error } from '../utils/response';
 import { expandRecurrence } from '../services/recurrence-engine';
+import { generateId } from '../utils/uuid';
 
 const plannerRoutes = new Hono<AppContext>();
 
@@ -118,7 +119,7 @@ plannerRoutes.post('/', async (c) => {
             return error(c, 'end_at must be after start_at', 400);
         }
 
-        const id = crypto.randomUUID();
+        const id = generateId();
         await db.prepare(`
       INSERT INTO events (id, title, description, event_type, start_at, end_at, all_day,
         location, color, recurrence_rule, related_lead_id, related_task_id,
@@ -166,7 +167,7 @@ plannerRoutes.put('/:id', async (c) => {
 
         if (scope === 'this' && existing.recurrence_rule) {
             // Create exception event for this specific date
-            const exceptionId = crypto.randomUUID();
+            const exceptionId = generateId();
             await db.prepare(`
         INSERT INTO events (id, title, description, event_type, start_at, end_at, all_day,
           location, color, recurrence_parent_id, assigned_to, created_by, timezone)
@@ -204,7 +205,7 @@ plannerRoutes.put('/:id', async (c) => {
             ).bind(JSON.stringify(updatedRule), existing.id).run();
 
             // Create new recurring event from target date onward with new settings
-            const newId = crypto.randomUUID();
+            const newId = generateId();
             await db.prepare(`
         INSERT INTO events (id, title, description, event_type, start_at, end_at, all_day,
           location, color, recurrence_rule, assigned_to, created_by, timezone)

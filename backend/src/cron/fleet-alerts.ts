@@ -1,4 +1,5 @@
 import type { Env } from '../types';
+import { generateId } from '../utils/uuid';
 
 /**
  * Daily cron job to check for expiring vehicle/driver documents and upcoming maintenance.
@@ -46,7 +47,7 @@ export async function processFleetAlerts(env: Env) {
 
           await db.prepare(
             "INSERT INTO reminder_log (id, entity_type, entity_id, reminder_type, sent_date, created_at) VALUES (?, ?, ?, ?, ?, ?)"
-          ).bind(crypto.randomUUID(), 'vehicle_document', doc.id, `expiry_${days}d`, today, new Date().toISOString()).run();
+          ).bind(generateId(), 'vehicle_document', doc.id, `expiry_${days}d`, today, new Date().toISOString()).run();
         }
       }
 
@@ -79,7 +80,7 @@ export async function processFleetAlerts(env: Env) {
 
           await db.prepare(
             "INSERT INTO reminder_log (id, entity_type, entity_id, reminder_type, sent_date, created_at) VALUES (?, ?, ?, ?, ?, ?)"
-          ).bind(crypto.randomUUID(), 'driver_document', doc.id, `expiry_${days}d`, today, new Date().toISOString()).run();
+          ).bind(generateId(), 'driver_document', doc.id, `expiry_${days}d`, today, new Date().toISOString()).run();
         }
       }
 
@@ -110,7 +111,7 @@ export async function processFleetAlerts(env: Env) {
 
         await db.prepare(
           "INSERT INTO reminder_log (id, entity_type, entity_id, reminder_type, sent_date, created_at) VALUES (?, ?, ?, ?, ?, ?)"
-        ).bind(crypto.randomUUID(), 'vehicle_document', doc.id, 'expired', today, new Date().toISOString()).run();
+        ).bind(generateId(), 'vehicle_document', doc.id, 'expired', today, new Date().toISOString()).run();
       }
 
       // ── Maintenance due alerts ──────────────────────────────────
@@ -138,7 +139,7 @@ export async function processFleetAlerts(env: Env) {
 
         await db.prepare(
           "INSERT INTO reminder_log (id, entity_type, entity_id, reminder_type, sent_date, created_at) VALUES (?, ?, ?, ?, ?, ?)"
-        ).bind(crypto.randomUUID(), 'vehicle_maintenance', vehicle.id, 'maintenance_due', today, new Date().toISOString()).run();
+        ).bind(generateId(), 'vehicle_maintenance', vehicle.id, 'maintenance_due', today, new Date().toISOString()).run();
       }
 
       // ── Summary notification ────────────────────────────────────
@@ -161,7 +162,7 @@ export async function processFleetAlerts(env: Env) {
 
           await db.prepare(
             "INSERT INTO reminder_log (id, entity_type, entity_id, reminder_type, sent_date, created_at) VALUES (?, ?, ?, ?, ?, ?)"
-          ).bind(crypto.randomUUID(), 'fleet_summary', tenantId, 'daily_summary', today, new Date().toISOString()).run();
+          ).bind(generateId(), 'fleet_summary', tenantId, 'daily_summary', today, new Date().toISOString()).run();
         }
       }
     }

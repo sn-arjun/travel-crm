@@ -17,6 +17,7 @@ import {
     reconcilePaymentsSchema
 } from '../validators/supplier-payment';
 import type { AppContext } from '../types';
+import { generateId } from '../utils/uuid';
 
 const supplierRouter = new Hono<AppContext>();
 
@@ -152,7 +153,7 @@ supplierRouter.get('/:id', async (c) => {
 supplierRouter.post('/', zValidator('json', createSupplierSchema), async (c) => {
     const db = c.get('tenantDb');
     const body = c.req.valid('json');
-    const id = crypto.randomUUID();
+    const id = generateId();
     const userId = c.get('userId');
     const now = new Date().toISOString();
 
@@ -261,7 +262,7 @@ supplierRouter.post('/:id/rate-cards', zValidator('json', createRateCardSchema),
     const db = c.get('tenantDb');
     const supplierId = c.req.param('id');
     const body = c.req.valid('json');
-    const id = crypto.randomUUID();
+    const id = generateId();
     const userId = c.get('userId');
 
     await db.prepare(`
@@ -286,7 +287,7 @@ supplierRouter.post('/:id/payments', zValidator('json', supplierPaymentSchema), 
     const db = c.get('tenantDb');
     const supplierId = c.req.param('id');
     const body = c.req.valid('json');
-    const paymentId = crypto.randomUUID();
+    const paymentId = generateId();
     const userId = c.get('userId');
 
     await db.prepare(`

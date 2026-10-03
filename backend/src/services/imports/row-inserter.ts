@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import * as schema from '../../db/tenant-schema';
+import { generateId } from '../../utils/uuid';
 
 export class RowInserter {
     public async insertRow(
@@ -38,7 +39,7 @@ export class RowInserter {
                             .where(eq(schema.contacts.id, duplicateId));
                     } else {
                         await db.insert(schema.contacts).values({
-                            id: crypto.randomUUID(),
+                            id: generateId(),
                             name: contactName,
                             email: normalizedEmail,
                             phone: normalizedPhone,
@@ -82,7 +83,7 @@ export class RowInserter {
 
                         if (!contactId) {
                             const contactName = [validData.firstName, validData.lastName].filter(Boolean).join(' ');
-                            contactId = crypto.randomUUID();
+                            contactId = generateId();
                             await db.insert(schema.contacts).values({
                                 id: contactId,
                                 name: contactName,
@@ -97,7 +98,7 @@ export class RowInserter {
                         }
 
                         await db.insert(schema.leads).values({
-                            id: crypto.randomUUID(),
+                            id: generateId(),
                             contactId,
                             title: validData.title,
                             budget: validData.value ? Number(validData.value) : null,
@@ -127,7 +128,7 @@ export class RowInserter {
                             .where(eq(schema.suppliers.id, duplicateId));
                     } else {
                         await db.insert(schema.suppliers).values({
-                            id: crypto.randomUUID(),
+                            id: generateId(),
                             companyName: validData.name,
                             category: validData.category,
                             email: normalizedEmail,
@@ -172,7 +173,7 @@ export class RowInserter {
                             .where(eq(schema.rateCards.id, duplicateId));
                     } else {
                         await db.insert(schema.rateCards).values({
-                            id: crypto.randomUUID(),
+                            id: generateId(),
                             supplierId,
                             serviceType: validData.serviceType,
                             name: validData.name || `${validData.serviceType} Rate`,
@@ -216,7 +217,7 @@ export class RowInserter {
                         }
 
                         await db.insert(schema.travellers).values({
-                            id: crypto.randomUUID(),
+                            id: generateId(),
                             tenantId: tenantId || 'default',
                             contactId: contactId || null,
                             firstName: validData.firstName,

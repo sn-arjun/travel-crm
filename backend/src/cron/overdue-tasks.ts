@@ -3,6 +3,7 @@
  * Runs daily at 9 AM and 6 PM to detect and notify about overdue tasks.
  */
 import type { Env } from '../types';
+import { generateId } from '../utils/uuid';
 
 export async function processOverdueTasks(env: Env) {
     try {
@@ -32,7 +33,7 @@ export async function processOverdueTasks(env: Env) {
             const t = task as any;
 
             // Create in-app notification for assignee
-            const notifId = crypto.randomUUID();
+            const notifId = generateId();
             await db.prepare(`
         INSERT INTO notifications (id, user_id, title, body, type, entity_type, entity_id, is_read)
         VALUES (?, ?, ?, ?, ?, ?, ?, 0)

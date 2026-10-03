@@ -269,6 +269,8 @@ driver.post('/login/verify', zValidator('json', verifyOtpSchema), async (c) => {
     c.env.JWT_SECRET
   );
 
+  // Secret token, not a DB id: the crypto.randomUUID() half supplies unpredictable randomness
+  // (UUIDv7 is time-ordered), so it is intentionally kept.
   const refreshToken = generateId() + '-' + crypto.randomUUID();
   const refreshHash = await hashToken(refreshToken);
 
@@ -330,6 +332,7 @@ driver.post('/refresh', zValidator('json', refreshTokenSchema), async (c) => {
     c.env.JWT_SECRET
   );
 
+  // Secret token, not a DB id: random half intentionally crypto.randomUUID() (see login).
   const newRefreshToken = generateId() + '-' + crypto.randomUUID();
   const newRefreshHash = await hashToken(newRefreshToken);
 

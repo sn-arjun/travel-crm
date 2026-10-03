@@ -9,6 +9,7 @@ import { success, error } from '../utils/response';
 import * as XLSX from 'xlsx';
 import { FileParser } from '../services/imports/file-parser';
 import { TemplateGenerator } from '../services/imports/template-generator';
+import { generateId } from '../utils/uuid';
 
 const importRoutes = new Hono<AppContext>();
 
@@ -66,7 +67,7 @@ importRoutes.post('/upload', async (c) => {
         });
 
         // Create tracking record
-        const jobId = crypto.randomUUID();
+        const jobId = generateId();
         const tenantId = c.get('tenantId') || '';
         await db.insert(schema.importJobs).values({
             id: jobId,

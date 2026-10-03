@@ -7,6 +7,7 @@ import { ImportValidator } from '../services/imports/import-validator';
 import { DuplicateDetector, type DuplicateStrategy } from '../services/imports/duplicate-detector';
 import { RowInserter } from '../services/imports/row-inserter';
 import { broadcastToTenant } from '../utils/realtime';
+import { generateId } from '../utils/uuid';
 
 export interface ImportJobMessage {
     jobId: string;
@@ -92,7 +93,7 @@ export async function handleImportJob(data: ImportJobMessage, env: Env): Promise
             if (!validationRes.isValid) {
                 errorCount++;
                 await db.insert(schema.importErrors).values({
-                    id: crypto.randomUUID(),
+                    id: generateId(),
                     importJobId: jobId,
                     rowNumber: rowNum,
                     rowData: JSON.stringify(rawRow),
@@ -177,7 +178,7 @@ export async function handleImportJob(data: ImportJobMessage, env: Env): Promise
 
         // Optionally create a general error row
         await db.insert(schema.importErrors).values({
-            id: crypto.randomUUID(),
+            id: generateId(),
             importJobId: jobId,
             rowNumber: 0, // 0 for general error
             rowData: '{}',
