@@ -124,49 +124,6 @@ class HttpClient {
     throw error;
   }
 
-  private async handleAuthRefresh(): Promise<boolean> {
-    try {
-      const store = useAuthStore.getState();
-      const refreshToken = store.refreshToken;
-
-      if (!refreshToken) {
-        return false;
-      }
-
-      const response = await fetch(`${this.baseUrl}/auth/refresh-token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ refreshToken }),
-      });
-
-      if (!response.ok) {
-        store.logout();
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login';
-        }
-        return false;
-      }
-
-      const data = (await response.json()) as {
-        data?: { accessToken?: string; refreshToken?: string };
-      };
-
-      if (data.data?.accessToken && data.data?.refreshToken) {
-        store.setTokens(data.data.accessToken, data.data.refreshToken);
-        return true;
-      }
-
-      return false;
-    } catch (error) {
-      if (typeof window !== 'undefined') {
-        window.location.href = '/login';
-      }
-      return false;
-    }
-  }
-
   async request<T>(
     method: HttpMethod,
     endpoint: string,
@@ -178,6 +135,7 @@ class HttpClient {
 
     // Add auth token
     const store = useAuthStore.getState();
+    const sentAccess = store.accessToken;
     const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
     const finalHeaders: Record<string, string> = {
       ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
@@ -204,14 +162,16 @@ class HttpClient {
 
       clearTimeout(timeoutId);
 
-      // Handle 401 - attempt token refresh
-      if (response.status === 401 && !isRetry && store.refreshToken) {
-        const refreshed = await this.handleAuthRefresh();
-        if (refreshed) {
-          return this.request<T>(method, endpoint, {
-            ...config,
-            isRetry: true,
-          });
+      // Handle 401 - attempt a (single-flight) token refresh, then retry once
+      if (response.status === 401 && !isRetry) {
+        const current = useAuthStore.getState();
+        if (current.accessToken !== sentAccess) {
+          // Someone (another request, the proactive timer or another window)
+          // already rotated the tokens while this request was in flight.
+          return this.request<T>(method, endpoint, { ...config, isRetry: true });
+        }
+        if (current.refreshToken && (await refreshAccessToken())) {
+          return this.request<T>(method, endpoint, { ...config, isRetry: true });
         }
       }
 
@@ -279,54 +239,154 @@ class HttpClient {
 }
 
 // ============================================================================
+// Token refresh (single-flight, cross-window safe)
+// ============================================================================
+
+const AUTH_STORAGE_KEY = 'travelcrm-auth';
+const REFRESH_LOCK_NAME = 'travelcrm-auth-refresh';
+const REFRESH_TIMEOUT_MS = 15_000;
+
+interface TokenPair {
+  accessToken: string;
+  refreshToken: string;
+}
+
+/** Read the tokens another window may have persisted (zustand persist format). */
+function readPersistedTokens(): TokenPair | null {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as {
+      state?: { accessToken?: string | null; refreshToken?: string | null };
+    };
+    const accessToken = parsed.state?.accessToken;
+    const refreshToken = parsed.state?.refreshToken;
+    if (accessToken && refreshToken) return { accessToken, refreshToken };
+  } catch {
+    // Corrupt or unavailable storage - treat as "nothing persisted"
+  }
+  return null;
+}
+
+function logoutAndRedirect(): void {
+  useAuthStore.getState().logout();
+  if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+    window.location.href = '/login';
+  }
+}
+
+async function runRefresh(usedToken: string): Promise<boolean> {
+  // Another window already rotated the tokens: adopt them without a network call.
+  const persisted = readPersistedTokens();
+  if (persisted && persisted.refreshToken !== usedToken) {
+    useAuthStore.getState().setTokens(persisted.accessToken, persisted.refreshToken);
+    return true;
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: usedToken }),
+      signal: controller.signal,
+    });
+  } catch {
+    // Network error or timeout: transient, never log the user out.
+    return false;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (response.ok) {
+    try {
+      const body = (await response.json()) as {
+        data?: { accessToken?: string; refreshToken?: string };
+      };
+      if (body.data?.accessToken && body.data?.refreshToken) {
+        useAuthStore.getState().setTokens(body.data.accessToken, body.data.refreshToken);
+        return true;
+      }
+    } catch {
+      // Unparseable body: treat as transient
+    }
+    return false;
+  }
+
+  if (response.status === 400 || response.status === 401 || response.status === 403) {
+    // The token was rejected. Maybe we lost a race with another window.
+    const latest = readPersistedTokens();
+    if (latest && latest.refreshToken !== usedToken) {
+      useAuthStore.getState().setTokens(latest.accessToken, latest.refreshToken);
+      return true;
+    }
+    logoutAndRedirect();
+    return false;
+  }
+
+  // 5xx / 429 / anything else: transient, keep the session.
+  return false;
+}
+
+async function doRefresh(): Promise<boolean> {
+  const usedToken = useAuthStore.getState().refreshToken;
+  if (!usedToken) return false;
+
+  if (typeof navigator !== 'undefined' && navigator.locks) {
+    return navigator.locks.request(REFRESH_LOCK_NAME, () => runRefresh(usedToken));
+  }
+  return runRefresh(usedToken);
+}
+
+let refreshInFlight: Promise<boolean> | null = null;
+
+/**
+ * Refresh the access token. Concurrent callers (requests that got a 401, the
+ * proactive timer) share one network call; other windows are coordinated via
+ * the Web Locks API and the persisted auth state.
+ */
+export function refreshAccessToken(): Promise<boolean> {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = doRefresh().finally(() => {
+    refreshInFlight = null;
+  });
+  return refreshInFlight;
+}
+
+// ============================================================================
 // Proactive token refresh
 // ============================================================================
 
 let refreshInterval: ReturnType<typeof setInterval> | null = null;
 
+/** Refresh when the access token expires within 2 minutes. Never logs out. */
+export async function checkProactiveRefresh(): Promise<void> {
+  const store = useAuthStore.getState();
+  if (!store.accessToken || !store.refreshToken) return;
+
+  try {
+    const parts = store.accessToken.split('.');
+    if (parts.length !== 3 || !parts[1]) return;
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))) as { exp?: number };
+    if (!payload.exp) return;
+
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.exp - now < 120) {
+      await refreshAccessToken();
+    }
+  } catch {
+    // Silently ignore - will retry next interval
+  }
+}
+
 function startTokenRefreshTimer() {
   if (refreshInterval) return;
-
   // Check every 60 seconds if the access token needs refreshing
-  refreshInterval = setInterval(async () => {
-    const store = useAuthStore.getState();
-    if (!store.accessToken || !store.refreshToken) return;
-
-    try {
-      // Decode the JWT payload to check expiration
-      const parts = store.accessToken.split('.');
-      if (parts.length !== 3 || !parts[1]) return;
-      const payload = JSON.parse(atob(parts[1] as string));
-      const exp = payload.exp;
-      if (!exp) return;
-
-      // Refresh if token expires within 2 minutes
-      const now = Math.floor(Date.now() / 1000);
-      if (exp - now < 120) {
-        const response = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken: store.refreshToken }),
-        });
-
-        if (response.ok) {
-          const data = (await response.json()) as {
-            data?: { accessToken?: string; refreshToken?: string };
-          };
-          if (data.data?.accessToken && data.data?.refreshToken) {
-            store.setTokens(data.data.accessToken, data.data.refreshToken);
-          }
-        } else {
-          // Refresh failed — token may be expired/revoked, force logout
-          store.logout();
-          if (typeof window !== 'undefined') {
-            window.location.href = '/login';
-          }
-        }
-      }
-    } catch {
-      // Silently ignore — will retry next interval
-    }
+  refreshInterval = setInterval(() => {
+    void checkProactiveRefresh();
   }, 60_000);
 }
 
@@ -342,11 +402,20 @@ if (typeof window !== 'undefined') {
   startTokenRefreshTimer();
 
   // Listen for auth state changes to start/stop the timer
-  useAuthStore.subscribe((state) => {
-    if (state.isAuthenticated && state.refreshToken) {
-      startTokenRefreshTimer();
-    } else {
-      stopTokenRefreshTimer();
+  if (typeof useAuthStore.subscribe === 'function') {
+    useAuthStore.subscribe((state) => {
+      if (state.isAuthenticated && state.refreshToken) {
+        startTokenRefreshTimer();
+      } else {
+        stopTokenRefreshTimer();
+      }
+    });
+  }
+
+  // Keep this window in sync when another window/tab rotates or clears the tokens
+  window.addEventListener('storage', (e) => {
+    if (e.key === AUTH_STORAGE_KEY) {
+      void useAuthStore.persist?.rehydrate?.();
     }
   });
 }

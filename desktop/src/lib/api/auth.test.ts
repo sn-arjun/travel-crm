@@ -5,6 +5,9 @@ const mockGetState = vi.fn();
 vi.mock('@/stores/auth-store', () => ({
   useAuthStore: {
     getState: () => mockGetState(),
+    setState: vi.fn(),
+    subscribe: vi.fn(() => () => {}),
+    persist: { rehydrate: vi.fn() },
   },
 }));
 
@@ -58,12 +61,12 @@ describe('Auth API Module', () => {
 
       const result = await authApi.resolveTenant({ email: 'admin@test.com' });
 
-      const calledUrl = fetchMock.mock.calls[0][0] as string;
+      const calledUrl = fetchMock.mock.calls[0]![0] as string;
       expect(calledUrl).toContain('/auth/resolve-tenant');
-      expect(fetchMock.mock.calls[0][1].method).toBe('POST');
-      expect(fetchMock.mock.calls[0][1].body).toBe(JSON.stringify({ email: 'admin@test.com' }));
+      expect(fetchMock.mock.calls[0]![1].method).toBe('POST');
+      expect(fetchMock.mock.calls[0]![1].body).toBe(JSON.stringify({ email: 'admin@test.com' }));
       expect(result.data.tenants).toHaveLength(1);
-      expect(result.data.tenants[0].companyName).toBe('Acme');
+      expect(result.data.tenants[0]?.companyName).toBe('Acme');
     });
   });
 
@@ -88,10 +91,10 @@ describe('Auth API Module', () => {
         tenantId: 'tenant-1',
       });
 
-      const calledUrl = fetchMock.mock.calls[0][0] as string;
+      const calledUrl = fetchMock.mock.calls[0]![0] as string;
       expect(calledUrl).toContain('/auth/login');
-      expect(fetchMock.mock.calls[0][1].method).toBe('POST');
-      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(fetchMock.mock.calls[0]![1].method).toBe('POST');
+      const body = JSON.parse(fetchMock.mock.calls[0]![1].body);
       expect(body.email).toBe('admin@test.com');
       expect(body.password).toBe('password123');
       expect(body.tenantId).toBe('tenant-1');
@@ -123,7 +126,7 @@ describe('Auth API Module', () => {
 
       await authApi.sendOtp({ phone: '+919876543210', tenantId: 'tenant-1' });
 
-      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      const body = JSON.parse(fetchMock.mock.calls[0]![1].body);
       expect(body.phone).toBe('+919876543210');
       expect(body.tenantId).toBe('tenant-1');
     });
@@ -141,7 +144,7 @@ describe('Auth API Module', () => {
 
       await authApi.verifyOtp({ phone: '+919876543210', otp: '123456', tenantId: 'tenant-1' });
 
-      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      const body = JSON.parse(fetchMock.mock.calls[0]![1].body);
       expect(body.otp).toBe('123456');
     });
   });
@@ -159,7 +162,7 @@ describe('Auth API Module', () => {
 
       const result = await authApi.refreshToken({ refreshToken: 'old-refresh' });
 
-      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      const body = JSON.parse(fetchMock.mock.calls[0]![1].body);
       expect(body.refreshToken).toBe('old-refresh');
       expect(result.data.accessToken).toBe('new-jwt');
       expect(result.data.refreshToken).toBe('new-refresh');
@@ -176,7 +179,7 @@ describe('Auth API Module', () => {
 
       await authApi.forgotPassword({ email: 'user@test.com' });
 
-      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      const body = JSON.parse(fetchMock.mock.calls[0]![1].body);
       expect(body.email).toBe('user@test.com');
     });
   });
@@ -195,7 +198,7 @@ describe('Auth API Module', () => {
         confirmPassword: 'NewPass123',
       });
 
-      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      const body = JSON.parse(fetchMock.mock.calls[0]![1].body);
       expect(body.token).toBe('reset-token');
       expect(body.password).toBe('NewPass123');
     });
@@ -211,9 +214,9 @@ describe('Auth API Module', () => {
 
       await authApi.logout();
 
-      const calledUrl = fetchMock.mock.calls[0][0] as string;
+      const calledUrl = fetchMock.mock.calls[0]![0] as string;
       expect(calledUrl).toContain('/auth/logout');
-      expect(fetchMock.mock.calls[0][1].method).toBe('POST');
+      expect(fetchMock.mock.calls[0]![1].method).toBe('POST');
     });
   });
 
@@ -232,9 +235,9 @@ describe('Auth API Module', () => {
 
       const result = await authApi.getSessions();
 
-      const calledUrl = fetchMock.mock.calls[0][0] as string;
+      const calledUrl = fetchMock.mock.calls[0]![0] as string;
       expect(calledUrl).toContain('/auth/sessions');
-      expect(fetchMock.mock.calls[0][1].method).toBe('GET');
+      expect(fetchMock.mock.calls[0]![1].method).toBe('GET');
       expect(result.data).toHaveLength(1);
     });
   });

@@ -4,6 +4,9 @@ const mockGetState = vi.fn();
 vi.mock('@/stores/auth-store', () => ({
   useAuthStore: {
     getState: () => mockGetState(),
+    setState: vi.fn(),
+    subscribe: vi.fn(() => () => {}),
+    persist: { rehydrate: vi.fn() },
   },
 }));
 
@@ -47,9 +50,9 @@ describe('Users API Module', () => {
 
       await usersApi.list();
 
-      const calledUrl = fetchMock.mock.calls[0][0] as string;
+      const calledUrl = fetchMock.mock.calls[0]![0] as string;
       expect(calledUrl).toContain('/users');
-      expect(fetchMock.mock.calls[0][1].method).toBe('GET');
+      expect(fetchMock.mock.calls[0]![1].method).toBe('GET');
     });
 
     it('should pass query params for search/filter', async () => {
@@ -60,7 +63,7 @@ describe('Users API Module', () => {
 
       await usersApi.list({ search: 'john', role: 'admin', page: 2 });
 
-      const calledUrl = fetchMock.mock.calls[0][0] as string;
+      const calledUrl = fetchMock.mock.calls[0]![0] as string;
       expect(calledUrl).toContain('search=john');
       expect(calledUrl).toContain('role=admin');
       expect(calledUrl).toContain('page=2');
@@ -79,7 +82,7 @@ describe('Users API Module', () => {
 
       const result = await usersApi.getMe();
 
-      const calledUrl = fetchMock.mock.calls[0][0] as string;
+      const calledUrl = fetchMock.mock.calls[0]![0] as string;
       expect(calledUrl).toContain('/users/me');
       expect(result.data.email).toBe('admin@test.com');
     });
@@ -97,7 +100,7 @@ describe('Users API Module', () => {
 
       await usersApi.getById('user-123');
 
-      const calledUrl = fetchMock.mock.calls[0][0] as string;
+      const calledUrl = fetchMock.mock.calls[0]![0] as string;
       expect(calledUrl).toContain('/users/user-123');
     });
 
@@ -123,8 +126,8 @@ describe('Users API Module', () => {
 
       await usersApi.update('u1', { firstName: 'Updated' });
 
-      expect(fetchMock.mock.calls[0][1].method).toBe('PUT');
-      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(fetchMock.mock.calls[0]![1].method).toBe('PUT');
+      const body = JSON.parse(fetchMock.mock.calls[0]![1].body);
       expect(body.firstName).toBe('Updated');
     });
   });
@@ -135,8 +138,8 @@ describe('Users API Module', () => {
 
       await usersApi.delete('u1');
 
-      expect(fetchMock.mock.calls[0][1].method).toBe('DELETE');
-      const calledUrl = fetchMock.mock.calls[0][0] as string;
+      expect(fetchMock.mock.calls[0]![1].method).toBe('DELETE');
+      const calledUrl = fetchMock.mock.calls[0]![0] as string;
       expect(calledUrl).toContain('/users/u1');
     });
   });
@@ -150,7 +153,7 @@ describe('Users API Module', () => {
 
       await usersApi.list();
 
-      const headers = fetchMock.mock.calls[0][1].headers;
+      const headers = fetchMock.mock.calls[0]![1].headers;
       expect(headers['Authorization']).toBe('Bearer admin-token');
     });
   });
