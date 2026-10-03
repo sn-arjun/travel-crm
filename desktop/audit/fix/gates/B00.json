@@ -1,0 +1,42 @@
+{
+  "typecheck": {
+    "status": "pass",
+    "durationMs": 4062,
+    "tail": "tsc: 99 errors - 0 in app src (must be 0), 99 in tests/e2e/other (baseline 99)"
+  },
+  "unit": {
+    "status": "pass",
+    "durationMs": 18358,
+    "tail": "vitest: 1085 passed / 19 failed tests; 10 failing files (baseline 10)"
+  },
+  "lint": {
+    "status": "pass",
+    "durationMs": 37039,
+    "tail": "lint-gate: 1615 errors in 202 files (baseline 1615), 5320 warnings, 36.7s\nlint-gate: PASS"
+  },
+  "build": {
+    "status": "pass",
+    "durationMs": 50103,
+    "tail": "├ ○ /notifications\n├ ○ /onboarding\n├ ○ /payments\n├ ƒ /payments/[id]\n├ ○ /payments/new\n├ ○ /rate-cards\n├ ƒ /rate-cards/[id]/edit\n├ ○ /rate-cards/new\n├ ○ /reports\n├ ○ /reports/customer\n├ ○ /reports/financial\n├ ○ /reports/fleet\n├ ○ /reports/leads\n├ ○ /reports/marketing\n├ ○ /reports/pipeline\n├ ○ /reports/revenue\n├ ○ /reports/sales\n├ ○ /reports/supplier\n├ ○ /reports/team\n├ ○ /reports/visa\n├ ○ /reset-password\n├ ○ /settings\n├ ○ /settings/activity-log\n├ ○ /settings/ai\n├ ○ /settings/ai-usage\n├ ○ /settings/announcements\n├ ○ /settings/assignment-rules\n├ ○ /settings/chatbot\n├ ○ /settings/company\n├ ○ /settings/custom-fields\n├ ○ /settings/email-signature\n├ ○ /settings/export\n├ ○ /settings/followup-sequences\n├ ○ /settings/import\n├ ○ /settings/integrations\n├ ○ /settings/invoice-defaults\n├ ○ /settings/itinerary-defaults\n├ ○ /settings/login-history\n├ ○ /settings/notifications\n├ ○ /settings/numbering\n├ ○ /settings/phone-numbers\n├ ○ /settings/profile\n├ ○ /settings/routing-rules\n├ ○ /settings/sessions\n├ ○ /settings/team\n├ ○ /settings/voip\n├ ○ /setup-account\n├ ○ /super-admin\n├ ○ /super-admin/audit\n├ ○ /super-admin/billing\n├ ○ /super-admin/config\n├ ○ /super-admin/plans\n├ ○ /super-admin/system\n├ ○ /super-admin/tenants\n├ ƒ /super-admin/tenants/[id]\n├ ○ /super-admin/users\n├ ○ /suppliers\n├ ƒ /suppliers/[id]\n├ ƒ /suppliers/[id]/edit\n├ ○ /suppliers/compare\n├ ○ /suppliers/new\n├ ○ /tasks\n├ ƒ /tasks/[id]\n├ ○ /travellers\n├ ƒ /travellers/[id]\n├ ƒ /travellers/[id]/edit\n├ ○ /travellers/new\n├ ○ /visa\n├ ƒ /visa/[id]\n├ ƒ /visa/[id]/edit\n├ ○ /visa/dashboard\n├ ○ /visa/new\n├ ○ /vouchers\n├ ƒ /vouchers/[id]\n├ ƒ /vouchers/[id]/edit\n└ ○ /vouchers/new\n\n\n○  (Static)   prerendered as static content\nƒ  (Dynamic)  server-rendered on demand"
+  },
+  "backendTests": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "not enabled for this batch"
+  },
+  "flutter": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "not enabled for this batch"
+  },
+  "specs": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "not enabled for this batch"
+  },
+  "layoutProbe": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "not enabled for this batch"
+  }
+}

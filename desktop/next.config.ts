@@ -15,19 +15,12 @@ const nextConfig: NextConfig = {
   // Transpile shared package
   transpilePackages: ['@travelcrm/shared'],
 
-  // Webpack config for Electron compatibility
-  webpack: (config, { isServer }) => {
-    if (!isServer) {
-      // Don't bundle Node.js modules for the client
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        fs: false,
-        path: false,
-        os: false,
-      };
-    }
-    return config;
-  },
+  // Production builds use Turbopack (the Next 16 default). The former webpack()
+  // hook only stubbed fs/path/os for the client bundle; no client module imports
+  // them, so no resolveAlias is needed here.
+  // Do not pin `turbopack.root`: the parallel fix worktrees junction node_modules
+  // from the main checkout, and Turbopack rejects symlinks that leave a pinned root.
+  turbopack: {},
 };
 
 export default nextConfig;

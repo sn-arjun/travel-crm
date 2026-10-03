@@ -1,0 +1,18 @@
+{
+  "tscTestErrors": 99,
+  "tscSrcErrors": 0,
+  "vitestFailingFiles": [
+    "src/lib/api/ai.test.ts",
+    "src/lib/api/auth.test.ts",
+    "src/lib/api/chatbot.test.ts",
+    "src/lib/api/client.test.ts",
+    "src/lib/api/credit-notes.test.ts",
+    "src/lib/api/exports.test.ts",
+    "src/lib/api/marketing.test.ts",
+    "src/lib/api/payments.test.ts",
+    "src/lib/api/users.test.ts",
+    "src/lib/api/vouchers.test.ts"
+  ],
+  "backendPassedMin": 901,
+  "e2eBaseline": "audit/fix/e2e-parsed.json"
+}

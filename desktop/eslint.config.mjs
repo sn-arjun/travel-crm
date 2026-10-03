@@ -1,13 +1,6 @@
-import { dirname } from 'path';
-import { fileURLToPath } from 'url';
-import { FlatCompat } from '@eslint/eslintrc';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
+import nextVitals from 'eslint-config-next/core-web-vitals';
+import nextTs from 'eslint-config-next/typescript';
+import prettier from 'eslint-config-prettier/flat';
 
 // ─── Design-system enforcement ──────────────────────────────
 // These fail the build. See desktop/audit/remake/CONTRACT.md for the rules
@@ -20,6 +13,13 @@ const RAW_COLOR_RE = String.raw`(#[0-9a-fA-F]{3,8}\b|\brgba?\s*\()`;
 const RAW_PX_RE = String.raw`\b\d+px\b`;
 
 /**
+ * Raw Tailwind palette classes (bg-gray-100, text-orange-600, from-primary-400 ...).
+ * CONTRACT.md section 3 requires ds-* token classes instead.
+ */
+const RAW_PALETTE_RE =
+  '\\b(?:bg|text|border|from|via|to|ring|fill|stroke|divide|outline|decoration|shadow|accent|caret|placeholder)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|primary)-\\d{2,3}\\b';
+
+/**
  * mailto:, wa.me, tel: — all outbound comms go through the Communication Hub.
  * Forward slashes MUST stay escaped: esquery parses the selector's `/.../` as
  * a regex literal and an unescaped `/` terminates it early.
@@ -27,7 +27,9 @@ const RAW_PX_RE = String.raw`\b\d+px\b`;
 const DIRECT_CHANNEL_RE = String.raw`(mailto:|wa\.me\/|api\.whatsapp\.com\/send|tel:)`;
 
 const eslintConfig = [
-  ...compat.extends('next/core-web-vitals', 'next/typescript', 'prettier'),
+  ...nextVitals,
+  ...nextTs,
+  prettier,
   {
     rules: {
       // Strict TypeScript rules
@@ -51,7 +53,7 @@ const eslintConfig = [
     },
   },
 
-  // ── Rules 1 & 3: no raw hex/rgb()/px, no direct comms links ──
+  // ── Rules 1 & 3: no raw hex/rgb()/px/palette, no direct comms links ──
   // One block: ESLint flat config REPLACES a rule's options rather than
   // merging them, so these selectors must be declared together.
   // Allowed only in design-system/ and globals.css, which define the tokens.
@@ -80,6 +82,16 @@ const eslintConfig = [
           selector: `TemplateElement[value.raw=/${RAW_PX_RE}/]`,
           message:
             'Hardcoded px values are not allowed. Use a spacing token class or import from @/design-system/tokens.',
+        },
+        {
+          selector: `Literal[value=/${RAW_PALETTE_RE}/]`,
+          message:
+            'Raw Tailwind palette classes are not allowed. Use ds-* token classes (CONTRACT.md section 3).',
+        },
+        {
+          selector: `TemplateElement[value.raw=/${RAW_PALETTE_RE}/]`,
+          message:
+            'Raw Tailwind palette classes are not allowed. Use ds-* token classes (CONTRACT.md section 3).',
         },
         {
           selector: `Literal[value=/${DIRECT_CHANNEL_RE}/]`,
@@ -144,8 +156,30 @@ const eslintConfig = [
     },
   },
 
+  // Tests, configs and e2e specs: loose typing is fine, unused vars only warn.
   {
-    ignores: ['electron/**', '.next/**', 'out/**', 'node_modules/**'],
+    files: ['**/*.test.{ts,tsx}', 'e2e/**/*.ts', '**/*.config.{ts,mjs,js}'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': 'warn',
+    },
+  },
+
+  {
+    ignores: [
+      '.next/**',
+      'out/**',
+      'node_modules/**',
+      'electron/**',
+      'playwright-report/**',
+      'test-results/**',
+      'audit/**',
+      'showcase/**',
+      'storybook-static/**',
+      'coverage/**',
+      'scripts/**',
+      'next-env.d.ts',
+    ],
   },
 ];
 
