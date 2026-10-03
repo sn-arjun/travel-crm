@@ -31,6 +31,7 @@
  *   node scripts/remake-pipeline.js --resume           # continue after interruption
  *   node scripts/remake-pipeline.js --retry slice:invoices
  *   node scripts/remake-pipeline.js --status
+ *   node scripts/remake-pipeline.js --mark-ok verify:travellers --note "why"
  *   node scripts/remake-pipeline.js --reset
  */
 
@@ -47,7 +48,8 @@ const DESKTOP = path.join(ROOT, 'desktop');
 const BACKEND = path.join(ROOT, 'backend');
 const REMAKE_DIR = path.join(DESKTOP, 'audit', 'remake');
 const SLICE_DIR = path.join(REMAKE_DIR, 'slices');
-const STATE_FILE = path.join(REMAKE_DIR, 'state.json');
+// REMAKE_STATE_FILE lets --mark-ok / --status be exercised against a scratch copy.
+const STATE_FILE = process.env.REMAKE_STATE_FILE || path.join(REMAKE_DIR, 'state.json');
 const INVENTORY_FILE = path.join(REMAKE_DIR, 'inventory.json');
 const CONTRACT_FILE = path.join(REMAKE_DIR, 'CONTRACT.md');
 const COVERAGE_FILE = path.join(REMAKE_DIR, 'UI-REMAKE-COVERAGE.md');
@@ -141,6 +143,16 @@ const pad = (s, n) => String(s).padEnd(n);
 const head = (text, n) => String(text || '').split('\n').slice(0, n).join('\n');
 const tail = (text, n) => String(text || '').trim().split('\n').slice(-n).join('\n');
 
+// Failure output is diagnosed from its END (the stack trace / the last assertion /
+// the session-expiry message), never its start. Keep the last `lines` lines, then
+// at most the last `chars` characters of those.
+const TAIL_LINES = 60;
+const TAIL_CHARS = 4000;
+const tailText = (text, lines = TAIL_LINES, chars = TAIL_CHARS) => {
+  const t = tail(text, lines);
+  return t.length > chars ? t.slice(-chars) : t;
+};
+
 function banner(lines) {
   const width = 64;
   console.log('\n' + '='.repeat(width));
@@ -167,7 +179,7 @@ function markJob(st, id, status, error = null, extra = {}) {
   st.jobs[id] = {
     status, // ok | failed | skipped | timeout | context-limit | gate-failed | partial
     timestamp: nowIso(),
-    error: error ? String(error).slice(0, 300) : null,
+    error: error ? tailText(error) : null,
     ...extra,
   };
   st.lastCompleted = { id, status, timestamp: nowIso() };
@@ -302,7 +314,9 @@ function buildJobs() {
       model: SONNET,
       cmd: `/remake-verify ${s}`,
       mustChangeFiles: true,
-      gates: [`spec:${s}`],
+      // backendFrozen: verify jobs once made ~29 unapproved backend changes
+      // (migrations 0031-0034 ...) that only the cleanup gate caught. Freeze first.
+      gates: ['backendFrozen', `spec:${s}`],
       requires: [CONTRACT_FILE, sliceManifestPath(s)],
       produces: [sliceSpecPath(s)],
     });
@@ -374,15 +388,16 @@ function runClaude(slashCommand, model, label, phase) {
   // stdout, and a timeout kill leaves status null with both streams empty.
   // `elapsed` is returned so the circuit breaker can distinguish an instant
   // agent-backend failure from a genuine long-running one.
-  const stderrRaw = (res.stderr || '').trim();
-  const stdoutTail = tail(res.stdout || '', 20);
-  const combined = [
-    stderrRaw && `stderr: ${stderrRaw}`,
-    stdoutTail && `stdout(tail): ${stdoutTail}`,
-  ]
-    .filter(Boolean)
-    .join('\n')
-    .slice(0, 1500);
+  const stderrTail = tail(res.stderr || '', 30);
+  const stdoutTail = tail(res.stdout || '', 30);
+  const combined = tailText(
+    [
+      stderrTail && `stderr(tail): ${stderrTail}`,
+      stdoutTail && `stdout(tail): ${stdoutTail}`,
+    ]
+      .filter(Boolean)
+      .join('\n')
+  );
 
   if (res.error) {
     if (res.error.code === 'ETIMEDOUT' || /TIMEOUT/i.test(res.error.message)) {
@@ -403,7 +418,7 @@ function runClaude(slashCommand, model, label, phase) {
       return { ok: false, reason: 'context-limit', error: combined, elapsed };
     }
     console.error(`  EXIT ${res.status} after ${elapsed}s`);
-    console.error(combined ? `  ${combined.split('\n').slice(0, 8).join('\n  ')}` : '  (no output captured)');
+    console.error(combined ? `  ${tail(combined, 8).split('\n').join('\n  ')}` : '  (no output captured)');
     return {
       ok: false,
       reason: 'failed',
@@ -706,9 +721,9 @@ A deterministic gate failed after the \`${job.cmd}\` job. Fix the code so the ga
 
 **Failed gate:** \`${gate}\`
 
-**First ${GATE_FEEDBACK_LINES} lines of output:**
+**Last ${GATE_FEEDBACK_LINES} lines of output (the cause is at the end):**
 \`\`\`
-${head(output, GATE_FEEDBACK_LINES)}
+${tail(output, GATE_FEEDBACK_LINES)}
 \`\`\`
 
 ## Rules
@@ -755,17 +770,41 @@ function ensureBranch() {
 
 let COMMIT_ENABLED = true;
 
+// Artefacts that must never be committed by a job, whatever directory they land in.
+const COMMIT_EXCLUDES = [
+  '**/test-results/**',
+  '**/playwright-report/**',
+  '**/.wrangler*/**',
+  '**/.wrangler*',
+  '**/*.webm',
+  '**/*.zip',
+];
+
+/** Pathspecs a job's commit may stage: its own area, minus test artefacts. */
+function commitPathspecs(job) {
+  const include = ['desktop', 'docs', 'README.md', 'CONTRIBUTING.md'];
+  if (job.phase === 'backend') include.push('backend');
+  return [...include, ...COMMIT_EXCLUDES.map((p) => `:(exclude,glob)${p}`)];
+}
+
 function commitJob(job) {
   if (!COMMIT_ENABLED) {
     console.log('  (--no-commit: skipping commit)');
     return;
   }
-  const status = git(['status', '--porcelain']);
+  const specs = commitPathspecs(job);
+  const status = git(['status', '--porcelain', '--', ...specs]);
   if (!status.ok || !status.output.trim()) {
     console.log('  (no changes to commit)');
     return;
   }
-  git(['add', '-A']);
+  // Scoped stage: only this job's paths, never test artefacts. (`git add <path>`
+  // also stages deletions inside those paths.)
+  git(['add', '--', ...specs]);
+  if (git(['diff', '--cached', '--quiet']).ok) {
+    console.log('  (nothing staged after scoping - skipping commit)');
+    return;
+  }
   const msg = `remake(${job.phase}): ${job.id}\n\nAutomated by scripts/remake-pipeline.js\n\nCo-Authored-By: Claude Opus 5 <noreply@anthropic.com>\n`;
 
   // The message MUST go via stdin, not `-m`. With shell:true on Windows a
@@ -888,7 +927,7 @@ function runJob(job, st) {
   }
 
   if (!gate.ok) {
-    markJob(st, job.id, 'gate-failed', `${gate.gate}: ${head(gate.output, 5)}`, {
+    markJob(st, job.id, 'gate-failed', `${gate.gate}: ${tailText(gate.output)}`, {
       repairAttempts: attempts,
     });
     console.log(`  ${job.id}: gate ${gate.gate} still failing after ${attempts} repairs. Continuing.`);
@@ -1038,6 +1077,8 @@ function usage() {
     --baseline         Re-record the pre-existing typecheck + unit baselines
     --gates            Self-test the gates against the current tree
     --reset            Wipe the checkpoint
+    --mark-ok <id>     Mark one job ok without running it (add --note "why");
+                       REMAKE_STATE_FILE=<path> redirects state to a scratch copy
     --no-branch        Do not create/switch the ${BRANCH} branch
     --no-commit        Do not commit after each job
 `);
@@ -1072,10 +1113,20 @@ function main() {
       for (const g of ['backendFrozen', 'typecheck', 'unit']) {
         const r = runGate(g);
         console.log(`  ${r.ok ? 'PASS' : 'FAIL'}  ${g}`);
-        if (!r.ok) { allOk = false; console.log(head(r.output, 12).split('\n').map((l) => '        ' + l).join('\n')); }
+        if (!r.ok) { allOk = false; console.log(tail(r.output, 12).split('\n').map((l) => '        ' + l).join('\n')); }
       }
       console.log('');
       process.exitCode = allOk ? 0 : 1;
+      return;
+    }
+    if (a === '--mark-ok') {
+      const id = args[i + 1];
+      if (!id || id.startsWith('--')) { console.error('  --mark-ok needs a job id, e.g. --mark-ok verify:travellers'); process.exit(1); }
+      if (!buildJobs().some((j) => j.id === id)) { console.error(`  Unknown job: ${id}`); process.exit(1); }
+      const ni = args.indexOf('--note');
+      const note = ni !== -1 && args[ni + 1] && !args[ni + 1].startsWith('--') ? args[ni + 1] : 'marked ok manually';
+      markJob(st, id, 'ok', null, { note, manual: true });
+      console.log(`  ${id} marked ok (${note}) in ${path.relative(ROOT, STATE_FILE)}`);
       return;
     }
     if (a === '--reset') {

@@ -118,3 +118,7 @@ desktop.ini
 coverage/
 *.lcov
 .log
+
+# Playwright artefacts (repo-wide; desktop/.gitignore only covers desktop/)
+**/test-results/
+**/playwright-report/
