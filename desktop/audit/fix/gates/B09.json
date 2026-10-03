@@ -1,0 +1,42 @@
+{
+  "typecheck": {
+    "status": "pass",
+    "durationMs": 7174,
+    "tail": "tsc: 0 errors - 0 in app src (must be 0), 0 in tests/e2e/other (baseline 0)"
+  },
+  "unit": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "not enabled for this batch"
+  },
+  "lint": {
+    "status": "pass",
+    "durationMs": 49208,
+    "tail": "lint-gate: 1527 errors in 171 files (baseline 1615), 5327 warnings, 48.8s\nImproved (33):\n  + src/components/domain/data-table.tsx: 10 -> 6\n  + src/lib/api/client.ts: 2 -> 1\n  + src/app/(app)/super-admin/layout.tsx: 3 -> 0\n  + src/app/(auth)/layout.tsx: 1 -> 0\n  + src/components/domain/file-upload.tsx: 5 -> 0\n  + src/components/electron/title-bar.tsx: 3 -> 0\n  + src/components/layout/app-shell.tsx: 1 -> 0\n  + src/components/layout/connection-status.tsx: 3 -> 0\n  + src/components/layout/sidebar.tsx: 13 -> 0\n  + src/components/layout/top-navbar.tsx: 9 -> 0\n  + src/components/ui/accordion.tsx: 1 -> 0\n  + src/components/ui/address-autocomplete.tsx: 9 -> 0\n  + src/components/ui/badge.tsx: 1 -> 0\n  + src/components/ui/button.tsx: 1 -> 0\n  + src/components/ui/chart.tsx: 3 -> 0\n  + src/components/ui/checkbox.tsx: 1 -> 0\n  + src/components/ui/command.tsx: 1 -> 0\n  + src/components/ui/countdown-badge.tsx: 6 -> 0\n  + src/components/ui/date-picker.tsx: 3 -> 0\n  + src/components/ui/input.tsx: 1 -> 0\n  + src/components/ui/kbd.tsx: 1 -> 0\n  + src/components/ui/pagination.tsx: 1 -> 0\n  + src/components/ui/phone-input.tsx: 2 -> 0\n  + src/components/ui/rich-text-editor.tsx: 1 -> 0\n  + src/components/ui/scroll-area.tsx: 1 -> 0\n  + src/components/ui/select.tsx: 1 -> 0\n  + src/components/ui/spinner.tsx: 1 -> 0\n  + src/components/ui/switch.tsx: 2 -> 0\n  + src/components/ui/table.tsx: 2 -> 0\n  + src/components/ui/tabs.tsx: 3 -> 0\n  + src/components/ui/tag.tsx: 1 -> 0\n  + src/components/ui/textarea.tsx: 1 -> 0\n  + src/components/ui/tooltip.tsx: 1 -> 0\nlint-gate: PASS"
+  },
+  "build": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "not enabled for this batch"
+  },
+  "backendTests": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "not enabled for this batch"
+  },
+  "flutter": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "not enabled for this batch"
+  },
+  "specs": {
+    "status": "fail",
+    "durationMs": 159776,
+    "tail": "playwright: 62 passed, 2 failed, 0 flaky, 0 skipped; 0 failure(s) tolerated\nUNEXPECTED failures:\n  - rate-cards.spec.ts:71  full round trip: create via form, list, drawer, edit prefill, edit, delete\n  - rate-cards.spec.ts:265  valid-to date cannot precede valid-from; currency input rejects letters\n[39/64] [chromium] › e2e\\suppliers.spec.ts:268:7 › Suppliers: form components › edit form pre-fills seeded values with no \"undefined\"\n[40/64] [chromium] › e2e\\suppliers.spec.ts:301:7 › Suppliers: list page › header, Add Supplier, columns, search placeholder, no undefined/NaN\n[41/64] [chromium] › e2e\\suppliers.spec.ts:323:7 › Suppliers: list page › search narrows results to the matching supplier only\n[42/64] [chromium] › e2e\\suppliers.spec.ts:335:7 › Suppliers: list page › category, status and preferred filters actually narrow the list\n[43/64] [chromium] › e2e\\suppliers.spec.ts:385:7 › Suppliers: list page › empty state renders when filters match nothing\n[44/64] [chromium] › e2e\\suppliers.spec.ts:392:7 › Suppliers: list page › hover actions: View, Edit, Delete (and Call) appear and navigate\n[45/64] [chromium] › e2e\\suppliers.spec.ts:415:7 › Suppliers: list page › delete via row action removes the supplier\n[46/64] [chromium] › e2e\\suppliers.spec.ts:431:7 › Suppliers: list page › bulk select + Delete removes several suppliers\n[47/64] [chromium] › e2e\\suppliers.spec.ts:445:7 › Suppliers: list page › infinite scroll loads more rows when scrolled\n[48/64] [chromium] › e2e\\suppliers.spec.ts:461:7 › Suppliers: list page › export downloads a non-empty CSV containing the data\n[49/64] [chromium] › e2e\\suppliers.spec.ts:483:7 › Suppliers: list page › skeleton/loading resolves into rows or empty state\n[50/64] [chromium] › e2e\\suppliers.spec.ts:495:7 › Suppliers: detail page › stats, tabs and overview sections render without undefined\n[51/64] [chromium] › e2e\\suppliers.spec.ts:519:7 › Suppliers: detail page › Prefer / Unprefer toggles and persists\n[52/64] [chromium] › e2e\\suppliers.spec.ts:536:7 › Suppliers: detail page › record a payment → appears in Payments list and updates totals\n[53/64] [chromium] › e2e\\suppliers.spec.ts:573:7 › Suppliers: detail page › Related tab: rate cards, payments and ledger sections with Add Rate Card link\n[54/64] [chromium] › e2e\\suppliers.spec.ts:600:7 › Suppliers: detail page › Documents tab shows an upload dropzone and empty state\n[55/64] [chromium] › e2e\\suppliers.spec.ts:621:7 › Suppliers: detail page › missing supplier shows a friendly error with a way back\n[56/64] [chromium] › e2e\\suppliers.spec.ts:640:7 › Suppliers: communication › detail \"Send message\" opens SendMessageDialog; no mailto/wa.me/tel links\n[57/64] [chromium] › e2e\\suppliers.spec.ts:659:7 › Suppliers: communication › list drawer \"Email\" opens SendMessageDialog; Call routes through the dialer\n[58/64] [chromium] › e2e\\suppliers.spec.ts:685:7 › Suppliers: rate comparison › form fields, season options and enable/disable of Compare Rates\n[59/64] [chromium] › e2e\\suppliers.spec.ts:710:7 › Suppliers: rate comparison › no matching rates shows the \"No rates found\" empty state\n[60/64] [chromium] › e2e\\suppliers.spec.ts:722:7 › Suppliers: rate comparison › compares seeded rate cards, ranks cheapest first and navigates to the supplier\n[61/64] [chromium] › e2e\\suppliers.spec.ts:768:7 › Suppliers: navigation and API › sidebar Suppliers and Rate Comparison links navigate\n[62/64] [chromium] › e2e\\suppliers.spec.ts:785:7 › Suppliers: navigation and API › API returns the expected supplier schema\n[63/64] [chromium] › e2e\\token-refresh.spec.ts:47:7 › Token refresh - single flight › an expired access token is refreshed exactly once and the session survives a reload\n[64/64] [chromium] › e2e\\token-refresh.spec.ts:69:7 › Token refresh - single flight › two windows loading in parallel with an expired token share one refresh and neither is logged out\n  2 failed\n    [chromium] › e2e\\rate-cards.spec.ts:71:7 › Rate Cards › full round trip: create via form, list, drawer, edit prefill, edit, delete \n    [chromium] › e2e\\rate-cards.spec.ts:265:7 › Rate Cards › valid-to date cannot precede valid-from; currency input rejects letters \n  62 passed (2.6m)"
+  },
+  "layoutProbe": {
+    "status": "skipped",
+    "durationMs": 0,
+    "tail": "not enabled for this batch"
+  }
+}

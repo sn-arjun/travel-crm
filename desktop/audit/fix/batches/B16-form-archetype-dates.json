@@ -31,7 +31,8 @@
     "Combobox: width w-(--radix-popover-trigger-width); CommandItem value={option.label} keywords={[option.value]} and onSelect maps the label back to the option; cache the selected option (state) so its label stays when onSearch replaces options.",
     "RelationCombobox: keep fetcher in a ref (load stable, effect depends on [open, debouncedQuery]); cache the selected item; error id from React.useId() (and aria-errormessage uses it). Then run calls.spec.ts and documents.spec.ts: if the seeded name still never appears, inspect the page fetchers (communication/calls dial contact search; documents lead/itinerary pickers) and pass the typed query as `search` to the API (edit only the fetcher lines in those files).",
     "BUG-015 explicit pages: leads/new, leads/[id]/edit, invoices/new, invoices/[id]/edit, fleet/drivers/new, fleet/drivers/[id]/edit, calendar, fleet/page - verify after the codemod that picking the 15th sends the 15th (runtime or unit test of the payload builder).",
-    "BUG-077: fleet/drivers/new and [id]/edit schemas make licence number and expiry optional (match backend validator). invoices/new: line item unit price must be > 0 in the client schema (\"Unit price must be greater than 0\")."
+    "BUG-077: fleet/drivers/new and [id]/edit schemas make licence number and expiry optional (match backend validator). invoices/new: line item unit price must be > 0 in the client schema (\"Unit price must be greater than 0\").",
+    "From B09 merge: e2e/rate-cards.spec.ts pickDate() (lines ~30-42) locates the calendar popover via the CSS class .w-[280px] and the next-month button by DOM position; B06 changed the popover width class so rate-cards.spec.ts:71 and :265 time out. Give the DatePicker stable accessible hooks (role=dialog with aria-label, labelled month/year selects, named prev/next buttons, day buttons with full date aria-label) and add a shared e2e helper (e2e/helpers/date-picker.ts) that picks a date via those hooks; switch every spec that drives the calendar (grep -l \"w-[280px]|nextMonth|pickDate\" e2e) to it. rate-cards.spec.ts must fully pass."
   ],
   "filesAllowlist": [
     "desktop/src/lib/dates.ts",
@@ -49,7 +50,8 @@
     "desktop/eslint.config.mjs",
     "desktop/audit/fix/lint-baseline.json",
     "desktop/e2e/helpers/date-picker.ts",
-    "desktop/e2e/{fleet-drivers,fleet-rate-cards,fleet-trips,leads,rate-cards,whatsapp-campaigns}.spec.ts"
+    "desktop/e2e/{fleet-drivers,fleet-rate-cards,fleet-trips,leads,rate-cards,whatsapp-campaigns}.spec.ts",
+    "desktop/e2e/*.spec.ts (date-picker call sites only)"
   ],
   "mustNotTouch": [
     "backend/**",
