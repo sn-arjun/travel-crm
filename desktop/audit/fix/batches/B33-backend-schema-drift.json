@@ -1,0 +1,38 @@
+{
+  "id": "B33",
+  "title": "Backend: schema-drift guard + migration 0038, global HTTPException handling, flaky deactivate test",
+  "lane": "backend",
+  "backend": true,
+  "wave": "W4",
+  "dependsOn": ["B32"],
+  "parallelGroup": "W4",
+  "bugIds": [],
+  "fixReqs": [],
+  "estFiles": 12,
+  "goal": "Stop the recurring class of bug where the Drizzle schema (backend/src/db/tenant-schema.ts) declares columns that the migration chain never creates (seen for flyers, travellers, suppliers, message_templates, visa_checklist_items). Add a guard test, fix every remaining drift with one migration, make the global error handler respect HTTPException status codes, and de-flake auth-e2e 'should deactivate user'.",
+  "context": "Added by the orchestrator 2026-10-04 from the B32 hand-off. Baseline: vitest 36 files / 1050 passed, tsc 0. B32 worked around missing message_templates columns (is_system, whatsapp_template_sid, whatsapp_status, created_by) with raw SQL in routes/templates.ts and routes/communications.ts, and removed created_at from the visa_checklist_items insert in routes/visa.ts. backend/src/index.ts:293 app.onError converts EVERY error (including Hono HTTPException 4xx such as malformed JSON -> 400) into 500; B32 patched only the auth router with its own onError. Flake: in 1 of 3 full-suite runs test/auth-e2e.test.ts 'TICKET-027 User CRUD > should deactivate user' (line ~660) got 400 instead of 200; it passes when the file runs alone - suspect order/shared-state (e.g. the created user being the caller, a role/state set by an earlier test, or rate-limit/login-attempt state).",
+  "steps": [
+    "Schema-drift guard: add backend/test/schema-drift.test.ts that, after the migration chain is applied in the vitest pool DB, reads PRAGMA table_info for every table declared in tenant-schema.ts (iterate the exported sqliteTable objects via drizzle's getTableConfig) and asserts every declared column exists. Run it, collect ALL missing columns.",
+    "Migration 0038 (next free number): add every missing column found (with sensible defaults; INTEGER booleans default 0, TEXT nullable unless the schema says notNull with default). Include message_templates.{is_system,whatsapp_template_sid,whatsapp_status,created_by} and visa_checklist_items.created_at. If a schema-declared column is genuinely obsolete (no route reads/writes it), remove it from tenant-schema.ts instead and note it. The guard test must pass.",
+    "Revert B32's raw-SQL workarounds in routes/templates.ts and routes/communications.ts back to normal column usage where that is now simpler/safer (keep explicit column lists if they are fine), and restore created_at on the visa checklist insert if the column now exists. Keep behaviour/response shapes identical.",
+    "Global error handling: in backend/src/index.ts app.onError, if err is an HTTPException return its status with the standard error envelope (message from the exception; never leak stack); keep 500 only for unknown errors. Remove the now-redundant auth-router onError if equivalent. Add tests: malformed JSON on two non-auth routes -> 400 with the envelope.",
+    "De-flake 'should deactivate user': find the root cause (run the full suite several times; inspect what the 400 body says by logging it in the assertion message) and fix the test or the route so it is deterministic. Do not just retry.",
+    "Prove: migrations 0000-0038 apply on an empty DB; full suite green 3 consecutive runs."
+  ],
+  "filesAllowlist": [
+    "backend/drizzle/tenant/0038_*.sql",
+    "backend/src/db/tenant-schema.ts",
+    "backend/src/index.ts",
+    "backend/src/routes/**",
+    "backend/test/**"
+  ],
+  "mustNotTouch": ["backend/.dev.vars", "desktop/**", "packages/**", "backend/drizzle/tenant/00[0-3]*"],
+  "acceptance": [
+    "schema-drift.test.ts passes and would fail if a declared column were missing.",
+    "Malformed JSON -> 400 envelope on non-auth routes; unknown errors still 500.",
+    "auth-e2e 'should deactivate user' root-caused and deterministic.",
+    "`cd backend && npx vitest run` 0 failed files 3 runs in a row, passed >= 1050; `npx tsc --noEmit` 0 errors; empty-DB migration apply 0000-0038 ok."
+  ],
+  "gates": {"typecheck": false, "unit": false, "lint": false, "build": false, "backendTests": true, "flutter": false, "specs": []},
+  "notes": "Response shapes must stay additive for the Flutter apps (grep packages/shared/lib, packages/crm_app/lib, packages/driver_app/lib)."
+}
