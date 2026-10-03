@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Desktop design-system indigo (--ds-primary #4F46E5) -->
+    <!-- Desktop design-system indigo (ds-primary #4F46E5) -->
     <color name="launch_background">#4F46E5</color>
     <color name="launch_icon">#FFFFFF</color>
 </resources>

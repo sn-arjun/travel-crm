@@ -172,12 +172,19 @@ class TripDetailNotifier extends StateNotifier<TripDetailState> {
     state = state.copyWith(isLoading: true);
     try {
       final response = await _repo.getTripDetail(_tripId);
+      // A reload ends any action in flight: the new status decides which
+      // action the driver sees next, and it must not inherit a spinner.
       state = state.copyWith(
         isLoading: false,
+        isActionLoading: false,
         trip: response['data'],
       );
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: extractApiError(e));
+      state = state.copyWith(
+        isLoading: false,
+        isActionLoading: false,
+        error: extractApiError(e),
+      );
     }
   }
 
