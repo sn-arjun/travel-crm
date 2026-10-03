@@ -1,0 +1,87 @@
+{
+  "id": "B06",
+  "title": "One palette: map legacy shadcn colours onto ds tokens, define missing vars, fix dialog/tooltip/empty-state primitives",
+  "lane": "desktop",
+  "backend": false,
+  "wave": "W2",
+  "dependsOn": [
+    "B00"
+  ],
+  "parallelGroup": "W2",
+  "bugIds": [
+    "BUG-023",
+    "BUG-024",
+    "BUG-044",
+    "BUG-078"
+  ],
+  "fixReqs": [],
+  "estFiles": 25,
+  "goal": "Every primitive renders in the indigo ds palette with matching dark mode; no referenced CSS variable is undefined; dialogs never exceed the viewport; tooltips sit above popovers.",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. desktop/src/app/globals.css: ds semantic tokens are defined at :root (line ~202, --ds-primary #4F46E5) and .dark (~261, #818CF8) and exposed as Tailwind colors via the first `@theme inline` block. The legacy shadcn layer (second `@theme inline` at ~114-170) maps --color-primary etc. to hsl(var(--primary)) whose triplets (:root ~320-368, .dark ~371-412) are ORANGE (14 100% 61%) on a warm brown-black dark palette -> every ui/* primitive (Button, Badge, Tabs, sidebar active state...) is orange, white-on-orange is 2.64:1, and dark mode mixes warm surfaces with navy ds headers (BUG-050 global part). No TSX uses hsl(var(--x)) directly (planner grep: 0). Undefined variables used 48 times: --color-text-primary(8) --color-text-secondary(2) --color-text-muted(19) --color-bg-muted(10) --color-bg-card(2) --color-bg-sidebar(1) --color-border-default(4) --radius-button(1) --sidebar-collapsed(1) --z-popover(1), in: components/domain/{data-table,file-upload,filter-bar,kanban-board}.tsx, components/electron/title-bar.tsx, components/layout/{page-header,sidebar}.tsx, components/ui/{empty-state,form-field,tooltip}.tsx -> e.g. EmptyState text invisible in dark on /super-admin. ui/dialog.tsx:64 DialogContent has no max-h/overflow and uses z-50; ui/tooltip.tsx:20 uses z-[var(--z-popover)], bg-gray-900. src/app/(auth)/layout.tsx:8 references /grid.svg but desktop/ has no public/ dir (404). ds z-index vars: --ds-z-{base,sticky,dropdown,overlay,modal,popover,toast,command,tooltip}.",
+  "steps": [
+    "Legacy `@theme inline` block: repoint each colour to ds vars (no hsl()): background->--ds-background, foreground->--ds-foreground, card->--ds-surface, card-foreground->--ds-foreground, popover->--ds-surface-raised, popover-foreground->--ds-foreground, primary->--ds-primary, primary-foreground->--ds-primary-foreground, secondary->--ds-surface-sunken, secondary-foreground->--ds-foreground, muted->--ds-surface-sunken, muted-foreground->--ds-foreground-muted, accent->--ds-surface-sunken, accent-foreground->--ds-foreground, destructive->--ds-danger (add --color-destructive-foreground->--ds-danger-foreground), border->--ds-border, input->--ds-border, ring->--ds-ring, sidebar->--ds-surface, sidebar-foreground->--ds-foreground, sidebar-primary->--ds-primary, sidebar-primary-foreground->--ds-primary-foreground, sidebar-accent->--ds-surface-sunken, sidebar-accent-foreground->--ds-foreground, sidebar-border->--ds-border, sidebar-ring->--ds-ring, chart-1..5->--ds-chart-1..5. Keep radius and font entries.",
+    "Delete the orange HSL triplet blocks in :root/.dark (keep --radius and color-scheme) after `grep -rn \"var(--\\(background\\|foreground\\|primary\\|muted\\|border\\|card\\|accent\\|ring\\|sidebar\\|chart-\\)\" src` shows only globals.css; rewrite base styles (`* { border-color }`, body background/color, scrollbar thumb, tiptap placeholder) with ds vars.",
+    "Define the missing variables once in :root as aliases (they inherit dark values automatically): --color-text-primary: var(--ds-foreground); --color-text-secondary/--color-text-muted: var(--ds-foreground-muted); (grep for any other --color-text-* name); --color-bg-muted: var(--ds-surface-sunken); --color-bg-card and --color-bg-sidebar: var(--ds-surface); --color-border-default: var(--ds-border); --radius-button: var(--ds-radius-md) (check the actual ds radius var name); --sidebar-collapsed: 4rem; --z-popover: var(--ds-z-popover). Then replace the var() usages with ds token classes in the files you own (domain/{data-table,file-upload,filter-bar,kanban-board}.tsx, electron/title-bar.tsx, layout/page-header.tsx, ui/{empty-state,form-field,tooltip}.tsx) - sidebar.tsx is B07's (the alias covers it).",
+    "ui/dialog.tsx: overlay z-(--ds-z-overlay); content z-(--ds-z-modal) + `max-h-[calc(100dvh-2rem)] overflow-y-auto` (rem, not px) + ds tokens (bg-ds-surface-raised, border-ds-border, rounded-ds-lg, shadow-ds-4 - verify names). Apply the same max-height to ui/sheet.tsx content if it can overflow and to ui/confirm-dialog.tsx if it does not use DialogContent.",
+    "ui/tooltip.tsx: z-(--ds-z-tooltip), rounded-ds-md, bg-ds-foreground text-ds-background, shadow-ds-2; no gray-900/gray-50.",
+    "ui/empty-state.tsx: ds tokens only; readable in dark (fixes the invisible super-admin panel together with the aliases).",
+    "Sweep every other file in src/components/ui/** EXCEPT command-palette.tsx (B07) and data-table.tsx structure (only token/class replacements allowed there; B14 restructures it): remove raw palette classes, hex, px literals and legacy-only classes so `node scripts/lint-gate.mjs --zero \"src/components/ui/**\"` passes except for data-table.tsx and command-palette.tsx.",
+    "BUG-078: add `.bg-grid-pattern` to globals.css using an inline SVG data URI (globals.css may contain raw values) drawn with a low-alpha ds-border colour, and use it in src/app/(auth)/layout.tsx instead of bg-[url('/grid.svg')].",
+    "Run the existing design-system contrast tests (vitest under src/design-system) - must pass. Probe light+dark."
+  ],
+  "filesAllowlist": [
+    "desktop/src/app/globals.css",
+    "desktop/src/app/(auth)/layout.tsx",
+    "desktop/src/components/ui/** (not command-palette.tsx)",
+    "desktop/src/components/domain/{data-table,file-upload,filter-bar,kanban-board}.tsx (var/class replacements only)",
+    "desktop/src/components/electron/title-bar.tsx",
+    "desktop/src/components/layout/page-header.tsx"
+  ],
+  "mustNotTouch": [
+    "desktop/src/components/ui/command-palette.tsx",
+    "desktop/src/components/layout/{app-shell,sidebar,top-navbar}.tsx",
+    "desktop/src/components/domain/{list-page,entity-form,detail-page}.tsx",
+    "desktop/src/app/(app)/**",
+    "desktop/e2e/**",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "Computed background of a default <Button> equals the computed value of --ds-primary in light and dark (check in the probe or devtools).",
+    "grep for var(--color-text-|--color-bg-|--color-border-default|--radius-button|--sidebar-collapsed|--z-popover) in src finds only definitions in globals.css or usages that now resolve.",
+    "/super-admin no-access panel readable in dark mode (contrast >= 4.5:1).",
+    "A dialog with tall content at 1366x768 scrolls internally; its footer buttons are reachable.",
+    "No request for /grid.svg on /login.",
+    "lint-gate --zero passes for src/components/ui/** except data-table.tsx and command-palette.tsx."
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "lintZero": [
+      "src/components/ui/**/*.tsx",
+      "!src/components/ui/data-table.tsx",
+      "!src/components/ui/command-palette.tsx"
+    ],
+    "build": true,
+    "backendTests": false,
+    "flutter": false,
+    "specs": [
+      "desktop/e2e/dashboard.spec.ts",
+      "desktop/e2e/follow-ups.spec.ts"
+    ],
+    "layoutProbe": [
+      "/login",
+      "/dashboard",
+      "/contacts",
+      "/super-admin",
+      "/settings/ai",
+      "/fleet",
+      "/follow-ups"
+    ]
+  },
+  "notes": "Visual change is global and intended: orange disappears. Do not touch page files; page-level palette cleanup belongs to W6 batches."
+}

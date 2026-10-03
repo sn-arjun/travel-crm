@@ -1,0 +1,107 @@
+{
+  "id": "B21",
+  "title": "Itineraries + templates + sharing: builder fixes, rate-card picker, New template, Communication Hub sharing with filled placeholders",
+  "lane": "desktop",
+  "backend": false,
+  "wave": "W6",
+  "dependsOn": [
+    "B16",
+    "B17"
+  ],
+  "parallelGroup": "W6",
+  "bugIds": [
+    "BUG-033",
+    "BUG-034",
+    "BUG-059",
+    "BUG-060"
+  ],
+  "fixReqs": [
+    "FR-5",
+    "FR-6",
+    "FR-10"
+  ],
+  "estFiles": 10,
+  "goal": "The itinerary builder and detail look and behave correctly at 1366, rate cards apply real values, templates can be created, and sharing goes through SendMessageDialog with no [placeholder] text.",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. Verified: itineraries/new/page.tsx (1105 lines) shows phantom versions V1/V2/V3 and a borderless title placeholder in the header (BUG-059); Valid Until is a native date input (BUG-058); lead picker is a plain Combobox (BUG-057); rate-card picker dialog (1033-1100) reads rc.serviceName/rc.service_name/rc.rate and shows \"N/A\" / \"INR 0\" - read the RateCard type in src/lib/api/rate-cards.ts and the GET /rate-cards response to use the real fields (name/service, category, supplier, cost and selling price) (FR-6); apply handler at ~462-466. itineraries/[id]/page.tsx:265-266 renders destination `[\"Thailand\"]` (JSON array string), the Tabs list stretches full width, 7 header buttons overflow at 1366 (Delete off-screen, main scrollWidth 1180 > 1126). itineraries/templates/page.tsx has only Export (BUG-034 / FR-10) and en-US dates \"3/10/2026\" (BUG-053 part); storyboard risk: template preview \"Days planned\" is 0 if templateData is a JSON string. share-panel.tsx:52,62 uses mailto:/wa.me (BUG-060). send-message-dialog.tsx:89-102 replaces {{destination}}, {{travel_date}}, {{return_date}}, {{pax_count}}, {{amount}} with \"[Destination]\" etc. and company/agent with constants \"TravelCRM\"/\"Your Travel Agent\" (FR-5: the \"Quotation Email\" template must produce a body with no [Destination]/[Amount]). The itinerary-templates API client: find it (grep itinerary-templates in src/lib/api) - if it lives in itineraries.ts you own it; src/lib/api/templates.ts is MESSAGE templates (B26 owns it - read-only here). W6 RULES: you run in parallel with 11 other page batches in separate worktrees - touch ONLY your allowlist; never edit lint-baseline.json (the orchestrator ratchets it after merge); shared-file needs go to desktop/audit/fix/requests/<BATCH_ID>.md.",
+  "steps": [
+    "Builder (itineraries/new and [id]/edit): versions UI only for persisted itineraries with versions from the API; a visible labelled Title field (required); Lead -> RelationCombobox (resolveSelected on edit); Valid Until -> DatePicker; cost/sell -> CurrencyInput; remove the page-level scroll wrapper.",
+    "FR-6 rate-card picker: rows show real service name, category, supplier, cost and selling price formatted INR; search box filters; applying sets activity name, cost and sellingPrice and toasts \"Rate card applied\".",
+    "Detail: destination array/JSON string -> human list (\"Thailand\", \"Goa, Kerala\"); Tabs list w-fit (inline); header: 2-3 primary buttons + \"More\" DropdownMenu for the rest so nothing overflows at 1366; long owner names truncate.",
+    "Templates page: \"New template\" primary action (FR-10/BUG-034) opening a create dialog or /itineraries/templates/new (name, destination, duration nights/days, description, day outline) via the itinerary-templates create endpoint; dates via formatDisplayDate; parse templateData JSON strings so \"Days planned\" is correct.",
+    "share-panel.tsx: remove mailto:/wa.me; Email / WhatsApp buttons open SendMessageDialog for the itinerary's contact with the share link in the body and the variables below.",
+    "FR-5 send-message-dialog.tsx: add prop `variables?: Partial<Record<'customer_name' | 'first_name' | 'company_name' | 'agent_name' | 'destination' | 'travel_date' | 'return_date' | 'pax_count' | 'amount', string>>`; substitute provided values; company_name from the tenant/company name in the auth store (or settings API if needed), agent_name from the current user; unresolved placeholders stay as {{name}}, are highlighted in the preview, and a warning shows \"N placeholders need values\" (never \"[Destination]\" text). Itinerary detail and share panel pass destination, travel/return dates (en-IN), pax and total selling amount (formatCurrency INR). Keep the existing props backwards compatible for other callers.",
+    "CONTRACT SWEEP on every non-spec file in your allowlist (do this while fixing the bugs above, file by file): (a) `node scripts/lint-gate.mjs --zero <your allowlist globs>` must report 0 errors in your files: replace `any` with real types imported from desktop/src/lib/api/*, delete unused vars/imports, remove raw hex/rgb/px literals and raw Tailwind palette classes. Token map: gray/slate text -> text-ds-foreground / text-ds-foreground-muted / text-ds-foreground-subtle; gray backgrounds -> bg-ds-surface / bg-ds-surface-sunken / bg-ds-surface-raised; borders -> border-ds-border / border-ds-border-strong; green/emerald -> ds-success (+ -subtle bg, -on-subtle text); red/rose -> ds-danger; amber/yellow/orange -> ds-warning; blue/sky/cyan -> ds-info; indigo/violet/purple/orange-as-brand/primary-NNN -> ds-primary; chart colours -> ds-chart-1..6 or useThemeTokens(); arbitrary px (text-[13px], w-[240px], h-[600px]) -> Tailwind scale (text-sm, w-60) or ds spacing (p-ds-4, gap-ds-2).",
+    "LAYOUT: every page root uses an archetype (ListPage / EntityForm / DetailPage) or `<PageContainer>` from @/components/layout/page-container with a PageHeader (title + description + actions). Remove ad-hoc root padding (p-6, px-8, container mx-auto) and any page-level scroll wrapper (`h-full overflow-auto`, `flex-1 overflow-y-auto`) - <main> is the only page scroller; tables scroll inside DataTable's data-scroll-region (BUG-048 contribution).",
+    "FIELDS: native `<input type=\"date\">` -> DatePicker (+ toLocalDateString / parseLocalDate from @/lib/dates); money `type=\"number\"` inputs -> CurrencyInput; any id/relation text input -> RelationCombobox (with resolveSelected for edit forms); phone -> PhoneInput; `window.confirm` / bare `confirm(` -> `useConfirm()` from @/components/ui; `toLocaleDateString()` / `toLocaleString()` without a locale -> formatDisplayDate from @/lib/dates (en-IN); no mailto:/wa.me/tel: (SendMessageDialog). Icon-only buttons get an aria-label. Never two elements with the same id on one page.",
+    "PROBE: with your stack slot up, run `node scripts/layout-probe.mjs --routes /itineraries,/itineraries/new,/itineraries/<itineraryId>,/itineraries/<itineraryId>/edit,/itineraries/templates --viewports 1366x768,1920x1080 --themes light,dark --out audit/fix/probe/<BATCH_ID>` (replace <id> placeholders with real seeded ids from the API) and fix every failure (gutter, horizontal overflow, nested scroller, console/page error, blank top-bar title). Attach probe.json summary to your report.",
+    "SPECS: run the specs listed in gates.specs; fix app regressions. If a spec asserts behaviour this batch intentionally changed, update that spec (spec files in your allowlist only). Pre-existing failures that belong to another batch: list them in your report, do not chase them.",
+    "If you need a change in a shared file you may not touch (ui primitives, archetypes, client, globals, helpers), do NOT edit it: write the request to desktop/audit/fix/requests/<BATCH_ID>.md (file per batch, so parallel merges never conflict) and work around locally where possible. B30 consumes these requests."
+  ],
+  "filesAllowlist": [
+    "desktop/src/app/(app)/itineraries/**",
+    "desktop/src/components/domain/share-panel.tsx",
+    "desktop/src/components/communication/send-message-dialog.tsx",
+    "desktop/src/lib/api/itineraries.ts",
+    "desktop/src/lib/api/itinerary-templates.ts (if it exists)",
+    "desktop/e2e/{itineraries,itinerary-templates}.spec.ts (behaviour changed here only)",
+    "desktop/audit/fix/requests/B21.md"
+  ],
+  "mustNotTouch": [
+    "desktop/src/components/ui/**",
+    "desktop/src/components/layout/**",
+    "desktop/src/components/domain/{list-page,entity-form,detail-page,relation-combobox,filter-bar,index,keyboard-shortcuts-provider,activity-timeline}.tsx",
+    "desktop/src/lib/api/{client,envelope,config,index}.ts",
+    "desktop/src/lib/dates.ts",
+    "desktop/src/app/globals.css",
+    "desktop/eslint.config.mjs",
+    "desktop/audit/fix/lint-baseline.json",
+    "desktop/e2e/fixtures.ts",
+    "desktop/e2e/helpers/**",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright*.config.ts",
+    "backend/**",
+    "packages/**",
+    "any file owned by another W6 batch (see FIX-PLAN.md section 6 ownership table)",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "/itineraries/new shows no versions and a labelled title field.",
+    "Rate-card picker rows show non-zero cost and real names (FR-6).",
+    "Itinerary detail at 1366: no horizontal overflow; destination plain text; tabs not stretched.",
+    "/itineraries/templates has \"New template\" and creating one lists it (FR-10).",
+    "Choosing \"Quotation Email\" from an itinerary yields no [Destination]/[Amount] (FR-5).",
+    "grep mailto:/wa.me in src -> 0 in these files.",
+    "Probe + specs green."
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "lintZero": [
+      "src/app/(app)/itineraries/**",
+      "src/components/domain/share-panel.tsx",
+      "src/components/communication/send-message-dialog.tsx",
+      "src/lib/api/itineraries.ts"
+    ],
+    "build": true,
+    "backendTests": false,
+    "flutter": false,
+    "specs": [
+      "desktop/e2e/itineraries.spec.ts",
+      "desktop/e2e/itinerary-templates.spec.ts"
+    ],
+    "allowedSpecFailures": [],
+    "layoutProbe": [
+      "/itineraries",
+      "/itineraries/new",
+      "/itineraries/<itineraryId>",
+      "/itineraries/<itineraryId>/edit",
+      "/itineraries/templates"
+    ]
+  },
+  "notes": "send-message-dialog is used app-wide: change it additively and run a quick smoke on another caller (e.g. contact detail) via the probe."
+}

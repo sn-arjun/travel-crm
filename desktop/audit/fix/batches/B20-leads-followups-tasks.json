@@ -1,0 +1,108 @@
+{
+  "id": "B20",
+  "title": "Leads, follow-ups, tasks: copy, required-field hints, header layout, unassigned option, Book transfer",
+  "lane": "desktop",
+  "backend": false,
+  "wave": "W6",
+  "dependsOn": [
+    "B16",
+    "B17",
+    "B12"
+  ],
+  "parallelGroup": "W6",
+  "bugIds": [
+    "BUG-043",
+    "BUG-056",
+    "BUG-076"
+  ],
+  "fixReqs": [
+    "FR-7"
+  ],
+  "estFiles": 14,
+  "goal": "Lead detail reads naturally, scheduling a follow-up explains what is required, tasks header is tidy, leads can be created unassigned, and a lead can book an airport transfer.",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. Verified: lead detail shows \"1 Adults\", blank Priority, raw source values (\"manual\"); notes now normalised by B11. follow-ups/page.tsx Schedule dialog opens with the button disabled and no hint that Lead and Date & time are required (shots/followup-save-disabled-no-hint-1366.png). tasks/page.tsx: list/board toggle sits alone above the header; avatar initials take the first two letters of the first word (\"DE\" for Demo Admin). Backend B12: POST /leads with assignedTo:null stays unassigned. FR-7 (storyboard scene 6): lead detail needs a \"Book transfer\" action that opens /fleet/trips/new?leadId=<id>&tripType=airport_pickup (B23 implements the prefill on the trip form - this URL is the contract). 81 lint errors in leads/, 47 in tasks/. W6 RULES: you run in parallel with 11 other page batches in separate worktrees - touch ONLY your allowlist; never edit lint-baseline.json (the orchestrator ratchets it after merge); shared-file needs go to desktop/audit/fix/requests/<BATCH_ID>.md.",
+  "steps": [
+    "Lead detail: pluralise pax (\"1 Adult\", \"2 Adults\", children likewise), Priority -> label or \"Not set\", source -> human labels from the lead source enum (e.g. manual -> \"Manual entry\", walk_in -> \"Walk-in\"), dates en-IN; primary actions include \"Book transfer\" (icon Car) -> router.push(`/fleet/trips/new?leadId=${id}&tripType=airport_pickup`).",
+    "leads/new + edit: \"Assigned to\" offers \"Unassigned\" which submits assignedTo: null; leads/unassigned + bulk assign swept.",
+    "Follow-ups Schedule dialog: required markers on Lead and Date & time, helper text, Schedule enabled with validation on submit (inline errors) - or, if kept disabled, a visible hint explaining why; uses RelationCombobox + DatePicker/time input.",
+    "Tasks: move the view toggle into PageHeader actions; initials via getInitials (first letters of first and last name).",
+    "Kanban/pipeline components swept (pipeline-card, kanban-board, lead-lost-dialog).",
+    "CONTRACT SWEEP on every non-spec file in your allowlist (do this while fixing the bugs above, file by file): (a) `node scripts/lint-gate.mjs --zero <your allowlist globs>` must report 0 errors in your files: replace `any` with real types imported from desktop/src/lib/api/*, delete unused vars/imports, remove raw hex/rgb/px literals and raw Tailwind palette classes. Token map: gray/slate text -> text-ds-foreground / text-ds-foreground-muted / text-ds-foreground-subtle; gray backgrounds -> bg-ds-surface / bg-ds-surface-sunken / bg-ds-surface-raised; borders -> border-ds-border / border-ds-border-strong; green/emerald -> ds-success (+ -subtle bg, -on-subtle text); red/rose -> ds-danger; amber/yellow/orange -> ds-warning; blue/sky/cyan -> ds-info; indigo/violet/purple/orange-as-brand/primary-NNN -> ds-primary; chart colours -> ds-chart-1..6 or useThemeTokens(); arbitrary px (text-[13px], w-[240px], h-[600px]) -> Tailwind scale (text-sm, w-60) or ds spacing (p-ds-4, gap-ds-2).",
+    "LAYOUT: every page root uses an archetype (ListPage / EntityForm / DetailPage) or `<PageContainer>` from @/components/layout/page-container with a PageHeader (title + description + actions). Remove ad-hoc root padding (p-6, px-8, container mx-auto) and any page-level scroll wrapper (`h-full overflow-auto`, `flex-1 overflow-y-auto`) - <main> is the only page scroller; tables scroll inside DataTable's data-scroll-region (BUG-048 contribution).",
+    "FIELDS: native `<input type=\"date\">` -> DatePicker (+ toLocalDateString / parseLocalDate from @/lib/dates); money `type=\"number\"` inputs -> CurrencyInput; any id/relation text input -> RelationCombobox (with resolveSelected for edit forms); phone -> PhoneInput; `window.confirm` / bare `confirm(` -> `useConfirm()` from @/components/ui; `toLocaleDateString()` / `toLocaleString()` without a locale -> formatDisplayDate from @/lib/dates (en-IN); no mailto:/wa.me/tel: (SendMessageDialog). Icon-only buttons get an aria-label. Never two elements with the same id on one page.",
+    "PROBE: with your stack slot up, run `node scripts/layout-probe.mjs --routes /leads,/leads/new,/leads/<leadId>,/leads/<leadId>/edit,/leads/unassigned,/follow-ups,/tasks,/tasks/<taskId> --viewports 1366x768,1920x1080 --themes light,dark --out audit/fix/probe/<BATCH_ID>` (replace <id> placeholders with real seeded ids from the API) and fix every failure (gutter, horizontal overflow, nested scroller, console/page error, blank top-bar title). Attach probe.json summary to your report.",
+    "SPECS: run the specs listed in gates.specs; fix app regressions. If a spec asserts behaviour this batch intentionally changed, update that spec (spec files in your allowlist only). Pre-existing failures that belong to another batch: list them in your report, do not chase them.",
+    "If you need a change in a shared file you may not touch (ui primitives, archetypes, client, globals, helpers), do NOT edit it: write the request to desktop/audit/fix/requests/<BATCH_ID>.md (file per batch, so parallel merges never conflict) and work around locally where possible. B30 consumes these requests."
+  ],
+  "filesAllowlist": [
+    "desktop/src/app/(app)/leads/**",
+    "desktop/src/app/(app)/follow-ups/**",
+    "desktop/src/app/(app)/tasks/**",
+    "desktop/src/components/domain/{lead-lost-dialog,pipeline-card,kanban-board}.tsx",
+    "desktop/src/lib/api/follow-ups.ts",
+    "desktop/e2e/{follow-ups,tasks}.spec.ts (behaviour changed here only)",
+    "desktop/audit/fix/requests/B20.md"
+  ],
+  "mustNotTouch": [
+    "desktop/src/components/ui/**",
+    "desktop/src/components/layout/**",
+    "desktop/src/components/domain/{list-page,entity-form,detail-page,relation-combobox,filter-bar,index,keyboard-shortcuts-provider,activity-timeline}.tsx",
+    "desktop/src/lib/api/{client,envelope,config,index}.ts",
+    "desktop/src/lib/dates.ts",
+    "desktop/src/app/globals.css",
+    "desktop/eslint.config.mjs",
+    "desktop/audit/fix/lint-baseline.json",
+    "desktop/e2e/fixtures.ts",
+    "desktop/e2e/helpers/**",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright*.config.ts",
+    "backend/**",
+    "packages/**",
+    "any file owned by another W6 batch (see FIX-PLAN.md section 6 ownership table)",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "Lead detail: \"1 Adult\", no blank Priority, human source label.",
+    "\"Book transfer\" navigates to /fleet/trips/new?leadId=<id>&tripType=airport_pickup.",
+    "Follow-up dialog explains required fields.",
+    "Tasks header: toggle inside the header; Demo Admin -> \"DA\".",
+    "leads.spec.ts:413 passes.",
+    "Probe + specs green."
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "lintZero": [
+      "src/app/(app)/leads/**",
+      "src/app/(app)/follow-ups/**",
+      "src/app/(app)/tasks/**",
+      "src/components/domain/{lead-lost-dialog,pipeline-card,kanban-board}.tsx",
+      "src/lib/api/follow-ups.ts"
+    ],
+    "build": true,
+    "backendTests": false,
+    "flutter": false,
+    "specs": [
+      "desktop/e2e/leads.spec.ts",
+      "desktop/e2e/follow-ups.spec.ts",
+      "desktop/e2e/tasks.spec.ts"
+    ],
+    "allowedSpecFailures": [],
+    "layoutProbe": [
+      "/leads",
+      "/leads/new",
+      "/leads/<leadId>",
+      "/leads/<leadId>/edit",
+      "/leads/unassigned",
+      "/follow-ups",
+      "/tasks",
+      "/tasks/<taskId>"
+    ]
+  },
+  "notes": "leads.spec.ts belongs to B16/B12 edits already - only touch it if your behaviour change requires."
+}

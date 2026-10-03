@@ -1,0 +1,64 @@
+{
+  "id": "B10",
+  "title": "Driver app UI polish to client-presentable standard (indigo brand, consistent inputs, status chips, timeline, states)",
+  "lane": "driver",
+  "backend": false,
+  "wave": "W2",
+  "dependsOn": [
+    "B03"
+  ],
+  "parallelGroup": "W2",
+  "bugIds": [
+    "BUG-066"
+  ],
+  "fixReqs": [],
+  "estFiles": 22,
+  "goal": "The driver app looks like the same product as the desktop (indigo #4F46E5 / dark #818CF8), with consistent inputs, clear primary actions, status chips, a trip timeline and proper loading/empty/error states in light and dark.",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. Evidence: desktop/audit/fix/shots/driver-01-launch.png, driver-04-login-dark.png. lib/app/theme.dart seeds #1565C0; lib/core/constants/app_colors.dart hard-codes status colours (assigned = orange); phone_input_screen.dart: country-code dropdown is outlined while the phone field is filled (different heights); Send OTP button is a muted grey-blue that reads as disabled; car icon keeps the light-theme primary in dark mode; no branded app name/splash (launch_background.xml). Keep every widget Key added in B03 (STORYBOARD D.6) and the Key('check-in-coords') text. l10n: lib/l10n/intl_{en,hi,ar}.arb with flutter `generate: true`.",
+  "steps": [
+    "theme.dart: Material 3 ColorScheme.fromSeed(seedColor: Color(0xFF4F46E5), brightness: light) and a dark scheme (seed 0xFF818CF8 or fromSeed dark) ; shared component themes: FilledButton (min height 52, full-width in forms, distinct disabled style), OutlinedButton, InputDecorationTheme (filled, same radius/height for every input incl. dropdowns), Card, Chip, AppBar, NavigationBar, SnackBar. Text theme with clear hierarchy.",
+    "app_colors.dart -> replace raw status colours with a TripStatusStyle mapping derived from the colour scheme (light/dark aware): assigned -> primary, accepted -> blue/info, en_route -> amber, started/in_progress -> violet, completed -> green, cancelled/rejected -> red; each with container + on-container colours and an icon. trip_status_badge.dart uses it.",
+    "Login (phone_input_screen.dart, otp_verification_screen.dart): branded header (app name \"TravelCRM Driver\", tagline, icon tinted with colorScheme.primary in both themes), country code + phone in one consistent row, primary FilledButton, inline error text from state, OTP boxes consistent with the input theme, resend timer.",
+    "Trips (my_trips_screen.dart, trip_card.dart, trip_history_screen.dart): pull-to-refresh, skeleton loading cards, empty state per tab (icon + message + refresh), error state with retry, card layout: pickup time (large), pickup -> drop with route dots, passenger, vehicle registration chip, status chip; tap target >= 48dp.",
+    "Trip detail (trip_detail_screen.dart): header card (status chip, time, passenger with call button - tel: is fine in the driver app), locations with \"Open in Maps\" (map_launcher.dart), vehicle block, special instructions, a vertical timeline of status events (Assigned, Accepted, En route, Checked in / Started, Completed with local times), sticky bottom primary action per status (keep the action-* keys).",
+    "Check-in/out, profile, documents, edit profile: same component styles; documents list with status chips and expiry.",
+    "bottom_nav_shell.dart: NavigationBar with icons/labels; keep Key('nav-history').",
+    "Branding: android/app/src/main/res/values{,-night}/styles.xml + drawable launch_background.xml: indigo/dark background with a centred white icon or app name; android label already set in B03.",
+    "New user-facing strings go into intl_en.arb (and the same English text into intl_hi.arb / intl_ar.arb so generation succeeds); regenerate localizations (flutter gen-l10n or flutter pub get).",
+    "flutter analyze (0 issues) and flutter test pass. If an emulator is available, take before/after screenshots into desktop/audit/fix/shots/driver-polish-*.png (optional; B13 captures the formal set)."
+  ],
+  "filesAllowlist": [
+    "packages/driver_app/lib/**",
+    "packages/driver_app/test/**",
+    "packages/driver_app/android/app/src/main/res/**",
+    "desktop/audit/fix/shots/driver-polish-*.png"
+  ],
+  "mustNotTouch": [
+    "packages/shared/**",
+    "packages/crm_app/**",
+    "packages/driver_app/pubspec.yaml (no new deps)",
+    "backend/**",
+    "desktop/src/**",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "flutter analyze clean; flutter test passes.",
+    "All D.6 keys still present (grep).",
+    "No hard-coded Color(0xFF1565C0)/orange status colours remain (grep app_colors/theme).",
+    "Light and dark themes both use the indigo seed."
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": false,
+    "flutter": true,
+    "specs": []
+  },
+  "notes": "Visual reference: desktop ds tokens in desktop/src/app/globals.css (--ds-primary #4F46E5 light, #818CF8 dark; success/warning/danger/info hues)."
+}

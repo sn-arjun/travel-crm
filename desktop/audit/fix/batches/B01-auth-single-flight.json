@@ -1,0 +1,65 @@
+{
+  "id": "B01",
+  "title": "Single-flight, cross-tab-safe token refresh (session no longer dies)",
+  "lane": "desktop",
+  "backend": false,
+  "wave": "W1",
+  "dependsOn": [],
+  "parallelGroup": "W1",
+  "bugIds": [
+    "BUG-001"
+  ],
+  "fixReqs": [
+    "FR-11"
+  ],
+  "estFiles": 6,
+  "goal": "When the access token expires, exactly one refresh happens per rotation across all in-flight requests, the proactive timer and other windows/tabs; transient errors never log the user out.",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. desktop/src/lib/api/client.ts: request() (~lines 175-260) calls handleAuthRefresh() (lines 127-168) on every 401 with no coordination; the proactive timer (lines 285-330) does its own fetch to /auth/refresh-token. Backend backend/src/routes/auth.ts:425-452 rotates refresh tokens: it stores `used_refresh:<token>` for 1h and answers a second use with 401 \"Token has already been used (possible replay attack)\". Runtime evidence: one expiry fired 19 parallel refreshes -> 18 replays -> logout -> /login (and this cascaded through 164 e2e tests and killed the showcase recording). Auth state is zustand-persisted to localStorage key 'travelcrm-auth' (src/stores/auth-store.ts:33-85); Electron windows / browser tabs share it. Tests src/lib/api/{auth,client,users}.test.ts currently fail to LOAD (\"useAuthStore.subscribe is not a function\" at client.ts:345 - the module-level subscribe runs against a mocked store) and contain 16/9/10 tsc errors; this batch owns those 3 test files (B04 owns the other test files). The request() also sends X-Refresh-Token on every call (backend uses it for session identification at auth.ts:820/897/937) - keep that.",
+  "steps": [
+    "In client.ts add module state `let refreshInFlight: Promise<boolean> | null = null;` and `export function refreshAccessToken(): Promise<boolean>` that returns refreshInFlight if set, else assigns `refreshInFlight = doRefresh().finally(() => { refreshInFlight = null; })`.",
+    "doRefresh(): capture `const usedToken = useAuthStore.getState().refreshToken` (return false if none). Run the critical section through `navigator.locks.request('travelcrm-auth-refresh', fn)` when `typeof navigator !== 'undefined' && navigator.locks`, else call fn directly. Inside fn: (1) readPersisted() = parse localStorage 'travelcrm-auth' (try/catch) -> {accessToken, refreshToken}; if its refreshToken exists and !== usedToken, another window already rotated: setTokens(persisted) and return true with no network call; (2) POST `${API_BASE_URL}/auth/refresh-token` {refreshToken: usedToken}; 2xx with both tokens -> setTokens -> true; (3) 401/403/400 -> readPersisted() again and adopt if it changed (lost race) -> true; otherwise logoutAndRedirect() -> false; (4) network error / timeout / 5xx -> return false WITHOUT logout.",
+    "logoutAndRedirect(): store.logout(); if window exists and location.pathname does not start with '/login' set location.href = '/login'. Use it everywhere the old code redirected.",
+    "request(): record `const sentAccess = store.accessToken` before fetch. On 401 && !isRetry: if `useAuthStore.getState().accessToken !== sentAccess` retry immediately (someone refreshed while we were in flight); else `if (await refreshAccessToken())` retry once with isRetry:true. Delete handleAuthRefresh().",
+    "Proactive timer: keep the 60 s interval and the \"expires within 120 s\" JWT check, but call refreshAccessToken() instead of its own fetch; no logout on failure there (the 401 path handles real expiry).",
+    "Cross-window sync: `window.addEventListener('storage', (e) => { if (e.key === 'travelcrm-auth') void useAuthStore.persist?.rehydrate?.(); })` once at module load (client-side only).",
+    "Guard the module-level `useAuthStore.subscribe(...)` with `typeof useAuthStore.subscribe === 'function'` and fix the mocks in auth.test.ts, client.test.ts, users.test.ts (provide getState/setState/subscribe/persist) so they load; fix their tsc errors.",
+    "Unit tests in client.test.ts: (a) five concurrent requests all getting 401 -> exactly one POST /auth/refresh-token and five retries carrying the new token; (b) refresh returns 401 replay but persisted storage now holds a different refresh token -> tokens adopted, no logout; (c) refresh throws a network error -> no logout, original error surfaced; (d) a request whose 401 arrives after another call already refreshed retries without a second refresh; (e) proactive timer and a 401 at the same time share one refresh.",
+    "Add desktop/e2e/token-refresh.spec.ts (import from '@playwright/test'; B09 later codemods imports): `test.use({ storageState: undefined })`; log in with loginViaUI from ./helpers/auth; set the accessToken inside localStorage 'travelcrm-auth' to an expired JWT (craft header.payload.sig with exp in the past) keeping refreshToken; count requests matching **/auth/refresh-token; reload /dashboard; expect exactly 1 refresh, URL not /login, dashboard heading visible. Second test: same setup, open two pages in the same context and navigate both concurrently (Promise.all) to /contacts and /leads -> total refresh calls <= 1 per page-load wave and neither page ends on /login."
+  ],
+  "filesAllowlist": [
+    "desktop/src/lib/api/client.ts",
+    "desktop/src/lib/api/client.test.ts",
+    "desktop/src/lib/api/auth.test.ts",
+    "desktop/src/lib/api/users.test.ts",
+    "desktop/src/stores/auth-store.ts (only if the persist API typing needs exporting)",
+    "desktop/e2e/token-refresh.spec.ts"
+  ],
+  "mustNotTouch": [
+    "backend/**",
+    "desktop/src/lib/api/*.ts other than client.ts",
+    "other *.test.ts files (B04)",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "auth.test.ts, client.test.ts, users.test.ts load and pass; new single-flight tests pass.",
+    "tsc reports 0 errors in the three test files and in client.ts.",
+    "e2e/token-refresh.spec.ts passes against a running stack (exactly one refresh call; user stays on /dashboard).",
+    "grep shows no remaining direct fetch to /auth/refresh-token in client.ts outside doRefresh()."
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": false,
+    "build": true,
+    "backendTests": false,
+    "flutter": false,
+    "specs": [
+      "desktop/e2e/token-refresh.spec.ts"
+    ]
+  },
+  "notes": "Runs in parallel with B00, so the lint gate and fix-gates.mjs/fix-stack.mjs may not exist yet: start the stack with the manual recipe in FIX-PLAN.md section 4.3. Do not add a backend grace window for refresh reuse - replay detection stays strict (owner default)."
+}

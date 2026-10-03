@@ -1,0 +1,98 @@
+{
+  "id": "B18",
+  "title": "Dashboard + calendar: real data only, working controls, readable calendar",
+  "lane": "desktop",
+  "backend": false,
+  "wave": "W6",
+  "dependsOn": [
+    "B16",
+    "B17"
+  ],
+  "parallelGroup": "W6",
+  "bugIds": [
+    "BUG-025",
+    "BUG-051"
+  ],
+  "fixReqs": [],
+  "estFiles": 12,
+  "goal": "The dashboard shows only real, consistent numbers with working Quick Add and date range; the calendar month view is clean in light and dark.",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. Verified (dashboard/page.tsx): trend % 12/5/8/5 and \"87% Collection Rate\" are constants (746-767); sparkData literals (807-843); Quick Add has no onClick (784); dateRange state unused (682-683); \"Revenue (Month) Rs0\" from won leads contradicts \"Revenue This Month Rs221.3Cr\" from invoices; fetches leads?limit=1000 and invoices?limit=1000 to compute client-side (705-708) (BUG-046 dashboard part). The reports hub uses a dashboard KPI API (\"renders KPI metrics from the dashboard API\" in reports.spec.ts) - find it in src/lib/api/reports.ts and reuse it (read-only). calendar/page.tsx: out-of-month cells drawn with orange highlight borders; event chips 10px text at 2.8:1; dark \"Republic Day\"-style low contrast; 51 lint errors (39 raw px/hex). components/domain/sticky-notes-widget.tsx and components/domain/dashboard/sticky-notes-widget.tsx are duplicates. W6 RULES: you run in parallel with 11 other page batches in separate worktrees - touch ONLY your allowlist; never edit lint-baseline.json (the orchestrator ratchets it after merge); shared-file needs go to desktop/audit/fix/requests/<BATCH_ID>.md.",
+  "steps": [
+    "Dashboard KPIs from the dashboard/reports API: one revenue definition (invoiced this month) labelled clearly; show trend deltas only when the API returns a previous-period value, otherwise omit the trend chip; collection rate computed from API paid/total or omitted; sparklines only from API series, else removed. No hard-coded numbers.",
+    "Quick Add -> DropdownMenu: New lead (/leads/new), New contact (/contacts/new), New task (/tasks?new=1 or its dialog route), New invoice (/invoices/new), New itinerary (/itineraries/new).",
+    "Date range selector drives the KPI queries (date_preset param) - or remove it if the API cannot filter; never a dead control.",
+    "Replace the limit=1000 fetches with server aggregates or small lists (recent 5) (BUG-046 dashboard part).",
+    "Calendar: out-of-month days muted (text-ds-foreground-subtle, no border highlight), today ring = ds-ring, event chips text-xs with ds tone pairs (subtle bg + on-subtle text, >= 4.5:1) in both themes; DatePicker/toLocalDateString for any date inputs.",
+    "Keep one sticky-notes widget (components/domain/dashboard/sticky-notes-widget.tsx) and update imports; delete the duplicate.",
+    "CONTRACT SWEEP on every non-spec file in your allowlist (do this while fixing the bugs above, file by file): (a) `node scripts/lint-gate.mjs --zero <your allowlist globs>` must report 0 errors in your files: replace `any` with real types imported from desktop/src/lib/api/*, delete unused vars/imports, remove raw hex/rgb/px literals and raw Tailwind palette classes. Token map: gray/slate text -> text-ds-foreground / text-ds-foreground-muted / text-ds-foreground-subtle; gray backgrounds -> bg-ds-surface / bg-ds-surface-sunken / bg-ds-surface-raised; borders -> border-ds-border / border-ds-border-strong; green/emerald -> ds-success (+ -subtle bg, -on-subtle text); red/rose -> ds-danger; amber/yellow/orange -> ds-warning; blue/sky/cyan -> ds-info; indigo/violet/purple/orange-as-brand/primary-NNN -> ds-primary; chart colours -> ds-chart-1..6 or useThemeTokens(); arbitrary px (text-[13px], w-[240px], h-[600px]) -> Tailwind scale (text-sm, w-60) or ds spacing (p-ds-4, gap-ds-2).",
+    "LAYOUT: every page root uses an archetype (ListPage / EntityForm / DetailPage) or `<PageContainer>` from @/components/layout/page-container with a PageHeader (title + description + actions). Remove ad-hoc root padding (p-6, px-8, container mx-auto) and any page-level scroll wrapper (`h-full overflow-auto`, `flex-1 overflow-y-auto`) - <main> is the only page scroller; tables scroll inside DataTable's data-scroll-region (BUG-048 contribution).",
+    "FIELDS: native `<input type=\"date\">` -> DatePicker (+ toLocalDateString / parseLocalDate from @/lib/dates); money `type=\"number\"` inputs -> CurrencyInput; any id/relation text input -> RelationCombobox (with resolveSelected for edit forms); phone -> PhoneInput; `window.confirm` / bare `confirm(` -> `useConfirm()` from @/components/ui; `toLocaleDateString()` / `toLocaleString()` without a locale -> formatDisplayDate from @/lib/dates (en-IN); no mailto:/wa.me/tel: (SendMessageDialog). Icon-only buttons get an aria-label. Never two elements with the same id on one page.",
+    "PROBE: with your stack slot up, run `node scripts/layout-probe.mjs --routes /dashboard,/calendar --viewports 1366x768,1920x1080 --themes light,dark --out audit/fix/probe/<BATCH_ID>` (replace <id> placeholders with real seeded ids from the API) and fix every failure (gutter, horizontal overflow, nested scroller, console/page error, blank top-bar title). Attach probe.json summary to your report.",
+    "SPECS: run the specs listed in gates.specs; fix app regressions. If a spec asserts behaviour this batch intentionally changed, update that spec (spec files in your allowlist only). Pre-existing failures that belong to another batch: list them in your report, do not chase them.",
+    "If you need a change in a shared file you may not touch (ui primitives, archetypes, client, globals, helpers), do NOT edit it: write the request to desktop/audit/fix/requests/<BATCH_ID>.md (file per batch, so parallel merges never conflict) and work around locally where possible. B30 consumes these requests."
+  ],
+  "filesAllowlist": [
+    "desktop/src/app/(app)/dashboard/**",
+    "desktop/src/app/(app)/calendar/**",
+    "desktop/src/components/domain/{ai-daily-briefing,ai-health-score,ai-recommendations,stat-card,sticky-notes-widget}.tsx",
+    "desktop/src/components/domain/dashboard/**",
+    "desktop/src/lib/api/{events,sticky-notes}.ts",
+    "desktop/e2e/{dashboard,calendar}.spec.ts",
+    "desktop/audit/fix/requests/B18.md"
+  ],
+  "mustNotTouch": [
+    "desktop/src/components/ui/**",
+    "desktop/src/components/layout/**",
+    "desktop/src/components/domain/{list-page,entity-form,detail-page,relation-combobox,filter-bar,index,keyboard-shortcuts-provider,activity-timeline}.tsx",
+    "desktop/src/lib/api/{client,envelope,config,index}.ts",
+    "desktop/src/lib/dates.ts",
+    "desktop/src/app/globals.css",
+    "desktop/eslint.config.mjs",
+    "desktop/audit/fix/lint-baseline.json",
+    "desktop/e2e/fixtures.ts",
+    "desktop/e2e/helpers/**",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright*.config.ts",
+    "backend/**",
+    "packages/**",
+    "any file owned by another W6 batch (see FIX-PLAN.md section 6 ownership table)",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "No literal trend/collection/sparkline numbers remain in dashboard/page.tsx (grep for 87 / sparkData).",
+    "Quick Add opens a menu whose items navigate.",
+    "Network tab on /dashboard: no request with limit=1000.",
+    "Calendar leading/trailing days are not highlighted (screenshot).",
+    "Probe clean on /dashboard and /calendar (both viewports, both themes).",
+    "lint-gate --zero passes for the owned globs."
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "lintZero": [
+      "src/app/(app)/dashboard/**",
+      "src/app/(app)/calendar/**",
+      "src/components/domain/{ai-daily-briefing,ai-health-score,ai-recommendations,stat-card}.tsx",
+      "src/components/domain/dashboard/**",
+      "src/lib/api/{events,sticky-notes}.ts"
+    ],
+    "build": true,
+    "backendTests": false,
+    "flutter": false,
+    "specs": [
+      "desktop/e2e/dashboard.spec.ts",
+      "desktop/e2e/calendar.spec.ts"
+    ],
+    "allowedSpecFailures": [],
+    "layoutProbe": [
+      "/dashboard",
+      "/calendar"
+    ]
+  },
+  "notes": "ai-health-score/ai-recommendations may be used on contact/lead detail pages - keep their props stable."
+}

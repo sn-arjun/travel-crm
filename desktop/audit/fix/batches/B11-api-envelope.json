@@ -1,0 +1,78 @@
+{
+  "id": "B11",
+  "title": "Desktop API envelope + casing normalisation (one unwrap helper; visa/travellers, notifications, users, tasks, lead notes)",
+  "lane": "desktop",
+  "backend": false,
+  "wave": "W3",
+  "dependsOn": [
+    "B04",
+    "B06",
+    "B07",
+    "B08"
+  ],
+  "parallelGroup": "W3",
+  "bugIds": [
+    "BUG-026",
+    "BUG-062"
+  ],
+  "fixReqs": [],
+  "estFiles": 20,
+  "goal": "Every desktop API client returns the contract shapes (PaginatedResponse<T> / ApiResponse<T>, camelCase items) regardless of backend envelope quirks, so pages stop re-implementing unwrapping.",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. Owner default: normalise on the DESKTOP side; do not change backend envelopes (packages/shared Flutter models depend on them). Runtime envelope probe: /visa -> {data:{data,pagination}} without success; /notifications -> {data:{items,total,page,limit,data,pagination}}; /users unpaginated; /travellers -> {data:{data:[...snake_case...]}}; /tasks snake_case (and ignores camelCase dueDate on create - backend accepts camelCase after B12, so also send snake keys meanwhile); GET /leads/:id/notes returns created_by_name/created_at while leads/[id]/page.tsx:338 reads note.createdBy/note.createdAt -> \"Unknown - Invalid Date\". Reports /reports/:id returns {success,data:{data:[],columns,meta}} (pages fixed in B24 using this helper). Contract types: PaginatedResponse<T> {data:T[], pagination:{page,limit,total,totalPages}} and ApiResponse<T> in src/lib/api/client.ts (do not redefine). Find the travellers client (grep \"travellers\" in src/lib/api).",
+  "steps": [
+    "Create src/lib/api/envelope.ts: unwrapList<T>(res, {page?, limit?}) -> PaginatedResponse<T> handling: bare array; {data:T[]}; {data:T[], pagination}; {data:{data:T[], pagination}}; {data:{items:T[], total, page, limit}}; {success, data:{data:T[], columns, meta}} (expose columns/meta via a second helper unwrapReport); unwrapEntity<T>(res) for {data:T} / {data:{data:T}} / T; camelizeKeys<T>(value) deep snake->camel that keeps existing camel keys and leaves Date/ISO strings untouched. Full unit tests (envelope.test.ts) for every shape.",
+    "Normalise clients (and update their unit tests): visa.ts (+ travellers client, adding email/phone fields from B08 to the Traveller type), notifications.ts (map reference_type/reference_id -> referenceType/referenceId, is_read -> read), users.ts (wrap unpaginated arrays), tasks.ts (camelCase items; create/update send camelCase AND the snake keys the current backend reads, e.g. due_date), leads.ts notes (createdBy, createdByName, createdAt).",
+    "Update call sites of the functions whose return shape changed so nothing regresses (grep each exported function name in src/app and src/components): keep page edits minimal (only the read-sites), e.g. leads/[id]/page.tsx notes render `note.createdByName ?? 'Unknown'` and `formatDate(note.createdAt)`. Do not refactor pages beyond read-sites (W6 batches own them).",
+    "Switch top-navbar.tsx notification click (added in B07) to the normalised fields only if it simplifies; otherwise leave it.",
+    "Typecheck, unit tests, and run the listed specs."
+  ],
+  "filesAllowlist": [
+    "desktop/src/lib/api/envelope.ts",
+    "desktop/src/lib/api/envelope.test.ts",
+    "desktop/src/lib/api/{visa,notifications,users,tasks,leads}.ts",
+    "desktop/src/lib/api/{visa,notifications,users,tasks,leads}.test.ts",
+    "desktop/src/lib/api/travellers.ts (if it exists)",
+    "desktop/src/app/(app)/** and desktop/src/components/** (read-sites of changed functions only)",
+    "desktop/src/components/layout/top-navbar.tsx (notification click only)"
+  ],
+  "mustNotTouch": [
+    "backend/**",
+    "desktop/src/lib/api/client.ts",
+    "desktop/e2e/**",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "envelope.test.ts covers all shapes listed.",
+    "Lead detail notes show author name and a valid date (no \"Invalid Date\").",
+    "visa, travellers, notifications, users, tasks lists render and paginate (specs).",
+    "lint-gate --zero passes for the API files you touched."
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "lintZero": [
+      "src/lib/api/{envelope,visa,notifications,users,tasks,leads}.ts"
+    ],
+    "build": true,
+    "backendTests": false,
+    "flutter": false,
+    "specs": [
+      "desktop/e2e/visa.spec.ts",
+      "desktop/e2e/travellers.spec.ts",
+      "desktop/e2e/notifications.spec.ts",
+      "desktop/e2e/tasks.spec.ts",
+      "desktop/e2e/leads.spec.ts",
+      "desktop/e2e/settings-team.spec.ts"
+    ],
+    "allowedSpecFailures": [
+      "leads.spec.ts:413 (BUG-070 - B12)",
+      "notifications.spec.ts:378 (B27)"
+    ]
+  },
+  "notes": "Runs alone in the desktop lane for W3 (its read-site edits can land in any page)."
+}

@@ -1,0 +1,108 @@
+{
+  "id": "B14",
+  "title": "List archetype: stable fetcher, real sort, error state, refreshKey, sticky header, no virtualisation jump, export errors",
+  "lane": "desktop",
+  "backend": false,
+  "wave": "W4",
+  "dependsOn": [
+    "B06",
+    "B07",
+    "B09",
+    "B11"
+  ],
+  "parallelGroup": "W4",
+  "bugIds": [
+    "BUG-011",
+    "BUG-012",
+    "BUG-013",
+    "BUG-040",
+    "BUG-055",
+    "BUG-069"
+  ],
+  "fixReqs": [],
+  "estFiles": 32,
+  "goal": "ListPage/DataTable behave correctly everywhere: totals and infinite scroll work, sort either works server-side or is not offered, errors show a retry, parents can refresh without remounting, the header sticks, and wide tables scroll inside their card.",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. Verified: list-page.tsx:134-139 builds boundFetcher with deps [fetcher, debouncedSearch, JSON.stringify(filters)] - pages pass inline fetchers (and inline extractItems/extractTotal, which use-infinite-scroll also puts in loadPage deps), so any parent re-render refetches page 1. Sort state (lines ~129, ~252) is local and never reaches the fetcher. use-infinite-scroll.ts sets `error` but ListPage renders the EmptyState anyway. 22 pages remount ListPage with key={...} to refresh: accounts, ai/document-scans, ai/extractions, ai/insights, bookmarks, communication/calls, contacts, documents, follow-ups, leads/unassigned, marketing/flyers, marketing/flyers/templates, marketing/opted-out, marketing/segments, marketing/social, marketing/whatsapp, settings/followup-sequences, settings/import, settings/team, suppliers, tasks, travellers (all under src/app/(app)/). contacts/page.tsx:537 and invoices/page.tsx:123 pass extractTotal reading r.data.pagination.total but the client returns {success,data:[...],pagination} -> total 0 -> badge \"0\", hasMore false (contacts stop at 20 of 77). handleExport (list-page ~158-166) has no catch -> invoices.spec.ts:369 expects toast \"Failed to export invoices\". ui/data-table.tsx:186-196: the wrapper div has overflow-auto (creates a scroll container that never scrolls vertically when not virtualised, so `thead sticky` never sticks) and >200 rows switches to a fixed maxHeight 600px inner scroller (page jump). Suppliers at 1366: cells wrap to 2-3 lines, hover actions clipped, table scrollWidth 1090 > 1060. Backends that accept sortBy/sortOrder: contacts, leads, suppliers, itineraries, itinerary-templates, travellers, visa, fleet, reports (verify the accepted keys in each route). envelope.ts unwrapList exists (B11). Design decision (planner): the table body scrolls inside its card (`data-scroll-region`), with a viewport-relative max height, so the header can stick and virtualisation reuses the same region; e2e infinite-scroll specs use mouse.wheel over rows or scrollIntoViewIfNeeded, both of which work with an inner region.",
+  "steps": [
+    "use-infinite-scroll.ts: keep fetcher/extractItems/extractTotal in refs updated every render; add option `queryKey?: string` - when provided, (re)load page 1 only when queryKey changes or refetch() is called; when absent keep the legacy behaviour (reload when fetcher identity changes) for direct users. Default extractors use unwrapList from @/lib/api/envelope. Track page in a ref to avoid stale closures in the IntersectionObserver; expose {items, loading, loadingMore, hasMore, total, error, loadMoreError, refetch, retryLoadMore, sentinelRef}. Update use-infinite-scroll.test.ts.",
+    "list-page.tsx: new props `refreshKey?: string | number`, `serverSort?: boolean`, `defaultSort?: {column, direction}`; fetcher param gains `sort?: {column: string; direction: 'asc' | 'desc'}`. Build queryKey = JSON.stringify({ search: debouncedSearch, filters, sort, refreshKey }) and pass a stable wrapper fetcher that reads the latest props from a ref. When serverSort is falsy, do NOT pass onSort to DataTable (headers not clickable - no dead sort); when true, sort changes refetch from page 1.",
+    "ListPage error UI: if error && items.length === 0 render an Alert (danger tone) \"Couldn't load <title lower-case>\" + error.message + Retry (refetch) instead of the EmptyState; a load-more error renders an inline row with Retry. handleExport: try/catch -> toast.error(`Failed to export ${title.toLowerCase()}`) (sonner, as used elsewhere) and rethrow nothing; keep the spinner reset in finally.",
+    "ui/data-table.tsx: the scroll wrapper gets `data-scroll-region=\"table\"`, `overflow-auto` and a default `max-h-[calc(100dvh-14rem)]` (prop `maxHeight` / `fillViewport={false}` to opt out); thead `sticky top-0 z-(--ds-z-sticky)` with an opaque bg-ds-surface-sunken; virtualisation (threshold stays > 200 rows) uses this same region, no fixed 600px; new prop `footer?: React.ReactNode` rendered inside the region after the table (ListPage puts the infinite-scroll sentinel + loading-more spinner there). Columns: support `minWidth?: string` (Tailwind class) and `wrap?: boolean` (default nowrap); table `min-w-full w-max` so narrow viewports scroll horizontally inside the region; the row-actions cell is `sticky right-0` with the row background so hover actions are never clipped (BUG-055).",
+    "Replace `key={...}` remounts with `refreshKey={...}` in the 22 pages listed in context (edit only that prop and imports in those files).",
+    "contacts/page.tsx and invoices/page.tsx: delete the custom extractTotal/extractItems (defaults handle the client shape) so the count badge shows the real total and page 2 loads (BUG-011).",
+    "serverSort: for contacts, leads, suppliers (and itineraries, travellers, visa if trivial) map column keys to the backend's accepted sortBy values in the page fetcher (`sortBy`, `sortOrder` params - verify names per route) and set serverSort; only mark columns sortable that the backend supports.",
+    "suppliers/page.tsx (BUG-055): give columns sensible minWidth, mark secondary columns hideable/defaultHidden at narrow widths if needed; verify at 1366: single-line cells, actions visible, no horizontal overflow of <main> (inner region may scroll).",
+    "Add src/components/domain/list-page.test.tsx: inline fetcher + parent re-render -> no extra fetch; refreshKey change -> refetch; serverSort passes sort; fetch error -> Retry visible and calls fetcher again; export rejection -> toast.error called."
+  ],
+  "filesAllowlist": [
+    "desktop/src/components/domain/list-page.tsx",
+    "desktop/src/components/domain/list-page.test.tsx",
+    "desktop/src/hooks/use-infinite-scroll.ts",
+    "desktop/src/hooks/use-infinite-scroll.test.ts",
+    "desktop/src/components/ui/data-table.tsx",
+    "the 22 refreshKey pages (prop + import only)",
+    "desktop/src/app/(app)/contacts/page.tsx",
+    "desktop/src/app/(app)/invoices/page.tsx",
+    "desktop/src/app/(app)/leads/page.tsx",
+    "desktop/src/app/(app)/suppliers/page.tsx",
+    "desktop/src/app/(app)/{itineraries,travellers,visa}/page.tsx (sort wiring only)"
+  ],
+  "mustNotTouch": [
+    "backend/**",
+    "desktop/src/components/domain/{entity-form,relation-combobox,detail-page}.tsx",
+    "desktop/e2e/** (spec staleness goes to B17)",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "/contacts badge shows the real total (e.g. 77) and scrolling loads page 2.",
+    "Clicking a sortable header on /contacts fires a request with sortBy/sortOrder and reorders rows; on a page without serverSort headers are not buttons.",
+    "Stopping the API and reloading /contacts shows the error panel with Retry.",
+    "At 1366x768 the /contacts table header stays visible while scrolling rows; <main> does not scroll.",
+    "Invoices export failure shows \"Failed to export invoices\".",
+    "list-page.test.tsx passes."
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "lintZero": [
+      "src/components/domain/list-page.tsx",
+      "src/components/ui/data-table.tsx",
+      "src/hooks/use-infinite-scroll.ts"
+    ],
+    "build": true,
+    "backendTests": false,
+    "flutter": false,
+    "specs": [
+      "desktop/e2e/contacts.spec.ts",
+      "desktop/e2e/invoices.spec.ts",
+      "desktop/e2e/suppliers.spec.ts",
+      "desktop/e2e/payments.spec.ts",
+      "desktop/e2e/follow-ups.spec.ts",
+      "desktop/e2e/travellers.spec.ts",
+      "desktop/e2e/tasks.spec.ts",
+      "desktop/e2e/documents.spec.ts",
+      "desktop/e2e/marketing-segments.spec.ts",
+      "desktop/e2e/fleet-vehicles.spec.ts",
+      "desktop/e2e/settings-team.spec.ts"
+    ],
+    "allowedSpecFailures": [
+      "contacts.spec.ts:423 (B17)",
+      "fleet-vehicles.spec.ts:498 (B17)",
+      "documents.spec.ts:27 and :295 (combobox - B16)"
+    ],
+    "layoutProbe": [
+      "/contacts",
+      "/invoices",
+      "/suppliers",
+      "/payments",
+      "/tasks",
+      "/travellers"
+    ]
+  },
+  "notes": "If more than two infinite-scroll specs break only because they scroll <main> explicitly, note them for B17 rather than editing specs here."
+}

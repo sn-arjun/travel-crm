@@ -1,0 +1,97 @@
+{
+  "id": "B19",
+  "title": "Contacts: real related data on detail, correct facts, EntityForm create/edit",
+  "lane": "desktop",
+  "backend": false,
+  "wave": "W6",
+  "dependsOn": [
+    "B16",
+    "B17",
+    "B12"
+  ],
+  "parallelGroup": "W6",
+  "bugIds": [
+    "BUG-004",
+    "BUG-046",
+    "BUG-054"
+  ],
+  "fixReqs": [],
+  "estFiles": 10,
+  "goal": "Contact detail shows only real records (filtered server-side) and correct facts; create/edit use the form archetype with every field preserved.",
+  "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. Verified: contacts/[id]/page.tsx:150-191 generates mock itineraries/payments/documents; \"Last Interaction\" = follow-ups[0].scheduledAt (142-148) so it can predate creation; City entered at creation not shown; zero revenue rendered \"Rs0.0L\"; related records filtered client-side. B12 added contactId filters to GET /leads, /itineraries, /follow-ups, /tasks, /documents (check its report / backend routes for exact params); invoices and payments already accepted contactId. contacts/page.tsx:614 uses window.confirm. contacts/new and [id]/edit are hand-rolled forms (BUG-074) with raw type=\"date\" (BUG-058) - contacts.spec.ts uses ids like #firstName, #companyName: keep element ids stable. 119 lint errors in contacts/ (38 any on the list page). W6 RULES: you run in parallel with 11 other page batches in separate worktrees - touch ONLY your allowlist; never edit lint-baseline.json (the orchestrator ratchets it after merge); shared-file needs go to desktop/audit/fix/requests/<BATCH_ID>.md.",
+  "steps": [
+    "contacts/[id]: delete the mock generators; each tab (Leads, Itineraries, Invoices, Payments, Documents, Follow-ups) fetches with contactId server-side (limit 20 + \"View all\" link to the list filtered by contact), with skeleton, empty state (with a create CTA prefilled ?contactId=) and error+retry. Prefer DetailPage related lists.",
+    "Facts: Last Interaction = most recent past activity (max of communications/notes/completed follow-ups with timestamp <= now) or \"-\"; Contact Information shows address/city/state/country; revenue via formatCurrency (Rs 0 for zero, compact lakhs/crores only when >= 1 lakh).",
+    "contacts/new + [id]/edit -> EntityForm + FormRow + SectionCards: PhoneInput, AddressAutocomplete, DatePicker (DOB, anniversary, passport expiry) with fromYear/toYear, RelationCombobox for any relation, custom fields preserved; edit pre-fills every value (resolveSelected for relations); keep the element ids the spec uses.",
+    "contacts list: delete via useConfirm; merge/import pages swept.",
+    "CONTRACT SWEEP on every non-spec file in your allowlist (do this while fixing the bugs above, file by file): (a) `node scripts/lint-gate.mjs --zero <your allowlist globs>` must report 0 errors in your files: replace `any` with real types imported from desktop/src/lib/api/*, delete unused vars/imports, remove raw hex/rgb/px literals and raw Tailwind palette classes. Token map: gray/slate text -> text-ds-foreground / text-ds-foreground-muted / text-ds-foreground-subtle; gray backgrounds -> bg-ds-surface / bg-ds-surface-sunken / bg-ds-surface-raised; borders -> border-ds-border / border-ds-border-strong; green/emerald -> ds-success (+ -subtle bg, -on-subtle text); red/rose -> ds-danger; amber/yellow/orange -> ds-warning; blue/sky/cyan -> ds-info; indigo/violet/purple/orange-as-brand/primary-NNN -> ds-primary; chart colours -> ds-chart-1..6 or useThemeTokens(); arbitrary px (text-[13px], w-[240px], h-[600px]) -> Tailwind scale (text-sm, w-60) or ds spacing (p-ds-4, gap-ds-2).",
+    "LAYOUT: every page root uses an archetype (ListPage / EntityForm / DetailPage) or `<PageContainer>` from @/components/layout/page-container with a PageHeader (title + description + actions). Remove ad-hoc root padding (p-6, px-8, container mx-auto) and any page-level scroll wrapper (`h-full overflow-auto`, `flex-1 overflow-y-auto`) - <main> is the only page scroller; tables scroll inside DataTable's data-scroll-region (BUG-048 contribution).",
+    "FIELDS: native `<input type=\"date\">` -> DatePicker (+ toLocalDateString / parseLocalDate from @/lib/dates); money `type=\"number\"` inputs -> CurrencyInput; any id/relation text input -> RelationCombobox (with resolveSelected for edit forms); phone -> PhoneInput; `window.confirm` / bare `confirm(` -> `useConfirm()` from @/components/ui; `toLocaleDateString()` / `toLocaleString()` without a locale -> formatDisplayDate from @/lib/dates (en-IN); no mailto:/wa.me/tel: (SendMessageDialog). Icon-only buttons get an aria-label. Never two elements with the same id on one page.",
+    "PROBE: with your stack slot up, run `node scripts/layout-probe.mjs --routes /contacts,/contacts/new,/contacts/<contactId>,/contacts/<contactId>/edit,/contacts/import,/contacts/merge --viewports 1366x768,1920x1080 --themes light,dark --out audit/fix/probe/<BATCH_ID>` (replace <id> placeholders with real seeded ids from the API) and fix every failure (gutter, horizontal overflow, nested scroller, console/page error, blank top-bar title). Attach probe.json summary to your report.",
+    "SPECS: run the specs listed in gates.specs; fix app regressions. If a spec asserts behaviour this batch intentionally changed, update that spec (spec files in your allowlist only). Pre-existing failures that belong to another batch: list them in your report, do not chase them.",
+    "If you need a change in a shared file you may not touch (ui primitives, archetypes, client, globals, helpers), do NOT edit it: write the request to desktop/audit/fix/requests/<BATCH_ID>.md (file per batch, so parallel merges never conflict) and work around locally where possible. B30 consumes these requests."
+  ],
+  "filesAllowlist": [
+    "desktop/src/app/(app)/contacts/**",
+    "desktop/src/lib/api/contacts.ts",
+    "desktop/src/components/domain/duplicate-detection-dialog.tsx",
+    "desktop/e2e/contacts.spec.ts (only for behaviour changed here)",
+    "desktop/audit/fix/requests/B19.md"
+  ],
+  "mustNotTouch": [
+    "desktop/src/components/ui/**",
+    "desktop/src/components/layout/**",
+    "desktop/src/components/domain/{list-page,entity-form,detail-page,relation-combobox,filter-bar,index,keyboard-shortcuts-provider,activity-timeline}.tsx",
+    "desktop/src/lib/api/{client,envelope,config,index}.ts",
+    "desktop/src/lib/dates.ts",
+    "desktop/src/app/globals.css",
+    "desktop/eslint.config.mjs",
+    "desktop/audit/fix/lint-baseline.json",
+    "desktop/e2e/fixtures.ts",
+    "desktop/e2e/helpers/**",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright*.config.ts",
+    "backend/**",
+    "packages/**",
+    "any file owned by another W6 batch (see FIX-PLAN.md section 6 ownership table)",
+    "desktop/e2e/showcase/**",
+    "desktop/playwright.showcase.config.ts",
+    "desktop/showcase/**",
+    "backend/.dev.vars",
+    "product-requirment/**"
+  ],
+  "acceptance": [
+    "grep \"mock\" in contacts/[id]/page.tsx -> no generators.",
+    "Contact detail tabs issue requests with contactId=<id>.",
+    "Last Interaction never predates creation; City visible; zero revenue shows Rs 0.",
+    "Create -> detail shows every entered value; edit pre-fills all.",
+    "Probe + specs green."
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "lintZero": [
+      "src/app/(app)/contacts/**",
+      "src/lib/api/contacts.ts",
+      "src/components/domain/duplicate-detection-dialog.tsx"
+    ],
+    "build": true,
+    "backendTests": false,
+    "flutter": false,
+    "specs": [
+      "desktop/e2e/contacts.spec.ts",
+      "desktop/e2e/import-export.spec.ts"
+    ],
+    "allowedSpecFailures": [],
+    "layoutProbe": [
+      "/contacts",
+      "/contacts/new",
+      "/contacts/<contactId>",
+      "/contacts/<contactId>/edit",
+      "/contacts/import",
+      "/contacts/merge"
+    ]
+  },
+  "notes": "BUG-046 is owned here (dashboard part contributed by B18)."
+}
