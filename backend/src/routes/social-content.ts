@@ -49,6 +49,7 @@ function parseContent(row: Record<string, any>) {
     topic: row.topic,
     prompt: row.prompt,
     content: row.generated_text,
+    generatedText: row.generated_text,  // packages/shared SocialContentModel reads generatedText
     hashtags: row.hashtags ? JSON.parse(row.hashtags) : [],
     mediaSuggestions: row.media_suggestions ? JSON.parse(row.media_suggestions) : [],
     cta: row.cta,

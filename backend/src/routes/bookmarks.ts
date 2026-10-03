@@ -7,6 +7,45 @@ const bookmarkRoutes = new Hono<AppContext>();
 
 const MAX_BOOKMARKS = 50;
 
+/**
+ * Both the desktop (camelCase) and the Flutter CRM app (snake_case) call these routes,
+ * so request keys are accepted in either casing and every response row carries both.
+ */
+function pickEntity(src: Record<string, unknown> | undefined | null): { entityType?: string; entityId?: string } {
+  const s = src || {};
+  const entityType = (s.entityType ?? s.entity_type) as string | undefined;
+  const entityId = (s.entityId ?? s.entity_id) as string | undefined;
+  return { entityType, entityId };
+}
+
+function bookmarkShape(row: {
+  id: string;
+  userId: string;
+  entityType: string;
+  entityId: string;
+  entityName?: string;
+  createdAt?: string | null;
+}) {
+  return {
+    id: row.id,
+    user_id: row.userId,
+    userId: row.userId,
+    entity_type: row.entityType,
+    entityType: row.entityType,
+    entity_id: row.entityId,
+    entityId: row.entityId,
+    entity_name: row.entityName,
+    entityName: row.entityName,
+    created_at: row.createdAt,
+    createdAt: row.createdAt,
+  };
+}
+
+function checkShape(existing: { id?: unknown } | null) {
+  const bookmarkId = (existing?.id as string | undefined) || null;
+  return { bookmarked: !!existing, bookmark_id: bookmarkId, bookmarkId };
+}
+
 // ============================================================
 // POST / — Add bookmark
 // ============================================================
@@ -14,7 +53,8 @@ const MAX_BOOKMARKS = 50;
 bookmarkRoutes.post('/', async (c) => {
   const userId = c.get('userId');
   const db = c.get('tenantDb');
-  const { entityType, entityId } = await c.req.json();
+  const body = await c.req.json().catch(() => ({}));
+  const { entityType, entityId } = pickEntity(body);
 
   if (!entityType || !entityId) {
     return error(c, 'entityType and entityId are required', 400);
@@ -44,7 +84,7 @@ bookmarkRoutes.post('/', async (c) => {
     'INSERT INTO bookmarks (id, user_id, entity_type, entity_id, created_at) VALUES (?, ?, ?, ?, ?)'
   ).bind(id, userId, entityType, entityId, now).run();
 
-  return success(c, { id, entityType, entityId, createdAt: now }, 201);
+  return success(c, bookmarkShape({ id, userId, entityType, entityId, createdAt: now }), 201);
 });
 
 // ============================================================
@@ -101,36 +141,63 @@ bookmarkRoutes.get('/', async (c) => {
     } catch {
       entityName = 'Unknown';
     }
-    enriched.push({
-      id: bm.id,
-      entityType: bm.entity_type,
-      entityId: bm.entity_id,
+    enriched.push(bookmarkShape({
+      id: bm.id as string,
+      userId: (bm.user_id as string) || userId,
+      entityType: bm.entity_type as string,
+      entityId: bm.entity_id as string,
       entityName,
-      createdAt: bm.created_at,
-    });
+      createdAt: bm.created_at as string | null,
+    }));
   }
 
   return paginated(c, enriched, total, page, limit);
 });
 
 // ============================================================
-// GET /check — Check if entity is bookmarked
+// GET /check?entity_type=&entity_id= — Check if entity is bookmarked
+// POST /check — same check with a JSON body (desktop)
+// Both return { bookmarked, bookmark_id, bookmarkId }.
 // ============================================================
 
-bookmarkRoutes.post('/check', async (c) => {
+async function findBookmark(
+  c: any,
+  entityType: string | undefined,
+  entityId: string | undefined,
+) {
   const userId = c.get('userId');
   const db = c.get('tenantDb');
-  const { entityType, entityId } = await c.req.json();
-
   if (!entityType || !entityId) {
-    return error(c, 'entityType and entityId are required', 400);
+    return { missing: true as const, existing: null };
   }
-
   const existing = await db.prepare(
     'SELECT id FROM bookmarks WHERE user_id = ? AND entity_type = ? AND entity_id = ?'
   ).bind(userId, entityType, entityId).first();
+  return { missing: false as const, existing };
+}
 
-  return success(c, { bookmarked: !!existing, bookmarkId: existing?.id || null });
+bookmarkRoutes.get('/check', async (c) => {
+  const { entityType, entityId } = pickEntity({
+    entityType: c.req.query('entityType'),
+    entity_type: c.req.query('entity_type'),
+    entityId: c.req.query('entityId'),
+    entity_id: c.req.query('entity_id'),
+  });
+  const { missing, existing } = await findBookmark(c, entityType, entityId);
+  if (missing) {
+    return error(c, 'entity_type and entity_id are required', 400);
+  }
+  return success(c, checkShape(existing));
+});
+
+bookmarkRoutes.post('/check', async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const { entityType, entityId } = pickEntity(body);
+  const { missing, existing } = await findBookmark(c, entityType, entityId);
+  if (missing) {
+    return error(c, 'entityType and entityId are required', 400);
+  }
+  return success(c, checkShape(existing));
 });
 
 // ============================================================

@@ -10,6 +10,7 @@ import { zValidator } from '@hono/zod-validator';
 import type { AppContext } from '../types';
 import { success, created, notFound } from '../utils/response';
 import { generateId } from '../utils/uuid';
+import { requirePermission } from '../middleware/rbac';
 
 const festivalCampaignRoutes = new Hono<AppContext>();
 
@@ -40,7 +41,7 @@ function parseFestival(row: Record<string, any>) {
 
 // ── GET / — List festival campaigns ──────────────────────────
 
-festivalCampaignRoutes.get('/', async (c) => {
+festivalCampaignRoutes.get('/', requirePermission('marketing', 'view'), async (c) => {
   const db = c.get('tenantDb');
   const url = new URL(c.req.url);
 
@@ -86,18 +87,18 @@ festivalCampaignRoutes.get('/', async (c) => {
 
 // ── GET /:id — Single festival campaign detail ────────────────
 
-festivalCampaignRoutes.get('/:id', async (c) => {
+festivalCampaignRoutes.get('/:id', requirePermission('marketing', 'view'), async (c) => {
   const db = c.get('tenantDb');
   const id = c.req.param('id');
 
   const row = await db.prepare('SELECT * FROM festival_campaigns WHERE id = ?').bind(id).first();
   if (!row) return notFound(c, 'Festival campaign');
-  return success(c, parseFestival(row));
+  return success(c, parseFestival(row as Record<string, any>));
 });
 
 // ── POST / — Create a festival campaign ───────────────────────
 
-festivalCampaignRoutes.post('/', zValidator('json', createSchema), async (c) => {
+festivalCampaignRoutes.post('/', requirePermission('marketing', 'create'), zValidator('json', createSchema), async (c) => {
   const db = c.get('tenantDb');
   const userId = c.get('userId');
   const data = c.req.valid('json');
@@ -112,12 +113,12 @@ festivalCampaignRoutes.post('/', zValidator('json', createSchema), async (c) => 
   ).run();
 
   const row = await db.prepare('SELECT * FROM festival_campaigns WHERE id = ?').bind(id).first();
-  return created(c, parseFestival(row));
+  return created(c, parseFestival(row as Record<string, any>));
 });
 
 // ── PUT /:id/activate — Activate a festival campaign ─────────
 
-festivalCampaignRoutes.put('/:id/activate', async (c) => {
+festivalCampaignRoutes.put('/:id/activate', requirePermission('marketing', 'edit'), async (c) => {
   const db = c.get('tenantDb');
   const id = c.req.param('id');
 
@@ -129,12 +130,12 @@ festivalCampaignRoutes.put('/:id/activate', async (c) => {
   `).bind(id).run();
 
   const row = await db.prepare('SELECT * FROM festival_campaigns WHERE id = ?').bind(id).first();
-  return success(c, parseFestival(row));
+  return success(c, parseFestival(row as Record<string, any>));
 });
 
 // ── PUT /:id/deactivate — Deactivate a festival campaign ─────
 
-festivalCampaignRoutes.put('/:id/deactivate', async (c) => {
+festivalCampaignRoutes.put('/:id/deactivate', requirePermission('marketing', 'edit'), async (c) => {
   const db = c.get('tenantDb');
   const id = c.req.param('id');
 
@@ -146,12 +147,12 @@ festivalCampaignRoutes.put('/:id/deactivate', async (c) => {
   `).bind(id).run();
 
   const row = await db.prepare('SELECT * FROM festival_campaigns WHERE id = ?').bind(id).first();
-  return success(c, parseFestival(row));
+  return success(c, parseFestival(row as Record<string, any>));
 });
 
 // ── DELETE /:id — Delete a festival campaign ──────────────────
 
-festivalCampaignRoutes.delete('/:id', async (c) => {
+festivalCampaignRoutes.delete('/:id', requirePermission('marketing', 'delete'), async (c) => {
   const db = c.get('tenantDb');
   const id = c.req.param('id');
 

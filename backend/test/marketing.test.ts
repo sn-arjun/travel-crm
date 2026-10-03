@@ -207,7 +207,8 @@ describe('Marketing Routes Integration Tests', () => {
       const body: any = await res.json();
       expect(body.success).toBe(true);
       if (body.data) {
-        expect(body.data).toHaveProperty('primary_color');
+        // camelCase since the verify-phase branding rework (see routes/marketing/branding.ts)
+        expect(body.data).toHaveProperty('primaryColor');
       }
     });
 

@@ -18,6 +18,9 @@ function parseBranding(row: Record<string, unknown>) {
     secondaryColor: row.secondary_color,
     accentColor: row.accent_color ?? undefined,
     fontFamily: row.primary_font,
+    // Additive: packages/shared TenantBrandingModel reads primaryFont / secondaryFont
+    primaryFont: row.primary_font ?? undefined,
+    secondaryFont: row.secondary_font ?? undefined,
     customCss: row.custom_css ?? undefined,
     agencyName: row.agency_name ?? undefined,
     agencyPhone: row.agency_phone ?? undefined,

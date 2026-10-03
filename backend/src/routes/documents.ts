@@ -50,6 +50,19 @@ function toDocumentDto(row: DocumentRow) {
     uploadedAt: row.created_at ?? '',
     createdAt: row.created_at ?? '',
     updatedAt: row.updated_at ?? row.created_at ?? '',
+    // Additive keys for the Flutter CRM app (packages/shared DocumentModel is snake_case
+    // and requires file_url).
+    fileUrl: row.file_url ?? '',
+    file_url: row.file_url ?? '',
+    file_size: row.file_size ?? undefined,
+    mime_type: row.mime_type ?? undefined,
+    type: row.type ?? undefined,
+    related_to: row.related_to ?? undefined,
+    related_id: row.related_id ?? undefined,
+    uploaded_by: row.uploaded_by ?? undefined,
+    uploader_name: row.uploader_name ?? undefined,
+    created_at: row.created_at ?? undefined,
+    updated_at: row.updated_at ?? row.created_at ?? undefined,
   };
 }
 

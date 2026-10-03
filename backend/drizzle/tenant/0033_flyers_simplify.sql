@@ -1,3 +1,10 @@
+-- FIX (B02 / BUG-002): flyer_templates (0010_marketing_tables.sql) never had a
+-- preview_url column, so the original `SELECT ..., preview_url, ...` failed with
+-- "no such column: preview_url" on every fresh database. The copy now selects NULL for
+-- preview_url (the rebuilt table adds the column). Every other source column was
+-- cross-checked against 0010. This file was edited in place because no environment
+-- had ever applied it successfully.
+--
 -- Simplify flyers to match the desktop's structured-form UX (no canvas editor):
 -- generated_flyers needs title/content/status/imageUrl and no longer requires `name`;
 -- flyer_templates no longer requires width/height/size_preset since templates only
@@ -34,7 +41,7 @@ INSERT INTO flyer_templates_new (
   created_by, created_at, updated_at
 )
 SELECT
-  id, tenant_id, name, category, description, thumbnail_url, preview_url, layout_json,
+  id, tenant_id, name, category, description, thumbnail_url, NULL, layout_json,
   width, height, size_preset, placeholders, is_system, is_quick_create, is_active,
   created_by, created_at, updated_at
 FROM flyer_templates;

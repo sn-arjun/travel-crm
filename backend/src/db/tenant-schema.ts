@@ -1298,7 +1298,7 @@ export const generatedFlyers = sqliteTable('generated_flyers', {
   id: text('id').primaryKey(),
   tenantId: text('tenant_id'),
   templateId: text('template_id').references(() => flyerTemplates.id),
-  name: text('name').notNull(),
+  name: text('name'),  // legacy; nullable since 0033 (title is the primary label)
   title: text('title'),
   contentJson: text('content_json'),  // structured form fields: headline/subheadline/offerText/etc
   imageUrl: text('image_url'),
@@ -1308,7 +1308,6 @@ export const generatedFlyers = sqliteTable('generated_flyers', {
   url: text('url'),
   thumbnailUrl: text('thumbnail_url'),
   format: text('format').default('png'),  // png, jpeg, pdf
-  sizePreset: text('size_preset'),  // instagram_square, instagram_story, facebook, whatsapp, a4, etc.
   width: integer('width'),
   height: integer('height'),
   fileSize: integer('file_size'),
@@ -1326,14 +1325,14 @@ export const flyerShares = sqliteTable('flyer_shares', {
   flyerId: text('flyer_id').notNull().references(() => generatedFlyers.id, { onDelete: 'cascade' }),
   channel: text('channel').notNull(),  // whatsapp, email, download, link
   recipientInfo: text('recipient_info'),  // phone/email/etc
-  contactId: text('contact_id').references(() => contacts.id),  // for per-contact share tracking
   segmentId: text('segment_id').references(() => contactSegments.id),  // for segment-based sharing
-  createdBy: text('created_by').references(() => users.id),
-  createdAt: text('created_at').default(timestamp),
+  // Real columns are shared_by / shared_at (0010_marketing_tables.sql)
+  sharedBy: text('shared_by').references(() => users.id),
+  sharedAt: text('shared_at').default(timestamp),
 }, (table) => [
   index('flyer_shares_flyer_id_idx').on(table.flyerId),
   index('flyer_shares_channel_idx').on(table.channel),
-  index('flyer_shares_contact_id_idx').on(table.contactId),
+  index('flyer_shares_segment_id_idx').on(table.segmentId),
 ]);
 
 // ============================================================

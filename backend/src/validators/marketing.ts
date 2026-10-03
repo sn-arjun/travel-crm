@@ -6,7 +6,8 @@ import { z } from 'zod';
 
 export const createFlyerTemplateSchema = z.object({
   name: z.string().min(1, 'Name is required'),
-  category: z.enum(['festival', 'seasonal', 'promotional', 'general']).optional(),
+  // 'destination' / 'offer' are the legacy values still sent by the Flutter CRM app
+  category: z.enum(['festival', 'seasonal', 'promotional', 'general', 'destination', 'offer']).optional(),
   description: z.string().optional(),
   thumbnailUrl: z.string().optional(),
   previewUrl: z.string().optional(),
@@ -109,17 +110,21 @@ export const campaignListSchema = z.object({
 // GENERATED FLYERS
 // ============================================================
 
-export const createGeneratedFlyerSchema = z.object({
-  templateId: z.string().min(1, 'Pick a template'),
-  title: z.string().min(1, 'Title is required'),
-  content: z.record(z.string(), z.unknown()).optional(),
-  imageUrl: z.string().optional(),
-  name: z.string().optional(),
-  layoutJson: z.string().optional(),
-  format: z.enum(['png', 'jpeg', 'pdf']).optional(),
-  width: z.number().int().positive().optional(),
-  height: z.number().int().positive().optional(),
-});
+export const createGeneratedFlyerSchema = z
+  .object({
+    // The Flutter CRM app (and the pre-simplification API) sends `name` and no templateId,
+    // so `name` is an alias of `title` and the template is optional.
+    templateId: z.string().min(1, 'Pick a template').optional(),
+    title: z.string().min(1, 'Title is required').optional(),
+    content: z.record(z.string(), z.unknown()).optional(),
+    imageUrl: z.string().optional(),
+    name: z.string().min(1).optional(),
+    layoutJson: z.string().optional(),
+    format: z.enum(['png', 'jpeg', 'pdf']).optional(),
+    width: z.number().int().positive().optional(),
+    height: z.number().int().positive().optional(),
+  })
+  .refine((d) => !!(d.title || d.name), { message: 'Title is required', path: ['title'] });
 
 export const updateGeneratedFlyerSchema = z.object({
   title: z.string().min(1).optional(),

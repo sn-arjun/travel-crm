@@ -31,6 +31,18 @@ function parseFlyer(row: Record<string, unknown>) {
     status: row.status ?? 'draft',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    // Additive fields for the Flutter CRM app (packages/shared GeneratedFlyerModel needs `name`)
+    name: (row.name ?? row.title) as string,
+    tenantId: row.tenant_id ?? undefined,
+    layoutJson: row.layout_json ?? undefined,
+    r2Key: row.r2_key ?? undefined,
+    url: row.url ?? undefined,
+    thumbnailUrl: row.thumbnail_url ?? undefined,
+    format: row.format ?? 'png',
+    width: row.width ?? undefined,
+    height: row.height ?? undefined,
+    fileSize: row.file_size ?? undefined,
+    createdBy: row.created_by ?? undefined,
   };
 }
 
@@ -106,6 +118,8 @@ flyerRoutes.post(
     const userId = c.get('userId');
     const tenantId = c.get('tenantId');
     const now = new Date().toISOString();
+    // validator guarantees at least one of title / name
+    const title = (body.title || body.name) as string;
 
     await db
       .prepare(
@@ -117,9 +131,9 @@ flyerRoutes.post(
       .bind(
         id,
         tenantId,
-        body.templateId,
-        body.name || body.title,
-        body.title,
+        body.templateId ?? null,
+        body.name || title,
+        title,
         body.content ? JSON.stringify(body.content) : null,
         body.imageUrl || null,
         body.layoutJson || null,

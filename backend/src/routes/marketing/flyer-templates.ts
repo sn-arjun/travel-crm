@@ -22,9 +22,10 @@ function parseFlyerTemplate(row: Record<string, unknown>) {
     thumbnailUrl: row.thumbnail_url ?? undefined,
     previewUrl: row.preview_url ?? undefined,
     layoutJson: row.layout_json ?? undefined,
-    width: row.width ?? undefined,
-    height: row.height ?? undefined,
-    sizePreset: row.size_preset ?? undefined,
+    // Defaults keep packages/shared FlyerTemplateModel (required width/height/sizePreset) parseable
+    width: row.width ?? 1080,
+    height: row.height ?? 1080,
+    sizePreset: row.size_preset ?? 'custom',
     placeholders: row.placeholders ?? undefined,
     isSystem: row.is_system === 1,
     isQuickCreate: row.is_quick_create === 1,
