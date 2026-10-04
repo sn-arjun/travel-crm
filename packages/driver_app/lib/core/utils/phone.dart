@@ -36,3 +36,20 @@ String nationalDigits(String phone) {
   final digits = phone.replaceAll(RegExp(r'\D'), '');
   return digits.length > 10 ? digits.substring(digits.length - 10) : digits;
 }
+
+/// Formats a stored phone number for display only (never for dialling).
+///
+/// `+919820144562` becomes `+91 98201 44562` and `+14155550132` becomes
+/// `+1 415 555 0132`. A number without a recognised country code is shown
+/// exactly as stored.
+String formatPhoneDisplay(String phone) {
+  final raw = phone.trim();
+  final india = RegExp(r'^\+91[\s\-]?(\d{5})[\s\-]?(\d{5})$').firstMatch(raw);
+  if (india != null) return '+91 ${india.group(1)} ${india.group(2)}';
+  final nanp =
+      RegExp(r'^\+1[\s\-]?(\d{3})[\s\-]?(\d{3})[\s\-]?(\d{4})$').firstMatch(raw);
+  if (nanp != null) {
+    return '+1 ${nanp.group(1)} ${nanp.group(2)} ${nanp.group(3)}';
+  }
+  return raw;
+}

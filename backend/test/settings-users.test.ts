@@ -265,6 +265,26 @@ describe('Settings & User Management Integration Tests', () => {
       expect(res.status).toBe(403);
     });
 
+    it('returns the created user id and public fields in the 201 response', async () => {
+      const res = await authRequest('POST', '/users', adminToken, {
+        email: 'b34.created@test.com',
+        name: 'Priya Nair',
+        role: 'operations',
+        phone: '+919820144562',
+      });
+      expect(res.status).toBe(201);
+      const body: any = await res.json();
+      expect(body.data.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-/);
+      expect(body.data).toMatchObject({
+        email: 'b34.created@test.com', name: 'Priya Nair', role: 'operations',
+        phone: '+919820144562', inviteStatus: 'pending',
+      });
+      expect(body.data.inviteToken).toBeTruthy();
+
+      const list: any = await (await authRequest('GET', '/users', adminToken)).json();
+      expect(list.data.some((u: any) => u.id === body.data.id)).toBe(true);
+    });
+
     it('should reject duplicate email', async () => {
       const res = await authRequest('POST', '/users', adminToken, {
         email: 'admin@e2e.test',

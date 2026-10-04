@@ -6,6 +6,7 @@ import '../../../../app/theme.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/call_launcher.dart';
 import '../../../../core/utils/map_launcher.dart';
+import '../../../../core/utils/phone.dart';
 import '../../../../core/widgets/app_widgets.dart';
 import '../../data/trip_provider.dart';
 import '../../data/trip_view.dart';
@@ -67,7 +68,17 @@ class TripDetailScreen extends ConsumerWidget {
             ref.read(tripDetailProvider(tripId).notifier).loadDetail(),
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          // Keep the last card clear of the sticky action bar (12 + 48 + 12
+          // plus a small gap) or of the system inset when there is no bar.
+          padding: EdgeInsets.fromLTRB(
+            16,
+            16,
+            16,
+            24 +
+                (_hasActionBar(status)
+                    ? 72 + MediaQuery.of(context).padding.bottom
+                    : MediaQuery.of(context).padding.bottom),
+          ),
           children: [
             _HeaderCard(view: view, status: status),
             const SizedBox(height: 12),
@@ -167,6 +178,9 @@ class TripDetailScreen extends ConsumerWidget {
       ),
     );
   }
+
+  static bool _hasActionBar(String status) =>
+      const {'assigned', 'accepted', 'en_route', 'started'}.contains(status);
 
   /// "Open in Maps" handler: coordinates when known, else the address.
   VoidCallback? _mapsAction(String address, double? lat, double? lng) {
@@ -293,17 +307,23 @@ class _HeaderCard extends StatelessWidget {
                 TripStatusBadge(status: status, large: true),
                 const Spacer(),
                 if (pickupAt != null)
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(TripView.formatTime(pickupAt),
-                          style: text.headlineSmall),
-                      Text(
-                        TripView.relativeDate(pickupAt, DateTime.now()),
-                        style: text.bodySmall
-                            ?.copyWith(color: scheme.onSurfaceVariant),
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(TripView.formatTime(pickupAt),
+                              style: text.headlineSmall),
+                          Text(
+                            TripView.relativeDate(pickupAt, DateTime.now()),
+                            style: text.bodySmall
+                                ?.copyWith(color: scheme.onSurfaceVariant),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
               ],
             ),
@@ -332,7 +352,8 @@ class _HeaderCard extends StatelessWidget {
                           Text(view.passengerName!, style: text.titleMedium),
                           if (phone != null)
                             Text(
-                              phone,
+                              formatPhoneDisplay(phone),
+                              key: const Key('passenger-phone'),
                               style: text.bodySmall
                                   ?.copyWith(color: scheme.onSurfaceVariant),
                             ),
@@ -769,10 +790,24 @@ class _NavButton extends StatelessWidget {
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.only(right: 12),
-        child: OutlinedButton.icon(
+        child: OutlinedButton(
+          key: const Key('action-navigate'),
           onPressed: onPressed,
-          icon: const Icon(Icons.navigation_outlined),
-          label: Text(l10n.navigate),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+          ),
+          // Icon + label scale down together so the label never wraps.
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.navigation_outlined, size: 18),
+                const SizedBox(width: 6),
+                Text(l10n.navigate, maxLines: 1, softWrap: false),
+              ],
+            ),
+          ),
         ),
       ),
     );

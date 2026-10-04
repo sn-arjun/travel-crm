@@ -386,11 +386,11 @@ driver.get('/trips', zValidator('query', tripListSchema), async (c) => {
 
   switch (tab) {
     case 'today':
-      dateFilter = 'AND ta.pickup_datetime >= ? AND ta.pickup_datetime < ?';
+      dateFilter = `AND ta.pickup_datetime >= ? AND ta.pickup_datetime < ? AND ta.status NOT IN ('cancelled', 'rejected')`;
       dateParams.push(startIso, endIso);
       break;
     case 'upcoming':
-      dateFilter = `AND ta.pickup_datetime >= ? AND ta.status IN ('assigned', 'accepted')`;
+      dateFilter = `AND ta.pickup_datetime >= ? AND ta.status IN ('assigned', 'accepted') AND ta.status NOT IN ('cancelled', 'rejected')`;
       dateParams.push(endIso);
       break;
     case 'past':

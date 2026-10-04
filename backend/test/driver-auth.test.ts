@@ -301,6 +301,27 @@ describe('Driver auth (TEST_MODE OTP bypass, phone formats, tenantId)', () => {
       expect(ids).not.toContain(tripIds.tomorrowEnRoute);
     });
 
+    it('today and upcoming never list cancelled or rejected trips (they stay in past)', async () => {
+      const { startIso, endIso } = localDayWindowUtc('Asia/Kolkata');
+      const start = new Date(startIso).getTime();
+      const end = new Date(endIso).getTime();
+      const cancelledToday = await addTrip('cancelledToday', new Date(start + 8 * 3600_000).toISOString(), 'cancelled');
+      const rejectedToday = await addTrip('rejectedToday', new Date(start + 9 * 3600_000).toISOString(), 'rejected');
+      const cancelledTomorrow = await addTrip('cancelledTomorrow', new Date(end + 3 * 3600_000).toISOString(), 'cancelled');
+
+      const today = (await listTab('today')).data.map((t: any) => t.id);
+      expect(today).not.toContain(cancelledToday);
+      expect(today).not.toContain(rejectedToday);
+      expect(today).toContain(tripIds.early);
+
+      const upcoming = (await listTab('upcoming')).data.map((t: any) => t.id);
+      expect(upcoming).not.toContain(cancelledTomorrow);
+      expect(upcoming).toContain(tripIds.tomorrow);
+
+      const past = (await listTab('past')).data.map((t: any) => t.id);
+      expect(past).toContain(cancelledToday);
+    });
+
     it('past tab has earlier-than-today trips and completed/cancelled trips', async () => {
       const body = await listTab('past');
       const ids = body.data.map((t: any) => t.id);

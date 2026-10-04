@@ -41,7 +41,12 @@ const createContactSchema = z.object({
   postalCode: z.string().optional().nullable(),
   tags: z.array(z.string()).optional().default([]),
   notes: z.string().optional().nullable(),
-  source: z.enum(['manual', 'website', 'referral', 'ad', 'facebook', 'google']).optional().nullable(),
+  source: z.enum([
+    'manual', 'website', 'referral', 'ad', 'facebook', 'google',
+    // Values offered by the desktop contact edit form and lead/routing source lists
+    'walkin', 'walk_in', 'social_media', 'google_ads', 'facebook_ads',
+    'phone_inquiry', 'email_inquiry', 'trade_show', 'partner', 'other',
+  ]).optional().nullable(),
   birthday: z.string().optional().nullable(),
   anniversary: z.string().optional().nullable(),
   preferredLanguage: z.string().optional().default('en'),

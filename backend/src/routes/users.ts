@@ -290,6 +290,12 @@ userRoutes.post(
     });
 
     return created(c, {
+      id: newUserId,
+      name: data.name,
+      phone: data.phone || null,
+      department: data.department || null,
+      inviteStatus: 'pending',
+      isActive: 1,
       inviteToken,
       inviteUrl: `https://app.travelcrm.pro/setup-account?token=${inviteToken}`,
       email: data.email,

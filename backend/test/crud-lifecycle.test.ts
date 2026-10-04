@@ -103,6 +103,19 @@ describe('CRUD Lifecycle E2E Tests', () => {
       expect(contactId).toBeDefined();
     });
 
+    it('accepts every source value the desktop forms offer', async () => {
+      const sources = ['walkin', 'walk_in', 'social_media', 'google_ads', 'facebook_ads',
+        'phone_inquiry', 'email_inquiry', 'trade_show', 'partner', 'other'];
+      for (const source of sources) {
+        const res = await authRequest('POST', '/contacts', adminToken, {
+          name: `Source ${source}`, type: 'customer', source,
+        });
+        expect(res.status, source).toBe(201);
+      }
+      const bad = await authRequest('POST', '/contacts', adminToken, { name: 'Bad', type: 'customer', source: 'bogus' });
+      expect(bad.status).toBe(400);
+    });
+
     it('should list contacts (response structure)', async () => {
       const res = await authRequest('GET', '/contacts', adminToken);
       expect(res.status).toBe(200);
