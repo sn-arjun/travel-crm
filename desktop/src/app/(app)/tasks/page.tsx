@@ -7,6 +7,11 @@ import {
   LayoutGrid, List as ListIcon, Loader2,
 } from 'lucide-react';
 import { ListPage, RelationCombobox } from '@/components/domain';
+import { PageContainer } from '@/components/layout/page-container';
+import { PageHeader } from '@/components/ui/page-header';
+import type { Lead, User } from '@travelcrm/shared';
+import { unwrapEntity, unwrapList } from '@/lib/api/envelope';
+import { formatDisplayDate, toLocalDateString } from '@/lib/dates';
 import { KanbanBoard } from '@/components/domain/kanban-board';
 import { Button } from '@/components/ui/button';
 import { Tag } from '@/components/ui/tag';
@@ -26,7 +31,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import type { DataTableColumn } from '@/components/ui/data-table';
 import { cn } from '@/lib/utils';
 import { useApiMutation } from '@/hooks/use-api';
-import { tasksApi, type Task } from '@/lib/api/tasks';
+import { tasksApi, type CreateTaskRequest, type Task } from '@/lib/api/tasks';
 import { usersApi } from '@/lib/api/users';
 import { leadsApi } from '@/lib/api/leads';
 import { toast } from 'sonner';
@@ -52,6 +57,18 @@ const STATUS_MAP: Record<string, string> = {
   todo: 'todo', in_progress: 'in_progress', done: 'done',
   pending: 'todo', completed: 'done', cancelled: 'todo',
 };
+
+/** Initials from the first letter of the first and last name ("Demo Admin" -> "DA"). */
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const first = parts[0];
+  const last = parts[parts.length - 1];
+  if (!first || !last) return '?';
+  if (first === last) return first.slice(0, 2).toUpperCase();
+  return (first.charAt(0) + last.charAt(0)).toUpperCase();
+}
+
+type TaskScope = 'all' | 'mine';
 
 /** The tasks client already returns camelCase rows; only the legacy status names need mapping. */
 function normalizeTask(t: Task): Task {
@@ -114,11 +131,11 @@ function TaskCard({ task, onSelect, onDragStart }: {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-ds-2">
             <Avatar className="size-6">
-              <AvatarFallback className="text-[9px]">{assigneeName.substring(0, 2).toUpperCase()}</AvatarFallback>
+              <AvatarFallback className="text-xs">{task.assigneeName ? initialsOf(assigneeName) : '?'}</AvatarFallback>
             </Avatar>
-            <span className="max-w-[80px] truncate text-xs text-ds-foreground-muted">{assigneeName}</span>
+            <span className="max-w-20 truncate text-xs text-ds-foreground-muted">{assigneeName}</span>
           </div>
-          <span className={cn('rounded-ds-sm px-ds-2 py-0.5 text-[10px] font-medium', PRIORITY_COLORS[task.priority])}>
+          <span className={cn('rounded-ds-sm px-ds-2 py-0.5 text-xs font-medium', PRIORITY_COLORS[task.priority])}>
             {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
           </span>
         </div>
@@ -127,7 +144,7 @@ function TaskCard({ task, onSelect, onDragStart }: {
           <div className="flex items-center gap-ds-1 text-xs">
             <Calendar className="size-3 text-ds-foreground-muted" />
             <span className={cn(isOverdue ? 'font-semibold text-ds-danger' : 'text-ds-foreground-muted')}>
-              {dueDate.toLocaleDateString()}
+              {formatDisplayDate(dueDate)}
             </span>
           </div>
         )}
@@ -155,10 +172,22 @@ export default function TasksPage() {
   const prefillLeadId = searchParams.get('leadId');
   const prefillLeadTitle = searchParams.get('leadTitle');
 
+  const [scope, setScope] = React.useState<TaskScope>('all');
   const [layoutView, setLayoutView] = React.useState<'kanban' | 'table'>('table');
   const [statusFilter, setStatusFilter] = React.useState('all');
   const [priorityFilter, setPriorityFilter] = React.useState('all');
   const [createOpen, setCreateOpen] = React.useState(false);
+
+  // Quick Add links to /tasks?new=1: open the dialog once, then drop the param so a refresh does not reopen it.
+  const wantsNew = searchParams.get('new') === '1';
+  React.useEffect(() => {
+    if (!wantsNew) return;
+    setCreateOpen(true);
+    const params = new URLSearchParams(window.location.search);
+    params.delete('new');
+    const qs = params.toString();
+    router.replace(qs ? `/tasks?${qs}` : '/tasks');
+  }, [wantsNew, router]);
   const [kanbanTasks, setKanbanTasks] = React.useState<Task[]>([]);
   const [kanbanLoading, setKanbanLoading] = React.useState(true);
   const [listKey, setListKey] = React.useState(0);
@@ -175,7 +204,7 @@ export default function TasksPage() {
     leadTitle: prefillLeadTitle || '',
   });
 
-  const createMutation = useApiMutation((data: any) => tasksApi.create(data));
+  const createMutation = useApiMutation((data: CreateTaskRequest) => tasksApi.create(data));
   const updateStatusMutation = useApiMutation((input: { taskId: string; status: string }) =>
     tasksApi.updateStatus(input.taskId, { status: input.status as 'todo' | 'in_progress' | 'done' }),
   );
@@ -185,14 +214,11 @@ export default function TasksPage() {
     setKanbanLoading(true);
     try {
       // The board shows every task, so walk all pages (capped) rather than truncating at one page.
-      const all: any[] = [];
+      const all: Task[] = [];
       for (let pageNum = 1; pageNum <= 10; pageNum++) {
-        const res = (await tasksApi.list({ page: pageNum, limit: 200, view: 'all' })) as any;
-        const raw = res?.data?.data ?? res?.data ?? [];
-        const items = Array.isArray(raw) ? raw : [];
-        all.push(...items);
-        const total = res?.pagination?.total ?? res?.data?.pagination?.total ?? 0;
-        if (items.length === 0 || all.length >= total) break;
+        const res = unwrapList<Task>(await tasksApi.list({ page: pageNum, limit: 200, view: scope }), { page: pageNum, limit: 200 });
+        all.push(...res.data);
+        if (res.data.length === 0 || all.length >= res.pagination.total) break;
       }
       setKanbanTasks(all.map(normalizeTask));
     } catch {
@@ -200,7 +226,7 @@ export default function TasksPage() {
     } finally {
       setKanbanLoading(false);
     }
-  }, []);
+  }, [scope]);
 
   React.useEffect(() => {
     if (layoutView === 'kanban') void loadKanban();
@@ -215,9 +241,9 @@ export default function TasksPage() {
       await createMutation.mutate({
         title: newTask.title,
         description: newTask.description || undefined,
-        priority: newTask.priority,
+        priority: newTask.priority as CreateTaskRequest['priority'],
         category: newTask.category,
-        dueDate: newTask.dueDate ? newTask.dueDate.toISOString() : undefined,
+        dueDate: newTask.dueDate ? toLocalDateString(newTask.dueDate) : undefined,
         assignedTo: newTask.assignedTo || undefined,
         relatedLeadId: newTask.leadId || undefined,
         status: 'todo',
@@ -270,9 +296,9 @@ export default function TasksPage() {
     { key: 'title', header: 'Title', sortable: true,
       cell: (t) => (
         <div className="flex min-w-0 items-center gap-ds-2">
-          <span className="max-w-[280px] truncate text-sm font-medium">{t.title}</span>
+          <span className="max-w-70 truncate text-sm font-medium">{t.title}</span>
           {(t.subtaskCount ?? 0) > 0 && (
-            <span className="shrink-0 text-[10px] text-ds-foreground-muted">
+            <span className="shrink-0 text-xs text-ds-foreground-muted">
               {t.completedSubtaskCount}/{t.subtaskCount}
             </span>
           )}
@@ -286,7 +312,7 @@ export default function TasksPage() {
       ) },
     { key: 'priority', header: 'Priority', sortable: true,
       cell: (t) => (
-        <span className={cn('rounded-ds-sm px-ds-2 py-0.5 text-[10px] font-medium', PRIORITY_COLORS[t.priority])}>
+        <span className={cn('rounded-ds-sm px-ds-2 py-0.5 text-xs font-medium', PRIORITY_COLORS[t.priority])}>
           {t.priority.charAt(0).toUpperCase() + t.priority.slice(1)}
         </span>
       ) },
@@ -296,7 +322,7 @@ export default function TasksPage() {
         const isOverdue = !!dueDate && dueDate < new Date() && t.status !== 'done';
         return dueDate ? (
           <span className={cn('text-sm', isOverdue ? 'font-semibold text-ds-danger' : 'text-ds-foreground-muted')}>
-            {dueDate.toLocaleDateString()}
+            {formatDisplayDate(dueDate)}
           </span>
         ) : <span className="text-sm text-ds-foreground-muted">--</span>;
       } },
@@ -304,11 +330,11 @@ export default function TasksPage() {
       cell: (t) => (
         <div className="flex items-center gap-ds-2">
           <Avatar className="size-6">
-            <AvatarFallback className="text-[9px]">
-              {(t.assigneeName || 'U').substring(0, 2).toUpperCase()}
+            <AvatarFallback className="text-xs">
+              {t.assigneeName ? initialsOf(t.assigneeName) : '?'}
             </AvatarFallback>
           </Avatar>
-          <span className="max-w-[120px] truncate text-sm">{t.assigneeName || 'Unassigned'}</span>
+          <span className="max-w-30 truncate text-sm">{t.assigneeName || 'Unassigned'}</span>
         </div>
       ) },
     { key: 'category', header: 'Category', hideable: true,
@@ -317,32 +343,43 @@ export default function TasksPage() {
         : <span className="text-sm text-ds-foreground-muted">--</span> },
   ];
 
-  return (
-    <div className="flex flex-col gap-ds-4">
-      <div className="flex items-center justify-end gap-ds-2">
-        <div className="flex items-center gap-ds-1 rounded-ds-md border border-ds-border p-0.5">
-          <Button variant={layoutView === 'table' ? 'secondary' : 'ghost'} size="icon-sm" onClick={() => setLayoutView('table')} aria-label="Table view">
-            <ListIcon className="size-4" />
-          </Button>
-          <Button variant={layoutView === 'kanban' ? 'secondary' : 'ghost'} size="icon-sm" onClick={() => setLayoutView('kanban')} aria-label="Kanban view">
-            <LayoutGrid className="size-4" />
-          </Button>
-        </div>
+  const viewToggle = (
+    <>
+      <div className="flex items-center gap-ds-1 rounded-ds-md border border-ds-border p-0.5" role="group" aria-label="Task scope">
+        <Button variant={scope === 'mine' ? 'secondary' : 'ghost'} size="sm" onClick={() => setScope('mine')} aria-pressed={scope === 'mine'}>
+          My tasks
+        </Button>
+        <Button variant={scope === 'all' ? 'secondary' : 'ghost'} size="sm" onClick={() => setScope('all')} aria-pressed={scope === 'all'}>
+          All tasks
+        </Button>
       </div>
+      <div className="flex items-center gap-ds-1 rounded-ds-md border border-ds-border p-0.5">
+        <Button variant={layoutView === 'table' ? 'secondary' : 'ghost'} size="icon-sm" onClick={() => setLayoutView('table')} aria-label="Table view">
+          <ListIcon className="size-4" />
+        </Button>
+        <Button variant={layoutView === 'kanban' ? 'secondary' : 'ghost'} size="icon-sm" onClick={() => setLayoutView('kanban')} aria-label="Kanban view">
+          <LayoutGrid className="size-4" />
+        </Button>
+      </div>
+    </>
+  );
+
+  return (
+    <>
 
       {layoutView === 'table' ? (
         <ListPage<Task>
-          refreshKey={listKey}
+          refreshKey={`${listKey}-${scope}`}
           title="Tasks"
           description="Manage team tasks and assignments."
           getRowId={(t) => t.id}
           fetcher={({ page, limit, search, filters }) => {
             const status = filters.find((f) => f.id === 'status')?.value;
             const priority = filters.find((f) => f.id === 'priority')?.value;
-            return tasksApi.list({ page, limit, search, status, priority, view: 'all' });
+            return tasksApi.list({ page, limit, search, status, priority, view: scope });
           }}
-          extractItems={(r: any) => (r?.data?.data ?? r?.data ?? []).map(normalizeTask)}
-          extractTotal={(r: any) => r?.pagination?.total ?? r?.data?.pagination?.total ?? 0}
+          extractItems={(r) => unwrapList<Task>(r).data.map(normalizeTask)}
+          extractTotal={(r) => unwrapList<Task>(r).pagination.total}
           columns={columns}
           primaryAction={
             <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-ds-2">
@@ -360,7 +397,8 @@ export default function TasksPage() {
           }}
           onClearFilters={() => { setStatusFilter('all'); setPriorityFilter('all'); }}
           headerActions={
-            <div className="flex gap-ds-2">
+            <div className="flex flex-wrap items-center gap-ds-2">
+              {viewToggle}
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -406,7 +444,7 @@ export default function TasksPage() {
             const header = ['Title', 'Status', 'Priority', 'Due Date', 'Assignee', 'Category'];
             const lines = rows.map((t) => [
               t.title, STATUS_LABELS[t.status], t.priority,
-              t.dueDate ? new Date(t.dueDate).toLocaleDateString() : '',
+              t.dueDate ? formatDisplayDate(t.dueDate) : '',
               t.assigneeName || '', t.category || '',
             ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','));
             const csv = [header.join(','), ...lines].join('\n');
@@ -420,19 +458,25 @@ export default function TasksPage() {
           emptyDescription="Create your first task to start tracking work."
         />
       ) : (
-        <div className="flex flex-col gap-ds-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-lg font-semibold text-ds-foreground">Tasks</h1>
-            <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-ds-2">
-              <Plus aria-hidden="true" /> Add task
-            </Button>
-          </div>
+        <PageContainer>
+          <PageHeader
+            title="Tasks"
+            description="Manage team tasks and assignments."
+            actions={
+              <>
+                {viewToggle}
+                <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-ds-2">
+                  <Plus aria-hidden="true" /> Add task
+                </Button>
+              </>
+            }
+          />
           {kanbanLoading ? (
             <KanbanSkeleton />
           ) : (
             <KanbanBoard
               columns={[
-                { id: 'todo', title: 'To Do', color: 'var(--ds-color-foreground-muted)', count: kanbanTasks.filter((t) => t.status === 'todo').length,
+                { id: 'todo', title: 'To Do', color: 'var(--ds-foreground-muted)', count: kanbanTasks.filter((t) => t.status === 'todo').length,
                   children: (
                     <div className="min-h-32 space-y-ds-3" onDragOver={(e) => e.preventDefault()} onDrop={() => handleDrop('todo')}>
                       {kanbanTasks.filter((t) => t.status === 'todo').map((t) => (
@@ -440,7 +484,7 @@ export default function TasksPage() {
                       ))}
                     </div>
                   ) },
-                { id: 'in_progress', title: 'In Progress', color: 'var(--ds-color-info)', count: kanbanTasks.filter((t) => t.status === 'in_progress').length,
+                { id: 'in_progress', title: 'In Progress', color: 'var(--ds-info)', count: kanbanTasks.filter((t) => t.status === 'in_progress').length,
                   children: (
                     <div className="min-h-32 space-y-ds-3" onDragOver={(e) => e.preventDefault()} onDrop={() => handleDrop('in_progress')}>
                       {kanbanTasks.filter((t) => t.status === 'in_progress').map((t) => (
@@ -448,7 +492,7 @@ export default function TasksPage() {
                       ))}
                     </div>
                   ) },
-                { id: 'done', title: 'Done', color: 'var(--ds-color-success)', count: kanbanTasks.filter((t) => t.status === 'done').length,
+                { id: 'done', title: 'Done', color: 'var(--ds-success)', count: kanbanTasks.filter((t) => t.status === 'done').length,
                   children: (
                     <div className="min-h-32 space-y-ds-3" onDragOver={(e) => e.preventDefault()} onDrop={() => handleDrop('done')}>
                       {kanbanTasks.filter((t) => t.status === 'done').map((t) => (
@@ -459,7 +503,7 @@ export default function TasksPage() {
               ]}
             />
           )}
-        </div>
+        </PageContainer>
       )}
 
       {/* Create Task Dialog */}
@@ -516,37 +560,33 @@ export default function TasksPage() {
 
             <div className="space-y-ds-1">
               <Label>Assign to</Label>
-              <RelationCombobox
+              <RelationCombobox<User>
                 value={newTask.assignedTo || null}
                 onChange={(id) => setNewTask((p) => ({ ...p, assignedTo: id ?? '' }))}
                 fetcher={async (q, page) => {
                   const r = await usersApi.list({ search: q, page, limit: 20 });
-                  const body = r as any;
-                  const items = Array.isArray(body?.data) ? body.data : (body?.data?.data ?? []);
-                  return { items, total: body?.pagination?.total ?? body?.data?.pagination?.total ?? items.length };
+                  return { items: r.data, total: r.pagination.total };
                 }}
-                getOptionId={(u: any) => u.id}
-                getOptionLabel={(u: any) => u.name || u.email}
-                getOptionDescription={(u: any) => u.email}
-                resolveSelected={async (id) => (await usersApi.getById(id)).data as any}
+                getOptionId={(u) => u.id}
+                getOptionLabel={(u) => u.name || u.email}
+                getOptionDescription={(u) => u.email}
+                resolveSelected={async (id) => unwrapEntity<User>(await usersApi.getById(id))}
                 placeholder="Search team members…"
               />
             </div>
 
             <div className="space-y-ds-1">
               <Label>Linked lead</Label>
-              <RelationCombobox
+              <RelationCombobox<Lead>
                 value={newTask.leadId || null}
-                onChange={(id, item: any) => setNewTask((p) => ({ ...p, leadId: id ?? '', leadTitle: item?.title || item?.name || '' }))}
+                onChange={(id, item) => setNewTask((p) => ({ ...p, leadId: id ?? '', leadTitle: item?.title || '' }))}
                 fetcher={async (q, page) => {
-                  const r = await leadsApi.list({ search: q, page, limit: 20 } as any);
-                  const body = r as any;
-                  const items = Array.isArray(body?.data) ? body.data : (body?.data?.data ?? []);
-                  return { items, total: body?.pagination?.total ?? body?.data?.pagination?.total ?? items.length };
+                  const list = unwrapList<Lead>(await leadsApi.list({ search: q, page, limit: 20 }), { page, limit: 20 });
+                  return { items: list.data, total: list.pagination.total };
                 }}
-                getOptionId={(l: any) => l.id}
-                getOptionLabel={(l: any) => l.title || l.name || l.id}
-                resolveSelected={async (id) => (await leadsApi.getById(id)).data as any}
+                getOptionId={(l) => l.id}
+                getOptionLabel={(l) => l.title || l.id}
+                resolveSelected={async (id) => unwrapEntity<Lead>(await leadsApi.getById(id))}
                 placeholder="Search leads…"
               />
             </div>
@@ -568,6 +608,6 @@ export default function TasksPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }

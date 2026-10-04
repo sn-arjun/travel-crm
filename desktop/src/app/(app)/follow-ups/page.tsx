@@ -15,8 +15,8 @@ import {
 import { DateTimePicker } from '@/components/ui/date-picker';
 import { followUpsApi } from '@/lib/api/follow-ups';
 import { leadsApi } from '@/lib/api/leads';
-import type { FollowUp } from '@travelcrm/shared';
-import type { Lead } from '@travelcrm/shared';
+import type { FollowUp, Lead } from '@travelcrm/shared';
+import { unwrapEntity, unwrapList } from '@/lib/api/envelope';
 import { toLocalDateString } from '@/lib/dates';
 
 type FollowUpRow = FollowUp & { status?: string; leadTitle?: string; contactName?: string };
@@ -50,9 +50,7 @@ function statusLabel(f: FollowUpRow) {
 // GET /follow-ups returns every pending follow-up as a plain array and ignores
 // paging/search/type/status params, so narrowing and paging happen here.
 async function queryFollowUps(params: { search?: string; status?: string; type?: string }): Promise<FollowUpRow[]> {
-  const res = await followUpsApi.list();
-  const data: any = res.data;
-  const all: FollowUpRow[] = Array.isArray(data) ? data : (data?.data ?? []);
+  const all = unwrapList<FollowUpRow>(await followUpsApi.list()).data;
   const q = params.search?.trim().toLowerCase();
   return all.filter((f) => {
     if (params.type && f.type !== params.type) return false;
@@ -161,7 +159,9 @@ function ScheduleDialog({
         <DialogHeader>
           <DialogTitle>{mode === 'reschedule' ? 'Reschedule follow-up' : 'Schedule follow-up'}</DialogTitle>
           <DialogDescription>
-            {mode === 'reschedule' ? 'Pick a new date and time for this follow-up.' : 'Schedule a new follow-up for a lead.'}
+            {mode === 'reschedule'
+              ? 'Pick a new date and time for this follow-up.'
+              : 'Fields marked with * are required. Pick the lead and when to follow up.'}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-ds-4">
@@ -174,16 +174,13 @@ function ScheduleDialog({
               onChange={(id, item) => setForm((f) => ({ ...f, leadId: id ?? '', leadLabel: item?.title ?? '' }))}
               disabled={mode === 'reschedule'}
               fetcher={async (query, page) => {
-                const r = await leadsApi.list({ search: query, page, limit: 20 });
-                const data: any = r.data;
-                const items = Array.isArray(data) ? data : (data?.data ?? []);
-                const total = Array.isArray(data) ? items.length : (data?.pagination?.total ?? items.length);
-                return { items, total };
+                const list = unwrapList<Lead>(await leadsApi.list({ search: query, page, limit: 20 }), { page, limit: 20 });
+                return { items: list.data, total: list.pagination.total };
               }}
               getOptionId={(l) => l.id}
               getOptionLabel={(l) => l.title}
               getOptionDescription={(l) => l.contact?.name}
-              resolveSelected={async (id) => (await leadsApi.getById(id)).data}
+              resolveSelected={async (id) => unwrapEntity<Lead>(await leadsApi.getById(id))}
               placeholder="Select a lead"
               searchPlaceholder="Search leads..."
             />
@@ -228,6 +225,13 @@ function ScheduleDialog({
             </div>
           )}
         </div>
+        {!saving && (!form.leadId || !form.scheduledAt) && (
+          <p className="text-xs text-ds-foreground-muted" data-testid="schedule-hint">
+            {mode === 'reschedule'
+              ? 'Pick a new date & time to enable Reschedule.'
+              : `To enable Schedule, ${[!form.leadId && 'choose a lead', !form.scheduledAt && 'pick a date & time'].filter(Boolean).join(' and ')}.`}
+          </p>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
           <Button disabled={saving || !form.scheduledAt || !form.leadId} onClick={handleSave} className="gap-ds-2">
@@ -491,7 +495,7 @@ export default function FollowUpsPage() {
             },
           },
         ]}
-        onExport={async (rows) => {
+        onExport={async () => {
           try {
             const all = await queryFollowUps({ status: statusFilter, type: typeFilter });
             const header = ['Type', 'Lead', 'Contact', 'Notes', 'Scheduled', 'Status'];

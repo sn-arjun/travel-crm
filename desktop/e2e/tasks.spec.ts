@@ -98,8 +98,9 @@ test.describe('Tasks: CRUD round trip', () => {
     const now = new Date();
     const dueY = now.getFullYear();
     const dueM = now.getMonth() + 1; // next month → never overdue
-    const listDue = await fmt(page, dueY, dueM, 15);
-    const detailDue = await fmt(page, dueY, dueM, 15, { day: 'numeric', month: 'short', year: 'numeric' });
+    // List and detail pages format dates with formatDisplayDate (en-IN), same as the picker.
+    const listDue = await fmt(page, dueY, dueM, 15, { day: 'numeric', month: 'short', year: 'numeric' }, 'en-IN');
+    const detailDue = listDue;
     const pickerDue = await fmt(page, dueY, dueM, 15, { day: 'numeric', month: 'short', year: 'numeric' }, 'en-IN');
 
     // ── CREATE ──

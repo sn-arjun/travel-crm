@@ -3,15 +3,15 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { z } from 'zod';
-import { EntityForm, FormRow, RelationCombobox } from '@/components/domain';
+import { EntityForm, FormRow } from '@/components/domain';
 import {
   Input, Textarea, SectionCard, Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
   CurrencyInput, DatePicker, Tag,
 } from '@/components/ui';
-import { leadsApi } from '@/lib/api/leads';
-import { contactsApi } from '@/lib/api/contacts';
-import { usersApi } from '@/lib/api/users';
+import { leadsApi, type CreateLeadRequest } from '@/lib/api/leads';
 import { LEAD_SOURCES } from '@travelcrm/shared';
+import { LeadAssigneeField, LeadContactField } from '../lead-form-fields';
+import { LEAD_SOURCE_LABELS, PRIORITY_LABELS, TRIP_TYPE_LABELS, leadSourceLabel } from '../lead-labels';
 import { toast } from 'sonner';
 import { toLocalDateString } from '@/lib/dates';
 
@@ -30,6 +30,7 @@ const schema = z.object({
   source: z.string().min(1, 'Source is required'),
   priority: z.string(),
   assignedTo: z.string().optional(),
+  unassigned: z.boolean(),
   specialRequirements: z.string().optional(),
   notes: z.string().optional(),
 });
@@ -60,13 +61,15 @@ export default function NewLeadPage() {
         source: 'manual',
         priority: 'warm',
         assignedTo: '',
+        unassigned: false,
         specialRequirements: '',
         notes: '',
       }}
       prefillFromParams={{ contactId: 'contactId' }}
       onCancel={() => router.back()}
       onSubmit={async (v) => {
-        const result = await leadsApi.create({
+        // Unassigned submits an explicit null (skips auto-assignment); an empty picker omits the field.
+        const payload: Omit<CreateLeadRequest, 'assignedTo'> & { assignedTo?: string | null } = {
           contactId: v.contactId,
           title: v.title,
           destinations: v.destinations,
@@ -77,13 +80,14 @@ export default function NewLeadPage() {
           paxInfants: v.paxInfants,
           budget: v.budget,
           currency: v.currency,
-          tripType: v.tripType as any,
-          source: v.source as any,
-          priority: v.priority as any,
-          assignedTo: v.assignedTo || undefined,
+          tripType: v.tripType as CreateLeadRequest['tripType'],
+          source: v.source as CreateLeadRequest['source'],
+          priority: v.priority as CreateLeadRequest['priority'],
+          assignedTo: v.unassigned ? null : v.assignedTo || undefined,
           specialRequirements: v.specialRequirements || undefined,
           notes: v.notes || undefined,
-        });
+        };
+        const result = await leadsApi.create(payload as CreateLeadRequest);
         if (result) {
           toast.success('Lead created successfully');
           router.push('/leads');
@@ -95,46 +99,32 @@ export default function NewLeadPage() {
         const destinations = form.watch('destinations') || [];
         return (
           <>
-            <SectionCard title="Contact" required>
+            <SectionCard title="Customer">
               <div className="grid gap-ds-4 sm:grid-cols-2">
                 <FormRow name="contactId" label="Contact" required wide>
-                  <RelationCombobox
-                    value={form.watch('contactId') || null}
-                    onChange={(id) => form.setValue('contactId', id ?? '', { shouldDirty: true, shouldValidate: true })}
-                    fetcher={async (q, page) => {
-                      const r = await contactsApi.list({ search: q, page, limit: 20 });
-                      const data = r.data as any;
-                      const items = Array.isArray(data) ? data : (data?.data ?? []);
-                      const total = data?.pagination?.total ?? items.length;
-                      return { items, total };
-                    }}
-                    getOptionId={(c: any) => c.id}
-                    getOptionLabel={(c: any) => c.name || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim()}
-                    getOptionDescription={(c: any) => c.email ?? undefined}
-                    resolveSelected={async (id) => (await contactsApi.getById(id)).data as any}
-                    placeholder="Select a contact"
-                    searchPlaceholder="Search contacts..."
-                    required
+                  <LeadContactField
+                    value={form.watch('contactId')}
+                    onChange={(id) => form.setValue('contactId', id, { shouldDirty: true, shouldValidate: true })}
                     error={form.formState.errors.contactId?.message}
                   />
                 </FormRow>
               </div>
             </SectionCard>
 
-            <SectionCard title="Lead Details" required>
+            <SectionCard title="Trip enquiry">
               <div className="grid gap-ds-4 sm:grid-cols-2">
                 <FormRow name="title" label="Title" required wide>
                   <Input id="title" placeholder="e.g., Maldives Honeymoon Package" {...form.register('title')} />
                 </FormRow>
                 <FormRow name="destinations" label="Destinations" required>
-                  <div className="flex flex-wrap gap-1.5 p-2 border border-ds-border rounded-ds-md min-h-[36px] bg-ds-background">
+                  <div className="flex flex-wrap gap-1.5 p-2 border border-ds-border rounded-ds-md min-h-9 bg-ds-background">
                     {destinations.map((dest: string, i: number) => (
                       <Tag key={i} tone="primary" onRemove={() => form.setValue('destinations', destinations.filter((_: string, j: number) => j !== i), { shouldDirty: true, shouldValidate: true })}>
                         {dest}
                       </Tag>
                     ))}
                     <input
-                      className="flex-1 min-w-[120px] text-sm bg-transparent outline-none"
+                      className="flex-1 min-w-32 text-sm bg-transparent outline-none"
                       placeholder={destinations.length === 0 ? 'Type & press Enter...' : 'Add more...'}
                       value={destInput}
                       onChange={(e) => setDestInput(e.target.value)}
@@ -157,14 +147,9 @@ export default function NewLeadPage() {
                   <Select value={form.watch('tripType')} onValueChange={(v) => form.setValue('tripType', v, { shouldDirty: true })}>
                     <SelectTrigger id="tripType"><SelectValue placeholder="Select" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="domestic">Domestic</SelectItem>
-                      <SelectItem value="international">International</SelectItem>
-                      <SelectItem value="honeymoon">Honeymoon</SelectItem>
-                      <SelectItem value="family">Family</SelectItem>
-                      <SelectItem value="group">Group</SelectItem>
-                      <SelectItem value="corporate">Corporate</SelectItem>
-                      <SelectItem value="adventure">Adventure</SelectItem>
-                      <SelectItem value="pilgrimage">Pilgrimage</SelectItem>
+                      {Object.entries(TRIP_TYPE_LABELS).map(([v, l]) => (
+                        <SelectItem key={v} value={v}>{l}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </FormRow>
@@ -187,7 +172,7 @@ export default function NewLeadPage() {
               </div>
             </SectionCard>
 
-            <SectionCard title="Passengers & Budget">
+            <SectionCard title="Passengers and budget">
               <div className="grid gap-ds-4 sm:grid-cols-2">
                 <FormRow name="paxAdults" label="Adults">
                   <Input id="paxAdults" type="number" min={1} {...form.register('paxAdults', { valueAsNumber: true })} />
@@ -224,9 +209,9 @@ export default function NewLeadPage() {
                   <Select value={form.watch('priority')} onValueChange={(v) => form.setValue('priority', v, { shouldDirty: true })}>
                     <SelectTrigger id="priority"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="hot">Hot</SelectItem>
-                      <SelectItem value="warm">Warm</SelectItem>
-                      <SelectItem value="cold">Cold</SelectItem>
+                      {Object.entries(PRIORITY_LABELS).map(([v, l]) => (
+                        <SelectItem key={v} value={v}>{l}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </FormRow>
@@ -235,24 +220,20 @@ export default function NewLeadPage() {
                     <SelectTrigger id="source"><SelectValue placeholder="Select source" /></SelectTrigger>
                     <SelectContent>
                       {LEAD_SOURCES.map((s) => (
-                        <SelectItem key={s} value={s} className="capitalize">{s.replace('_', ' ')}</SelectItem>
+                        <SelectItem key={s} value={s}>{LEAD_SOURCE_LABELS[s] ?? leadSourceLabel(s)}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </FormRow>
-                <FormRow name="assignedTo" label="Assigned To" wide>
-                  <RelationCombobox
-                    value={form.watch('assignedTo') || null}
-                    onChange={(id) => form.setValue('assignedTo', id ?? '', { shouldDirty: true })}
-                    fetcher={async (q, page) => {
-                      const r = await usersApi.list({ search: q, page, limit: 20 });
-                      return { items: r.data, total: r.pagination.total };
+                <FormRow name="assignedTo" label="Assigned to" wide>
+                  <LeadAssigneeField
+                    assignedTo={form.watch('assignedTo') ?? ''}
+                    unassigned={form.watch('unassigned')}
+                    onAssignedToChange={(id) => form.setValue('assignedTo', id, { shouldDirty: true })}
+                    onUnassignedChange={(u) => {
+                      form.setValue('unassigned', u, { shouldDirty: true });
+                      if (u) form.setValue('assignedTo', '', { shouldDirty: true });
                     }}
-                    getOptionId={(u: any) => u.id}
-                    getOptionLabel={(u: any) => u.name || u.email}
-                    resolveSelected={async (id) => (await usersApi.getById(id)).data as any}
-                    placeholder="Select agent"
-                    searchPlaceholder="Search team..."
                   />
                 </FormRow>
               </div>

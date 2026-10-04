@@ -24,7 +24,10 @@ import { EmptyState } from '@/components/ui/empty-state';
 import type { TimelineItem } from '@/components/ui/timeline';
 import { cn } from '@/lib/utils';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { tasksApi, type Task, type Subtask, type TaskComment } from '@/lib/api/tasks';
+import { tasksApi, type Task, type Subtask, type TaskComment, type UpdateTaskRequest } from '@/lib/api/tasks';
+import { unwrapEntity, unwrapList } from '@/lib/api/envelope';
+import { formatDisplayDate, toLocalDateString, parseLocalDate } from '@/lib/dates';
+import type { Lead, User } from '@travelcrm/shared';
 import { usersApi } from '@/lib/api/users';
 import { leadsApi } from '@/lib/api/leads';
 import { toast } from 'sonner';
@@ -42,8 +45,17 @@ function normalizeTask(t: Task): Task {
 }
 
 function formatDate(date: string | undefined): string {
-  if (!date) return '--';
-  return new Date(date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  return date ? formatDisplayDate(date) || '--' : '--';
+}
+
+/** Initials from the first letter of the first and last name ("Demo Admin" -> "DA"). */
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const first = parts[0];
+  const last = parts[parts.length - 1];
+  if (!first || !last) return '?';
+  if (first === last) return first.slice(0, 2).toUpperCase();
+  return (first.charAt(0) + last.charAt(0)).toUpperCase();
 }
 
 export default function TaskDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -55,20 +67,19 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
     [id],
   );
   const task = React.useMemo(() => {
-    const raw = (taskResp as any)?.data;
+    const raw = taskResp?.data;
     return raw ? normalizeTask(raw) : null;
   }, [taskResp]);
 
   const { data: subtasksResp, refetch: refetchSubtasks } = useApiQuery(() => tasksApi.getSubtasks(id), [id]);
   const subtasks: Subtask[] = React.useMemo(() => {
-    const raw = (subtasksResp as any)?.data;
+    const raw = subtasksResp?.data;
     return Array.isArray(raw) ? raw : [];
   }, [subtasksResp]);
 
   const { data: commentsResp, refetch: refetchComments } = useApiQuery(() => tasksApi.getComments(id), [id]);
   const comments: TaskComment[] = React.useMemo(() => {
-    const raw = (commentsResp as any)?.data?.data ?? (commentsResp as any)?.data ?? [];
-    return Array.isArray(raw) ? raw : [];
+    return commentsResp ? unwrapList<TaskComment>(commentsResp).data : [];
   }, [commentsResp]);
 
   const [commentText, setCommentText] = React.useState('');
@@ -86,7 +97,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
   const updateStatusMutation = useApiMutation((status: string) =>
     tasksApi.updateStatus(id, { status: status as 'todo' | 'in_progress' | 'done' }),
   );
-  const updateTaskMutation = useApiMutation((data: any) => tasksApi.update(id, data));
+  const updateTaskMutation = useApiMutation((data: UpdateTaskRequest) => tasksApi.update(id, data));
   const deleteMutation = useApiMutation(() => tasksApi.delete(id));
   const createCommentMutation = useApiMutation((content: string) => tasksApi.createComment(id, content));
   const updateCommentMutation = useApiMutation(({ commentId, content }: { commentId: string; content: string }) =>
@@ -107,7 +118,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
       description: task.description || '',
       priority: task.priority,
       category: task.category || 'general',
-      dueDate: task.dueDate ? new Date(task.dueDate) : undefined,
+      dueDate: task.dueDate ? parseLocalDate(task.dueDate) : undefined,
       assignedTo: task.assignedTo || '',
       leadId: task.leadId || '',
     });
@@ -125,7 +136,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
         description: editForm.description || undefined,
         priority: editForm.priority as 'low' | 'medium' | 'high',
         category: editForm.category,
-        dueDate: editForm.dueDate ? editForm.dueDate.toISOString() : undefined,
+        dueDate: editForm.dueDate ? toLocalDateString(editForm.dueDate) : undefined,
         assignedTo: editForm.assignedTo || undefined,
         relatedLeadId: editForm.leadId || undefined,
       });
@@ -161,15 +172,15 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
     if (!commentText.trim()) return;
     try {
       const result = await createCommentMutation.mutate(commentText.trim());
-      if (result && (result as any).error) {
-        toast.error((result as any).message || 'Failed to add comment');
+      if (!result) {
+        toast.error('Failed to add comment');
         return;
       }
       setCommentText('');
       toast.success('Comment added');
       refetchComments();
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to add comment');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to add comment');
     }
   };
 
@@ -240,7 +251,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
 
   if (taskError || !task) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-ds-4">
+      <div className="flex min-h-64 flex-col items-center justify-center gap-ds-4">
         <AlertCircle className="size-12 text-ds-danger" />
         <p className="text-ds-foreground-muted">Task not found</p>
         <Button variant="outline" onClick={() => router.push('/tasks')}>Back to tasks</Button>
@@ -346,8 +357,8 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
                   <span className="text-sm text-ds-foreground-muted">Assigned to</span>
                   <div className="flex items-center gap-ds-2">
                     <Avatar className="size-6">
-                      <AvatarFallback className="text-[9px]">
-                        {(task.assigneeName || 'U').substring(0, 2).toUpperCase()}
+                      <AvatarFallback className="text-xs">
+                        {task.assigneeName ? initialsOf(task.assigneeName) : '?'}
                       </AvatarFallback>
                     </Avatar>
                     <span className="text-sm font-medium">{task.assigneeName || 'Unassigned'}</span>
@@ -453,7 +464,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
                       onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleAddComment(); }}
                     />
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-ds-foreground-muted">Ctrl+Enter to submit</span>
+                      <span className="text-xs text-ds-foreground-muted">Ctrl+Enter to submit</span>
                       <Button size="sm" className="h-7 gap-ds-1" onClick={handleAddComment} disabled={!commentText.trim() || createCommentMutation.loading}>
                         {createCommentMutation.loading ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
                         Post
@@ -473,7 +484,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
                   return (
                     <div key={comment.id} className="flex gap-ds-3 border-t border-ds-border pt-ds-3">
                       <Avatar className="size-8 shrink-0">
-                        <AvatarFallback className="text-[10px]">{userName.substring(0, 2).toUpperCase()}</AvatarFallback>
+                        <AvatarFallback className="text-xs">{initialsOf(userName)}</AvatarFallback>
                       </Avatar>
                       <div className="flex-1 space-y-ds-1">
                         <div className="flex items-center gap-ds-2">
@@ -582,36 +593,32 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
               </div>
               <div className="space-y-ds-1">
                 <label className="text-sm font-medium">Assign to</label>
-                <RelationCombobox
+                <RelationCombobox<User>
                   value={editForm.assignedTo || null}
                   onChange={(v) => setEditForm((p) => p && { ...p, assignedTo: v ?? '' })}
                   fetcher={async (q, page) => {
                     const r = await usersApi.list({ search: q, page, limit: 20 });
-                    const body = r as any;
-                    const items = Array.isArray(body?.data) ? body.data : (body?.data?.data ?? []);
-                    return { items, total: body?.pagination?.total ?? body?.data?.pagination?.total ?? items.length };
+                    return { items: r.data, total: r.pagination.total };
                   }}
-                  getOptionId={(u: any) => u.id}
-                  getOptionLabel={(u: any) => u.name || u.email}
-                  getOptionDescription={(u: any) => u.email}
-                  resolveSelected={async (uid) => (await usersApi.getById(uid)).data as any}
+                  getOptionId={(u) => u.id}
+                  getOptionLabel={(u) => u.name || u.email}
+                  getOptionDescription={(u) => u.email}
+                  resolveSelected={async (uid) => unwrapEntity<User>(await usersApi.getById(uid))}
                   placeholder="Search team members…"
                 />
               </div>
               <div className="space-y-ds-1">
                 <label className="text-sm font-medium">Linked lead</label>
-                <RelationCombobox
+                <RelationCombobox<Lead>
                   value={editForm.leadId || null}
                   onChange={(v) => setEditForm((p) => p && { ...p, leadId: v ?? '' })}
                   fetcher={async (q, page) => {
-                    const r = await leadsApi.list({ search: q, page, limit: 20 } as any);
-                    const body = r as any;
-                    const items = Array.isArray(body?.data) ? body.data : (body?.data?.data ?? []);
-                    return { items, total: body?.pagination?.total ?? body?.data?.pagination?.total ?? items.length };
+                    const list = unwrapList<Lead>(await leadsApi.list({ search: q, page, limit: 20 }), { page, limit: 20 });
+                    return { items: list.data, total: list.pagination.total };
                   }}
-                  getOptionId={(l: any) => l.id}
-                  getOptionLabel={(l: any) => l.title || l.name || l.id}
-                  resolveSelected={async (lid) => (await leadsApi.getById(lid)).data as any}
+                  getOptionId={(l) => l.id}
+                  getOptionLabel={(l) => l.title || l.id}
+                  resolveSelected={async (lid) => unwrapEntity<Lead>(await leadsApi.getById(lid))}
                   placeholder="Search leads…"
                 />
               </div>

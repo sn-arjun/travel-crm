@@ -4,16 +4,16 @@ import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { z } from 'zod';
 import { Loader2, AlertCircle } from 'lucide-react';
-import { EntityForm, FormRow, RelationCombobox } from '@/components/domain';
+import { EntityForm, FormRow } from '@/components/domain';
 import {
   Input, Textarea, SectionCard, Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
   CurrencyInput, DatePicker, Tag, Button,
 } from '@/components/ui';
 import { useApiQuery } from '@/hooks/use-api';
-import { leadsApi } from '@/lib/api/leads';
-import { contactsApi } from '@/lib/api/contacts';
-import { usersApi } from '@/lib/api/users';
-import { LEAD_SOURCES, LEAD_STATUS_LABELS } from '@travelcrm/shared';
+import { leadsApi, type UpdateLeadRequest } from '@/lib/api/leads';
+import { LEAD_SOURCES, LEAD_STATUS_LABELS, type Lead } from '@travelcrm/shared';
+import { LeadAssigneeField, LeadContactField } from '../../lead-form-fields';
+import { LEAD_SOURCE_LABELS, PRIORITY_LABELS, TRIP_TYPE_LABELS, leadSourceLabel } from '../../lead-labels';
 import { toast } from 'sonner';
 import { parseLocalDate, toLocalDateString } from '@/lib/dates';
 
@@ -33,6 +33,7 @@ const schema = z.object({
   status: z.string(),
   priority: z.string(),
   assignedTo: z.string().optional(),
+  unassigned: z.boolean(),
   specialRequirements: z.string().optional(),
   notes: z.string().optional(),
 });
@@ -45,7 +46,7 @@ export default function EditLeadPage() {
   const [destInput, setDestInput] = React.useState('');
 
   const { data: leadResponse, loading, error } = useApiQuery(() => leadsApi.getById(leadId), [leadId]);
-  const lead = leadResponse?.data as any;
+  const lead = leadResponse?.data as (Lead & { destinations?: string[]; notes?: string }) | undefined;
 
   if (loading) {
     return (
@@ -88,6 +89,7 @@ export default function EditLeadPage() {
         status: lead.status || 'new',
         priority: lead.priority || 'warm',
         assignedTo: lead.assignedTo || '',
+        unassigned: !lead.assignedTo,
         specialRequirements: lead.specialRequirements || '',
         notes: lead.notes || '',
       }}
@@ -108,10 +110,11 @@ export default function EditLeadPage() {
           source: v.source,
           status: v.status,
           priority: v.priority,
-          assignedTo: v.assignedTo || undefined,
+          // Unassigned sends an explicit null; otherwise keep the chosen agent.
+          assignedTo: v.unassigned ? null : v.assignedTo || undefined,
           specialRequirements: v.specialRequirements || undefined,
           notes: v.notes || undefined,
-        } as any);
+        } as unknown as UpdateLeadRequest);
         if (result) {
           toast.success('Lead updated successfully');
           router.push(`/leads/${leadId}`);
@@ -123,33 +126,19 @@ export default function EditLeadPage() {
         const destinations = form.watch('destinations') || [];
         return (
           <>
-            <SectionCard title="Contact" required>
+            <SectionCard title="Customer">
               <div className="grid gap-ds-4 sm:grid-cols-2">
                 <FormRow name="contactId" label="Contact" required wide>
-                  <RelationCombobox
-                    value={form.watch('contactId') || null}
-                    onChange={(id) => form.setValue('contactId', id ?? '', { shouldDirty: true, shouldValidate: true })}
-                    fetcher={async (q, page) => {
-                      const r = await contactsApi.list({ search: q, page, limit: 20 });
-                      const data = r.data as any;
-                      const items = Array.isArray(data) ? data : (data?.data ?? []);
-                      const total = data?.pagination?.total ?? items.length;
-                      return { items, total };
-                    }}
-                    getOptionId={(c: any) => c.id}
-                    getOptionLabel={(c: any) => c.name || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim()}
-                    getOptionDescription={(c: any) => c.email ?? undefined}
-                    resolveSelected={async (id) => (await contactsApi.getById(id)).data as any}
-                    placeholder="Select a contact"
-                    searchPlaceholder="Search contacts..."
-                    required
+                  <LeadContactField
+                    value={form.watch('contactId')}
+                    onChange={(id) => form.setValue('contactId', id, { shouldDirty: true, shouldValidate: true })}
                     error={form.formState.errors.contactId?.message}
                   />
                 </FormRow>
               </div>
             </SectionCard>
 
-            <SectionCard title="Basic Information" required>
+            <SectionCard title="Basic information">
               <div className="grid gap-ds-4 sm:grid-cols-2">
                 <FormRow name="title" label="Title" required wide>
                   <Input id="title" placeholder="e.g., Maldives Honeymoon Package" {...form.register('title')} />
@@ -168,9 +157,9 @@ export default function EditLeadPage() {
                   <Select value={form.watch('priority')} onValueChange={(v) => form.setValue('priority', v, { shouldDirty: true })}>
                     <SelectTrigger id="priority"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="hot">Hot</SelectItem>
-                      <SelectItem value="warm">Warm</SelectItem>
-                      <SelectItem value="cold">Cold</SelectItem>
+                      {Object.entries(PRIORITY_LABELS).map(([v, l]) => (
+                        <SelectItem key={v} value={v}>{l}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </FormRow>
@@ -179,24 +168,20 @@ export default function EditLeadPage() {
                     <SelectTrigger id="source"><SelectValue placeholder="Select source" /></SelectTrigger>
                     <SelectContent>
                       {LEAD_SOURCES.map((s) => (
-                        <SelectItem key={s} value={s} className="capitalize">{s.replace('_', ' ')}</SelectItem>
+                        <SelectItem key={s} value={s}>{LEAD_SOURCE_LABELS[s] ?? leadSourceLabel(s)}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </FormRow>
-                <FormRow name="assignedTo" label="Assigned To">
-                  <RelationCombobox
-                    value={form.watch('assignedTo') || null}
-                    onChange={(id) => form.setValue('assignedTo', id ?? '', { shouldDirty: true })}
-                    fetcher={async (q, page) => {
-                      const r = await usersApi.list({ search: q, page, limit: 20 });
-                      return { items: r.data, total: r.pagination.total };
+                <FormRow name="assignedTo" label="Assigned to" wide>
+                  <LeadAssigneeField
+                    assignedTo={form.watch('assignedTo') ?? ''}
+                    unassigned={form.watch('unassigned')}
+                    onAssignedToChange={(id) => form.setValue('assignedTo', id, { shouldDirty: true })}
+                    onUnassignedChange={(u) => {
+                      form.setValue('unassigned', u, { shouldDirty: true });
+                      if (u) form.setValue('assignedTo', '', { shouldDirty: true });
                     }}
-                    getOptionId={(u: any) => u.id}
-                    getOptionLabel={(u: any) => u.name || u.email}
-                    resolveSelected={async (id) => (await usersApi.getById(id)).data as any}
-                    placeholder="Select agent"
-                    searchPlaceholder="Search team..."
                   />
                 </FormRow>
               </div>
@@ -205,14 +190,14 @@ export default function EditLeadPage() {
             <SectionCard title="Trip Details">
               <div className="grid gap-ds-4 sm:grid-cols-2">
                 <FormRow name="destinations" label="Destinations" wide>
-                  <div className="flex flex-wrap gap-1.5 p-2 border border-ds-border rounded-ds-md min-h-[36px] bg-ds-background">
+                  <div className="flex flex-wrap gap-1.5 p-2 border border-ds-border rounded-ds-md min-h-9 bg-ds-background">
                     {destinations.map((dest: string, i: number) => (
                       <Tag key={i} tone="primary" onRemove={() => form.setValue('destinations', destinations.filter((_: string, j: number) => j !== i), { shouldDirty: true })}>
                         {dest}
                       </Tag>
                     ))}
                     <input
-                      className="flex-1 min-w-[120px] text-sm bg-transparent outline-none"
+                      className="flex-1 min-w-32 text-sm bg-transparent outline-none"
                       placeholder={destinations.length === 0 ? 'Type & press Enter...' : 'Add more...'}
                       value={destInput}
                       onChange={(e) => setDestInput(e.target.value)}
@@ -235,14 +220,9 @@ export default function EditLeadPage() {
                   <Select value={form.watch('tripType')} onValueChange={(v) => form.setValue('tripType', v, { shouldDirty: true })}>
                     <SelectTrigger id="tripType"><SelectValue placeholder="Select" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="domestic">Domestic</SelectItem>
-                      <SelectItem value="international">International</SelectItem>
-                      <SelectItem value="honeymoon">Honeymoon</SelectItem>
-                      <SelectItem value="family">Family</SelectItem>
-                      <SelectItem value="group">Group</SelectItem>
-                      <SelectItem value="corporate">Corporate</SelectItem>
-                      <SelectItem value="adventure">Adventure</SelectItem>
-                      <SelectItem value="pilgrimage">Pilgrimage</SelectItem>
+                      {Object.entries(TRIP_TYPE_LABELS).map(([v, l]) => (
+                        <SelectItem key={v} value={v}>{l}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </FormRow>

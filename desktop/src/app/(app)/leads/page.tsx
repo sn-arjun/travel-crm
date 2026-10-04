@@ -4,16 +4,16 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, Pencil, Phone, Mail, Trash2, Plus, UserPlus } from 'lucide-react';
 import { ListPage } from '@/components/domain';
+import type { ListFilter } from '@/components/domain/list-page';
 import { Button, Tag, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui';
 import { leadsApi } from '@/lib/api/leads';
-import { usersApi } from '@/lib/api/users';
 import { exportsApi } from '@/lib/api/exports';
-import { useApiQuery } from '@/hooks/use-api';
 import { SendMessageDialog } from '@/components/communication/send-message-dialog';
 import { LEAD_STATUS_LABELS } from '@travelcrm/shared';
 import { toast } from 'sonner';
-import type { Lead } from '@travelcrm/shared';
-import { toLocalDateString } from '@/lib/dates';
+import { formatDisplayDate, toLocalDateString } from '@/lib/dates';
+import { LeadAssignDialog } from './lead-assign-dialog';
+import { PRIORITY_LABELS, leadDestination, priorityLabel, type LeadRow } from './lead-labels';
 
 function formatCurrency(amount: number, currency = 'INR') {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount);
@@ -34,22 +34,24 @@ export default function LeadsPage() {
   const [statusFilter, setStatusFilter] = React.useState('');
   const [refreshKey, setRefreshKey] = React.useState(0);
   const [priorityFilter, setPriorityFilter] = React.useState('');
+  const [assignIds, setAssignIds] = React.useState<string[]>([]);
+  const [assignOpen, setAssignOpen] = React.useState(false);
 
-  const { data: usersResponse } = useApiQuery(() => usersApi.list({ limit: 100 }), []);
-  const usersData = usersResponse?.data;
-  const teamUsers: any[] = Array.isArray(usersData) ? usersData : ((usersData as any)?.data ?? []);
-
-  const activeFilters = [
-    statusFilter && { id: 'status', label: 'Status', value: LEAD_STATUS_LABELS[statusFilter as keyof typeof LEAD_STATUS_LABELS] || statusFilter },
-    priorityFilter && { id: 'priority', label: 'Priority', value: priorityFilter },
-  ].filter(Boolean) as { id: string; label: string; value: string }[];
+  const activeFilters = React.useMemo(
+    () =>
+      [
+        statusFilter && { id: 'status', label: 'Status', value: LEAD_STATUS_LABELS[statusFilter as keyof typeof LEAD_STATUS_LABELS] || statusFilter },
+        priorityFilter && { id: 'priority', label: 'Priority', value: priorityLabel(priorityFilter) },
+      ].filter(Boolean) as ListFilter[],
+    [statusFilter, priorityFilter],
+  );
 
   function removeFilter(id: string) {
     if (id === 'status') setStatusFilter('');
     if (id === 'priority') setPriorityFilter('');
   }
 
-  function openSendMessage(lead: any, channel: 'email' | 'whatsapp' | 'sms') {
+  function openSendMessage(lead: LeadRow, channel: 'email' | 'whatsapp' | 'sms') {
     setMsgContact({
       id: lead.contactId || lead.contact?.id || '',
       name: lead.contactName || lead.contact?.name || '',
@@ -62,7 +64,7 @@ export default function LeadsPage() {
 
   return (
     <>
-      <ListPage<Lead>
+      <ListPage<LeadRow>
         title="Leads"
         description="Track and convert your sales pipeline."
         getRowId={(l) => l.id}
@@ -74,53 +76,46 @@ export default function LeadsPage() {
             limit,
             search: search || undefined,
             status: statusFilter || undefined,
+            // The server supports a priority filter; the typed client just does not list it yet.
+            ...({ priority: priorityFilter || undefined } as Record<string, string | undefined>),
             sortBy: sort ? (sort.column === 'value' ? 'budget' : sort.column) : 'createdAt',
             sortOrder: sort?.direction ?? 'desc',
-          }).then((res) => {
-            if (!priorityFilter) return res;
-            const data = (res as any)?.data;
-            const items = Array.isArray(data) ? data : (data?.data ?? []);
-            const filtered = items.filter((l: any) => l.priority === priorityFilter);
-            return {
-              ...res,
-              data: Array.isArray(data) ? filtered : { ...data, data: filtered },
-            } as any;
           })
         }
         searchPlaceholder="Search leads, contacts, destinations..."
         columns={[
           {
             key: 'title', header: 'Lead',
-            cell: (l: any) => (
+            cell: (l) => (
               <div>
                 <p className="font-medium text-sm">{l.title}</p>
-                <p className="text-xs text-ds-foreground-muted">{l.destinations?.join(', ') || l.destination || '—'}</p>
+                <p className="text-xs text-ds-foreground-muted">{leadDestination(l)}</p>
               </div>
             ),
           },
           {
             key: 'contact', header: 'Contact',
-            cell: (l: any) => l.contactName || l.contact?.name || '—',
+            cell: (l) => l.contactName || l.contact?.name || '—',
           },
           {
             key: 'status', header: 'Status', sortable: true,
-            cell: (l: any) => <Tag tone={statusTone(l.status)}>{LEAD_STATUS_LABELS[l.status as keyof typeof LEAD_STATUS_LABELS] || l.status}</Tag>,
+            cell: (l) => <Tag tone={statusTone(l.status)}>{LEAD_STATUS_LABELS[l.status as keyof typeof LEAD_STATUS_LABELS] || l.status}</Tag>,
           },
           {
             key: 'priority', header: 'Priority', sortable: true,
-            cell: (l: any) => <span className="text-sm capitalize">{l.priority}</span>,
+            cell: (l) => <span className="text-sm">{priorityLabel(l.priority)}</span>,
           },
           {
             key: 'value', header: 'Value', align: 'right', sortable: true,
-            cell: (l: any) => l.budget ? formatCurrency(l.budget, l.currency) : '—',
+            cell: (l) => l.budget ? formatCurrency(l.budget, l.currency) : '—',
           },
           {
             key: 'travelDate', header: 'Travel Date', sortable: true,
-            cell: (l: any) => l.travelDate ? new Date(l.travelDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—',
+            cell: (l) => formatDisplayDate(l.travelDate, 'short') || '—',
           },
           {
             key: 'assignedTo', header: 'Assigned',
-            cell: (l: any) => l.assignedUser?.name || '—',
+            cell: (l) => l.assignedUser?.name || l.assignedToName || 'Unassigned',
           },
         ]}
         primaryAction={
@@ -131,7 +126,7 @@ export default function LeadsPage() {
         headerActions={
           <>
             <Select value={statusFilter || 'all'} onValueChange={(v) => setStatusFilter(v === 'all' ? '' : v)}>
-              <SelectTrigger className="w-40 h-9"><SelectValue placeholder="All statuses" /></SelectTrigger>
+              <SelectTrigger className="w-40 h-9" aria-label="Filter by status"><SelectValue placeholder="All statuses" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All statuses</SelectItem>
                 {Object.entries(LEAD_STATUS_LABELS).map(([value, label]) => (
@@ -140,12 +135,12 @@ export default function LeadsPage() {
               </SelectContent>
             </Select>
             <Select value={priorityFilter || 'all'} onValueChange={(v) => setPriorityFilter(v === 'all' ? '' : v)}>
-              <SelectTrigger className="w-32 h-9"><SelectValue placeholder="Priority" /></SelectTrigger>
+              <SelectTrigger className="w-32 h-9" aria-label="Filter by priority"><SelectValue placeholder="Priority" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All priority</SelectItem>
-                <SelectItem value="hot">Hot</SelectItem>
-                <SelectItem value="warm">Warm</SelectItem>
-                <SelectItem value="cold">Cold</SelectItem>
+                {Object.entries(PRIORITY_LABELS).map(([v, l]) => (
+                  <SelectItem key={v} value={v}>{l}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Button size="sm" variant="outline" onClick={() => router.push('/leads/unassigned')}>
@@ -156,7 +151,7 @@ export default function LeadsPage() {
         filters={activeFilters}
         onRemoveFilter={removeFilter}
         onClearFilters={() => { setStatusFilter(''); setPriorityFilter(''); }}
-        rowActions={(l: any) => (
+        rowActions={(l) => (
           <>
             <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => router.push(`/leads/${l.id}`)}>
               <Eye />
@@ -165,7 +160,7 @@ export default function LeadsPage() {
               <Pencil />
             </Button>
             {(l.contactPhone || l.contact?.phone) && (
-              <Button variant="ghost" size="icon-sm" aria-label="Call" onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(l.contactPhone || l.contact?.phone)}`)}>
+              <Button variant="ghost" size="icon-sm" aria-label="Call" onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(l.contactPhone || l.contact?.phone || '')}`)}>
                 <Phone />
               </Button>
             )}
@@ -190,11 +185,9 @@ export default function LeadsPage() {
           {
             label: 'Assign',
             icon: <UserPlus aria-hidden="true" />,
-            onSelect: async (rows) => {
-              const userId = teamUsers[0]?.id;
-              if (!userId) { toast.error('No team members available'); return; }
-              await leadsApi.bulkAssign({ leadIds: rows.map((r) => r.id), assignedTo: userId });
-              toast.success(`${rows.length} lead(s) assigned`);
+            onSelect: (rows) => {
+              setAssignIds(rows.map((r) => r.id));
+              setAssignOpen(true);
             },
           },
           {
@@ -213,7 +206,7 @@ export default function LeadsPage() {
             const response = await exportsApi.leads({
               filters: { status: statusFilter || undefined },
             });
-            const blob = response instanceof Blob ? response : new Blob([response as any], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const blob = response instanceof Blob ? response : new Blob([response as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -234,6 +227,13 @@ export default function LeadsPage() {
             <Plus aria-hidden="true" /> New lead
           </Button>
         }
+      />
+
+      <LeadAssignDialog
+        open={assignOpen}
+        onOpenChange={setAssignOpen}
+        leadIds={assignIds}
+        onAssigned={() => setRefreshKey((k) => k + 1)}
       />
 
       <SendMessageDialog

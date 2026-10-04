@@ -61,7 +61,7 @@ export function KanbanBoard({ columns, className, onAddItem }: KanbanBoardProps)
             <KanbanColumnHeader column={column} onAdd={onAddItem ? () => onAddItem(column.id) : undefined} />
             <div
               className={cn(
-                'min-h-[200px] rounded-ds-lg border border-dashed border-ds-border bg-ds-surface-sunken/30 p-3 space-y-3',
+                'min-h-52 rounded-ds-lg border border-dashed border-ds-border bg-ds-surface-sunken p-3 space-y-3',
                 'transition-colors duration-200',
               )}
             >

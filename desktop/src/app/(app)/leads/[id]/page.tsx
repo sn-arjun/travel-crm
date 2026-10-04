@@ -3,13 +3,13 @@
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
-  Loader2, AlertCircle, Pencil, Trash2, Phone, Mail, Plus, FileText, Briefcase,
+  Loader2, AlertCircle, Pencil, Trash2, Phone, Plus, FileText, Briefcase, Car,
 } from 'lucide-react';
 import { DetailPage } from '@/components/domain';
 import {
   Button, Tag, SectionCard, Input, Textarea, Label,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue, DatePicker,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue, DatePicker, CurrencyInput,
 } from '@/components/ui';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { DateTimePicker } from '@/components/ui/date-picker';
@@ -22,6 +22,28 @@ import { documentsApi } from '@/lib/api/documents';
 import { LEAD_STATUS_LABELS } from '@travelcrm/shared';
 import { toast } from 'sonner';
 import type { TimelineItem } from '@/components/ui/timeline';
+import { unwrapList } from '@/lib/api/envelope';
+import { formatDisplayDate, toLocalDateString } from '@/lib/dates';
+import {
+  leadDestination, leadSourceLabel, passengerSummary, priorityLabel, tripTypeLabel, type LeadRow,
+} from '../lead-labels';
+
+interface NoteRow { id: string; content: string; createdByName?: string; createdAt?: string }
+interface ActivityRow {
+  id?: string; type?: string; content?: string; description?: string;
+  createdByName?: string; createdBy?: string; createdAt?: string; created_at?: string;
+}
+interface FollowUpRow {
+  id: string; type?: string; notes?: string; status?: string; completedAt?: string | null;
+  scheduled_at?: string; scheduledAt?: string;
+}
+interface InvoiceRow { id: string; invoiceNumber?: string; invoice_number?: string; status?: string; total?: number }
+interface ItineraryRow { id: string; title?: string; status?: string }
+interface DocRow { id: string; name?: string; file_name?: string }
+
+function rowsOf<T>(res: unknown): T[] {
+  return res ? unwrapList<T>(res).data : [];
+}
 
 function formatCurrency(amount: number, currency = 'INR') {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount);
@@ -36,11 +58,7 @@ function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' |
 
 /** Short date for a note, or '' when the timestamp is missing/unparseable (never "Invalid Date"). */
 function noteDate(value?: string): string {
-  if (!value) return '';
-  const d = new Date(value);
-  return Number.isNaN(d.getTime())
-    ? ''
-    : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  return value ? formatDisplayDate(value) : '';
 }
 
 export default function LeadDetailPage() {
@@ -86,21 +104,18 @@ export default function LeadDetailPage() {
   const { data: itinerariesResponse, refetch: refetchItineraries } = useApiQuery(() => itinerariesApi.list({ leadId }), [leadId]);
   const { data: documentsResponse, refetch: refetchDocuments } = useApiQuery(() => documentsApi.list({ leadId }), [leadId]);
 
-  const { mutate: deleteLead, loading: isDeleting } = useApiMutation<string, any>(() => leadsApi.delete(leadId));
-  const { mutate: updateStatus, loading: isUpdatingStatus } = useApiMutation<UpdateLeadStatusRequest, any>((data) => leadsApi.updateStatus(leadId, data));
+  const { mutate: deleteLead, loading: isDeleting } = useApiMutation(() => leadsApi.delete(leadId));
+  const { mutate: updateStatus, loading: isUpdatingStatus, error: statusError, reset: resetStatusError } = useApiMutation((data: UpdateLeadStatusRequest) => leadsApi.updateStatus(leadId, data));
 
-  const lead = leadResponse?.data as any;
-  const notesData = notesResponse?.data as any;
-  const notes: any[] = Array.isArray(notesData) ? notesData : (notesData?.data ?? []);
-  const activitiesData = activitiesResponse?.data as any;
-  const activities: any[] = Array.isArray(activitiesData) ? activitiesData : (activitiesData?.data ?? []);
-  const followUps: any[] = Array.isArray(followUpsResponse?.data) ? (followUpsResponse!.data as any) : [];
-  const invoicesData = invoicesResponse?.data as any;
-  const invoicesList: any[] = Array.isArray(invoicesData) ? invoicesData : (invoicesData?.data ?? []);
-  const itinerariesData = itinerariesResponse?.data as any;
-  const itinerariesList: any[] = Array.isArray(itinerariesData) ? itinerariesData : (itinerariesData?.data ?? []);
-  const documentsData = documentsResponse?.data as any;
-  const documentsList: any[] = Array.isArray(documentsData) ? documentsData : (documentsData?.data ?? []);
+  const lead = leadResponse?.data as LeadRow | undefined;
+  const notes = rowsOf<NoteRow>(notesResponse);
+  const activities = rowsOf<ActivityRow>(activitiesResponse);
+  const followUps = rowsOf<FollowUpRow>(followUpsResponse);
+  const invoicesList = rowsOf<InvoiceRow>(invoicesResponse);
+  const itinerariesList = rowsOf<ItineraryRow>(itinerariesResponse);
+  const documentsList = rowsOf<DocRow>(documentsResponse);
+  const hasLiveItinerary = itinerariesList.some((i) => i.status !== 'rejected');
+  const needsItinerary = newStatus === 'proposal_sent' && !hasLiveItinerary;
 
   async function handleDelete() {
     const result = await deleteLead(leadId);
@@ -116,6 +131,7 @@ export default function LeadDetailPage() {
     if (!newStatus) return;
     const data: UpdateLeadStatusRequest = { status: newStatus };
     if (newStatus === 'lost' && lostReason) data.reason = lostReason;
+    if (needsItinerary) return;
     const result = await updateStatus(data);
     if (result) {
       toast.success('Status updated successfully');
@@ -123,9 +139,8 @@ export default function LeadDetailPage() {
       setNewStatus('');
       setLostReason('');
       refetch();
-    } else {
-      toast.error('Failed to update status');
     }
+    // On failure the reason is shown inline in the dialog (statusError).
   }
 
   async function handleAddNote() {
@@ -176,7 +191,7 @@ export default function LeadDetailPage() {
         leadId,
         type: invoiceForm.type,
         items: validItems,
-        dueDate: invoiceForm.dueDate?.toISOString(),
+        dueDate: invoiceForm.dueDate ? toLocalDateString(invoiceForm.dueDate) : undefined,
         notes: invoiceForm.notes || undefined,
       });
       toast.success('Invoice created');
@@ -194,10 +209,10 @@ export default function LeadDetailPage() {
       await itinerariesApi.create({
         leadId,
         title: itineraryForm.title,
-        validityDate: itineraryForm.validityDate?.toISOString(),
+        validityDate: itineraryForm.validityDate ? toLocalDateString(itineraryForm.validityDate) : undefined,
         notes: itineraryForm.notes || undefined,
         days: [{ dayNumber: 1, title: 'Day 1' }],
-      } as any);
+      } as unknown as Parameters<typeof itinerariesApi.create>[0]);
       toast.success('Itinerary created');
       setIsItineraryDialogOpen(false);
       setItineraryForm({ title: '', validityDate: undefined, notes: '' });
@@ -221,7 +236,7 @@ export default function LeadDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
+      <div className="flex min-h-64 flex-col items-center justify-center gap-4">
         <Loader2 className="h-12 w-12 animate-spin text-ds-foreground-muted" />
         <p className="text-ds-foreground-muted">Loading lead...</p>
       </div>
@@ -230,7 +245,7 @@ export default function LeadDetailPage() {
 
   if (error || !lead) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
+      <div className="flex min-h-64 flex-col items-center justify-center gap-4">
         <AlertCircle className="h-12 w-12 text-ds-danger" />
         <p className="text-ds-danger">Failed to load lead</p>
         <Button variant="outline" onClick={() => router.push('/leads')}>Back to Leads</Button>
@@ -242,11 +257,11 @@ export default function LeadDetailPage() {
   const contactEmail = lead.contactEmail || lead.contact?.email || undefined;
   const contactPhone = lead.contactPhone || lead.contact?.phone || undefined;
 
-  const activityItems: TimelineItem[] = activities.map((a: any, idx: number) => ({
+  const activityItems: TimelineItem[] = activities.map((a, idx) => ({
     id: a.id || String(idx),
     title: a.content || a.description || `${a.type || 'activity'}`,
     description: a.createdByName || a.createdBy || undefined,
-    timestamp: (a.createdAt || a.created_at) ? new Date(a.createdAt || a.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
+    timestamp: (a.createdAt || a.created_at) ? new Date((a.createdAt || a.created_at) as string).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
     tone: a.type === 'status_change' ? 'primary' : 'neutral',
   }));
 
@@ -255,12 +270,15 @@ export default function LeadDetailPage() {
       <DetailPage
         entity={lead}
         title={lead.title}
-        subtitle={`${contactName} · ${lead.destinations?.join(', ') || lead.destination || '—'}`}
+        subtitle={`${contactName} · ${leadDestination(lead)}`}
         status={<Tag tone={statusTone(lead.status)}>{LEAD_STATUS_LABELS[lead.status as keyof typeof LEAD_STATUS_LABELS] || lead.status}</Tag>}
         onBack={() => router.push('/leads')}
         primaryActions={
           <>
             <Button variant="outline" size="sm" onClick={() => setIsStatusDialogOpen(true)}>Change Status</Button>
+            <Button variant="outline" size="sm" onClick={() => router.push(`/fleet/trips/new?leadId=${leadId}&tripType=airport_pickup`)}>
+              <Car aria-hidden="true" /> Book transfer
+            </Button>
             {contactPhone && (
               <Button variant="outline" size="sm" onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(contactPhone)}`)}>
                 <Phone aria-hidden="true" /> Call
@@ -281,23 +299,23 @@ export default function LeadDetailPage() {
               <div className="grid gap-ds-6 sm:grid-cols-2">
                 <div>
                   <p className="text-xs text-ds-foreground-muted font-semibold">Destination</p>
-                  <p className="text-sm font-medium mt-1">{lead.destinations?.join(', ') || lead.destination || '—'}</p>
+                  <p className="text-sm font-medium mt-1">{leadDestination(lead)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-ds-foreground-muted font-semibold">Trip Type</p>
-                  <p className="text-sm font-medium mt-1 capitalize">{lead.tripType || '—'}</p>
+                  <p className="text-sm font-medium mt-1">{tripTypeLabel(lead.tripType)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-ds-foreground-muted font-semibold">Travel Date</p>
-                  <p className="text-sm font-medium mt-1">{lead.travelDate ? new Date(lead.travelDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</p>
+                  <p className="text-sm font-medium mt-1">{formatDisplayDate(lead.travelDate) || '—'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-ds-foreground-muted font-semibold">Return Date</p>
-                  <p className="text-sm font-medium mt-1">{lead.returnDate ? new Date(lead.returnDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</p>
+                  <p className="text-sm font-medium mt-1">{formatDisplayDate(lead.returnDate) || '—'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-ds-foreground-muted font-semibold">Passengers</p>
-                  <p className="text-sm font-medium mt-1">{lead.paxAdults ?? 0} Adults{(lead.paxChildren ?? 0) > 0 ? `, ${lead.paxChildren} Children` : ''}{(lead.paxInfants ?? 0) > 0 ? `, ${lead.paxInfants} Infants` : ''}</p>
+                  <p className="text-sm font-medium mt-1">{passengerSummary(lead.paxAdults, lead.paxChildren, lead.paxInfants)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-ds-foreground-muted font-semibold">Budget</p>
@@ -310,19 +328,19 @@ export default function LeadDetailPage() {
               <div className="grid gap-ds-6 sm:grid-cols-2">
                 <div>
                   <p className="text-xs text-ds-foreground-muted font-semibold">Priority</p>
-                  <p className="text-sm font-medium mt-1 capitalize">{lead.priority}</p>
+                  <p className="text-sm font-medium mt-1">{priorityLabel(lead.priority)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-ds-foreground-muted font-semibold">Source</p>
-                  <p className="text-sm font-medium mt-1 capitalize">{lead.source?.replace('_', ' ') || '—'}</p>
+                  <p className="text-sm font-medium mt-1">{leadSourceLabel(lead.source)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-ds-foreground-muted font-semibold">Assigned To</p>
-                  <p className="text-sm font-medium mt-1">{lead.assignedUser?.name || '—'}</p>
+                  <p className="text-sm font-medium mt-1">{lead.assignedUser?.name || lead.assignedToName || 'Unassigned'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-ds-foreground-muted font-semibold">Created</p>
-                  <p className="text-sm font-medium mt-1">{new Date(lead.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                  <p className="text-sm font-medium mt-1">{formatDisplayDate(lead.createdAt) || '—'}</p>
                 </div>
               </div>
             </SectionCard>
@@ -340,7 +358,7 @@ export default function LeadDetailPage() {
                 <p className="text-sm text-ds-foreground-muted text-center py-4">No notes yet</p>
               ) : (
                 <div className="flex flex-col gap-ds-3">
-                  {notes.map((note: any) => (
+                  {notes.map((note) => (
                     <div key={note.id} className="flex items-start justify-between gap-ds-3 border-b border-ds-border pb-ds-3 last:border-0 last:pb-0">
                       <div>
                         <p className="text-sm">{note.content}</p>
@@ -360,14 +378,14 @@ export default function LeadDetailPage() {
                 <p className="text-sm text-ds-foreground-muted text-center py-4">No follow-ups scheduled</p>
               ) : (
                 <div className="flex flex-col gap-ds-2">
-                  {followUps.map((fu: any) => {
+                  {followUps.map((fu) => {
                     const scheduledAt = fu.scheduled_at || fu.scheduledAt;
                     const isCompleted = fu.status === 'completed' || !!fu.completedAt;
                     return (
                       <div key={fu.id} className="flex items-center justify-between text-sm">
                         <span className="capitalize">{fu.type} follow-up{fu.notes ? ` — ${fu.notes}` : ''}</span>
                         <div className="flex items-center gap-ds-2">
-                          <span className="text-xs text-ds-foreground-muted">{scheduledAt ? new Date(scheduledAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'}</span>
+                          <span className="text-xs text-ds-foreground-muted">{scheduledAt ? formatDisplayDate(scheduledAt, 'short') : '—'}</span>
                           {isCompleted && <Tag tone="success">Done</Tag>}
                         </div>
                       </div>
@@ -396,7 +414,7 @@ export default function LeadDetailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {invoicesList.map((inv: any) => (
+                  {invoicesList.map((inv) => (
                     <TableRow key={inv.id} className="cursor-pointer hover:bg-ds-surface-sunken" onClick={() => router.push(`/invoices/${inv.id}`)}>
                       <TableCell className="text-sm font-medium">{inv.invoiceNumber || inv.invoice_number || '—'}</TableCell>
                       <TableCell><Tag tone="neutral">{inv.status || 'draft'}</Tag></TableCell>
@@ -414,7 +432,7 @@ export default function LeadDetailPage() {
               <p className="text-sm text-ds-foreground-muted text-center py-4">No itineraries linked to this lead yet</p>
             ) : (
               <div className="flex flex-col gap-ds-2">
-                {itinerariesList.map((itin: any) => (
+                {itinerariesList.map((itin) => (
                   <div key={itin.id} className="flex items-center justify-between p-ds-2 rounded-ds-md hover:bg-ds-surface-sunken cursor-pointer" onClick={() => router.push(`/itineraries/${itin.id}/edit`)}>
                     <div className="flex items-center gap-ds-2">
                       <Briefcase className="size-4 text-ds-foreground-muted" />
@@ -436,7 +454,7 @@ export default function LeadDetailPage() {
               <p className="text-sm text-ds-foreground-muted text-center py-4">No documents attached</p>
             ) : (
               <div className="flex flex-col gap-ds-2">
-                {documentsList.map((doc: any) => (
+                {documentsList.map((doc) => (
                   <div key={doc.id} className="flex items-center justify-between p-ds-2 rounded-ds-md hover:bg-ds-surface-sunken">
                     <div className="flex items-center gap-ds-2">
                       <FileText className="size-4 text-ds-foreground-muted" />
@@ -445,7 +463,7 @@ export default function LeadDetailPage() {
                     <Button variant="ghost" size="sm" onClick={async () => {
                       try {
                         const blob = await documentsApi.download(doc.id);
-                        const url = URL.createObjectURL(blob as any);
+                        const url = URL.createObjectURL(blob as Blob);
                         const a = document.createElement('a'); a.href = url; a.download = doc.name || 'document'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
                       } catch { toast.error('Failed to download'); }
                     }}>Download</Button>
@@ -458,7 +476,7 @@ export default function LeadDetailPage() {
       />
 
       {/* Status Change Dialog */}
-      <Dialog open={isStatusDialogOpen} onOpenChange={setIsStatusDialogOpen}>
+      <Dialog open={isStatusDialogOpen} onOpenChange={(o) => { setIsStatusDialogOpen(o); if (!o) { resetStatusError(); setNewStatus(''); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Change Lead Status</DialogTitle>
@@ -467,7 +485,7 @@ export default function LeadDetailPage() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>New Status</Label>
-              <Select value={newStatus} onValueChange={setNewStatus}>
+              <Select value={newStatus} onValueChange={(v) => { setNewStatus(v); resetStatusError(); }}>
                 <SelectTrigger><SelectValue placeholder="Select status" /></SelectTrigger>
                 <SelectContent>
                   {Object.entries(LEAD_STATUS_LABELS).map(([value, label]) => (
@@ -476,6 +494,22 @@ export default function LeadDetailPage() {
                 </SelectContent>
               </Select>
             </div>
+            {needsItinerary && (
+              <div role="alert" className="rounded-ds-md border border-ds-warning bg-ds-warning-subtle p-ds-3 text-sm text-ds-warning-on-subtle">
+                <p>Create an itinerary before moving to Proposal Sent. The proposal is the itinerary you send to the customer.</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-ds-2"
+                  onClick={() => { setIsStatusDialogOpen(false); setIsItineraryDialogOpen(true); }}
+                >
+                  <Plus aria-hidden="true" /> Create itinerary
+                </Button>
+              </div>
+            )}
+            {statusError && !needsItinerary && (
+              <p role="alert" className="text-sm text-ds-danger">{statusError.message || 'Failed to update status'}</p>
+            )}
             {newStatus === 'lost' && (
               <div className="space-y-2">
                 <Label>Reason for Loss</Label>
@@ -485,7 +519,7 @@ export default function LeadDetailPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsStatusDialogOpen(false)} disabled={isUpdatingStatus}>Cancel</Button>
-            <Button onClick={handleStatusChange} disabled={isUpdatingStatus || !newStatus}>
+            <Button onClick={handleStatusChange} disabled={isUpdatingStatus || !newStatus || needsItinerary}>
               {isUpdatingStatus && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
               Update Status
             </Button>
@@ -520,7 +554,7 @@ export default function LeadDetailPage() {
               </div>
               <div className="space-y-2">
                 <Label>Type</Label>
-                <Select value={followUpForm.type} onValueChange={(v: any) => setFollowUpForm({ ...followUpForm, type: v })}>
+                <Select value={followUpForm.type} onValueChange={(v) => setFollowUpForm({ ...followUpForm, type: v as typeof followUpForm.type })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="call">Call</SelectItem>
@@ -566,7 +600,7 @@ export default function LeadDetailPage() {
 
       {/* Quick Create Invoice Dialog */}
       <Dialog open={isInvoiceDialogOpen} onOpenChange={setIsInvoiceDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Create Invoice</DialogTitle>
             <DialogDescription>Create an invoice for {contactName}.</DialogDescription>
@@ -575,7 +609,7 @@ export default function LeadDetailPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Invoice Type</Label>
-                <Select value={invoiceForm.type} onValueChange={(v: any) => setInvoiceForm({ ...invoiceForm, type: v })}>
+                <Select value={invoiceForm.type} onValueChange={(v) => setInvoiceForm({ ...invoiceForm, type: v as typeof invoiceForm.type })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="proforma">Proforma</SelectItem>
@@ -600,8 +634,8 @@ export default function LeadDetailPage() {
                     const items = invoiceForm.items.map((it, i) => i === idx ? { ...it, quantity: Number(e.target.value) || 1 } : it);
                     setInvoiceForm({ ...invoiceForm, items });
                   }} />
-                  <Input type="number" min={0} placeholder="Rate" value={item.rate || ''} onChange={(e) => {
-                    const items = invoiceForm.items.map((it, i) => i === idx ? { ...it, rate: Number(e.target.value) || 0 } : it);
+                  <CurrencyInput placeholder="Rate" aria-label="Rate" value={item.rate || undefined} onChange={(v) => {
+                    const items = invoiceForm.items.map((it, i) => i === idx ? { ...it, rate: v ?? 0 } : it);
                     setInvoiceForm({ ...invoiceForm, items });
                   }} />
                 </div>
