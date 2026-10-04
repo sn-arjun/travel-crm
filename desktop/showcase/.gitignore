@@ -1,0 +1,9 @@
+# Recording work area, tools and large media never go into git.
+.work/
+.tools/
+.handoff.json
+*.mp4
+*.webm
+*.mov
+*.mkv
+.artifacts/

@@ -1,80 +1,53 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Showcase config — produces the deliverable video.
+ * Showcase config - records the client demo videos (STORYBOARD 0.2 / D.2).
  *
- * Deliberately separate from playwright.config.ts, which uses
- * `video: 'retain-on-failure'` and therefore produces NO video on a passing
- * run. This config records unconditionally at 1080p, slowed down enough to be
- * watchable, in a single browser context so the whole walkthrough is one
- * continuous take.
+ * Runs against an ALREADY RUNNING production stack (`node scripts/fix-stack.mjs up --slot N`, which does
+ * `next build` + `next start`): there is no webServer block, so nothing here can start `next dev`.
  *
- * Run:  npx playwright test --config=playwright.showcase.config.ts
- * Out:  showcase/full-walkthrough.webm  +  showcase/SHOWCASE.md
+ *   E2E_BASE_URL=http://localhost:3120 E2E_API_URL=http://localhost:8807/api/v1 \
+ *     npx playwright test --config=playwright.showcase.config.ts [--grep story-A]
+ *
+ * No slowMo: all pacing is explicit (see e2e/showcase/showcase-helpers.ts). Specs record through the built-in
+ * page fixture (1920x1080 video, always on) and call finishRecording() to lift the video + marks into
+ * desktop/showcase/.work/. Sessions come from e2e/fixtures.ts (fresh API login per run, refresh-safe).
+ * Retakes are owned by the orchestrator (scripts/record-demo.mjs), hence retries: 0.
  */
+const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:3100';
+
 export default defineConfig({
   testDir: './e2e/showcase',
-  testMatch: /full-walkthrough\.spec\.ts/,
+  testMatch: /(smoke|story|full-walkthrough)\.spec\.ts/,
   outputDir: './showcase/.artifacts',
-  globalTeardown: './e2e/showcase/finalize.ts',
 
-  // One take, start to finish.
   fullyParallel: false,
   workers: 1,
-
-  // The walkthrough covers every feature area — it is long by design.
-  timeout: 60 * 60 * 1000,
-  expect: { timeout: 15_000 },
-
-  // One retry: a retry re-records cleanly rather than leaving a broken take.
-  retries: 1,
+  retries: 0,
   forbidOnly: !!process.env.CI,
 
-  reporter: [['list'], ['html', { open: 'never', outputFolder: './showcase/report' }]],
+  // Per-spec test.setTimeout() overrides (story-A 15 min, story-B 5 min, walkthrough 50 min).
+  timeout: 15 * 60_000,
+  expect: { timeout: 15_000 },
+
+  reporter: [['list']],
 
   use: {
-    baseURL: 'http://localhost:3100',
-    storageState: './e2e/.auth/admin.json',
-
+    ...devices['Desktop Chrome'],
+    baseURL: BASE_URL,
     viewport: { width: 1920, height: 1080 },
+    deviceScaleFactor: 1,
     video: { mode: 'on', size: { width: 1920, height: 1080 } },
     screenshot: 'off',
-    trace: 'off',
-
-    // Slow enough that a human can follow what is happening on screen.
-    launchOptions: { slowMo: 250 },
-
-    actionTimeout: 30_000,
-    navigationTimeout: 60_000,
+    trace: 'retain-on-failure',
+    timezoneId: 'Asia/Kolkata',
+    locale: 'en-IN',
+    colorScheme: 'light',
+    permissions: ['clipboard-read', 'clipboard-write'],
+    actionTimeout: 15_000,
+    navigationTimeout: 30_000,
+    // no launchOptions.slowMo: pacing is explicit
   },
 
-  projects: [
-    {
-      name: 'showcase-setup',
-      testDir: './e2e',
-      testMatch: /global-setup\.ts/,
-      use: { ...devices['Desktop Chrome'], storageState: undefined },
-    },
-    {
-      name: 'showcase',
-      use: { ...devices['Desktop Chrome'], viewport: { width: 1920, height: 1080 } },
-      dependencies: ['showcase-setup'],
-    },
-  ],
-
-  // Same servers as the main config; reused if already running.
-  webServer: [
-    {
-      command: 'cd ../backend && npx wrangler dev --port 8787',
-      url: 'http://localhost:8787/api/v1/health',
-      reuseExistingServer: true,
-      timeout: 120_000,
-    },
-    {
-      command: 'npx next dev --turbopack --port 3100',
-      url: 'http://localhost:3100',
-      reuseExistingServer: true,
-      timeout: 120_000,
-    },
-  ],
+  projects: [{ name: 'showcase' }],
 });
