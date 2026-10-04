@@ -123,7 +123,7 @@ export const eventsApi = {
   update: (id: string, data: UpdateEventRequest) =>
     client.put<ApiResponse<CalendarEvent>>(API_ENDPOINTS.events.byId(id), data),
 
-  delete: (id: string, scope?: 'this' | 'all') =>
+  delete: (id: string) =>
     client.delete<ApiResponse<void>>(API_ENDPOINTS.events.byId(id)),
 
   reschedule: (id: string, data: RescheduleEventRequest) =>

@@ -30,17 +30,28 @@ test.describe('Dashboard', () => {
     await expect(page.locator('text=Leads').first()).toBeVisible();
   });
 
-  test('quick actions navigate to the correct creation forms', async ({ page }) => {
+  test('Quick Add menu offers every creation form and navigates', async ({ page }) => {
     await page.goto('/dashboard');
     await waitForLoad(page);
 
-    await expect(page.locator('a[href="/leads/new"]').first()).toBeVisible();
-    await expect(page.locator('a[href="/contacts/new"]').first()).toBeVisible();
-    await expect(page.locator('a[href="/invoices/new"]').first()).toBeVisible();
-    await expect(page.locator('a[href="/itineraries/new"]').first()).toBeVisible();
+    await page.getByRole('button', { name: 'Quick Add' }).click();
+    for (const href of ['/leads/new', '/contacts/new', '/tasks', '/invoices/new', '/itineraries/new']) {
+      await expect(page.locator(`a[role="menuitem"][href^="${href}"]`).first()).toBeVisible();
+    }
 
-    await page.locator('a[href="/contacts/new"]').first().click();
+    await page.getByRole('menuitem', { name: 'New contact' }).click();
     await page.waitForURL('**/contacts/new*', { timeout: 15_000 });
+  });
+
+  test('date range changes the KPI figures and shows no placeholder numbers', async ({ page }) => {
+    await page.goto('/dashboard');
+    await waitForLoad(page);
+    await expect(page.getByText('Revenue (Month)')).toBeVisible();
+
+    await page.getByRole('combobox', { name: 'Date range' }).click();
+    await page.getByRole('option', { name: 'This Year' }).click();
+    await expect(page.getByText('Revenue (Year)')).toBeVisible();
+    await expect(page.getByText('87%')).toHaveCount(0);
   });
 
   test('sidebar navigation links resolve to real routes (no dead links like /planner)', async ({ page }) => {

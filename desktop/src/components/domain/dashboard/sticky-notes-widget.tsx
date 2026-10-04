@@ -15,17 +15,17 @@ interface StickyNote {
 }
 
 const colorClasses: Record<string, string> = {
-  yellow: 'bg-yellow-100 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800',
-  green: 'bg-green-100 dark:bg-green-900/20 border-green-200 dark:border-green-800',
-  blue: 'bg-blue-100 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800',
-  pink: 'bg-pink-100 dark:bg-pink-900/20 border-pink-200 dark:border-pink-800',
+  yellow: 'bg-ds-warning-subtle border-ds-warning',
+  green: 'bg-ds-success-subtle border-ds-success',
+  blue: 'bg-ds-info-subtle border-ds-info',
+  pink: 'bg-ds-danger-subtle border-ds-danger',
 };
 
 const textColorClasses: Record<string, string> = {
-  yellow: 'text-yellow-900 dark:text-yellow-100 placeholder-yellow-600 dark:placeholder-yellow-300',
-  green: 'text-green-900 dark:text-green-100 placeholder-green-600 dark:placeholder-green-300',
-  blue: 'text-blue-900 dark:text-blue-100 placeholder-blue-600 dark:placeholder-blue-300',
-  pink: 'text-pink-900 dark:text-pink-100 placeholder-pink-600 dark:placeholder-pink-300',
+  yellow: 'text-ds-warning-on-subtle placeholder:text-ds-warning-on-subtle',
+  green: 'text-ds-success-on-subtle placeholder:text-ds-success-on-subtle',
+  blue: 'text-ds-info-on-subtle placeholder:text-ds-info-on-subtle',
+  pink: 'text-ds-danger-on-subtle placeholder:text-ds-danger-on-subtle',
 };
 
 const colors = ['yellow', 'green', 'blue', 'pink'];

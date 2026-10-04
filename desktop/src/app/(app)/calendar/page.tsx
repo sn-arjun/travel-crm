@@ -26,41 +26,57 @@ import { FilterBar } from '@/components/domain/filter-bar';
 import { RelationCombobox } from '@/components/domain/relation-combobox';
 import { cn } from '@/lib/utils';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { eventsApi, type CalendarEvent, type EventType } from '@/lib/api/events';
+import { eventsApi, type CalendarEvent, type CreateEventRequest, type UpdateEventRequest, type EventType } from '@/lib/api/events';
 import { leadsApi } from '@/lib/api/leads';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import { toLocalDateString } from '@/lib/dates';
+import { PageContainer } from '@/components/layout/page-container';
+import { chartColors } from '@/design-system/tokens';
+import { unwrapList, unwrapEntity } from '@/lib/api/envelope';
+
+const DEFAULT_EVENT_COLOR = chartColors['chart-1'].light;
 
 const REF_DATE = Date.now();
 
 type ViewMode = 'month' | 'week' | 'day';
 
 // ─── Event type config ───
+const TONE = {
+  info: { bg: 'bg-ds-info-subtle text-ds-info-on-subtle', dot: 'bg-ds-info', edge: 'border-l-ds-info' },
+  primary: { bg: 'bg-ds-primary-subtle text-ds-primary-on-subtle', dot: 'bg-ds-primary', edge: 'border-l-ds-primary' },
+  warning: { bg: 'bg-ds-warning-subtle text-ds-warning-on-subtle', dot: 'bg-ds-warning', edge: 'border-l-ds-warning' },
+  danger: { bg: 'bg-ds-danger-subtle text-ds-danger-on-subtle', dot: 'bg-ds-danger', edge: 'border-l-ds-danger' },
+  success: { bg: 'bg-ds-success-subtle text-ds-success-on-subtle', dot: 'bg-ds-success', edge: 'border-l-ds-success' },
+  cyan: { bg: 'bg-ds-chart-2/15 text-ds-foreground', dot: 'bg-ds-chart-2', edge: 'border-l-ds-chart-2' },
+  pink: { bg: 'bg-ds-chart-5/15 text-ds-foreground', dot: 'bg-ds-chart-5', edge: 'border-l-ds-chart-5' },
+  neutral: { bg: 'bg-ds-surface-sunken text-ds-foreground-muted', dot: 'bg-ds-foreground-subtle', edge: 'border-l-ds-border-strong' },
+} as const;
+
 const EVENT_TYPES: {
   value: EventType;
   label: string;
   bg: string;
   dot: string;
+  edge: string;
   badge: string;
 }[] = [
-  { value: 'trip_departure', label: 'Trip Departure', bg: 'text-blue-700 bg-blue-50 dark:bg-blue-950/50', dot: 'bg-blue-500', badge: 'bg-blue-100 text-blue-800' },
-  { value: 'trip_return', label: 'Trip Return', bg: 'text-cyan-700 bg-cyan-50 dark:bg-cyan-950/50', dot: 'bg-cyan-500', badge: 'bg-cyan-100 text-cyan-800' },
-  { value: 'meeting', label: 'Meeting', bg: 'text-purple-700 bg-purple-50 dark:bg-purple-950/50', dot: 'bg-purple-500', badge: 'bg-purple-100 text-purple-800' },
-  { value: 'follow_up', label: 'Follow Up', bg: 'text-amber-700 bg-amber-50 dark:bg-amber-950/50', dot: 'bg-amber-500', badge: 'bg-amber-100 text-amber-800' },
-  { value: 'deadline', label: 'Deadline', bg: 'text-red-700 bg-red-50 dark:bg-red-950/50', dot: 'bg-red-500', badge: 'bg-red-100 text-red-800' },
-  { value: 'reminder', label: 'Reminder', bg: 'text-orange-700 bg-orange-50 dark:bg-orange-950/50', dot: 'bg-orange-500', badge: 'bg-orange-100 text-orange-800' },
-  { value: 'holiday', label: 'Holiday', bg: 'text-green-700 bg-green-50 dark:bg-green-950/50', dot: 'bg-green-500', badge: 'bg-green-100 text-green-800' },
-  // legacy
-  { value: 'call' as EventType, label: 'Call', bg: 'text-teal-700 bg-teal-50', dot: 'bg-teal-500', badge: 'bg-teal-100 text-teal-800' },
-  { value: 'other' as EventType, label: 'Other', bg: 'text-gray-700 bg-gray-50', dot: 'bg-gray-400', badge: 'bg-gray-100 text-gray-800' },
+  { value: 'trip_departure', label: 'Trip Departure', ...TONE.info, badge: TONE.info.bg },
+  { value: 'trip_return', label: 'Trip Return', ...TONE.cyan, badge: TONE.cyan.bg },
+  { value: 'meeting', label: 'Meeting', ...TONE.primary, badge: TONE.primary.bg },
+  { value: 'follow_up', label: 'Follow Up', ...TONE.warning, badge: TONE.warning.bg },
+  { value: 'deadline', label: 'Deadline', ...TONE.danger, badge: TONE.danger.bg },
+  { value: 'reminder', label: 'Reminder', ...TONE.pink, badge: TONE.pink.bg },
+  { value: 'holiday', label: 'Holiday', ...TONE.success, badge: TONE.success.bg },
+  { value: 'call', label: 'Call', ...TONE.cyan, badge: TONE.cyan.bg },
+  { value: 'other', label: 'Other', ...TONE.neutral, badge: TONE.neutral.bg },
 ];
 
 function getTypeConfig(type: string) {
   return EVENT_TYPES.find((t) => t.value === type) ?? EVENT_TYPES.find((t) => t.value === 'other')!;
 }
 
-function normalizeEvent(e: any): CalendarEvent & { startTime: string; endTime: string; type: EventType } {
+function normalizeEvent(e: CalendarEvent): CalendarEvent & { startTime: string; endTime: string; type: EventType } {
   const startTime = e.startTime || e.start_at || '';
   const endTime = e.endTime || e.end_at || '';
   const type = (e.event_type || e.type || 'other') as EventType;
@@ -133,27 +149,44 @@ function CalendarGrid({
     return events.filter((e) => (e.startTime || '').split('T')[0] === dateStr);
   };
 
-  const days: (number | null)[] = Array.from({ length: startingDayOfWeek }, () => null);
-  for (let i = 1; i <= daysInMonth; i++) days.push(i);
-  const weeks: (number | null)[][] = [];
-  for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
+  type Cell = { day: number; inMonth: boolean; dayStr: string };
+  const cells: Cell[] = [];
+  const prevMonthDays = new Date(year, month, 0).getDate();
+  for (let i = startingDayOfWeek - 1; i >= 0; i--) {
+    cells.push({ day: prevMonthDays - i, inMonth: false, dayStr: '' });
+  }
+  for (let i = 1; i <= daysInMonth; i++) {
+    cells.push({ day: i, inMonth: true, dayStr: `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}` });
+  }
+  for (let i = 1; cells.length % 7 !== 0; i++) cells.push({ day: i, inMonth: false, dayStr: '' });
+  const weeks: Cell[][] = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
   return (
-    <div className="border rounded-lg overflow-hidden">
-      <div className="grid grid-cols-7 bg-muted border-b">
+    <div className="overflow-hidden rounded-ds-lg border border-ds-border">
+      <div className="grid grid-cols-7 border-b border-ds-border bg-ds-surface-sunken">
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
-          <div key={d} className="p-3 text-center text-xs font-semibold border-r last:border-r-0 text-muted-foreground">
+          <div key={d} className="border-r border-ds-border p-ds-3 text-center text-xs font-semibold text-ds-foreground-muted last:border-r-0">
             {d}
           </div>
         ))}
       </div>
       {weeks.map((week, wi) => (
-        <div key={wi} className="grid grid-cols-7 border-b last:border-b-0">
-          {week.map((day, di) => {
-            const dayStr = day
-              ? `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-              : null;
-            const dayEvents = day ? getDayEvents(day) : [];
+        <div key={wi} className="grid grid-cols-7 border-b border-ds-border last:border-b-0">
+          {week.map((cell, di) => {
+            if (!cell.inMonth) {
+              return (
+                <div
+                  key={di}
+                  data-out-of-month="true"
+                  className="min-h-24 border-r border-ds-border bg-ds-surface-sunken p-ds-2 last:border-r-0"
+                >
+                  <span className="inline-flex size-6 items-center justify-center text-sm text-ds-foreground-subtle">{cell.day}</span>
+                </div>
+              );
+            }
+            const { day, dayStr } = cell;
+            const dayEvents = getDayEvents(day);
             const isToday = dayStr === todayStr;
             const isSelected = dayStr === selectedDate;
 
@@ -161,48 +194,41 @@ function CalendarGrid({
               <div
                 key={di}
                 className={cn(
-                  'min-h-24 p-2 border-r last:border-r-0 cursor-pointer hover:bg-muted/50 transition-colors',
-                  isToday && 'bg-primary/5',
-                  isSelected && 'ring-2 ring-inset ring-primary/40',
-                  !day && 'bg-muted/20 cursor-default',
+                  'min-h-24 cursor-pointer border-r border-ds-border p-ds-2 transition-colors last:border-r-0 hover:bg-ds-surface-sunken',
+                  isSelected && 'ring-2 ring-inset ring-ds-ring',
                 )}
-                onClick={() => day && dayStr && onDateSelect(dayStr)}
-                onDragOver={(e) => { if (day) e.preventDefault(); }}
+                onClick={() => onDateSelect(dayStr)}
+                onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
-                  if (!day || !dayStr) return;
                   e.preventDefault();
                   const eventId = e.dataTransfer.getData('text/event-id');
                   if (eventId) onEventDrop(eventId, dayStr);
                 }}
               >
-                {day && (
-                  <>
-                    <div className={cn(
-                      'inline-flex h-6 w-6 items-center justify-center rounded-full text-sm font-semibold mb-1',
-                      isToday && 'bg-primary text-primary-foreground',
-                    )}>
-                      {day}
+                <div className={cn(
+                  'mb-ds-1 inline-flex size-6 items-center justify-center rounded-full text-sm font-semibold text-ds-foreground',
+                  isToday && 'bg-ds-primary text-ds-primary-foreground',
+                )}>
+                  {day}
+                </div>
+                <div className="space-y-0.5">
+                  {dayEvents.slice(0, 3).map((event) => (
+                    <div
+                      key={event.id}
+                      draggable
+                      onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData('text/event-id', event.id); }}
+                      className={cn('cursor-grab truncate rounded-ds-sm px-ds-2 py-0.5 text-xs active:cursor-grabbing', getTypeConfig(event.type).bg)}
+                      title={event.title}
+                    >
+                      {event.title}
                     </div>
-                    <div className="space-y-0.5">
-                      {dayEvents.slice(0, 3).map((event) => (
-                        <div
-                          key={event.id}
-                          draggable
-                          onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData('text/event-id', event.id); }}
-                          className={cn('text-[10px] px-1.5 py-0.5 rounded truncate cursor-grab active:cursor-grabbing', getTypeConfig(event.type).bg)}
-                          title={event.title}
-                        >
-                          {event.title}
-                        </div>
-                      ))}
-                      {dayEvents.length > 3 && (
-                        <div className="text-[10px] px-1.5 text-muted-foreground font-medium">
-                          +{dayEvents.length - 3} more
-                        </div>
-                      )}
+                  ))}
+                  {dayEvents.length > 3 && (
+                    <div className="px-ds-2 text-xs font-medium text-ds-foreground-muted">
+                      +{dayEvents.length - 3} more
                     </div>
-                  </>
-                )}
+                  )}
+                </div>
               </div>
             );
           })}
@@ -214,13 +240,12 @@ function CalendarGrid({
 
 // ─── Week View ───
 function WeekView({
-  currentDate, events, onEventClick, onDateSelect, selectedDate, onEventDrop,
+  currentDate, events, onEventClick, onDateSelect, onEventDrop,
 }: {
   currentDate: Date;
   events: ReturnType<typeof normalizeEvent>[];
   onEventClick: (event: ReturnType<typeof normalizeEvent>) => void;
   onDateSelect: (date: string) => void;
-  selectedDate: string | null;
   onEventDrop: (eventId: string, newDateStr: string) => void;
 }) {
   const weekDays = getWeekDays(currentDate);
@@ -236,7 +261,7 @@ function WeekView({
   return (
     <div className="border rounded-lg overflow-hidden flex flex-col">
       {/* Day headers */}
-      <div className="grid grid-cols-[60px_repeat(7,1fr)] bg-muted border-b">
+      <div className="grid grid-cols-[3.75rem_repeat(7,1fr)] bg-muted border-b">
         <div className="p-2 border-r" />
         {weekDays.map((day) => {
           const dayStr = formatDateStr(day);
@@ -250,7 +275,7 @@ function WeekView({
               )}
               onClick={() => onDateSelect(dayStr)}
             >
-              <div className="text-[10px] font-medium text-muted-foreground uppercase">
+              <div className="text-xs font-medium text-muted-foreground uppercase">
                 {day.toLocaleDateString('en-US', { weekday: 'short' })}
               </div>
               <div className={cn(
@@ -266,21 +291,21 @@ function WeekView({
 
       {/* All-day events row */}
       {weekDays.some((day) => getAllDayEvents(formatDateStr(day)).length > 0) && (
-        <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b bg-muted/30">
-          <div className="p-1 border-r text-[10px] text-muted-foreground text-right pr-2 pt-2">
+        <div className="grid grid-cols-[3.75rem_repeat(7,1fr)] border-b bg-muted/30">
+          <div className="p-1 border-r text-xs text-muted-foreground text-right pr-2 pt-2">
             All Day
           </div>
           {weekDays.map((day) => {
             const dayStr = formatDateStr(day);
             const allDayEvts = getAllDayEvents(dayStr);
             return (
-              <div key={dayStr} className="p-1 border-r last:border-r-0 min-h-[28px]">
+              <div key={dayStr} className="p-1 border-r last:border-r-0 min-h-7">
                 {allDayEvts.map((event) => {
                   const cfg = getTypeConfig(event.type);
                   return (
                     <div
                       key={event.id}
-                      className={cn('text-[10px] px-1.5 py-0.5 rounded truncate cursor-pointer mb-0.5', cfg.bg)}
+                      className={cn('text-xs px-1.5 py-0.5 rounded truncate cursor-pointer mb-0.5', cfg.bg)}
                       title={event.title}
                       onClick={() => onEventClick(event)}
                     >
@@ -296,13 +321,13 @@ function WeekView({
 
       {/* Time grid */}
       <div className="flex-1 overflow-auto">
-        <div className="relative grid grid-cols-[60px_repeat(7,1fr)]" style={{ minHeight: HOURS.length * ROW_HEIGHT }}>
+        <div className="relative grid grid-cols-[3.75rem_repeat(7,1fr)]" style={{ minHeight: HOURS.length * ROW_HEIGHT }}>
           {/* Time labels */}
           <div className="border-r">
             {HOURS.map((hour) => (
               <div
                 key={hour}
-                className="border-b last:border-b-0 text-[10px] text-muted-foreground text-right pr-2 pt-1"
+                className="border-b last:border-b-0 text-xs text-muted-foreground text-right pr-2 pt-1"
                 style={{ height: ROW_HEIGHT }}
               >
                 {formatHour(hour)}
@@ -351,24 +376,15 @@ function WeekView({
                       style={{
                         top: pos.top * ROW_HEIGHT,
                         height: Math.max(pos.height * ROW_HEIGHT - 2, 20),
-                        borderLeftColor: cfg.dot.replace('bg-', '').includes('blue') ? '#3b82f6'
-                          : cfg.dot.replace('bg-', '').includes('purple') ? '#a855f7'
-                          : cfg.dot.replace('bg-', '').includes('amber') ? '#f59e0b'
-                          : cfg.dot.replace('bg-', '').includes('red') ? '#ef4444'
-                          : cfg.dot.replace('bg-', '').includes('green') ? '#22c55e'
-                          : cfg.dot.replace('bg-', '').includes('cyan') ? '#06b6d4'
-                          : cfg.dot.replace('bg-', '').includes('orange') ? '#f97316'
-                          : cfg.dot.replace('bg-', '').includes('teal') ? '#14b8a6'
-                          : '#9ca3af',
                       }}
                       title={`${event.title}\n${new Date(event.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} - ${event.endTime ? new Date(event.endTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ''}`}
                       onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
                     >
-                      <div className="text-[10px] font-semibold truncate leading-tight">
+                      <div className="text-xs font-semibold truncate leading-tight">
                         {event.title}
                       </div>
                       {pos.height * ROW_HEIGHT > 30 && (
-                        <div className="text-[9px] opacity-75 truncate">
+                        <div className="text-xs opacity-75 truncate">
                           {new Date(event.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                           {event.endTime && ` - ${new Date(event.endTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`}
                         </div>
@@ -424,7 +440,7 @@ function DayView({
       {/* All-day events */}
       {allDayEvents.length > 0 && (
         <div className="border-b bg-muted/30 p-2 space-y-1">
-          <div className="text-[10px] text-muted-foreground font-medium mb-1">All Day</div>
+          <div className="text-xs text-muted-foreground font-medium mb-1">All Day</div>
           {allDayEvents.map((event) => {
             const cfg = getTypeConfig(event.type);
             return (
@@ -442,13 +458,13 @@ function DayView({
 
       {/* Time grid */}
       <div className="flex-1 overflow-auto">
-        <div className="relative grid grid-cols-[60px_1fr]" style={{ minHeight: HOURS.length * ROW_HEIGHT }}>
+        <div className="relative grid grid-cols-[3.75rem_1fr]" style={{ minHeight: HOURS.length * ROW_HEIGHT }}>
           {/* Time labels */}
           <div className="border-r">
             {HOURS.map((hour) => (
               <div
                 key={hour}
-                className="border-b last:border-b-0 text-[11px] text-muted-foreground text-right pr-2 pt-1"
+                className="border-b last:border-b-0 text-xs text-muted-foreground text-right pr-2 pt-1"
                 style={{ height: ROW_HEIGHT }}
               >
                 {formatHour(hour)}
@@ -484,28 +500,19 @@ function DayView({
                   style={{
                     top: pos.top * ROW_HEIGHT,
                     height: Math.max(pos.height * ROW_HEIGHT - 2, 24),
-                    borderLeftColor: cfg.dot.replace('bg-', '').includes('blue') ? '#3b82f6'
-                      : cfg.dot.replace('bg-', '').includes('purple') ? '#a855f7'
-                      : cfg.dot.replace('bg-', '').includes('amber') ? '#f59e0b'
-                      : cfg.dot.replace('bg-', '').includes('red') ? '#ef4444'
-                      : cfg.dot.replace('bg-', '').includes('green') ? '#22c55e'
-                      : cfg.dot.replace('bg-', '').includes('cyan') ? '#06b6d4'
-                      : cfg.dot.replace('bg-', '').includes('orange') ? '#f97316'
-                      : cfg.dot.replace('bg-', '').includes('teal') ? '#14b8a6'
-                      : '#9ca3af',
                   }}
                   title={event.title}
                   onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
                 >
                   <div className="text-xs font-semibold truncate">{event.title}</div>
                   {pos.height * ROW_HEIGHT > 36 && (
-                    <div className="text-[10px] opacity-75 mt-0.5">
+                    <div className="text-xs opacity-75 mt-0.5">
                       {new Date(event.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                       {event.endTime && ` - ${new Date(event.endTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`}
                     </div>
                   )}
                   {pos.height * ROW_HEIGHT > 56 && event.location && (
-                    <div className="text-[10px] opacity-60 mt-0.5 truncate">{event.location}</div>
+                    <div className="text-xs opacity-60 mt-0.5 truncate">{event.location}</div>
                   )}
                 </div>
               );
@@ -558,11 +565,10 @@ interface EventFormData {
 }
 
 function EventForm({
-  value, onChange, selectedDate,
+  value, onChange,
 }: {
   value: EventFormData;
   onChange: (v: EventFormData) => void;
-  selectedDate?: string | null;
 }) {
   const set = (patch: Partial<EventFormData>) => onChange({ ...value, ...patch });
 
@@ -593,7 +599,7 @@ function EventForm({
           <Label>Color</Label>
           <Input
             type="color"
-            value={value.color || '#6366F1'}
+            value={value.color || DEFAULT_EVENT_COLOR}
             onChange={(e) => set({ color: e.target.value })}
             className="h-9 p-1 cursor-pointer"
           />
@@ -645,16 +651,14 @@ function EventForm({
           value={value.leadId || null}
           onChange={(id, item) => set({ leadId: id ?? '', leadTitle: item ? (item.title || item.name || '') : '' })}
           fetcher={async (q, page) => {
-            const r = await leadsApi.list({ search: q || undefined, page, limit: 20 });
-            const items = (r as any)?.data?.data ?? (r as any)?.data ?? [];
-            const total = (r as any)?.data?.pagination?.total ?? (Array.isArray(items) ? items.length : 0);
-            return { items: Array.isArray(items) ? items : [], total };
+            const r = unwrapList<{ id: string; title?: string; name?: string }>(await leadsApi.list({ search: q || undefined, page, limit: 20 }));
+            return { items: r.data, total: r.pagination.total };
           }}
           getOptionId={(l) => l.id}
           getOptionLabel={(l) => l.title || l.name || l.id}
           resolveSelected={async (id) => {
             const r = await leadsApi.getById(id);
-            return (r as any)?.data ?? null;
+            return unwrapEntity<{ id: string; title?: string; name?: string } | null>(r) ?? null;
           }}
           placeholder="Search leads..."
           searchPlaceholder="Search by lead title..."
@@ -677,7 +681,7 @@ function EventForm({
 // ─── Main Page ───
 const EMPTY_FORM: EventFormData = {
   title: '', type: 'meeting', startTime: '09:00', endTime: '10:00',
-  allDay: false, description: '', location: '', color: '#6366F1',
+  allDay: false, description: '', location: '', color: DEFAULT_EVENT_COLOR,
   leadId: '', leadTitle: '', assignedTo: '',
 };
 
@@ -726,14 +730,14 @@ export default function CalendarPage() {
     [rangeStart, rangeEnd, calendarView],
   );
 
-  const createMutation = useApiMutation((data: any) => eventsApi.create(data));
-  const updateMutation = useApiMutation(({ id, data }: { id: string; data: any }) => eventsApi.update(id, data));
+  const createMutation = useApiMutation((data: CreateEventRequest) => eventsApi.create(data));
+  const updateMutation = useApiMutation(({ id, data }: { id: string; data: UpdateEventRequest }) => eventsApi.update(id, data));
   const deleteMutation = useApiMutation((eventId: string) => eventsApi.delete(eventId));
   const rescheduleMutation = useApiMutation(({ id, data }: { id: string; data: { start_at: string; end_at?: string } }) => eventsApi.reschedule(id, data));
 
-  const rawEvents = (eventsResp as any)?.data?.data ?? (eventsResp as any)?.data ?? [];
+  const rawEvents = unwrapList<CalendarEvent>(eventsResp).data;
   const allEvents = React.useMemo(
-    () => (Array.isArray(rawEvents) ? rawEvents : []).map(normalizeEvent),
+    () => rawEvents.map(normalizeEvent),
     [rawEvents],
   );
 
@@ -865,7 +869,6 @@ export default function CalendarPage() {
 
   const handleEditOpen = (event: typeof events[number]) => {
     setEditEvent(event);
-    const startDate = (event.startTime || '').split('T')[0] ?? '';
     const startTimePart = event.all_day ? '09:00'
       : new Date(event.startTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
     const endTimePart = event.all_day ? '10:00'
@@ -878,7 +881,7 @@ export default function CalendarPage() {
       allDay: Boolean(event.all_day),
       description: event.description || '',
       location: event.location || '',
-      color: event.color || '#6366F1',
+      color: event.color || DEFAULT_EVENT_COLOR,
       leadId: event.leadId || event.related_lead_id || '',
       leadTitle: '',
       assignedTo: event.assigned_to || '',
@@ -945,9 +948,9 @@ export default function CalendarPage() {
   };
 
   return (
-    <div className="flex h-full gap-6 p-6 overflow-hidden">
+    <PageContainer>
       {/* Calendar */}
-      <div className="flex-1 flex flex-col gap-4 overflow-auto">
+      <div className="flex flex-col gap-ds-4">
         <PageHeader
           title="Calendar"
           description="Trip departures, meetings, deadlines and reminders."
@@ -999,7 +1002,7 @@ export default function CalendarPage() {
             <Button variant="ghost" size="icon-sm" onClick={handlePrev}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <div className="text-sm font-medium min-w-[130px] text-center">{headerLabel}</div>
+            <div className="text-sm font-medium min-w-32 text-center">{headerLabel}</div>
             <Button variant="ghost" size="icon-sm" onClick={handleNext}>
               <ChevronRight className="h-4 w-4" />
             </Button>
@@ -1015,7 +1018,7 @@ export default function CalendarPage() {
           onClearFilters={() => { setSearch(''); setTypeFilter(''); }}
           actions={
             <Select value={typeFilter || 'all'} onValueChange={(v) => setTypeFilter(v === 'all' ? '' : v)}>
-              <SelectTrigger className="h-9 w-[160px]"><SelectValue placeholder="Event type" /></SelectTrigger>
+              <SelectTrigger className="h-9 w-40"><SelectValue placeholder="Event type" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All types</SelectItem>
                 {EVENT_TYPES.slice(0, 7).map((t) => (
@@ -1081,7 +1084,6 @@ export default function CalendarPage() {
             events={events}
             onEventClick={handleEventClick}
             onDateSelect={setSelectedDate}
-            selectedDate={selectedDate}
             onEventDrop={handleEventDrop}
           />
         )}
@@ -1098,7 +1100,7 @@ export default function CalendarPage() {
 
       {/* Side Panel — Events for Selected Date */}
       <Sheet open={!!selectedDate} onOpenChange={(open) => !open && setSelectedDate(null)}>
-        <SheetContent className="w-[360px] flex flex-col p-0">
+        <SheetContent className="w-90 flex flex-col p-0">
           <SheetHeader className="px-6 pt-6 pb-4 border-b">
             <SheetTitle>
               {selectedDate
@@ -1125,8 +1127,8 @@ export default function CalendarPage() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0 space-y-2">
                           <div className="flex items-center gap-2">
-                            <Badge className={cn('text-[10px]', cfg.badge)}>{cfg.label}</Badge>
-                            {event.all_day && <Badge variant="outline" className="text-[10px]">All Day</Badge>}
+                            <Badge className={cn('text-xs', cfg.badge)}>{cfg.label}</Badge>
+                            {event.all_day && <Badge variant="outline" className="text-xs">All Day</Badge>}
                           </div>
                           <h3 className="font-semibold text-sm">{event.title}</h3>
                           {!event.all_day && event.startTime && (
@@ -1166,7 +1168,7 @@ export default function CalendarPage() {
                             size="icon-sm"
                             onClick={() => handleDeleteEvent(event.id)}
                           >
-                            <X className="h-3.5 w-3.5 text-red-500" />
+                            <X className="h-3.5 w-3.5 text-ds-danger" />
                           </Button>
                         </div>
                       </div>
@@ -1200,7 +1202,6 @@ export default function CalendarPage() {
           <EventForm
             value={formData}
             onChange={setFormData}
-            selectedDate={selectedDate}
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
@@ -1222,7 +1223,6 @@ export default function CalendarPage() {
           <EventForm
             value={editFormData}
             onChange={setEditFormData}
-            selectedDate={selectedDate}
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
@@ -1233,6 +1233,6 @@ export default function CalendarPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 }
