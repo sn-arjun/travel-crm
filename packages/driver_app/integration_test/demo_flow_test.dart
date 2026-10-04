@@ -76,7 +76,7 @@ Future<void> showTouch(WidgetTester tester, Finder finder) async {
       child: IgnorePointer(
         child: ValueListenableBuilder<double>(
           valueListenable: t,
-          builder: (_, p, __) => Opacity(
+          builder: (_, p, _) => Opacity(
             opacity: (1 - p).clamp(0.0, 1.0),
             child: Transform.scale(
               scale: 0.6 + 0.8 * p,
