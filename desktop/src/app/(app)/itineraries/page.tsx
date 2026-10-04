@@ -19,6 +19,7 @@ import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
 import { itinerariesApi } from '@/lib/api/itineraries';
 import { useAuthStore } from '@/stores/auth-store';
 import type { Itinerary } from '@travelcrm/shared';
+import { toLocalDateString } from '@/lib/dates';
 
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
@@ -119,7 +120,7 @@ export default function ItinerariesPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `itineraries_export_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `itineraries_export_${toLocalDateString(new Date())}.csv`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

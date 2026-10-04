@@ -14,6 +14,7 @@ import { FileDropzone } from '@/components/ui/file-dropzone';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { suppliersApi, type SupplierLedger, type SupplierPayment, type SupplierRateCard } from '@/lib/api/suppliers';
+import { toLocalDateString } from '@/lib/dates';
 
 interface SupplierDocument {
   id: string;
@@ -197,7 +198,7 @@ export default function SupplierDetailPage() {
         amount: paymentForm.amount,
         method: paymentForm.method,
         reference_number: paymentForm.reference_number || undefined,
-        payment_date: paymentForm.payment_date.toISOString().split('T')[0]!,
+        payment_date: toLocalDateString(paymentForm.payment_date),
         notes: paymentForm.notes || undefined,
       });
       toast.success('Payment recorded');

@@ -13,6 +13,7 @@ import {
   type WhatsappCampaign,
   type WhatsappCampaignStatus,
 } from '@/lib/api/whatsapp-campaigns';
+import { toLocalDateString } from '@/lib/dates';
 
 function statusTone(status: WhatsappCampaignStatus): 'success' | 'danger' | 'warning' | 'info' | 'neutral' {
   switch (status) {
@@ -69,7 +70,7 @@ async function exportAllCampaigns(status: string | undefined) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `whatsapp-campaigns-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `whatsapp-campaigns-${toLocalDateString(new Date())}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

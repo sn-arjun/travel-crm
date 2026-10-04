@@ -23,6 +23,7 @@ import { test, expect } from './fixtures';
 import * as fs from 'fs';
 import { waitForLoad } from './helpers/auth';
 import { api, seedContact } from './helpers/api-seed';
+import { pickDate } from './helpers/date-picker';
 
 test.setTimeout(120_000);
 
@@ -183,9 +184,8 @@ test.describe.serial('WhatsApp campaigns', () => {
     await pickRelation(page, /Audience segment/, 'Search segments...', SEGMENT);
 
     // Schedule: 28th of next month, via the calendar popover.
-    await page.getByRole('button', { name: /Pick a date/ }).click();
-    await page.locator('.w-\\[280px\\] button').nth(1).click(); // "next month" chevron (0 = previous)
-    await page.getByRole('button', { name: '28', exact: true }).click();
+    const nowDate = new Date();
+    await pickDate(page, page.getByRole('button', { name: /Pick a date/ }), new Date(nowDate.getFullYear(), nowDate.getMonth() + 1, 28));
 
     await page.getByRole('button', { name: /^(Save|Create|Submit)/ }).first().click();
     await expect(page).toHaveURL(/\/marketing\/whatsapp\/(?!new)[^/]+$/, { timeout: 20_000 });

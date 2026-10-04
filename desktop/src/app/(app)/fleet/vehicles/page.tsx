@@ -11,6 +11,7 @@ import { fleetApi } from '@/lib/api/fleet';
 import type { Vehicle } from '@/lib/api/fleet';
 import { toast } from 'sonner';
 import { VEHICLE_TYPE_LABELS, VEHICLE_STATUS_LABELS } from '@travelcrm/shared';
+import { toLocalDateString } from '@/lib/dates';
 
 function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
   if (status === 'available') return 'success';
@@ -231,7 +232,7 @@ export default function VehiclesPage() {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `vehicles_export_${new Date().toISOString().slice(0, 10)}.csv`;
+            a.download = `vehicles_export_${toLocalDateString(new Date())}.csv`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);

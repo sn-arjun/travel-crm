@@ -10,6 +10,7 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { marketingApi, type MarketingSegment, type SegmentContact } from '@/lib/api/marketing';
+import { toLocalDateString } from '@/lib/dates';
 
 function summarizeCriteria(criteria: Record<string, unknown> | null | undefined): string {
   if (!criteria) return 'No criteria set';
@@ -56,7 +57,7 @@ async function exportAllSegments(search: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `marketing-segments-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `marketing-segments-${toLocalDateString(new Date())}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

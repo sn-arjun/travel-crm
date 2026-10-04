@@ -15,6 +15,7 @@ import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { useApiQuery } from '@/hooks/use-api';
 import { voipApi, type CallAnalytics, type Call } from '@/lib/api/voip';
 import { cn } from '@/lib/utils';
+import { toLocalDateString } from '@/lib/dates';
 
 function formatDuration(seconds: number): string {
   if (!seconds) return '0s';
@@ -68,14 +69,14 @@ interface TopCaller { number: string; count: number; totalDuration: number }
 
 function periodToDateRange(period: string): { fromDate: string; toDate: string } {
   const now = new Date();
-  const toDate = now.toISOString().slice(0, 10);
+  const toDate = toLocalDateString(now);
   const from = new Date(now);
   if (period === 'today') { /* from = now */ }
   else if (period === 'this_week') from.setDate(now.getDate() - 7);
   else if (period === 'this_month') from.setDate(now.getDate() - 30);
   else if (period === 'last_month') from.setDate(now.getDate() - 60);
   else if (period === 'last_90_days') from.setDate(now.getDate() - 90);
-  return { fromDate: from.toISOString().slice(0, 10), toDate };
+  return { fromDate: toLocalDateString(from), toDate };
 }
 
 export default function CallAnalyticsPage() {

@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { DataTableColumn } from '@/components/ui/data-table';
 import { useApiMutation } from '@/hooks/use-api';
 import { notificationsApi, type Notification } from '@/lib/api/notifications';
+import { toLocalDateString } from '@/lib/dates';
 
 const REF_TYPE_ROUTES: Record<string, string> = {
   lead: '/leads',
@@ -282,7 +283,7 @@ export default function NotificationsPage() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `notifications-${new Date().toISOString().slice(0, 10)}.csv`;
+        a.download = `notifications-${toLocalDateString(new Date())}.csv`;
         a.click();
         URL.revokeObjectURL(url);
       }}

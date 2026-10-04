@@ -15,6 +15,7 @@ import {
   fieldOptions, operatorOptions, getFieldType, makeRule, makeGroup,
   groupsToCriteria, type RuleGroup,
 } from '../rule-builder';
+import { toLocalDateString } from '@/lib/dates';
 
 const schema = z.object({
   name: z.string().min(1, 'Segment name is required'),
@@ -187,7 +188,7 @@ export default function NewSegmentPage() {
                           {fieldType === 'date' ? (
                             <DatePicker
                               value={rule.value ? new Date(rule.value) : undefined}
-                              onChange={(d) => updateRule(group.id, rule.id, { value: d ? d.toISOString().slice(0, 10) : '' })}
+                              onChange={(d) => updateRule(group.id, rule.id, { value: d ? toLocalDateString(d) : '' })}
                               className="flex-1"
                             />
                           ) : (

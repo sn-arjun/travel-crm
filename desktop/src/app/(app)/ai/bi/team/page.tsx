@@ -20,6 +20,7 @@ import type { DataTableColumn } from '@/components/ui';
 import { AiGate } from '@/components/domain/ai/ai-gate';
 import { useApiQuery } from '@/hooks/use-api';
 import { aiApi, type TeamPerformanceMetrics } from '@/lib/api/ai';
+import { toLocalDateString } from '@/lib/dates';
 
 function toCsv(rows: TeamPerformanceMetrics[]) {
   const header = ['Agent', 'Deals closed', 'Revenue', 'Conversion rate', 'Avg deal value'];
@@ -36,7 +37,7 @@ function downloadCsv(rows: TeamPerformanceMetrics[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `team-performance-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `team-performance-${toLocalDateString(new Date())}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

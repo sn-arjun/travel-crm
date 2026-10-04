@@ -13,6 +13,7 @@ import { SendMessageDialog } from '@/components/communication/send-message-dialo
 import { LEAD_STATUS_LABELS } from '@travelcrm/shared';
 import { toast } from 'sonner';
 import type { Lead } from '@travelcrm/shared';
+import { toLocalDateString } from '@/lib/dates';
 
 function formatCurrency(amount: number, currency = 'INR') {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount);
@@ -216,7 +217,7 @@ export default function LeadsPage() {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `leads_export_${new Date().toISOString().slice(0, 10)}.xlsx`;
+            a.download = `leads_export_${toLocalDateString(new Date())}.xlsx`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);

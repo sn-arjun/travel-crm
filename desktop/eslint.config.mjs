@@ -103,6 +103,11 @@ const eslintConfig = [
           message:
             'Direct mailto:/wa.me/tel: links are not allowed. Use SendMessageDialog so the message routes through the Communication Hub.',
         },
+        {
+          selector:
+            "CallExpression[callee.property.name=/^(split|slice|substring)$/][callee.object.callee.property.name='toISOString']",
+          message: 'Use toLocalDateString() from @/lib/dates',
+        },
       ],
     },
   },

@@ -14,6 +14,7 @@ import { contactsApi } from '@/lib/api/contacts';
 import { leadsApi } from '@/lib/api/leads';
 import { hsnCodesApi } from '@/lib/api/hsn-codes';
 import { toast } from 'sonner';
+import { toLocalDateString } from '@/lib/dates';
 
 interface LineItem {
   id: number;
@@ -50,6 +51,7 @@ export default function NewInvoicePage() {
     { id: lineIdCounter++, description: '', hsnCode: '', quantity: 1, unitPrice: 0 },
   ]);
   const [hsnSearch, setHsnSearch] = React.useState('');
+  const [priceErrors, setPriceErrors] = React.useState<Set<number>>(new Set());
 
   const hsnQueryRef = React.useRef<{ code: string; description: string }[]>([]);
   const [hsnCodes, setHsnCodes] = React.useState<{ code: string; description: string }[]>([]);
@@ -67,6 +69,14 @@ export default function NewInvoicePage() {
 
   function updateLineItem(id: number, field: keyof LineItem, value: string | number) {
     setLineItems((prev) => prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)));
+    if (field === 'unitPrice' && Number(value) > 0) {
+      setPriceErrors((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
   }
   function addLineItem() {
     setLineItems((prev) => [...prev, { id: lineIdCounter++, description: '', hsnCode: '', quantity: 1, unitPrice: 0 }]);
@@ -102,6 +112,11 @@ export default function NewInvoicePage() {
           toast.error('At least one line item with description is required');
           return;
         }
+        const badPrice = lineItems.filter((item) => item.description.trim() && !(item.unitPrice > 0));
+        if (badPrice.length > 0) {
+          setPriceErrors(new Set(badPrice.map((item) => item.id)));
+          throw new Error('Unit price must be greater than 0');
+        }
         const discountAmount = v.discountType === 'percentage'
           ? subtotal * (v.discountValue ?? 0) / 100
           : (v.discountValue ?? 0);
@@ -123,7 +138,7 @@ export default function NewInvoicePage() {
           items: apiLineItems,
           discountType: v.discountType,
           discountValue: discountAmount > 0 ? discountAmount : undefined,
-          dueDate: v.dueDate ? v.dueDate.toISOString().split('T')[0] : undefined,
+          dueDate: v.dueDate ? toLocalDateString(v.dueDate) : undefined,
           notes: v.notes || undefined,
           currency: v.currency,
         };
@@ -260,7 +275,12 @@ export default function NewInvoicePage() {
                       className="h-9 text-xs"
                     />
                     <Input type="number" min={1} value={item.quantity} onChange={(e) => updateLineItem(item.id, 'quantity', parseInt(e.target.value) || 1)} />
-                    <Input type="number" min={0} value={item.unitPrice || ''} onChange={(e) => updateLineItem(item.id, 'unitPrice', parseFloat(e.target.value) || 0)} placeholder="0" />
+                    <div>
+                      <Input type="number" min={0} value={item.unitPrice || ''} onChange={(e) => updateLineItem(item.id, 'unitPrice', parseFloat(e.target.value) || 0)} placeholder="0" aria-label="Unit price" aria-invalid={priceErrors.has(item.id) || undefined} />
+                      {priceErrors.has(item.id) && (
+                        <p role="alert" className="mt-ds-1 text-xs text-ds-danger">Unit price must be greater than 0</p>
+                      )}
+                    </div>
                     <Input value={(item.quantity * item.unitPrice).toLocaleString('en-IN')} readOnly className="bg-ds-surface-sunken text-right font-medium" />
                     <Button type="button" variant="ghost" size="icon-sm" onClick={() => removeLineItem(item.id)} className="text-ds-foreground-muted hover:text-ds-danger">
                       <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />

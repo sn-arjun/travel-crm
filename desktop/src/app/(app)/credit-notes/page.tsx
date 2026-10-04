@@ -8,6 +8,7 @@ import { ListPage } from '@/components/domain';
 import { Button, Tag } from '@/components/ui';
 import { useApiMutation } from '@/hooks/use-api';
 import { creditNotesApi, type CreditNote } from '@/lib/api/credit-notes';
+import { toLocalDateString } from '@/lib/dates';
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
@@ -28,7 +29,7 @@ function toCsv(rows: CreditNote[]) {
     n.totalTax,
     n.total,
     n.status,
-    n.createdAt ? new Date(n.createdAt).toISOString().slice(0, 10) : '',
+    n.createdAt ? toLocalDateString(new Date(n.createdAt)) : '',
   ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','));
   return [header.join(','), ...lines].join('\n');
 }
@@ -151,7 +152,7 @@ export default function CreditNotesPage() {
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = `credit-notes_${new Date().toISOString().slice(0, 10)}.csv`;
+          a.download = `credit-notes_${toLocalDateString(new Date())}.csv`;
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);

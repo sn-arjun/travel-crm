@@ -10,6 +10,7 @@ import {
 } from '@/components/ui';
 import { travellersApi, parseDateOnly, type Traveller } from '@/lib/api/visa';
 import { toast } from 'sonner';
+import { toLocalDateString } from '@/lib/dates';
 
 function expiryTone(expiry?: string): 'success' | 'warning' | 'danger' | 'neutral' {
   if (!expiry) return 'neutral';
@@ -131,7 +132,7 @@ export default function TravellersPage() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `travellers_export_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.download = `travellers_export_${toLocalDateString(new Date())}.csv`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);

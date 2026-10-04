@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { bookmarksApi } from '@/lib/api/bookmarks';
 import type { Bookmark } from '@/lib/api/bookmarks';
+import { toLocalDateString } from '@/lib/dates';
 
 const ENTITY_ROUTES: Record<Bookmark['entityType'], string> = {
   contact: '/contacts',
@@ -66,7 +67,7 @@ export default function BookmarksPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `bookmarks-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `bookmarks-${toLocalDateString(new Date())}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };

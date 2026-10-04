@@ -28,6 +28,7 @@ import {
 import { documentsApi, type Document } from '@/lib/api/documents';
 import { leadsApi } from '@/lib/api/leads';
 import { itinerariesApi } from '@/lib/api/itineraries';
+import { unwrapList } from '@/lib/api/envelope';
 
 const CATEGORIES = ['passport', 'visa', 'invoice', 'contract', 'other'] as const;
 
@@ -387,7 +388,8 @@ export default function DocumentsPage() {
                 onChange={(id) => setUploadForm((f) => ({ ...f, leadId: id }))}
                 fetcher={async (query, page) => {
                   const r = await leadsApi.list({ search: query, page, limit: 20 });
-                  return { items: r.data?.data ?? [], total: r.data?.pagination?.total ?? 0 };
+                  const list = unwrapList<{ id: string; title: string }>(r);
+                  return { items: list.data, total: list.pagination.total };
                 }}
                 getOptionId={(l) => l.id}
                 getOptionLabel={(l) => l.title}
@@ -402,7 +404,8 @@ export default function DocumentsPage() {
                 onChange={(id) => setUploadForm((f) => ({ ...f, itineraryId: id }))}
                 fetcher={async (query, page) => {
                   const r = await itinerariesApi.list({ search: query, page, limit: 20 });
-                  return { items: r.data?.data ?? [], total: r.data?.pagination?.total ?? 0 };
+                  const list = unwrapList<{ id: string; title: string }>(r);
+                  return { items: list.data, total: list.pagination.total };
                 }}
                 getOptionId={(i) => i.id}
                 getOptionLabel={(i) => i.title}

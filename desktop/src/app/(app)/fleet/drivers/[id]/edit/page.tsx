@@ -9,6 +9,7 @@ import { Input, Textarea, SectionCard, PhoneInput, DatePicker } from '@/componen
 import { useApiQuery } from '@/hooks/use-api';
 import { fleetApi } from '@/lib/api/fleet';
 import { toast } from 'sonner';
+import { parseLocalDate, toLocalDateString } from '@/lib/dates';
 
 const schema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -16,8 +17,8 @@ const schema = z.object({
   email: z.string().email('Invalid email').optional().or(z.literal('')),
   dateOfBirth: z.date().optional(),
   address: z.string().optional(),
-  licenseNumber: z.string().min(1, 'License number is required'),
-  licenseExpiry: z.date({ error: 'License expiry is required' }),
+  licenseNumber: z.string().optional(),
+  licenseExpiry: z.date().optional(),
   licenseType: z.string().optional(),
   badgeNumber: z.string().optional(),
   emergencyContactName: z.string().optional(),
@@ -31,7 +32,7 @@ const schema = z.object({
 type DriverFormValues = z.infer<typeof schema>;
 
 function toDate(v?: string): Date | undefined {
-  return v ? new Date(v) : undefined;
+  return v ? parseLocalDate(v) : undefined;
 }
 
 export default function EditDriverPage() {
@@ -74,7 +75,7 @@ export default function EditDriverPage() {
         dateOfBirth: toDate(driver.dateOfBirth),
         address: driver.address || '',
         licenseNumber: driver.licenseNumber || '',
-        licenseExpiry: toDate(driver.licenseExpiry) as unknown as Date,
+        licenseExpiry: toDate(driver.licenseExpiry),
         licenseType: driver.licenseType || '',
         badgeNumber: driver.badgeNumber || '',
         emergencyContactName: driver.emergencyContactName || '',
@@ -91,10 +92,10 @@ export default function EditDriverPage() {
           name: v.name,
           phone: v.phone,
           email: v.email || undefined,
-          dateOfBirth: v.dateOfBirth ? v.dateOfBirth.toISOString().split('T')[0] : undefined,
+          dateOfBirth: v.dateOfBirth ? toLocalDateString(v.dateOfBirth) : undefined,
           address: v.address || undefined,
-          licenseNumber: v.licenseNumber,
-          licenseExpiry: v.licenseExpiry.toISOString().split('T')[0] as string,
+          licenseNumber: v.licenseNumber || undefined,
+          licenseExpiry: v.licenseExpiry ? toLocalDateString(v.licenseExpiry) : undefined,
           licenseType: v.licenseType || undefined,
           badgeNumber: v.badgeNumber || undefined,
           emergencyContactName: v.emergencyContactName || undefined,
@@ -141,12 +142,12 @@ export default function EditDriverPage() {
             </div>
           </SectionCard>
 
-          <SectionCard title="License & credentials" required>
+          <SectionCard title="License & credentials">
             <div className="grid gap-ds-4 sm:grid-cols-2">
-              <FormRow name="licenseNumber" label="License number" required>
+              <FormRow name="licenseNumber" label="License number">
                 <Input {...form.register('licenseNumber')} id="licenseNumber" placeholder="e.g., DL-0001-2024" />
               </FormRow>
-              <FormRow name="licenseExpiry" label="License expiry" required hint={form.formState.errors.licenseExpiry?.message}>
+              <FormRow name="licenseExpiry" label="License expiry" hint={form.formState.errors.licenseExpiry?.message}>
                 <DatePicker
                   value={form.watch('licenseExpiry')}
                   onChange={(d) => form.setValue('licenseExpiry', d as Date, { shouldDirty: true })}

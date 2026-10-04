@@ -1,6 +1,7 @@
 import { test, expect } from './fixtures';
 import { waitForLoad, getAuthToken, API_URL } from './helpers/auth';
 import { seedContact, seedLead, api } from './helpers/api-seed';
+import { pickDate } from './helpers/date-picker';
 
 test.describe('Leads', () => {
   // ─────────────────────────────────────────────────────────────
@@ -39,16 +40,11 @@ test.describe('Leads', () => {
     await page.getByRole('option', { name: 'International' }).click();
 
     // Travel date (calendar popover — minDate is today, so advance to next month for a safely-enabled day)
-    await page.locator('button:has-text("Pick travel date")').click();
-    const travelCalendar = page.locator('.p-3.w-\\[280px\\]');
-    await travelCalendar.locator('button').filter({ has: page.locator('svg') }).last().click(); // next month
-    await travelCalendar.getByRole('button', { name: '10', exact: true }).click();
+    const nowDate = new Date();
+    await pickDate(page, page.locator('button:has-text("Pick travel date")'), new Date(nowDate.getFullYear(), nowDate.getMonth() + 1, 10));
 
     // Return date
-    await page.locator('button:has-text("Pick return date")').click();
-    const returnCalendar = page.locator('.p-3.w-\\[280px\\]');
-    await returnCalendar.locator('button').filter({ has: page.locator('svg') }).last().click(); // next month
-    await returnCalendar.getByRole('button', { name: '15', exact: true }).click();
+    await pickDate(page, page.locator('button:has-text("Pick return date")'), new Date(nowDate.getFullYear(), nowDate.getMonth() + 1, 15));
 
     // Pax
     await page.locator('#paxAdults').fill('2');

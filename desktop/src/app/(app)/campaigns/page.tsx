@@ -11,6 +11,7 @@ import { useApiMutation } from '@/hooks/use-api';
 import { campaignsApi } from '@/lib/api/campaigns';
 import type { Campaign } from '@travelcrm/shared';
 import { toast } from 'sonner';
+import { toLocalDateString } from '@/lib/dates';
 
 function channelIcon(type: string) {
   if (type === 'email') return <Mail className="size-3.5" aria-hidden="true" />;
@@ -244,7 +245,7 @@ export default function CampaignsPage() {
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = `campaigns_export_${new Date().toISOString().slice(0, 10)}.csv`;
+          a.download = `campaigns_export_${toLocalDateString(new Date())}.csv`;
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);

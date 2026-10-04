@@ -9,6 +9,7 @@ import { Button, Input, SectionCard, Skeleton, Tag, Textarea } from '@/component
 import type { DataTableColumn } from '@/components/ui';
 import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { aiApi, type DocumentScan } from '@/lib/api/ai';
+import { toLocalDateString } from '@/lib/dates';
 
 const TYPE_LABEL: Record<DocumentScan['documentType'], string> = {
   passport: 'Passport',
@@ -284,7 +285,7 @@ function DocumentScansContent() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `ai-document-scans-${new Date().toISOString().slice(0, 10)}.csv`;
+        a.download = `ai-document-scans-${toLocalDateString(new Date())}.csv`;
         a.click();
         URL.revokeObjectURL(url);
       }}

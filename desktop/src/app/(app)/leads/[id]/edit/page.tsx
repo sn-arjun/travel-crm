@@ -15,6 +15,7 @@ import { contactsApi } from '@/lib/api/contacts';
 import { usersApi } from '@/lib/api/users';
 import { LEAD_SOURCES, LEAD_STATUS_LABELS } from '@travelcrm/shared';
 import { toast } from 'sonner';
+import { parseLocalDate, toLocalDateString } from '@/lib/dates';
 
 const schema = z.object({
   contactId: z.string().min(1, 'Contact is required'),
@@ -75,8 +76,8 @@ export default function EditLeadPage() {
         contactId: lead.contactId || '',
         title: lead.title || '',
         destinations: lead.destinations || (lead.destination ? [lead.destination] : []),
-        travelDate: lead.travelDate ? new Date(lead.travelDate) : undefined,
-        returnDate: lead.returnDate ? new Date(lead.returnDate) : undefined,
+        travelDate: lead.travelDate ? parseLocalDate(lead.travelDate) : undefined,
+        returnDate: lead.returnDate ? parseLocalDate(lead.returnDate) : undefined,
         paxAdults: lead.paxAdults ?? 1,
         paxChildren: lead.paxChildren ?? 0,
         paxInfants: lead.paxInfants ?? 0,
@@ -96,8 +97,8 @@ export default function EditLeadPage() {
           contactId: v.contactId,
           title: v.title,
           destinations: v.destinations,
-          travelDate: v.travelDate ? v.travelDate.toISOString().split('T')[0] : undefined,
-          returnDate: v.returnDate ? v.returnDate.toISOString().split('T')[0] : undefined,
+          travelDate: v.travelDate ? toLocalDateString(v.travelDate) : undefined,
+          returnDate: v.returnDate ? toLocalDateString(v.returnDate) : undefined,
           paxAdults: v.paxAdults,
           paxChildren: v.paxChildren,
           paxInfants: v.paxInfants,

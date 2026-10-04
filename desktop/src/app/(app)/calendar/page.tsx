@@ -30,6 +30,7 @@ import { eventsApi, type CalendarEvent, type EventType } from '@/lib/api/events'
 import { leadsApi } from '@/lib/api/leads';
 import { toast } from 'sonner';
 import Link from 'next/link';
+import { toLocalDateString } from '@/lib/dates';
 
 const REF_DATE = Date.now();
 
@@ -125,7 +126,7 @@ function CalendarGrid({
   const firstDay = new Date(year, month, 1);
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const startingDayOfWeek = firstDay.getDay();
-  const todayStr = new Date(REF_DATE).toISOString().split('T')[0];
+  const todayStr = toLocalDateString(new Date(REF_DATE));
 
   const getDayEvents = (day: number) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -223,7 +224,7 @@ function WeekView({
   onEventDrop: (eventId: string, newDateStr: string) => void;
 }) {
   const weekDays = getWeekDays(currentDate);
-  const todayStr = new Date(REF_DATE).toISOString().split('T')[0];
+  const todayStr = toLocalDateString(new Date(REF_DATE));
   const ROW_HEIGHT = 60; // px per hour
 
   const getEventsForDay = (dayStr: string) =>
@@ -394,7 +395,7 @@ function DayView({
   onDateSelect: (date: string) => void;
 }) {
   const dayStr = formatDateStr(currentDate);
-  const todayStr = new Date(REF_DATE).toISOString().split('T')[0];
+  const todayStr = toLocalDateString(new Date(REF_DATE));
   const isToday = dayStr === todayStr;
   const ROW_HEIGHT = 64; // px per hour
 
@@ -800,7 +801,7 @@ export default function CalendarPage() {
 
   const handleToday = () => {
     setCurrentDate(new Date(REF_DATE));
-    setSelectedDate(new Date(REF_DATE).toISOString().split('T')[0] ?? null);
+    setSelectedDate(toLocalDateString(new Date(REF_DATE)));
   };
 
   const selectedDateEvents = selectedDate
@@ -898,7 +899,7 @@ export default function CalendarPage() {
       toast.error('Title is required');
       return;
     }
-    const startDate = (editEvent.startTime || '').split('T')[0] ?? selectedDate ?? new Date().toISOString().split('T')[0]!;
+    const startDate = (editEvent.startTime || '').split('T')[0] ?? selectedDate ?? toLocalDateString(new Date());
     try {
       await updateMutation.mutate({ id: editEvent.id, data: buildEventPayload(editFormData, startDate) });
       toast.success('Event updated');

@@ -2,6 +2,7 @@ import { type Page } from '@playwright/test';
 import { test, expect } from './fixtures';
 import { waitForLoad, navigateTo } from './helpers/auth';
 import { api, seedRateCard, seedSupplier } from './helpers/api-seed';
+import { calendarDialog, dayButton, pickDate as pickDateAt } from './helpers/date-picker';
 
 const RAW_MESSAGING_ANCHORS = 'a[href^="tel:"], a[href^="mailto:"], a[href^="https://wa.me"], a[href^="wa.me"]';
 
@@ -31,14 +32,9 @@ async function setNumber(page: Page, selector: string, value: string) {
 
 /** Opens the first still-unset "Pick a date" trigger, advances N months, clicks the day. */
 async function pickDate(page: Page, monthsForward: number, day: string) {
-  await page.locator('button:has-text("Pick a date")').first().click();
-  const calendar = page.locator('.w-\\[280px\\]').last();
-  const nextMonthBtn = calendar.locator('> div').first().getByRole('button').last();
-  for (let i = 0; i < monthsForward; i++) {
-    // eslint-disable-next-line no-await-in-loop
-    await nextMonthBtn.click();
-  }
-  await calendar.locator('.grid').getByRole('button', { name: day, exact: true }).click();
+  const now = new Date();
+  const target = new Date(now.getFullYear(), now.getMonth() + monthsForward, Number(day));
+  await pickDateAt(page, page.locator('button:has-text("Pick a date")').first(), target);
 }
 
 function isoDate(monthsAhead: number, day: number) {
@@ -271,8 +267,11 @@ test.describe('Rate Cards', () => {
 
     await pickDate(page, 2, '20');
     await page.locator('button:has-text("Pick a date")').first().click();
-    const calendar = page.locator('.w-\\[280px\\]').last();
-    await expect(calendar.locator('.grid').getByRole('button', { name: '10', exact: true })).toBeDisabled();
+    const now = new Date();
+    const before = new Date(now.getFullYear(), now.getMonth() + 2, 10);
+    await calendarDialog(page).getByLabel('Year', { exact: true }).selectOption(String(before.getFullYear()));
+    await calendarDialog(page).getByLabel('Month', { exact: true }).selectOption(String(before.getMonth()));
+    await expect(dayButton(page, before)).toBeDisabled();
   });
 
   test('list shows seeded rate card values, hover Edit opens that rate card', async ({ page }) => {

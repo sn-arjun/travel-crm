@@ -7,13 +7,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useApiQuery } from '@/hooks/use-api';
 import { fleetApi } from '@/lib/api/fleet';
 import { toast } from 'sonner';
+import { toLocalDateString } from '@/lib/dates';
 
 interface DriverScheduleCalendarProps {
   driverId: string;
 }
 
 function toDateStr(d: Date) {
-  return d.toISOString().split('T')[0] ?? '';
+  return toLocalDateString(d);
 }
 
 export function DriverScheduleCalendar({ driverId }: DriverScheduleCalendarProps) {

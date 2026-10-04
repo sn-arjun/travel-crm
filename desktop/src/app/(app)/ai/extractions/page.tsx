@@ -10,6 +10,7 @@ import { Button, Skeleton, Tag } from '@/components/ui';
 import type { DataTableColumn } from '@/components/ui';
 import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { aiExtractionsApi, type AiExtraction, type ExtractionSourceType } from '@/lib/api/ai-extractions';
+import { toLocalDateString } from '@/lib/dates';
 
 const SOURCE_LABEL: Record<ExtractionSourceType, string> = {
   call: 'Call',
@@ -86,7 +87,7 @@ function ExtractionsQueueContent() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `ai-extractions-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `ai-extractions-${toLocalDateString(new Date())}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };

@@ -15,6 +15,7 @@
 import { type Page } from '@playwright/test';
 import { test, expect } from './fixtures';
 import { waitForLoad } from './helpers/auth';
+import { pickDate as pickDateAt } from './helpers/date-picker';
 import { api, seedContact, seedTraveller } from './helpers/api-seed';
 import * as fs from 'node:fs';
 
@@ -44,23 +45,7 @@ async function search(page: Page, term: string) {
 
 /** Opens a DatePicker by its placeholder/label text and picks the target day by clicking the calendar. */
 async function pickDate(page: Page, trigger: string | RegExp, target: Date) {
-  await page.getByRole('button', { name: trigger }).click();
-  const pop = page.locator('[data-radix-popper-content-wrapper]').last();
-  await expect(pop.getByText(/^(January|February|March|April|May|June|July|August|September|October|November|December) \d{4}$/)).toBeVisible();
-  const now = new Date();
-  const delta = (target.getFullYear() - now.getFullYear()) * 12 + (target.getMonth() - now.getMonth());
-  // prev = first button in the popover, next = second. Click in-page: hundreds of months back for a DOB.
-  // Yield between clicks: the calendar's prev/next handlers read the committed month, so batched clicks would collapse.
-  await pop.evaluate(async (el, n) => {
-    const btns = el.querySelectorAll('button');
-    const btn = (n < 0 ? btns[0] : btns[1]) as HTMLButtonElement;
-    for (let i = 0; i < Math.abs(n); i++) {
-      btn.click();
-      await new Promise((r) => setTimeout(r, 0));
-    }
-  }, delta);
-  await expect(pop.getByText(`${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][target.getMonth()]} ${target.getFullYear()}`)).toBeVisible();
-  await pop.getByRole('button', { name: String(target.getDate()), exact: true }).click();
+  await pickDateAt(page, page.getByRole('button', { name: trigger }), target);
 }
 
 /** The Combobox trigger has no accessible name, so locate it through its field label. */

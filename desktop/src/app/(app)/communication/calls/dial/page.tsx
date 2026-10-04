@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { voipApi, type Call, type CreateOutboundCallRequest } from '@/lib/api/voip';
+import { unwrapList } from '@/lib/api/envelope';
 import { contactsApi } from '@/lib/api/contacts';
 import type { Contact } from '@travelcrm/shared';
 
@@ -120,8 +121,9 @@ function DialPadPage() {
               }}
               fetcher={async (q, page) => {
                 const r = await contactsApi.list({ search: q, page, limit: 20 });
-                const items = r.data?.data ?? [];
-                return { items: items.filter((c) => c.phone), total: r.data?.pagination?.total ?? items.length };
+                const list = unwrapList<Contact>(r);
+                const items = list.data;
+                return { items: items.filter((c) => c.phone), total: list.pagination.total };
               }}
               getOptionId={(c) => c.id}
               getOptionLabel={(c) => c.name}

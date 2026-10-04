@@ -16,6 +16,7 @@
 import { type Page } from '@playwright/test';
 import { test, expect } from './fixtures';
 import { waitForLoad } from './helpers/auth';
+import { pickDate } from './helpers/date-picker';
 import { api, seedTask, seedContact, seedLead } from './helpers/api-seed';
 
 const RUN = Date.now().toString(36);
@@ -113,10 +114,8 @@ test.describe('Tasks: CRUD round trip', () => {
     const assigneeName = assignee;
     await pickRelation(page, combos.nth(3), lead.title);
 
-    await dialog.getByRole('button', { name: /pick a date/i }).click();
-    const calendar = page.locator('[data-radix-popper-content-wrapper]').last();
-    await calendar.locator('button').nth(1).click(); // next month
-    await calendar.getByRole('button', { name: '15', exact: true }).click();
+    const nowDate = new Date();
+    await pickDate(page, dialog.getByRole('button', { name: /pick a date/i }), new Date(nowDate.getFullYear(), nowDate.getMonth() + 1, 15));
     await expect(dialog.getByRole('button', { name: pickerDue })).toBeVisible();
 
     await dialog.getByRole('button', { name: /^create task$/i }).click();

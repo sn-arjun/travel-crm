@@ -17,6 +17,7 @@ import { invoicesApi } from '@/lib/api/invoices';
 import { paymentsApi } from '@/lib/api/payments';
 import { creditNotesApi, debitNotesApi, type CreateCreditNoteRequest, type CreateDebitNoteRequest } from '@/lib/api/credit-notes';
 import { toast } from 'sonner';
+import { toLocalDateString } from '@/lib/dates';
 
 function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
   if (status === 'paid') return 'success';
@@ -232,7 +233,7 @@ export default function InvoiceDetailPage() {
       await paymentsApi.create({
         invoiceId,
         amount,
-        date: new Date().toISOString().split('T')[0],
+        date: toLocalDateString(new Date()),
         method: payMethod,
         reference: payReference || undefined,
       });

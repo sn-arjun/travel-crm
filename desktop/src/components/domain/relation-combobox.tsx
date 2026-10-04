@@ -86,7 +86,7 @@ export function RelationCombobox<T>({
   error,
   onCreateNew,
   createNewLabel = 'Create new',
-  pageSize = 20,
+  pageSize: _pageSize = 20,
   className,
   ...aria
 }: RelationComboboxProps<T>) {
@@ -103,6 +103,13 @@ export function RelationCombobox<T>({
 
   // Guards against out-of-order responses overwriting newer results.
   const requestId = React.useRef(0);
+  // Callers usually pass an inline fetcher; keep it in a ref so `load` is
+  // stable and parent re-renders don't re-fire the effect (cancelling results).
+  const fetcherRef = React.useRef(fetcher);
+  React.useEffect(() => {
+    fetcherRef.current = fetcher;
+  });
+  const errorId = React.useId();
 
   const load = React.useCallback(
     async (q: string, pageNum: number, append: boolean) => {
@@ -110,7 +117,7 @@ export function RelationCombobox<T>({
       setLoading(true);
       setLoadError(null);
       try {
-        const res = await fetcher(q, pageNum);
+        const res = await fetcherRef.current(q, pageNum);
         if (id !== requestId.current) return;
         setItems((prev) => (append ? [...prev, ...res.items] : res.items));
         setTotal(res.total);
@@ -124,7 +131,7 @@ export function RelationCombobox<T>({
         if (id === requestId.current) setLoading(false);
       }
     },
-    [fetcher],
+    [],
   );
 
   // Load the first page when opened, and whenever the debounced query changes.
@@ -133,12 +140,15 @@ export function RelationCombobox<T>({
     void load(debouncedQuery, 1, false);
   }, [open, debouncedQuery, load]);
 
-  // Resolve the label for a preset value that isn't in the loaded page.
+  // Resolve the label for a preset value that isn't in the loaded page. The
+  // selected item is cached in state, so a later search that replaces `items`
+  // never drops the label of the current selection.
   React.useEffect(() => {
     if (!value) {
       setSelected(null);
       return;
     }
+    if (selected && getOptionId(selected) === value) return;
     const inList = items.find((i) => getOptionId(i) === value);
     if (inList) {
       setSelected(inList);
@@ -156,7 +166,7 @@ export function RelationCombobox<T>({
     return () => {
       cancelled = true;
     };
-  }, [value, items, getOptionId, resolveSelected]);
+  }, [value, items, selected, getOptionId, resolveSelected]);
 
   const hasMore = items.length < total;
 
@@ -184,7 +194,7 @@ export function RelationCombobox<T>({
             aria-expanded={open}
             aria-required={required}
             aria-invalid={Boolean(error)}
-            aria-errormessage={error ? 'relation-error' : undefined}
+            aria-errormessage={error ? errorId : undefined}
             disabled={disabled}
             {...aria}
             className={cn(
@@ -284,7 +294,7 @@ export function RelationCombobox<T>({
       </Popover>
 
       {error && (
-        <p id="relation-error" role="alert" className="mt-ds-1 text-xs text-ds-danger">
+        <p id={errorId} role="alert" className="mt-ds-1 text-xs text-ds-danger">
           {error}
         </p>
       )}

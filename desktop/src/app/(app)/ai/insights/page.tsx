@@ -9,6 +9,7 @@ import { Button, Skeleton, Tabs, TabsContent, TabsList, TabsTrigger, Tag } from 
 import type { DataTableColumn } from '@/components/ui';
 import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { aiApi, type Insight, type Recommendation } from '@/lib/api/ai';
+import { toLocalDateString } from '@/lib/dates';
 
 const PRIORITY_TONE: Record<Recommendation['priority'], 'danger' | 'warning' | 'info'> = {
   high: 'danger',
@@ -140,7 +141,7 @@ function InsightsListPage() {
       onExport={(rows) =>
         downloadCsv(
           toCsv(rows as unknown as Record<string, unknown>[], ['title', 'description', 'metric', 'value', 'status']),
-          `ai-insights-${new Date().toISOString().slice(0, 10)}.csv`,
+          `ai-insights-${toLocalDateString(new Date())}.csv`,
         )
       }
       exportLabel="Export CSV"
@@ -236,7 +237,7 @@ function RecommendationsListPage() {
       onExport={(rows) =>
         downloadCsv(
           toCsv(rows as unknown as Record<string, unknown>[], ['category', 'title', 'description', 'priority', 'status']),
-          `ai-recommendations-${new Date().toISOString().slice(0, 10)}.csv`,
+          `ai-recommendations-${toLocalDateString(new Date())}.csv`,
         )
       }
       exportLabel="Export CSV"

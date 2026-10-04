@@ -7,6 +7,7 @@ import { EntityForm, FormRow } from '@/components/domain';
 import { Input, Textarea, SectionCard, PhoneInput, DatePicker } from '@/components/ui';
 import { fleetApi } from '@/lib/api/fleet';
 import { toast } from 'sonner';
+import { toLocalDateString } from '@/lib/dates';
 
 const schema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -14,8 +15,8 @@ const schema = z.object({
   email: z.string().email('Invalid email').optional().or(z.literal('')),
   dateOfBirth: z.date().optional(),
   address: z.string().optional(),
-  licenseNumber: z.string().min(1, 'License number is required'),
-  licenseExpiry: z.date({ error: 'License expiry is required' }),
+  licenseNumber: z.string().optional(),
+  licenseExpiry: z.date().optional(),
   licenseType: z.string().optional(),
   badgeNumber: z.string().optional(),
   emergencyContactName: z.string().optional(),
@@ -35,7 +36,7 @@ export default function NewDriverPage() {
       schema={schema}
       defaultValues={{
         name: '', phone: '', email: '', dateOfBirth: undefined, address: '',
-        licenseNumber: '', licenseExpiry: undefined as unknown as Date, licenseType: '', badgeNumber: '',
+        licenseNumber: '', licenseExpiry: undefined, licenseType: '', badgeNumber: '',
         emergencyContactName: '', emergencyContactPhone: '', emergencyContactRelation: '', notes: '',
       }}
       onCancel={() => router.back()}
@@ -44,10 +45,10 @@ export default function NewDriverPage() {
           name: v.name,
           phone: v.phone,
           email: v.email || undefined,
-          dateOfBirth: v.dateOfBirth ? v.dateOfBirth.toISOString().split('T')[0] : undefined,
+          dateOfBirth: v.dateOfBirth ? toLocalDateString(v.dateOfBirth) : undefined,
           address: v.address || undefined,
-          licenseNumber: v.licenseNumber,
-          licenseExpiry: v.licenseExpiry.toISOString().split('T')[0] as string,
+          licenseNumber: v.licenseNumber || undefined,
+          licenseExpiry: v.licenseExpiry ? toLocalDateString(v.licenseExpiry) : undefined,
           licenseType: v.licenseType || undefined,
           badgeNumber: v.badgeNumber || undefined,
           emergencyContactName: v.emergencyContactName || undefined,
@@ -91,12 +92,12 @@ export default function NewDriverPage() {
             </div>
           </SectionCard>
 
-          <SectionCard title="License & credentials" required>
+          <SectionCard title="License & credentials">
             <div className="grid gap-ds-4 sm:grid-cols-2">
-              <FormRow name="licenseNumber" label="License number" required>
+              <FormRow name="licenseNumber" label="License number">
                 <Input {...form.register('licenseNumber')} id="licenseNumber" placeholder="e.g., DL-0001-2024" />
               </FormRow>
-              <FormRow name="licenseExpiry" label="License expiry" required hint={form.formState.errors.licenseExpiry?.message}>
+              <FormRow name="licenseExpiry" label="License expiry" hint={form.formState.errors.licenseExpiry?.message}>
                 <DatePicker
                   value={form.watch('licenseExpiry')}
                   onChange={(d) => form.setValue('licenseExpiry', d as Date, { shouldDirty: true })}

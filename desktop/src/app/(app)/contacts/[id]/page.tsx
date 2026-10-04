@@ -26,6 +26,7 @@ import { followUpsApi } from '@/lib/api/follow-ups';
 import { invoicesApi } from '@/lib/api/invoices';
 import { SendMessageDialog } from '@/components/communication/send-message-dialog';
 import { toast } from 'sonner';
+import { toLocalDateString } from '@/lib/dates';
 
 const REF_DATE = Date.now();
 
@@ -177,7 +178,7 @@ export default function ContactDetailPage() {
     id: `pay-${i + 1}`,
     amount: (contactLeads[i % contactLeads.length]?.budget ?? 100000) * 0.5,
     method: ['bank_transfer', 'credit_card', 'upi'][i % 3] ?? 'bank_transfer',
-    date: new Date(REF_DATE - i * 15 * 86400000).toISOString().split('T')[0] ?? '',
+    date: toLocalDateString(new Date(REF_DATE - i * 15 * 86400000)),
     reference: `REF-${String(Math.abs((contactId ?? '').charCodeAt(0) + i)).slice(-6)}`,
   }));
 
@@ -187,7 +188,7 @@ export default function ContactDetailPage() {
     name: ['Proposal.pdf', 'Contract.docx', 'Invoice.pdf', 'Passport.jpg', 'Address Proof.pdf', 'Quote.xlsx'][i] ?? 'Document',
     type: ['PDF', 'DOCX', 'PDF', 'JPG', 'PDF', 'XLSX'][i] ?? 'PDF',
     size: ['2.4 MB', '1.2 MB', '850 KB', '3.2 MB', '1.8 MB', '450 KB'][i] ?? '0 KB',
-    uploadedAt: new Date(REF_DATE - i * 10 * 86400000).toISOString().split('T')[0] ?? '',
+    uploadedAt: toLocalDateString(new Date(REF_DATE - i * 10 * 86400000)),
   }));
 
   async function handleSaveEdit() {

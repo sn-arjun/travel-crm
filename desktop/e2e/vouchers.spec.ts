@@ -66,7 +66,7 @@ async function pickOption(page: Page, triggerSelector: string, option: string | 
 /** Opens the DatePicker that follows the given field label and clicks a day of the current month. */
 async function pickDate(page: Page, label: string, day: number) {
   await page.locator('label', { hasText: label }).locator('xpath=following-sibling::button[1]').click();
-  await page.locator('[data-radix-popper-content-wrapper]').getByRole('button', { name: String(day), exact: true }).click();
+  await page.locator(`[data-radix-popper-content-wrapper] [data-day$="-${String(day).padStart(2, '0')}"]`).click();
   // Wait for the popover to finish closing so the next picker's calendar is the only one in the DOM.
   await expect(page.locator('[data-radix-popper-content-wrapper]')).toHaveCount(0);
 }

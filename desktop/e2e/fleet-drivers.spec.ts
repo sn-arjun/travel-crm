@@ -2,22 +2,21 @@ import { type Page } from '@playwright/test';
 import { test, expect } from './fixtures';
 import { waitForLoad, getAuthToken, API_URL } from './helpers/auth';
 import { seedDriver, api } from './helpers/api-seed';
+import { pickDate as pickDateAt } from './helpers/date-picker';
 
 /**
  * Opens the Nth "Pick a date" DatePicker trigger, optionally navigates
  * months, then clicks a specific day in the mini calendar popover.
  */
-async function pickDate(page: Page, triggerIndex: number, opts: { monthsForward?: number; day: string }) {
+async function pickDate(page: Page, triggerIndex: number, target: Date) {
   const triggers = page.locator('button:has-text("Pick a date")');
-  await triggers.nth(triggerIndex).click();
-  const calendar = page.locator('.w-\\[280px\\]').last();
-  const header = calendar.locator('> div').first();
-  const nextMonthBtn = header.getByRole('button').last();
-  for (let i = 0; i < (opts.monthsForward ?? 0); i++) {
-    // eslint-disable-next-line no-await-in-loop
-    await nextMonthBtn.click();
-  }
-  await calendar.locator('.grid').getByRole('button', { name: opts.day, exact: true }).click();
+  await pickDateAt(page, triggers.nth(triggerIndex), target);
+}
+
+/** A date `days` from today at local midnight. */
+function daysFromToday(days: number) {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + days);
 }
 
 test.describe('Fleet Drivers', () => {
@@ -48,12 +47,12 @@ test.describe('Fleet Drivers', () => {
     await page.locator('#email').fill(email);
 
     // Date of birth via DatePicker — must be in the past (maxDate = today); go back a month, pick the 15th
-    await pickDate(page, 0, { monthsForward: 0, day: '15' });
+    await pickDate(page, 0, new Date(1990, 5, 15));
     await page.locator('#address').fill('Mumbai, Maharashtra');
 
     await page.locator('#licenseNumber').fill(licenseNumber);
     // License expiry DatePicker — must be in the future (minDate = today); jump to next month, pick the 15th
-    await pickDate(page, 0, { monthsForward: 1, day: '15' });
+    await pickDate(page, 0, daysFromToday(30));
     await page.locator('#licenseType').fill(licenseType);
     await page.locator('#badgeNumber').fill(badgeNumber);
 

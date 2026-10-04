@@ -19,6 +19,7 @@ import { marketingApi } from '@/lib/api/marketing';
 import type {
   SocialContent, MarketingSuggestion, GenerateSocialContentRequest, GenerateSocialContentBatchRequest,
 } from '@/lib/api/marketing';
+import { toLocalDateString } from '@/lib/dates';
 
 const PLATFORMS = ['instagram', 'facebook', 'linkedin', 'twitter'] as const;
 const TONES = ['professional', 'casual', 'exciting', 'informative'] as const;
@@ -72,7 +73,7 @@ async function exportAllPosts(platform: string | undefined) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `social-content-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `social-content-${toLocalDateString(new Date())}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

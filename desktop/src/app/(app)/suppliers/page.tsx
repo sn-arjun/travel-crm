@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { SendMessageDialog } from '@/components/communication/send-message-dialog';
 import { useApiQuery } from '@/hooks/use-api';
 import { suppliersApi } from '@/lib/api/suppliers';
+import { toLocalDateString } from '@/lib/dates';
 
 interface SupplierRow {
   id: string;
@@ -87,7 +88,7 @@ async function exportSuppliersCsv(params: { category?: string; status?: string; 
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `suppliers-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `suppliers-${toLocalDateString(new Date())}.csv`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

@@ -13,6 +13,7 @@ import { client, type ApiResponse, type PaginatedResponse } from '@/lib/api/clie
 import { API_ENDPOINTS } from '@/lib/api/config';
 import { leadsApi } from '@/lib/api/leads';
 import { toast } from 'sonner';
+import { toLocalDateString } from '@/lib/dates';
 
 interface ItineraryTemplate {
   id: string;
@@ -42,7 +43,7 @@ function exportTemplatesCsv(rows: ItineraryTemplate[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `itinerary-templates-${new Date().toISOString().split('T')[0]}.csv`;
+  a.download = `itinerary-templates-${toLocalDateString(new Date())}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

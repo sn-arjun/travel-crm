@@ -13,6 +13,7 @@ import { useApiQuery } from '@/hooks/use-api';
 import { invoicesApi, type InvoiceLineItem, type UpdateInvoiceRequest } from '@/lib/api/invoices';
 import { contactsApi } from '@/lib/api/contacts';
 import { toast } from 'sonner';
+import { parseLocalDate, toLocalDateString } from '@/lib/dates';
 
 interface LineItem {
   id: number;
@@ -72,8 +73,8 @@ export default function EditInvoicePage() {
 
     setDefaultValues({
       contactId: raw.contactId || raw.contact_id || '',
-      issueDate: raw.issueDate || raw.issue_date ? new Date(raw.issueDate || raw.issue_date) : new Date(),
-      dueDate: raw.dueDate || raw.due_date ? new Date(raw.dueDate || raw.due_date) : undefined,
+      issueDate: raw.issueDate || raw.issue_date ? parseLocalDate(raw.issueDate || raw.issue_date) : new Date(),
+      dueDate: raw.dueDate || raw.due_date ? parseLocalDate(raw.dueDate || raw.due_date) : undefined,
       discountType: raw.discountType || raw.discount_type || 'percentage',
       discountValue: raw.discountValue || raw.discount_value ? Number(raw.discountValue || raw.discount_value) : undefined,
       gstRate: String(existingItems[0]?.taxRate ?? existingItems[0]?.tax_rate ?? 18),
@@ -156,8 +157,8 @@ export default function EditInvoicePage() {
           }));
 
         const request: UpdateInvoiceRequest = {
-          issueDate: v.issueDate ? v.issueDate.toISOString().split('T')[0] : undefined,
-          dueDate: v.dueDate ? v.dueDate.toISOString().split('T')[0] : undefined,
+          issueDate: v.issueDate ? toLocalDateString(v.issueDate) : undefined,
+          dueDate: v.dueDate ? toLocalDateString(v.dueDate) : undefined,
           items: apiLineItems,
           discount: discountAmount > 0 ? discountAmount : undefined,
           notes: v.notes || undefined,

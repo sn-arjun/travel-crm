@@ -14,6 +14,7 @@ import { useApiMutation } from '@/hooks/use-api';
 import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { chatbotApi, type ChatbotConversation } from '@/lib/api/chatbot';
 import { toast } from 'sonner';
+import { toLocalDateString } from '@/lib/dates';
 
 function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
   if (status === 'active') return 'success';
@@ -224,7 +225,7 @@ function ChatbotConversationsContent() {
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = `chatbot_conversations_${new Date().toISOString().slice(0, 10)}.csv`;
+          a.download = `chatbot_conversations_${toLocalDateString(new Date())}.csv`;
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);

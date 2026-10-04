@@ -28,6 +28,7 @@ import { followUpsApi } from '@/lib/api/follow-ups';
 import { SendMessageDialog } from '@/components/communication/send-message-dialog';
 import { toast } from 'sonner';
 import type { Contact } from '@travelcrm/shared';
+import { toLocalDateString } from '@/lib/dates';
 
 function getInitials(name: string) {
   return name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
@@ -654,7 +655,7 @@ export default function ContactsPage() {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `contacts-${new Date().toISOString().split('T')[0]}.csv`;
+            a.download = `contacts-${toLocalDateString(new Date())}.csv`;
             a.click();
             URL.revokeObjectURL(url);
             toast.success('Contacts exported');

@@ -2,6 +2,7 @@ import { type Page } from '@playwright/test';
 import { test, expect } from './fixtures';
 import { waitForLoad } from './helpers/auth';
 import { seedVehicle, seedDriver, seedContact, seedLead, api } from './helpers/api-seed';
+import { pickDate as pickDateAt } from './helpers/date-picker';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -65,15 +66,9 @@ async function seedTrip(vehicleId: string, driverId: string, over: Record<string
 
 /** Opens the first "Pick a date" DatePicker, moves forward N months and clicks a day. */
 async function pickDate(page: Page, opts: { monthsForward: number; day: string }) {
-  await page.locator('button:has-text("Pick a date")').first().click();
-  const calendar = page.locator('.w-\\[280px\\]').last();
-  const header = calendar.locator('> div').first();
-  const nextBtn = header.getByRole('button').last();
-  for (let i = 0; i < opts.monthsForward; i++) {
-    // eslint-disable-next-line no-await-in-loop
-    await nextBtn.click();
-  }
-  await calendar.locator('.grid').getByRole('button', { name: opts.day, exact: true }).click();
+  const now = new Date();
+  const target = new Date(now.getFullYear(), now.getMonth() + opts.monthsForward, Number(opts.day));
+  await pickDateAt(page, page.locator('button:has-text("Pick a date")').first(), target);
 }
 
 /** Formats a date the way the DatePicker trigger renders it, using the browser's own locale data. */

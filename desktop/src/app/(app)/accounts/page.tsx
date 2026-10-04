@@ -9,6 +9,7 @@ import { suppliersApi } from '@/lib/api/suppliers';
 import { SendMessageDialog } from '@/components/communication/send-message-dialog';
 import { toast } from 'sonner';
 import type { Supplier } from '@travelcrm/shared';
+import { toLocalDateString } from '@/lib/dates';
 
 const CATEGORY_OPTIONS = [
   { value: 'hotel', label: 'Hotel' },
@@ -171,7 +172,7 @@ export default function AccountsPage() {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `accounts_export_${new Date().toISOString().slice(0, 10)}.csv`;
+            a.download = `accounts_export_${toLocalDateString(new Date())}.csv`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);

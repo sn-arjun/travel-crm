@@ -13,6 +13,7 @@ import { contactsApi } from '@/lib/api/contacts';
 import { usersApi } from '@/lib/api/users';
 import { LEAD_SOURCES } from '@travelcrm/shared';
 import { toast } from 'sonner';
+import { toLocalDateString } from '@/lib/dates';
 
 const schema = z.object({
   contactId: z.string().min(1, 'Contact is required'),
@@ -69,8 +70,8 @@ export default function NewLeadPage() {
           contactId: v.contactId,
           title: v.title,
           destinations: v.destinations,
-          travelDate: v.travelDate.toISOString().split('T')[0] as string,
-          returnDate: v.returnDate ? v.returnDate.toISOString().split('T')[0] : undefined,
+          travelDate: toLocalDateString(v.travelDate) as string,
+          returnDate: v.returnDate ? toLocalDateString(v.returnDate) : undefined,
           paxAdults: v.paxAdults,
           paxChildren: v.paxChildren,
           paxInfants: v.paxInfants,

@@ -30,6 +30,7 @@ import {
   type SeasonalDemandData,
   type TrendingDestination,
 } from '@/lib/api/ai';
+import { toLocalDateString } from '@/lib/dates';
 
 function toCsv(rows: ProfitabilityAnalysis[]) {
   const header = ['Destination', 'Revenue', 'Costs', 'Profit', 'Margin', 'Trend'];
@@ -46,7 +47,7 @@ function downloadCsv(rows: ProfitabilityAnalysis[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `destination-profitability-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `destination-profitability-${toLocalDateString(new Date())}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

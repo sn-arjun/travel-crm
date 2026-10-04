@@ -13,6 +13,7 @@ import { exportsApi } from '@/lib/api/exports';
 import { toast } from 'sonner';
 import { unwrapList } from '@/lib/api/envelope';
 import type { Invoice } from '@travelcrm/shared';
+import { toLocalDateString } from '@/lib/dates';
 
 function formatCurrency(amount: number, currency = 'INR') {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount);
@@ -36,7 +37,7 @@ async function downloadInvoicesZip(invoiceIds: string[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `invoices_${new Date().toISOString().slice(0, 10)}.zip`;
+  a.download = `invoices_${toLocalDateString(new Date())}.zip`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

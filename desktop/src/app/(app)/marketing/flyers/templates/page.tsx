@@ -8,6 +8,7 @@ import { ListPage } from '@/components/domain';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { marketingApi, type FlyerTemplate } from '@/lib/api/marketing';
+import { toLocalDateString } from '@/lib/dates';
 
 const templateCategories = ['festival', 'seasonal', 'promotional', 'general'];
 
@@ -35,7 +36,7 @@ async function exportAllTemplates(search: string, category?: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `flyer-templates-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `flyer-templates-${toLocalDateString(new Date())}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

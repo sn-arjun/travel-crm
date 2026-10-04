@@ -18,6 +18,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { AiGate } from '@/components/domain/ai/ai-gate';
 import { AiQuotaBadge } from '@/components/domain/ai/quota-badge';
 import { GeneratedContentActions } from '@/components/domain/ai/generated-content-actions';
+import { toLocalDateString } from '@/lib/dates';
 
 export default function LeadCreationPage() {
   const router = useRouter();
@@ -67,7 +68,7 @@ export default function LeadCreationPage() {
         title: `Inquiry from ${name}`,
         source: 'website',
         destinations: (result as any).destination ? [(result as any).destination] : ['TBD'],
-        travelDate: (result as any).travelDate || new Date().toISOString().split('T')[0],
+        travelDate: (result as any).travelDate || toLocalDateString(new Date()),
         tripType: 'domestic',
         notes: result.notes,
       });

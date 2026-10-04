@@ -5,14 +5,17 @@ import { useSearchParams } from 'next/navigation';
 import * as React from 'react';
 import {
   FormProvider,
+  get,
   useForm,
   useFormContext,
   type DefaultValues,
+  type FieldErrors,
   type FieldValues,
   type Path,
   type SubmitHandler,
   type UseFormReturn,
 } from 'react-hook-form';
+import { toast } from 'sonner';
 import type { ZodType } from 'zod';
 
 import { Button } from '@/components/ui/button';
@@ -22,6 +25,7 @@ import { SectionCard } from '@/components/ui/section-card';
 import { Spinner } from '@/components/ui/spinner';
 import { useUnsavedChanges } from '@/hooks/use-unsaved-changes';
 import { PageContainer } from '@/components/layout/page-container';
+import type { ApiError } from '@/lib/api/client';
 import { cn } from '@/lib/utils';
 
 export interface FormSection {
@@ -104,21 +108,65 @@ export function EntityForm<T extends FieldValues>({
     resolver: zodResolver(schema as never) as never,
     defaultValues: initialValues,
     mode: 'onBlur',
+    // Once a field has been flagged, re-check it on every change so the error
+    // clears the moment the value becomes valid.
+    reValidateMode: 'onChange',
   });
 
   const {
-    handleSubmit,
-    formState: { isDirty, isSubmitting },
+    formState: { isDirty, isSubmitting, isSubmitted, errors },
   } = form;
+
+  const [submitError, setSubmitError] = React.useState<string | null>(null);
+
+  // setValue defaults: programmatic changes (Combobox, DatePicker, ...) mark the
+  // field dirty/touched, and re-validate when the form was already submitted or
+  // the field currently shows an error - otherwise stale errors would linger.
+  const formWithDefaults = React.useMemo<UseFormReturn<T>>(() => {
+    const setValue: UseFormReturn<T>['setValue'] = (name, value, opts) =>
+      form.setValue(name, value, {
+        shouldDirty: true,
+        shouldTouch: true,
+        shouldValidate: isSubmitted || !!get(errors, name),
+        ...opts,
+      });
+    return { ...form, setValue };
+    // `form` is a stable object; the formState subscriptions above drive refreshes.
+  }, [form, isSubmitted, errors]);
+
+  const onValid = async (values: T) => {
+    setSubmitError(null);
+    try {
+      await onSubmit(values);
+    } catch (e) {
+      const err = (e ?? {}) as Partial<ApiError>;
+      for (const [field, msgs] of Object.entries(err.errors ?? {})) {
+        const message = Array.isArray(msgs) ? msgs[0] : String(msgs);
+        if (message) form.setError(field as Path<T>, { type: 'server', message });
+      }
+      const msg = err.message || 'Could not save. Please try again.';
+      setSubmitError(msg);
+      toast.error(msg);
+    }
+  };
+
+  const onInvalid = (invalid: FieldErrors<T>) => {
+    toast.error('Please fix the highlighted fields');
+    const first = Object.keys(invalid)[0];
+    if (first) {
+      form.setFocus(first as Path<T>);
+      document.getElementById(first)?.scrollIntoView?.({ block: 'center' });
+    }
+  };
 
   useUnsavedChanges(isDirty && !isSubmitting);
 
   const busy = loading || isSubmitting;
 
   return (
-    <FormProvider {...form}>
+    <FormProvider {...formWithDefaults}>
       <PageContainer width="narrow">
-      <form onSubmit={handleSubmit(onSubmit)} className={cn('flex flex-col gap-ds-4', className)}>
+      <form onSubmit={form.handleSubmit(onValid, onInvalid)} className={cn('flex flex-col gap-ds-4', className)}>
         <PageHeader
           title={title}
           description={description}
@@ -140,7 +188,7 @@ export function EntityForm<T extends FieldValues>({
 
         <fieldset disabled={busy} className="flex flex-col gap-ds-4 border-0 p-0">
           {renderSections
-            ? renderSections(form)
+            ? renderSections(formWithDefaults)
             : sections?.map((section) => (
                 <SectionCard
                   key={section.title}
@@ -153,9 +201,9 @@ export function EntityForm<T extends FieldValues>({
               ))}
         </fieldset>
 
-        {error && (
+        {(submitError ?? error) && (
           <p role="alert" className="text-sm text-ds-danger">
-            {error}
+            {submitError ?? error}
           </p>
         )}
       </form>

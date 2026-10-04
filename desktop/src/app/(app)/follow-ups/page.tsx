@@ -17,6 +17,7 @@ import { followUpsApi } from '@/lib/api/follow-ups';
 import { leadsApi } from '@/lib/api/leads';
 import type { FollowUp } from '@travelcrm/shared';
 import type { Lead } from '@travelcrm/shared';
+import { toLocalDateString } from '@/lib/dates';
 
 type FollowUpRow = FollowUp & { status?: string; leadTitle?: string; contactName?: string };
 
@@ -509,7 +510,7 @@ export default function FollowUpsPage() {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `follow-ups_export_${new Date().toISOString().slice(0, 10)}.csv`;
+            a.download = `follow-ups_export_${toLocalDateString(new Date())}.csv`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);

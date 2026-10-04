@@ -12,6 +12,7 @@ import type { Trip } from '@/lib/api/fleet';
 import { toast } from 'sonner';
 import { TRIP_STATUS_LABELS } from '@travelcrm/shared';
 import { formatTripDateTime } from '@/components/domain/fleet/trip-format';
+import { toLocalDateString } from '@/lib/dates';
 
 function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
   if (status === 'completed') return 'success';
@@ -185,7 +186,7 @@ export default function TripsPage() {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `trips_export_${new Date().toISOString().slice(0, 10)}.csv`;
+            a.download = `trips_export_${toLocalDateString(new Date())}.csv`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);

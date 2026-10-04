@@ -10,6 +10,7 @@ import {
 import { fleetApi, type Driver } from '@/lib/api/fleet';
 import { DRIVER_STATUS_LABELS } from '@travelcrm/shared';
 import { toast } from 'sonner';
+import { toLocalDateString } from '@/lib/dates';
 
 function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
   if (status === 'active') return 'success';
@@ -165,7 +166,7 @@ export default function DriversPage() {
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = `drivers_export_${new Date().toISOString().slice(0, 10)}.csv`;
+          a.download = `drivers_export_${toLocalDateString(new Date())}.csv`;
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);

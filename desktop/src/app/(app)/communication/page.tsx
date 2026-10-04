@@ -15,6 +15,7 @@ import {
 
 import { communicationsApi, type CommunicationLog } from '@/lib/api/communications';
 import { contactsApi } from '@/lib/api/contacts';
+import { toLocalDateString } from '@/lib/dates';
 
 // The log endpoint returns raw contactId only — resolve display names client-side
 // for the page of rows currently shown, caching across re-fetches.
@@ -82,7 +83,7 @@ function downloadCsv(rows: CommunicationLog[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `communication-log-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `communication-log-${toLocalDateString(new Date())}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

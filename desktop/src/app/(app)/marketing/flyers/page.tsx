@@ -9,6 +9,7 @@ import { Button, Tag } from '@/components/ui';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { marketingApi, type MarketingFlyer } from '@/lib/api/marketing';
 import { ShareFlyerDialog } from '@/components/domain/marketing/share-flyer-dialog';
+import { toLocalDateString } from '@/lib/dates';
 
 function toCsv(rows: MarketingFlyer[]) {
   const header = ['Title', 'Status', 'Template', 'Created'];
@@ -34,7 +35,7 @@ async function exportAllFlyers(search: string, status?: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `flyers-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `flyers-${toLocalDateString(new Date())}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

@@ -39,6 +39,7 @@ import { toast } from 'sonner';
 import { exportsApi, type ExportJob } from '@/lib/api/exports';
 import { cn } from '@/lib/utils';
 import { useRealtimeEvent, useRealtimeConnected } from '@/hooks/use-realtime-event';
+import { toLocalDateString } from '@/lib/dates';
 
 const statusConfig: Record<string, { label: string; icon: any; tone: 'neutral' | 'info' | 'success' | 'danger' }> = {
   pending: { label: 'Pending', icon: Clock, tone: 'neutral' },
@@ -116,7 +117,7 @@ export default function ExportSettingsPage() {
   }
 
   function datedFilename(type: string, format: string) {
-    const d = new Date().toISOString().slice(0, 10);
+    const d = toLocalDateString(new Date());
     return `${type}_export_${d}.${format}`;
   }
 

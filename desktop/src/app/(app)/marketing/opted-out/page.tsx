@@ -9,6 +9,7 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { marketingApi, type OptedOutContact } from '@/lib/api/marketing';
+import { toLocalDateString } from '@/lib/dates';
 
 function channelIcon(channel?: string) {
   switch (channel) {
@@ -61,7 +62,7 @@ async function exportAllOptedOut(search: string, channel?: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `opted-out-contacts-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `opted-out-contacts-${toLocalDateString(new Date())}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { ListPage } from '@/components/domain';
 import { Badge, Button, SectionCard, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, useConfirm } from '@/components/ui';
 import { fromDateOnly, rateCardsApi, type RateCard } from '@/lib/api/rate-cards';
+import { toLocalDateString } from '@/lib/dates';
 
 const CATEGORY_OPTIONS = [
   { label: 'Hotel', value: 'hotel' },
@@ -60,7 +61,7 @@ function downloadCsv(csv: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `rate-cards-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `rate-cards-${toLocalDateString(new Date())}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

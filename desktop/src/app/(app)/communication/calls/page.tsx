@@ -12,6 +12,7 @@ import {
 import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { voipApi, type Call } from '@/lib/api/voip';
 import { toast } from 'sonner';
+import { toLocalDateString } from '@/lib/dates';
 
 function formatDuration(seconds: number): string {
   if (!seconds) return '—';
@@ -42,7 +43,7 @@ function exportCallsCsv(rows: Call[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `call-log-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `call-log-${toLocalDateString(new Date())}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

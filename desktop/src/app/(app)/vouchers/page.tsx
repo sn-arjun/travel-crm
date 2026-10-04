@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { ListPage } from '@/components/domain';
 import { Button, ConfirmDialog, Tag, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui';
 import { vouchersApi, type Voucher } from '@/lib/api/vouchers';
+import { toLocalDateString } from '@/lib/dates';
 
 function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
   if (status === 'confirmed') return 'success';
@@ -36,7 +37,7 @@ async function exportVouchersCsv(rows: Voucher[]) {
       v.supplierName ?? '',
       v.status,
       v.language,
-      new Date(v.createdAt).toISOString().slice(0, 10),
+      toLocalDateString(new Date(v.createdAt)),
     ]
       .map(csvEscape)
       .join(','),
@@ -46,7 +47,7 @@ async function exportVouchersCsv(rows: Voucher[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `vouchers_export_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `vouchers_export_${toLocalDateString(new Date())}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

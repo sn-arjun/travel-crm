@@ -2,6 +2,7 @@ import { type Page, type Locator } from '@playwright/test';
 import { test, expect } from './fixtures';
 import * as fs from 'fs';
 import { navigateTo, waitForLoad } from './helpers/auth';
+import { calendarDialog, dayButton } from './helpers/date-picker';
 import { api, seedContact, seedLead } from './helpers/api-seed';
 
 const RUN = Date.now();
@@ -106,16 +107,12 @@ async function expectNoErrorToast(page: Page) {
 
 async function pickDateTime(page: Page, dialog: Locator, target: Date, hours: number, minutes: number) {
   await dialog.getByRole('button', { name: /Pick date & time|\d{4} \d{2}:\d{2}/ }).click();
-  const pop = page.locator('[data-radix-popper-content-wrapper]').last();
-  const header = pop.locator('span.font-semibold');
-  const wanted = `${MONTHS[target.getMonth()]} ${target.getFullYear()}`;
-  for (let i = 0; i < 24 && (await header.innerText()) !== wanted; i++) {
-    await header.locator('xpath=following-sibling::button').click();
-  }
-  await expect(header).toHaveText(wanted);
-  await pop.getByRole('button', { name: String(target.getDate()), exact: true }).click();
-  await pop.locator('select').nth(0).selectOption(String(hours));
-  await pop.locator('select').nth(1).selectOption(String(minutes));
+  const pop = calendarDialog(page);
+  await pop.getByLabel('Year', { exact: true }).selectOption(String(target.getFullYear()));
+  await pop.getByLabel('Month', { exact: true }).selectOption(String(target.getMonth()));
+  await dayButton(page, target).click();
+  await pop.getByLabel('Hour', { exact: true }).selectOption(String(hours));
+  await pop.getByLabel('Minute', { exact: true }).selectOption(String(minutes));
   await pop.getByRole('button', { name: 'Done' }).click();
   await expect(pop).toBeHidden();
 }
@@ -252,14 +249,13 @@ test.describe('Follow-ups', () => {
 
     // Date picker: past days are blocked, today is selectable
     await dialog.getByRole('button', { name: /Pick date & time/ }).click();
-    const pop = page.locator('[data-radix-popper-content-wrapper]').last();
     const today = new Date();
-    await expect(pop.getByRole('button', { name: String(today.getDate()), exact: true })).toBeEnabled();
+    await expect(dayButton(page, today)).toBeEnabled();
     if (today.getDate() > 1) {
-      await expect(pop.getByRole('button', { name: String(today.getDate() - 1), exact: true })).toBeDisabled();
+      await expect(dayButton(page, new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1))).toBeDisabled();
     }
     await page.keyboard.press('Escape');
-    await expect(pop).toBeHidden();
+    await expect(calendarDialog(page)).toBeHidden();
 
     const target = new Date(Date.now() + DAY * 3);
     await pickDateTime(page, dialog, target, 14, 30);
@@ -348,8 +344,8 @@ test.describe('Follow-ups', () => {
     // The picker's time selects start from the saved time, not a default
     await dialog.getByRole('button', { name: /\d{4} 14:30/ }).click();
     const pop = page.locator('[data-radix-popper-content-wrapper]').last();
-    await expect(pop.locator('select').nth(0)).toHaveValue('14');
-    await expect(pop.locator('select').nth(1)).toHaveValue('30');
+    await expect(pop.getByLabel('Hour', { exact: true })).toHaveValue('14');
+    await expect(pop.getByLabel('Minute', { exact: true })).toHaveValue('30');
     await page.keyboard.press('Escape');
     await expect(pop).toBeHidden();
 

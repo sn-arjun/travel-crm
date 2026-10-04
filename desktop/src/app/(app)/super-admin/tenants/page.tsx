@@ -10,6 +10,7 @@ import { Tag } from '@/components/ui/tag';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { client } from '@/lib/api/client';
 import { API_ENDPOINTS } from '@/lib/api/config';
+import { toLocalDateString } from '@/lib/dates';
 
 interface Tenant {
   id: string;
@@ -98,7 +99,7 @@ export default function TenantsPage() {
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = `tenants-${new Date().toISOString().split('T')[0]}.csv`;
+          a.download = `tenants-${toLocalDateString(new Date())}.csv`;
           a.click();
           URL.revokeObjectURL(url);
         }}

@@ -8,6 +8,7 @@ import { Button, Tag } from '@/components/ui';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { marketingApi, type MarketingCampaign } from '@/lib/api/marketing';
+import { toLocalDateString } from '@/lib/dates';
 
 function channelIcon(channel: string) {
   switch (channel) {
@@ -75,7 +76,7 @@ async function exportAllCampaigns(filters: { search: string; status?: string; ch
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `marketing-campaigns-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `marketing-campaigns-${toLocalDateString(new Date())}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

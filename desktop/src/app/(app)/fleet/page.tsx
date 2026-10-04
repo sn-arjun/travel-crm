@@ -15,6 +15,7 @@ import { useApiQuery } from '@/hooks/use-api';
 import { fleetApi, type Trip, type Vehicle } from '@/lib/api/fleet';
 import { toast } from 'sonner';
 import { TRIP_STATUS_LABELS, TRIP_STATUS_COLORS } from '@travelcrm/shared';
+import { toLocalDateString } from '@/lib/dates';
 
 function formatCurrency(amount: number) {
   if (amount >= 100000) return `₹${(amount / 100000).toFixed(1)}L`;
@@ -49,7 +50,7 @@ function VehicleAvailabilityCalendar() {
   const [startDate, setStartDate] = React.useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - d.getDay()); // start of this week (Sunday)
-    return d.toISOString().split('T')[0]!;
+    return toLocalDateString(d);
   });
   const [availabilityData, setAvailabilityData] = React.useState<Record<string, Array<{ date: string; status: string; tripId?: string }>>>({});
   const [vehicles, setVehicles] = React.useState<Vehicle[]>([]);
@@ -63,7 +64,7 @@ function VehicleAvailabilityCalendar() {
     for (let i = 0; i < numDays; i++) {
       const d = new Date(start);
       d.setDate(start.getDate() + i);
-      result.push(d.toISOString().split('T')[0]!);
+      result.push(toLocalDateString(d));
     }
     return result;
   }, [startDate]);
@@ -114,7 +115,7 @@ function VehicleAvailabilityCalendar() {
   const shiftDates = (direction: number) => {
     const d = new Date(startDate);
     d.setDate(d.getDate() + direction * 7);
-    setStartDate(d.toISOString().split('T')[0]!);
+    setStartDate(toLocalDateString(d));
   };
 
   const getStatusForDate = (vehicleId: string, date: string): string => {
@@ -131,7 +132,7 @@ function VehicleAvailabilityCalendar() {
     inactive: { bg: 'bg-ds-surface-sunken', label: 'Inactive' },
   };
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = toLocalDateString(new Date());
 
   return (
     <Card>
@@ -152,7 +153,7 @@ function VehicleAvailabilityCalendar() {
               onClick={() => {
                 const d = new Date();
                 d.setDate(d.getDate() - d.getDay());
-                setStartDate(d.toISOString().split('T')[0]!);
+                setStartDate(toLocalDateString(d));
               }}
             >
               Today
