@@ -204,7 +204,7 @@ export default function SegmentsPage() {
   return (
     <>
       <ListPage<MarketingSegment>
-        key={reloadKey}
+        refreshKey={reloadKey}
         title="Segments"
         description="Group contacts by rules to target campaigns."
         getRowId={(s) => s.id}

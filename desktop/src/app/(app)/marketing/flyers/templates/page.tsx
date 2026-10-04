@@ -60,7 +60,7 @@ export default function FlyerTemplatesPage() {
 
   return (
     <ListPage<FlyerTemplate>
-      key={reloadKey}
+      refreshKey={reloadKey}
       title="Flyer Templates"
       description="Manage reusable flyer templates for your marketing campaigns."
       getRowId={(t) => t.id}

@@ -77,7 +77,7 @@ export default function BookmarksPage() {
 
   return (
     <ListPage<Bookmark>
-      key={refetchKey}
+      refreshKey={refetchKey}
       title="Bookmarks"
       description="Items you've starred for quick access."
       getRowId={(b) => b.id}

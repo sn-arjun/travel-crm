@@ -202,6 +202,7 @@ export default function SuppliersPage() {
   const columns: DataTableColumn<SupplierRow>[] = [
     {
       key: 'company_name',
+      minWidth: 'min-w-56',
       header: 'Company',
       sortable: true,
       hideable: false,
@@ -225,8 +226,8 @@ export default function SuppliersPage() {
       sortable: true,
       cell: (s) => <Badge variant="outline" className="text-xs capitalize">{(s.category ?? 'other').replace(/_/g, ' ')}</Badge>,
     },
-    { key: 'contact_person', header: 'Contact Person', cell: (s) => <span className="text-sm">{s.contact_person || s.contactPerson || '—'}</span> },
-    { key: 'email', header: 'Email', cell: (s) => <span className="text-sm text-ds-foreground-muted">{s.email ?? '—'}</span> },
+    { key: 'contact_person', header: 'Contact Person', minWidth: 'min-w-36', cell: (s) => <span className="text-sm">{s.contact_person || s.contactPerson || '—'}</span> },
+    { key: 'email', header: 'Email', minWidth: 'min-w-48', cell: (s) => <span className="text-sm text-ds-foreground-muted">{s.email ?? '—'}</span> },
     { key: 'phone', header: 'Phone', cell: (s) => <span className="text-sm">{s.phone ?? '—'}</span> },
     {
       key: 'rating',
@@ -245,15 +246,18 @@ export default function SuppliersPage() {
   return (
     <div className="p-ds-6">
       <ListPage<SupplierRow>
-        key={refetchKey}
+        refreshKey={refetchKey}
         title="Suppliers"
         description="Manage your supplier network."
         getRowId={(s) => s.id}
-        fetcher={({ page, limit, search }) => {
+        serverSort
+        fetcher={({ page, limit, search, sort }) => {
           lastSearchRef.current = search;
           return suppliersApi.list({
             page,
             limit,
+            // The backend reads snake_case sort params (column keys are the DB column names).
+            ...(sort ? ({ sort_by: sort.column, sort_order: sort.direction } as object) : {}),
             search: search || undefined,
             category: categoryFilter !== 'all' ? categoryFilter : undefined,
             status: statusFilter !== 'all' ? statusFilter : undefined,

@@ -50,12 +50,19 @@ export default function TravellersPage() {
   return (
     <>
     <ListPage<Traveller>
-      key={listKey}
+      refreshKey={listKey}
       title="Travellers"
       description="Passenger records with passport and travel document details."
       getRowId={(t) => t.id}
-      fetcher={({ page, limit, search }) =>
-        travellersApi.list({ page, limit, search: search || undefined })
+      serverSort
+      fetcher={({ page, limit, search, sort }) =>
+        travellersApi.list({
+          page,
+          limit,
+          search: search || undefined,
+          // The backend reads snake_case sort params; only the name column maps to a sortable field.
+          ...(sort ? ({ sort_by: 'first_name', sort_order: sort.direction } as object) : {}),
+        })
       }
       searchPlaceholder="Search by name or passport number..."
       columns={[
@@ -72,7 +79,7 @@ export default function TravellersPage() {
           cell: (t) => t.nationality || '—',
         },
         {
-          key: 'dateOfBirth', header: 'Date of Birth', sortable: true,
+          key: 'dateOfBirth', header: 'Date of Birth',
           cell: (t) => formatDate(t.dateOfBirth),
         },
         {

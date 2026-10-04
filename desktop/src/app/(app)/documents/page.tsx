@@ -166,7 +166,7 @@ export default function DocumentsPage() {
   return (
     <>
       <ListPage<Document>
-        key={refreshKey}
+        refreshKey={refreshKey}
         title="Documents"
         description="Files uploaded against leads and itineraries."
         getRowId={(d) => d.id}

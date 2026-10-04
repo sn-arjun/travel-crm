@@ -34,12 +34,14 @@ function toCsvValue(v: unknown) {
 export default function DriversPage() {
   const router = useRouter();
   const [statusFilter, setStatusFilter] = React.useState('');
+  const [refreshKey, setRefreshKey] = React.useState(0);
 
   return (
     <ListPage<Driver>
       title="Drivers"
       description="Manage your fleet drivers, licenses, and schedules."
       getRowId={(d) => d.id}
+      refreshKey={refreshKey}
       fetcher={({ page, limit, search }) =>
         fleetApi.drivers.list({
           page,
@@ -120,6 +122,7 @@ export default function DriversPage() {
             try {
               await fleetApi.drivers.delete(d.id);
               toast.success('Driver deleted');
+              setRefreshKey((k) => k + 1);
             } catch { toast.error('Failed to delete driver'); }
           }}>
             <Trash2 />
@@ -135,6 +138,7 @@ export default function DriversPage() {
           onSelect: async (rows) => {
             await Promise.all(rows.map((r) => fleetApi.drivers.delete(r.id)));
             toast.success(`${rows.length} driver(s) deleted`);
+            setRefreshKey((k) => k + 1);
           },
         },
       ]}

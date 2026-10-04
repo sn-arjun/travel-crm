@@ -220,7 +220,7 @@ function DocumentScansContent() {
 
   return (
     <ListPage<DocumentScan>
-      key={refetchKey}
+      refreshKey={refetchKey}
       title="Document Scans"
       description="Review OCR-extracted data from passports, visas, and supplier invoices before applying it."
       getRowId={(r) => r.id}

@@ -1,8 +1,10 @@
 'use client';
 
-import { Download } from 'lucide-react';
+import { AlertCircle, Download } from 'lucide-react';
 import * as React from 'react';
+import { toast } from 'sonner';
 
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
@@ -21,6 +23,11 @@ export interface ListFilter {
   value: string;
 }
 
+export interface ListSort {
+  column: string;
+  direction: 'asc' | 'desc';
+}
+
 export interface BulkAction<T> {
   label: string;
   icon?: React.ReactNode;
@@ -37,19 +44,37 @@ export interface ListPageProps<T> {
 
   /**
    * Fetches one page. Receives the debounced search term and the active
-   * filters so the server does the filtering.
+   * filters so the server does the filtering. The function may be an inline
+   * closure: ListPage reads the latest one from a ref and only refetches when
+   * the query (search / filters / sort / refreshKey) changes.
    */
   fetcher: (params: {
     page: number;
     limit: number;
     search: string;
     filters: ListFilter[];
+    /** Only set when `serverSort` is enabled and a sort column is active. */
+    sort?: ListSort;
   }) => Promise<unknown>;
 
-  /** Extracts the row array from the fetcher's response. */
+  /** Extracts the row array from the fetcher's response (default: envelope helper). */
   extractItems?: (response: unknown) => T[];
-  /** Extracts the total count from the fetcher's response. */
+  /** Extracts the total count from the fetcher's response (default: envelope helper). */
   extractTotal?: (response: unknown) => number;
+
+  /**
+   * Change this (e.g. bump a counter after a mutation) to reload from page 1.
+   * Replaces `key={...}` remounts: the page keeps its search text, selection
+   * and scroll position.
+   */
+  refreshKey?: string | number;
+  /**
+   * Opt in when `fetcher` honours `params.sort`. Without it the column headers
+   * are not clickable, so there are no dead sort controls.
+   */
+  serverSort?: boolean;
+  /** Initial sort, passed to the fetcher when `serverSort` is on. */
+  defaultSort?: ListSort;
 
   // Header
   /** Primary action, e.g. a "New lead" button. */
@@ -100,6 +125,9 @@ export function ListPage<T>({
   fetcher,
   extractItems,
   extractTotal,
+  refreshKey,
+  serverSort = false,
+  defaultSort,
   primaryAction,
   headerActions,
   searchPlaceholder = 'Search…',
@@ -125,24 +153,61 @@ export function ListPage<T>({
   const debouncedSearch = useDebouncedValue(search, 300);
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
   const [detailRow, setDetailRow] = React.useState<T | null>(null);
-  const [sortColumn, setSortColumn] = React.useState<string | undefined>();
-  const [sortDirection, setSortDirection] = React.useState<'asc' | 'desc'>('asc');
+  const [sortColumn, setSortColumn] = React.useState<string | undefined>(defaultSort?.column);
+  const [sortDirection, setSortDirection] = React.useState<'asc' | 'desc'>(
+    defaultSort?.direction ?? 'asc',
+  );
   const [exporting, setExporting] = React.useState(false);
 
-  // Re-created whenever the query changes so useInfiniteScroll refetches
-  // from page 1 rather than appending to a stale result set.
-  const boundFetcher = React.useCallback(
-    (page: number, pageLimit: number) =>
-      fetcher({ page, limit: pageLimit, search: debouncedSearch, filters }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [fetcher, debouncedSearch, JSON.stringify(filters)],
+  const sort = React.useMemo<ListSort | undefined>(
+    () => (serverSort && sortColumn ? { column: sortColumn, direction: sortDirection } : undefined),
+    [serverSort, sortColumn, sortDirection],
   );
 
-  const { items, loading, loadingMore, hasMore, total, sentinelRef } = useInfiniteScroll<T>({
+  // Page 1 reloads only when the query really changes - never because the
+  // parent re-rendered and handed us a fresh inline fetcher.
+  const queryKey = React.useMemo(
+    () =>
+      JSON.stringify({
+        search: debouncedSearch,
+        filters,
+        sort: sort ?? null,
+        refreshKey: refreshKey ?? null,
+      }),
+    [debouncedSearch, filters, sort, refreshKey],
+  );
+
+  // Stable wrapper that reads the latest props from a ref.
+  const latest = React.useRef({ fetcher, debouncedSearch, filters, sort });
+  latest.current = { fetcher, debouncedSearch, filters, sort };
+  const boundFetcher = React.useCallback((page: number, pageLimit: number) => {
+    const cur = latest.current;
+    return cur.fetcher({
+      page,
+      limit: pageLimit,
+      search: cur.debouncedSearch,
+      filters: cur.filters,
+      ...(cur.sort ? { sort: cur.sort } : {}),
+    });
+  }, []);
+
+  const {
+    items,
+    loading,
+    loadingMore,
+    hasMore,
+    total,
+    error,
+    loadMoreError,
+    sentinelRef,
+    refetch,
+    retryLoadMore,
+  } = useInfiniteScroll<T>({
     fetcher: boundFetcher,
     limit,
     extractItems: extractItems as never,
     extractTotal: extractTotal as never,
+    queryKey,
   });
 
   // Drop selections for rows that are no longer present.
@@ -165,6 +230,8 @@ export function ListPage<T>({
     setExporting(true);
     try {
       await onExport(selectedRows.length > 0 ? selectedRows : items);
+    } catch {
+      toast.error(`Failed to export ${title.toLowerCase()}`);
     } finally {
       setExporting(false);
     }
@@ -177,7 +244,7 @@ export function ListPage<T>({
       <PageHeader
         title={title}
         description={description}
-        count={loading ? undefined : total}
+        count={loading || error ? undefined : total}
         actions={
           <>
             {onExport && (
@@ -249,28 +316,55 @@ export function ListPage<T>({
         onSelectionChange={setSelectedIds}
         sortColumn={sortColumn}
         sortDirection={sortDirection}
-        onSort={(col, dir) => {
-          setSortColumn(col);
-          setSortDirection(dir);
-        }}
+        onSort={
+          serverSort
+            ? (col, dir) => {
+                setSortColumn(col);
+                setSortDirection(dir);
+              }
+            : undefined
+        }
         onRowClick={handleRowClick}
         rowActions={rowActions}
         emptyState={
-          <EmptyState
-            icon={emptyIcon}
-            title={emptyTitle}
-            description={emptyDescription}
-            action={emptyAction ?? primaryAction}
-          />
+          error ? (
+            <Alert variant="destructive" data-testid="list-error">
+              <AlertCircle aria-hidden="true" />
+              <AlertTitle>{`Couldn't load ${title.toLowerCase()}`}</AlertTitle>
+              <AlertDescription>
+                <p>{error.message}</p>
+                <Button variant="outline" size="sm" onClick={refetch}>
+                  Retry
+                </Button>
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <EmptyState
+              icon={emptyIcon}
+              title={emptyTitle}
+              description={emptyDescription}
+              action={emptyAction ?? primaryAction}
+            />
+          )
+        }
+        footer={
+          hasMore || loadMoreError ? (
+            <div ref={sentinelRef} className="flex items-center justify-center gap-ds-3 py-ds-4">
+              {loadingMore && <Spinner className="size-5" />}
+              {loadMoreError && (
+                <>
+                  <span className="text-sm text-ds-danger">
+                    {`Couldn't load more: ${loadMoreError.message}`}
+                  </span>
+                  <Button variant="outline" size="sm" onClick={retryLoadMore}>
+                    Retry
+                  </Button>
+                </>
+              )}
+            </div>
+          ) : null
         }
       />
-
-      {/* Infinite scroll sentinel */}
-      {hasMore && (
-        <div ref={sentinelRef} className="flex justify-center py-ds-4">
-          {loadingMore && <Spinner className="size-5" />}
-        </div>
-      )}
 
       {/* Detail drawer */}
       {renderDetail && (

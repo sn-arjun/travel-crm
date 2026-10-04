@@ -166,7 +166,7 @@ export default function WhatsappCampaignsPage() {
   return (
     <div className="flex flex-col gap-ds-6 p-ds-6">
       <ListPage<WhatsappCampaign>
-        key={reloadKey}
+        refreshKey={reloadKey}
         title="WhatsApp Campaigns"
         description="Send bulk WhatsApp messages from approved templates and track delivery."
         getRowId={(c) => c.id}

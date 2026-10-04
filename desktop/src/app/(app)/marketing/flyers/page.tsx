@@ -61,7 +61,7 @@ export default function FlyersPage() {
   return (
     <>
       <ListPage<MarketingFlyer>
-        key={reloadKey}
+        refreshKey={reloadKey}
         title="My Flyers"
         description="Create, share, and track marketing flyers built from your templates."
         getRowId={(f) => f.id}

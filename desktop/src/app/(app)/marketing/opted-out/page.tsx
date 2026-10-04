@@ -93,7 +93,7 @@ export default function OptedOutPage() {
   return (
     <>
       <ListPage<OptedOutContact>
-        key={reloadKey}
+        refreshKey={reloadKey}
         title="Opted-Out Contacts"
         description="Contacts who unsubscribed from marketing communications."
         getRowId={(c) => c.id}

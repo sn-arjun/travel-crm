@@ -83,6 +83,7 @@ export default function RateCardsPage() {
       description="Pricing for vehicle and trip type combinations."
       getRowId={(rc) => rc.id}
       fetcher={fetcher}
+      refreshKey={refreshKey}
       filters={filters}
       onRemoveFilter={() => setVehicleTypeFilter('')}
       onClearFilters={() => setVehicleTypeFilter('')}

@@ -524,17 +524,18 @@ export default function ContactsPage() {
         title="Contacts"
         description="Every customer, supplier, agent, and partner in one place."
         getRowId={(c) => c.id}
-        fetcher={({ page, limit, search }) =>
+        serverSort
+        fetcher={({ page, limit, search, sort }) =>
           contactsApi.list({
             page,
             limit,
             search: search || undefined,
+            sortBy: sort?.column,
+            sortOrder: sort?.direction,
             type: typeFilter !== 'all' ? typeFilter : undefined,
             tag: tagFilter !== 'all' ? tagFilter : undefined,
           })
         }
-        extractItems={(r: any) => r?.data?.data ?? (Array.isArray(r?.data) ? r.data : [])}
-        extractTotal={(r: any) => r?.data?.pagination?.total ?? 0}
         columns={columns}
         searchPlaceholder="Search contacts..."
         filters={activeFilters}
@@ -625,7 +626,7 @@ export default function ContactsPage() {
             </>
           );
         }}
-        key={refetchKey}
+        refreshKey={refetchKey}
         renderDetail={(c) => <ContactDetailPanel contactId={c.id} onDeleted={() => setRefetchKey((k) => k + 1)} />}
         detailTitle={(c) => c.name}
         bulkActions={[

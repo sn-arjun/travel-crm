@@ -512,7 +512,7 @@ export default function ImportSettingsPage() {
           </div>
 
           <ListPage<ImportJob>
-            key={refreshKey}
+            refreshKey={refreshKey}
             title="Import History"
             description="Recent import jobs and their status"
             getRowId={(j) => j.id}

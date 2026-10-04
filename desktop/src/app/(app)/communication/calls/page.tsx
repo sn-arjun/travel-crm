@@ -80,7 +80,7 @@ export default function CallLogPage() {
 
   return (
     <ListPage<Call>
-      key={refetchKey}
+      refreshKey={refetchKey}
       title="Call Log"
       description="Inbound and outbound calls across your team."
       getRowId={(c) => c.id}

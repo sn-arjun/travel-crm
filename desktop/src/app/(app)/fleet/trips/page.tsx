@@ -65,6 +65,7 @@ export default function TripsPage() {
         description="Assign vehicles and drivers to trips, and track them to completion."
         getRowId={(t) => t.id}
         fetcher={fetchTrips}
+        refreshKey={refreshKey}
         searchPlaceholder="Search trips by passenger, vehicle, or driver..."
         columns={[
           {

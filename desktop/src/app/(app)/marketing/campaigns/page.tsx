@@ -107,6 +107,7 @@ export default function MarketingCampaignsPage() {
       title="Marketing Campaigns"
       description="Create, send, and track multi-channel campaigns."
       getRowId={(c) => c.id}
+      refreshKey={refreshKey}
       fetcher={({ page, limit, search: s }) => {
         setSearch(s);
         return marketingApi.campaigns.list({

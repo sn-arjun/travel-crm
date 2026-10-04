@@ -64,7 +64,7 @@ export default function AccountsPage() {
       </div>
 
       <ListPage<Supplier>
-        key={refreshKey}
+        refreshKey={refreshKey}
         title="Accounts"
         description="Corporate accounts — a filtered view of Suppliers."
         getRowId={(s) => s.id}

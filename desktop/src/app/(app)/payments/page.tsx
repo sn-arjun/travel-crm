@@ -85,6 +85,7 @@ export default function PaymentsPage() {
         description="Every payment recorded against an invoice."
         getRowId={(p) => p.id}
         fetcher={fetcher}
+        refreshKey={refreshKey}
         extractItems={(r) => ((r as any)?.data as Payment[]) ?? []}
         extractTotal={(r) => (r as any)?.pagination?.total ?? 0}
         searchPlaceholder="Search payments..."

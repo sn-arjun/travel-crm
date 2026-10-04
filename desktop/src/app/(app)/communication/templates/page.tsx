@@ -105,7 +105,7 @@ export default function TemplatesPage() {
   return (
     <>
       <ListPage<MessageTemplate>
-        key={`${reloadKey}-${channelFilter}-${categoryFilter}`}
+        refreshKey={reloadKey}
         title="Message Templates"
         description="Reusable email, SMS and WhatsApp content for your team."
         getRowId={(t) => t.id}

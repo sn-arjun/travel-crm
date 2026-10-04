@@ -128,6 +128,7 @@ export default function RateCardsPage() {
         description="Manage supplier pricing and seasonal rates."
         getRowId={(rc) => rc.id}
         fetcher={fetcher}
+        refreshKey={refreshKey}
         searchPlaceholder="Search rate cards..."
         filters={filters}
         onRemoveFilter={() => setCategoryFilter('')}

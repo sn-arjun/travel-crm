@@ -11,6 +11,7 @@ import { SendMessageDialog } from '@/components/communication/send-message-dialo
 import { invoicesApi } from '@/lib/api/invoices';
 import { exportsApi } from '@/lib/api/exports';
 import { toast } from 'sonner';
+import { unwrapList } from '@/lib/api/envelope';
 import type { Invoice } from '@travelcrm/shared';
 
 function formatCurrency(amount: number, currency = 'INR') {
@@ -58,6 +59,7 @@ export default function InvoicesPage() {
   const router = useRouter();
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [statusFilter, setStatusFilter] = React.useState('');
+  const [refreshKey, setRefreshKey] = React.useState(0);
   const [msgDialogOpen, setMsgDialogOpen] = React.useState(false);
   const [msgContact, setMsgContact] = React.useState<{ id: string; name: string; email?: string | null; phone?: string | null }>({ id: '', name: '' });
 
@@ -102,6 +104,7 @@ export default function InvoicesPage() {
     try {
       await invoicesApi.delete(id);
       toast.success('Invoice deleted');
+      setRefreshKey((k) => k + 1);
     } catch {
       toast.error('Failed to delete invoice');
     }
@@ -113,14 +116,13 @@ export default function InvoicesPage() {
         title="Invoices"
         description="Track billing, payments, and outstanding balances."
         getRowId={(inv: any) => inv.id}
-        fetcher={({ page, limit, search }) =>
-          invoicesApi.list({ page, limit, search: search || undefined, status: statusFilter || undefined })
-        }
-        extractItems={(r: any) => {
-          const data = r?.data;
-          return (Array.isArray(data) ? data : data?.data ?? []).map(normalize);
+        refreshKey={refreshKey}
+        fetcher={async ({ page, limit, search }) => {
+          const res = unwrapList<Invoice>(
+            await invoicesApi.list({ page, limit, search: search || undefined, status: statusFilter || undefined }),
+          );
+          return { ...res, data: res.data.map(normalize) };
         }}
-        extractTotal={(r: any) => r?.data?.pagination?.total ?? (Array.isArray(r?.data) ? r.data.length : 0)}
         searchPlaceholder="Search invoices, clients..."
         columns={[
           { key: 'invoiceNumber', header: 'Invoice #', sortable: true, cell: (inv: any) => <span className="font-mono text-sm font-medium">{inv.invoiceNumber ?? '—'}</span> },
@@ -201,6 +203,7 @@ export default function InvoicesPage() {
               if (!ok) return;
               await Promise.all(rows.map((r: any) => invoicesApi.delete(r.id)));
               toast.success(`${rows.length} invoice(s) deleted`);
+              setRefreshKey((k) => k + 1);
             },
           },
         ]}

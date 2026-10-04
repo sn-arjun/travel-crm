@@ -59,7 +59,7 @@ export default function VouchersPage() {
   const [statusFilter, setStatusFilter] = React.useState('');
   const [pendingDelete, setPendingDelete] = React.useState<Voucher | null>(null);
   // Bumping this re-renders the page, which hands ListPage a fresh fetcher and refetches page 1.
-  const [, setRefreshTick] = React.useState(0);
+  const [refreshTick, setRefreshTick] = React.useState(0);
 
   const activeFilters = [
     typeFilter && { id: 'type', label: 'Type', value: typeFilter },
@@ -98,6 +98,7 @@ export default function VouchersPage() {
       title="Vouchers"
       description="Hotel, transport, flight & activity vouchers for your leads."
       getRowId={(v) => v.id}
+      refreshKey={refreshTick}
       fetcher={({ page, limit, search }) =>
         vouchersApi.list({
           page,

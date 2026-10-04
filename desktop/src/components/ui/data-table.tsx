@@ -21,6 +21,8 @@ import { Skeleton } from './skeleton';
 export const VIRTUALIZE_THRESHOLD = 200;
 const ROW_HEIGHT = 44;
 const OVERSCAN = 8;
+const DEFAULT_MAX_HEIGHT = 'calc(100dvh - 20rem)';
+const FALLBACK_VIEWPORT_PX = 600;
 
 export interface DataTableColumn<T> {
   key: string;
@@ -29,6 +31,10 @@ export interface DataTableColumn<T> {
   cell?: (row: T, index: number) => React.ReactNode;
   sortable?: boolean;
   width?: string;
+  /** Tailwind min-width class, e.g. `min-w-48`. */
+  minWidth?: string;
+  /** Allow cell text to wrap (default: single line). */
+  wrap?: boolean;
   align?: 'left' | 'center' | 'right';
   /** Excluded from the column-visibility menu when false. */
   hideable?: boolean;
@@ -65,8 +71,12 @@ export interface DataTableProps<T> {
   showColumnVisibility?: boolean;
   /** Force windowing on/off. Defaults to `data.length > VIRTUALIZE_THRESHOLD`. */
   virtualize?: boolean;
-  /** Height of the scroll viewport when virtualizing. */
-  maxHeight?: number;
+  /** Max height of the scroll region (CSS value). Defaults to the viewport minus page chrome. */
+  maxHeight?: string;
+  /** Set false to let the table grow with its rows instead of scrolling inside its card. */
+  fillViewport?: boolean;
+  /** Rendered inside the scroll region after the table (e.g. the infinite-scroll sentinel). */
+  footer?: React.ReactNode;
   className?: string;
   caption?: string;
 }
@@ -88,7 +98,9 @@ export function DataTable<T>({
   stickyHeader = true,
   showColumnVisibility = true,
   virtualize,
-  maxHeight = 600,
+  maxHeight = DEFAULT_MAX_HEIGHT,
+  fillViewport = true,
+  footer,
   className,
   caption,
 }: DataTableProps<T>) {
@@ -106,6 +118,17 @@ export function DataTable<T>({
   // ─── Windowing ───────────────────────────────────────────
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = React.useState(0);
+  const [viewportPx, setViewportPx] = React.useState(FALLBACK_VIEWPORT_PX);
+
+  React.useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const measure = () => setViewportPx(el.clientHeight || FALLBACK_VIEWPORT_PX);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const handleScroll = React.useCallback((e: React.UIEvent<HTMLDivElement>) => {
     setScrollTop(e.currentTarget.scrollTop);
@@ -113,11 +136,11 @@ export function DataTable<T>({
 
   const { startIndex, endIndex } = React.useMemo(() => {
     if (!shouldVirtualize) return { startIndex: 0, endIndex: data.length };
-    const visibleCount = Math.ceil(maxHeight / ROW_HEIGHT);
+    const visibleCount = Math.ceil(viewportPx / ROW_HEIGHT);
     const start = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
     const end = Math.min(data.length, start + visibleCount + OVERSCAN * 2);
     return { startIndex: start, endIndex: end };
-  }, [shouldVirtualize, data.length, maxHeight, scrollTop]);
+  }, [shouldVirtualize, data.length, viewportPx, scrollTop]);
 
   const rows = shouldVirtualize ? data.slice(startIndex, endIndex) : data;
   const padTop = shouldVirtualize ? startIndex * ROW_HEIGHT : 0;
@@ -187,13 +210,14 @@ export function DataTable<T>({
 
       <div
         ref={scrollRef}
+        data-scroll-region="table"
         onScroll={shouldVirtualize ? handleScroll : undefined}
         className="overflow-auto"
-        style={shouldVirtualize ? { maxHeight } : undefined}
+        style={fillViewport ? { maxHeight } : undefined}
       >
-        <table className="w-full border-collapse text-sm">
+        <table className="w-max min-w-full border-collapse text-sm">
           {caption && <caption className="sr-only">{caption}</caption>}
-          <thead className={cn(stickyHeader && 'sticky top-0 z-(--ds-z-sticky)')}>
+          <thead className={cn(stickyHeader && 'sticky top-0 z-(--ds-z-sticky) bg-ds-surface-sunken')}>
             <tr className="border-b border-ds-border bg-ds-surface-sunken">
               {selectable && (
                 <th scope="col" className="w-12 px-ds-3 py-ds-2">
@@ -216,6 +240,7 @@ export function DataTable<T>({
                     }
                     className={cn(
                       'px-ds-3 py-ds-2 text-left text-xs font-medium whitespace-nowrap text-ds-foreground-muted',
+                      col.minWidth,
                       col.align === 'center' && 'text-center',
                       col.align === 'right' && 'text-right',
                     )}
@@ -247,7 +272,12 @@ export function DataTable<T>({
                   </th>
                 );
               })}
-              {rowActions && <th scope="col" className="w-20 px-ds-3 py-ds-2" />}
+              {rowActions && (
+                <th
+                  scope="col"
+                  className="sticky right-0 w-20 bg-ds-surface-sunken px-ds-3 py-ds-2"
+                />
+              )}
             </tr>
           </thead>
 
@@ -262,7 +292,7 @@ export function DataTable<T>({
                   )}
                   {visibleColumns.map((col) => (
                     <td key={col.key} className="px-ds-3 py-ds-2">
-                      <Skeleton className="h-4 w-full max-w-[180px]" />
+                      <Skeleton className="h-4 w-full max-w-45" />
                     </td>
                   ))}
                   {rowActions && <td className="px-ds-3 py-ds-2" />}
@@ -327,6 +357,8 @@ export function DataTable<T>({
                           key={col.key}
                           className={cn(
                             'px-ds-3 py-ds-2 text-ds-foreground',
+                            col.wrap ? 'whitespace-normal' : 'whitespace-nowrap',
+                            col.minWidth,
                             col.align === 'center' && 'text-center',
                             col.align === 'right' && 'text-right tabular-nums',
                           )}
@@ -337,7 +369,13 @@ export function DataTable<T>({
                         </td>
                       ))}
                       {rowActions && (
-                        <td className="px-ds-3 py-ds-2" onClick={(e) => e.stopPropagation()}>
+                        <td
+                          className={cn(
+                            'sticky right-0 bg-ds-surface px-ds-3 py-ds-2 transition-colors',
+                            'group-hover:bg-ds-surface-sunken group-data-[state=selected]:bg-ds-primary-subtle',
+                          )}
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <div className="flex items-center justify-end gap-ds-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                             {rowActions(row)}
                           </div>
@@ -355,6 +393,7 @@ export function DataTable<T>({
             )}
           </tbody>
         </table>
+        {footer}
       </div>
     </div>
   );

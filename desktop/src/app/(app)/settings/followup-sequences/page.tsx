@@ -215,7 +215,7 @@ export default function FollowUpSequencesPage() {
   return (
     <>
       <ListPage<FollowUpSequence>
-        key={refreshKey}
+        refreshKey={refreshKey}
         title="Follow-up Sequences"
         description="Configure automated follow-up workflows for leads."
         getRowId={(s) => s.id}

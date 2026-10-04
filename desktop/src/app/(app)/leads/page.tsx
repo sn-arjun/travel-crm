@@ -31,6 +31,7 @@ export default function LeadsPage() {
   const [msgChannel, setMsgChannel] = React.useState<'email' | 'whatsapp' | 'sms'>('email');
   const [msgContact, setMsgContact] = React.useState<{ id: string; name: string; email?: string | null; phone?: string | null }>({ id: '', name: '' });
   const [statusFilter, setStatusFilter] = React.useState('');
+  const [refreshKey, setRefreshKey] = React.useState(0);
   const [priorityFilter, setPriorityFilter] = React.useState('');
 
   const { data: usersResponse } = useApiQuery(() => usersApi.list({ limit: 100 }), []);
@@ -64,14 +65,16 @@ export default function LeadsPage() {
         title="Leads"
         description="Track and convert your sales pipeline."
         getRowId={(l) => l.id}
-        fetcher={({ page, limit, search }) =>
+        refreshKey={refreshKey}
+        serverSort
+        fetcher={({ page, limit, search, sort }) =>
           leadsApi.list({
             page,
             limit,
             search: search || undefined,
             status: statusFilter || undefined,
-            sortBy: 'createdAt',
-            sortOrder: 'desc',
+            sortBy: sort ? (sort.column === 'value' ? 'budget' : sort.column) : 'createdAt',
+            sortOrder: sort?.direction ?? 'desc',
           }).then((res) => {
             if (!priorityFilter) return res;
             const data = (res as any)?.data;
@@ -86,7 +89,7 @@ export default function LeadsPage() {
         searchPlaceholder="Search leads, contacts, destinations..."
         columns={[
           {
-            key: 'title', header: 'Lead', sortable: true,
+            key: 'title', header: 'Lead',
             cell: (l: any) => (
               <div>
                 <p className="font-medium text-sm">{l.title}</p>
@@ -174,6 +177,7 @@ export default function LeadsPage() {
               try {
                 await leadsApi.delete(l.id);
                 toast.success('Lead deleted');
+                setRefreshKey((k) => k + 1);
               } catch { toast.error('Failed to delete lead'); }
             }}>
               <Trash2 />
@@ -199,6 +203,7 @@ export default function LeadsPage() {
             onSelect: async (rows) => {
               await leadsApi.bulkDelete({ leadIds: rows.map((r) => r.id) });
               toast.success(`${rows.length} lead(s) deleted`);
+              setRefreshKey((k) => k + 1);
             },
           },
         ]}

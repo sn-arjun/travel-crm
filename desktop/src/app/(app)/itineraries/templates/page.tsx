@@ -51,6 +51,7 @@ export default function ItineraryTemplatesPage() {
   const router = useRouter();
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [selectedTemplate, setSelectedTemplate] = React.useState<ItineraryTemplate | null>(null);
+  const [refreshKey, setRefreshKey] = React.useState(0);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
   const [newTitle, setNewTitle] = React.useState('');
   const [newLeadId, setNewLeadId] = React.useState('');
@@ -122,6 +123,7 @@ export default function ItineraryTemplatesPage() {
     const result = await deleteTemplate(template.id);
     if (result) {
       toast.success('Template deleted');
+      setRefreshKey((k) => k + 1);
     } else {
       toast.error('Failed to delete template');
     }
@@ -167,6 +169,7 @@ export default function ItineraryTemplatesPage() {
         title="Itinerary Templates"
         description="Reusable itinerary blueprints you can turn into new itineraries."
         getRowId={(t) => t.id}
+        refreshKey={refreshKey}
         fetcher={({ page, limit, search }) =>
           client.get<ApiResponse<PaginatedResponse<ItineraryTemplate>>>(API_ENDPOINTS.itineraryTemplates.list, {
             params: { page, limit, search: search || undefined },
@@ -229,6 +232,7 @@ export default function ItineraryTemplatesPage() {
               if (!ok) return;
               await Promise.all(rows.map((r) => deleteTemplate(r.id)));
               toast.success('Templates deleted');
+              setRefreshKey((k) => k + 1);
             },
           },
         ]}

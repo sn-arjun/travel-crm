@@ -332,7 +332,7 @@ export default function TasksPage() {
 
       {layoutView === 'table' ? (
         <ListPage<Task>
-          key={listKey}
+          refreshKey={listKey}
           title="Tasks"
           description="Manage team tasks and assignments."
           getRowId={(t) => t.id}

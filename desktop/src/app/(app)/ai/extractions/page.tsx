@@ -137,7 +137,7 @@ function ExtractionsQueueContent() {
 
   return (
     <ListPage<AiExtraction>
-      key={refetchKey}
+      refreshKey={refetchKey}
       title="AI Extractions"
       description="Review data the AI pulled from calls, emails, WhatsApp, and documents before it lands in the CRM."
       getRowId={(r) => r.id}

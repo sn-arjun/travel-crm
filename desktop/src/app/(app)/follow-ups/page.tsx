@@ -364,7 +364,7 @@ export default function FollowUpsPage() {
     <>
       {dialog}
       <ListPage<FollowUpRow>
-        key={refreshKey}
+        refreshKey={refreshKey}
         title="Follow-ups"
         description="Stay on top of scheduled outreach across your pipeline."
         getRowId={(f) => f.id}

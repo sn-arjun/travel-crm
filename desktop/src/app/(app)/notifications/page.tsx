@@ -183,6 +183,7 @@ export default function NotificationsPage() {
       description="Stay on top of what needs your attention."
       getRowId={(n) => n.id}
       fetcher={fetcher}
+      refreshKey={refreshKey}
       searchPlaceholder="Search notifications..."
       filters={activeFilters}
       onRemoveFilter={handleRemoveFilter}

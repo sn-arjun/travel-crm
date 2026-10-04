@@ -186,7 +186,7 @@ export default function TeamSettingsPage() {
   return (
     <>
       <ListPage<User>
-        key={refreshKey}
+        refreshKey={refreshKey}
         title="Team"
         description="Manage team members, roles, and access."
         getRowId={(u) => u.id}

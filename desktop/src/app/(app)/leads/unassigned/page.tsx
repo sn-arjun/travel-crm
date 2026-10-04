@@ -47,7 +47,7 @@ export default function UnassignedLeadsPage() {
   return (
     <>
       <ListPage<Lead>
-        key={refreshKey}
+        refreshKey={refreshKey}
         title="Unassigned Leads"
         description="Leads with no owner — assign them to a team member."
         getRowId={(l) => l.id}

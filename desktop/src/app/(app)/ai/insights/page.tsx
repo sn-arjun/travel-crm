@@ -90,7 +90,7 @@ function InsightsListPage() {
 
   return (
     <ListPage<Insight>
-      key={refetchKey}
+      refreshKey={refetchKey}
       title="Insights"
       description="AI-generated observations about your pipeline and performance."
       getRowId={(r) => r.id}
@@ -192,7 +192,7 @@ function RecommendationsListPage() {
 
   return (
     <ListPage<Recommendation>
-      key={refetchKey}
+      refreshKey={refetchKey}
       title="Recommendations"
       description="Actionable suggestions generated from your business data."
       getRowId={(r) => r.id}

@@ -40,7 +40,7 @@ export default function VehiclesPage() {
   const [statusFilter, setStatusFilter] = React.useState('');
   const [typeFilter, setTypeFilter] = React.useState('');
   // ListPage refetches whenever `fetcher` changes identity, i.e. on any re-render of this page.
-  const [, reload] = React.useReducer((n: number) => n + 1, 0);
+  const [reloadKey, reload] = React.useReducer((n: number) => n + 1, 0);
 
   async function handleDelete(vehicle: Vehicle) {
     const ok = await confirm({
@@ -71,6 +71,7 @@ export default function VehiclesPage() {
         title="Vehicles"
         description="Manage your fleet's vehicles, documents, and maintenance."
         getRowId={(v) => v.id}
+        refreshKey={reloadKey}
         fetcher={({ page, limit, search }) =>
           fleetApi.vehicles.list({
             page,

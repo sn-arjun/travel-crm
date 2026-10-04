@@ -452,7 +452,7 @@ export default function SocialPage() {
       <SuggestionsPanel />
 
       <ListPage<SocialContent>
-        key={reloadKey}
+        refreshKey={reloadKey}
         title="Social Content"
         description="AI-generated social media posts for your travel offerings."
         getRowId={(p) => p.id}

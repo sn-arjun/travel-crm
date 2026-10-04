@@ -141,6 +141,7 @@ export default function VisaTrackingPage() {
       description="Track visa applications for your travellers."
       getRowId={(v) => v.id}
       fetcher={fetcher}
+      refreshKey={reloadKey}
       columns={columns}
       primaryAction={
         <Button size="sm" onClick={() => router.push('/visa/new')}>

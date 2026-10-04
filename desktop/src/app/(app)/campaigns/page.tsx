@@ -34,6 +34,7 @@ export default function CampaignsPage() {
   const router = useRouter();
   const [typeFilter, setTypeFilter] = React.useState('');
   const [statusFilter, setStatusFilter] = React.useState('');
+  const [refreshKey, setRefreshKey] = React.useState(0);
 
   const { mutate: cancelCampaign } = useApiMutation((id: string) => campaignsApi.cancel(id));
   const { mutate: deleteCampaign } = useApiMutation((id: string) => campaignsApi.delete(id));
@@ -53,6 +54,7 @@ export default function CampaignsPage() {
       title="Campaigns"
       description="Reach your contacts with targeted email, SMS and WhatsApp campaigns."
       getRowId={(c) => c.id}
+      refreshKey={refreshKey}
       fetcher={({ page, limit, search }) =>
         campaignsApi.list({
           page,
@@ -163,7 +165,7 @@ export default function CampaignsPage() {
               aria-label="Pause"
               onClick={async () => {
                 const result = await cancelCampaign(c.id);
-                if (result) toast.success('Campaign paused');
+                if (result) { toast.success('Campaign paused'); setRefreshKey((k) => k + 1); }
                 else toast.error('Failed to pause campaign');
               }}
             >
@@ -176,7 +178,7 @@ export default function CampaignsPage() {
             aria-label="Delete"
             onClick={async () => {
               const result = await deleteCampaign(c.id);
-              if (result !== undefined) toast.success('Campaign deleted');
+              if (result !== undefined) { toast.success('Campaign deleted'); setRefreshKey((k) => k + 1); }
               else toast.error('Failed to delete campaign');
             }}
           >
@@ -193,6 +195,7 @@ export default function CampaignsPage() {
           onSelect: async (rows) => {
             await Promise.all(rows.map((r) => campaignsApi.delete(r.id)));
             toast.success(`${rows.length} campaign(s) deleted`);
+            setRefreshKey((k) => k + 1);
           },
         },
       ]}
