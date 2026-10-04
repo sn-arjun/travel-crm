@@ -94,13 +94,21 @@ transcriptRoutes.get('/', async (c) => {
     return error(c, 'Search query required', 400);
   }
 
+  // FTS5 treats characters such as - " : * ( ) as query syntax, so a raw user
+  // term like "non-refundable" is a syntax error. Quote each term as a phrase.
+  const ftsQuery = query
+    .trim()
+    .split(/\s+/)
+    .map((term) => `"${term.replace(/"/g, '""')}"`)
+    .join(' ');
+
   // Count matches
   const countResult = await db.prepare(`
     SELECT COUNT(*) as total
     FROM call_transcripts ct
     INNER JOIN call_transcripts_fts fts ON ct.rowid = fts.rowid
     WHERE call_transcripts_fts MATCH ?
-  `).bind(query).first<{ total: number }>();
+  `).bind(ftsQuery).first<{ total: number }>();
 
   const total = countResult?.total ?? 0;
 
@@ -118,7 +126,7 @@ transcriptRoutes.get('/', async (c) => {
     WHERE call_transcripts_fts MATCH ?
     ORDER BY rank
     LIMIT ? OFFSET ?
-  `).bind(query, limit, offset).all();
+  `).bind(ftsQuery, limit, offset).all();
 
   return c.json({
     success: true,
