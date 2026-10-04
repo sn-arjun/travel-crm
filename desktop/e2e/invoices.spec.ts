@@ -357,18 +357,30 @@ test.describe('Invoices', () => {
   // Export
   // ─────────────────────────────────────────────────────────────
 
-  // KNOWN BACKEND BUG (outside this slice's fileAllowlist — backend/ isn't covered by
-  // desktop/e2e/invoices.spec.ts): POST /exports/invoices/bulk-pdf 500s because
-  // tenant-schema.ts declares export_jobs.tenant_id NOT NULL but migration
-  // 0009_import_export_jobs.sql never created that column, so every insert fails.
-  // Confirmed directly against the running backend (curl), independent of this test.
-  // The desktop-side polling/download wiring (downloadInvoicesZip in invoices/page.tsx)
-  // is fixed and correct for once the backend migration is added; this test documents
-  // today's actual behavior — a failed export shows an error toast, not a silent hang
-  // or a crash — rather than asserting a download that cannot succeed yet.
-  test('export surfaces an error toast when the bulk export job fails to queue', async ({ page }) => {
+  // The bulk export backend works (export_jobs migration 0032): the job completes and the
+  // browser receives the zip. A queueing failure is forced with a route stub so the error
+  // path stays covered.
+  test('export queues a bulk job and downloads the invoices zip', async ({ page }) => {
     const contact = await seedContact({ name: `ExportInv-${Date.now()}` });
     await seedInvoice(contact.id);
+
+    await page.goto('/invoices');
+    await waitForLoad(page);
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download', { timeout: 45_000 }),
+      page.getByRole('button', { name: /Export/i }).click(),
+    ]);
+    expect(download.suggestedFilename()).toMatch(/^invoices_\d{4}-\d{2}-\d{2}\.zip$/);
+    await expect(page.getByText('Invoices exported')).toBeVisible({ timeout: 15_000 });
+  });
+
+  test('export surfaces an error toast when the bulk export job fails to queue', async ({ page }) => {
+    const contact = await seedContact({ name: `ExportInvFail-${Date.now()}` });
+    await seedInvoice(contact.id);
+
+    await page.route('**/exports/invoices/bulk-pdf', (route) =>
+      route.fulfill({ status: 500, json: { success: false, error: { message: 'Export queue unavailable' } } }));
 
     await page.goto('/invoices');
     await waitForLoad(page);

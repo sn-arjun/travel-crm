@@ -428,7 +428,8 @@ test.describe('Contacts', () => {
     await waitForLoad(page);
 
     const fieldLabel = `E2E Passport ${Date.now()}`;
-    await page.getByRole('button', { name: /New Field/i }).click();
+    // Header CTA first; the empty state renders a second "New Field" button (one CTA per region).
+    await page.getByRole('button', { name: /New Field/i }).first().click();
     await page.locator('#field-label').fill(fieldLabel);
     await page.locator('#field-name').fill(`e2e_passport_${Date.now()}`);
     await page.getByRole('button', { name: /Create Field/i }).click();

@@ -443,7 +443,7 @@ test.describe('Fleet vehicles', () => {
     await pick(page, page.getByRole('combobox').filter({ hasText: 'Sedan' }), 'Bus');
     await waitForLoad(page);
     await expect(page.getByText('No vehicles yet')).toBeVisible();
-    await expect(page.locator('tbody tr[role="button"]')).toHaveCount(0);
+    await expect(page.locator('tbody tr', { hasNotText: 'No vehicles yet' })).toHaveCount(0); // the empty state renders inside tbody
 
     // Status filter combined with type
     await pick(page, page.getByRole('combobox').filter({ hasText: 'Bus' }), 'MUV');
@@ -505,12 +505,16 @@ test.describe('Fleet vehicles', () => {
 
     await gotoList(page);
     await searchList(page, prefix);
-    const rows = page.locator('tbody tr[role="button"]');
+    const rows = page.locator('tbody tr');
     await expect(rows).toHaveCount(20);
 
-    await page.mouse.move(600, 400);
+    // Lists scroll the table region (not <main>); scroll it to the bottom to trigger the next page.
+    const region = page.locator('[data-scroll-region="table"]');
     await expect
-      .poll(async () => { await page.mouse.wheel(0, 3000); return rows.count(); }, { timeout: 20_000 })
+      .poll(async () => {
+        await region.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+        return rows.count();
+      }, { timeout: 20_000 })
       .toBe(22);
 
     // Bulk delete everything loaded

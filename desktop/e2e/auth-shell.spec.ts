@@ -1,3 +1,4 @@
+import { type Page } from '@playwright/test';
 import { test, expect } from './fixtures';
 import { ADMIN_EMAIL, ADMIN_PASSWORD, waitForLoad } from './helpers/auth';
 
@@ -174,8 +175,10 @@ test.describe('Auth shell — authenticated session', () => {
     await waitForLoad(page);
 
     // User dropdown -> Profile
-    const userMenuTrigger = page.getByRole('button', { name: /Admin User/i });
+    // The sidebar shows the real signed-in user (the seeded tenant admin), not a placeholder.
+    const userMenuTrigger = page.getByTestId('sidebar-user-menu');
     await expect(userMenuTrigger).toBeVisible({ timeout: 10_000 });
+    await expect(userMenuTrigger).toHaveAttribute('aria-label', /Account menu for Admin User/);
     await userMenuTrigger.click();
     await page.locator('[role="menuitem"]:has-text("Profile")').click();
     await page.waitForURL('**/settings/profile', { timeout: 10_000 });
@@ -185,7 +188,7 @@ test.describe('Auth shell — authenticated session', () => {
     await page.goto('/dashboard');
     await page.waitForSelector('aside');
     await waitForLoad(page);
-    const menuTrigger2 = page.getByRole('button', { name: /Admin User/i });
+    const menuTrigger2 = page.getByTestId('sidebar-user-menu');
     await expect(menuTrigger2).toBeVisible({ timeout: 10_000 });
     await menuTrigger2.click();
     await page.locator('[role="menuitem"]:has-text("Sign out")').click();
@@ -243,7 +246,19 @@ test.describe('Auth shell — settings/sessions (device management)', () => {
 });
 
 test.describe('Auth shell — help center', () => {
+  // The file-level storageState override makes every context logged out, but /help is an app route.
+  async function signIn(page: Page) {
+    await page.goto('/login');
+    await page.locator('#email').fill(ADMIN_EMAIL);
+    await page.locator('button[type="submit"]').click();
+    await page.waitForSelector('#password', { timeout: 15_000 });
+    await page.locator('#password').fill(ADMIN_PASSWORD);
+    await page.locator('button[type="submit"]').click();
+    await page.waitForURL(/\/(dashboard)?$/, { timeout: 20_000 });
+  }
+
   test('search narrows FAQ results and shows the empty state for no matches', async ({ page }) => {
+    await signIn(page);
     await page.goto('/help');
     await expect(page.getByRole('heading', { name: 'Help Center' })).toBeVisible();
 
@@ -256,6 +271,7 @@ test.describe('Auth shell — help center', () => {
   });
 
   test('contact support has no mailto: link and copies the message instead', async ({ page }) => {
+    await signIn(page);
     await page.goto('/help');
 
     // Communication Hub rule: no mailto:/wa.me/tel: anchors anywhere on this page

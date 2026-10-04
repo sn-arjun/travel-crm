@@ -91,6 +91,48 @@ test.describe('Business Intelligence hub', () => {
 
 test.describe('Daily Briefings', () => {
   test('generates a briefing, switches type, and refreshes', async ({ page }) => {
+    // The e2e wrangler config strips the [ai] binding, so the real generator can't run here.
+    // Stand in for the briefings API with a small stateful mock (same raw row shape the client
+    // normalises) so the spec still covers: empty state -> generate -> render -> type switch -> refresh.
+    const rows: Array<Record<string, unknown>> = [
+      {
+        id: 'brf-weekly-1',
+        briefing_type: 'weekly',
+        title: 'Weekly briefing',
+        content: JSON.stringify([{ heading: 'Overview', body: 'Bookings are up 12% week over week, led by Goa and Kerala.' }]),
+        metrics: JSON.stringify({ newLeads: 18, bookings: 7 }),
+        highlights: JSON.stringify(['Goa package conversion improved']),
+        period: 'weekly',
+        created_at: new Date().toISOString(),
+      },
+    ];
+    await page.route('**/api/v1/ai/bi/briefings**', async (route) => {
+      const req = route.request();
+      const url = new URL(req.url());
+      if (req.method() === 'POST' && url.pathname.endsWith('/briefings/generate')) {
+        const body = (req.postDataJSON() ?? {}) as { type?: string };
+        const row = {
+          id: `brf-${rows.length + 1}`,
+          briefing_type: body.type ?? 'daily',
+          title: 'Daily briefing',
+          content: JSON.stringify([{ heading: 'Overview', body: 'Three new enquiries came in today and two follow-ups are due.' }]),
+          metrics: JSON.stringify({ newLeads: 3, followUpsDue: 2 }),
+          highlights: JSON.stringify([]),
+          period: body.type ?? 'daily',
+          created_at: new Date().toISOString(),
+        };
+        rows.unshift(row);
+        await route.fulfill({ json: { success: true, data: row } });
+        return;
+      }
+      if (req.method() === 'GET') {
+        const type = url.searchParams.get('type');
+        await route.fulfill({ json: { success: true, data: rows.filter((r) => !type || r.briefing_type === type) } });
+        return;
+      }
+      await route.continue();
+    });
+
     await page.goto('/ai/bi/briefings');
     await waitForLoad(page);
     await waitForGateResolved(page);
@@ -171,17 +213,17 @@ test.describe('Destination Analytics', () => {
 
     // Profitability tab is the default — table should have rows once data loads.
     await waitForLoad(page);
-    const profitTable = page.locator('table').first();
-    const hasRows = await profitTable.locator('tbody tr').count();
-
     // Filter narrows/reshapes the dataset — switching period re-fetches.
     await page.locator('button[role="combobox"]').first().click();
     await page.locator('[role="option"]', { hasText: 'This quarter' }).click();
     await waitForLoad(page);
 
-    if (hasRows > 0) {
+    // Export is disabled while there is no profitability data (an empty table still renders one
+    // "no results" tbody row, so row count is not a reliable signal) - only exercise it with data.
+    const exportBtn = page.getByRole('button', { name: /export/i });
+    await expect(exportBtn).toBeVisible();
+    if (await exportBtn.isEnabled()) {
       // Export produces a non-empty CSV file.
-      const exportBtn = page.getByRole('button', { name: /export/i });
       const [download] = await Promise.all([
         page.waitForEvent('download'),
         exportBtn.click(),

@@ -1,6 +1,6 @@
 import { test, expect } from './fixtures';
 import { waitForLoad, navigateTo, API_URL, getAuthToken } from './helpers/auth';
-import { seedContact, api } from './helpers/api-seed';
+import { seedContact, seedEmailTemplate, api } from './helpers/api-seed';
 
 // ─── A. INBOX LIST ─────────────────────────────────────────────────────────
 
@@ -363,7 +363,8 @@ test.describe('C. Compose page', () => {
     await expect(page.getByText(contact.name).first()).toBeVisible({ timeout: 10_000 });
   });
 
-  test('C3-note: template dropdown never lists options — GET /templates 400s on every call (backend query-param validation bug, same defect documented in campaigns.spec.ts)', async ({ page }) => {
+  test('C3-note: template dropdown lists templates (GET /templates 200) and choosing one fills subject and body', async ({ page }) => {
+    const tpl = await seedEmailTemplate({ name: `E2E-ComposeTpl-${Date.now()}` });
     const templatesApiCalls: { url: string; status: number }[] = [];
     page.on('response', (res) => {
       if (res.url().includes('/templates')) templatesApiCalls.push({ url: res.url(), status: res.status() });
@@ -371,10 +372,14 @@ test.describe('C. Compose page', () => {
 
     await page.goto('/communication/compose');
     await waitForLoad(page);
-    await page.waitForTimeout(1000);
 
-    expect(templatesApiCalls.some((c) => c.status === 400)).toBe(true);
-    await expect(page.getByText('No template').first()).toBeVisible();
+    await page.getByRole('combobox').filter({ hasText: /No template|Choose a template/ }).click();
+    await page.getByRole('option', { name: tpl.name }).click();
+
+    expect(templatesApiCalls.length).toBeGreaterThan(0);
+    expect(templatesApiCalls.every((c) => c.status === 200)).toBe(true);
+    await expect(page.locator('#subject')).toHaveValue(tpl.subject);
+    await expect(page.locator('#body')).toHaveValue(/your trip to \{destination\} is confirmed/);
     await expect(page.locator('body')).not.toContainText('Something went wrong');
   });
 
@@ -445,7 +450,7 @@ test.describe('D. Bulk send page', () => {
     await page.waitForTimeout(600);
     await page.getByText(contact.name).first().click();
     await expect(page.getByText('Recipients:')).toBeVisible();
-    await expect(page.getByText('1', { exact: true })).toBeVisible();
+    await expect(page.locator('strong', { hasText: /^1$/ })).toBeVisible();
 
     // Step 3: compose message directly (the template combobox is documented
     // as broken in D3-note below — this exercises the manual-message path)
@@ -458,14 +463,8 @@ test.describe('D. Bulk send page', () => {
     await expect(page.getByText('Batch status')).toBeVisible({ timeout: 10_000 });
   });
 
-  test('D3-note: template dropdown never lists options — GET /templates 400s on every call (backend query-param validation bug, same defect documented in campaigns.spec.ts)', async ({ page }) => {
-    // GET /templates validates `page`/`limit` with z.number() (backend/src/routes/templates.ts),
-    // but query-string params always arrive as strings over HTTP, so every call 400s.
-    // This is a backend defect in a file outside this slice's fileAllowlist
-    // (desktop/src/app/(app)/communication/**, communications.ts, communication-inbox.spec.ts
-    // only) — documented here rather than silently asserted as working. The UI degrades
-    // gracefully to an empty "No template" dropdown rather than crashing, per the UX contract.
-    await seedContact();
+  test('D3-note: template dropdown lists templates (GET /templates 200) and choosing one fills the message', async ({ page }) => {
+    const tpl = await seedEmailTemplate({ name: `E2E-BulkTpl-${Date.now()}` });
 
     const templatesApiCalls: { url: string; status: number }[] = [];
     page.on('response', (res) => {
@@ -474,12 +473,13 @@ test.describe('D. Bulk send page', () => {
 
     await page.goto('/communication/bulk-send');
     await waitForLoad(page);
-    await page.waitForTimeout(1000);
 
-    expect(templatesApiCalls.some((c) => c.status === 400)).toBe(true);
+    await page.getByRole('combobox').filter({ hasText: /No template|Choose a template/ }).click();
+    await page.getByRole('option', { name: tpl.name }).click();
 
-    // Dropdown still renders without crashing — only the fallback option is present
-    await expect(page.getByText('No template')).toBeVisible();
+    expect(templatesApiCalls.length).toBeGreaterThan(0);
+    expect(templatesApiCalls.every((c) => c.status === 200)).toBe(true);
+    await expect(page.locator('textarea').first()).toHaveValue(/your trip to \{destination\} is confirmed/);
     await expect(page.locator('body')).not.toContainText('Something went wrong');
   });
 

@@ -85,7 +85,9 @@ test.describe('Travellers: full round trip', () => {
     const lastName = `RtLast${ts}`;
     const passport = `RT${ts}`.slice(0, 20).toUpperCase();
     const email = `rt-${ts}@e2e.test`;
-    const phone = '98765 43210';
+    const typedPhone = '98765 43210';
+    // PhoneInput normalises to E.164 (default +91 country code), so that is what is stored and shown.
+    const phone = '+919876543210';
     const now = new Date();
     const dob = new Date(1990, 5, 15);
     const expiry = new Date(now.getFullYear() + 2, 8, 20);
@@ -102,7 +104,7 @@ test.describe('Travellers: full round trip', () => {
     await expect(page.locator('#passportNumber')).toHaveValue(passport);
     await pickDate(page, /pick expiry date/i, expiry);
     await page.locator('#email').fill(email);
-    await page.locator('input[type="tel"]').fill(phone);
+    await page.locator('input[type="tel"]').fill(typedPhone);
     await page.getByRole('button', { name: /^save$/i }).click();
 
     // Must not match /travellers/new (still on the form) — wait for the real uuid.
@@ -189,14 +191,16 @@ test.describe('Travellers: form', () => {
   test('email and phone entered in the form persist and show on the detail and edit pages', async ({ page }) => {
     const ts = Date.now();
     const email = `ep-${ts}@e2e.test`;
-    const phone = '98765 43210';
+    const typedPhone = '98765 43210';
+    // PhoneInput normalises to E.164 (default +91 country code), so that is what is stored and shown.
+    const phone = '+919876543210';
     await page.goto('/travellers/new');
     await waitForLoad(page);
     await page.locator('#firstName').fill(`EmailPhone${ts}`);
     await page.locator('#lastName').fill('Persist');
     await page.locator('#passportNumber').fill(`EP${ts}`.slice(0, 20));
     await page.locator('#email').fill(email);
-    await page.locator('input[type="tel"]').fill(phone);
+    await page.locator('input[type="tel"]').fill(typedPhone);
     await page.getByRole('button', { name: /^save$/i }).click();
     await expect(page).toHaveURL(/\/travellers\/(?!new$)[\w-]{20,}$/, { timeout: 30_000 });
     const id = page.url().split('/').pop()!;
@@ -537,7 +541,7 @@ test.describe('Travellers: detail', () => {
     await page.getByRole('option', { name: new RegExp(`LinkMe ${ts}`) }).first().click();
     await dlg.getByRole('button', { name: 'Link Contact' }).click();
 
-    await expect(page.getByText(`LinkMe ${ts}`, { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('main').getByText(`LinkMe ${ts}`, { exact: true })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('button', { name: 'View contact' })).toBeVisible();
     const linked = await api('GET', `/travellers/${t.id}`);
     expect((linked.data?.contactId ?? linked.data?.contact_id)).toBe(contact.id);

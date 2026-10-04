@@ -53,14 +53,24 @@ test.describe('Super Admin', () => {
     if (!granted) expect(res?.error?.message).toBe('Insufficient permissions');
   });
 
-  test('sidebar exposes the Super Admin entry to a tenant admin and routes to the dashboard', async ({ page }) => {
+  test('sidebar shows the Super Admin entry only to platform super admins; a tenant admin is told access is required', async ({ page }) => {
     await open(page, '/');
-    const link = page.locator('aside a[href="/super-admin"]').first();
-    await expect(link).toBeVisible();
-    await link.click();
-    await page.waitForURL('**/super-admin');
-    if (granted) await expect(heading(page, 'Platform dashboard')).toBeVisible();
-    else await expect(page.getByText(NO_ACCESS)).toBeVisible();
+    const link = page.locator('aside a[href="/super-admin"]');
+    if (granted) {
+      await expect(link.first()).toBeVisible();
+      await link.first().click();
+      await page.waitForURL('**/super-admin');
+      await expect(heading(page, 'Platform dashboard')).toBeVisible();
+    } else {
+      // The sidebar hides the entry unless GET /admin/whoami reports isSuperAdmin; wait for the shell to settle first.
+      await expect(page.locator('aside a[href="/leads"]').first()).toBeVisible();
+      await expect(link).toHaveCount(0);
+      await expect(page.getByRole('link', { name: 'Super Admin' })).toHaveCount(0);
+      // Navigating directly still renders an explanation, not an error.
+      await open(page, '/super-admin');
+      await expect(page.getByTestId('super-admin-no-access')).toBeVisible();
+      await expect(page.getByText(NO_ACCESS)).toBeVisible();
+    }
   });
 
   test('every page renders either its data view or the access panel, with no error toast and no mailto/wa.me/tel links', async ({ page }) => {

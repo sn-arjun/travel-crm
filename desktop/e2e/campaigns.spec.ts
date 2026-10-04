@@ -339,16 +339,7 @@ test.describe('B. List page UX', () => {
 // ─── C. RELATION COMBOBOX (template picker) ───────────────────────────────────
 
 test.describe('C. Template relation combobox', () => {
-  test('C1: template combobox is a real combobox with no raw ID input; loading options 400s (backend query-param validation bug)', async ({ page }) => {
-    // GET /templates validates `page`/`limit` with z.number() (backend/src/routes/templates.ts:35-36),
-    // but query-string params always arrive as strings over HTTP, so
-    // *every* call to this endpoint 400s with a ZodError — verified directly
-    // against the API, independent of this test. RelationCombobox degrades
-    // gracefully ("Could not load options.") rather than crashing, per the
-    // UX contract, but the picker can never actually list templates. That's
-    // a backend defect in a file outside this slice's fileAllowlist
-    // (desktop/src/app/(app)/campaigns/**, campaigns.ts, campaigns.spec.ts
-    // only) — documented here rather than silently asserted as working.
+  test('C1: template combobox is a real combobox with no raw ID input; it lists templates (GET /templates 200) and selecting one sticks', async ({ page }) => {
     const ts = Date.now();
     const tpl = await seedEmailTemplate({ name: `E2E-ComboTpl-${ts}` });
 
@@ -362,19 +353,26 @@ test.describe('C. Template relation combobox', () => {
 
     await page.getByPlaceholder(/Summer Holiday Offers/i).fill(`E2E-ComboTest-${ts}`);
 
-    // Content source defaults to "template" — the RelationCombobox should be visible.
+    // Content source defaults to "template" - the RelationCombobox should be visible.
     // It's a button[role="combobox"] whose visible text is the placeholder
-    // ("Choose a template"), not an <input placeholder="…">.
+    // ("Choose a template"), not an <input placeholder="...">.
     const combobox = page.locator('button[role="combobox"]').filter({ hasText: 'Choose a template' });
     await expect(combobox).toBeVisible({ timeout: 10_000 });
     await combobox.click();
     await page.getByPlaceholder(/Search templates/i).fill(tpl.name);
-    await page.waitForTimeout(600);
 
-    expect(templatesApiCalls.some((c) => c.status === 400)).toBe(true);
-    await expect(page.getByText(/Could not load options/i)).toBeVisible({ timeout: 5_000 });
+    // The seeded template is listed as an option (the request returns 200, not 400).
+    const option = page.getByRole('option', { name: new RegExp(tpl.name) });
+    await expect(option).toBeVisible({ timeout: 10_000 });
+    expect(templatesApiCalls.length).toBeGreaterThan(0);
+    expect(templatesApiCalls.every((c) => c.status === 200)).toBe(true);
+    await expect(page.getByText(/Could not load options/i)).toHaveCount(0);
 
-    // Degrades without crashing rather than showing a raw ID input anywhere.
+    // Choosing it fills the combobox with the template name.
+    await option.click();
+    await expect(page.locator('button[role="combobox"]').filter({ hasText: tpl.name })).toBeVisible();
+
+    // No raw ID input anywhere.
     expect(await page.locator('input[name="templateId"]').count()).toBe(0);
     expect(await page.locator('input#templateId').count()).toBe(0);
     expect(await page.locator('body').innerText()).not.toContain('Something went wrong');

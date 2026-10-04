@@ -54,6 +54,11 @@ async function createCampaignApi(name: string, extra: Record<string, unknown> = 
     templateContent: 'Hello {customer_name}, our latest offer is live!',
     ...extra,
   });
+  // whatsapp_campaigns is an Enterprise-plan feature and cannot be switched on for a lower-plan tenant
+  // (PUT /ai/settings/features refuses to enable features above the plan). On such a tenant the API
+  // answers with the upgrade payload; seeding is then impossible and every test continues into its
+  // `open(...) === 'gated'` branch, which asserts the upgrade affordance instead.
+  if (res?.upgrade === true && res?.featureKey === 'whatsapp_campaigns') return '';
   const id = res?.data?.id;
   expect(id, `campaign create failed: ${JSON.stringify(res)}`).toBeTruthy();
   createdIds.push(id);
