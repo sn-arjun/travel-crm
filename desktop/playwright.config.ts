@@ -12,6 +12,8 @@ const WEB_PORT = new URL(BASE_URL).port || '3100';
 
 export default defineConfig({
   testDir: './e2e',
+  // The showcase specs record client videos on a clean demo DB; they have their own config.
+  testIgnore: ['**/showcase/**'],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

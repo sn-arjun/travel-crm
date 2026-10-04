@@ -32,7 +32,8 @@
     "Classify each failure: spec staleness -> fix the spec; small app bug (<= ~10 files total across all fixes) -> fix; anything larger -> stop and report to the planner with evidence (do not start a refactor).",
     "Re-run backend vitest, desktop tsc/vitest/lint/build, flutter analyze/test and the driver smoke integration test (B13 recipe).",
     "Run every FR detection check from STORYBOARD 0.4 (FR-1 curl, FR-2 smoke test, FR-2b grep, FR-3 sidebar, FR-4 pubspec, FR-5 template body, FR-6 picker, FR-7 trip type + Book transfer, FR-8 timeline label, FR-9 notification click, FR-10 New template, FR-11 30-min idle: emulate by expiring the access token as in token-refresh.spec) and record pass/fail in desktop/audit/fix/gates/FINAL.json.",
-    "Mark remake jobs resolved: `node scripts/remake-pipeline.js --mark-ok verify:travellers --note \"fixed in fix pass\"` and likewise cleanup and showcase (showcase note: re-recorded by the showcase agent)."
+    "Mark remake jobs resolved: `node scripts/remake-pipeline.js --mark-ok verify:travellers --note \"fixed in fix pass\"` and likewise cleanup and showcase (showcase note: re-recorded by the showcase agent).",
+    "From the B17 triage: flaky under the full run - fleet-trips.spec.ts:494 and test-harness.spec.ts:23 (seed fetch failed: SocketError other side closed from wrangler dev), communication-inbox.spec.ts:45/:80/:92 (seen once). Make e2e/helpers/api-seed.ts retry idempotent seed calls on transport errors (not on HTTP errors), and root-cause the communication-inbox flake. Target: 3 consecutive full-suite runs with 0 failures."
   ],
   "filesAllowlist": [
     "desktop/e2e/**",

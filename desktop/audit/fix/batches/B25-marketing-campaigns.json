@@ -26,7 +26,8 @@
     "FIELDS: native `<input type=\"date\">` -> DatePicker (+ toLocalDateString / parseLocalDate from @/lib/dates); money `type=\"number\"` inputs -> CurrencyInput; any id/relation text input -> RelationCombobox (with resolveSelected for edit forms); phone -> PhoneInput; `window.confirm` / bare `confirm(` -> `useConfirm()` from @/components/ui; `toLocaleDateString()` / `toLocaleString()` without a locale -> formatDisplayDate from @/lib/dates (en-IN); no mailto:/wa.me/tel: (SendMessageDialog). Icon-only buttons get an aria-label. Never two elements with the same id on one page.",
     "PROBE: with your stack slot up, run `node scripts/layout-probe.mjs --routes /marketing,/marketing/festivals,/marketing/flyers,/marketing/flyers/templates,/marketing/segments,/marketing/social,/marketing/whatsapp,/marketing/opted-out,/marketing/branding,/marketing/campaigns,/campaigns,/campaigns/new,/campaigns/<campaignId> --viewports 1366x768,1920x1080 --themes light,dark --out audit/fix/probe/<BATCH_ID>` (replace <id> placeholders with real seeded ids from the API) and fix every failure (gutter, horizontal overflow, nested scroller, console/page error, blank top-bar title). Attach probe.json summary to your report.",
     "SPECS: run the specs listed in gates.specs; fix app regressions. If a spec asserts behaviour this batch intentionally changed, update that spec (spec files in your allowlist only). Pre-existing failures that belong to another batch: list them in your report, do not chase them.",
-    "If you need a change in a shared file you may not touch (ui primitives, archetypes, client, globals, helpers), do NOT edit it: write the request to desktop/audit/fix/requests/<BATCH_ID>.md (file per batch, so parallel merges never conflict) and work around locally where possible. B30 consumes these requests."
+    "If you need a change in a shared file you may not touch (ui primitives, archetypes, client, globals, helpers), do NOT edit it: write the request to desktop/audit/fix/requests/<BATCH_ID>.md (file per batch, so parallel merges never conflict) and work around locally where possible. B30 consumes these requests.",
+    "From the B17 triage: marketing-social.spec.ts:301 (:333) - the festival card toggle locator (text=<festival> + ../../..) no longer contains the Activate/Deactivate button. Give the festival card a stable test id / accessible structure (role=article with aria-label, toggle button with accessible name) while restyling, and update the spec to use it. marketing-social.spec.ts must pass."
   ],
   "filesAllowlist": [
     "desktop/src/app/(app)/marketing/**",
@@ -34,7 +35,8 @@
     "desktop/src/components/domain/marketing/**",
     "desktop/src/lib/api/{marketing,campaigns,whatsapp-campaigns}.ts",
     "desktop/e2e/{marketing-campaigns,marketing-flyers,marketing-opt-out,marketing-segments,marketing-social}.spec.ts (behaviour changed here only)",
-    "desktop/audit/fix/requests/B25.md"
+    "desktop/audit/fix/requests/B25.md",
+    "desktop/e2e/marketing-social.spec.ts"
   ],
   "mustNotTouch": [
     "desktop/src/components/ui/**",
