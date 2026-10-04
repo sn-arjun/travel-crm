@@ -306,7 +306,7 @@ export function TopNavbar() {
   return (
     <header className="electron-drag flex items-center justify-between h-12 px-6 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shrink-0">
       <div className="flex items-center gap-4">
-        <h2 className="text-sm font-semibold text-foreground">{getPageTitle(pathname)}</h2>
+        <p data-slot="topbar-title" className="text-sm font-semibold text-foreground">{getPageTitle(pathname)}</p>
       </div>
 
       <div className="electron-no-drag flex items-center gap-2">

@@ -22,7 +22,7 @@
  *   5 scrollers     FAIL  nested scroll containers inside <main> (overflow-y auto|scroll with scrollHeight > clientHeight + 4)
  *                         except [data-scroll-region], [role=dialog], [role=listbox], [data-radix-popper-content-wrapper],
  *                         textarea, pre
- *   6 topbarTitle   FAIL  `header h2` has no text
+ *   6 topbarTitle   FAIL  `header [data-slot=topbar-title]` has no text
  *   7 sidebarActive WARN  `aside [aria-current=page]` count != 1
  * Signed-out pages (/login, /forgot-password, /reset-password, /setup-account) run in a context without the injected
  * session, and only checks 1 and 3 (document-level) apply to them.
@@ -151,7 +151,7 @@ function inPageChecks() {
     }
   }
 
-  out.topbarTitle = (document.querySelector('header h2')?.textContent ?? '').trim();
+  out.topbarTitle = (document.querySelector('header [data-slot="topbar-title"]')?.textContent ?? '').trim();
   out.sidebarActive = document.querySelectorAll('aside [aria-current=page]').length;
   return out;
 }
