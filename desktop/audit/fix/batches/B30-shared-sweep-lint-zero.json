@@ -34,6 +34,7 @@
   "goal": "`npm run lint` exits 0 for the whole desktop app, every cross-cutting contract rule is verifiably satisfied, and the layout probe is clean on every route.",
   "context": "Before editing, read desktop/audit/fix/FIX-PLAN.md sections 3 (executor rules), 4 (worktree bootstrap + runtime stack) and 5 (gates), and desktop/audit/remake/CONTRACT.md. Bug details (symptom, repro, evidence) for every id below are in desktop/audit/fix/bugs.json and BUGS.md. W6 batches cleaned their own files and wrote shared-file requests to desktop/audit/fix/requests/B18.md ... B29.md. Remaining lint errors live in components/ui (beyond B06), components/domain shared files, components/layout/providers/electron, hooks, stores, lib (non-owned api files: auth, config, index, client leftovers), app root files, plus anything W6 could not finish. Cross-cutting bugs owned here: BUG-045 (window.confirm), BUG-048 (nested scrollers), BUG-050 (dark palette/gradients), BUG-057 (raw ID inputs), BUG-058 (native date / raw money inputs), BUG-072 (palette/hex), BUG-073 (aria-labels, duplicate ids), BUG-074 (pages off the archetypes).",
   "steps": [
+    "FIRST: process every shared-change request the page batches left in desktop/audit/fix/requests/*.md (B18: typed reports client if B24 has not done it; B20: widen leads assignedTo to string | null and add priority to leadsApi.list params, then remove the local casts in the lead pages; any others). Implement each in the shared file, remove the local workarounds, and note each request as done in your report.",
     "Apply every request in desktop/audit/fix/requests/*.md (shared primitives/archetypes), re-running the specs named in each request.",
     "Drive `npm run lint` to 0 errors: types instead of any, unused code removed, no raw values. Then flip any rule that was temporarily warn (if any) back to error and regenerate lint-baseline.json (should be empty).",
     "Grep gates (all must be 0 in desktop/src outside design-system and tests): `window.confirm|[^.\\w]confirm\\(`; `type=\"date\"`; `mailto:|wa\\.me|tel:`; raw palette (lint already); `id=\"relation-error\"`. Money inputs: list every `type=\"number\"` and convert money ones to CurrencyInput.",
@@ -45,7 +46,8 @@
     "desktop/src/**",
     "desktop/eslint.config.mjs",
     "desktop/audit/fix/lint-baseline.json",
-    "desktop/e2e/** (only for behaviour changed here)"
+    "desktop/e2e/** (only for behaviour changed here)",
+    "desktop/src/lib/api/**"
   ],
   "mustNotTouch": [
     "backend/**",
