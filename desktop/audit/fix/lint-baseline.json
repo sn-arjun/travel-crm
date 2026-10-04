@@ -1,8 +1,11 @@
 {
-  "generatedAt": "2026-10-04T06:54:48.701Z",
-  "totalErrors": 1491,
+  "generatedAt": "2026-10-04T07:30:29.900Z",
+  "totalErrors": 1494,
   "files": {
     "e2e/follow-ups.spec.ts": 2,
+    "e2e/showcase/demo-data.ts": 1,
+    "e2e/showcase/demo-seed.ts": 1,
+    "e2e/showcase/finalize.ts": 1,
     "src/app/(app)/accounts/page.tsx": 10,
     "src/app/(app)/ai/bi/briefings/page.tsx": 1,
     "src/app/(app)/ai/bi/health-score/page.tsx": 2,
