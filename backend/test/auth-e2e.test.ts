@@ -566,6 +566,7 @@ describe('M2 Authentication & Multi-Tenancy E2E Tests', () => {
 
   describe('TICKET-027: User CRUD', () => {
     let createdUserId = '';
+    let invitedEmail = '';
 
     it('should list users (admin)', async () => {
       const res = await authRequest('GET', '/users', adminToken);
@@ -577,7 +578,7 @@ describe('M2 Authentication & Multi-Tenancy E2E Tests', () => {
 
     it('should create/invite a new user', async () => {
       const res = await authRequest('POST', '/users', adminToken, {
-        email: `newuser${Date.now()}@e2e.test`,
+        email: (invitedEmail = `newuser${Date.now()}@e2e.test`),
         name: 'New User',
         role: 'salesperson',
         phone: '+919876543210',
@@ -631,8 +632,12 @@ describe('M2 Authentication & Multi-Tenancy E2E Tests', () => {
       // First get list to find a user ID
       const listRes = await authRequest('GET', '/users', adminToken);
       const listBody: any = await listRes.json();
-      if (listBody.data.length > 0) {
-        createdUserId = listBody.data[listBody.data.length - 1].id;
+      // Pick the invited user by email. The list is ordered by created_at (1s resolution), so "the last row"
+      // can be the admin itself, which made 'should deactivate user' fail with 400 (self-deactivation).
+      const invited = listBody.data.find((u: any) => u.email === invitedEmail);
+      expect(invited).toBeDefined();
+      if (invited) {
+        createdUserId = invited.id;
         const res = await authRequest('GET', `/users/${createdUserId}`, adminToken);
         expect(res.status).toBe(200);
         const body: any = await res.json();

@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { HTTPException } from 'hono/http-exception';
 import { logger } from 'hono/logger';
 import { prettyJSON } from 'hono/pretty-json';
 import { secureHeaders } from 'hono/secure-headers';
@@ -290,7 +291,17 @@ app.notFound((c) => {
 
 // --- Global Error Handler ---
 
+// Hono throws HTTPException for client errors raised by middleware and validators (for example a malformed
+// JSON body -> 400). Those keep their own status and the standard error envelope; only unknown errors are 500.
+// The message of a 5xx HTTPException is never echoed back, and no stack is ever returned.
 app.onError((err, c) => {
+  if (err instanceof HTTPException) {
+    if (err.status >= 500) {
+      console.error('Unhandled HTTP error:', err);
+      return error(c, 'Internal server error', err.status);
+    }
+    return error(c, err.message || 'Bad request', err.status);
+  }
   console.error('Unhandled error:', err);
   return error(c, 'Internal server error', 500);
 });

@@ -11,24 +11,6 @@ import { requirePermission } from '../middleware/rbac';
 
 const templateRoutes = new Hono<AppContext>();
 
-/**
- * Columns of message_templates that exist in the migrated tenant schema. The Drizzle table also declares
- * is_system / whatsapp_template_sid / whatsapp_status / created_by, which no migration creates yet, so a bare
- * `.select()` or `.insert()` of the whole table fails with "no such column". Select this set explicitly instead.
- */
-export const templateColumns = {
-  id: messageTemplates.id,
-  channel: messageTemplates.channel,
-  name: messageTemplates.name,
-  subject: messageTemplates.subject,
-  content: messageTemplates.content,
-  variables: messageTemplates.variables,
-  category: messageTemplates.category,
-  language: messageTemplates.language,
-  isActive: messageTemplates.isActive,
-  createdAt: messageTemplates.createdAt,
-};
-
 // ============================================================
 // Zod Schemas
 // ============================================================
@@ -90,26 +72,21 @@ templateRoutes.post(
       const id = generateId();
       const now = new Date().toISOString();
 
-      await c.get('tenantDb')
-        .prepare(
-          `INSERT INTO message_templates (id, channel, name, subject, content, variables, category, language, is_active, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`
-        )
-        .bind(
-          id,
-          body.channel,
-          body.name,
-          body.subject || null,
-          body.content,
-          JSON.stringify(variables),
-          body.category || null,
-          body.language,
-          now
-        )
-        .run();
+      await db.insert(messageTemplates).values({
+        id,
+        channel: body.channel,
+        name: body.name,
+        subject: body.subject || null,
+        content: body.content,
+        variables: JSON.stringify(variables),
+        category: body.category || null,
+        language: body.language,
+        isActive: 1,
+        createdAt: now,
+      });
 
       const template = await db
-        .select(templateColumns)
+        .select()
         .from(messageTemplates)
         .where(eq(messageTemplates.id, id))
         .limit(1)
@@ -182,7 +159,7 @@ templateRoutes.get(
 
       // Fetch paginated templates
       const templates = await db
-        .select(templateColumns)
+        .select()
         .from(messageTemplates)
         .where(conditions.length > 0 ? and(...conditions) : undefined)
         .orderBy(desc(messageTemplates.createdAt))
@@ -212,7 +189,7 @@ templateRoutes.get('/:id', requirePermission('communications', 'view'), async (c
 
   try {
     const template = await db
-      .select(templateColumns)
+      .select()
       .from(messageTemplates)
       .where(eq(messageTemplates.id, id))
       .limit(1)
@@ -248,7 +225,7 @@ templateRoutes.put(
     try {
       // Verify template exists
       const existing = await db
-        .select(templateColumns)
+        .select()
         .from(messageTemplates)
         .where(eq(messageTemplates.id, id))
         .limit(1)
@@ -298,7 +275,7 @@ templateRoutes.put(
         .where(eq(messageTemplates.id, id));
 
       const updated = await db
-        .select(templateColumns)
+        .select()
         .from(messageTemplates)
         .where(eq(messageTemplates.id, id))
         .limit(1)
@@ -326,7 +303,7 @@ templateRoutes.delete('/:id', requirePermission('communications', 'create'), asy
   try {
     // Verify template exists
     const existing = await db
-      .select(templateColumns)
+      .select()
       .from(messageTemplates)
       .where(eq(messageTemplates.id, id))
       .limit(1)

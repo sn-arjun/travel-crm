@@ -17,7 +17,6 @@ import {
 import { generateId } from '../utils/uuid';
 import { success, created, paginated, error, notFound } from '../utils/response';
 import { requirePermission } from '../middleware/rbac';
-import { templateColumns } from './templates';
 import { substituteVariables, resolveVariables } from '../services/template-engine';
 
 const communicationRoutes = new Hono<AppContext>();
@@ -177,7 +176,7 @@ communicationRoutes.post(
     try {
       // Fetch template
       const template = await db
-        .select(templateColumns)
+        .select()
         .from(messageTemplates)
         .where(eq(messageTemplates.id, body.template_id))
         .limit(1)
@@ -411,7 +410,7 @@ communicationRoutes.post(
 
       if (body.template_id) {
         const template = await db
-          .select(templateColumns)
+          .select()
           .from(messageTemplates)
           .where(eq(messageTemplates.id, body.template_id))
           .limit(1)
