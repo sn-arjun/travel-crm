@@ -1,11 +1,12 @@
 import { client, type ApiResponse, type PaginatedResponse } from './client';
+import { camelizeKeys, unwrapList } from './envelope';
 import { API_ENDPOINTS } from './config';
 import type { Contact } from '@travelcrm/shared';
 
 export interface CreateContactRequest {
   name: string;
-  email?: string;
-  phone?: string;
+  email?: string | null;
+  phone?: string | null;
   company?: string;
   type: 'customer' | 'supplier' | 'agent' | 'partner';
   address?: string;
@@ -24,18 +25,21 @@ export interface CreateContactRequest {
 
 export interface UpdateContactRequest {
   name?: string;
-  email?: string;
-  phone?: string;
-  company?: string;
+  email?: string | null;
+  phone?: string | null;
+  company?: string | null;
   type?: 'customer' | 'supplier' | 'agent' | 'partner';
-  address?: string;
-  city?: string;
-  state?: string;
-  country?: string;
-  postalCode?: string;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  postalCode?: string | null;
   tags?: string[];
-  notes?: string;
-  source?: string;
+  notes?: string | null;
+  source?: string | null;
+  birthday?: string | null;
+  anniversary?: string | null;
+  preferredLanguage?: string;
   customFields?: Record<string, unknown>;
 }
 
@@ -64,12 +68,101 @@ export interface ShareContactRequest {
   note?: string;
 }
 
+/** One row of GET /contacts/:id/timeline (leads, invoices, payments, messages and audit activity). */
 export interface ContactTimeline {
   id: string;
-  type: string;
-  description: string;
+  type: 'lead' | 'invoice' | 'payment' | 'message' | 'activity' | (string & {});
+  title: string;
+  description?: string | null;
+  /** Raw detail: a status for leads/invoices, a JSON blob for activity rows. */
+  metadata?: string | null;
   createdAt: string;
-  createdBy: string;
+  createdByName?: string | null;
+}
+
+/** A contact as returned by GET /contacts/:id (shared Contact plus detail-only fields). */
+export interface ContactRecord extends Contact {
+  postalCode?: string | null;
+  createdByName?: string | null;
+  leadsCount?: number;
+  invoicesCount?: number;
+  /** Sum of payments received from this contact. */
+  paymentsTotal?: number;
+  customFields?: Record<string, string>;
+}
+
+export interface RelatedLead {
+  id: string;
+  title: string;
+  destinations?: string[];
+  travelDate?: string | null;
+  budget?: number | null;
+  currency?: string | null;
+  status: string;
+  priority?: string | null;
+  assignedToName?: string | null;
+}
+
+export interface RelatedItinerary {
+  id: string;
+  title: string;
+  status: string;
+  daysCount?: number | null;
+  grandTotal?: number | null;
+  currency?: string | null;
+  leadTitle?: string | null;
+}
+
+export interface RelatedInvoice {
+  id: string;
+  invoiceNumber: string;
+  total?: number | null;
+  currency?: string | null;
+  status: string;
+  dueDate?: string | null;
+  createdAt?: string | null;
+}
+
+export interface RelatedPayment {
+  id: string;
+  amount: number;
+  currency?: string | null;
+  method?: string | null;
+  reference?: string | null;
+  date?: string | null;
+  invoiceId?: string | null;
+  invoiceNumber?: string | null;
+}
+
+export interface RelatedDocument {
+  id: string;
+  name: string;
+  category?: string | null;
+  mimeType?: string | null;
+  size?: number | null;
+  createdAt?: string | null;
+}
+
+export interface RelatedFollowUp {
+  id: string;
+  leadId: string;
+  leadTitle?: string | null;
+  type: string;
+  notes?: string | null;
+  scheduledAt: string;
+  completedAt?: string | null;
+  status?: string | null;
+}
+
+/** Fetches one page of a related collection, filtered server-side by contactId. */
+async function fetchRelated<T>(
+  endpoint: string,
+  contactId: string,
+  params: Record<string, string | number | undefined> = {},
+  limit = 20,
+): Promise<PaginatedResponse<T>> {
+  const res = await client.get<unknown>(endpoint, { params: { contactId, limit, ...params } });
+  return unwrapList<T>(camelizeKeys(res));
 }
 
 export interface CustomFieldDef {
@@ -102,7 +195,7 @@ export const contactsApi = {
     client.get<ApiResponse<PaginatedResponse<Contact>>>(API_ENDPOINTS.contacts.list, { params }),
 
   getById: (id: string) =>
-    client.get<ApiResponse<Contact>>(API_ENDPOINTS.contacts.byId(id)),
+    client.get<ApiResponse<ContactRecord>>(API_ENDPOINTS.contacts.byId(id)),
 
   create: (data: CreateContactRequest) =>
     client.post<ApiResponse<Contact>>(API_ENDPOINTS.contacts.create, data),
@@ -112,6 +205,21 @@ export const contactsApi = {
 
   delete: (id: string) =>
     client.delete<ApiResponse<void>>(API_ENDPOINTS.contacts.byId(id)),
+
+  /** Real related records for the contact detail page - always server-filtered by contactId. */
+  related: {
+    leads: (contactId: string, params?: { status?: string; limit?: number }) =>
+      fetchRelated<RelatedLead>('/leads', contactId, { status: params?.status }, params?.limit ?? 20),
+    itineraries: (contactId: string) => fetchRelated<RelatedItinerary>('/itineraries', contactId),
+    invoices: (contactId: string) => fetchRelated<RelatedInvoice>('/invoices', contactId),
+    payments: (contactId: string) => fetchRelated<RelatedPayment>('/payments', contactId),
+    documents: (contactId: string) => fetchRelated<RelatedDocument>('/documents', contactId),
+    followUps: async (contactId: string): Promise<PaginatedResponse<RelatedFollowUp>> => {
+      // /follow-ups has no paging: it answers with every pending follow-up of the contact's leads.
+      const all = await fetchRelated<RelatedFollowUp>('/follow-ups', contactId, {}, 100);
+      return { data: all.data.slice(0, 20), pagination: { ...all.pagination, total: all.data.length } };
+    },
+  },
 
   getTimeline: (id: string) =>
     client.get<ApiResponse<ContactTimeline[]>>(API_ENDPOINTS.contacts.timeline(id)),

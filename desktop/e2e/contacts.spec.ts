@@ -1,6 +1,7 @@
 import { test, expect } from './fixtures';
 import { waitForLoad, getAuthToken, API_URL } from './helpers/auth';
 import { seedContact, api } from './helpers/api-seed';
+import { pickDate } from './helpers/date-picker';
 
 test.describe('Contacts', () => {
   // ─────────────────────────────────────────────────────────────
@@ -42,8 +43,8 @@ test.describe('Contacts', () => {
     await page.locator('#postalCode').fill('400001');
 
     // Dates
-    await page.locator('#birthday').fill('1992-05-15');
-    await page.locator('#anniversary').fill('2020-12-25');
+    await pickDate(page, page.locator('#birthday'), new Date(1992, 4, 15));
+    await pickDate(page, page.locator('#anniversary'), new Date(2020, 11, 25));
 
     // Preferred language combobox
     const langBtn = page.locator('button:has-text("English")');
@@ -129,7 +130,8 @@ test.describe('Contacts', () => {
     expect(fetched.data.name).toBe(updatedName);
 
     // 5. Delete, assert it is gone
-    await page.getByRole('button', { name: /Delete/i }).first().click();
+    await page.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: /Delete contact/i }).click();
     const confirmBtn = page.locator('[role="dialog"] button:has-text("Delete"), [role="alertdialog"] button:has-text("Delete")').first();
     await expect(confirmBtn).toBeVisible({ timeout: 5_000 });
     await confirmBtn.click();
@@ -472,20 +474,33 @@ test.describe('Contacts', () => {
   // for surface area not covered by the main round-trip UI test
   // ─────────────────────────────────────────────────────────────
 
-  test('detail page shows all 8 tabs', async ({ page }) => {
-    const contact = await seedContact({ name: `Tabs360-${Date.now()}`, email: `tabs-${Date.now()}@e2e.test`, phone: '+919000100001' });
+  test('detail page shows real related lists (server-filtered by contactId) and honest empty states', async ({ page }) => {
+    const contact = await seedContact({ name: `Tabs360-${Date.now()}`, email: `tabs-${Date.now()}@e2e.test`, phone: '+919000100001', city: 'Pune' });
+
+    const relatedRequests: string[] = [];
+    page.on('request', (req) => {
+      if (/\/api\/v1\/(leads|itineraries|invoices|payments|follow-ups|documents)\?/.test(req.url())) relatedRequests.push(req.url());
+    });
 
     await page.goto(`/contacts/${contact.id}`);
     await waitForLoad(page);
 
     await expect(page.getByRole('tab', { name: /Overview/i })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole('tab', { name: /Leads/i })).toBeVisible();
-    await expect(page.getByRole('tab', { name: /Itineraries/i })).toBeVisible();
-    await expect(page.getByRole('tab', { name: /Invoices/i })).toBeVisible();
-    await expect(page.getByRole('tab', { name: /Payments/i })).toBeVisible();
-    await expect(page.getByRole('tab', { name: /Communications/i })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /Activity/i })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /Related/i })).toBeVisible();
     await expect(page.getByRole('tab', { name: /Documents/i })).toBeVisible();
-    await expect(page.getByRole('tab', { name: /Timeline/i })).toBeVisible();
+
+    // City entered at creation is shown; a contact with no payments shows a plain zero, never a mock figure
+    await expect(page.locator('text=Pune').first()).toBeVisible();
+    await expect(page.getByText('₹0', { exact: true }).first()).toBeVisible();
+
+    await page.getByRole('tab', { name: /Related/i }).click();
+    await expect(page.getByTestId('contact-leads-empty')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('contact-payments-empty')).toBeVisible();
+    await expect(page.getByTestId('contact-invoices-empty')).toBeVisible();
+
+    expect(relatedRequests.length).toBeGreaterThanOrEqual(6);
+    for (const url of relatedRequests) expect(url).toContain(`contactId=${contact.id}`);
   });
 
   test('timeline includes creation activity via API', async () => {

@@ -2,39 +2,118 @@
 
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Loader2, Merge, Search, ArrowRight, CheckCircle2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { cn } from '@/lib/utils';
-import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { contactsApi, type MergeContactRequest } from '@/lib/api/contacts';
-import type { Contact } from '@travelcrm/shared';
+import { ArrowLeft, CheckCircle2, Merge, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
-function getInitials(name: string) {
-  return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
-}
+import { PageContainer } from '@/components/layout/page-container';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Input } from '@/components/ui/input';
+import { PageHeader } from '@/components/ui/page-header';
+import { SectionCard } from '@/components/ui/section-card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tag } from '@/components/ui/tag';
+import { useApiQuery } from '@/hooks/use-api';
+import { contactsApi, type ContactRecord } from '@/lib/api/contacts';
+import { unwrapList } from '@/lib/api/envelope';
+import { cn, getInitials } from '@/lib/utils';
 
-const MERGE_FIELDS = [
-  { key: 'firstName', label: 'First Name' },
-  { key: 'lastName', label: 'Last Name' },
+type Side = 'primary' | 'secondary';
+
+const MERGE_FIELDS: { key: keyof ContactRecord; label: string }[] = [
+  { key: 'name', label: 'Name' },
   { key: 'email', label: 'Email' },
   { key: 'phone', label: 'Phone' },
+  { key: 'company', label: 'Company' },
   { key: 'type', label: 'Type' },
+  { key: 'city', label: 'City' },
   { key: 'notes', label: 'Notes' },
 ];
 
-export default function ContactMergePageWrapper() {
+function fieldValue(contact: ContactRecord | undefined, key: keyof ContactRecord): string {
+  const v = contact?.[key];
+  return typeof v === 'string' && v ? v : '-';
+}
+
+interface ContactPickerProps {
+  side: Side;
+  heading: string;
+  selected: ContactRecord | undefined;
+  excludeId: string;
+  onSelect: (id: string) => void;
+  onClear: () => void;
+}
+
+function ContactPicker({ side, heading, selected, excludeId, onSelect, onClear }: ContactPickerProps) {
+  const [search, setSearch] = React.useState('');
+  const { data, loading } = useApiQuery(
+    () => contactsApi.list({ page: 1, limit: 10, search: search || undefined }),
+    [search],
+  );
+  const results = React.useMemo(
+    () => unwrapList<ContactRecord>(data).data.filter((c) => c.id !== excludeId),
+    [data, excludeId],
+  );
+
   return (
-    <React.Suspense fallback={<div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>}>
-      <ContactMergePage />
-    </React.Suspense>
+    <SectionCard
+      title={heading}
+      actions={<Tag tone={side === 'primary' ? 'info' : 'warning'}>{side === 'primary' ? 'Primary' : 'Secondary'}</Tag>}
+    >
+      {selected ? (
+        <div className="flex items-center gap-ds-3 rounded-ds-md border border-ds-border p-ds-3">
+          <Avatar className="size-10">
+            <AvatarFallback>{getInitials(selected.name)}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">{selected.name}</p>
+            <p className="truncate text-xs text-ds-foreground-muted">{selected.email || selected.phone || ''}</p>
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => { onClear(); setSearch(''); }}>Change</Button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-ds-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ds-foreground-muted" aria-hidden="true" />
+            <Input
+              aria-label={`Search ${side} contact`}
+              placeholder="Search contacts..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-9 pl-9"
+            />
+          </div>
+          {search && (
+            <div className="max-h-48 overflow-auto rounded-ds-md border border-ds-border" role="listbox" aria-label="Matching contacts">
+              {loading && <Skeleton className="m-ds-2 h-8" />}
+              {!loading && results.length === 0 && (
+                <p className="p-ds-3 text-sm text-ds-foreground-muted">No contacts match.</p>
+              )}
+              {results.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  role="option"
+                  aria-selected={false}
+                  onClick={() => { onSelect(c.id); setSearch(''); }}
+                  className="flex w-full items-center gap-ds-3 p-ds-2 text-left hover:bg-ds-surface-sunken"
+                >
+                  <Avatar className="size-8">
+                    <AvatarFallback className="text-xs">{getInitials(c.name)}</AvatarFallback>
+                  </Avatar>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium">{c.name}</span>
+                    <span className="block truncate text-xs text-ds-foreground-muted">{c.email || c.phone || ''}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </SectionCard>
   );
 }
 
@@ -42,310 +121,138 @@ function ContactMergePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [search1, setSearch1] = React.useState('');
-  const [search2, setSearch2] = React.useState('');
-  const [contact1Id, setContact1Id] = React.useState(searchParams.get('primary') ?? '');
-  const [contact2Id, setContact2Id] = React.useState(searchParams.get('secondary') ?? '');
-  const [fieldSelection, setFieldSelection] = React.useState<Record<string, 'primary' | 'secondary'>>({});
-  const [isConfirmOpen, setIsConfirmOpen] = React.useState(false);
+  const [primaryId, setPrimaryId] = React.useState(searchParams.get('primary') ?? '');
+  const [secondaryId, setSecondaryId] = React.useState(searchParams.get('secondary') ?? '');
+  const [selection, setSelection] = React.useState<Record<string, Side>>({});
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
 
-  // Search contacts
-  const { data: searchResponse1 } = useApiQuery(
-    () => contactsApi.list({ page: 1, limit: 10, search: search1 || undefined }),
-    [search1],
+  const primaryQuery = useApiQuery(
+    () => (primaryId ? contactsApi.getById(primaryId) : Promise.resolve(null)),
+    [primaryId],
   );
-  const { data: searchResponse2 } = useApiQuery(
-    () => contactsApi.list({ page: 1, limit: 10, search: search2 || undefined }),
-    [search2],
+  const secondaryQuery = useApiQuery(
+    () => (secondaryId ? contactsApi.getById(secondaryId) : Promise.resolve(null)),
+    [secondaryId],
   );
 
-  // Load selected contacts
-  const { data: contact1Response } = useApiQuery(
-    () => contact1Id ? contactsApi.getById(contact1Id) : Promise.resolve(null),
-    [contact1Id],
-  );
-  const { data: contact2Response } = useApiQuery(
-    () => contact2Id ? contactsApi.getById(contact2Id) : Promise.resolve(null),
-    [contact2Id],
-  );
+  const primary = primaryId ? primaryQuery.data?.data : undefined;
+  const secondary = secondaryId ? secondaryQuery.data?.data : undefined;
+  const bothSelected = !!primary && !!secondary;
 
-  // Merge preview
-  const { data: previewResponse } = useApiQuery(
-    () => (contact1Id && contact2Id) ? contactsApi.getMergePreview(contact1Id, contact2Id) : Promise.resolve(null),
-    [contact1Id, contact2Id],
-  );
-
-  const { mutate: mergeContacts, loading: isMerging } = useApiMutation<MergeContactRequest, any>(
-    (data) => contactsApi.merge(data),
-  );
-
-  const searchResults1: Contact[] = React.useMemo(() => {
-    if (!searchResponse1?.data) return [];
-    const d = searchResponse1.data;
-    return Array.isArray(d) ? d : (d as any)?.data ?? [];
-  }, [searchResponse1]);
-
-  const searchResults2: Contact[] = React.useMemo(() => {
-    if (!searchResponse2?.data) return [];
-    const d = searchResponse2.data;
-    return Array.isArray(d) ? d : (d as any)?.data ?? [];
-  }, [searchResponse2]);
-
-  const contact1 = (contact1Response as any)?.data as Contact | undefined;
-  const contact2 = (contact2Response as any)?.data as Contact | undefined;
-
-  // Initialize field selection
   React.useEffect(() => {
-    if (contact1 && contact2) {
-      const sel: Record<string, 'primary' | 'secondary'> = {};
-      MERGE_FIELDS.forEach((f) => {
-        sel[f.key] = 'primary'; // default to primary
-      });
-      setFieldSelection(sel);
+    if (primary && secondary) {
+      setSelection(Object.fromEntries(MERGE_FIELDS.map((f) => [f.key, 'primary' as Side])));
     }
-  }, [contact1, contact2]);
-
-  function getFieldValue(contact: Contact | undefined, field: string): string {
-    if (!contact) return '--';
-    return (contact as any)[field] ?? '--';
-  }
+  }, [primary, secondary]);
 
   async function handleMerge() {
-    if (!contact1Id || !contact2Id) return;
-
-    const result = await mergeContacts({
-      primaryId: contact1Id,
-      secondaryId: contact2Id,
-      mergeFields: fieldSelection,
-    });
-
-    if (result) {
+    try {
+      const res = await contactsApi.merge({ primaryId, secondaryId, mergeFields: selection });
       toast.success('Contacts merged successfully');
-      const data = (result as any)?.data;
-      router.push(`/contacts/${data?.id ?? contact1Id}`);
-    } else {
+      router.push(`/contacts/${res?.data?.id ?? primaryId}`);
+    } catch {
       toast.error('Failed to merge contacts');
+      throw new Error('merge failed');
     }
   }
 
-  const bothSelected = !!contact1 && !!contact2;
-
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
+    <PageContainer>
+      <PageHeader
+        title="Merge Contacts"
+        description="Select two contacts to merge into one"
+        back={
+          <Button variant="ghost" size="icon-sm" onClick={() => router.back()} aria-label="Go back">
+            <ArrowLeft aria-hidden="true" />
           </Button>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-              Merge Contacts
-            </h1>
-            <p className="text-sm text-muted-foreground">Select two contacts to merge into one</p>
-          </div>
+        }
+        actions={
+          bothSelected && (
+            <Button onClick={() => setConfirmOpen(true)}>
+              <Merge aria-hidden="true" /> Merge Contacts
+            </Button>
+          )
+        }
+      />
+
+      <div className="flex flex-col gap-ds-4">
+        <div className="grid gap-ds-4 lg:grid-cols-2">
+          <ContactPicker
+            side="primary"
+            heading="Contact to keep"
+            selected={primary}
+            excludeId={secondaryId}
+            onSelect={setPrimaryId}
+            onClear={() => setPrimaryId('')}
+          />
+          <ContactPicker
+            side="secondary"
+            heading="Contact to merge"
+            selected={secondary}
+            excludeId={primaryId}
+            onSelect={setSecondaryId}
+            onClear={() => setSecondaryId('')}
+          />
         </div>
+
         {bothSelected && (
-          <Button onClick={() => setIsConfirmOpen(true)}>
-            <Merge className="h-4 w-4 mr-1.5" /> Merge Contacts
-          </Button>
+          <SectionCard title="Field-by-field selection" description="Choose which value to keep for each field." flush>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-32">Field</TableHead>
+                  <TableHead>Primary (keep)</TableHead>
+                  <TableHead>Secondary (merge)</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {MERGE_FIELDS.map((f) => (
+                  <TableRow key={f.key}>
+                    <TableCell className="text-sm font-medium">{f.label}</TableCell>
+                    {(['primary', 'secondary'] as const).map((side) => {
+                      const chosen = selection[f.key] === side;
+                      return (
+                        <TableCell key={side} className="p-0">
+                          <button
+                            type="button"
+                            aria-pressed={chosen}
+                            onClick={() => setSelection((prev) => ({ ...prev, [f.key]: side }))}
+                            className={cn(
+                              'flex w-full items-center gap-ds-2 px-ds-4 py-ds-3 text-left text-sm transition-colors',
+                              chosen ? 'bg-ds-primary-subtle font-semibold text-ds-primary-on-subtle' : 'hover:bg-ds-surface-sunken',
+                            )}
+                          >
+                            {chosen && <CheckCircle2 className="size-4 shrink-0" aria-hidden="true" />}
+                            {fieldValue(side === 'primary' ? primary : secondary, f.key)}
+                          </button>
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </SectionCard>
         )}
       </div>
 
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-5xl mx-auto space-y-6">
-          {/* Contact Selection */}
-          <div className="grid grid-cols-2 gap-6">
-            {/* Primary Contact */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Badge className="text-xs bg-blue-100 text-blue-900">Primary</Badge>
-                  Contact to Keep
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {contact1 ? (
-                  <div className="flex items-center gap-3 p-3 border rounded-lg">
-                    <Avatar className="h-10 w-10">
-                      <AvatarFallback>{getInitials(contact1.name)}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1">
-                      <p className="font-medium text-sm">{contact1.name}</p>
-                      <p className="text-xs text-muted-foreground">{contact1.email || contact1.phone || ''}</p>
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={() => { setContact1Id(''); setSearch1(''); }}>Change</Button>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        placeholder="Search contacts..."
-                        value={search1}
-                        onChange={(e) => setSearch1(e.target.value)}
-                        className="pl-9 h-9"
-                      />
-                    </div>
-                    {search1 && searchResults1.length > 0 && (
-                      <div className="border rounded-lg max-h-48 overflow-auto">
-                        {searchResults1.filter((c) => c.id !== contact2Id).map((c) => (
-                          <div
-                            key={c.id}
-                            className="flex items-center gap-3 p-2 hover:bg-muted/50 cursor-pointer"
-                            onClick={() => { setContact1Id(c.id); setSearch1(''); }}
-                          >
-                            <Avatar className="h-8 w-8">
-                              <AvatarFallback className="text-xs">{getInitials(c.name)}</AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <p className="text-sm font-medium">{c.name}</p>
-                              <p className="text-xs text-muted-foreground">{c.email || c.phone || ''}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="Confirm merge"
+        description={`${secondary?.name ?? 'The secondary contact'} will be merged into ${primary?.name ?? 'the primary contact'} and then deleted. Its leads, invoices and follow-ups move to the primary contact. This cannot be undone.`}
+        confirmLabel="Confirm Merge"
+        tone="destructive"
+        onConfirm={handleMerge}
+      />
+    </PageContainer>
+  );
+}
 
-            {/* Secondary Contact */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Badge className="text-xs bg-amber-100 text-amber-900">Secondary</Badge>
-                  Contact to Merge
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {contact2 ? (
-                  <div className="flex items-center gap-3 p-3 border rounded-lg">
-                    <Avatar className="h-10 w-10">
-                      <AvatarFallback>{getInitials(contact2.name)}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1">
-                      <p className="font-medium text-sm">{contact2.name}</p>
-                      <p className="text-xs text-muted-foreground">{contact2.email || contact2.phone || ''}</p>
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={() => { setContact2Id(''); setSearch2(''); }}>Change</Button>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        placeholder="Search contacts..."
-                        value={search2}
-                        onChange={(e) => setSearch2(e.target.value)}
-                        className="pl-9 h-9"
-                      />
-                    </div>
-                    {search2 && searchResults2.length > 0 && (
-                      <div className="border rounded-lg max-h-48 overflow-auto">
-                        {searchResults2.filter((c) => c.id !== contact1Id).map((c) => (
-                          <div
-                            key={c.id}
-                            className="flex items-center gap-3 p-2 hover:bg-muted/50 cursor-pointer"
-                            onClick={() => { setContact2Id(c.id); setSearch2(''); }}
-                          >
-                            <Avatar className="h-8 w-8">
-                              <AvatarFallback className="text-xs">{getInitials(c.name)}</AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <p className="text-sm font-medium">{c.name}</p>
-                              <p className="text-xs text-muted-foreground">{c.email || c.phone || ''}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Field-by-Field Comparison */}
-          {bothSelected && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Field-by-Field Selection</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Choose which value to keep for each field. Click on a cell to select it.
-                </p>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-32">Field</TableHead>
-                      <TableHead>Primary (Keep)</TableHead>
-                      <TableHead>Secondary (Merge)</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {MERGE_FIELDS.map((f) => (
-                      <TableRow key={f.key}>
-                        <TableCell className="text-sm font-medium">{f.label}</TableCell>
-                        <TableCell
-                          className={cn(
-                            'text-sm cursor-pointer transition-colors',
-                            fieldSelection[f.key] === 'primary' ? 'bg-blue-50 dark:bg-blue-900/20 font-semibold' : 'hover:bg-muted/50',
-                          )}
-                          onClick={() => setFieldSelection((prev) => ({ ...prev, [f.key]: 'primary' }))}
-                        >
-                          <div className="flex items-center gap-2">
-                            {fieldSelection[f.key] === 'primary' && <CheckCircle2 className="h-4 w-4 text-blue-600 shrink-0" />}
-                            {getFieldValue(contact1, f.key)}
-                          </div>
-                        </TableCell>
-                        <TableCell
-                          className={cn(
-                            'text-sm cursor-pointer transition-colors',
-                            fieldSelection[f.key] === 'secondary' ? 'bg-amber-50 dark:bg-amber-900/20 font-semibold' : 'hover:bg-muted/50',
-                          )}
-                          onClick={() => setFieldSelection((prev) => ({ ...prev, [f.key]: 'secondary' }))}
-                        >
-                          <div className="flex items-center gap-2">
-                            {fieldSelection[f.key] === 'secondary' && <CheckCircle2 className="h-4 w-4 text-amber-600 shrink-0" />}
-                            {getFieldValue(contact2, f.key)}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      </div>
-
-      {/* Confirm Dialog */}
-      <Dialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Confirm Merge</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              This will merge <strong>{contact2?.name}</strong> into <strong>{contact1?.name}</strong>.
-            </p>
-            <p className="text-sm text-muted-foreground">
-              The secondary contact will be deleted and all associated data (leads, follow-ups, etc.) will be transferred to the primary contact.
-            </p>
-            <p className="text-sm font-medium text-destructive">This action cannot be undone.</p>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsConfirmOpen(false)} disabled={isMerging}>Cancel</Button>
-            <Button onClick={handleMerge} disabled={isMerging}>
-              {isMerging && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
-              Confirm Merge
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+export default function ContactMergePageWrapper() {
+  return (
+    <React.Suspense fallback={<PageContainer><Skeleton className="h-64 w-full" /></PageContainer>}>
+      <ContactMergePage />
+    </React.Suspense>
   );
 }
