@@ -13,7 +13,10 @@ import { generateId } from '../utils/uuid';
 import { AIRouter } from '../services/ai-router';
 import { rbac } from '../middleware/rbac';
 
+import { aiAwareErrorHandler } from '../utils/ai-unavailable';
+
 const marketingSuggestionRoutes = new Hono<AppContext>();
+marketingSuggestionRoutes.onError(aiAwareErrorHandler);
 
 // ── Schemas ───────────────────────────────────────────────────
 

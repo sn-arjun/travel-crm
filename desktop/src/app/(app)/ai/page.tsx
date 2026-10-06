@@ -19,6 +19,7 @@ import { PageContainer } from '@/components/layout/page-container';
 import { PageHeader } from '@/components/ui/page-header';
 import { AiGate } from '@/components/domain/ai/ai-gate';
 import { AiQuotaBadge } from '@/components/domain/ai/quota-badge';
+import { AiAvailabilityBanner } from '@/components/domain/ai/ai-availability-banner';
 
 const TONE_CLASSES = {
   info: 'bg-ds-info-subtle text-ds-info-on-subtle',
@@ -110,6 +111,7 @@ export default function AIHubPage() {
       />
 
       <AiGate>
+        <AiAvailabilityBanner note="Tools that only read existing data still work." />
         <div className="flex items-center gap-ds-3 rounded-ds-lg border border-ds-border bg-ds-primary-subtle p-ds-4">
           <Brain className="size-8 text-ds-primary" aria-hidden="true" />
           <div>

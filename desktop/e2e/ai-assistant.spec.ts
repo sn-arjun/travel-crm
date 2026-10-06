@@ -92,11 +92,16 @@ test.describe('AI Message Composer', () => {
     await Promise.race([
       page.locator('button:has-text("Send")').waitFor({ timeout: 45_000 }),
       page.locator('text=/Failed to compose/i').waitFor({ timeout: 45_000 }),
+      page.getByTestId('ai-unavailable').waitFor({ timeout: 45_000 }),
     ]).catch(() => {});
 
     const composed = await page.locator('button:has-text("Send")').isVisible().catch(() => false);
     if (!composed) {
-      test.skip(true, 'AI compose endpoint did not return a result in time (provider unavailable in this env)');
+      // No AI provider in this environment: the page must say so plainly (no fake result, no error toast).
+      const notice = page.getByTestId('ai-unavailable');
+      await expect(notice).toBeVisible();
+      await expect(notice).toContainText(/AI is not configured yet/i);
+      return;
     }
 
     // Open the send dialog — must be SendMessageDialog-equivalent flow through
@@ -158,11 +163,16 @@ test.describe('AI Lead Extraction', () => {
     await Promise.race([
       page.locator('button:has-text("Create Lead")').waitFor({ timeout: 45_000 }),
       page.locator('text=/Failed to extract/i').waitFor({ timeout: 45_000 }),
+      page.getByTestId('ai-unavailable').waitFor({ timeout: 45_000 }),
     ]).catch(() => {});
 
     const extracted = await page.locator('button:has-text("Create Lead")').isVisible().catch(() => false);
     if (!extracted) {
-      test.skip(true, 'AI extraction endpoint did not return a result in time (provider unavailable in this env)');
+      // No AI provider in this environment: the page must say so plainly (no fake result, no error toast).
+      const notice = page.getByTestId('ai-unavailable');
+      await expect(notice).toBeVisible();
+      await expect(notice).toContainText(/AI is not configured yet/i);
+      return;
     }
 
     // The extracted-data panel rendered a result (fields shown depend on the
@@ -206,11 +216,16 @@ test.describe('AI Itinerary Generator', () => {
     await Promise.race([
       page.locator('button:has-text("Save")').waitFor({ timeout: 45_000 }),
       page.locator('text=/Failed to generate/i').waitFor({ timeout: 45_000 }),
+      page.getByTestId('ai-unavailable').waitFor({ timeout: 45_000 }),
     ]).catch(() => {});
 
     const generated = await page.locator('button:has-text("Save")').isVisible().catch(() => false);
     if (!generated) {
-      test.skip(true, 'AI itinerary endpoint did not return a result in time (provider unavailable in this env)');
+      // No AI provider in this environment: the page must say so plainly (no fake result, no error toast).
+      const notice = page.getByTestId('ai-unavailable');
+      await expect(notice).toBeVisible();
+      await expect(notice).toContainText(/AI is not configured yet/i);
+      return;
     }
 
     await page.locator('button:has-text("Save")').click();
@@ -259,11 +274,16 @@ test.describe('AI Natural Language Search', () => {
     await Promise.race([
       page.locator('text=Answer').waitFor({ timeout: 45_000 }),
       page.locator('text=/Failed to process/i').waitFor({ timeout: 45_000 }),
+      page.getByTestId('ai-unavailable').waitFor({ timeout: 45_000 }),
     ]).catch(() => {});
 
     const answered = await page.locator('text=Answer').isVisible().catch(() => false);
     if (!answered) {
-      test.skip(true, 'AI NL query endpoint did not return a result in time (provider unavailable in this env)');
+      // No AI provider in this environment: the page must say so plainly (no fake result, no error toast).
+      const notice = page.getByTestId('ai-unavailable');
+      await expect(notice).toBeVisible();
+      await expect(notice).toContainText(/AI is not configured yet/i);
+      return;
     }
     await expect(page.locator('text=/How many leads did we get this month/i')).toBeVisible();
 
@@ -276,6 +296,7 @@ test.describe('AI Natural Language Search', () => {
     await Promise.race([
       page.locator('text=Recent Queries').waitFor({ timeout: 45_000 }),
       page.locator('text=/Failed to process/i').waitFor({ timeout: 45_000 }),
+      page.getByTestId('ai-unavailable').waitFor({ timeout: 45_000 }),
     ]).catch(() => {});
 
     const hasHistory = await page.locator('text=Recent Queries').isVisible().catch(() => false);

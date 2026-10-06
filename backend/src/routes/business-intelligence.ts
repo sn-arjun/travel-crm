@@ -13,7 +13,10 @@ import { generateId } from '../utils/uuid';
 import { AIRouter, type AITask } from '../services/ai-router';
 import { incrementUsage } from '../middleware/usage-cap';
 
+import { aiAwareErrorHandler } from '../utils/ai-unavailable';
+
 const app = new Hono<AppContext>();
+app.onError(aiAwareErrorHandler);
 
 // ============================================================
 // BRIEFINGS (TICKET-482–485)

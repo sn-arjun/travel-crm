@@ -17,8 +17,11 @@ import { AreaChart, DataTable, EmptyState, PageHeader, SectionCard, Stat, Tag } 
 import type { DataTableColumn } from '@/components/ui';
 import { useApiQuery } from '@/hooks/use-api';
 import { AiGate } from '@/components/domain/ai/ai-gate';
+import { AiAvailabilityBanner } from '@/components/domain/ai/ai-availability-banner';
+import { AiUnavailableNotice } from '@/components/domain/ai/ai-unavailable-notice';
 import {
   aiApi,
+  isAiUnavailableError,
   type CashFlowForecast,
   type HealthScoreResult,
   type LeadSourceRoi,
@@ -73,9 +76,17 @@ function BiDashboardContent() {
     () => aiApi.bi.getTrendingDestinations({ limit: 3 }),
     [],
   );
-  const { data: cashFlowData, loading: cashFlowLoading } = useApiQuery(() => aiApi.bi.getCashFlowForecast(), []);
+  const {
+    data: cashFlowData,
+    loading: cashFlowLoading,
+    error: cashFlowError,
+  } = useApiQuery(() => aiApi.bi.getCashFlowForecast(), []);
   const { data: roiData, loading: roiLoading } = useApiQuery(() => aiApi.bi.getLeadSourceRoi(), []);
-  const { data: lostDealData, loading: lostDealLoading } = useApiQuery(
+  const {
+    data: lostDealData,
+    loading: lostDealLoading,
+    error: lostDealError,
+  } = useApiQuery(
     () => aiApi.bi.getLostDealAnalysis({ limit: 5 }),
     [],
   );
@@ -110,6 +121,7 @@ function BiDashboardContent() {
 
   return (
     <div className="flex flex-col gap-ds-6">
+      <AiAvailabilityBanner note="Revenue, trending destinations and lead source figures below are live data." />
       <div className="grid grid-cols-1 gap-ds-4 md:grid-cols-3">
         <Stat
           label="Health Score"
@@ -169,17 +181,21 @@ function BiDashboardContent() {
       </div>
 
       <SectionCard title="Cash-flow forecast" description="Projected inflow, outflow, and balance">
-        <AreaChart
-          data={cashFlow}
-          loading={cashFlowLoading}
-          categoryKey="period"
-          series={[
-            { dataKey: 'inflow', label: 'Inflow' },
-            { dataKey: 'outflow', label: 'Outflow' },
-            { dataKey: 'balance', label: 'Balance' },
-          ]}
-          emptyMessage="No cash-flow forecast available yet"
-        />
+        {isAiUnavailableError(cashFlowError) ? (
+          <AiUnavailableNotice error={cashFlowError} />
+        ) : (
+          <AreaChart
+            data={cashFlow}
+            loading={cashFlowLoading}
+            categoryKey="period"
+            series={[
+              { dataKey: 'inflow', label: 'Inflow' },
+              { dataKey: 'outflow', label: 'Outflow' },
+              { dataKey: 'balance', label: 'Balance' },
+            ]}
+            emptyMessage="No cash-flow forecast available yet"
+          />
+        )}
       </SectionCard>
 
       <div className="grid grid-cols-1 gap-ds-4 lg:grid-cols-2">
@@ -194,7 +210,9 @@ function BiDashboardContent() {
         </SectionCard>
 
         <SectionCard title="Lost deal analysis">
-          {lostDealLoading ? (
+          {isAiUnavailableError(lostDealError) ? (
+            <AiUnavailableNotice error={lostDealError} />
+          ) : lostDealLoading ? (
             <p className="text-xs text-ds-foreground-muted">Loading…</p>
           ) : lostDeals.length === 0 ? (
             <EmptyState title="No lost deal analysis available" />

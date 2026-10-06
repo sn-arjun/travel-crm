@@ -31,6 +31,22 @@ export type AITask = 'sentiment' | 'summary' | 'extraction' | 'coaching' | 'deal
 
 export type AIProvider = 'cloudflare' | 'anthropic';
 
+export const AI_UNAVAILABLE_CODE = 'AI_UNAVAILABLE';
+export const AI_UNAVAILABLE_MESSAGE = 'AI is not configured for this workspace yet.';
+
+/**
+ * Thrown when no AI provider can serve a request (no Workers AI binding / binding not functional,
+ * and no Anthropic key). Routes translate it into HTTP 503 with code AI_UNAVAILABLE. It is thrown
+ * BEFORE any usage/quota counter is incremented, and stub text is never returned as content.
+ */
+export class AiUnavailableError extends Error {
+  readonly code = AI_UNAVAILABLE_CODE;
+  constructor(message: string = AI_UNAVAILABLE_MESSAGE) {
+    super(message);
+    this.name = 'AiUnavailableError';
+  }
+}
+
 export interface ModelConfig {
   provider: AIProvider;
   model: string;
@@ -187,17 +203,9 @@ export class AIRouter {
     input: string,
     systemPrompt: string,
   ): Promise<AIResponse> {
-    // If AI binding is not available (e.g., local dev without CF AI), return a stub response
+    // No Workers AI binding (e.g. local dev / e2e config): there is no provider to answer.
     if (!this.env.AI) {
-      const stub = `{"note":"Cloudflare AI not available in this environment. Configure Workers AI binding."}`;
-      return {
-        result: stub,
-        model: config.model,
-        provider: 'cloudflare',
-        inputTokens: 0,
-        outputTokens: 0,
-        cost: 0,
-      };
+      throw new AiUnavailableError();
     }
 
     const messages = [
@@ -214,16 +222,8 @@ export class AIRouter {
       });
     } catch (aiErr) {
       // AI binding is present but not functional (e.g. local dev stub with --local flag)
-      // Return empty string so any downstream JSON.parse() uses its fallback
-      console.warn('[AI Router] Cloudflare AI run failed (likely --local mode):', (aiErr as Error).message);
-      return {
-        result: '',
-        model: config.model,
-        provider: 'cloudflare',
-        inputTokens: 0,
-        outputTokens: 0,
-        cost: 0,
-      };
+      console.warn('[AI Router] Cloudflare AI run failed:', (aiErr as Error).message);
+      throw new AiUnavailableError();
     }
 
     const text = response?.response || response?.result || '';
@@ -246,16 +246,8 @@ export class AIRouter {
     imageBase64: string,
     textPrompt: string,
   ): Promise<AIResponse> {
-    // If AI binding is not available, return a stub response
     if (!this.env.AI) {
-      return {
-        result: `{"note":"Cloudflare AI not available","category":"other","confidence":0}`,
-        model: config.model,
-        provider: 'cloudflare',
-        inputTokens: 0,
-        outputTokens: 0,
-        cost: 0,
-      };
+      throw new AiUnavailableError();
     }
 
     // Cloudflare vision model expects image as URL or base64
@@ -269,15 +261,8 @@ export class AIRouter {
         max_tokens: config.maxTokens,
       });
     } catch (aiErr) {
-      console.warn('[AI Router] Cloudflare Vision AI run failed (likely --local mode):', (aiErr as Error).message);
-      return {
-        result: '',
-        model: config.model,
-        provider: 'cloudflare',
-        inputTokens: 0,
-        outputTokens: 0,
-        cost: 0,
-      };
+      console.warn('[AI Router] Cloudflare Vision AI run failed:', (aiErr as Error).message);
+      throw new AiUnavailableError();
     }
 
     const text = response?.response || response?.description || '';
@@ -443,10 +428,12 @@ export class AIRouter {
   /**
    * Get a summary of provider status for diagnostics.
    */
-  getProviderStatus(): { anthropic: boolean; cloudflare: boolean; defaultProvider: AIProvider } {
+  getProviderStatus(): { anthropic: boolean; cloudflare: boolean; available: boolean; defaultProvider: AIProvider } {
+    const cloudflare = !!this.env.AI;
     return {
       anthropic: this.hasAnthropicKey,
-      cloudflare: true, // Always available via Workers AI binding
+      cloudflare,
+      available: this.hasAnthropicKey || cloudflare,
       defaultProvider: this.hasAnthropicKey ? 'anthropic' : 'cloudflare',
     };
   }

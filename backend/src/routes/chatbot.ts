@@ -11,7 +11,11 @@ import { success, error } from '../utils/response';
 import { generateId } from '../utils/uuid';
 import { AIRouter } from '../services/ai-router';
 
+import { aiAwareErrorHandler, aiUnavailableResponse } from '../utils/ai-unavailable';
+import { AiUnavailableError } from '../services/ai-router';
+
 const app = new Hono<AppContext>();
+app.onError(aiAwareErrorHandler);
 
 // ============================================================
 // CHATBOT CONFIG (TICKET-459, 475)
@@ -229,6 +233,7 @@ Always be friendly and professional. If you can't help, suggest speaking with a 
       },
     });
   } catch (e: any) {
+    if (e instanceof AiUnavailableError) return aiUnavailableResponse(c, e.message);
     return error(c, 'Chatbot error: ' + e.message, 500);
   }
 });

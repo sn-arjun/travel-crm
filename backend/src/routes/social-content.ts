@@ -12,7 +12,10 @@ import { success, created, error, notFound } from '../utils/response';
 import { generateId } from '../utils/uuid';
 import { AIRouter } from '../services/ai-router';
 
+import { aiAwareErrorHandler } from '../utils/ai-unavailable';
+
 const socialContentRoutes = new Hono<AppContext>();
+socialContentRoutes.onError(aiAwareErrorHandler);
 
 // ── Schemas ───────────────────────────────────────────────────
 

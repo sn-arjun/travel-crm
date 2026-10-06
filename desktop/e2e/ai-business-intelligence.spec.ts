@@ -184,10 +184,17 @@ test.describe('Business Health Score', () => {
 
     const recalcBtn = page.getByRole('button', { name: /recalculate|calculate now/i }).first();
     await recalcBtn.click();
-    await expect(page.locator('text=/Health score recalculated|Could not recalculate/i')).toBeVisible({
-      timeout: 20_000,
-    });
+    await expect(
+      page.locator('text=/Health score recalculated|Could not recalculate/i').or(page.getByTestId('ai-unavailable')),
+    ).toBeVisible({ timeout: 20_000 });
     await waitForLoad(page);
+
+    // No AI provider here: the page says so plainly instead of a toast or a made-up score.
+    if (await page.getByTestId('ai-unavailable').isVisible().catch(() => false)) {
+      await expect(page.getByTestId('ai-unavailable')).toContainText(/AI is not configured yet/i);
+      await assertNoLeakedError(page);
+      return;
+    }
 
     // Overall score renders as a number out of 100, and category breakdown is populated.
     await expect(page.locator('text=/100').first()).toBeVisible({ timeout: 10_000 });
@@ -268,6 +275,16 @@ test.describe('Team Performance', () => {
     }
 
     await expect(page.locator('h1, h2').filter({ hasText: /Team Performance/i }).first()).toBeVisible();
+
+    // The team scoring endpoint needs an AI provider; without one the page shows the honest notice.
+    await expect(page.getByTestId('ai-unavailable').or(page.locator('text=Total revenue'))).toBeVisible({
+      timeout: 15_000,
+    });
+    if (await page.getByTestId('ai-unavailable').isVisible().catch(() => false)) {
+      await expect(page.getByTestId('ai-unavailable')).toContainText(/AI is not configured yet/i);
+      await assertNoLeakedError(page);
+      return;
+    }
 
     await expect(page.locator('text=Total revenue')).toBeVisible();
     await expect(page.locator('text=Total deals closed')).toBeVisible();
@@ -356,9 +373,9 @@ test.describe('Customer Segments', () => {
     // Recalculate segments round-trips through the calculate endpoint.
     const recalcBtn = page.getByRole('button', { name: /recalculate segments/i }).first();
     await recalcBtn.click();
-    await expect(page.locator('text=/Customer segments recalculated|Could not recalculate/i')).toBeVisible({
-      timeout: 20_000,
-    });
+    await expect(
+      page.locator('text=/Customer segments recalculated|Could not recalculate/i').or(page.getByTestId('ai-unavailable')),
+    ).toBeVisible({ timeout: 20_000 });
     await waitForLoad(page);
 
     // Typing in the combobox filters options via the debounced search fetcher.
@@ -372,6 +389,15 @@ test.describe('Customer Segments', () => {
 
     // Selecting the contact fetches and renders their LTV.
     await page.locator('[role="option"], [cmdk-item]').filter({ hasText: contact.name }).first().click();
+    // With no AI provider the lookup answers with the honest notice instead of a made-up value.
+    await expect(page.getByText('Lifetime value', { exact: true }).or(page.getByTestId('ai-unavailable'))).toBeVisible({
+      timeout: 15_000,
+    });
+    if (await page.getByTestId('ai-unavailable').isVisible().catch(() => false)) {
+      await expect(page.getByTestId('ai-unavailable')).toContainText(/AI is not configured yet/i);
+      await assertNoLeakedError(page);
+      return;
+    }
     await expect(page.getByText('Lifetime value', { exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('Predicted value', { exact: true })).toBeVisible();
     await expect(page.getByText('Bookings', { exact: true })).toBeVisible();

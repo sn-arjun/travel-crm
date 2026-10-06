@@ -15,8 +15,11 @@ import {
 import type { DataTableColumn } from '@/components/ui';
 import { RelationCombobox } from '@/components/domain';
 import { AiGate } from '@/components/domain/ai/ai-gate';
-import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { aiApi, type CustomerLtv, type CustomerSegment } from '@/lib/api/ai';
+import { useApiQuery } from '@/hooks/use-api';
+import { aiApi, isAiUnavailableError, type AiUnavailableError, type CustomerLtv, type CustomerSegment } from '@/lib/api/ai';
+import { AiAvailabilityBanner } from '@/components/domain/ai/ai-availability-banner';
+import { AiUnavailableNotice } from '@/components/domain/ai/ai-unavailable-notice';
+import { useAiAvailability } from '@/components/domain/ai/use-ai-availability';
 import { contactsApi } from '@/lib/api/contacts';
 import type { Contact } from '@travelcrm/shared';
 
@@ -25,35 +28,48 @@ function SegmentsContent() {
   const [ltv, setLtv] = React.useState<CustomerLtv | null>(null);
 
   const { data, loading, refetch } = useApiQuery(() => aiApi.bi.getCustomerSegments(), []);
-  const { mutate: recalculate, loading: recalculating } = useApiMutation(() => aiApi.bi.calculateCustomerSegments());
-  const { mutate: fetchLtv, loading: ltvLoading } = useApiMutation((contactId: string) =>
-    aiApi.bi.getCustomerLtv(contactId),
-  );
+  const [recalculating, setRecalculating] = React.useState(false);
+  const [ltvLoading, setLtvLoading] = React.useState(false);
+  const [unavailable, setUnavailable] = React.useState<AiUnavailableError | null>(null);
+  const availability = useAiAvailability();
 
   const segments: CustomerSegment[] = (data as { data?: CustomerSegment[] })?.data ?? [];
 
   const handleRecalculate = async () => {
-    const result = await recalculate(undefined);
-    if (result) {
+    setRecalculating(true);
+    setUnavailable(null);
+    try {
+      await aiApi.bi.calculateCustomerSegments();
       toast.success('Customer segments recalculated');
       refetch();
-    } else {
-      toast.error('Could not recalculate customer segments');
+    } catch (err) {
+      if (isAiUnavailableError(err)) setUnavailable(err);
+      else toast.error('Could not recalculate customer segments');
+    } finally {
+      setRecalculating(false);
     }
   };
 
   const handleContactChange = async (id: string | null) => {
     setSelectedContactId(id);
     setLtv(null);
+    setUnavailable(null);
     if (!id) return;
-    const result = await fetchLtv(id);
-    const value = (result as { data?: CustomerLtv })?.data ?? null;
-    if (value) {
-      setLtv(value);
-    } else {
-      toast.error('Could not compute lifetime value for this customer');
+    setLtvLoading(true);
+    try {
+      const result = await aiApi.bi.getCustomerLtv(id);
+      const value = (result as { data?: CustomerLtv })?.data ?? null;
+      if (value) setLtv(value);
+      else toast.error('Could not compute lifetime value for this customer');
+    } catch (err) {
+      if (isAiUnavailableError(err)) setUnavailable(err);
+      else toast.error('Could not compute lifetime value for this customer');
+    } finally {
+      setLtvLoading(false);
     }
   };
+
+  const recalcDisabled = recalculating;
 
   const columns: DataTableColumn<CustomerSegment>[] = [
     { key: 'segment', header: 'Segment', sortable: true },
@@ -86,8 +102,18 @@ function SegmentsContent() {
 
   return (
     <div className="flex flex-col gap-ds-6">
+      <AiAvailabilityBanner note="Segments you already calculated stay available." />
+      {unavailable && (
+        <AiUnavailableNotice
+          error={unavailable}
+          onRetry={() => {
+            setUnavailable(null);
+            availability.recheck();
+          }}
+        />
+      )}
       <div className="flex justify-end">
-        <Button size="sm" className="gap-ds-2" onClick={handleRecalculate} disabled={recalculating}>
+        <Button size="sm" className="gap-ds-2" onClick={handleRecalculate} disabled={recalcDisabled}>
           <RotateCw className="size-4" aria-hidden="true" />
           {recalculating ? 'Recalculating…' : 'Recalculate segments'}
         </Button>
@@ -105,7 +131,7 @@ function SegmentsContent() {
               title="No customer segments yet"
               description="Recalculate segments to cluster your customers by value and behavior."
               action={
-                <Button size="sm" onClick={handleRecalculate} disabled={recalculating}>
+                <Button size="sm" onClick={handleRecalculate} disabled={recalcDisabled}>
                   Recalculate segments
                 </Button>
               }

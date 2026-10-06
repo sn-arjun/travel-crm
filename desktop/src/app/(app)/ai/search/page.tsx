@@ -8,7 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { aiApi, type NlQueryResult } from '@/lib/api/ai';
+import { aiApi, isAiUnavailableError, type AiUnavailableError, type NlQueryResult } from '@/lib/api/ai';
+import { AiUnavailableNotice } from '@/components/domain/ai/ai-unavailable-notice';
+import { useAiAvailability, useNotConfiguredError } from '@/components/domain/ai/use-ai-availability';
 import { PageHeader } from '@/components/ui/page-header';
 import { AiFeaturePageGate } from '@/components/domain/ai/ai-feature-page-gate';
 import { AiQuotaBadge } from '@/components/domain/ai/quota-badge';
@@ -27,6 +29,10 @@ function SearchContent() {
   const [loading, setLoading] = React.useState(false);
   const [result, setResult] = React.useState<NlQueryResult | null>(null);
   const [history, setHistory] = React.useState<NlQueryResult[]>([]);
+  const [unavailable, setUnavailable] = React.useState<AiUnavailableError | null>(null);
+  const availability = useAiAvailability();
+  const notConfigured = useNotConfiguredError();
+  const aiDown = availability.unavailable || unavailable !== null;
 
   const handleSearch = async (searchQuery?: string) => {
     const q = (searchQuery || query).trim();
@@ -37,12 +43,17 @@ function SearchContent() {
 
     setLoading(true);
     setResult(null);
+    setUnavailable(null);
 
     try {
       const response = await aiApi.intelligence.nlQuery({ query: q });
       setResult(response.data);
       setHistory((prev) => [response.data, ...prev.slice(0, 9)]);
     } catch (err) {
+      if (isAiUnavailableError(err)) {
+        setUnavailable(err);
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'Failed to process query';
       toast.error(msg);
     } finally {
@@ -147,7 +158,21 @@ function SearchContent() {
             </Card>
           )}
 
-          {!result && !loading && (
+          {aiDown && !loading && (
+            <Card>
+              <CardContent className="py-4">
+                <AiUnavailableNotice
+                  error={unavailable ?? notConfigured}
+                  onRetry={() => {
+                    setUnavailable(null);
+                    availability.recheck();
+                  }}
+                />
+              </CardContent>
+            </Card>
+          )}
+
+          {!result && !loading && !aiDown && (
             <Card>
               <CardContent className="py-12">
                 <div className="flex flex-col items-center justify-center text-muted-foreground">

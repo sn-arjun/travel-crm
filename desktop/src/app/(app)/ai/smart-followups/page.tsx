@@ -16,7 +16,10 @@ import { toast } from 'sonner';
 import { RelationCombobox } from '@/components/domain';
 import { Button, Card, CardContent, EmptyState, Separator, Skeleton, Tag } from '@/components/ui';
 import { useApiQuery } from '@/hooks/use-api';
-import { aiApi, type SmartFollowup } from '@/lib/api/ai';
+import { aiApi, isAiUnavailableError, type AiUnavailableError, type SmartFollowup } from '@/lib/api/ai';
+import { AiAvailabilityBanner } from '@/components/domain/ai/ai-availability-banner';
+import { AiUnavailableNotice } from '@/components/domain/ai/ai-unavailable-notice';
+import { useAiAvailability } from '@/components/domain/ai/use-ai-availability';
 import { leadsApi } from '@/lib/api/leads';
 import type { Lead } from '@travelcrm/shared';
 
@@ -30,6 +33,8 @@ function SmartFollowupsContent() {
   const [selectedLeadId, setSelectedLeadId] = React.useState<string | null>(null);
   const [generating, setGenerating] = React.useState(false);
   const [refetchKey, setRefetchKey] = React.useState(0);
+  const [unavailable, setUnavailable] = React.useState<AiUnavailableError | null>(null);
+  const availability = useAiAvailability();
 
   const { data, loading } = useApiQuery(() => aiApi.intelligence.listSmartFollowups(), [refetchKey]);
   const followups: SmartFollowup[] = data?.data ?? [];
@@ -40,12 +45,17 @@ function SmartFollowupsContent() {
       return;
     }
     setGenerating(true);
+    setUnavailable(null);
     try {
       await aiApi.intelligence.generateSmartFollowup(selectedLeadId);
       toast.success('Smart follow-up generated');
       setSelectedLeadId(null);
       setRefetchKey((k) => k + 1);
     } catch (err) {
+      if (isAiUnavailableError(err)) {
+        setUnavailable(err);
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'Failed to generate follow-up suggestion';
       toast.error(msg);
     } finally {
@@ -86,6 +96,17 @@ function SmartFollowupsContent() {
           AI-suggested follow-up actions and optimal timing for your leads
         </p>
       </div>
+
+      <AiAvailabilityBanner note="Existing follow-up suggestions stay available." />
+      {unavailable && (
+        <AiUnavailableNotice
+          error={unavailable}
+          onRetry={() => {
+            setUnavailable(null);
+            availability.recheck();
+          }}
+        />
+      )}
 
       <Card>
         <CardContent className="pt-ds-6">

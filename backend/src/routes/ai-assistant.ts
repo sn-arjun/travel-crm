@@ -14,7 +14,10 @@ import { generateId } from '../utils/uuid';
 import { AIRouter } from '../services/ai-router';
 import { incrementUsage } from '../middleware/usage-cap';
 
+import { aiAwareErrorHandler } from '../utils/ai-unavailable';
+
 const aiRoutes = new Hono<AppContext>();
+aiRoutes.onError(aiAwareErrorHandler);
 
 // ═══════════════════════════════════════════════════════════
 // CONVERSATIONS (TICKET-412)

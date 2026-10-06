@@ -9,10 +9,13 @@ import { z } from 'zod';
 import type { AppContext } from '../types';
 import { success, error } from '../utils/response';
 import { generateId } from '../utils/uuid';
-import { AIRouter } from '../services/ai-router';
+import { AIRouter, AiUnavailableError } from '../services/ai-router';
 import { incrementUsage } from '../middleware/usage-cap';
 
+import { aiAwareErrorHandler, aiUnavailableResponse } from '../utils/ai-unavailable';
+
 const app = new Hono<AppContext>();
+app.onError(aiAwareErrorHandler);
 
 // ============================================================
 // NL QUERY — "Ask Your CRM" (TICKET-439)
@@ -95,6 +98,8 @@ If the question can't be answered with a query, return { "sql": null, "explanati
       data: { id, query, sql: generatedSql, result: queryResult, narrative, entityTypes, model: result.model, cost: result.cost, durationMs, provider: result.provider },
     });
   } catch (e: any) {
+    // No provider: not an error worth logging as a failed query, and no usage is consumed.
+    if (e instanceof AiUnavailableError) return aiUnavailableResponse(c, e.message);
     await db.prepare(`
       INSERT INTO ai_nl_queries (id, user_id, query, status, error_message, duration_ms)
       VALUES (?, ?, ?, 'error', ?, ?)

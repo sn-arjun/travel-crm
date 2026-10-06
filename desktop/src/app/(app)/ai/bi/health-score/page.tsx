@@ -16,8 +16,11 @@ import {
 } from '@/components/ui';
 import { AiGate } from '@/components/domain/ai/ai-gate';
 import { cn } from '@/lib/utils';
-import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { aiApi, type HealthScoreResult, type HealthScoreHistoryEntry } from '@/lib/api/ai';
+import { useApiQuery } from '@/hooks/use-api';
+import { aiApi, isAiUnavailableError, type AiUnavailableError, type HealthScoreResult, type HealthScoreHistoryEntry } from '@/lib/api/ai';
+import { AiAvailabilityBanner } from '@/components/domain/ai/ai-availability-banner';
+import { AiUnavailableNotice } from '@/components/domain/ai/ai-unavailable-notice';
+import { useAiAvailability } from '@/components/domain/ai/use-ai-availability';
 
 function getScoreColor(score: number) {
   if (score >= 80) return 'text-ds-success';
@@ -43,29 +46,48 @@ function HealthScoreContent() {
     () => aiApi.bi.getHealthScoreHistory({ limit: 12 }),
     [],
   );
-  const { mutate: recalculate, loading: recalculating } = useApiMutation(() => aiApi.bi.calculateHealthScore());
+  const [recalculating, setRecalculating] = React.useState(false);
+  const [unavailable, setUnavailable] = React.useState<AiUnavailableError | null>(null);
+  const availability = useAiAvailability();
 
   const health: HealthScoreResult | null = (data as { data?: HealthScoreResult })?.data ?? null;
   const history: HealthScoreHistoryEntry[] = (historyData as { data?: HealthScoreHistoryEntry[] })?.data ?? [];
 
   const handleRecalculate = async () => {
-    const result = await recalculate(undefined);
-    if (result) {
+    setRecalculating(true);
+    setUnavailable(null);
+    try {
+      await aiApi.bi.calculateHealthScore();
       toast.success('Health score recalculated');
       refetch();
-    } else {
-      toast.error('Could not recalculate health score');
+    } catch (err) {
+      if (isAiUnavailableError(err)) setUnavailable(err);
+      else toast.error('Could not recalculate health score');
+    } finally {
+      setRecalculating(false);
     }
   };
 
+  const recalcDisabled = recalculating;
+
   return (
     <div className="flex flex-col gap-ds-6">
+      <AiAvailabilityBanner note="Your latest saved health score stays available." />
+      {unavailable && (
+        <AiUnavailableNotice
+          error={unavailable}
+          onRetry={() => {
+            setUnavailable(null);
+            availability.recheck();
+          }}
+        />
+      )}
       <div className="flex justify-end gap-ds-3">
         <Button variant="outline" size="sm" className="gap-ds-2" onClick={() => refetch()}>
           <RefreshCw className="size-4" aria-hidden="true" />
           Refresh
         </Button>
-        <Button size="sm" className="gap-ds-2" onClick={handleRecalculate} disabled={recalculating}>
+        <Button size="sm" className="gap-ds-2" onClick={handleRecalculate} disabled={recalcDisabled}>
           <RotateCw className="size-4" aria-hidden="true" />
           {recalculating ? 'Recalculating…' : 'Recalculate'}
         </Button>
@@ -92,7 +114,7 @@ function HealthScoreContent() {
             title="Health score not available"
             description="Not enough data to calculate a score yet."
             action={
-              <Button size="sm" onClick={handleRecalculate} disabled={recalculating}>
+              <Button size="sm" onClick={handleRecalculate} disabled={recalcDisabled}>
                 {recalculating ? 'Calculating…' : 'Calculate now'}
               </Button>
             }

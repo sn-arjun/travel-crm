@@ -27,11 +27,14 @@ import { AiGate } from '@/components/domain/ai/ai-gate';
 import { useApiQuery } from '@/hooks/use-api';
 import {
   aiApi,
+  isAiUnavailableError,
   type ProfitabilityAnalysis,
   type SeasonalDemandData,
   type TrendingDestination,
 } from '@/lib/api/ai';
 import { toLocalDateString } from '@/lib/dates';
+import { AiAvailabilityBanner } from '@/components/domain/ai/ai-availability-banner';
+import { AiUnavailableNotice } from '@/components/domain/ai/ai-unavailable-notice';
 
 function toCsv(rows: ProfitabilityAnalysis[]) {
   const header = ['Destination', 'Revenue', 'Costs', 'Profit', 'Margin', 'Trend'];
@@ -56,12 +59,12 @@ function downloadCsv(rows: ProfitabilityAnalysis[]) {
 function DestinationsContent() {
   const [profitPeriod, setProfitPeriod] = React.useState('month');
 
-  const { data: profitData, loading: profitLoading, refetch: refetchProfit } = useApiQuery(
+  const { data: profitData, loading: profitLoading, error: profitError, refetch: refetchProfit } = useApiQuery(
     () => aiApi.bi.getDestinationProfitability({ period: profitPeriod }),
     [profitPeriod],
   );
   const { data: trendingData, loading: trendingLoading } = useApiQuery(() => aiApi.bi.getTrendingDestinations(), []);
-  const { data: demandData, loading: demandLoading } = useApiQuery(() => aiApi.bi.getSeasonalDemand(), []);
+  const { data: demandData, loading: demandLoading, error: demandError } = useApiQuery(() => aiApi.bi.getSeasonalDemand(), []);
 
   const profitability: ProfitabilityAnalysis[] = (profitData as { data?: ProfitabilityAnalysis[] })?.data ?? [];
   const trending: TrendingDestination[] = (trendingData as { data?: TrendingDestination[] })?.data ?? [];
@@ -121,6 +124,7 @@ function DestinationsContent() {
 
   return (
     <div className="flex flex-col gap-ds-4">
+      <AiAvailabilityBanner note="Trending destinations are live data." />
       <div className="flex justify-end">
         <Button variant="outline" size="sm" className="gap-ds-2" onClick={() => refetchProfit()}>
           <RefreshCw className="size-4" aria-hidden="true" />
@@ -159,20 +163,26 @@ function DestinationsContent() {
             </Button>
           </div>
 
-          <SectionCard flush>
-            <DataTable<ProfitabilityAnalysis>
-              columns={columns}
-              data={[...profitability].sort((a, b) => b.profit - a.profit)}
-              getRowId={(r) => r.destination}
-              loading={profitLoading}
-              emptyState={
-                <EmptyState
-                  icon={<Globe className="size-8" aria-hidden="true" />}
-                  title="No profitability data available"
-                />
-              }
-            />
-          </SectionCard>
+          {isAiUnavailableError(profitError) ? (
+            <SectionCard>
+              <AiUnavailableNotice error={profitError} onRetry={() => refetchProfit()} />
+            </SectionCard>
+          ) : (
+            <SectionCard flush>
+              <DataTable<ProfitabilityAnalysis>
+                columns={columns}
+                data={[...profitability].sort((a, b) => b.profit - a.profit)}
+                getRowId={(r) => r.destination}
+                loading={profitLoading}
+                emptyState={
+                  <EmptyState
+                    icon={<Globe className="size-8" aria-hidden="true" />}
+                    title="No profitability data available"
+                  />
+                }
+              />
+            </SectionCard>
+          )}
         </TabsContent>
 
         <TabsContent value="trending" className="mt-ds-4">
@@ -229,13 +239,17 @@ function DestinationsContent() {
 
         <TabsContent value="seasonal" className="mt-ds-4">
           <SectionCard title="Monthly demand pattern">
-            <BarChart
-              data={demand}
-              loading={demandLoading}
-              categoryKey="month"
-              series={[{ dataKey: 'demand', label: 'Inquiries' }]}
-              emptyMessage="No seasonal demand data available"
-            />
+            {isAiUnavailableError(demandError) ? (
+              <AiUnavailableNotice error={demandError} />
+            ) : (
+              <BarChart
+                data={demand}
+                loading={demandLoading}
+                categoryKey="month"
+                series={[{ dataKey: 'demand', label: 'Inquiries' }]}
+                emptyMessage="No seasonal demand data available"
+              />
+            )}
           </SectionCard>
         </TabsContent>
       </Tabs>

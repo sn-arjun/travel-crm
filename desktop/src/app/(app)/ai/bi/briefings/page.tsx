@@ -6,8 +6,11 @@ import { FileText, RefreshCw, Lightbulb, BarChart3, Star, Sparkles } from 'lucid
 import { toast } from 'sonner';
 import { Button, Badge, EmptyState, PageHeader, SectionCard, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Separator, Skeleton, Tag } from '@/components/ui';
 import { AiGate } from '@/components/domain/ai/ai-gate';
-import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { aiApi, type BriefingData } from '@/lib/api/ai';
+import { useApiQuery } from '@/hooks/use-api';
+import { aiApi, isAiUnavailableError, type AiUnavailableError, type BriefingData } from '@/lib/api/ai';
+import { AiAvailabilityBanner } from '@/components/domain/ai/ai-availability-banner';
+import { AiUnavailableNotice } from '@/components/domain/ai/ai-unavailable-notice';
+import { useAiAvailability } from '@/components/domain/ai/use-ai-availability';
 
 const priorityTone: Record<string, 'danger' | 'warning' | 'info'> = {
   high: 'danger',
@@ -22,24 +25,41 @@ function BriefingsContent() {
     () => aiApi.bi.getBriefing({ type: briefingType }),
     [briefingType],
   );
-  const { mutate: generate, loading: generating } = useApiMutation(
-    () => aiApi.bi.generateBriefing({ type: briefingType }),
-  );
+  const [generating, setGenerating] = React.useState(false);
+  const [unavailable, setUnavailable] = React.useState<AiUnavailableError | null>(null);
+  const availability = useAiAvailability();
 
   const briefing: BriefingData | null = (data as { data?: BriefingData })?.data ?? null;
 
   const handleGenerate = async () => {
-    const result = await generate(undefined);
-    if (result) {
-      toast.success("Briefing generated");
+    setGenerating(true);
+    setUnavailable(null);
+    try {
+      await aiApi.bi.generateBriefing({ type: briefingType });
+      toast.success('Briefing generated');
       refetch();
-    } else {
-      toast.error('Could not generate briefing');
+    } catch (err) {
+      if (isAiUnavailableError(err)) setUnavailable(err);
+      else toast.error('Could not generate briefing');
+    } finally {
+      setGenerating(false);
     }
   };
 
+  const generateDisabled = generating;
+
   return (
     <div className="flex flex-col gap-ds-6">
+      <AiAvailabilityBanner note="Briefings you already have stay available." />
+      {unavailable && (
+        <AiUnavailableNotice
+          error={unavailable}
+          onRetry={() => {
+            setUnavailable(null);
+            availability.recheck();
+          }}
+        />
+      )}
       <div className="flex items-center justify-end gap-ds-3">
         <Select value={briefingType} onValueChange={setBriefingType}>
           <SelectTrigger className="w-36">
@@ -55,7 +75,7 @@ function BriefingsContent() {
           <RefreshCw className="size-4" aria-hidden="true" />
           Refresh
         </Button>
-        <Button size="sm" className="gap-ds-2" onClick={handleGenerate} disabled={generating}>
+        <Button size="sm" className="gap-ds-2" onClick={handleGenerate} disabled={generateDisabled}>
           <Sparkles className="size-4" aria-hidden="true" />
           {generating ? 'Generating…' : "Generate today's briefing"}
         </Button>
@@ -81,7 +101,7 @@ function BriefingsContent() {
             title="No briefing available"
             description="Briefings are generated as data accumulates, or generate one now."
             action={
-              <Button size="sm" onClick={handleGenerate} disabled={generating}>
+              <Button size="sm" onClick={handleGenerate} disabled={generateDisabled}>
                 {generating ? 'Generating…' : "Generate today's briefing"}
               </Button>
             }

@@ -7,7 +7,10 @@ import { toast } from 'sonner';
 import { ListPage } from '@/components/domain';
 import { Button, Tabs, TabsContent, TabsList, TabsTrigger, Tag } from '@/components/ui';
 import type { DataTableColumn } from '@/components/ui';
-import { aiApi, type Insight, type Recommendation } from '@/lib/api/ai';
+import { aiApi, isAiUnavailableError, type AiUnavailableError, type Insight, type Recommendation } from '@/lib/api/ai';
+import { AiAvailabilityBanner } from '@/components/domain/ai/ai-availability-banner';
+import { AiUnavailableNotice } from '@/components/domain/ai/ai-unavailable-notice';
+import { useAiAvailability } from '@/components/domain/ai/use-ai-availability';
 import { toLocalDateString } from '@/lib/dates';
 
 const PRIORITY_TONE: Record<Recommendation['priority'], 'danger' | 'warning' | 'info'> = {
@@ -42,6 +45,8 @@ function downloadCsv(csv: string, name: string) {
 function InsightsListPage() {
   const [refetchKey, setRefetchKey] = React.useState(0);
   const [generating, setGenerating] = React.useState(false);
+  const [unavailable, setUnavailable] = React.useState<AiUnavailableError | null>(null);
+  const availability = useAiAvailability();
 
   const handleDismiss = async (id: string) => {
     try {
@@ -65,12 +70,14 @@ function InsightsListPage() {
 
   const handleGenerateTrends = async () => {
     setGenerating(true);
+    setUnavailable(null);
     try {
       await aiApi.intelligence.generateTrends();
       toast.success('New trend insights generated');
       setRefetchKey((k) => k + 1);
-    } catch {
-      toast.error('Could not generate trend insights');
+    } catch (err) {
+      if (isAiUnavailableError(err)) setUnavailable(err);
+      else toast.error('Could not generate trend insights');
     } finally {
       setGenerating(false);
     }
@@ -89,6 +96,17 @@ function InsightsListPage() {
   ];
 
   return (
+    <>
+    {unavailable && (
+      <AiUnavailableNotice
+        error={unavailable}
+        className="mb-ds-4"
+        onRetry={() => {
+          setUnavailable(null);
+          availability.recheck();
+        }}
+      />
+    )}
     <ListPage<Insight>
       refreshKey={refetchKey}
       title="Insights"
@@ -148,6 +166,7 @@ function InsightsListPage() {
       emptyDescription="Insights will appear here as AI analyzes your business data."
       emptyIcon={<Lightbulb className="size-10 text-ds-foreground-subtle" aria-hidden="true" />}
     />
+    </>
   );
 }
 
@@ -248,6 +267,8 @@ function RecommendationsListPage() {
 
 function AiInsightsContent() {
   return (
+    <>
+    <AiAvailabilityBanner note="Existing insights and recommendations stay available." className="mb-ds-4" />
     <Tabs defaultValue="insights">
       <TabsList>
         <TabsTrigger value="insights">Insights</TabsTrigger>
@@ -260,6 +281,7 @@ function AiInsightsContent() {
         <RecommendationsListPage />
       </TabsContent>
     </Tabs>
+    </>
   );
 }
 

@@ -20,7 +20,8 @@ import {
 import type { DataTableColumn } from '@/components/ui';
 import { AiGate } from '@/components/domain/ai/ai-gate';
 import { useApiQuery } from '@/hooks/use-api';
-import { aiApi, type TeamPerformanceMetrics } from '@/lib/api/ai';
+import { aiApi, isAiUnavailableError, type TeamPerformanceMetrics } from '@/lib/api/ai';
+import { AiUnavailableNotice } from '@/components/domain/ai/ai-unavailable-notice';
 import { toLocalDateString } from '@/lib/dates';
 
 function toCsv(rows: TeamPerformanceMetrics[]) {
@@ -46,7 +47,8 @@ function downloadCsv(rows: TeamPerformanceMetrics[]) {
 function TeamPerformanceContent() {
   const [period, setPeriod] = React.useState('month');
 
-  const { data, loading, refetch } = useApiQuery(() => aiApi.bi.getTeamPerformance({ period }), [period]);
+  const { data, loading, error, refetch } = useApiQuery(() => aiApi.bi.getTeamPerformance({ period }), [period]);
+  const unavailable = isAiUnavailableError(error) ? error : null;
 
   const team: TeamPerformanceMetrics[] = (data as { data?: TeamPerformanceMetrics[] })?.data ?? [];
   const totalRevenue = team.reduce((s, t) => s + t.revenue, 0);
@@ -124,6 +126,12 @@ function TeamPerformanceContent() {
         </Button>
       </div>
 
+      {unavailable ? (
+        <SectionCard>
+          <AiUnavailableNotice error={unavailable} onRetry={() => refetch()} />
+        </SectionCard>
+      ) : (
+        <>
       <div className="grid grid-cols-1 gap-ds-4 md:grid-cols-3">
         <Stat
           label="Total revenue"
@@ -156,6 +164,8 @@ function TeamPerformanceContent() {
           }
         />
       </SectionCard>
+        </>
+      )}
     </div>
   );
 }

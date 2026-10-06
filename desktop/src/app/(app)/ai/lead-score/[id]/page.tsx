@@ -8,8 +8,10 @@ import { toast } from 'sonner';
 import { DetailPage } from '@/components/domain';
 import { Badge, Button, Progress, Separator, Skeleton, Tag } from '@/components/ui';
 import { cn } from '@/lib/utils';
-import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { aiApi, type LeadScore, type LeadScoreHistoryEntry } from '@/lib/api/ai';
+import { useApiQuery } from '@/hooks/use-api';
+import { aiApi, isAiUnavailableError, type AiUnavailableError, type LeadScore, type LeadScoreHistoryEntry } from '@/lib/api/ai';
+import { AiUnavailableNotice } from '@/components/domain/ai/ai-unavailable-notice';
+import { useAiAvailability, useNotConfiguredError } from '@/components/domain/ai/use-ai-availability';
 
 function getScoreColor(score: number) {
   if (score >= 80) return 'text-ds-success-on-subtle';
@@ -46,23 +48,40 @@ function LeadScoreDetailContent({ id }: { id: string }) {
     () => aiApi.intelligence.getLeadScoreHistory(id),
     [id],
   );
-  const { mutate: recalculate, loading: recalculating } = useApiMutation(() =>
-    aiApi.intelligence.calculateLeadScore(id),
-  );
+  const [recalculating, setRecalculating] = React.useState(false);
+  const [unavailable, setUnavailable] = React.useState<AiUnavailableError | null>(null);
+  const availability = useAiAvailability();
+  const notConfigured = useNotConfiguredError();
 
   const score: LeadScore | null = data?.data ?? null;
   const history: LeadScoreHistoryEntry[] = historyData?.data ?? [];
 
   const handleRecalculate = async () => {
-    const result = await recalculate(undefined);
-    if (result) {
+    setRecalculating(true);
+    setUnavailable(null);
+    try {
+      await aiApi.intelligence.calculateLeadScore(id);
       toast.success('Lead score recalculated');
       refetch();
       refetchHistory();
-    } else {
-      toast.error('Could not recalculate lead score');
+    } catch (err) {
+      if (isAiUnavailableError(err)) setUnavailable(err);
+      else toast.error('Could not recalculate lead score');
+    } finally {
+      setRecalculating(false);
     }
   };
+
+  const unavailableNotice =
+    unavailable ? (
+      <AiUnavailableNotice
+        error={unavailable ?? notConfigured}
+        onRetry={() => {
+          setUnavailable(null);
+          availability.recheck();
+        }}
+      />
+    ) : null;
 
   if (loading) {
     return (
@@ -71,6 +90,19 @@ function LeadScoreDetailContent({ id }: { id: string }) {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-ds-6">
           <Skeleton className="h-64 w-full" />
           <Skeleton className="h-64 w-full lg:col-span-2" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!score && unavailableNotice) {
+    return (
+      <div className="flex flex-col gap-ds-4">
+        {unavailableNotice}
+        <div>
+          <Button size="sm" variant="outline" onClick={() => router.push('/ai/lead-score')}>
+            Back
+          </Button>
         </div>
       </div>
     );
@@ -111,6 +143,8 @@ function LeadScoreDetailContent({ id }: { id: string }) {
         </Button>
       }
       overview={
+        <div className="flex flex-col gap-ds-6">
+        {unavailableNotice}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-ds-6">
           <div className="rounded-ds-lg border border-ds-border p-ds-6 flex flex-col items-center gap-ds-4">
             <p className="text-lg font-semibold text-ds-foreground">Overall score</p>
@@ -168,6 +202,7 @@ function LeadScoreDetailContent({ id }: { id: string }) {
               </>
             )}
           </div>
+        </div>
         </div>
       }
       activity={history.map((h) => ({

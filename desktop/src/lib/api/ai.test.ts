@@ -11,7 +11,7 @@ vi.mock('./client', () => ({
 }));
 
 import { client } from './client';
-import { aiApi } from './ai';
+import { aiApi, AiUnavailableError, isAiUnavailableError } from './ai';
 
 describe('aiApi', () => {
   beforeEach(() => {
@@ -323,6 +323,51 @@ describe('aiApi', () => {
         await aiApi.bi.getRevenuePulse();
         expect(client.get).toHaveBeenCalledWith('/ai/bi/revenue-pulse');
       });
+    });
+  });
+  // ─── AI unavailable (503 AI_UNAVAILABLE) ────────────────────────
+  describe('AI unavailable handling', () => {
+    const unavailable = { status: 503, code: 'AI_UNAVAILABLE', message: 'AI is not configured for this workspace yet.' };
+
+    it('maps a 503 AI_UNAVAILABLE on a POST to AiUnavailableError', async () => {
+      vi.mocked(client.post).mockRejectedValue(unavailable);
+      const err = await aiApi.extractLead({ text: 'hello' }).catch((e) => e);
+      expect(isAiUnavailableError(err)).toBe(true);
+      expect((err as AiUnavailableError).reason).toBe('not_configured');
+    });
+
+    it('maps a 503 AI_UNAVAILABLE on a GET (BI) to AiUnavailableError', async () => {
+      vi.mocked(client.get).mockRejectedValue(unavailable);
+      await expect(aiApi.bi.getCashFlowForecast()).rejects.toBeInstanceOf(AiUnavailableError);
+    });
+
+    it('maps NL search and briefing generation too', async () => {
+      vi.mocked(client.post).mockRejectedValue(unavailable);
+      await expect(aiApi.intelligence.nlQuery({ query: 'how many leads' })).rejects.toBeInstanceOf(AiUnavailableError);
+      await expect(aiApi.bi.generateBriefing({ type: 'daily' })).rejects.toBeInstanceOf(AiUnavailableError);
+    });
+
+    it('leaves other errors untouched', async () => {
+      const boom = { status: 500, code: 'INTERNAL', message: 'Internal server error' };
+      vi.mocked(client.post).mockRejectedValue(boom);
+      await expect(aiApi.intelligence.nlQuery({ query: 'how many leads' })).rejects.toBe(boom);
+      const other503 = { status: 503, message: 'Service busy' };
+      vi.mocked(client.get).mockRejectedValue(other503);
+      await expect(aiApi.bi.getCashFlowForecast()).rejects.toBe(other503);
+    });
+
+    it('still detects the legacy 200 stub payload', async () => {
+      vi.mocked(client.post).mockResolvedValue({
+        data: { contentId: 'c1', extracted: { note: 'Cloudflare AI not available in this environment. Configure Workers AI binding.' } },
+      });
+      const err = await aiApi.extractLead({ text: 'hello' }).catch((e) => e);
+      expect(isAiUnavailableError(err)).toBe(true);
+    });
+
+    it('exposes status and code so generic hooks keep the error', () => {
+      const e = new AiUnavailableError('not_configured');
+      expect(e.status).toBe(503);
+      expect(e.code).toBe('AI_UNAVAILABLE');
     });
   });
 });

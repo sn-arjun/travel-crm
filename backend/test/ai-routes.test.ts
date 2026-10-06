@@ -4,6 +4,10 @@ import worker from '../src/index';
 
 const testEnv = env as any;
 
+// These suites exercise the success path of every AI route, so they run with a working Workers AI binding.
+// The no-provider behaviour (503 AI_UNAVAILABLE) is covered in b36-ai-unavailable.test.ts.
+const fakeAiBinding = { run: async () => ({ response: '{}' }) };
+
 // ── Helpers ────────────────────────────────────────────────────────
 
 async function authRequest(
@@ -24,7 +28,7 @@ async function authRequest(
   const ctx = createExecutionContext();
   const res = await worker.fetch(
     new Request(`http://localhost/api/v1${path}`, opts),
-    testEnv,
+    { ...testEnv, AI: fakeAiBinding },
     ctx,
   );
   await waitOnExecutionContext(ctx);

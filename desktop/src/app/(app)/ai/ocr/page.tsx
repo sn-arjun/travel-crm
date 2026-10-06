@@ -27,7 +27,9 @@ import {
   SelectValue,
 } from '@/components/ui';
 import { cn } from '@/lib/utils';
-import { aiApi, type OcrPassportResult, type OcrVisaClassification, type OcrSupplierInvoiceResult } from '@/lib/api/ai';
+import { aiApi, isAiUnavailableError, type AiUnavailableError, type OcrPassportResult, type OcrVisaClassification, type OcrSupplierInvoiceResult } from '@/lib/api/ai';
+import { AiUnavailableNotice } from '@/components/domain/ai/ai-unavailable-notice';
+import { useAiAvailability, useNotConfiguredError } from '@/components/domain/ai/use-ai-availability';
 
 type DocumentType = 'passport' | 'visa' | 'invoice';
 type OCRStatus = 'idle' | 'uploading' | 'processing' | 'complete' | 'error';
@@ -100,6 +102,9 @@ function OcrContent() {
   const [extractedData, setExtractedData] = React.useState<ExtractedData | null>(null);
   const [progress, setProgress] = React.useState(0);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [unavailable, setUnavailable] = React.useState<AiUnavailableError | null>(null);
+  const availability = useAiAvailability();
+  const notConfigured = useNotConfiguredError();
 
   const config = DOCUMENT_CONFIGS[documentType];
 
@@ -124,6 +129,7 @@ function OcrContent() {
   const handleProcessDocument = async (file: File) => {
     setStatus('uploading');
     setProgress(20);
+    setUnavailable(null);
 
     try {
       let result: OcrPassportResult | OcrVisaClassification | OcrSupplierInvoiceResult | null = null;
@@ -150,6 +156,14 @@ function OcrContent() {
         toast.error('Failed to extract data from document');
       }
     } catch (error) {
+      if (isAiUnavailableError(error)) {
+        setUnavailable(error);
+        setStatus('idle');
+        setUploadedFile(null);
+        setProgress(0);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
       setStatus('error');
       const errorMessage = error instanceof Error ? error.message : 'Failed to process document';
       toast.error(errorMessage);
@@ -179,6 +193,17 @@ function OcrContent() {
           View scan history →
         </Link>
       </div>
+
+      {(unavailable || availability.unavailable) && (
+        <AiUnavailableNotice
+          className="max-w-2xl"
+          error={unavailable ?? notConfigured}
+          onRetry={() => {
+            setUnavailable(null);
+            availability.recheck();
+          }}
+        />
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-ds-4 max-w-2xl">
         <div className="sm:col-span-2 rounded-ds-lg border border-ds-border p-ds-6 flex flex-col gap-ds-4">
