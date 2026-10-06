@@ -10,7 +10,7 @@ import {
 import { DetailPage } from '@/components/domain';
 import {
   Button, Tag, SectionCard, Stat, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Label, Input, Textarea, EmptyState, Skeleton, useConfirm,
+  Label, Input, DatePicker, Textarea, EmptyState, Skeleton, useConfirm,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
@@ -18,11 +18,12 @@ import { client } from '@/lib/api/client';
 import { API_ENDPOINTS } from '@/lib/api/config';
 import {
   fleetApi,
-  type RecordMaintenanceRequest, type VehicleDocument, type VehicleMaintenance,
+  type RecordMaintenanceRequest, type Trip, type Vehicle, type VehicleDocument, type VehicleMaintenance,
 } from '@/lib/api/fleet';
 import { toast } from 'sonner';
 import { VEHICLE_STATUS_LABELS, TRIP_STATUS_LABELS, VEHICLE_TYPE_LABELS } from '@travelcrm/shared';
 import type { TimelineItem } from '@/components/ui/timeline';
+import { parseLocalDate, toLocalDateString } from '@/lib/dates';
 
 const DOC_TYPE_LABELS: Record<string, string> = {
   rc: 'RC Book', insurance: 'Insurance', permit: 'Permit', pollution: 'Pollution (PUC)',
@@ -53,7 +54,8 @@ function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' |
 }
 
 function ExpiryTag({ expiryDate }: { expiryDate: string }) {
-  const days = Math.ceil((new Date(expiryDate).getTime() - Date.now()) / 86400000);
+  const [now] = React.useState(() => Date.now());
+  const days = Math.ceil((new Date(expiryDate).getTime() - now) / 86400000);
   const tone = days < 0 ? 'danger' : days < 30 ? 'warning' : 'success';
   return (
     <Tag tone={tone}>
@@ -91,10 +93,10 @@ export default function VehicleDetailPage() {
   const docsQuery = useApiQuery(() => fleetApi.vehicles.listDocuments(vehicleId).then((res) => res.data), [vehicleId]);
   const maintenanceQuery = useApiQuery(() => fleetApi.vehicles.getMaintenanceHistory(vehicleId).then((res) => res.data), [vehicleId]);
 
-  const { mutate: updateStatus, loading: isUpdatingStatus } = useApiMutation<{ status: string }, any>(
+  const { mutate: updateStatus, loading: isUpdatingStatus } = useApiMutation<{ status: string }, unknown>(
     (data) => fleetApi.vehicles.updateStatus(vehicleId, data.status),
   );
-  const { mutate: recordMaintenance, loading: isRecordingMaintenance } = useApiMutation<RecordMaintenanceRequest, any>(
+  const { mutate: recordMaintenance, loading: isRecordingMaintenance } = useApiMutation<RecordMaintenanceRequest, unknown>(
     (data) => fleetApi.vehicles.recordMaintenance(vehicleId, data),
   );
 
@@ -103,10 +105,11 @@ export default function VehicleDetailPage() {
   }, [vehicleQuery.error]);
 
   // useApiQuery nulls `data` while refetching; keep the last vehicle so tabs and dialogs stay mounted.
-  const lastVehicle = React.useRef<any>(null);
+  const lastVehicle = React.useRef<Vehicle | null>(null);
   if (vehicleQuery.data) lastVehicle.current = vehicleQuery.data;
-  const vehicle = (vehicleQuery.data ?? (vehicleQuery.error ? null : lastVehicle.current)) as any;
-  const vehicleTrips: any[] = Array.isArray(tripsQuery.data) ? tripsQuery.data as any[] : ((tripsQuery.data as any)?.data ?? []);
+  const vehicle = (vehicleQuery.data ?? (vehicleQuery.error ? null : lastVehicle.current));
+  const tripsPayload = tripsQuery.data as Trip[] | { data?: Trip[] } | null;
+  const vehicleTrips: Trip[] = Array.isArray(tripsPayload) ? tripsPayload : (tripsPayload?.data ?? []);
   const docs: VehicleDocument[] = Array.isArray(docsQuery.data) ? docsQuery.data as VehicleDocument[] : [];
   const maintenanceHistory: VehicleMaintenance[] = Array.isArray(maintenanceQuery.data) ? maintenanceQuery.data as VehicleMaintenance[] : [];
 
@@ -254,7 +257,7 @@ export default function VehicleDetailPage() {
   }
 
   const isInactive = vehicle.status === 'out_of_service';
-  const totalRevenue = vehicleTrips.reduce((sum: number, t: any) => sum + (t.fare ?? 0), 0);
+  const totalRevenue = vehicleTrips.reduce((sum: number, t: Trip) => sum + (t.fare ?? 0), 0);
   const odometer = vehicle.odometerKm ?? vehicle.mileage ?? 0;
   const typeLabel = VEHICLE_TYPE_LABELS[vehicle.type as keyof typeof VEHICLE_TYPE_LABELS] || vehicle.type || '—';
   const dueDocs = docs.filter((d) => d.expiryDate);
@@ -310,7 +313,7 @@ export default function VehicleDetailPage() {
               <EmptyState title="No trips yet" description="No trips assigned to this vehicle yet." icon={<MapPin aria-hidden="true" />} />
             ) : (
               <div className="flex flex-col gap-ds-2">
-                {vehicleTrips.map((trip: any) => {
+                {vehicleTrips.map((trip: Trip) => {
                   return (
                     <Link key={trip.id} href={`/fleet/trips/${trip.id}`}>
                       <div className="flex items-center gap-ds-4 p-ds-3 rounded-ds-md border border-ds-border hover:bg-ds-surface-sunken transition-colors">
@@ -468,7 +471,7 @@ export default function VehicleDetailPage() {
             <div className="grid grid-cols-2 gap-ds-4">
               <div className="flex flex-col gap-ds-2">
                 <Label htmlFor="serviceDate">Service date <span className="text-ds-danger">*</span></Label>
-                <Input id="serviceDate" type="date" value={maintenanceForm.serviceDate} onChange={(e) => setMaintenanceForm((p) => ({ ...p, serviceDate: e.target.value }))} required />
+                <DatePicker id="serviceDate" value={maintenanceForm.serviceDate ? parseLocalDate(maintenanceForm.serviceDate) : undefined} onChange={(d) => setMaintenanceForm((p) => ({ ...p, serviceDate: d ? toLocalDateString(d) : '' }))} />
               </div>
               <div className="flex flex-col gap-ds-2">
                 <Label htmlFor="maintenanceCost">Cost (₹)</Label>
@@ -487,7 +490,7 @@ export default function VehicleDetailPage() {
             </div>
             <div className="flex flex-col gap-ds-2">
               <Label htmlFor="nextServiceDate">Next service date</Label>
-              <Input id="nextServiceDate" type="date" value={maintenanceForm.nextServiceDueDate} onChange={(e) => setMaintenanceForm((p) => ({ ...p, nextServiceDueDate: e.target.value }))} />
+              <DatePicker id="nextServiceDate" value={maintenanceForm.nextServiceDueDate ? parseLocalDate(maintenanceForm.nextServiceDueDate) : undefined} onChange={(d) => setMaintenanceForm((p) => ({ ...p, nextServiceDueDate: d ? toLocalDateString(d) : '' }))} />
             </div>
             <div className="flex flex-col gap-ds-2">
               <Label htmlFor="maintenanceNotes">Notes</Label>
@@ -548,11 +551,11 @@ export default function VehicleDetailPage() {
             <div className="grid grid-cols-2 gap-ds-4">
               <div className="flex flex-col gap-ds-2">
                 <Label htmlFor="docIssued">Issued date</Label>
-                <Input id="docIssued" type="date" value={docForm.issuedDate} onChange={(e) => setDocForm((p) => ({ ...p, issuedDate: e.target.value }))} />
+                <DatePicker id="docIssued" value={docForm.issuedDate ? parseLocalDate(docForm.issuedDate) : undefined} onChange={(d) => setDocForm((p) => ({ ...p, issuedDate: d ? toLocalDateString(d) : '' }))} />
               </div>
               <div className="flex flex-col gap-ds-2">
                 <Label htmlFor="docExpiry">Expiry date</Label>
-                <Input id="docExpiry" type="date" value={docForm.expiryDate} onChange={(e) => setDocForm((p) => ({ ...p, expiryDate: e.target.value }))} />
+                <DatePicker id="docExpiry" value={docForm.expiryDate ? parseLocalDate(docForm.expiryDate) : undefined} onChange={(d) => setDocForm((p) => ({ ...p, expiryDate: d ? toLocalDateString(d) : '' }))} />
               </div>
             </div>
             <DialogFooter>

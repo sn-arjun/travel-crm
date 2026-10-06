@@ -11,16 +11,8 @@ import { fleetApi } from '@/lib/api/fleet';
 import type { Trip } from '@/lib/api/fleet';
 import { toast } from 'sonner';
 import { TRIP_STATUS_LABELS } from '@travelcrm/shared';
-import { formatTripDateTime } from '@/components/domain/fleet/trip-format';
+import { formatTripDateTime, tripStatusTone, tripTypeLabel } from '@/components/domain/fleet/trip-format';
 import { toLocalDateString } from '@/lib/dates';
-
-function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
-  if (status === 'completed') return 'success';
-  if (status === 'cancelled') return 'danger';
-  if (status === 'started' || status === 'en_route') return 'info';
-  if (status === 'accepted') return 'warning';
-  return 'neutral';
-}
 
 function toCsvValue(v: unknown) {
   const s = String(v ?? '');
@@ -42,6 +34,10 @@ export default function TripsPage() {
   );
 
   async function handleDelete(trip: Trip) {
+    if (trip.status !== 'assigned') {
+      toast.error('Only trips that are still Assigned can be deleted. Trips that have started stay on record.', { duration: 8000 });
+      return;
+    }
     const ok = await confirm({
       title: 'Delete trip',
       description: `Delete the trip from "${trip.startLocation}" to "${trip.endLocation}"? This cannot be undone.`,
@@ -53,8 +49,8 @@ export default function TripsPage() {
       await fleetApi.trips.delete(trip.id);
       toast.success('Trip deleted');
       setRefreshKey((k) => k + 1);
-    } catch {
-      toast.error('Failed to delete trip');
+    } catch (e) {
+      toast.error((e as { message?: string })?.message || 'Failed to delete trip');
     }
   }
 
@@ -78,6 +74,16 @@ export default function TripsPage() {
                 <span className="truncate max-w-64">{t.startLocation || 'TBD'} → {t.endLocation || 'TBD'}</span>
               </span>
             ),
+          },
+          {
+            key: 'passenger',
+            header: 'Passenger',
+            cell: (t) => t.passengerName || '—',
+          },
+          {
+            key: 'tripType',
+            header: 'Type',
+            cell: (t) => tripTypeLabel(t.tripType),
           },
           {
             key: 'vehicle',
@@ -112,7 +118,7 @@ export default function TripsPage() {
             key: 'status',
             header: 'Status',
             cell: (t) => (
-              <Tag tone={statusTone(t.status)}>{TRIP_STATUS_LABELS[t.status as keyof typeof TRIP_STATUS_LABELS] || t.status}</Tag>
+              <Tag tone={tripStatusTone(t.status)}>{TRIP_STATUS_LABELS[t.status as keyof typeof TRIP_STATUS_LABELS] || t.status}</Tag>
             ),
           },
         ]}
@@ -155,8 +161,13 @@ export default function TripsPage() {
             icon: <Trash2 aria-hidden="true" />,
             destructive: true,
             onSelect: async (rows) => {
-              await Promise.all(rows.map((r) => fleetApi.trips.delete(r.id)));
-              toast.success(`${rows.length} trip${rows.length !== 1 ? 's' : ''} deleted`);
+              const results = await Promise.allSettled(rows.map((r) => fleetApi.trips.delete(r.id)));
+              const deleted = results.filter((r) => r.status === 'fulfilled').length;
+              const blocked = rows.length - deleted;
+              if (deleted > 0) toast.success(`${deleted} trip${deleted !== 1 ? 's' : ''} deleted`);
+              if (blocked > 0) {
+                toast.error(`${blocked} trip${blocked !== 1 ? 's were' : ' was'} not deleted: only Assigned trips can be deleted.`, { duration: 8000 });
+              }
               setRefreshKey((k) => k + 1);
             },
           },
@@ -166,14 +177,16 @@ export default function TripsPage() {
             let all = rows;
             if (rows.length > 0) {
               const first = await fleetApi.trips.list({ page: 1, limit: 500, status: statusFilter || undefined });
-              const data: any = first.data;
+              const data = first.data as Trip[] | { data?: Trip[] };
               all = Array.isArray(data) ? data : (data?.data ?? rows);
             }
-            const header = ['Route', 'Vehicle', 'Driver', 'Start', 'Distance (km)', 'Fare', 'Status'];
+            const header = ['Route', 'Passenger', 'Type', 'Vehicle', 'Driver', 'Start', 'Distance (km)', 'Fare', 'Status'];
             const lines = [header.join(',')];
             for (const t of all) {
               lines.push([
                 toCsvValue(`${t.startLocation || ''} -> ${t.endLocation || ''}`),
+                toCsvValue(t.passengerName || ''),
+                toCsvValue(tripTypeLabel(t.tripType)),
                 toCsvValue(t.vehicle?.registrationNumber || t.vehicleRegistration || ''),
                 toCsvValue(t.driver?.name || t.driverName || ''),
                 toCsvValue(formatTripDateTime(t.startTime)),

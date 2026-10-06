@@ -149,7 +149,7 @@ export default function DriversPage() {
           const total = rows.length;
           if (total > 0) {
             const first = await fleetApi.drivers.list({ page: 1, limit: 500, search: undefined, status: statusFilter || undefined });
-            const data: any = first.data;
+            const data = first.data as Driver[] | { data?: Driver[] };
             all = Array.isArray(data) ? data : (data?.data ?? rows);
           }
           const header = ['Name', 'Phone', 'Email', 'License Number', 'License Expiry', 'Rating', 'Experience (yrs)', 'Status'];

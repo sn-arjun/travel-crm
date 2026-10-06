@@ -209,7 +209,7 @@ export default function VehiclesPage() {
             let all = rows;
             if (rows.length > 0) {
               const first = await fleetApi.vehicles.list({ page: 1, limit: 500, status: statusFilter || undefined, type: typeFilter || undefined });
-              const data: any = first.data;
+              const data = first.data as Vehicle[] | { data?: Vehicle[] };
               all = Array.isArray(data) ? data : (data?.data ?? rows);
             }
             const header = ['Registration', 'Make', 'Model', 'Year', 'Type', 'Color', 'Capacity', 'Odometer (km)', 'Status', 'Notes'];

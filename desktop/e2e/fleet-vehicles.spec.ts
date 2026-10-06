@@ -13,6 +13,7 @@
 import { type Page } from '@playwright/test';
 import { test, expect } from './fixtures';
 import { waitForLoad } from './helpers/auth';
+import { pickDate } from './helpers/date-picker';
 import { seedVehicle, api } from './helpers/api-seed';
 
 const TAG = Date.now().toString(36).toUpperCase();
@@ -20,6 +21,7 @@ const REG = `E2E${TAG}`;
 const SEARCH_PLACEHOLDER = 'Search by registration, make, or model...';
 
 const today = new Date().toISOString().slice(0, 10);
+const asDate = (ymd: string) => new Date(Number(ymd.slice(0, 4)), Number(ymd.slice(5, 7)) - 1, Number(ymd.slice(8, 10)));
 const inDays = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
 
 const CREATED = {
@@ -302,11 +304,11 @@ test.describe('Fleet vehicles', () => {
 
     const dialog = page.getByRole('dialog');
     await pick(page, dialog.locator('#serviceType'), 'Oil change');
-    await dialog.locator('#serviceDate').fill(today);
+    await pickDate(page, dialog.locator('#serviceDate'), asDate(today));
     await dialog.locator('#maintenanceCost').fill('2500');
     await dialog.locator('#vendor').fill(`Toyota Service ${TAG}`);
     await dialog.locator('#odometerAtService').fill('14900');
-    await dialog.locator('#nextServiceDate').fill(inDays(90));
+    await pickDate(page, dialog.locator('#nextServiceDate'), asDate(inDays(90)));
     await dialog.locator('#maintenanceNotes').fill(`Changed oil ${TAG}`);
     await dialog.getByRole('button', { name: 'Save record' }).click();
 
@@ -344,8 +346,8 @@ test.describe('Fleet vehicles', () => {
         buffer: Buffer.from(`%PDF-1.4 e2e ${TAG} ${fileName}`),
       });
       await dialog.locator('#docNumber').fill(number);
-      await dialog.locator('#docIssued').fill(issued);
-      await dialog.locator('#docExpiry').fill(expiry);
+      await pickDate(page, dialog.locator('#docIssued'), asDate(issued));
+      await pickDate(page, dialog.locator('#docExpiry'), asDate(expiry));
       await dialog.getByRole('button', { name: 'Upload', exact: true }).click();
       await expect(dialog).toBeHidden({ timeout: 20_000 });
       await expectNoErrorToast(page);

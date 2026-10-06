@@ -212,7 +212,7 @@ test.describe('Fleet Trips', () => {
     await expect(page.locator('input[type="tel"]')).toHaveValue(phone);
     await expect(page.locator('#specialInstructions')).toHaveValue(instructions);
     await expect(page.locator('#distance')).toHaveValue('150');
-    await expect(page.locator('#fare')).toHaveValue('3500');
+    await expect(page.locator('#fare')).toHaveValue('3,500');
 
     // ── Edit every kind of field, save, assert persisted
     const passenger2 = `${passenger} Edited`;
@@ -227,6 +227,7 @@ test.describe('Fleet Trips', () => {
     await page.locator('input[type="tel"]').fill(phone2);
     await page.locator('#specialInstructions').fill(instructions2);
     await page.locator('#distance').fill('165');
+    await page.locator('#fare').focus();
     await page.locator('#fare').fill('4200');
     await page.getByRole('button', { name: /^Save$/ }).click();
     await expect(page.getByText('Trip updated successfully').first()).toBeVisible({ timeout: 15_000 });
@@ -308,7 +309,7 @@ test.describe('Fleet Trips', () => {
     await expect(page.getByPlaceholder(/enter.*vehicle.*id/i)).toHaveCount(0);
     await expect(page.getByPlaceholder(/enter.*driver.*id/i)).toHaveCount(0);
     await expect(page.locator('input[name*="Id" i], input[id*="vehicleId" i], input[id*="driverId" i]')).toHaveCount(0);
-    await expect(page.locator('select')).toHaveCount(0);
+    await expect(page.locator('select:not([aria-hidden="true"])')).toHaveCount(0);
 
     // Vehicle: typing narrows options
     await page.getByRole('combobox').filter({ hasText: /Select vehicle/i }).click();
@@ -509,7 +510,7 @@ test.describe('Fleet Trips', () => {
     expect(fs.statSync(path!).size).toBeGreaterThan(0);
     expect(download.suggestedFilename()).toMatch(/\.csv$/);
     const csv = fs.readFileSync(path!, 'utf8');
-    expect(csv.split('\n')[0]).toBe('Route,Vehicle,Driver,Start,Distance (km),Fare,Status');
+    expect(csv.split('\n')[0]).toBe('Route,Passenger,Type,Vehicle,Driver,Start,Distance (km),Fare,Status');
     expect(csv).toContain('Export Origin -> Export Target');
     expect(csv).toContain(vehicle.registrationNumber);
     expect(csv).toContain(driver.name);
@@ -594,11 +595,11 @@ test.describe('Fleet Trips', () => {
 
     // Activity tab lists every transition with a formatted timestamp
     await page.getByRole('tab', { name: /Activity/i }).click();
-    for (const label of ['Accepted', 'En Route', 'Started', 'Completed']) {
+    for (const label of ['Accepted', 'En Route', 'Trip started', 'Completed']) {
       // eslint-disable-next-line no-await-in-loop
       await expect(page.getByRole('tabpanel').getByText(label, { exact: true }).first()).toBeVisible({ timeout: 10_000 });
     }
-    await expect(page.getByRole('tabpanel').getByText(ymd(new Date())).first()).toBeVisible();
+    await expect(page.getByRole('tabpanel').getByText(new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })).first()).toBeVisible();
 
     // A non-assigned trip cannot be opened for editing
     await page.goto(`/fleet/trips/${trip.id}/edit`);

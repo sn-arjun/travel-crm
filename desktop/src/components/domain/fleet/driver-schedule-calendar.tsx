@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useApiQuery } from '@/hooks/use-api';
-import { fleetApi } from '@/lib/api/fleet';
+import { fleetApi, type Trip } from '@/lib/api/fleet';
 import { toast } from 'sonner';
 import { toLocalDateString } from '@/lib/dates';
 
@@ -36,7 +36,7 @@ export function DriverScheduleCalendar({ driverId }: DriverScheduleCalendarProps
     if (error) toast.error('Failed to load driver schedule');
   }, [error]);
 
-  const scheduleEntries: any[] = Array.isArray(scheduleResponse?.data) ? (scheduleResponse!.data as any[]) : [];
+  const scheduleEntries: Trip[] = Array.isArray(scheduleResponse?.data) ? scheduleResponse.data : [];
 
   const getDayStatus = (day: number) => {
     const checkDate = new Date(year, month, day);
@@ -45,9 +45,9 @@ export function DriverScheduleCalendar({ driverId }: DriverScheduleCalendarProps
 
     if (dateStr < today) return 'past';
 
-    const onTrip = scheduleEntries.some((entry: any) => {
-      const start = entry.startDate || entry.startTime || entry.date;
-      const end = entry.endDate || entry.endTime || entry.date;
+    const onTrip = scheduleEntries.some((entry) => {
+      const start = entry.startTime;
+      const end = entry.endTime;
       if (!start) return false;
       const tripStart = new Date(start);
       const tripEnd = new Date(end || start);
@@ -91,7 +91,7 @@ export function DriverScheduleCalendar({ driverId }: DriverScheduleCalendarProps
           <Button variant="ghost" size="icon-sm" onClick={handlePrevMonth} aria-label="Previous month">
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <div className="text-sm font-medium min-w-[150px] text-center">{monthName}</div>
+          <div className="text-sm font-medium min-w-36 text-center">{monthName}</div>
           <Button variant="ghost" size="icon-sm" onClick={handleNextMonth} aria-label="Next month">
             <ChevronRight className="h-4 w-4" />
           </Button>

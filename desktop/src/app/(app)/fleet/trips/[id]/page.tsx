@@ -4,37 +4,47 @@ import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
-  CheckCircle2, DollarSign, FileText, Pencil, Phone, Plus, Receipt, Trash2, Truck, User, XCircle,
+  CheckCircle2, DollarSign, ExternalLink, FileText, Pencil, Phone, Plus, Receipt, RefreshCw, Trash2, Truck, User, XCircle,
 } from 'lucide-react';
 import { DetailPage } from '@/components/domain';
 import {
   Button, Tag, SectionCard, Stat, Avatar, AvatarFallback,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Label, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Label, Input, CurrencyInput, Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
   EmptyState, Skeleton, useConfirm,
 } from '@/components/ui';
-import { useApiQuery, useApiMutation } from '@/hooks/use-api';
+import { PageContainer } from '@/components/layout/page-container';
 import { fleetApi, type Trip, type TripCost, type TripTimeline } from '@/lib/api/fleet';
 import { toast } from 'sonner';
-import {
-  TRIP_STATUS_LABELS, FLEET_TRIP_TYPE_LABELS, VEHICLE_TYPE_LABELS,
-} from '@travelcrm/shared';
+import { TRIP_STATUS_LABELS, VEHICLE_TYPE_LABELS } from '@travelcrm/shared';
 import type { TimelineItem } from '@/components/ui/timeline';
-import { formatTripDate, formatTripDateTime } from '@/components/domain/fleet/trip-format';
+import {
+  formatCoordinates, formatTripDate, formatTripDateTime, formatTripTime12, formatTripWhen,
+  isTripActive, tripEventLabel, tripEventTone, tripStatusTone, tripTypeLabel,
+} from '@/components/domain/fleet/trip-format';
 
 const TRIP_STATUS_ORDER = ['assigned', 'accepted', 'en_route', 'started', 'completed'] as const;
+
+/** How often an active trip re-reads itself so driver-app updates show without a reload. */
+const POLL_INTERVAL_MS = 10_000;
 
 const COST_TYPE_LABELS: Record<string, string> = {
   fuel: 'Fuel', toll: 'Toll', parking: 'Parking',
   driver_allowance: 'Driver Allowance', other: 'Other',
 };
 
-function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
-  if (status === 'completed') return 'success';
-  if (status === 'cancelled') return 'danger';
-  if (status === 'started' || status === 'en_route') return 'info';
-  if (status === 'accepted') return 'warning';
-  return 'neutral';
+const NOT_CANCELLABLE_MESSAGE =
+  'This trip is already under way, so it can no longer be cancelled. Mark it as completed instead, or contact the driver.';
+const NOT_DELETABLE_MESSAGE =
+  'Only trips that are still Assigned can be deleted. Trips that have started stay on record.';
+
+function errorMessage(e: unknown, fallback: string): string {
+  const m = (e as { message?: string } | null)?.message;
+  return m && m.trim() ? m : fallback;
+}
+
+function formatClock(d: Date) {
+  return d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
 }
 
 export default function TripDetailPage() {
@@ -42,36 +52,72 @@ export default function TripDetailPage() {
   const params = useParams();
   const tripId = params.id as string;
   const [showAddCostDialog, setShowAddCostDialog] = React.useState(false);
-  const [costForm, setCostForm] = React.useState({ costType: 'fuel' as string, amount: '', notes: '' });
+  const [costForm, setCostForm] = React.useState<{ costType: string; amount: number | undefined; notes: string }>({
+    costType: 'fuel', amount: undefined, notes: '',
+  });
   const { confirm, dialog } = useConfirm();
 
-  const tripQuery = useApiQuery<any>(() => fleetApi.trips.getById(tripId), [tripId]);
-  const timelineQuery = useApiQuery(() => fleetApi.trips.getTimeline(tripId).then((res) => res.data), [tripId]);
-  const costsQuery = useApiQuery(() => fleetApi.trips.listCosts(tripId).then((res) => res.data), [tripId]);
-
-  const { mutate: updateStatus, loading: isUpdatingStatus } = useApiMutation<{ status: string }, any>(
-    (data) => fleetApi.trips.updateStatus(tripId, data.status),
-  );
-  const { mutate: addCost, loading: isAddingCost } = useApiMutation<any, any>(
-    (data) => fleetApi.trips.addCost(tripId, data),
-  );
-  const { mutate: deleteCost } = useApiMutation<any, any>(
-    (costId: string) => fleetApi.trips.deleteCost(tripId, costId),
-  );
+  const [trip, setTrip] = React.useState<Trip | null>(null);
+  const [timeline, setTimeline] = React.useState<TripTimeline[]>([]);
+  const [costs, setCosts] = React.useState<TripCost[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [timelineLoading, setTimelineLoading] = React.useState(true);
+  const [costsLoading, setCostsLoading] = React.useState(true);
+  const [refreshing, setRefreshing] = React.useState(false);
+  const [updatedAt, setUpdatedAt] = React.useState<Date | null>(null);
+  const [isUpdatingStatus, setIsUpdatingStatus] = React.useState(false);
+  const [isAddingCost, setIsAddingCost] = React.useState(false);
   const [isGeneratingInvoice, setIsGeneratingInvoice] = React.useState(false);
   const [isGeneratingVoucher, setIsGeneratingVoucher] = React.useState(false);
 
-  React.useEffect(() => {
-    if (tripQuery.error) toast.error('Failed to load trip details');
-  }, [tripQuery.error]);
+  /** Re-reads trip, timeline and costs. A silent load never swaps content for skeletons. */
+  const load = React.useCallback(async (silent: boolean) => {
+    if (!silent) setRefreshing(true);
+    try {
+      const [tripRes, timelineRes, costsRes] = await Promise.all([
+        fleetApi.trips.getById(tripId),
+        fleetApi.trips.getTimeline(tripId).catch(() => null),
+        fleetApi.trips.listCosts(tripId).catch(() => null),
+      ]);
+      setTrip(tripRes.data ?? null);
+      if (timelineRes) setTimeline(Array.isArray(timelineRes.data) ? timelineRes.data : []);
+      if (costsRes) setCosts(Array.isArray(costsRes.data) ? costsRes.data : []);
+      setUpdatedAt(new Date());
+    } catch {
+      if (!silent) toast.error('Failed to load trip details');
+    } finally {
+      setLoading(false);
+      setTimelineLoading(false);
+      setCostsLoading(false);
+      setRefreshing(false);
+    }
+  }, [tripId]);
 
-  const trip = tripQuery.data?.data as Trip | undefined;
-  const timeline: TripTimeline[] = Array.isArray(timelineQuery.data) ? timelineQuery.data as TripTimeline[] : [];
-  const costs: TripCost[] = Array.isArray(costsQuery.data) ? costsQuery.data as TripCost[] : [];
+  React.useEffect(() => {
+    setLoading(true);
+    setTimelineLoading(true);
+    setCostsLoading(true);
+    void load(true);
+  }, [load]);
+
+  const active = isTripActive(trip?.status);
+  React.useEffect(() => {
+    if (!active) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void load(true);
+    }, POLL_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [active, load]);
+
   const totalCosts = costs.reduce((sum, c) => sum + (c.amount ?? 0), 0);
 
   async function handleStatusUpdate(newStatus: string) {
+    if (!trip) return;
     if (newStatus === 'cancelled') {
+      if (trip.status !== 'assigned' && trip.status !== 'accepted') {
+        toast.error(NOT_CANCELLABLE_MESSAGE, { duration: 8000 });
+        return;
+      }
       const ok = await confirm({
         title: 'Cancel trip',
         description: 'Are you sure you want to cancel this trip?',
@@ -80,30 +126,58 @@ export default function TripDetailPage() {
       });
       if (!ok) return;
     }
-    const result = await updateStatus({ status: newStatus });
-    if (result) {
+    setIsUpdatingStatus(true);
+    try {
+      await fleetApi.trips.updateStatus(tripId, newStatus);
       toast.success(`Trip status updated to ${TRIP_STATUS_LABELS[newStatus as keyof typeof TRIP_STATUS_LABELS] || newStatus}`);
-      tripQuery.refetch();
-      timelineQuery.refetch();
-    } else {
-      toast.error('Failed to update trip status');
+      await load(true);
+    } catch (e) {
+      toast.error(errorMessage(e, 'Failed to update trip status'));
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  }
+
+  async function handleDeleteTrip() {
+    if (!trip) return;
+    if (trip.status !== 'assigned') {
+      toast.error(NOT_DELETABLE_MESSAGE, { duration: 8000 });
+      return;
+    }
+    const ok = await confirm({
+      title: 'Delete trip',
+      description: 'Delete this trip? This cannot be undone.',
+      confirmLabel: 'Delete',
+      tone: 'destructive',
+    });
+    if (!ok) return;
+    try {
+      await fleetApi.trips.delete(tripId);
+      toast.success('Trip deleted');
+      router.push('/fleet/trips');
+    } catch (e) {
+      toast.error(errorMessage(e, 'Failed to delete trip'));
     }
   }
 
   async function handleAddCost(e: React.FormEvent) {
     e.preventDefault();
-    const result = await addCost({
-      costType: costForm.costType,
-      amount: parseFloat(costForm.amount),
-      notes: costForm.notes || undefined,
-    });
-    if (result) {
+    if (costForm.amount === undefined) return;
+    setIsAddingCost(true);
+    try {
+      await fleetApi.trips.addCost(tripId, {
+        costType: costForm.costType as TripCost['costType'],
+        amount: costForm.amount,
+        notes: costForm.notes || undefined,
+      });
       toast.success('Cost added');
-      costsQuery.refetch();
+      await load(true);
       setShowAddCostDialog(false);
-      setCostForm({ costType: 'fuel', amount: '', notes: '' });
-    } else {
-      toast.error('Failed to add cost');
+      setCostForm({ costType: 'fuel', amount: undefined, notes: '' });
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to add cost'));
+    } finally {
+      setIsAddingCost(false);
     }
   }
 
@@ -115,19 +189,18 @@ export default function TripDetailPage() {
       tone: 'destructive',
     });
     if (!ok) return;
-    const result = await deleteCost(costId);
-    if (result !== null) {
+    try {
+      await fleetApi.trips.deleteCost(tripId, costId);
       toast.success('Cost deleted');
-      costsQuery.refetch();
-    } else {
-      toast.error('Failed to delete cost');
+      await load(true);
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to delete cost'));
     }
   }
 
   async function handleGenerateInvoice() {
-    const existing = (trip as any)?.invoiceId as string | null | undefined;
-    if (existing) {
-      router.push(`/invoices/${existing}`);
+    if (trip?.invoiceId) {
+      router.push(`/invoices/${trip.invoiceId}`);
       return;
     }
     setIsGeneratingInvoice(true);
@@ -136,18 +209,17 @@ export default function TripDetailPage() {
       toast.success('Invoice generated');
       const id = res.data?.id;
       if (id) router.push(`/invoices/${id}`);
-      else tripQuery.refetch();
+      else await load(true);
     } catch (e) {
-      toast.error((e as { message?: string })?.message || 'Failed to generate invoice');
+      toast.error(errorMessage(e, 'Failed to generate invoice'));
     } finally {
       setIsGeneratingInvoice(false);
     }
   }
 
   async function handleGenerateVoucher() {
-    const existing = (trip as any)?.voucherId as string | null | undefined;
-    if (existing) {
-      router.push(`/vouchers/${existing}`);
+    if (trip?.voucherId) {
+      router.push(`/vouchers/${trip.voucherId}`);
       return;
     }
     setIsGeneratingVoucher(true);
@@ -156,20 +228,20 @@ export default function TripDetailPage() {
       toast.success('Voucher generated');
       const id = res.data?.id;
       if (id) router.push(`/vouchers/${id}`);
-      else tripQuery.refetch();
+      else await load(true);
     } catch (e) {
-      toast.error((e as { message?: string })?.message || 'Failed to generate voucher');
+      toast.error(errorMessage(e, 'Failed to generate voucher'));
     } finally {
       setIsGeneratingVoucher(false);
     }
   }
 
-  if (tripQuery.loading) {
+  if (loading) {
     return (
-      <div className="flex flex-col gap-ds-4 p-ds-4">
+      <PageContainer>
         <Skeleton className="h-16 w-full" />
         <Skeleton className="h-64 w-full" />
-      </div>
+      </PageContainer>
     );
   }
 
@@ -183,7 +255,7 @@ export default function TripDetailPage() {
     );
   }
 
-  const tripTypeLabel = FLEET_TRIP_TYPE_LABELS[(trip as any).tripType as keyof typeof FLEET_TRIP_TYPE_LABELS] || (trip as any).tripType || 'Standard';
+  const tripTypeText = tripTypeLabel(trip.tripType);
   const vehicle = trip.vehicle;
   const driver = trip.driver;
   const vehicleTypeLabel = vehicle?.type ? (VEHICLE_TYPE_LABELS[vehicle.type as keyof typeof VEHICLE_TYPE_LABELS] || vehicle.type) : '';
@@ -191,14 +263,22 @@ export default function TripDetailPage() {
   const statusIdx = TRIP_STATUS_ORDER.indexOf(trip.status as typeof TRIP_STATUS_ORDER[number]);
   const nextStatus = statusIdx >= 0 && statusIdx < TRIP_STATUS_ORDER.length - 1 ? TRIP_STATUS_ORDER[statusIdx + 1] : null;
   const nextStatusLabel = nextStatus ? TRIP_STATUS_LABELS[nextStatus as keyof typeof TRIP_STATUS_LABELS] : null;
-  const isFinal = trip.status === 'completed' || trip.status === 'cancelled';
+  const isFinal = !isTripActive(trip.status);
 
-  const activity: TimelineItem[] = timeline.map((h, i) => ({
-    id: `${h.status}-${i}`,
-    title: TRIP_STATUS_LABELS[h.status as keyof typeof TRIP_STATUS_LABELS] || h.status,
-    description: h.notes || h.userName,
-    timestamp: formatTripDateTime(h.timestamp),
-  }));
+  // Newest first, so a fresh driver-app event lands at the top of the list.
+  const activity: TimelineItem[] = timeline
+    .map((h, i) => {
+      const coords = formatCoordinates(h.latitude, h.longitude);
+      const detail = [h.notes || h.userName, coords ? `Location ${coords}` : null].filter(Boolean).join(' · ');
+      return {
+        id: `${h.status}-${i}`,
+        title: tripEventLabel(h.status),
+        description: detail || undefined,
+        timestamp: formatTripWhen(h.timestamp),
+        tone: tripEventTone(h.status),
+      } satisfies TimelineItem;
+    })
+    .reverse();
 
   return (
     <>
@@ -206,8 +286,8 @@ export default function TripDetailPage() {
       <DetailPage
         entity={trip}
         title={`${trip.startLocation} → ${trip.endLocation}`}
-        subtitle={`${trip.passengerName || 'No passenger'} · ${tripTypeLabel} · ${formatTripDate(trip.startTime)}`}
-        status={<Tag tone={statusTone(trip.status)}>{TRIP_STATUS_LABELS[trip.status as keyof typeof TRIP_STATUS_LABELS] || trip.status}</Tag>}
+        subtitle={`${trip.passengerName || 'No passenger'} · ${tripTypeText} · ${formatTripDate(trip.startTime)}`}
+        status={<Tag tone={tripStatusTone(trip.status)}>{TRIP_STATUS_LABELS[trip.status as keyof typeof TRIP_STATUS_LABELS] || trip.status}</Tag>}
         onBack={() => router.push('/fleet/trips')}
         messaging={driver ? {
           recipientId: trip.driverId,
@@ -216,6 +296,22 @@ export default function TripDetailPage() {
         } : undefined}
         primaryActions={
           <>
+            <span
+              className="hidden text-xs text-ds-foreground-muted md:inline"
+              data-testid="trip-refresh-status"
+              aria-live="off"
+            >
+              {active ? 'Live' : 'Updated'}{updatedAt ? ` · ${formatClock(updatedAt)}` : ''}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void load(false)}
+              disabled={refreshing}
+              aria-label="Refresh trip"
+            >
+              <RefreshCw className={refreshing ? 'animate-spin' : undefined} aria-hidden="true" />Refresh
+            </Button>
             {trip.status === 'assigned' && (
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/fleet/trips/${tripId}/edit`}><Pencil aria-hidden="true" />Edit</Link>
@@ -230,13 +326,13 @@ export default function TripDetailPage() {
         }
         actions={[
           {
-            label: (trip as any).invoiceId ? 'View invoice' : 'Generate invoice',
+            label: trip.invoiceId ? 'View invoice' : 'Generate invoice',
             icon: <FileText aria-hidden="true" />,
             onSelect: () => void handleGenerateInvoice(),
             disabled: isGeneratingInvoice,
           },
           {
-            label: (trip as any).voucherId ? 'View voucher' : 'Generate voucher',
+            label: trip.voucherId ? 'View voucher' : 'Generate voucher',
             icon: <Receipt aria-hidden="true" />,
             onSelect: () => void handleGenerateVoucher(),
             disabled: isGeneratingVoucher,
@@ -246,12 +342,18 @@ export default function TripDetailPage() {
             icon: <XCircle aria-hidden="true" />,
             onSelect: () => void handleStatusUpdate('cancelled'),
             destructive: true,
-            disabled: (trip.status !== 'assigned' && trip.status !== 'accepted') || isUpdatingStatus,
+            disabled: trip.status === 'completed' || trip.status === 'cancelled' || isUpdatingStatus,
             separatorBefore: true,
+          },
+          {
+            label: 'Delete trip',
+            icon: <Trash2 aria-hidden="true" />,
+            onSelect: () => void handleDeleteTrip(),
+            destructive: true,
           },
         ]}
         activity={activity}
-        activityLoading={timelineQuery.loading}
+        activityLoading={timelineLoading}
         related={[
           {
             title: `Cost entries (${costs.length})`,
@@ -260,7 +362,7 @@ export default function TripDetailPage() {
                 <Plus aria-hidden="true" />Add cost
               </Button>
             ),
-            content: costsQuery.loading ? (
+            content: costsLoading ? (
               <Skeleton className="h-24 w-full" />
             ) : costs.length === 0 ? (
               <EmptyState
@@ -289,6 +391,19 @@ export default function TripDetailPage() {
         ]}
         overview={
           <div className="flex flex-col gap-ds-6">
+            {trip.status === 'completed' && trip.invoiceId && (
+              <div
+                className="flex flex-wrap items-center gap-ds-3 rounded-ds-md border border-ds-success bg-ds-success-subtle p-ds-3 text-sm text-ds-success-on-subtle"
+                data-testid="trip-invoice-banner"
+              >
+                <FileText className="size-4 shrink-0" aria-hidden="true" />
+                <span className="flex-1">Trip completed. An invoice was created for this trip.</span>
+                <Button variant="outline" size="sm" asChild>
+                  <Link href={`/invoices/${trip.invoiceId}`}>View invoice<ExternalLink aria-hidden="true" /></Link>
+                </Button>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-ds-4">
               <Stat label="Distance" value={`${trip.distance ?? 0} km`} />
               <Stat label="Fare" value={`₹${(trip.fare ?? 0).toLocaleString('en-IN')}`} />
@@ -310,10 +425,12 @@ export default function TripDetailPage() {
                 <div>
                   <p className="text-xs text-ds-foreground-muted">Start</p>
                   <p className="text-sm font-medium mt-0.5">{formatTripDateTime(trip.startTime)}</p>
+                  <p className="text-xs text-ds-foreground-muted">{formatTripTime12(trip.startTime)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-ds-foreground-muted">End</p>
                   <p className="text-sm font-medium mt-0.5">{formatTripDateTime(trip.endTime)}</p>
+                  <p className="text-xs text-ds-foreground-muted">{formatTripTime12(trip.endTime)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-ds-foreground-muted">Est. distance</p>
@@ -327,7 +444,13 @@ export default function TripDetailPage() {
                 <div className="flex flex-col gap-ds-3">
                   <div className="flex justify-between"><span className="text-sm text-ds-foreground-muted">Name</span><span className="text-sm font-medium">{trip.passengerName || '—'}</span></div>
                   <div className="flex justify-between"><span className="text-sm text-ds-foreground-muted">Phone</span><span className="text-sm font-medium">{trip.passengerPhone || '—'}</span></div>
-                  <div className="flex justify-between items-center"><span className="text-sm text-ds-foreground-muted">Trip type</span><Tag>{tripTypeLabel}</Tag></div>
+                  <div className="flex justify-between items-center"><span className="text-sm text-ds-foreground-muted">Trip type</span><Tag>{tripTypeText}</Tag></div>
+                  {trip.leadId && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-ds-foreground-muted">Lead</span>
+                      <Link href={`/leads/${trip.leadId}`} className="text-sm font-medium text-ds-primary hover:underline">View lead</Link>
+                    </div>
+                  )}
                   {trip.specialInstructions && (
                     <div>
                       <p className="text-xs text-ds-foreground-muted mb-1">Special instructions</p>
@@ -393,7 +516,13 @@ export default function TripDetailPage() {
             </div>
             <div className="flex flex-col gap-ds-2">
               <Label htmlFor="costAmount">Amount (₹) <span className="text-ds-danger">*</span></Label>
-              <Input id="costAmount" type="number" min={0} step="0.01" placeholder="0" value={costForm.amount} onChange={(e) => setCostForm((p) => ({ ...p, amount: e.target.value }))} required />
+              <CurrencyInput
+                id="costAmount"
+                placeholder="0"
+                value={costForm.amount}
+                onChange={(v) => setCostForm((p) => ({ ...p, amount: v }))}
+                required
+              />
             </div>
             <div className="flex flex-col gap-ds-2">
               <Label htmlFor="costNotes">Notes</Label>

@@ -14,7 +14,8 @@ import {
   FileDropzone, EmptyState, Skeleton,
 } from '@/components/ui';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { fleetApi, type DriverDocument } from '@/lib/api/fleet';
+import { fleetApi, type Driver, type DriverDocument, type Trip } from '@/lib/api/fleet';
+import { formatTripWhen, formatTripWhenShort } from '@/components/domain/fleet/trip-format';
 import { toast } from 'sonner';
 import { DRIVER_STATUS_LABELS, TRIP_STATUS_LABELS } from '@travelcrm/shared';
 import { DriverScheduleCalendar } from '@/components/domain/fleet/driver-schedule-calendar';
@@ -56,13 +57,13 @@ export default function DriverDetailPage() {
   const tripsQuery = useApiQuery(() => fleetApi.drivers.getTrips(driverId, { limit: 50 }), [driverId]);
   const docsQuery = useApiQuery(() => fleetApi.drivers.listDocuments(driverId), [driverId]);
 
-  const { mutate: updateStatus, loading: isUpdatingStatus } = useApiMutation<{ status: string }, any>(
+  const { mutate: updateStatus, loading: isUpdatingStatus } = useApiMutation<{ status: string }, unknown>(
     (data) => fleetApi.drivers.updateStatus(driverId, data.status),
   );
-  const { mutate: rateDriver, loading: isRating } = useApiMutation<{ rating: number; tripId: string }, any>(
+  const { mutate: rateDriver, loading: isRating } = useApiMutation<{ rating: number; tripId: string }, unknown>(
     (data) => fleetApi.drivers.rate(driverId, data),
   );
-  const { mutate: uploadDoc, loading: isUploading } = useApiMutation<FormData, any>(
+  const { mutate: uploadDoc, loading: isUploading } = useApiMutation<FormData, unknown>(
     (fd) => fleetApi.drivers.uploadDocument(driverId, fd),
   );
 
@@ -70,13 +71,13 @@ export default function DriverDetailPage() {
     if (driverQuery.error) toast.error('Failed to load driver details');
   }, [driverQuery.error]);
 
-  const driver = driverQuery.data?.data as any;
-  const tripsData: any = tripsQuery.data?.data;
-  const driverTrips: any[] = Array.isArray(tripsData) ? tripsData : (tripsData?.data ?? []);
-  const docsData: any = docsQuery.data?.data;
-  const docs: DriverDocument[] = Array.isArray(docsData) ? docsData : [];
-  const completedTrips = driverTrips.filter((t: any) => t.status === 'completed');
-  const totalRevenue = driverTrips.reduce((sum: number, t: any) => sum + (t.fare ?? 0), 0);
+  const driver = driverQuery.data?.data as Driver | undefined;
+  const tripsData = tripsQuery.data?.data as Trip[] | { data?: Trip[] } | undefined;
+  const driverTrips: Trip[] = Array.isArray(tripsData) ? tripsData : (tripsData?.data ?? []);
+  const docsData: unknown = docsQuery.data?.data;
+  const docs: DriverDocument[] = Array.isArray(docsData) ? (docsData as DriverDocument[]) : [];
+  const completedTrips = driverTrips.filter((t: Trip) => t.status === 'completed');
+  const totalRevenue = driverTrips.reduce((sum: number, t: Trip) => sum + (t.fare ?? 0), 0);
 
   async function handleDeactivate() {
     const newStatus = driver?.status === 'off_duty' ? 'active' : 'off_duty';
@@ -144,11 +145,11 @@ export default function DriverDetailPage() {
 
   const isInactive = driver.status === 'off_duty';
   const license = licenseTone(driver.licenseExpiry);
-  const activity: TimelineItem[] = driverTrips.slice(0, 20).map((t: any) => ({
+  const activity: TimelineItem[] = driverTrips.slice(0, 20).map((t: Trip) => ({
     id: t.id,
     title: `Trip ${TRIP_STATUS_LABELS[t.status as keyof typeof TRIP_STATUS_LABELS] || t.status}`,
     description: `${t.startLocation || ''} → ${t.endLocation || ''}`,
-    timestamp: t.startTime || t.createdAt || '',
+    timestamp: formatTripWhen(t.startTime),
   }));
 
   return (
@@ -192,7 +193,7 @@ export default function DriverDetailPage() {
               <EmptyState title="No trips yet" description="Trips assigned to this driver will appear here." />
             ) : (
               <div className="flex flex-col gap-ds-2">
-                {driverTrips.map((trip: any) => (
+                {driverTrips.map((trip: Trip) => (
                   <Link key={trip.id} href={`/fleet/trips/${trip.id}`} className="flex items-center gap-ds-4 p-ds-3 rounded-ds-md border border-ds-border hover:bg-ds-surface-sunken transition-colors">
                     <MapPin className="h-4 w-4 text-ds-foreground-muted shrink-0" aria-hidden="true" />
                     <div className="flex-1 min-w-0">
@@ -243,7 +244,7 @@ export default function DriverDetailPage() {
                         <Button variant="ghost" size="icon-sm" aria-label="Download" onClick={async () => {
                           try {
                             const res = await fleetApi.drivers.downloadDocument(driverId, doc.id);
-                            const url = (res as any).data?.url;
+                            const url = (res as { data?: { url?: string } }).data?.url;
                             if (url) window.open(url, '_blank');
                           } catch { toast.error('Failed to download'); }
                         }}>
@@ -323,9 +324,9 @@ export default function DriverDetailPage() {
             <Select value={ratingTripId} onValueChange={setRatingTripId}>
               <SelectTrigger className="w-full"><SelectValue placeholder="Select a completed trip" /></SelectTrigger>
               <SelectContent>
-                {completedTrips.map((t: any) => (
+                {completedTrips.map((t: Trip) => (
                   <SelectItem key={t.id} value={t.id}>
-                    {(t.startLocation || 'Trip')} → {t.endLocation || ''} ({new Date(t.startTime || t.createdAt).toLocaleDateString('en-IN')})
+                    {(t.startLocation || 'Trip')} → {t.endLocation || ''} ({formatTripWhenShort(t.startTime)})
                   </SelectItem>
                 ))}
               </SelectContent>
