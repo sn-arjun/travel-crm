@@ -13,6 +13,7 @@ import { DollarSign, TrendingUp, Users } from 'lucide-react';
 import { useApiQuery } from '@/hooks/use-api';
 import { client } from '@/lib/api/client';
 import { API_ENDPOINTS } from '@/lib/api/config';
+import { PageContainer } from '@/components/layout/page-container';
 
 interface BillingStats {
   totalRevenue: number;
@@ -58,7 +59,7 @@ function paymentTone(status: Payment['status']) {
 
 const currency = (n: number) => n.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
 
-export default function BillingPage() {
+function BillingPageContent() {
   const { data: stats, loading: statsLoading } = useApiQuery<BillingStats>(async () => {
     const response = await client.get<{ data: BillingStats }>(API_ENDPOINTS.admin.billingStats);
     return response.data;
@@ -85,7 +86,7 @@ export default function BillingPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-ds-6 p-ds-6">
+    <div className="flex flex-col gap-ds-6">
       <PageHeader title="Billing & revenue" description="Platform-wide financial overview." />
 
       <div className="grid grid-cols-1 gap-ds-4 md:grid-cols-4">
@@ -114,6 +115,7 @@ export default function BillingPage() {
 
         <TabsContent value="invoices" className="mt-ds-4">
           <ListPage<Invoice>
+            className="p-0"
             title="Invoices"
             getRowId={(i) => i.id}
             fetcher={({ page, limit, search }) =>
@@ -121,8 +123,8 @@ export default function BillingPage() {
                 params: { page, limit, search: search || undefined, status: invoiceStatus !== 'all' ? invoiceStatus : undefined },
               })
             }
-            extractItems={(r: any) => r?.data ?? []}
-            extractTotal={(r: any) => r?.pagination?.total ?? 0}
+            extractItems={(r) => (r as { data?: Invoice[] })?.data ?? []}
+            extractTotal={(r) => (r as { pagination?: { total?: number } })?.pagination?.total ?? 0}
             columns={invoiceColumns}
             searchPlaceholder="Search by tenant name..."
             filters={invoiceStatus !== 'all' ? [{ id: 'status', label: 'Status', value: invoiceStatus }] : []}
@@ -149,13 +151,14 @@ export default function BillingPage() {
 
         <TabsContent value="payments" className="mt-ds-4">
           <ListPage<Payment>
+            className="p-0"
             title="Payments"
             getRowId={(p) => p.id}
             fetcher={({ page, limit, search }) =>
               client.get(API_ENDPOINTS.admin.payments, { params: { page, limit, search: search || undefined } })
             }
-            extractItems={(r: any) => r?.data ?? []}
-            extractTotal={(r: any) => r?.pagination?.total ?? 0}
+            extractItems={(r) => (r as { data?: Payment[] })?.data ?? []}
+            extractTotal={(r) => (r as { pagination?: { total?: number } })?.pagination?.total ?? 0}
             columns={paymentColumns}
             searchPlaceholder="Search by tenant name..."
             emptyTitle="No payments found"
@@ -163,5 +166,13 @@ export default function BillingPage() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+export default function BillingPage() {
+  return (
+    <PageContainer>
+      <BillingPageContent />
+    </PageContainer>
   );
 }

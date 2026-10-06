@@ -10,16 +10,17 @@ import { useApiQuery } from '@/hooks/use-api';
 import { authApi, type SessionData } from '@/lib/api/auth';
 import { client } from '@/lib/api/client';
 import { API_ENDPOINTS } from '@/lib/api/config';
+import { PageContainer } from '@/components/layout/page-container';
 
 function formatDate(iso: string) {
   try {
-    return new Date(iso).toLocaleString();
+    return new Date(iso).toLocaleString('en-IN');
   } catch {
     return iso;
   }
 }
 
-export default function SessionsSettingsPage() {
+function SessionsSettingsPageContent() {
   const router = useRouter();
   const { confirm, dialog } = useConfirm();
 
@@ -181,5 +182,13 @@ export default function SessionsSettingsPage() {
       )}
       {dialog}
     </div>
+  );
+}
+
+export default function SessionsSettingsPage() {
+  return (
+    <PageContainer>
+      <SessionsSettingsPageContent />
+    </PageContainer>
   );
 }

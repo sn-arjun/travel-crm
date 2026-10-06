@@ -25,6 +25,7 @@ import { toast } from 'sonner';
 import { settingsApi, type UpdateCompanySettingsRequest } from '@/lib/api/settings';
 import { useApiQuery } from '@/hooks/use-api';
 import { API_BASE_URL } from '@/lib/api/config';
+import { PageContainer } from '@/components/layout/page-container';
 
 const schema = z.object({
   name: z.string().min(1, 'Company name is required'),
@@ -103,11 +104,11 @@ export default function CompanySettingsPage() {
 
   if (loading) {
     return (
-      <div className="space-y-ds-4 p-ds-6">
+      <PageContainer>
         <Skeleton className="h-9 w-64" />
         <Skeleton className="h-64 w-full" />
         <Skeleton className="h-48 w-full" />
-      </div>
+      </PageContainer>
     );
   }
 

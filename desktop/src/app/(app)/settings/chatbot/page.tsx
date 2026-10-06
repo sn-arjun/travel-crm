@@ -8,12 +8,17 @@ import {
 import {
   Button, Input, Label, Card, CardContent, CardHeader, CardTitle, CardDescription,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-  Switch, Separator, Tabs, TabsList, TabsTrigger, TabsContent, Textarea, Badge, Skeleton,
+  Switch, Separator, Tabs, TabsList, TabsTrigger, TabsContent, Textarea, Skeleton, PageHeader,
 } from '@/components/ui';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { chatbotApi, type ChatbotConfig, type UpdateChatbotConfigRequest } from '@/lib/api/chatbot';
 import { toast } from 'sonner';
+import { color } from '@/design-system/tokens';
+
+// Default widget accent: the product primary colour (light theme value).
+const DEFAULT_WIDGET_COLOR = color('primary', 'light');
+import { PageContainer } from '@/components/layout/page-container';
 
 function ChatbotSettingsContent() {
   const [isSaving, setIsSaving] = React.useState(false);
@@ -25,7 +30,7 @@ function ChatbotSettingsContent() {
 
   const [webBotEnabled, setWebBotEnabled] = React.useState(true);
   const [widgetPosition, setWidgetPosition] = React.useState<'bottom-right' | 'bottom-left'>('bottom-right');
-  const [primaryColor, setPrimaryColor] = React.useState('#3b82f6');
+  const [primaryColor, setPrimaryColor] = React.useState(DEFAULT_WIDGET_COLOR);
   const [welcomeMessage, setWelcomeMessage] = React.useState('Hi! How can we help you today?');
 
   const [whatsappEnabled, setWhatsappEnabled] = React.useState(false);
@@ -39,7 +44,7 @@ function ChatbotSettingsContent() {
     const web = config.channels?.find((c) => c.platform === 'web');
     if (web) {
       setWidgetPosition((web.config?.position as 'bottom-right' | 'bottom-left') ?? 'bottom-right');
-      setPrimaryColor((web.config?.primaryColor as string) ?? '#3b82f6');
+      setPrimaryColor((web.config?.primaryColor as string) ?? DEFAULT_WIDGET_COLOR);
     }
     const whatsapp = config.channels?.find((c) => c.platform === 'whatsapp');
     if (whatsapp) {
@@ -93,10 +98,10 @@ function ChatbotSettingsContent() {
 
   return (
     <div className="space-y-ds-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Chatbot configuration</h1>
-        <p className="mt-ds-1 text-ds-foreground-muted">Manage your AI-powered chatbot across multiple channels</p>
-      </div>
+      <PageHeader
+        title="Chatbot configuration"
+        description="Manage your AI-powered chatbot across multiple channels"
+      />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-3">
@@ -153,9 +158,9 @@ function ChatbotSettingsContent() {
                     value={primaryColor}
                     onChange={(e) => setPrimaryColor(e.currentTarget.value)}
                     className="w-28 font-mono text-sm"
-                    placeholder="#000000"
+                    placeholder="Hex colour"
                   />
-                  <Button size="sm" variant="outline" onClick={() => setPrimaryColor('#3b82f6')}>Reset</Button>
+                  <Button size="sm" variant="outline" onClick={() => setPrimaryColor(DEFAULT_WIDGET_COLOR)}>Reset</Button>
                 </div>
               </div>
 
@@ -255,7 +260,7 @@ function ChatbotSettingsContent() {
   );
 }
 
-export default function ChatbotSettingsPage() {
+function ChatbotSettingsPageContent() {
   const { enabled, reason, upgradeHref, loading } = useFeatureGate('ai_chatbot');
 
   if (loading) {
@@ -294,4 +299,12 @@ export default function ChatbotSettingsPage() {
   }
 
   return <ChatbotSettingsContent />;
+}
+
+export default function ChatbotSettingsPage() {
+  return (
+    <PageContainer>
+      <ChatbotSettingsPageContent />
+    </PageContainer>
+  );
 }

@@ -18,6 +18,7 @@ import {
 import { toast } from 'sonner';
 import { settingsApi } from '@/lib/api/settings';
 import { useApiQuery } from '@/hooks/use-api';
+import { PageContainer } from '@/components/layout/page-container';
 
 const percent = (message: string) =>
   z.string().refine((v) => v !== '' && Number(v) >= 0 && Number(v) <= 100, message);
@@ -51,10 +52,10 @@ export default function ItineraryDefaultsPage() {
 
   if (loading) {
     return (
-      <div className="space-y-ds-4 p-ds-6">
+      <PageContainer>
         <Skeleton className="h-9 w-64" />
         <Skeleton className="h-64 w-full" />
-      </div>
+      </PageContainer>
     );
   }
 

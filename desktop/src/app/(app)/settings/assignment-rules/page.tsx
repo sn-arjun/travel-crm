@@ -22,6 +22,7 @@ import { toast } from 'sonner';
 import { fetchUserOptions, resolveUserOption, settingsApi, type AssignmentMode } from '@/lib/api/settings';
 import { useApiQuery } from '@/hooks/use-api';
 import type { User } from '@travelcrm/shared';
+import { PageContainer } from '@/components/layout/page-container';
 
 interface MemberRow {
   key: number;
@@ -35,7 +36,7 @@ const MODES: Array<{ value: AssignmentMode; label: string; hint: string }> = [
   { value: 'manual', label: 'Manual', hint: 'New leads stay unassigned until a manager assigns them.' },
 ];
 
-export default function AssignmentRulesPage() {
+function AssignmentRulesPageContent() {
   const { data: response, loading } = useApiQuery(() => settingsApi.assignmentRules.get(), []);
   const [mode, setMode] = React.useState<AssignmentMode>('round_robin');
   const [members, setMembers] = React.useState<MemberRow[]>([]);
@@ -89,7 +90,7 @@ export default function AssignmentRulesPage() {
 
   if (loading) {
     return (
-      <div className="space-y-ds-4 p-ds-6">
+      <div className="space-y-ds-4">
         <Skeleton className="h-9 w-64" />
         <Skeleton className="h-48 w-full" />
       </div>
@@ -186,5 +187,13 @@ export default function AssignmentRulesPage() {
         )}
       </SectionCard>
     </div>
+  );
+}
+
+export default function AssignmentRulesPage() {
+  return (
+    <PageContainer>
+      <AssignmentRulesPageContent />
+    </PageContainer>
   );
 }

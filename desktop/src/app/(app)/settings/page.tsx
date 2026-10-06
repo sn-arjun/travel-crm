@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   Bell,
   Building2,
+  Megaphone,
   FileText,
   Globe,
   ListOrdered,
@@ -20,6 +21,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { PageHeader, SectionCard } from '@/components/ui';
+import { PageContainer } from '@/components/layout/page-container';
 
 interface SettingsLink {
   label: string;
@@ -63,6 +65,8 @@ const groups: SettingsGroup[] = [
       { label: 'Notifications', description: 'Notification channel preferences', href: '/settings/notifications', icon: <Bell className="h-5 w-5" aria-hidden="true" /> },
       { label: 'Integrations', description: 'Connect external services', href: '/settings/integrations', icon: <Zap className="h-5 w-5" aria-hidden="true" /> },
       { label: 'VoIP', description: 'Calling provider configuration', href: '/settings/voip', icon: <Phone className="h-5 w-5" aria-hidden="true" /> },
+      { label: 'Phone Numbers', description: 'Business numbers for calls and messaging', href: '/settings/phone-numbers', icon: <Phone className="h-5 w-5" aria-hidden="true" /> },
+      { label: 'Announcements', description: 'Broadcast notices to your whole team', href: '/settings/announcements', icon: <Megaphone className="h-5 w-5" aria-hidden="true" /> },
       { label: 'Chatbot', description: 'AI chatbot channel configuration', href: '/settings/chatbot', icon: <MessageSquare className="h-5 w-5" aria-hidden="true" /> },
     ],
   },
@@ -95,7 +99,7 @@ const groups: SettingsGroup[] = [
 
 export default function SettingsPage() {
   return (
-    <div className="flex flex-col gap-ds-6">
+    <PageContainer>
       <PageHeader title="Settings" description="Manage your company configuration and preferences." />
 
       {groups.map((group) => (
@@ -118,6 +122,6 @@ export default function SettingsPage() {
           </div>
         </SectionCard>
       ))}
-    </div>
+    </PageContainer>
   );
 }

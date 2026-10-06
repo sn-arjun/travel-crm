@@ -5,7 +5,7 @@ import {
   Sparkles, Shield, Zap, Brain, Eye, Search, MessageSquare,
   Map, Calculator, Phone, Truck, Users as UsersIcon, BarChart3,
   CreditCard, Stamp, Megaphone, TrendingUp, CalendarClock,
-  Award, RefreshCw, Server, Cloud,
+  Award, RefreshCw, Cloud,
 } from 'lucide-react';
 
 import { useAiSettings, invalidateAiSettingsCache } from '@/hooks/use-ai-feature';
@@ -20,6 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Tag } from '@/components/ui/tag';
 import { cn } from '@/lib/utils';
+import { PageContainer } from '@/components/layout/page-container';
 
 const AI_FEATURE_META: Record<string, { label: string; description: string; icon: React.ComponentType<{ className?: string }> }> = {
   ai_copilot: { label: 'AI Co-Pilot', description: 'Contextual AI assistance across all modules', icon: Sparkles },
@@ -94,7 +95,7 @@ function FeatureCard({
   );
 }
 
-export default function AiSettingsPage() {
+function AiSettingsPageContent() {
   const { enabled: gateEnabled, reason, loading: gateLoading } = useFeatureGate('ai_assistant');
   const { features, usageCaps, provider, plan, loading, error, refetch } = useAiSettings();
   const [saving, setSaving] = React.useState<string | null>(null);
@@ -130,7 +131,7 @@ export default function AiSettingsPage() {
 
   if (gateLoading || loading) {
     return (
-      <div className="space-y-ds-6 p-ds-6">
+      <div className="space-y-ds-6">
         <Skeleton className="h-8 w-64" />
         <div className="grid gap-ds-4 md:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -143,7 +144,7 @@ export default function AiSettingsPage() {
 
   if (!gateEnabled) {
     return (
-      <div className="space-y-ds-6 p-ds-6">
+      <div className="space-y-ds-6">
         <PageHeader title="AI Settings" description="Manage AI features, usage quotas, and provider configuration." />
         <SectionCard>
           <div className="flex flex-col items-center gap-ds-3 py-ds-8 text-center">
@@ -162,7 +163,7 @@ export default function AiSettingsPage() {
 
   if (error) {
     return (
-      <div className="p-ds-6">
+      <div>
         <SectionCard>
           <div className="py-ds-8 text-center">
             <p className="text-sm text-ds-danger">{error}</p>
@@ -176,7 +177,7 @@ export default function AiSettingsPage() {
   }
 
   return (
-    <div className="space-y-ds-8 p-ds-6">
+    <div className="space-y-ds-8">
       <PageHeader
         title="AI Settings"
         description={`Manage AI features, usage quotas, and provider configuration for your plan.`}
@@ -239,7 +240,7 @@ export default function AiSettingsPage() {
                     (cap.percentUsed ?? 0) >= 70 && (cap.percentUsed ?? 0) < 90 && '[&>div]:bg-ds-warning',
                   )}
                 />
-                <p className="text-[11px] text-ds-foreground-muted">
+                <p className="text-xs text-ds-foreground-muted">
                   {cap.remaining ?? 0} remaining
                 </p>
               </div>
@@ -261,7 +262,7 @@ export default function AiSettingsPage() {
                       style={{ height: `${Math.max(height, 4)}%` }}
                       title={`${d.day}: ${d.requests} requests`}
                     />
-                    <span className="text-[9px] text-ds-foreground-muted">{d.day?.slice(5)}</span>
+                    <span className="text-xs text-ds-foreground-muted">{d.day?.slice(5)}</span>
                   </div>
                 );
               })}
@@ -339,5 +340,13 @@ export default function AiSettingsPage() {
         </SectionCard>
       )}
     </div>
+  );
+}
+
+export default function AiSettingsPage() {
+  return (
+    <PageContainer>
+      <AiSettingsPageContent />
+    </PageContainer>
   );
 }

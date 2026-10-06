@@ -30,15 +30,15 @@ import {
   Badge,
   EmptyState,
   Skeleton,
-  Spinner,
   ConfirmDialog,
 } from '@/components/ui';
 import { toast } from 'sonner';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { voipApi, type VoipNumber, type AvailableNumber } from '@/lib/api/voip';
 import { useFeatureGate } from '@/hooks/use-feature-gate';
+import { PageContainer } from '@/components/layout/page-container';
 
-export default function PhoneNumbersPage() {
+function PhoneNumbersPageContent() {
   const router = useRouter();
   const { enabled, reason, upgradeHref, loading: gateLoading } = useFeatureGate('voip_calling');
 
@@ -328,5 +328,13 @@ export default function PhoneNumbersPage() {
         onConfirm={handleDelete}
       />
     </div>
+  );
+}
+
+export default function PhoneNumbersPage() {
+  return (
+    <PageContainer>
+      <PhoneNumbersPageContent />
+    </PageContainer>
   );
 }

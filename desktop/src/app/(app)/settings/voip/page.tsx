@@ -39,6 +39,7 @@ import {
   type VoipRoutingStrategy,
 } from '@/lib/api/voip';
 import { useFeatureGate } from '@/hooks/use-feature-gate';
+import { PageContainer } from '@/components/layout/page-container';
 
 type VoipToggleKey = 'voicemailEnabled' | 'ivrEnabled' | 'businessHoursEnabled';
 
@@ -50,10 +51,11 @@ const TOGGLE_ROWS: { key: VoipToggleKey; label: string; description: string }[] 
 
 const MASKED = /^\*{4}/;
 
-export default function VoipSettingsPage() {
+function VoipSettingsPageContent() {
   const router = useRouter();
   const { enabled, reason, upgradeHref, loading: gateLoading } = useFeatureGate('voip_calling');
   const [showApiKey, setShowApiKey] = React.useState(false);
+  const [showAccountId, setShowAccountId] = React.useState(false);
   const [testing, setTesting] = React.useState(false);
   const [testResult, setTestResult] = React.useState<{ connected: boolean; message: string } | null>(null);
 
@@ -227,12 +229,31 @@ export default function VoipSettingsPage() {
 
           <div className="flex flex-col gap-ds-2">
             <Label htmlFor="providerAccountId">Account SID / ID</Label>
-            <Input
-              id="providerAccountId"
-              value={form.providerAccountId}
-              onChange={(e) => setForm((p) => ({ ...p, providerAccountId: e.target.value }))}
-              placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-            />
+            <div className="relative">
+              <Input
+                id="providerAccountId"
+                type={showAccountId ? 'text' : 'password'}
+                autoComplete="off"
+                data-secret
+                value={form.providerAccountId}
+                onChange={(e) => setForm((p) => ({ ...p, providerAccountId: e.target.value }))}
+                placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              />
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="absolute right-2 top-1/2 -translate-y-1/2"
+                onClick={() => setShowAccountId(!showAccountId)}
+                aria-label={showAccountId ? 'Hide account SID' : 'Show account SID'}
+              >
+                {showAccountId ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              </Button>
+            </div>
+            {form.providerAccountId && !showAccountId && (
+              <p className="text-xs text-ds-foreground-muted">
+                Saved account ending in {form.providerAccountId.slice(-4)}
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-ds-2">
@@ -240,6 +261,8 @@ export default function VoipSettingsPage() {
             <div className="relative">
               <Input
                 id="providerAuthToken"
+                autoComplete="off"
+                data-secret
                 type={showApiKey ? 'text' : 'password'}
                 value={form.providerAuthToken}
                 onChange={(e) => setForm((p) => ({ ...p, providerAuthToken: e.target.value }))}
@@ -368,5 +391,13 @@ export default function VoipSettingsPage() {
         </Button>
       </div>
     </div>
+  );
+}
+
+export default function VoipSettingsPage() {
+  return (
+    <PageContainer>
+      <VoipSettingsPageContent />
+    </PageContainer>
   );
 }

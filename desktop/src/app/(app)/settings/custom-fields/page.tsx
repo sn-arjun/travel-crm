@@ -13,9 +13,12 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EmptyState } from '@/components/ui/empty-state';
+import { PageHeader } from '@/components/ui/page-header';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { toast } from 'sonner';
 import { useApiQuery } from '@/hooks/use-api';
 import { contactsApi, type CustomFieldDef, type CreateCustomFieldRequest } from '@/lib/api/contacts';
+import { PageContainer } from '@/components/layout/page-container';
 
 interface FieldForm {
   name: string;
@@ -36,8 +39,9 @@ const TYPE_LABELS: Record<CustomFieldDef['fieldType'], string> = {
   boolean: 'Yes/No',
 };
 
-export default function ContactCustomFieldsPage() {
+function ContactCustomFieldsPageContent() {
   const router = useRouter();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [form, setForm] = React.useState<FieldForm>(emptyForm);
@@ -111,7 +115,13 @@ export default function ContactCustomFieldsPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Delete this custom field? Existing values will no longer be shown.')) return;
+    const ok = await confirm({
+      title: 'Delete custom field?',
+      description: 'Existing values will no longer be shown on contacts.',
+      confirmLabel: 'Delete',
+      tone: 'destructive',
+    });
+    if (!ok) return;
     setDeletingId(id);
     try {
       await contactsApi.deleteCustomField(id);
@@ -125,23 +135,24 @@ export default function ContactCustomFieldsPage() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-ds-6 py-ds-4 border-b border-ds-border">
-        <div className="flex items-center gap-ds-3">
+    <div className="flex flex-col gap-ds-4">
+      {confirmDialog}
+      <PageHeader
+        title="Contact custom fields"
+        description="Define extra fields captured on every contact."
+        back={
           <Button variant="ghost" size="icon-sm" onClick={() => router.back()} aria-label="Back">
             <ArrowLeft aria-hidden="true" />
           </Button>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">Contact Custom Fields</h1>
-            <p className="text-sm text-ds-foreground-muted">Define extra fields captured on every contact.</p>
-          </div>
-        </div>
-        <Button onClick={openCreate}>
-          <Plus aria-hidden="true" /> New Field
-        </Button>
-      </div>
+        }
+        actions={
+          <Button onClick={openCreate}>
+            <Plus aria-hidden="true" /> New Field
+          </Button>
+        }
+      />
 
-      <div className="flex-1 overflow-auto p-ds-6">
+      <div>
         <Card className="max-w-4xl mx-auto">
           <CardHeader>
             <CardTitle className="text-base">Fields</CardTitle>
@@ -264,5 +275,13 @@ export default function ContactCustomFieldsPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+export default function ContactCustomFieldsPage() {
+  return (
+    <PageContainer>
+      <ContactCustomFieldsPageContent />
+    </PageContainer>
   );
 }

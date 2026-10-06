@@ -18,6 +18,7 @@ import { useApiQuery } from '@/hooks/use-api';
 import { usersApi } from '@/lib/api/users';
 import { useAuthStore } from '@/stores/auth-store';
 import type { User } from '@travelcrm/shared';
+import { PageContainer } from '@/components/layout/page-container';
 
 function initialsOf(name?: string) {
   return (name || 'U')
@@ -28,7 +29,7 @@ function initialsOf(name?: string) {
     .slice(0, 2);
 }
 
-export default function ProfileSettingsPage() {
+function ProfileSettingsPageContent() {
   const router = useRouter();
   const { setUser } = useAuthStore();
 
@@ -156,5 +157,13 @@ export default function ProfileSettingsPage() {
         </div>
       </SectionCard>
     </div>
+  );
+}
+
+export default function ProfileSettingsPage() {
+  return (
+    <PageContainer>
+      <ProfileSettingsPageContent />
+    </PageContainer>
   );
 }

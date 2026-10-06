@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 import { fetchUserOptions, resolveUserOption, settingsApi, type LeadSource } from '@/lib/api/settings';
 import { useApiQuery } from '@/hooks/use-api';
 import type { User } from '@travelcrm/shared';
+import { PageContainer } from '@/components/layout/page-container';
 
 interface RuleRow {
   key: number;
@@ -37,7 +38,7 @@ const SOURCES: Array<{ value: LeadSource; label: string }> = [
   { value: 'walkin', label: 'Walk-in' },
 ];
 
-export default function RoutingRulesPage() {
+function RoutingRulesPageContent() {
   const { data: response, loading } = useApiQuery(() => settingsApi.routingRules.get(), []);
   const [rows, setRows] = React.useState<RuleRow[]>([]);
   const [saving, setSaving] = React.useState(false);
@@ -92,7 +93,7 @@ export default function RoutingRulesPage() {
 
   if (loading) {
     return (
-      <div className="space-y-ds-4 p-ds-6">
+      <div className="space-y-ds-4">
         <Skeleton className="h-9 w-64" />
         <Skeleton className="h-48 w-full" />
       </div>
@@ -173,5 +174,13 @@ export default function RoutingRulesPage() {
         )}
       </SectionCard>
     </div>
+  );
+}
+
+export default function RoutingRulesPage() {
+  return (
+    <PageContainer>
+      <RoutingRulesPageContent />
+    </PageContainer>
   );
 }

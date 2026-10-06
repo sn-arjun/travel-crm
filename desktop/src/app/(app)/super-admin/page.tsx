@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { useApiQuery } from '@/hooks/use-api';
 import { client } from '@/lib/api/client';
 import { API_ENDPOINTS } from '@/lib/api/config';
+import { PageContainer } from '@/components/layout/page-container';
 
 interface DashboardStats {
   totalTenants: number;
@@ -18,14 +19,14 @@ interface DashboardStats {
   revenueByPlan: { plan: string; revenue: number }[];
 }
 
-export default function SuperAdminDashboard() {
+function SuperAdminDashboardContent() {
   const { data: stats, loading } = useApiQuery<DashboardStats>(async () => {
     const response = await client.get<{ data: DashboardStats }>(API_ENDPOINTS.admin.dashboard);
     return response.data;
   }, []);
 
   return (
-    <div className="flex flex-col gap-ds-6 p-ds-6">
+    <div className="flex flex-col gap-ds-6">
       <PageHeader title="Platform dashboard" description="SaaS administration & analytics across every tenant." />
 
       <div className="grid grid-cols-1 gap-ds-4 md:grid-cols-4">
@@ -75,5 +76,13 @@ export default function SuperAdminDashboard() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SuperAdminDashboard() {
+  return (
+    <PageContainer>
+      <SuperAdminDashboardContent />
+    </PageContainer>
   );
 }

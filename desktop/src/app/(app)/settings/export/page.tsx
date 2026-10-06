@@ -38,10 +38,14 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { toast } from 'sonner';
 import { exportsApi, type ExportJob } from '@/lib/api/exports';
 import { cn } from '@/lib/utils';
+import { unwrapEntity } from '@/lib/api/envelope';
+import type { LucideIcon } from 'lucide-react';
+import { PageHeader } from '@/components/ui/page-header';
 import { useRealtimeEvent, useRealtimeConnected } from '@/hooks/use-realtime-event';
 import { toLocalDateString } from '@/lib/dates';
+import { PageContainer } from '@/components/layout/page-container';
 
-const statusConfig: Record<string, { label: string; icon: any; tone: 'neutral' | 'info' | 'success' | 'danger' }> = {
+const statusConfig: Record<string, { label: string; icon: LucideIcon; tone: 'neutral' | 'info' | 'success' | 'danger' }> = {
   pending: { label: 'Pending', icon: Clock, tone: 'neutral' },
   processing: { label: 'Processing', icon: Loader2, tone: 'info' },
   completed: { label: 'Completed', icon: CheckCircle2, tone: 'success' },
@@ -50,10 +54,10 @@ const statusConfig: Record<string, { label: string; icon: any; tone: 'neutral' |
 
 function formatDate(iso?: string) {
   if (!iso) return '-';
-  try { return new Date(iso).toLocaleString(); } catch { return iso; }
+  try { return new Date(iso).toLocaleString('en-IN'); } catch { return iso; }
 }
 
-export default function ExportSettingsPage() {
+function ExportSettingsPageContent() {
   const router = useRouter();
   const [contactsFormat, setContactsFormat] = React.useState<'csv' | 'xlsx'>('csv');
   const [leadsFormat, setLeadsFormat] = React.useState<'csv' | 'xlsx'>('csv');
@@ -79,9 +83,10 @@ export default function ExportSettingsPage() {
   const hasProcessing = jobs.some(j => j.status === 'processing');
 
   // Real-time export updates via WebSocket
-  useRealtimeEvent(['export:completed', 'export:failed', 'export:progress'], (data: any) => {
+  useRealtimeEvent(['export:completed', 'export:failed', 'export:progress'], (payload: unknown) => {
+    const data = payload as Partial<ExportJob> & { jobId?: string };
     if (data?.jobId) {
-      setJobs(prev => prev.map(j => (j.id === data.jobId ? { ...j, ...data, status: data.status } : j)));
+      setJobs(prev => prev.map(j => (j.id === data.jobId ? { ...j, ...data, status: data.status ?? j.status } : j)));
     }
   });
 
@@ -96,8 +101,8 @@ export default function ExportSettingsPage() {
       const processingJobs = jobs.filter(j => j.status === 'processing');
       for (const job of processingJobs) {
         try {
-          const res = await exportsApi.getJobStatus(job.id) as any;
-          const updated = res?.data ?? res;
+          const res = await exportsApi.getJobStatus(job.id);
+          const updated = unwrapEntity<ExportJob>(res);
           setJobs(prev => prev.map(j => (j.id === updated.id ? { ...j, ...updated } : j)));
         } catch { /* ignore */ }
       }
@@ -150,8 +155,8 @@ export default function ExportSettingsPage() {
   const handleExportFull = async () => {
     setExportingFull(true);
     try {
-      const result = await exportsApi.full(fullOptions) as any;
-      const job = result?.data ?? result;
+      const result = await exportsApi.full(fullOptions);
+      const job = unwrapEntity<ExportJob | undefined>(result);
       if (job?.id) {
         setJobs(prev => [job, ...prev.filter(j => j.id !== job.id)]);
         toast.success("Full export started. Check the jobs table below when it's ready to download.");
@@ -177,8 +182,8 @@ export default function ExportSettingsPage() {
 
   const handleRefreshJob = async (jobId: string) => {
     try {
-      const result = await exportsApi.getJobStatus(jobId) as any;
-      const job = result?.data ?? result;
+      const result = await exportsApi.getJobStatus(jobId);
+      const job = unwrapEntity<ExportJob>(result);
       setJobs(prev => prev.map(j => (j.id === jobId ? { ...j, ...job } : j)));
     } catch {
       toast.error('Failed to check status');
@@ -187,15 +192,15 @@ export default function ExportSettingsPage() {
 
   return (
     <div className="space-y-ds-6">
-      <div className="flex items-center gap-ds-4">
-        <Button variant="ghost" size="icon" onClick={() => router.push('/settings')} aria-label="Back to settings">
-          <ArrowLeft className="size-5" />
-        </Button>
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ds-foreground">Data Export</h1>
-          <p className="mt-0.5 text-ds-foreground-muted">Export your CRM data in various formats</p>
-        </div>
-      </div>
+      <PageHeader
+        title="Data export"
+        description="Export your CRM data in various formats"
+        back={
+          <Button variant="ghost" size="icon" onClick={() => router.push('/settings')} aria-label="Back to settings">
+            <ArrowLeft className="size-5" />
+          </Button>
+        }
+      />
 
       {/* Quick Exports */}
       <div className="grid grid-cols-1 gap-ds-4 md:grid-cols-2">
@@ -363,5 +368,13 @@ export default function ExportSettingsPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function ExportSettingsPage() {
+  return (
+    <PageContainer>
+      <ExportSettingsPageContent />
+    </PageContainer>
   );
 }

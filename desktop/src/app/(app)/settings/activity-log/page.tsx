@@ -28,7 +28,7 @@ const ENTITY_OPTIONS = ['contact', 'lead', 'invoice', 'task', 'user', 'settings'
 
 function formatDate(iso: string) {
   try {
-    return new Date(iso).toLocaleString();
+    return new Date(iso).toLocaleString('en-IN');
   } catch {
     return iso;
   }
@@ -96,7 +96,7 @@ export default function ActivityLogPage() {
     {
       key: 'details',
       header: 'Details',
-      cell: (e) => <span className="max-w-[240px] truncate text-sm text-ds-foreground-muted">{e.details ?? '—'}</span>,
+      cell: (e) => <span className="max-w-60 truncate text-sm text-ds-foreground-muted">{e.details ?? '—'}</span>,
     },
     { key: 'ipAddress', header: 'IP address', cell: (e) => <span className="font-mono text-xs">{e.ipAddress ?? '—'}</span> },
     { key: 'createdAt', header: 'Timestamp', sortable: true, cell: (e) => formatDate(e.createdAt) },
@@ -112,19 +112,21 @@ export default function ActivityLogPage() {
         const res = await activityLogsApi.list({
           page,
           limit,
-          ...(action !== 'all' ? { action } : {}),
           ...(entityType !== 'all' ? { entityType } : {}),
           ...(presetUserId ? { userId: presetUserId } : {}),
         });
-        // Backend has no free-text search; narrow each fetched page client-side.
+        // The backend matches actions exactly (e.g. 'update_user') and has no free-text
+        // search, so the action group and the search term narrow each fetched page here.
         const term = search.trim().toLowerCase();
         const rows = (res as unknown as { data?: ActivityLogEntry[] })?.data;
-        if (!term || !Array.isArray(rows)) return res;
-        const matches = rows.filter((e) =>
-          [e.userName, e.userId, e.entityType, e.entityName, e.action, e.details].some((v) =>
+        if ((!term && action === 'all') || !Array.isArray(rows)) return res;
+        const matches = rows.filter((e) => {
+          if (action !== 'all' && e.action !== action && !e.action.startsWith(`${action}_`)) return false;
+          if (!term) return true;
+          return [e.userName, e.userId, e.entityType, e.entityName, e.action, e.details].some((v) =>
             (v ?? '').toLowerCase().includes(term),
-          ),
-        );
+          );
+        });
         return { ...(res as object), data: matches };
       }}
       extractItems={(r) => {

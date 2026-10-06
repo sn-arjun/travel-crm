@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useApiQuery } from '@/hooks/use-api';
 import { client } from '@/lib/api/client';
 import { API_ENDPOINTS } from '@/lib/api/config';
+import { PageContainer } from '@/components/layout/page-container';
 
 interface SystemHealth {
   status: 'healthy' | 'warning' | 'critical';
@@ -40,7 +41,7 @@ function logTone(level: SystemLog['level']) {
   return 'danger' as const;
 }
 
-export default function SystemPage() {
+function SystemPageContent() {
   const { data: health, loading: healthLoading, refetch } = useApiQuery<SystemHealth>(async () => {
     const response = await client.get<{ data: SystemHealth }>(API_ENDPOINTS.admin.systemHealth);
     return response.data;
@@ -54,7 +55,7 @@ export default function SystemPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-ds-6 p-ds-6">
+    <div className="flex flex-col gap-ds-6">
       <PageHeader
         title="System health"
         description="Platform monitoring and event logs."
@@ -142,13 +143,14 @@ export default function SystemPage() {
 
         <TabsContent value="logs" className="mt-ds-4">
           <ListPage<SystemLog>
+            className="p-0"
             title="System logs"
             getRowId={(l) => l.id}
             fetcher={({ page, limit, search }) =>
               client.get(API_ENDPOINTS.admin.systemLogs, { params: { page, limit, search: search || undefined } })
             }
-            extractItems={(r: any) => r?.data ?? []}
-            extractTotal={(r: any) => r?.pagination?.total ?? 0}
+            extractItems={(r) => (r as { data?: SystemLog[] })?.data ?? []}
+            extractTotal={(r) => (r as { pagination?: { total?: number } })?.pagination?.total ?? 0}
             columns={logColumns}
             searchPlaceholder="Search logs..."
             emptyTitle="No logs found"
@@ -156,5 +158,13 @@ export default function SystemPage() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+export default function SystemPage() {
+  return (
+    <PageContainer>
+      <SystemPageContent />
+    </PageContainer>
   );
 }

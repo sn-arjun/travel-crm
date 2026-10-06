@@ -2,6 +2,7 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { DetailPage } from '@/components/domain';
+import { PageContainer } from '@/components/layout/page-container';
 import { SectionCard } from '@/components/ui/section-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tag } from '@/components/ui/tag';
@@ -41,15 +42,15 @@ export default function TenantDetailPage() {
 
   if (loading || !tenant) {
     return (
-      <div className="flex flex-col gap-ds-4 p-ds-6">
+      <PageContainer>
         <Skeleton className="h-9 w-64" />
         <Skeleton className="h-64 w-full" />
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="p-ds-6">
+    <>
       <DetailPage
         entity={tenant}
         title={tenant.name}
@@ -123,6 +124,6 @@ export default function TenantDetailPage() {
           </div>
         }
       />
-    </div>
+    </>
   );
 }

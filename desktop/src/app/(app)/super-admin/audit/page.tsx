@@ -42,7 +42,7 @@ export default function AuditLogsPage() {
   ];
 
   return (
-    <div className="p-ds-6">
+    <>
       <ListPage<AuditLog>
         title="Audit logs"
         description="Complete platform activity and admin action history."
@@ -52,8 +52,8 @@ export default function AuditLogsPage() {
             params: { page, limit, search: search || undefined, action: actionFilter !== 'all' ? actionFilter : undefined },
           })
         }
-        extractItems={(r: any) => r?.data ?? []}
-        extractTotal={(r: any) => r?.pagination?.total ?? 0}
+        extractItems={(r) => (r as { data?: AuditLog[] })?.data ?? []}
+        extractTotal={(r) => (r as { pagination?: { total?: number } })?.pagination?.total ?? 0}
         columns={columns}
         searchPlaceholder="Search by user, tenant, or action..."
         filters={actionFilter !== 'all' ? [{ id: 'action', label: 'Action', value: actionFilter }] : []}
@@ -122,6 +122,6 @@ export default function AuditLogsPage() {
         detailTitle={() => 'Audit log entry'}
         emptyTitle="No audit logs found"
       />
-    </div>
+    </>
   );
 }

@@ -252,7 +252,7 @@ test.describe('Settings › Email signature', () => {
     await page.locator('#sig-logo').fill(sig.logo);
 
     // Live preview reflects the fields
-    const preview = page.locator('.bg-white.rounded-lg, .dark\\:bg-zinc-900').first();
+    const preview = page.getByTestId('signature-preview');
     await expect(preview).toContainText(sig.name);
     await expect(preview).toContainText(sig.company);
     await expect(preview.locator('img[alt="Logo"]')).toHaveAttribute('src', sig.logo);
@@ -270,8 +270,8 @@ test.describe('Settings › Email signature', () => {
     await expect(page.locator('#sig-logo')).toHaveValue(sig.logo);
 
     // Reset clears it server-side
-    page.once('dialog', (d) => void d.accept());
     await page.getByRole('button', { name: 'Reset' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Reset' }).click();
     await expect(page.getByText('Email signature reset')).toBeVisible({ timeout: 10_000 });
     await page.reload();
     await waitForLoad(page);

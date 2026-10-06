@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { useApiQuery } from '@/hooks/use-api';
 import { client } from '@/lib/api/client';
 import { API_ENDPOINTS } from '@/lib/api/config';
+import { PageContainer } from '@/components/layout/page-container';
 
 interface Plan {
   id: string;
@@ -22,14 +23,14 @@ interface Plan {
   isActive: boolean;
 }
 
-export default function PlansPage() {
+function PlansPageContent() {
   const { data: plans, loading } = useApiQuery<Plan[]>(async () => {
     const response = await client.get<{ data: Plan[] }>(API_ENDPOINTS.admin.plans);
     return response.data;
   }, []);
 
   return (
-    <div className="flex flex-col gap-ds-6 p-ds-6">
+    <div className="flex flex-col gap-ds-6">
       <PageHeader title="Subscription plans" description="The pricing tiers available across the platform." count={plans?.length} />
 
       {loading ? (
@@ -99,5 +100,13 @@ export default function PlansPage() {
         <EmptyState title="No plans found" description="Subscription plans will appear here once configured." />
       )}
     </div>
+  );
+}
+
+export default function PlansPage() {
+  return (
+    <PageContainer>
+      <PlansPageContent />
+    </PageContainer>
   );
 }

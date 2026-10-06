@@ -1,4 +1,5 @@
 'use client';
+import { formatDisplayDate } from '@/lib/dates';
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
@@ -44,7 +45,7 @@ const ROLE_OPTIONS = Object.entries(ROLE_LABELS) as [Role, string][];
 function formatDate(iso?: string) {
   if (!iso) return 'Never';
   try {
-    return new Date(iso).toLocaleDateString();
+    return formatDisplayDate(iso) || iso;
   } catch {
     return iso;
   }

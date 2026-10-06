@@ -7,6 +7,7 @@ import { Tag } from '@/components/ui/tag';
 import { useApiQuery } from '@/hooks/use-api';
 import { client } from '@/lib/api/client';
 import { API_ENDPOINTS } from '@/lib/api/config';
+import { PageContainer } from '@/components/layout/page-container';
 
 interface GlobalConfig {
   id: string;
@@ -27,7 +28,7 @@ interface GlobalConfig {
   email?: { smtpHost: string; smtpPort: number; smtpUser: string; fromEmail: string; fromName: string };
 }
 
-export default function ConfigPage() {
+function ConfigPageContent() {
   const { data: config, loading } = useApiQuery<GlobalConfig>(async () => {
     const response = await client.get<{ data: GlobalConfig }>(API_ENDPOINTS.admin.globalConfig);
     return response.data;
@@ -35,7 +36,7 @@ export default function ConfigPage() {
 
   if (loading || !config) {
     return (
-      <div className="flex flex-col gap-ds-4 p-ds-6">
+      <div className="flex flex-col gap-ds-4">
         <Skeleton className="h-9 w-64" />
         <Skeleton className="h-64 w-full" />
       </div>
@@ -43,7 +44,7 @@ export default function ConfigPage() {
   }
 
   return (
-    <div className="flex flex-col gap-ds-6 p-ds-6">
+    <div className="flex flex-col gap-ds-6">
       <PageHeader title="Global configuration" description="Platform-wide settings, read from the deployment environment." />
 
       <SectionCard title="Application">
@@ -139,5 +140,13 @@ export default function ConfigPage() {
         </SectionCard>
       )}
     </div>
+  );
+}
+
+export default function ConfigPage() {
+  return (
+    <PageContainer>
+      <ConfigPageContent />
+    </PageContainer>
   );
 }

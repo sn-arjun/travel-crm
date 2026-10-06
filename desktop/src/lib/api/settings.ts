@@ -151,7 +151,7 @@ export interface ItineraryDefaults {
   defaultTerms: string;
 }
 
-type Raw = Record<string, any>;
+type Raw = Record<string, unknown>;
 
 /** Maps the `data` of a successful response, passing error shapes through. */
 function mapData<A, B>(res: ApiResponse<A>, fn: (data: A) => B): ApiResponse<B> {
@@ -245,10 +245,10 @@ function fromItineraryDefaults(r: Raw): ItineraryDefaults {
 
 function fromSequence(s: Raw): FollowUpSequence {
   return {
-    id: s.id,
-    name: s.name,
-    triggerStatus: s.triggerStatus,
-    steps: Array.isArray(s.steps) ? s.steps : [],
+    id: str(s.id),
+    name: str(s.name),
+    triggerStatus: s.triggerStatus as FollowUpSequence['triggerStatus'],
+    steps: Array.isArray(s.steps) ? (s.steps as FollowUpSequence['steps']) : [],
     isActive: Boolean(s.isActive),
   };
 }

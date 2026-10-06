@@ -21,6 +21,7 @@ import { Stat } from '@/components/ui/stat';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useApiQuery } from '@/hooks/use-api';
 import { aiApi } from '@/lib/api/ai';
+import { PageContainer } from '@/components/layout/page-container';
 
 const taskIcons: Record<string, React.ReactNode> = {
   lead_extraction: <FileText className="size-4" />,
@@ -39,7 +40,7 @@ function formatNumber(n: number): string {
   return n.toString();
 }
 
-export default function AiUsagePage() {
+function AiUsagePageContent() {
   const router = useRouter();
 
   const { data: usageResponse, loading } = useApiQuery(() => aiApi.settings.getUsage(), []);
@@ -63,7 +64,7 @@ export default function AiUsagePage() {
   );
 
   return (
-    <div className="space-y-ds-6 p-ds-6">
+    <div className="space-y-ds-6">
       <PageHeader
         title="AI Usage"
         description="Monitor your AI feature usage and estimated costs"
@@ -168,7 +169,7 @@ export default function AiUsagePage() {
                     style={{ width: `${Math.min(cap.percentUsed, 100)}%` }}
                   />
                 </div>
-                <p className="text-[11px] text-ds-foreground-muted">
+                <p className="text-xs text-ds-foreground-muted">
                   {cap.remaining} remaining — resets {cap.resetPeriod}
                 </p>
               </div>
@@ -190,7 +191,7 @@ export default function AiUsagePage() {
                   title={`${day.day}: ${day.requests} requests`}
                 >
                   <div
-                    className="min-h-[2px] w-full rounded-t bg-ds-primary/80"
+                    className="min-h-0.5 w-full rounded-t bg-ds-primary/80"
                     style={{ height: `${height}%` }}
                   />
                 </div>
@@ -206,5 +207,13 @@ export default function AiUsagePage() {
         </SectionCard>
       )}
     </div>
+  );
+}
+
+export default function AiUsagePage() {
+  return (
+    <PageContainer>
+      <AiUsagePageContent />
+    </PageContainer>
   );
 }

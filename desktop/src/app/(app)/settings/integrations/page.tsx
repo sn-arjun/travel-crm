@@ -6,6 +6,7 @@ import { ArrowLeft, Copy, Check, Webhook, MessageSquare, Mail } from 'lucide-rea
 import { Button, Input, Label, SectionCard, PageHeader, Badge } from '@/components/ui';
 import { toast } from 'sonner';
 import { API_BASE_URL } from '@/lib/api/config';
+import { PageContainer } from '@/components/layout/page-container';
 
 interface WebhookInfo {
   key: string;
@@ -71,7 +72,7 @@ function CopyableUrl({ id, url }: { id: string; url: string }) {
   );
 }
 
-export default function IntegrationsSettingsPage() {
+function IntegrationsSettingsPageContent() {
   const router = useRouter();
 
   const backButton = (
@@ -118,5 +119,13 @@ export default function IntegrationsSettingsPage() {
         ))}
       </div>
     </div>
+  );
+}
+
+export default function IntegrationsSettingsPage() {
+  return (
+    <PageContainer>
+      <IntegrationsSettingsPageContent />
+    </PageContainer>
   );
 }

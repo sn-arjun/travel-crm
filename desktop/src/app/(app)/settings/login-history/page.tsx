@@ -12,10 +12,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useApiQuery } from '@/hooks/use-api';
 import { usersApi, type LoginHistoryEntry } from '@/lib/api/users';
 import { cn } from '@/lib/utils';
+import { PageContainer } from '@/components/layout/page-container';
 
 function formatDate(iso: string) {
   try {
-    return new Date(iso).toLocaleString();
+    return new Date(iso).toLocaleString('en-IN');
   } catch {
     return iso;
   }
@@ -27,7 +28,7 @@ const statusConfig = {
   locked: { label: 'Locked', icon: AlertTriangle, className: 'text-ds-warning-on-subtle bg-ds-warning-subtle' },
 };
 
-export default function LoginHistoryPage() {
+function LoginHistoryPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const userId = searchParams?.get('userId') ?? null;
@@ -99,5 +100,13 @@ export default function LoginHistoryPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function LoginHistoryPage() {
+  return (
+    <PageContainer>
+      <LoginHistoryPageContent />
+    </PageContainer>
   );
 }

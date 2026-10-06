@@ -7,10 +7,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { notificationsApi } from '@/lib/api/notifications';
+import { PageContainer } from '@/components/layout/page-container';
 
 const TARGET_ROLES = [
   { value: 'all', label: 'All Team Members' },
@@ -20,7 +22,7 @@ const TARGET_ROLES = [
   { value: 'accountant', label: 'Accountants' },
 ];
 
-export default function AnnouncementsPage() {
+function AnnouncementsPageContent() {
   const router = useRouter();
   const [title, setTitle] = React.useState('');
   const [body, setBody] = React.useState('');
@@ -39,7 +41,7 @@ export default function AnnouncementsPage() {
         targetRole: targetRole === 'all' ? undefined : targetRole,
       });
       if (result && 'data' in result) {
-        const sent = (result.data as any)?.sent ?? 0;
+        const sent = (result.data as { sent?: number } | undefined)?.sent ?? 0;
         toast.success(`Announcement sent to ${sent} team member${sent !== 1 ? 's' : ''}`);
         setTitle('');
         setBody('');
@@ -53,16 +55,16 @@ export default function AnnouncementsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => router.push('/settings')}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Send Announcement</h1>
-          <p className="text-muted-foreground mt-1">Broadcast a message to your team</p>
-        </div>
-      </div>
+    <div className="space-y-ds-6">
+      <PageHeader
+        title="Send announcement"
+        description="Broadcast a message to your team"
+        back={
+          <Button variant="ghost" size="icon" onClick={() => router.push('/settings')} aria-label="Back to settings">
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+        }
+      />
 
       <Card className="max-w-2xl">
         <CardHeader>
@@ -142,5 +144,13 @@ export default function AnnouncementsPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function AnnouncementsPage() {
+  return (
+    <PageContainer>
+      <AnnouncementsPageContent />
+    </PageContainer>
   );
 }

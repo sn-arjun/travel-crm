@@ -47,7 +47,7 @@ export default function AllUsersPage() {
   }, [roleFilter, statusFilter]);
 
   return (
-    <div className="p-ds-6">
+    <>
       <ListPage<AdminUser>
         title="All users"
         description="Users across every tenant on the platform."
@@ -63,8 +63,8 @@ export default function AllUsersPage() {
             },
           })
         }
-        extractItems={(r: any) => r?.data ?? []}
-        extractTotal={(r: any) => r?.pagination?.total ?? 0}
+        extractItems={(r) => (r as { data?: AdminUser[] })?.data ?? []}
+        extractTotal={(r) => (r as { pagination?: { total?: number } })?.pagination?.total ?? 0}
         columns={columns}
         searchPlaceholder="Search by name or email..."
         filters={activeFilters}
@@ -126,6 +126,6 @@ export default function AllUsersPage() {
         emptyTitle="No users found"
         emptyDescription="Users will appear here as tenants add their teams."
       />
-    </div>
+    </>
   );
 }

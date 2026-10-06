@@ -51,7 +51,7 @@ export default function TenantsPage() {
   ];
 
   return (
-    <div className="p-ds-6">
+    <>
       <ListPage<Tenant>
         title="Tenants"
         description="Every SaaS customer on the platform."
@@ -66,8 +66,8 @@ export default function TenantsPage() {
             },
           })
         }
-        extractItems={(r: any) => r?.data ?? []}
-        extractTotal={(r: any) => r?.pagination?.total ?? 0}
+        extractItems={(r) => (r as { data?: Tenant[] })?.data ?? []}
+        extractTotal={(r) => (r as { pagination?: { total?: number } })?.pagination?.total ?? 0}
         columns={columns}
         searchPlaceholder="Search by name or email..."
         filters={statusFilter !== 'all' ? [{ id: 'status', label: 'Status', value: statusFilter }] : []}
@@ -106,6 +106,6 @@ export default function TenantsPage() {
         emptyTitle="No tenants yet"
         emptyDescription="Tenants will appear here once they sign up."
       />
-    </div>
+    </>
   );
 }

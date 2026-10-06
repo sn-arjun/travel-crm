@@ -18,6 +18,7 @@ import {
 import { toast } from 'sonner';
 import { settingsApi, type TaxSystem } from '@/lib/api/settings';
 import { useApiQuery } from '@/hooks/use-api';
+import { PageContainer } from '@/components/layout/page-container';
 
 const schema = z.object({
   bankName: z.string().optional(),
@@ -46,11 +47,11 @@ export default function InvoiceDefaultsPage() {
 
   if (loading) {
     return (
-      <div className="space-y-ds-4 p-ds-6">
+      <PageContainer>
         <Skeleton className="h-9 w-64" />
         <Skeleton className="h-64 w-full" />
         <Skeleton className="h-48 w-full" />
-      </div>
+      </PageContainer>
     );
   }
 

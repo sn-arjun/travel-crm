@@ -30,9 +30,14 @@ import {
 import { Tag } from '@/components/ui/tag';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { ListPage, type ListFilter } from '@/components/domain';
+import { ListPage } from '@/components/domain';
+import type { LucideIcon } from 'lucide-react';
+import { PageHeader } from '@/components/ui/page-header';
+import { useConfirm } from '@/components/ui/confirm-dialog';
+import { unwrapEntity } from '@/lib/api/envelope';
 import { importsApi, type ImportJob } from '@/lib/api/imports';
 import { cn } from '@/lib/utils';
+import { PageContainer } from '@/components/layout/page-container';
 
 type WizardStep = 'upload' | 'map' | 'configure';
 
@@ -93,7 +98,32 @@ const CRM_FIELDS: Record<string, Array<{ value: string; label: string; required?
   ],
 };
 
-const statusConfig: Record<string, { label: string; icon: any; tone: 'neutral' | 'info' | 'success' | 'danger' | 'warning' }> = {
+/** Shape of the upload response: the backend returns the job under either id key. */
+interface UploadedImport {
+  id?: string;
+  jobId?: string;
+  headers?: string[];
+  totalRows?: number;
+}
+
+/** Raw row from GET /imports (snake-ish column names, depends on backend version). */
+interface RawImportJob {
+  id: string;
+  importType?: string;
+  type?: string;
+  fileName: string;
+  totalRows?: number;
+  totalRecords?: number;
+  processedRows?: number;
+  processedRecords?: number;
+  errorCount?: number;
+  failedRecords?: number;
+  status: ImportJob['status'];
+  createdAt: string;
+  completedAt?: string | null;
+}
+
+const statusConfig: Record<string, { label: string; icon: LucideIcon; tone: 'neutral' | 'info' | 'success' | 'danger' | 'warning' }> = {
   pending: { label: 'Pending', icon: Clock, tone: 'neutral' },
   validating: { label: 'Validating', icon: Loader2, tone: 'info' },
   importing: { label: 'Processing', icon: Loader2, tone: 'info' },
@@ -105,7 +135,7 @@ const statusConfig: Record<string, { label: string; icon: any; tone: 'neutral' |
 
 function formatDate(iso?: string) {
   if (!iso) return '-';
-  try { return new Date(iso).toLocaleString(); } catch { return iso; }
+  try { return new Date(iso).toLocaleString('en-IN'); } catch { return iso; }
 }
 
 function autoMap(headers: string[], importType: string): Record<string, string> {
@@ -142,14 +172,15 @@ function autoMap(headers: string[], importType: string): Record<string, string> 
   return result;
 }
 
-export default function ImportSettingsPage() {
+function ImportSettingsPageContent() {
   const router = useRouter();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [step, setStep] = React.useState<WizardStep>('upload');
   const [importType, setImportType] = React.useState('contacts');
   const [file, setFile] = React.useState<File | null>(null);
   const [skipHeader, setSkipHeader] = React.useState(true);
   const [duplicateStrategy, setDuplicateStrategy] = React.useState<'skip' | 'merge' | 'create'>('skip');
-  const [uploadedJob, setUploadedJob] = React.useState<any>(null);
+  const [uploadedJob, setUploadedJob] = React.useState<UploadedImport | null>(null);
   const [uploading, setUploading] = React.useState(false);
   const [executing, setExecuting] = React.useState(false);
   const [mappings, setMappings] = React.useState<Record<string, string>>({});
@@ -166,12 +197,12 @@ export default function ImportSettingsPage() {
   const historyFetcher = React.useCallback(
     async ({ page, limit, search }: { page: number; limit: number; search: string }) => {
       const res = (await importsApi.list()) as unknown as { data?: unknown };
-      const raw = Array.isArray(res.data) ? (res.data as Array<Record<string, any>>) : [];
+      const raw = Array.isArray(res.data) ? (res.data as RawImportJob[]) : [];
       const needle = search.trim().toLowerCase();
       const jobs: ImportJob[] = raw
         .map((j) => ({
           id: j.id,
-          type: j.importType ?? j.type,
+          type: j.importType ?? j.type ?? '',
           fileName: j.fileName,
           totalRecords: j.totalRows ?? j.totalRecords ?? 0,
           processedRecords: j.processedRows ?? j.processedRecords ?? 0,
@@ -194,11 +225,6 @@ export default function ImportSettingsPage() {
     [filterType, filterStatus],
   );
 
-  const activeFilters: ListFilter[] = [
-    ...(filterType !== 'all' ? [{ id: 'type', label: 'Type', value: IMPORT_TYPES.find(t => t.value === filterType)?.label ?? filterType }] : []),
-    ...(filterStatus !== 'all' ? [{ id: 'status', label: 'Status', value: statusConfig[filterStatus]?.label ?? filterStatus }] : []),
-  ];
-
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.currentTarget.files?.[0];
     if (f) {
@@ -211,8 +237,8 @@ export default function ImportSettingsPage() {
     if (!file) { toast.error('Please select a file'); return; }
     setUploading(true);
     try {
-      const result = await importsApi.upload({ file, type: importType, skipHeader }) as any;
-      const data = result?.data ?? result;
+      const result = await importsApi.upload({ file, type: importType, skipHeader });
+      const data = unwrapEntity<UploadedImport>(result);
       setUploadedJob(data);
       const hdrs: string[] = data?.headers ?? [];
       setMappings(autoMap(hdrs, importType));
@@ -228,6 +254,7 @@ export default function ImportSettingsPage() {
   const handleExecute = async () => {
     if (!uploadedJob) return;
     const jobId = uploadedJob.jobId ?? uploadedJob.id;
+    if (!jobId) return;
     setExecuting(true);
     try {
       const columnMapping: Record<string, string> = {};
@@ -287,15 +314,16 @@ export default function ImportSettingsPage() {
 
   return (
     <div className="space-y-ds-6">
-      <div className="flex items-center gap-ds-4">
-        <Button variant="ghost" size="icon" onClick={() => router.push('/settings')} aria-label="Back to settings">
-          <ArrowLeft className="size-5" />
-        </Button>
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ds-foreground">Data Import</h1>
-          <p className="mt-0.5 text-ds-foreground-muted">Import contacts, leads, and other data from CSV/Excel files</p>
-        </div>
-      </div>
+      {confirmDialog}
+      <PageHeader
+        title="Data import"
+        description="Import contacts, leads, and other data from CSV/Excel files"
+        back={
+          <Button variant="ghost" size="icon" onClick={() => router.push('/settings')} aria-label="Back to settings">
+            <ArrowLeft className="size-5" />
+          </Button>
+        }
+      />
 
       {/* Templates */}
       <Card>
@@ -512,6 +540,7 @@ export default function ImportSettingsPage() {
           </div>
 
           <ListPage<ImportJob>
+            className="p-0"
             refreshKey={refreshKey}
             title="Import History"
             description="Recent import jobs and their status"
@@ -565,7 +594,13 @@ export default function ImportSettingsPage() {
                   size="icon-sm"
                   aria-label="Cancel or remove"
                   onClick={async () => {
-                    if (!confirm('Remove this import record?')) return;
+                    const ok = await confirm({
+                      title: 'Remove import record?',
+                      description: 'The record is removed from your import history. Contacts already imported are not affected.',
+                      confirmLabel: 'Remove',
+                      tone: 'destructive',
+                    });
+                    if (!ok) return;
                     try {
                       await importsApi.cancel(j.id);
                       setRefreshKey(k => k + 1);
@@ -586,5 +621,13 @@ export default function ImportSettingsPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function ImportSettingsPage() {
+  return (
+    <PageContainer>
+      <ImportSettingsPageContent />
+    </PageContainer>
   );
 }
