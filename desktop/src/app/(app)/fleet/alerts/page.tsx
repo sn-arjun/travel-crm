@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tag } from '@/components/ui/tag';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
+import { PageContainer } from '@/components/layout/page-container';
 import { cn } from '@/lib/utils';
 import { useApiQuery } from '@/hooks/use-api';
 import { fleetApi, type FleetDocumentAlert, type Vehicle } from '@/lib/api/fleet';
@@ -71,7 +72,7 @@ function AlertCard({ alert }: { alert: FleetAlert }) {
       </div>
       <div className="flex gap-2 shrink-0">
         {detailHref && (
-          <Button variant="ghost" size="icon-sm" asChild>
+          <Button variant="ghost" size="icon-sm" aria-label="View details" asChild>
             <Link href={detailHref}><ExternalLink className="h-4 w-4" /></Link>
           </Button>
         )}
@@ -134,8 +135,8 @@ export default function FleetAlertsPage() {
   const isLoading = docAlertsQuery.loading || maintenanceDueQuery.loading;
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-6 pt-4">
+    <PageContainer>
+      <div>
         <PageHeader
           title="Fleet Alerts"
           count={allAlerts.length}
@@ -150,15 +151,15 @@ export default function FleetAlertsPage() {
         />
       </div>
 
-      <Tabs defaultValue="all" className="flex-1 flex flex-col">
-        <div className="px-6 pt-3 border-b border-ds-border">
+      <Tabs defaultValue="all" className="flex flex-col">
+        <div className="border-b border-ds-border">
           <TabsList>
             <TabsTrigger value="all">All ({allAlerts.length})</TabsTrigger>
             <TabsTrigger value="documents">Expiring Documents ({allDocAlerts.length})</TabsTrigger>
             <TabsTrigger value="maintenance">Maintenance Due ({maintenanceAlerts.length})</TabsTrigger>
           </TabsList>
         </div>
-        <div className="flex-1 overflow-auto p-6">
+        <div className="pt-ds-4">
           {isLoading ? (
             <div className="space-y-3">
               <Skeleton className="h-16 w-full" />
@@ -211,6 +212,6 @@ export default function FleetAlertsPage() {
           )}
         </div>
       </Tabs>
-    </div>
+    </PageContainer>
   );
 }

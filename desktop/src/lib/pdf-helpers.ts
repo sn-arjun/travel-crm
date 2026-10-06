@@ -16,7 +16,6 @@ export function openPdf(type: 'invoice' | 'itinerary' | 'voucher', id: string) {
  * In production, this would call the backend API with download disposition.
  */
 export function downloadPdf(type: string, id: string, filename: string) {
-  const url = `/api/${type}s/${id}/pdf?download=true`;
   console.log(`Downloading ${filename} for ${type}/${id}`);
   // In production, would trigger download:
   // const a = document.createElement('a');

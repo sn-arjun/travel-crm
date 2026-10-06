@@ -211,6 +211,7 @@ export default function LeadCreationPage() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            aria-label={`Copy ${field.label}`}
                             className="h-8 w-8"
                             onClick={() => {
                               navigator.clipboard.writeText(field.value || '');

@@ -134,7 +134,7 @@ export function FileUpload({
                 )}
               </div>
               {onRemoveFile && (
-                <Button variant="ghost" size="icon-sm" onClick={() => onRemoveFile(file.id)} className="shrink-0">
+                <Button variant="ghost" size="icon-sm" aria-label={`Remove ${file.name}`} onClick={() => onRemoveFile(file.id)} className="shrink-0">
                   <X className="h-3.5 w-3.5" />
                 </Button>
               )}

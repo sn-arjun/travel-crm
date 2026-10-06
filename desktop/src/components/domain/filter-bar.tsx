@@ -71,7 +71,7 @@ export function FilterBar({
       {activeFilters.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap animate-slide-in-from-top">
           <span className="text-xs text-ds-foreground-muted">Filters:</span>
-          {activeFilters.map((filter: any) => (
+          {activeFilters.map((filter) => (
             <Badge key={filter.id} variant="outline" className="gap-1 pr-1">
               <span className="text-ds-foreground-muted">{filter.label}:</span>
               {filter.value}

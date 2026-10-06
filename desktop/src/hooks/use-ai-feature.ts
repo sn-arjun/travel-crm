@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { aiApi, type AiFeatureFlag, type AiSettingsData, type UsageCap } from '@/lib/api/ai';
+import { aiApi, type AiFeatureFlag, type AiSettingsData } from '@/lib/api/ai';
 
 interface AiFeatureState {
   loading: boolean;
@@ -26,7 +26,7 @@ async function fetchSettings(): Promise<AiSettingsData | null> {
   try {
     const res = await aiApi.settings.get();
     if (res && 'data' in res && res.data) {
-      cachedSettings = res.data as any;
+      cachedSettings = res.data as AiSettingsData;
       cacheTimestamp = now;
       return cachedSettings;
     }
@@ -55,8 +55,8 @@ export function useAiSettings(): AiFeatureState {
     try {
       const data = await fetchSettings();
       setSettings(data);
-    } catch (e: any) {
-      setError(e.message || 'Failed to load AI settings');
+    } catch (e) {
+      setError((e as Error).message || 'Failed to load AI settings');
     } finally {
       setLoading(false);
     }

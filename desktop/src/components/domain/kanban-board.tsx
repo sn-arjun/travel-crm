@@ -39,7 +39,7 @@ function KanbanColumnHeader({ column, onAdd }: { column: KanbanColumn; onAdd?: (
           </span>
         )}
         {onAdd && (
-          <Button variant="ghost" size="icon-sm" onClick={onAdd} className="h-6 w-6">
+          <Button variant="ghost" size="icon-sm" aria-label="Add card" onClick={onAdd} className="h-6 w-6">
             <Plus className="h-3.5 w-3.5" />
           </Button>
         )}

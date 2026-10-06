@@ -129,7 +129,7 @@ class HttpClient {
     endpoint: string,
     config: InternalRequestConfig = {},
   ): Promise<T> {
-    const { params, headers = {}, body, responseType = 'json', timeout = this.defaultTimeout, retryCount = 0, isRetry = false } = config;
+    const { params, headers = {}, body, responseType = 'json', timeout = this.defaultTimeout, isRetry = false } = config;
 
     const url = this.buildUrl(endpoint, params);
 

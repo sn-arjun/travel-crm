@@ -58,6 +58,7 @@ export function RichTextEditor({
           type="button"
           variant="ghost"
           size="icon-sm"
+          aria-label="Bold"
           onClick={() => editor.chain().focus().toggleBold().run()}
           className={cn(
             'h-7 w-7',
@@ -70,6 +71,7 @@ export function RichTextEditor({
           type="button"
           variant="ghost"
           size="icon-sm"
+          aria-label="Italic"
           onClick={() => editor.chain().focus().toggleItalic().run()}
           className={cn(
             'h-7 w-7',
@@ -83,6 +85,7 @@ export function RichTextEditor({
           type="button"
           variant="ghost"
           size="icon-sm"
+          aria-label="Bullet list"
           onClick={() => editor.chain().focus().toggleBulletList().run()}
           className={cn(
             'h-7 w-7',
@@ -96,6 +99,7 @@ export function RichTextEditor({
           type="button"
           variant="ghost"
           size="icon-sm"
+          aria-label="Numbered list"
           onClick={() => editor.chain().focus().toggleOrderedList().run()}
           className={cn(
             'h-7 w-7',

@@ -13,6 +13,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Stat } from '@/components/ui/stat';
 import { useApiQuery } from '@/hooks/use-api';
 import { visaService, parseDateOnly, type VisaRecord } from '@/lib/api/visa';
+import { PageContainer } from '@/components/layout/page-container';
 import { cn } from '@/lib/utils';
 
 const STATUS_TONE: Record<string, 'neutral' | 'success' | 'danger' | 'warning' | 'info'> = {
@@ -84,18 +85,18 @@ export default function VisaDashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col gap-ds-4 p-ds-4">
+      <PageContainer>
         <Skeleton className="h-9 w-64" />
         <div className="grid grid-cols-4 gap-ds-4">
           {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-ds-lg" />)}
         </div>
         <Skeleton className="h-64 rounded-ds-lg" />
-      </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="flex flex-col gap-ds-4">
+    <PageContainer>
       <PageHeader
         title="Visa Dashboard"
         description={`${stats.total} total applications`}
@@ -193,6 +194,6 @@ export default function VisaDashboardPage() {
           )}
         </SectionCard>
       </div>
-    </div>
+    </PageContainer>
   );
 }

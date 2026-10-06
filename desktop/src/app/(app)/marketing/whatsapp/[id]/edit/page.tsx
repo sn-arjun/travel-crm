@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Lock } from 'lucide-react';
 import { Button, EmptyState, Skeleton } from '@/components/ui';
+import { PageContainer } from '@/components/layout/page-container';
 import { useFeatureGate, UPGRADE_HREF } from '@/hooks/use-feature-gate';
 import { whatsappCampaignsApi, type WhatsappCampaign } from '@/lib/api/whatsapp-campaigns';
 import { WhatsappCampaignFormPage } from '../../whatsapp-campaign-form';
@@ -28,16 +29,16 @@ export default function EditWhatsappCampaignPage() {
 
   if (gateLoading || (enabled && state === 'loading')) {
     return (
-      <div className="flex flex-col gap-ds-4 p-ds-6">
+      <PageContainer>
         <Skeleton className="h-9 w-64" />
         <Skeleton className="h-96 w-full" />
-      </div>
+      </PageContainer>
     );
   }
 
   if (!enabled) {
     return (
-      <div className="flex flex-col items-center justify-center gap-ds-3 p-ds-10 text-center">
+      <PageContainer className="items-center justify-center gap-ds-3 py-ds-10 text-center">
         <div className="flex size-12 items-center justify-center rounded-ds-full bg-ds-warning-subtle text-ds-warning-on-subtle">
           <Lock className="size-6" aria-hidden="true" />
         </div>
@@ -45,7 +46,7 @@ export default function EditWhatsappCampaignPage() {
         <Button size="sm" variant="outline" asChild>
           <a href={UPGRADE_HREF}>Upgrade plan</a>
         </Button>
-      </div>
+      </PageContainer>
     );
   }
 

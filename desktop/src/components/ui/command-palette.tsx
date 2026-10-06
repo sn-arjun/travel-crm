@@ -3,11 +3,10 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Plus, Search, Users, Briefcase, Truck, FileText, MapPin, CreditCard,
+  Plus, Search, Users, Briefcase, Truck, MapPin, CreditCard,
   Settings, LayoutDashboard, Plane, User, Receipt, AlertTriangle,
 } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
 interface CommandItem {
@@ -54,7 +53,7 @@ export function CommandPalette() {
   const filtered = React.useMemo(() => {
     if (!query) return commands;
     const q = query.toLowerCase();
-    return commands.filter((cmd: any) =>
+    return commands.filter((cmd) =>
       cmd.label.toLowerCase().includes(q) ||
       cmd.description?.toLowerCase().includes(q) ||
       cmd.keywords?.some((k: string) => k.includes(q))
@@ -123,18 +122,17 @@ export function CommandPalette() {
             onKeyDown={handleKeyDown}
             autoFocus
           />
-          <kbd className="pointer-events-none text-[10px] font-mono bg-muted text-muted-foreground px-1.5 py-0.5 rounded">ESC</kbd>
+          <kbd className="pointer-events-none text-ds-xs font-mono bg-muted text-muted-foreground px-1.5 py-0.5 rounded">ESC</kbd>
         </div>
         <div className="max-h-80 overflow-y-auto py-2">
           {flatItems.length === 0 && (
             <p className="text-sm text-muted-foreground text-center py-6">No results found</p>
           )}
           {Array.from(sections.entries()).map(([section, items]) => {
-            let globalIdx = 0;
             return (
               <div key={section}>
-                <div className="px-3 py-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{section}</div>
-                {items.map((item: any) => {
+                <div className="px-3 py-1.5 text-ds-xs font-semibold text-muted-foreground uppercase tracking-wider">{section}</div>
+                {items.map((item) => {
                   const idx = flatItems.indexOf(item);
                   const Icon = item.icon;
                   return (
@@ -161,7 +159,7 @@ export function CommandPalette() {
             );
           })}
         </div>
-        <div className="flex items-center justify-between border-t px-3 py-2 text-[11px] text-muted-foreground">
+        <div className="flex items-center justify-between border-t px-3 py-2 text-ds-xs text-muted-foreground">
           <span>↑↓ Navigate</span>
           <span>↵ Select</span>
           <span>ESC Close</span>

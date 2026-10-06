@@ -10,7 +10,7 @@ import {
 import { DetailPage } from '@/components/domain';
 import {
   Button, Tag, SectionCard, Stat, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Label, Input, DatePicker, Textarea, EmptyState, Skeleton, useConfirm,
+  Label, Input, CurrencyInput, DatePicker, Textarea, EmptyState, Skeleton, useConfirm,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
@@ -475,7 +475,7 @@ export default function VehicleDetailPage() {
               </div>
               <div className="flex flex-col gap-ds-2">
                 <Label htmlFor="maintenanceCost">Cost (₹)</Label>
-                <Input id="maintenanceCost" type="number" min={0} placeholder="0" value={maintenanceForm.cost} onChange={(e) => setMaintenanceForm((p) => ({ ...p, cost: e.target.value }))} />
+                <CurrencyInput id="maintenanceCost" placeholder="0" value={maintenanceForm.cost ? Number(maintenanceForm.cost) : undefined} onChange={(v) => setMaintenanceForm((p) => ({ ...p, cost: v === undefined ? '' : String(v) }))} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-ds-4">

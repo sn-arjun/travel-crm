@@ -45,7 +45,7 @@ export function LanguageSwitcher({ className }: LanguageSwitcherProps) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-40">
-        {languages.map((lang: any) => (
+        {languages.map((lang) => (
           <DropdownMenuItem
             key={lang.code}
             onClick={() => setLocale(lang.code)}

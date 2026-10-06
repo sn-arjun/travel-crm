@@ -999,11 +999,11 @@ export default function CalendarPage() {
 
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={handleToday}>Today</Button>
-            <Button variant="ghost" size="icon-sm" onClick={handlePrev}>
+            <Button variant="ghost" size="icon-sm" aria-label="Previous" onClick={handlePrev}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <div className="text-sm font-medium min-w-32 text-center">{headerLabel}</div>
-            <Button variant="ghost" size="icon-sm" onClick={handleNext}>
+            <Button variant="ghost" size="icon-sm" aria-label="Next" onClick={handleNext}>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
@@ -1160,12 +1160,13 @@ export default function CalendarPage() {
                           )}
                         </div>
                         <div className="flex flex-col gap-1">
-                          <Button variant="ghost" size="icon-sm" onClick={() => handleEditOpen(event)}>
+                          <Button variant="ghost" size="icon-sm" aria-label="Edit event" onClick={() => handleEditOpen(event)}>
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon-sm"
+                            aria-label="Delete event"
                             onClick={() => handleDeleteEvent(event.id)}
                           >
                             <X className="h-3.5 w-3.5 text-ds-danger" />

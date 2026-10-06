@@ -9,13 +9,17 @@ import { useRealtimeStore } from '@/stores/realtime-store';
  */
 export function useRealtimeEvent(
   eventType: string | string[],
+  // Event payloads are loosely typed; handlers narrow what they need.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handler: (data: any) => void,
 ) {
   const subscribe = useRealtimeStore((s) => s.subscribe);
   const handlerRef = useRef(handler);
-  handlerRef.current = handler;
+  useEffect(() => {
+    handlerRef.current = handler;
+  });
 
-  const stableHandler = useCallback((data: any) => {
+  const stableHandler = useCallback((data: unknown) => {
     handlerRef.current(data);
   }, []);
 

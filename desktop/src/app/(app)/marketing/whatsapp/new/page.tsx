@@ -2,6 +2,7 @@
 
 import { Lock } from 'lucide-react';
 import { Button, Skeleton } from '@/components/ui';
+import { PageContainer } from '@/components/layout/page-container';
 import { useFeatureGate, UPGRADE_HREF } from '@/hooks/use-feature-gate';
 import { WhatsappCampaignFormPage } from '../whatsapp-campaign-form';
 
@@ -10,16 +11,16 @@ export default function NewWhatsappCampaignPage() {
 
   if (gateLoading) {
     return (
-      <div className="flex flex-col gap-ds-4 p-ds-6">
+      <PageContainer>
         <Skeleton className="h-9 w-64" />
         <Skeleton className="h-96 w-full" />
-      </div>
+      </PageContainer>
     );
   }
 
   if (!enabled) {
     return (
-      <div className="flex flex-col items-center justify-center gap-ds-3 p-ds-10 text-center">
+      <PageContainer className="items-center justify-center gap-ds-3 py-ds-10 text-center">
         <div className="flex size-12 items-center justify-center rounded-ds-full bg-ds-warning-subtle text-ds-warning-on-subtle">
           <Lock className="size-6" aria-hidden="true" />
         </div>
@@ -32,7 +33,7 @@ export default function NewWhatsappCampaignPage() {
         <Button size="sm" variant="outline" asChild>
           <a href={UPGRADE_HREF}>{reason === 'cap_exceeded' ? 'View usage' : 'Upgrade plan'}</a>
         </Button>
-      </div>
+      </PageContainer>
     );
   }
 

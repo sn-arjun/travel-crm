@@ -76,7 +76,7 @@ export function DataTable<T extends Record<string, unknown>>({
     if (allSelected) {
       onSelectRows(new Set());
     } else {
-      onSelectRows(new Set(data.map((row: any) => getRowId(row))));
+      onSelectRows(new Set(data.map((row) => getRowId(row))));
     }
   };
 
@@ -108,7 +108,7 @@ export function DataTable<T extends Record<string, unknown>>({
                   />
                 </th>
               )}
-              {columns.map((col: any) => (
+              {columns.map((col) => (
                 <th
                   key={col.key}
                   className={cn(
@@ -151,9 +151,9 @@ export function DataTable<T extends Record<string, unknown>>({
                         <Skeleton className="h-4 w-4" />
                       </td>
                     )}
-                    {columns.map((col: any) => (
+                    {columns.map((col) => (
                       <td key={col.key} className="px-4 py-3">
-                        <Skeleton className="h-4 w-full max-w-[200px]" />
+                        <Skeleton className="h-4 w-full max-w-48" />
                       </td>
                     ))}
                   </tr>
@@ -187,7 +187,7 @@ export function DataTable<T extends Record<string, unknown>>({
                             <Checkbox checked={isSelected} onCheckedChange={() => handleSelectRow(rowId)} aria-label={`Select row ${rowId}`} />
                           </td>
                         )}
-                        {columns.map((col: any) => (
+                        {columns.map((col) => (
                           <td
                             key={col.key}
                             className={cn(
@@ -226,7 +226,7 @@ export function DataTable<T extends Record<string, unknown>>({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {[10, 20, 50, 100].map((size: any) => (
+                    {[10, 20, 50, 100].map((size) => (
                       <SelectItem key={size} value={String(size)}>{size}</SelectItem>
                     ))}
                   </SelectContent>
@@ -238,16 +238,16 @@ export function DataTable<T extends Record<string, unknown>>({
                 <span className="text-xs text-ds-foreground-muted mr-2">
                   Page {page} of {totalPages}
                 </span>
-                <Button variant="outline" size="icon-sm" onClick={() => onPageChange(1)} disabled={page <= 1}>
+                <Button variant="outline" size="icon-sm" aria-label="First page" onClick={() => onPageChange(1)} disabled={page <= 1}>
                   <ChevronsLeft className="h-3.5 w-3.5" />
                 </Button>
-                <Button variant="outline" size="icon-sm" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
+                <Button variant="outline" size="icon-sm" aria-label="Previous page" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
                   <ChevronLeft className="h-3.5 w-3.5" />
                 </Button>
-                <Button variant="outline" size="icon-sm" onClick={() => onPageChange(page + 1)} disabled={page >= totalPages}>
+                <Button variant="outline" size="icon-sm" aria-label="Next page" onClick={() => onPageChange(page + 1)} disabled={page >= totalPages}>
                   <ChevronRight className="h-3.5 w-3.5" />
                 </Button>
-                <Button variant="outline" size="icon-sm" onClick={() => onPageChange(totalPages)} disabled={page >= totalPages}>
+                <Button variant="outline" size="icon-sm" aria-label="Last page" onClick={() => onPageChange(totalPages)} disabled={page >= totalPages}>
                   <ChevronsRight className="h-3.5 w-3.5" />
                 </Button>
               </div>
