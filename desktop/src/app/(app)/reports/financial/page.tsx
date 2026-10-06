@@ -1,852 +1,534 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import { Skeleton } from '@/components/ui/skeleton';
+
 import {
-  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis,
-  CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area,
-} from 'recharts';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { useApiQuery } from '@/hooks/use-api';
-import { reportsApi } from '@/lib/api/reports';
-import {
-  SummaryCard,
-  KPISkeleton,
-  ReportErrorState as ErrorState,
-  ChartSkeleton,
-  DEFAULT_PERIOD_OPTIONS,
-  PRESET_MAP as presetMap,
-} from '@/components/domain/report-page-template';
+  AreaChart,
+  BarChart,
+  Card,
+  CardContent,
+  PieChart,
+  Skeleton,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/components/ui';
+import { ReportPageTemplate, useReportContext } from '@/components/domain/report-page-template';
 import {
   ReportExportButton,
+  ReportKpis,
+  ReportPanel,
+  ReportPanelGrid,
+  ReportSection,
+  ReportTable,
   ReportTabEmptyState,
-  useReportChartColors,
-  useReportSemanticColors,
+  ReportTabErrorState,
+  deltaOf,
+  formatCount,
+  formatPercent,
+  formatReportCurrency,
+  formatReportMoney,
+  humanize,
+  sumBy,
+  useUserNames,
 } from '@/components/domain/reports/shared';
+import {
+  reportsApi,
+  type AgeingRow,
+  type OutstandingResponse,
+} from '@/lib/api/reports';
+import { formatDisplayDate } from '@/lib/dates';
 
-// ---------------------------------------------------------------------------
-// Helper sub-components (page-local; not covered by the shared template)
-// ---------------------------------------------------------------------------
+interface RevenueRow {
+  status: string;
+  type: string;
+  invoice_count: number;
+  total_amount: number;
+  total_outstanding: number;
+}
 
-function DateRangeSelector({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+interface CollectionRow {
+  method: string;
+  payment_count: number;
+  collected_amount: number;
+}
+
+interface PnlRow {
+  lead_title: string;
+  destination: string | null;
+  assigned_to: string | null;
+  total_invoiced: number;
+  total_costs: number;
+  gross_profit: number;
+  margin_pct: number;
+}
+
+interface TaxRow {
+  total_tax: number;
+  total_revenue: number;
+  effective_tax_rate: number;
+}
+
+interface PaymentMethodRow {
+  method: string;
+  transaction_count: number;
+  total_collected: number;
+  pct_of_total: number;
+}
+
+interface RefundRow {
+  method: string;
+  refund_count: number;
+  refund_amount: number;
+}
+
+interface DailyCashRow {
+  payment_date: string;
+  inflow: number;
+  outflow: number;
+  net_cash: number;
+}
+
+const INVOICED_TYPES = new Set(['tax_invoice', 'proforma']);
+
+function RevenueTab() {
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-sm font-medium">Date Range:</span>
-      <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="w-[180px]">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {DEFAULT_PERIOD_OPTIONS.map((p) => (
-            <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+    <ReportSection<RevenueRow>
+      reportId="revenue_summary"
+      comparable
+      kpis={(rows, prev) => {
+        const invoiced = (r: RevenueRow) => (INVOICED_TYPES.has(r.type) && r.status !== 'cancelled' ? r.total_amount : 0);
+        return [
+          { label: 'Total Invoiced', value: formatReportCurrency(sumBy(rows, invoiced)), hint: 'Tax invoices and proformas', delta: deltaOf(rows, prev, invoiced) },
+          { label: 'Outstanding', value: formatReportCurrency(sumBy(rows, (r) => r.total_outstanding)), hint: 'Still to be collected', invertDelta: true, delta: deltaOf(rows, prev, (r) => r.total_outstanding) },
+          { label: 'Invoices', value: formatCount(sumBy(rows, (r) => r.invoice_count)), hint: 'All statuses', delta: deltaOf(rows, prev, (r) => r.invoice_count) },
+        ];
+      }}
+    >
+      {(rows) => {
+        const data = rows.map((r) => ({ ...r, label: `${humanize(r.status)} ${r.type === 'tax_invoice' ? 'invoices' : humanize(r.type).toLowerCase()}` }));
+        return (
+          <>
+            <ReportPanel title="Revenue by invoice status">
+              <BarChart
+                data={data}
+                categoryKey="label"
+                series={[
+                  { dataKey: 'total_amount', label: 'Amount' },
+                  { dataKey: 'total_outstanding', label: 'Outstanding' },
+                ]}
+                valueFormatter={(v) => formatReportCurrency(v)}
+              />
+            </ReportPanel>
+            <ReportPanel title="Revenue summary">
+              <ReportTable
+                caption="Revenue summary"
+                rows={data}
+                columns={[
+                  { key: 'status', header: 'Status', cell: (r) => humanize(r.status) },
+                  { key: 'type', header: 'Type', cell: (r) => humanize(r.type) },
+                  { key: 'invoice_count', header: 'Invoices', align: 'right', cell: (r) => formatCount(r.invoice_count) },
+                  { key: 'total_amount', header: 'Amount', align: 'right', cell: (r) => formatReportMoney(r.total_amount) },
+                  { key: 'total_outstanding', header: 'Outstanding', align: 'right', cell: (r) => formatReportMoney(r.total_outstanding) },
+                ]}
+              />
+            </ReportPanel>
+          </>
+        );
+      }}
+    </ReportSection>
+  );
+}
+
+function CollectionsTab() {
+  return (
+    <ReportSection<CollectionRow>
+      reportId="collections_report"
+      comparable
+      kpis={(rows, prev) => [
+        { label: 'Total Collected', value: formatReportCurrency(sumBy(rows, (r) => r.collected_amount)), hint: 'Incoming payments', delta: deltaOf(rows, prev, (r) => r.collected_amount) },
+        { label: 'Payments', value: formatCount(sumBy(rows, (r) => r.payment_count)), delta: deltaOf(rows, prev, (r) => r.payment_count) },
+        { label: 'Payment Methods', value: formatCount(rows.length) },
+      ]}
+    >
+      {(rows) => {
+        const data = rows.map((r) => ({ ...r, label: humanize(r.method) }));
+        return (
+          <ReportPanelGrid>
+            <ReportPanel title="Collections by payment method">
+              <PieChart data={data} dataKey="collected_amount" nameKey="label" donut valueFormatter={(v) => formatReportCurrency(v)} />
+            </ReportPanel>
+            <ReportPanel title="Collections report">
+              <ReportTable
+                caption="Collections by payment method"
+                rows={data}
+                columns={[
+                  { key: 'label', header: 'Method' },
+                  { key: 'payment_count', header: 'Payments', align: 'right', cell: (r) => formatCount(r.payment_count) },
+                  { key: 'collected_amount', header: 'Collected', align: 'right', cell: (r) => formatReportMoney(r.collected_amount) },
+                ]}
+              />
+            </ReportPanel>
+          </ReportPanelGrid>
+        );
+      }}
+    </ReportSection>
+  );
+}
+
+interface ReceivablesData {
+  outstanding: OutstandingResponse;
+  ageing: AgeingRow[];
+}
+
+/** Receivables come from the outstanding / ageing endpoints, which are not date-bound. */
+function ReceivablesTab() {
+  const { refreshKey } = useReportContext();
+  const [state, setState] = React.useState<{ data: ReceivablesData | null; loading: boolean; error: boolean }>({
+    data: null,
+    loading: true,
+    error: false,
+  });
+  const [retryKey, setRetryKey] = React.useState(0);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setState((s) => ({ ...s, loading: true, error: false }));
+    Promise.all([reportsApi.getOutstandingReport(), reportsApi.getAgeingReport()])
+      .then(([outstanding, ageing]) => {
+        if (cancelled) return;
+        const o = outstanding.data;
+        const a = ageing.data;
+        setState({
+          data: { outstanding: o, ageing: Array.isArray(a) ? a : [] },
+          loading: false,
+          error: false,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setState({ data: null, loading: false, error: true });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey, retryKey]);
+
+  if (state.loading) {
+    return (
+      <div className="space-y-ds-4" aria-busy="true">
+        <ReportKpis items={[]} loading />
+        <Card>
+          <CardContent className="pt-ds-5">
+            <Skeleton className="h-64 w-full" />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+  if (state.error || !state.data) {
+    return (
+      <Card>
+        <CardContent>
+          <ReportTabErrorState message="Failed to load receivables" onRetry={() => setRetryKey((k) => k + 1)} />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const { outstanding, ageing } = state.data;
+  const buckets = [
+    { label: '0–30 days', value: outstanding.ageing?.current ?? 0 },
+    { label: '31–60 days', value: outstanding.ageing?.days30 ?? 0 },
+    { label: '61–90 days', value: outstanding.ageing?.days60 ?? 0 },
+    { label: '90+ days', value: outstanding.ageing?.days90Plus ?? 0 },
+  ];
+  const overdue = outstanding.topOverdueInvoices ?? [];
+
+  return (
+    <div className="space-y-ds-4">
+      <ReportKpis
+        items={[
+          { label: 'Total Receivable', value: formatReportCurrency(outstanding.totalReceivable), hint: 'Sent, part-paid and overdue invoices' },
+          { label: 'Overdue', value: formatReportCurrency(outstanding.overdueReceivable), hint: 'Past due date' },
+          { label: 'Customers Owing', value: formatCount(ageing.length) },
+        ]}
+      />
+      <ReportPanel title="Receivables ageing" description="Outstanding balance by days since the invoice was due">
+        <BarChart
+          data={buckets}
+          categoryKey="label"
+          series={[{ dataKey: 'value', label: 'Outstanding' }]}
+          valueFormatter={(v) => formatReportCurrency(v)}
+          showLegend={false}
+        />
+      </ReportPanel>
+      <ReportPanel title="Top overdue invoices">
+        {overdue.length === 0 ? (
+          <ReportTabEmptyState message="No overdue invoices." />
+        ) : (
+          <ReportTable
+            caption="Top overdue invoices"
+            rows={overdue}
+            columns={[
+              { key: 'invoice_number', header: 'Invoice' },
+              { key: 'contact_name', header: 'Customer' },
+              { key: 'total', header: 'Total', align: 'right', cell: (r) => formatReportMoney(r.total) },
+              { key: 'balance_due', header: 'Balance due', align: 'right', cell: (r) => formatReportMoney(r.balance_due) },
+              { key: 'due_date', header: 'Due date', cell: (r) => formatDisplayDate(r.due_date) },
+            ]}
+          />
+        )}
+      </ReportPanel>
+      <ReportPanel title="Outstanding by customer">
+        {ageing.length === 0 ? (
+          <ReportTabEmptyState message="No customer owes anything right now." />
+        ) : (
+          <ReportTable
+            caption="Outstanding by customer"
+            rows={ageing}
+            columns={[
+              { key: 'contact_name', header: 'Customer' },
+              { key: 'total_outstanding', header: 'Outstanding', align: 'right', cell: (r) => formatReportMoney(r.total_outstanding) },
+              { key: 'current_30', header: '0–30 days', align: 'right', cell: (r) => formatReportMoney(r.current_30) },
+              { key: 'days_31_60', header: '31–60 days', align: 'right', cell: (r) => formatReportMoney(r.days_31_60) },
+              { key: 'days_61_90', header: '61–90 days', align: 'right', cell: (r) => formatReportMoney(r.days_61_90) },
+              { key: 'days_90_plus', header: '90+ days', align: 'right', cell: (r) => formatReportMoney(r.days_90_plus) },
+            ]}
+          />
+        )}
+      </ReportPanel>
     </div>
   );
 }
 
-function TableSkeleton({ rows = 6 }: { rows?: number }) {
+function PnlTab() {
+  const nameOf = useUserNames();
   return (
-    <div className="space-y-2">
-      {Array.from({ length: rows }).map((_, i) => (
-        <Skeleton key={i} className="h-10 w-full" />
-      ))}
-    </div>
+    <ReportSection<PnlRow>
+      reportId="pnl_by_lead"
+      comparable
+      emptyMessage="No invoiced leads in this period."
+      kpis={(rows, prev) => {
+        const invoiced = sumBy(rows, (r) => r.total_invoiced);
+        const profit = sumBy(rows, (r) => r.gross_profit);
+        return [
+          { label: 'Invoiced', value: formatReportCurrency(invoiced), delta: deltaOf(rows, prev, (r) => r.total_invoiced) },
+          { label: 'Costs', value: formatReportCurrency(sumBy(rows, (r) => r.total_costs)), invertDelta: true, delta: deltaOf(rows, prev, (r) => r.total_costs) },
+          { label: 'Gross Profit', value: formatReportCurrency(profit), delta: deltaOf(rows, prev, (r) => r.gross_profit) },
+          { label: 'Margin', value: formatPercent(invoiced > 0 ? (profit / invoiced) * 100 : 0) },
+        ];
+      }}
+    >
+      {(rows) => (
+        <>
+          <ReportPanel title="Invoiced vs costs by lead">
+            <BarChart
+              data={rows}
+              categoryKey="lead_title"
+              series={[
+                { dataKey: 'total_invoiced', label: 'Invoiced' },
+                { dataKey: 'total_costs', label: 'Costs' },
+                { dataKey: 'gross_profit', label: 'Gross profit' },
+              ]}
+              valueFormatter={(v) => formatReportCurrency(v)}
+            />
+          </ReportPanel>
+          <ReportPanel title="Profit and loss by lead">
+            <ReportTable
+              caption="Profit and loss by lead"
+              rows={rows}
+              columns={[
+                { key: 'lead_title', header: 'Lead' },
+                { key: 'assigned_to', header: 'Owner', cell: (r) => nameOf(r.assigned_to) },
+                { key: 'total_invoiced', header: 'Invoiced', align: 'right', cell: (r) => formatReportMoney(r.total_invoiced) },
+                { key: 'total_costs', header: 'Costs', align: 'right', cell: (r) => formatReportMoney(r.total_costs) },
+                { key: 'gross_profit', header: 'Gross profit', align: 'right', cell: (r) => formatReportMoney(r.gross_profit) },
+                { key: 'margin_pct', header: 'Margin', align: 'right', cell: (r) => formatPercent(r.margin_pct) },
+              ]}
+            />
+          </ReportPanel>
+        </>
+      )}
+    </ReportSection>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Formatting helpers
-// ---------------------------------------------------------------------------
+function TaxTab() {
+  return (
+    <ReportSection<TaxRow>
+      reportId="tax_report"
+      comparable
+      kpis={(rows, prev) => [
+        { label: 'Tax Collected', value: formatReportCurrency(sumBy(rows, (r) => r.total_tax)), delta: deltaOf(rows, prev, (r) => r.total_tax) },
+        { label: 'Taxable Revenue', value: formatReportCurrency(sumBy(rows, (r) => r.total_revenue)), delta: deltaOf(rows, prev, (r) => r.total_revenue) },
+        { label: 'Effective Tax Rate', value: formatPercent(rows[0]?.effective_tax_rate ?? 0, 2) },
+      ]}
+    >
+      {(rows) => (
+        <ReportPanel title="Tax report">
+          <ReportTable
+            caption="Tax report"
+            rows={rows}
+            columns={[
+              { key: 'total_revenue', header: 'Revenue', align: 'right', cell: (r) => formatReportMoney(r.total_revenue) },
+              { key: 'total_tax', header: 'Tax', align: 'right', cell: (r) => formatReportMoney(r.total_tax) },
+              { key: 'effective_tax_rate', header: 'Effective rate', align: 'right', cell: (r) => formatPercent(r.effective_tax_rate, 2) },
+            ]}
+          />
+        </ReportPanel>
+      )}
+    </ReportSection>
+  );
+}
 
-function fmtCr(v: number) {
-  return `₹${(v / 10_000_000).toFixed(2)}Cr`;
-}
-function fmtL(v: number) {
-  return `₹${(v / 100_000).toFixed(1)}L`;
-}
-function fmtM(v: number) {
-  return `₹${(v / 1_000_000).toFixed(1)}M`;
+function PaymentMethodsTab() {
+  return (
+    <ReportSection<PaymentMethodRow>
+      reportId="payment_method_breakdown"
+      kpis={(rows) => [
+        { label: 'Total Collected', value: formatReportCurrency(sumBy(rows, (r) => r.total_collected)) },
+        { label: 'Transactions', value: formatCount(sumBy(rows, (r) => r.transaction_count)) },
+        { label: 'Top Method', value: humanize([...rows].sort((a, b) => b.total_collected - a.total_collected)[0]?.method) },
+      ]}
+    >
+      {(rows) => {
+        const data = rows.map((r) => ({ ...r, label: humanize(r.method) }));
+        return (
+          <ReportPanelGrid>
+            <ReportPanel title="Payment methods distribution">
+              <PieChart data={data} dataKey="total_collected" nameKey="label" donut valueFormatter={(v) => formatReportCurrency(v)} />
+            </ReportPanel>
+            <ReportPanel title="Payment method details">
+              <ReportTable
+                caption="Payment method breakdown"
+                rows={data}
+                columns={[
+                  { key: 'label', header: 'Method' },
+                  { key: 'transaction_count', header: 'Transactions', align: 'right', cell: (r) => formatCount(r.transaction_count) },
+                  { key: 'total_collected', header: 'Collected', align: 'right', cell: (r) => formatReportMoney(r.total_collected) },
+                  { key: 'pct_of_total', header: 'Share', align: 'right', cell: (r) => formatPercent(r.pct_of_total) },
+                ]}
+              />
+            </ReportPanel>
+          </ReportPanelGrid>
+        );
+      }}
+    </ReportSection>
+  );
 }
 
-// ---------------------------------------------------------------------------
-// Main Page
-// ---------------------------------------------------------------------------
+function RefundsTab() {
+  return (
+    <ReportSection<RefundRow>
+      reportId="refund_report"
+      emptyMessage="No refunds were issued in this period."
+      kpis={(rows) => [
+        { label: 'Total Refunded', value: formatReportCurrency(sumBy(rows, (r) => r.refund_amount)) },
+        { label: 'Refunds', value: formatCount(sumBy(rows, (r) => r.refund_count)) },
+        { label: 'Methods', value: formatCount(rows.length) },
+      ]}
+    >
+      {(rows) => (
+        <ReportPanel title="Refund report">
+          <ReportTable
+            caption="Refunds by method"
+            rows={rows}
+            columns={[
+              { key: 'method', header: 'Method', cell: (r) => humanize(r.method) },
+              { key: 'refund_count', header: 'Refunds', align: 'right', cell: (r) => formatCount(r.refund_count) },
+              { key: 'refund_amount', header: 'Amount', align: 'right', cell: (r) => formatReportMoney(r.refund_amount) },
+            ]}
+          />
+        </ReportPanel>
+      )}
+    </ReportSection>
+  );
+}
+
+function DailyCashTab() {
+  return (
+    <ReportSection<DailyCashRow>
+      reportId="daily_cash"
+      kpis={(rows) => [
+        { label: 'Inflow', value: formatReportCurrency(sumBy(rows, (r) => r.inflow)) },
+        { label: 'Outflow', value: formatReportCurrency(sumBy(rows, (r) => r.outflow)) },
+        { label: 'Net Cash', value: formatReportCurrency(sumBy(rows, (r) => r.net_cash)) },
+      ]}
+    >
+      {(rows) => {
+        const data = [...rows]
+          .sort((a, b) => a.payment_date.localeCompare(b.payment_date))
+          .map((r) => ({ ...r, label: formatDisplayDate(r.payment_date, 'short') }));
+        return (
+          <>
+            <ReportPanel title="Daily cash flow">
+              <AreaChart
+                data={data}
+                categoryKey="label"
+                series={[
+                  { dataKey: 'inflow', label: 'Inflow' },
+                  { dataKey: 'outflow', label: 'Outflow' },
+                ]}
+                valueFormatter={(v) => formatReportCurrency(v)}
+              />
+            </ReportPanel>
+            <ReportPanel title="Daily cash details">
+              <ReportTable
+                caption="Daily cash"
+                rows={[...data].reverse()}
+                columns={[
+                  { key: 'label', header: 'Date' },
+                  { key: 'inflow', header: 'Inflow', align: 'right', cell: (r) => formatReportMoney(r.inflow) },
+                  { key: 'outflow', header: 'Outflow', align: 'right', cell: (r) => formatReportMoney(r.outflow) },
+                  { key: 'net_cash', header: 'Net', align: 'right', cell: (r) => formatReportMoney(r.net_cash) },
+                ]}
+              />
+            </ReportPanel>
+          </>
+        );
+      }}
+    </ReportSection>
+  );
+}
 
 export default function FinancialReportsPage() {
-  const [dateRange, setDateRange] = React.useState('30days');
-  const [comparePrev, setComparePrev] = React.useState(false);
-  const CHART_COLORS = useReportChartColors();
-  const semanticColors = useReportSemanticColors();
-
-  const preset = presetMap[dateRange] ?? 'this_month';
-
-  // ── Revenue Summary ──────────────────────────────────────────────────────
-  const {
-    data: revenueRes,
-    loading: revenueLoading,
-    error: revenueError,
-    refetch: refetchRevenue,
-  } = useApiQuery(
-    () => reportsApi.execute('revenue_summary', { date_preset: preset, compare: comparePrev }),
-    [preset, comparePrev],
-  );
-
-  // ── Collections ──────────────────────────────────────────────────────────
-  const {
-    data: collectionsRes,
-    loading: collectionsLoading,
-    error: collectionsError,
-    refetch: refetchCollections,
-  } = useApiQuery(
-    () => reportsApi.execute('collections_report', { date_preset: preset, compare: comparePrev }),
-    [preset, comparePrev],
-  );
-
-  // ── Outstanding Receivables ───────────────────────────────────────────────
-  const {
-    data: outstandingRes,
-    loading: outstandingLoading,
-    error: outstandingError,
-    refetch: refetchOutstanding,
-  } = useApiQuery(
-    () => reportsApi.getOutstandingReport(),
-    [],
-  );
-
-  // ── P&L by Lead ──────────────────────────────────────────────────────────
-  const {
-    data: pnlRes,
-    loading: pnlLoading,
-    error: pnlError,
-    refetch: refetchPnl,
-  } = useApiQuery(
-    () => reportsApi.execute('pnl_by_lead', { date_preset: preset, compare: comparePrev }),
-    [preset, comparePrev],
-  );
-
-  // ── Tax Report ───────────────────────────────────────────────────────────
-  const {
-    data: taxRes,
-    loading: taxLoading,
-    error: taxError,
-    refetch: refetchTax,
-  } = useApiQuery(
-    () => reportsApi.execute('tax_report', { date_preset: preset }),
-    [preset],
-  );
-
-  // ── Payment Methods ───────────────────────────────────────────────────────
-  const {
-    data: paymentMethodRes,
-    loading: paymentMethodLoading,
-    error: paymentMethodError,
-    refetch: refetchPaymentMethod,
-  } = useApiQuery(
-    () => reportsApi.execute('payment_method_breakdown', { date_preset: preset }),
-    [preset],
-  );
-
-  // ── Refunds ───────────────────────────────────────────────────────────────
-  const {
-    data: refundRes,
-    loading: refundLoading,
-    error: refundError,
-    refetch: refetchRefunds,
-  } = useApiQuery(
-    () => reportsApi.execute('refund_report', { date_preset: preset }),
-    [preset],
-  );
-
-  // ── Daily Cash ────────────────────────────────────────────────────────────
-  const {
-    data: dailyCashRes,
-    loading: dailyCashLoading,
-    error: dailyCashError,
-    refetch: refetchDailyCash,
-  } = useApiQuery(
-    () => reportsApi.execute('daily_cash', { date_preset: preset }),
-    [preset],
-  );
-
-  // ── Derived data ─────────────────────────────────────────────────────────
-  // revenue_summary: [{status, type, invoice_count, total_amount, total_outstanding}]
-  const revenueRows: Array<{ status: string; type: string; invoice_count: number; total_amount: number; total_outstanding: number }> =
-    (revenueRes as any)?.data?.data ?? [];
-
-  // collections_report: [{method, payment_count, collected_amount}]
-  const collectionsRows: Array<{ method: string; payment_count: number; collected_amount: number }> =
-    (collectionsRes as any)?.data?.data ?? [];
-
-  // outstanding from getOutstandingReport():
-  // { totalReceivable, overdueReceivable, ageing:{current,days30,days60,days90Plus}, topOverdueInvoices:[{id,invoice_number,total,balance_due,due_date,contact_name}] }
-  const outstandingData: {
-    totalReceivable?: number;
-    overdueReceivable?: number;
-    ageing?: { current?: number; days30?: number; days60?: number; days90Plus?: number };
-    topOverdueInvoices?: Array<{ id: string; invoice_number: string; total: number; balance_due: number; due_date: string; contact_name: string }>;
-  } = (outstandingRes as any)?.data?.data ?? (outstandingRes as any)?.data ?? {};
-
-  // pnl_by_lead: [{lead_title, destination, assigned_to, total_invoiced, total_costs, gross_profit, margin_pct}]
-  const pnlRows: Array<{ lead_title: string; destination: string; assigned_to: string; total_invoiced: number; total_costs: number; gross_profit: number; margin_pct: number }> =
-    (pnlRes as any)?.data?.data ?? [];
-
-  // tax_report: [{total_tax, total_revenue, effective_tax_rate}]
-  const taxRows: Array<{ total_tax: number; total_revenue: number; effective_tax_rate: number }> =
-    (taxRes as any)?.data?.data ?? [];
-
-  // payment_method_breakdown: [{method, transaction_count, total_collected, pct_of_total}]
-  const paymentMethodRows: Array<{ method: string; transaction_count: number; total_collected: number; pct_of_total: number }> =
-    (paymentMethodRes as any)?.data?.data ?? [];
-
-  // refund_report: [{method, refund_count, refund_amount}]
-  const refundRows: Array<{ method: string; refund_count: number; refund_amount: number }> =
-    (refundRes as any)?.data?.data ?? [];
-
-  // daily_cash: [{payment_date, inflow, outflow, net_cash}]
-  const dailyCashRows: Array<{ payment_date: string; inflow: number; outflow: number; net_cash: number }> =
-    (dailyCashRes as any)?.data?.data ?? [];
-
-  // ── KPI computations ─────────────────────────────────────────────────────
-  const totalCollected = collectionsRows.reduce((s, r) => s + (r.collected_amount ?? 0), 0);
-  const totalInvoiced = revenueRows.reduce((s, r) => s + (r.total_amount ?? 0), 0);
-  const totalReceivable = outstandingData.totalReceivable ?? 0;
-  const overdueReceivable = outstandingData.overdueReceivable ?? 0;
-  const collectionRate = totalInvoiced > 0 ? ((totalCollected / totalInvoiced) * 100).toFixed(1) : '—';
-
-  const kpiLoading = collectionsLoading || revenueLoading || outstandingLoading;
-
-  // ── Pie chart data shape for payment methods ──────────────────────────────
-  const pieData = paymentMethodRows.map((r) => ({
-    name: r.method,
-    value: r.pct_of_total,
-    amount: r.total_collected,
-  }));
-
+  const [tab, setTab] = React.useState('revenue');
   return (
-    <div className="flex flex-col h-full overflow-auto">
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div className="px-6 py-4 border-b">
-        {/* Breadcrumb */}
-        <nav className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
-          <Link href="/reports" className="hover:underline">Reports</Link>
-          <span>/</span>
-          <span className="text-foreground font-medium">Financial Reports</span>
-        </nav>
-
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <Link href="/reports">
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight">Financial Reports</h1>
-              <p className="text-sm text-muted-foreground">Revenue, collections, and P&L analysis</p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <ReportExportButton
-              reportId="revenue_summary"
-              params={{ date_preset: preset }}
-              filenamePrefix="financial-report"
-              rangeLabel={dateRange}
-              size="sm"
-            />
-          </div>
-        </div>
-
-        {/* KPI Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {kpiLoading ? (
-            <>
-              <KPISkeleton />
-              <KPISkeleton />
-              <KPISkeleton />
-              <KPISkeleton />
-            </>
-          ) : (
-            <>
-              <SummaryCard label="Total Invoiced" value={fmtCr(totalInvoiced)} />
-              <SummaryCard label="Total Collected" value={fmtCr(totalCollected)} />
-              <SummaryCard label="Collection Rate" value={`${collectionRate}%`} />
-              <SummaryCard
-                label="Outstanding Receivable"
-                value={fmtM(totalReceivable)}
-                subtext={overdueReceivable > 0 ? `${fmtL(overdueReceivable)} overdue` : undefined}
-              />
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* ── Filters bar ────────────────────────────────────────────────────── */}
-      <div className="px-6 py-3 border-b bg-muted/50 flex flex-wrap justify-between items-center gap-3">
-        <DateRangeSelector value={dateRange} onChange={setDateRange} />
-        <div className="flex items-center gap-2">
-          <Switch
-            id="compare-toggle"
-            checked={comparePrev}
-            onCheckedChange={setComparePrev}
-          />
-          <Label htmlFor="compare-toggle" className="text-sm cursor-pointer">
-            Compare with previous period
-          </Label>
-        </div>
-      </div>
-
-      {/* ── Tab content ────────────────────────────────────────────────────── */}
-      <div className="flex-1 p-6 overflow-auto">
-        <Tabs defaultValue="revenue" className="w-full">
-          <TabsList className="flex flex-wrap gap-1 h-auto mb-6">
-            <TabsTrigger value="revenue">Revenue</TabsTrigger>
-            <TabsTrigger value="collections">Collections</TabsTrigger>
-            <TabsTrigger value="receivables">Receivables</TabsTrigger>
-            <TabsTrigger value="pnl">P&amp;L</TabsTrigger>
-            <TabsTrigger value="tax">Tax</TabsTrigger>
-            <TabsTrigger value="payment-methods">Payment Methods</TabsTrigger>
-            <TabsTrigger value="refunds">Refunds</TabsTrigger>
-            <TabsTrigger value="daily-cash">Daily Cash</TabsTrigger>
-          </TabsList>
-
-          {/* ── Revenue tab ──────────────────────────────────────────────── */}
-          <TabsContent value="revenue" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Revenue Summary</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {revenueLoading && <ChartSkeleton />}
-                {!revenueLoading && revenueError && (
-                  <ErrorState message="Failed to load revenue data." onRetry={refetchRevenue} />
-                )}
-                {!revenueLoading && !revenueError && revenueRows.length === 0 && (
-                  <ReportTabEmptyState message="No revenue data for this period." />
-                )}
-                {!revenueLoading && !revenueError && revenueRows.length > 0 && (
-                  <>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <AreaChart data={revenueRows}>
-                        <defs>
-                          <linearGradient id="colorAmount" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor={CHART_COLORS[0]} stopOpacity={0.8} />
-                            <stop offset="95%" stopColor={CHART_COLORS[0]} stopOpacity={0} />
-                          </linearGradient>
-                          <linearGradient id="colorOutstanding" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor={semanticColors.warning} stopOpacity={0.8} />
-                            <stop offset="95%" stopColor={semanticColors.warning} stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="status" />
-                        <YAxis tickFormatter={(v) => fmtL(v)} />
-                        <Tooltip formatter={(value) => fmtL(value as number)} />
-                        <Legend />
-                        <Area
-                          type="monotone"
-                          dataKey="total_amount"
-                          stroke={CHART_COLORS[0]}
-                          fillOpacity={1}
-                          fill="url(#colorAmount)"
-                          name="Total Amount"
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="total_outstanding"
-                          stroke={semanticColors.warning}
-                          fillOpacity={1}
-                          fill="url(#colorOutstanding)"
-                          name="Outstanding"
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-
-                    <div className="overflow-x-auto mt-4">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Type</TableHead>
-                            <TableHead>Invoice Count</TableHead>
-                            <TableHead>Total Amount</TableHead>
-                            <TableHead>Outstanding</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {revenueRows.map((row, i) => (
-                            <TableRow key={i}>
-                              <TableCell>
-                                <Badge variant="outline">{row.status}</Badge>
-                              </TableCell>
-                              <TableCell className="capitalize">{row.type}</TableCell>
-                              <TableCell>{row.invoice_count}</TableCell>
-                              <TableCell>{fmtL(row.total_amount)}</TableCell>
-                              <TableCell>
-                                <span className={row.total_outstanding > 0 ? 'text-amber-600 font-medium' : ''}>
-                                  {fmtL(row.total_outstanding)}
-                                </span>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* ── Collections tab ──────────────────────────────────────────── */}
-          <TabsContent value="collections" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Collections Report — by Payment Method</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {collectionsLoading && <ChartSkeleton />}
-                {!collectionsLoading && collectionsError && (
-                  <ErrorState message="Failed to load collections data." onRetry={refetchCollections} />
-                )}
-                {!collectionsLoading && !collectionsError && collectionsRows.length === 0 && (
-                  <ReportTabEmptyState message="No collections data for this period." />
-                )}
-                {!collectionsLoading && !collectionsError && collectionsRows.length > 0 && (
-                  <>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={collectionsRows}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="method" />
-                        <YAxis tickFormatter={(v) => fmtL(v)} />
-                        <Tooltip formatter={(value) => fmtL(value as number)} />
-                        <Legend />
-                        <Bar dataKey="collected_amount" fill={semanticColors.success} name="Collected Amount" />
-                        <Bar dataKey="payment_count" fill={CHART_COLORS[0]} name="Payment Count" yAxisId="right" />
-                      </BarChart>
-                    </ResponsiveContainer>
-
-                    <div className="overflow-x-auto mt-4">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Method</TableHead>
-                            <TableHead>Payment Count</TableHead>
-                            <TableHead>Collected Amount</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {collectionsRows.map((row, i) => (
-                            <TableRow key={i}>
-                              <TableCell className="font-medium capitalize">{row.method}</TableCell>
-                              <TableCell>{row.payment_count}</TableCell>
-                              <TableCell>{fmtL(row.collected_amount)}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* ── Outstanding Receivables tab ───────────────────────────────── */}
-          <TabsContent value="receivables" className="space-y-6">
-            {outstandingLoading && (
-              <Card>
-                <CardHeader><CardTitle className="text-base">Outstanding Receivables</CardTitle></CardHeader>
-                <CardContent><TableSkeleton /></CardContent>
-              </Card>
-            )}
-            {!outstandingLoading && outstandingError && (
-              <ErrorState message="Failed to load outstanding receivables." onRetry={refetchOutstanding} />
-            )}
-            {!outstandingLoading && !outstandingError && (
-              <>
-                {/* Ageing summary */}
-                {outstandingData.ageing && (
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {[
-                      { label: 'Current', value: outstandingData.ageing.current ?? 0 },
-                      { label: '1–30 Days', value: outstandingData.ageing.days30 ?? 0 },
-                      { label: '31–60 Days', value: outstandingData.ageing.days60 ?? 0 },
-                      { label: '90+ Days', value: outstandingData.ageing.days90Plus ?? 0 },
-                    ].map(({ label, value }) => (
-                      <Card key={label}>
-                        <CardContent className="p-4">
-                          <p className="text-xs text-muted-foreground mb-1">{label}</p>
-                          <p className="text-xl font-bold">{fmtL(value)}</p>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Top Overdue Invoices</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {(!outstandingData.topOverdueInvoices || outstandingData.topOverdueInvoices.length === 0) ? (
-                      <ReportTabEmptyState message="No overdue invoices." />
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Invoice #</TableHead>
-                              <TableHead>Contact</TableHead>
-                              <TableHead>Total</TableHead>
-                              <TableHead>Balance Due</TableHead>
-                              <TableHead>Due Date</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {outstandingData.topOverdueInvoices!.map((inv) => (
-                              <TableRow key={inv.id}>
-                                <TableCell className="font-medium">{inv.invoice_number}</TableCell>
-                                <TableCell>{inv.contact_name}</TableCell>
-                                <TableCell>{fmtL(inv.total)}</TableCell>
-                                <TableCell>
-                                  <span className="text-destructive font-medium">{fmtL(inv.balance_due)}</span>
-                                </TableCell>
-                                <TableCell>
-                                  <Badge variant="destructive">{inv.due_date}</Badge>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </>
-            )}
-          </TabsContent>
-
-          {/* ── P&L tab ──────────────────────────────────────────────────── */}
-          <TabsContent value="pnl" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Profit &amp; Loss by Lead</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {pnlLoading && <TableSkeleton />}
-                {!pnlLoading && pnlError && (
-                  <ErrorState message="Failed to load P&L data." onRetry={refetchPnl} />
-                )}
-                {!pnlLoading && !pnlError && pnlRows.length === 0 && (
-                  <ReportTabEmptyState message="No P&L data for this period." />
-                )}
-                {!pnlLoading && !pnlError && pnlRows.length > 0 && (
-                  <>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={pnlRows}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="lead_title" tick={{ fontSize: 11 }} angle={-30} textAnchor="end" height={60} />
-                        <YAxis tickFormatter={(v) => fmtL(v)} />
-                        <Tooltip formatter={(value) => fmtL(value as number)} />
-                        <Legend />
-                        <Bar dataKey="total_invoiced" fill={CHART_COLORS[0]} name="Invoiced" />
-                        <Bar dataKey="total_costs" fill={semanticColors.danger} name="Costs" />
-                        <Bar dataKey="gross_profit" fill={semanticColors.success} name="Gross Profit" />
-                      </BarChart>
-                    </ResponsiveContainer>
-
-                    <div className="overflow-x-auto mt-4">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Lead</TableHead>
-                            <TableHead>Destination</TableHead>
-                            <TableHead>Assigned To</TableHead>
-                            <TableHead>Invoiced</TableHead>
-                            <TableHead>Costs</TableHead>
-                            <TableHead>Gross Profit</TableHead>
-                            <TableHead>Margin %</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {pnlRows.map((row, i) => (
-                            <TableRow key={i}>
-                              <TableCell className="font-medium">{row.lead_title}</TableCell>
-                              <TableCell>{row.destination}</TableCell>
-                              <TableCell>{row.assigned_to}</TableCell>
-                              <TableCell>{fmtL(row.total_invoiced)}</TableCell>
-                              <TableCell>{fmtL(row.total_costs)}</TableCell>
-                              <TableCell>{fmtL(row.gross_profit)}</TableCell>
-                              <TableCell>
-                                <Badge
-                                  variant={
-                                    row.margin_pct > 35
-                                      ? 'default'
-                                      : row.margin_pct > 25
-                                        ? 'secondary'
-                                        : 'outline'
-                                  }
-                                >
-                                  {row.margin_pct.toFixed(1)}%
-                                </Badge>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* ── Tax tab ──────────────────────────────────────────────────── */}
-          <TabsContent value="tax" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Tax Report</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {taxLoading && <TableSkeleton rows={4} />}
-                {!taxLoading && taxError && (
-                  <ErrorState message="Failed to load tax data." onRetry={refetchTax} />
-                )}
-                {!taxLoading && !taxError && taxRows.length === 0 && (
-                  <ReportTabEmptyState message="No tax data for this period." />
-                )}
-                {!taxLoading && !taxError && taxRows.length > 0 && (
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Total Revenue</TableHead>
-                          <TableHead>Total Tax</TableHead>
-                          <TableHead>Effective Tax Rate</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {taxRows.map((row, i) => (
-                          <TableRow key={i}>
-                            <TableCell>{fmtL(row.total_revenue)}</TableCell>
-                            <TableCell>{fmtL(row.total_tax)}</TableCell>
-                            <TableCell>
-                              <Badge variant="default">{row.effective_tax_rate.toFixed(2)}%</Badge>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* ── Payment Methods tab ──────────────────────────────────────── */}
-          <TabsContent value="payment-methods" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Payment Methods Distribution</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {paymentMethodLoading && <ChartSkeleton />}
-                {!paymentMethodLoading && paymentMethodError && (
-                  <ErrorState message="Failed to load payment method data." onRetry={refetchPaymentMethod} />
-                )}
-                {!paymentMethodLoading && !paymentMethodError && paymentMethodRows.length === 0 && (
-                  <ReportTabEmptyState message="No payment data for this period." />
-                )}
-                {!paymentMethodLoading && !paymentMethodError && paymentMethodRows.length > 0 && (
-                  <>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <PieChart>
-                        <Pie
-                          data={pieData}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={({ name, value }) => `${name} (${value}%)`}
-                          outerRadius={100}
-                          dataKey="value"
-                        >
-                          {pieData.map((_, index) => (
-                            <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip formatter={(value) => `${value}%`} />
-                      </PieChart>
-                    </ResponsiveContainer>
-
-                    <div className="overflow-x-auto mt-4">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Method</TableHead>
-                            <TableHead>Transactions</TableHead>
-                            <TableHead>Total Collected</TableHead>
-                            <TableHead>% of Total</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {paymentMethodRows.map((row, i) => (
-                            <TableRow key={i}>
-                              <TableCell className="font-medium capitalize">{row.method}</TableCell>
-                              <TableCell>{row.transaction_count}</TableCell>
-                              <TableCell>{fmtL(row.total_collected)}</TableCell>
-                              <TableCell>{row.pct_of_total.toFixed(1)}%</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* ── Refunds tab ──────────────────────────────────────────────── */}
-          <TabsContent value="refunds" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Refund Report</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {refundLoading && <TableSkeleton />}
-                {!refundLoading && refundError && (
-                  <ErrorState message="Failed to load refund data." onRetry={refetchRefunds} />
-                )}
-                {!refundLoading && !refundError && refundRows.length === 0 && (
-                  <ReportTabEmptyState message="No refund data for this period." />
-                )}
-                {!refundLoading && !refundError && refundRows.length > 0 && (
-                  <>
-                    <ResponsiveContainer width="100%" height={260}>
-                      <BarChart data={refundRows}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="method" />
-                        <YAxis tickFormatter={(v) => fmtL(v)} />
-                        <Tooltip formatter={(value) => fmtL(value as number)} />
-                        <Legend />
-                        <Bar dataKey="refund_amount" fill={semanticColors.danger} name="Refund Amount" />
-                        <Bar dataKey="refund_count" fill={CHART_COLORS[4]} name="Refund Count" />
-                      </BarChart>
-                    </ResponsiveContainer>
-
-                    <div className="overflow-x-auto mt-4">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Method</TableHead>
-                            <TableHead>Refund Count</TableHead>
-                            <TableHead>Refund Amount</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {refundRows.map((row, i) => (
-                            <TableRow key={i}>
-                              <TableCell className="font-medium capitalize">{row.method}</TableCell>
-                              <TableCell>{row.refund_count}</TableCell>
-                              <TableCell className="text-destructive font-medium">{fmtL(row.refund_amount)}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* ── Daily Cash tab ───────────────────────────────────────────── */}
-          <TabsContent value="daily-cash" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Daily Cash Flow</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {dailyCashLoading && <ChartSkeleton />}
-                {!dailyCashLoading && dailyCashError && (
-                  <ErrorState message="Failed to load daily cash data." onRetry={refetchDailyCash} />
-                )}
-                {!dailyCashLoading && !dailyCashError && dailyCashRows.length === 0 && (
-                  <ReportTabEmptyState message="No cash flow data for this period." />
-                )}
-                {!dailyCashLoading && !dailyCashError && dailyCashRows.length > 0 && (
-                  <>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <AreaChart data={dailyCashRows}>
-                        <defs>
-                          <linearGradient id="colorInflow" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor={semanticColors.success} stopOpacity={0.8} />
-                            <stop offset="95%" stopColor={semanticColors.success} stopOpacity={0} />
-                          </linearGradient>
-                          <linearGradient id="colorOutflow" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor={semanticColors.danger} stopOpacity={0.8} />
-                            <stop offset="95%" stopColor={semanticColors.danger} stopOpacity={0} />
-                          </linearGradient>
-                          <linearGradient id="colorNet" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor={CHART_COLORS[0]} stopOpacity={0.8} />
-                            <stop offset="95%" stopColor={CHART_COLORS[0]} stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="payment_date" angle={-30} textAnchor="end" height={60} tick={{ fontSize: 11 }} />
-                        <YAxis tickFormatter={(v) => fmtL(v)} />
-                        <Tooltip formatter={(value) => fmtL(value as number)} />
-                        <Legend />
-                        <Area type="monotone" dataKey="inflow" stroke={semanticColors.success} fillOpacity={1} fill="url(#colorInflow)" name="Inflow" />
-                        <Area type="monotone" dataKey="outflow" stroke={semanticColors.danger} fillOpacity={1} fill="url(#colorOutflow)" name="Outflow" />
-                        <Area type="monotone" dataKey="net_cash" stroke={CHART_COLORS[0]} fillOpacity={1} fill="url(#colorNet)" name="Net Cash" />
-                      </AreaChart>
-                    </ResponsiveContainer>
-
-                    <div className="overflow-x-auto mt-4">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Date</TableHead>
-                            <TableHead>Inflow</TableHead>
-                            <TableHead>Outflow</TableHead>
-                            <TableHead>Net Cash</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {dailyCashRows.map((row, i) => (
-                            <TableRow key={i}>
-                              <TableCell className="font-medium">{row.payment_date}</TableCell>
-                              <TableCell className="text-green-600">{fmtL(row.inflow)}</TableCell>
-                              <TableCell className="text-red-600">{fmtL(row.outflow)}</TableCell>
-                              <TableCell>
-                                <span className={row.net_cash >= 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
-                                  {fmtL(row.net_cash)}
-                                </span>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </div>
-    </div>
+    <ReportPageTemplate
+      title="Financial Reports"
+      description="Revenue, collections, receivables, profit and tax"
+      showCompare
+      hideRange={tab === 'receivables'}
+      renderExport={(ctx) => (
+        <ReportExportButton
+          reportId="revenue_summary"
+          params={ctx.params}
+          filenamePrefix="financial-report"
+          rangeLabel={ctx.rangeLabel}
+        />
+      )}
+    >
+      <Tabs value={tab} onValueChange={setTab} className="w-full">
+        <TabsList className="h-auto flex-wrap justify-start">
+          <TabsTrigger value="revenue">Revenue</TabsTrigger>
+          <TabsTrigger value="collections">Collections</TabsTrigger>
+          <TabsTrigger value="receivables">Receivables</TabsTrigger>
+          <TabsTrigger value="pnl">P&amp;L</TabsTrigger>
+          <TabsTrigger value="tax">Tax</TabsTrigger>
+          <TabsTrigger value="payment-methods">Payment Methods</TabsTrigger>
+          <TabsTrigger value="refunds">Refunds</TabsTrigger>
+          <TabsTrigger value="daily-cash">Daily Cash</TabsTrigger>
+        </TabsList>
+        <TabsContent value="revenue"><RevenueTab /></TabsContent>
+        <TabsContent value="collections"><CollectionsTab /></TabsContent>
+        <TabsContent value="receivables"><ReceivablesTab /></TabsContent>
+        <TabsContent value="pnl"><PnlTab /></TabsContent>
+        <TabsContent value="tax"><TaxTab /></TabsContent>
+        <TabsContent value="payment-methods"><PaymentMethodsTab /></TabsContent>
+        <TabsContent value="refunds"><RefundsTab /></TabsContent>
+        <TabsContent value="daily-cash"><DailyCashTab /></TabsContent>
+      </Tabs>
+    </ReportPageTemplate>
   );
 }

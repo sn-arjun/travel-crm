@@ -4,144 +4,122 @@ import * as React from 'react';
 import Link from 'next/link';
 import {
   TrendingUp, BarChart3, Users, Target, DollarSign,
-  Zap, Truck, AlertCircle, ArrowUpRight, Activity,
-  PieChart, FileText, Loader, Search, Star, StarOff, History, X,
+  Truck, AlertCircle, ArrowUpRight, Activity,
+  PieChart, FileText, Search, Star, StarOff, History, X, Car, RefreshCw,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
-import { cn } from '@/lib/utils';
-import { useApiQuery } from '@/hooks/use-api';
-import { reportsApi } from '@/lib/api/reports';
 
-interface ReportCard {
+import { PageContainer } from '@/components/layout/page-container';
+import { Button, Card, CardContent, Input, PageHeader, Skeleton } from '@/components/ui';
+import { formatReportCurrency } from '@/components/domain/reports/shared';
+import { useApiQuery } from '@/hooks/use-api';
+import { unwrapEntity } from '@/lib/api/envelope';
+import { reportsApi, type DashboardResponse } from '@/lib/api/reports';
+import { cn } from '@/lib/utils';
+
+interface ReportCategory {
   id: string;
   title: string;
   description: string;
   icon: React.ElementType;
   href: string;
   reportCount: number;
-  color: string;
 }
 
-const reportCards: ReportCard[] = [
+const reportCards: ReportCategory[] = [
   {
     id: 'sales',
     title: 'Sales Reports',
-    description: 'Revenue trends, sales by destination, team performance, deal size, forecasts, and win/loss analysis',
+    description: 'Revenue by salesperson, destination, trip type and source, deal size, forecast and win/loss',
     icon: TrendingUp,
     href: '/reports/sales',
-    reportCount: 10,
-    color: 'from-blue-500 to-cyan-500',
+    reportCount: 8,
   },
   {
     id: 'leads',
     title: 'Lead Reports',
-    description: 'Pipeline summary, lead ageing, source analysis, velocity metrics, and funnel breakdown',
+    description: 'Pipeline summary, lead ageing, sources, response time, follow-ups, hot leads and velocity',
     icon: Target,
     href: '/reports/leads',
-    reportCount: 10,
-    color: 'from-purple-500 to-pink-500',
+    reportCount: 8,
   },
   {
     id: 'financial',
     title: 'Financial Reports',
-    description: 'Revenue overview, collections, P&L analysis, tax reporting, outstanding, and ageing',
+    description: 'Revenue, collections, receivables ageing, profit by lead, tax, payment methods and daily cash',
     icon: DollarSign,
     href: '/reports/financial',
-    reportCount: 10,
-    color: 'from-green-500 to-emerald-500',
+    reportCount: 8,
   },
   {
     id: 'team',
     title: 'Team Reports',
-    description: 'Salesperson performance, targets, commissions, and team metrics',
+    description: 'Leaderboard, individual performance, response time, activity and task completion',
     icon: Users,
     href: '/reports/team',
     reportCount: 5,
-    color: 'from-orange-500 to-red-500',
   },
   {
     id: 'customer',
     title: 'Customer Reports',
-    description: 'Customer segmentation, lifetime value, satisfaction, and retention analysis',
+    description: 'Repeat customers, lifetime value, upcoming birthdays and dormant customers',
     icon: Activity,
     href: '/reports/customer',
     reportCount: 4,
-    color: 'from-indigo-500 to-blue-500',
   },
   {
     id: 'visa',
     title: 'Visa Reports',
-    description: 'Visa applications, status tracking, and processing metrics',
+    description: 'Application status by country, pending documents and approval rates',
     icon: FileText,
     href: '/reports/visa',
     reportCount: 3,
-    color: 'from-amber-500 to-yellow-500',
   },
   {
     id: 'supplier',
     title: 'Supplier Reports',
-    description: 'Supplier performance, payments, ratings, and contract management',
+    description: 'Supplier usage, payment summary and outstanding balances',
     icon: Truck,
     href: '/reports/supplier',
     reportCount: 3,
-    color: 'from-teal-500 to-green-500',
   },
   {
     id: 'fleet',
     title: 'Fleet Reports',
-    description: 'Vehicle utilization, driver performance, maintenance costs, and trip logs',
-    icon: Zap,
+    description: 'Vehicle utilization, driver performance, availability and trip cost analysis',
+    icon: Car,
     href: '/reports/fleet',
     reportCount: 4,
-    color: 'from-slate-500 to-gray-500',
   },
   {
     id: 'marketing',
     title: 'Marketing Reports',
-    description: 'Campaign performance, ROI, lead sources, and customer acquisition cost',
+    description: 'Campaign performance, lead source ROI and bulk message delivery',
     icon: PieChart,
     href: '/reports/marketing',
     reportCount: 3,
-    color: 'from-rose-500 to-pink-500',
   },
 ];
 
-function formatKPIValue(amount: number): string {
-  if (amount >= 10000000) return `\u20B9${(amount / 10000000).toFixed(1)}Cr`;
-  if (amount >= 100000) return `\u20B9${(amount / 100000).toFixed(1)}L`;
-  if (amount >= 1000) return `\u20B9${(amount / 1000).toFixed(0)}K`;
-  return `\u20B9${amount}`;
-}
-
 function KPICard({ label, value, icon: Icon, loading }: { label: string; value: string; icon: React.ElementType; loading: boolean }) {
-  if (loading) {
-    return (
-      <Card className="flex-1 min-w-[200px]">
-        <CardContent className="p-4">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <Skeleton className="h-4 w-24 mb-2" />
-              <Skeleton className="h-8 w-32" />
-            </div>
-            <Skeleton className="h-9 w-9 rounded-lg" />
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
   return (
-    <Card className="flex-1 min-w-[200px]">
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-sm text-muted-foreground mb-1">{label}</p>
-            <p className="text-2xl font-bold">{value}</p>
+    <Card className="min-w-0">
+      <CardContent className="p-ds-4">
+        <div className="flex items-start justify-between gap-ds-3">
+          <div className="min-w-0 flex-1">
+            {loading ? (
+              <>
+                <Skeleton className="mb-ds-2 h-4 w-24" />
+                <Skeleton className="h-8 w-32" />
+              </>
+            ) : (
+              <>
+                <p className="mb-1 text-sm text-ds-foreground-muted">{label}</p>
+                <p className="text-2xl font-semibold tabular-nums text-ds-foreground">{value}</p>
+              </>
+            )}
           </div>
-          <div className="bg-primary/10 p-2 rounded-lg">
-            <Icon className="h-5 w-5 text-primary" />
+          <div className="rounded-ds-md bg-ds-primary-subtle p-ds-2 text-ds-primary-on-subtle">
+            <Icon className="h-5 w-5" aria-hidden="true" />
           </div>
         </div>
       </CardContent>
@@ -155,52 +133,46 @@ function ReportCardComponent({
   onToggleFavorite,
   onCardClick,
 }: {
-  report: ReportCard;
+  report: ReportCategory;
   isFavorite: boolean;
   onToggleFavorite: (id: string) => void;
-  onCardClick: (report: ReportCard) => void;
+  onCardClick: (report: ReportCategory) => void;
 }) {
   const Icon = report.icon;
   return (
     <div className="relative" onClick={() => onCardClick(report)}>
       <button
-        className="absolute top-2 right-2 z-10 p-1.5 rounded-full bg-white/80 dark:bg-black/50 hover:bg-white dark:hover:bg-black transition-colors"
+        type="button"
+        className="absolute right-ds-2 top-ds-2 z-10 rounded-full p-ds-2 text-ds-foreground-muted transition-colors hover:bg-ds-surface-sunken hover:text-ds-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
           onToggleFavorite(report.id);
         }}
         title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+        aria-label={isFavorite ? `Remove ${report.title} from favorites` : `Add ${report.title} to favorites`}
+        aria-pressed={isFavorite}
       >
         {isFavorite ? (
-          <Star className="h-3.5 w-3.5 text-yellow-500 fill-yellow-500" />
+          <Star className="h-4 w-4 fill-ds-warning text-ds-warning" aria-hidden="true" />
         ) : (
-          <StarOff className="h-3.5 w-3.5 text-muted-foreground" />
+          <StarOff className="h-4 w-4" aria-hidden="true" />
         )}
       </button>
-      <Link href={report.href}>
-        <Card className="h-full hover:shadow-lg transition-all duration-300 cursor-pointer group overflow-hidden">
-          <CardContent className="p-0">
-            <div className={cn(
-              'h-24 bg-gradient-to-r flex items-center justify-center group-hover:scale-110 transition-transform duration-300',
-              `bg-gradient-to-r ${report.color}`,
-            )}>
-              <Icon className="h-10 w-10 text-white/80" />
+      <Link href={report.href} className="block h-full rounded-ds-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring">
+        <Card className="group h-full cursor-pointer transition-shadow hover:shadow-ds-2">
+          <CardContent className="flex h-full flex-col p-ds-4">
+            <div className="mb-ds-3 flex size-11 items-center justify-center rounded-ds-md bg-ds-primary-subtle text-ds-primary-on-subtle">
+              <Icon className="h-5 w-5" aria-hidden="true" />
             </div>
-            <div className="p-4">
-              <h3 className="font-semibold text-sm mb-1 group-hover:text-primary transition-colors">{report.title}</h3>
-              <p className="text-xs text-muted-foreground line-clamp-2 mb-3">{report.description}</p>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded">{report.reportCount} reports</span>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full group-hover:bg-primary group-hover:text-primary-foreground transition-colors"
-              >
-                View Reports
-                <ArrowUpRight className="h-3.5 w-3.5 ml-1.5" />
-              </Button>
+            <h3 className="mb-1 text-sm font-semibold text-ds-foreground transition-colors group-hover:text-ds-primary">{report.title}</h3>
+            <p className="mb-ds-3 line-clamp-3 flex-1 text-xs text-ds-foreground-muted">{report.description}</p>
+            <div className="flex items-center justify-between">
+              <span className="rounded-ds-sm bg-ds-surface-sunken px-ds-2 py-1 text-xs text-ds-foreground-muted">{report.reportCount} reports</span>
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-ds-primary">
+                View
+                <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -212,6 +184,23 @@ function ReportCardComponent({
 const FAVORITES_KEY = 'report_hub_favorites';
 const RECENTLY_VIEWED_KEY = 'report_hub_recently_viewed';
 
+function readIds(key: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(key) || '[]');
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeIds(key: string, ids: string[]) {
+  try {
+    localStorage.setItem(key, JSON.stringify(ids));
+  } catch {
+    // Storage unavailable (private mode); favourites just will not persist.
+  }
+}
+
 export default function ReportsHub() {
   const [search, setSearch] = React.useState('');
   const [favorites, setFavorites] = React.useState<string[]>([]);
@@ -219,30 +208,19 @@ export default function ReportsHub() {
   const [showRecent, setShowRecent] = React.useState(false);
 
   React.useEffect(() => {
-    try {
-      const fav = JSON.parse(localStorage.getItem(FAVORITES_KEY) || '[]');
-      setFavorites(Array.isArray(fav) ? fav : []);
-    } catch {
-      setFavorites([]);
-    }
-    try {
-      const rec = JSON.parse(localStorage.getItem(RECENTLY_VIEWED_KEY) || '[]');
-      setRecentlyViewed(Array.isArray(rec) ? rec : []);
-    } catch {
-      setRecentlyViewed([]);
-    }
+    setFavorites(readIds(FAVORITES_KEY));
+    setRecentlyViewed(readIds(RECENTLY_VIEWED_KEY));
   }, []);
 
-  const { data: dashboardResp, loading: dashLoading, error: dashError } = useApiQuery(
+  const { data: dashboardResp, loading: dashLoading, error: dashError, refetch } = useApiQuery(
     () => reportsApi.getDashboard(),
     [],
   );
 
-  const dashData = (dashboardResp as any)?.data;
-
-  const totalRevenue = dashData?.financial?.revenueThisMonth ?? 0;
-  const outstanding = dashData?.financial?.outstanding ?? 0;
-  const pipeline = (dashData?.pipeline ?? []) as Array<{ status: string; count: number; total_value: number }>;
+  const dash = dashboardResp ? unwrapEntity<Partial<DashboardResponse>>(dashboardResp) : undefined;
+  const pipeline = Array.isArray(dash?.pipeline) ? dash.pipeline : [];
+  const totalRevenue = dash?.financial?.revenueThisMonth ?? 0;
+  const outstanding = dash?.financial?.outstanding ?? 0;
   const activeLeads = pipeline
     .filter((p) => !['won', 'lost'].includes(p.status))
     .reduce((sum, p) => sum + p.count, 0);
@@ -253,16 +231,15 @@ export default function ReportsHub() {
   const handleToggleFavorite = (id: string) => {
     setFavorites((prev) => {
       const next = prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id];
-      try { localStorage.setItem(FAVORITES_KEY, JSON.stringify(next)); } catch {}
+      writeIds(FAVORITES_KEY, next);
       return next;
     });
   };
 
-  const handleCardClick = (report: ReportCard) => {
+  const handleCardClick = (report: ReportCategory) => {
     setRecentlyViewed((prev) => {
-      const filtered = prev.filter((id) => id !== report.id);
-      const next = [report.id, ...filtered].slice(0, 5);
-      try { localStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(next)); } catch {}
+      const next = [report.id, ...prev.filter((id) => id !== report.id)].slice(0, 5);
+      writeIds(RECENTLY_VIEWED_KEY, next);
       return next;
     });
   };
@@ -276,149 +253,61 @@ export default function ReportsHub() {
   const favoriteCards = reportCards.filter((r) => favorites.includes(r.id));
   const recentCards = recentlyViewed
     .map((id) => reportCards.find((r) => r.id === id))
-    .filter(Boolean) as ReportCard[];
+    .filter((r): r is ReportCategory => Boolean(r));
+
+  const sectionTitle = 'flex items-center gap-ds-2 text-sm font-semibold uppercase tracking-wide text-ds-foreground-muted';
+  const cardGrid = 'grid grid-cols-1 gap-ds-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4';
 
   return (
-    <div className="flex flex-col h-full overflow-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Reports Hub</h1>
-          <p className="text-sm text-muted-foreground">Comprehensive business analytics and insights</p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowRecent((v) => !v)}
-          >
-            <History className="h-4 w-4 mr-1.5" />
+    <PageContainer className="gap-ds-6">
+      <PageHeader
+        title="Reports Hub"
+        description="Comprehensive business analytics and insights"
+        actions={
+          <Button variant="outline" size="sm" onClick={() => setShowRecent((v) => !v)}>
+            <History className="mr-1.5 h-4 w-4" aria-hidden="true" />
             Recently Viewed
           </Button>
-        </div>
-      </div>
+        }
+      />
 
-      {/* Content */}
-      <div className="flex-1 p-6 overflow-auto space-y-8">
-        {/* KPI Cards */}
-        <div>
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">Key Metrics</h2>
-          {dashError ? (
-            <div className="flex items-center gap-3 p-4 rounded-lg border border-destructive/50 bg-destructive/5 text-destructive">
-              <AlertCircle className="h-5 w-5 flex-shrink-0" />
-              <p className="text-sm">Failed to load dashboard metrics. Please try again.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <KPICard
-                label="Revenue This Month"
-                value={dashLoading ? '-' : formatKPIValue(totalRevenue)}
-                icon={DollarSign}
-                loading={dashLoading}
-              />
-              <KPICard
-                label="Active Leads"
-                value={dashLoading ? '-' : String(activeLeads)}
-                icon={Target}
-                loading={dashLoading}
-              />
-              <KPICard
-                label="Conversion Rate"
-                value={dashLoading ? '-' : `${conversionRate}%`}
-                icon={TrendingUp}
-                loading={dashLoading}
-              />
-              <KPICard
-                label="Outstanding"
-                value={dashLoading ? '-' : formatKPIValue(outstanding)}
-                icon={BarChart3}
-                loading={dashLoading}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Recently Viewed */}
-        {showRecent && (
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
-                <History className="h-4 w-4" />
-                Recently Viewed
-              </h2>
-              <Button variant="ghost" size="sm" onClick={() => setShowRecent(false)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            {recentCards.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No recently viewed reports.</p>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {recentCards.map((report) => (
-                  <ReportCardComponent
-                    key={report.id}
-                    report={report}
-                    isFavorite={favorites.includes(report.id)}
-                    onToggleFavorite={handleToggleFavorite}
-                    onCardClick={handleCardClick}
-                  />
-                ))}
-              </div>
-            )}
+      <section>
+        <h2 className={cn(sectionTitle, 'mb-ds-4')}>Key Metrics</h2>
+        {dashError ? (
+          <div role="alert" className="flex items-center gap-ds-3 rounded-ds-lg border border-ds-danger bg-ds-danger-subtle p-ds-4 text-ds-danger-on-subtle">
+            <AlertCircle className="h-5 w-5 shrink-0" aria-hidden="true" />
+            <p className="flex-1 text-sm">Failed to load dashboard metrics. Please try again.</p>
+            <Button variant="outline" size="sm" onClick={() => void refetch()}>
+              <RefreshCw className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              Retry
+            </Button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-ds-4 md:grid-cols-2 xl:grid-cols-4">
+            <KPICard label="Revenue This Month" value={formatReportCurrency(totalRevenue)} icon={DollarSign} loading={dashLoading} />
+            <KPICard label="Active Leads" value={String(activeLeads)} icon={Target} loading={dashLoading} />
+            <KPICard label="Conversion Rate" value={`${conversionRate}%`} icon={TrendingUp} loading={dashLoading} />
+            <KPICard label="Outstanding" value={formatReportCurrency(outstanding)} icon={BarChart3} loading={dashLoading} />
           </div>
         )}
+      </section>
 
-        {/* Favorites */}
-        {favoriteCards.length > 0 && (
-          <div>
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4 flex items-center gap-2">
-              <Star className="h-4 w-4 text-yellow-500" />
-              Favorites
+      {showRecent && (
+        <section>
+          <div className="mb-ds-4 flex items-center justify-between">
+            <h2 className={sectionTitle}>
+              <History className="h-4 w-4" aria-hidden="true" />
+              Recently Viewed
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {favoriteCards.map((report) => (
-                <ReportCardComponent
-                  key={report.id}
-                  report={report}
-                  isFavorite={true}
-                  onToggleFavorite={handleToggleFavorite}
-                  onCardClick={handleCardClick}
-                />
-              ))}
-            </div>
+            <Button variant="ghost" size="icon" aria-label="Close recently viewed" onClick={() => setShowRecent(false)}>
+              <X className="h-4 w-4" aria-hidden="true" />
+            </Button>
           </div>
-        )}
-
-        {/* Search + All Report Cards */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Available Reports</h2>
-            <div className="relative w-64">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search reports..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-8 h-8 text-sm"
-              />
-              {search && (
-                <button
-                  className="absolute right-2 top-2 text-muted-foreground hover:text-foreground"
-                  onClick={() => setSearch('')}
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-          </div>
-          {filteredCards.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Search className="h-8 w-8 mx-auto mb-3 opacity-40" />
-              <p className="text-sm">No reports match &quot;{search}&quot;</p>
-            </div>
+          {recentCards.length === 0 ? (
+            <p className="text-sm text-ds-foreground-muted">No recently viewed reports.</p>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {filteredCards.map((report) => (
+            <div className={cardGrid}>
+              {recentCards.map((report) => (
                 <ReportCardComponent
                   key={report.id}
                   report={report}
@@ -429,8 +318,72 @@ export default function ReportsHub() {
               ))}
             </div>
           )}
+        </section>
+      )}
+
+      {favoriteCards.length > 0 && (
+        <section>
+          <h2 className={cn(sectionTitle, 'mb-ds-4')}>
+            <Star className="h-4 w-4 text-ds-warning" aria-hidden="true" />
+            Favorites
+          </h2>
+          <div className={cardGrid}>
+            {favoriteCards.map((report) => (
+              <ReportCardComponent
+                key={report.id}
+                report={report}
+                isFavorite
+                onToggleFavorite={handleToggleFavorite}
+                onCardClick={handleCardClick}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section>
+        <div className="mb-ds-4 flex flex-wrap items-center justify-between gap-ds-3">
+          <h2 className={sectionTitle}>Available Reports</h2>
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-ds-foreground-muted" aria-hidden="true" />
+            <Input
+              placeholder="Search reports..."
+              aria-label="Search reports"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-9 pl-8 text-sm"
+            />
+            {search && (
+              <button
+                type="button"
+                aria-label="Clear search"
+                className="absolute right-2 top-2.5 text-ds-foreground-muted hover:text-ds-foreground"
+                onClick={() => setSearch('')}
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            )}
+          </div>
         </div>
-      </div>
-    </div>
+        {filteredCards.length === 0 ? (
+          <div className="py-12 text-center text-ds-foreground-muted">
+            <Search className="mx-auto mb-ds-3 h-8 w-8 opacity-40" aria-hidden="true" />
+            <p className="text-sm">No reports match &quot;{search}&quot;</p>
+          </div>
+        ) : (
+          <div className={cardGrid}>
+            {filteredCards.map((report) => (
+              <ReportCardComponent
+                key={report.id}
+                report={report}
+                isFavorite={favorites.includes(report.id)}
+                onToggleFavorite={handleToggleFavorite}
+                onCardClick={handleCardClick}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+    </PageContainer>
   );
 }
