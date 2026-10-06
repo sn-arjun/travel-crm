@@ -44,3 +44,4 @@ e2e/.auth/
 audit/fix/stack/
 audit/fix/probe/
 audit/fix/gates/*-vitest.json
+audit/fix/probe-ids.json
