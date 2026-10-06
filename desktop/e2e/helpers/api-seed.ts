@@ -8,22 +8,45 @@ async function ensureToken(forceRefresh = false) {
   return token;
 }
 
+const IDEMPOTENT = new Set(['GET', 'HEAD', 'PUT', 'DELETE']);
+
+/** True for a dropped connection (wrangler dev closing a socket), never for an HTTP error status. */
+function isTransportError(e: unknown): boolean {
+  const msg = `${(e as Error)?.message ?? ''} ${(e as { cause?: Error })?.cause?.message ?? ''}`;
+  return /fetch failed|other side closed|socket|ECONNRESET|ECONNREFUSED|UND_ERR/i.test(msg);
+}
+
 export async function api(method: string, path: string, body?: any): Promise<any> {
+  const isReset = method === 'POST' && path.startsWith('/test/reset');
+  // A reset is safe to repeat; other POSTs are not (a retry could double-create a row).
+  const retryable = IDEMPOTENT.has(method) || isReset;
   let t = await ensureToken();
-  const makeReq = (tok: string) => fetch(`${API_URL}${path}`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${tok}`,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const makeReq = async (tok: string) => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await fetch(`${API_URL}${path}`, {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${tok}`,
+          },
+          body: body ? JSON.stringify(body) : undefined,
+        });
+      } catch (e) {
+        if (!retryable || attempt >= 2 || !isTransportError(e)) throw e;
+        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+      }
+    }
+  };
   let res = await makeReq(t);
   // Retry once with a fresh token if we get a 401
   if (res.status === 401) {
     t = await ensureToken(true);
     res = await makeReq(t);
   }
+  // A reset rebuilds the users table: a token minted before it names a user row that no longer
+  // exists, so any write that records created_by fails its foreign key (the old "contact.id undefined").
+  if (isReset) token = null;
   return res.json();
 }
 
@@ -201,7 +224,9 @@ export async function seedRateCard(overrides: Record<string, any> = {}) {
     sellingPrice: 7500,
     currency: 'INR',
     unit: 'per_person',
-    validFrom: localDay(new Date()),
+    // Yesterday, not today: the server compares validity against the UTC date, which still
+    // lags the local date for the first hours after local midnight (e.g. IST).
+    validFrom: localDay(new Date(Date.now() - 86400000)),
     validTo: localDay(new Date(Date.now() + 86400000 * 365)),
     isActive: 1,
     ...overrides,

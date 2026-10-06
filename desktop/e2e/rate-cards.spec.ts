@@ -24,9 +24,14 @@ async function pickOption(page: Page, triggerSelector: string, optionName: strin
 /** Select-all then type, as a user would; CurrencyInput swaps its display text on focus. */
 async function setNumber(page: Page, selector: string, value: string) {
   const input = page.locator(selector);
-  await input.click();
-  await input.press('Control+A');
-  await input.pressSequentially(value);
+  // The first keystroke can land while the field swaps its display text on focus and get lost,
+  // so check what the field holds and type again if needed.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await input.click();
+    await input.press('Control+A');
+    await input.pressSequentially(value);
+    if ((await input.inputValue()).replace(/[^\d.]/g, '') === value) break;
+  }
   await input.blur();
 }
 

@@ -54,8 +54,12 @@ function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' |
 }
 
 function ExpiryTag({ expiryDate }: { expiryDate: string }) {
-  const [now] = React.useState(() => Date.now());
-  const days = Math.ceil((new Date(expiryDate).getTime() - now) / 86400000);
+  const [today] = React.useState(() => {
+    const n = new Date();
+    return new Date(n.getFullYear(), n.getMonth(), n.getDate());
+  });
+  // Whole calendar days, both ends at local midnight (a UTC-parsed date shifts the count by the offset).
+  const days = Math.round((parseLocalDate(expiryDate).getTime() - today.getTime()) / 86400000);
   const tone = days < 0 ? 'danger' : days < 30 ? 'warning' : 'success';
   return (
     <Tag tone={tone}>
