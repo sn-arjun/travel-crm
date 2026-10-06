@@ -214,18 +214,9 @@ test.describe.serial('Chatbot', () => {
     // Replying sets status to handed_off server-side — refetch reflects it.
     await expect(page.locator('text=/handed off/i').first()).toBeVisible({ timeout: 10_000 });
 
-    // Create lead — wires the previously-orphaned POST .../create-lead action.
-    //
-    // KNOWN PRODUCT BUG (documented, not silently worked around): the backend
-    // handler (backend/src/routes/chatbot.ts, POST /conversations/:id/create-lead)
-    // inserts into `leads` using columns `pax_count` and `assignee_id`, but the
-    // real `leads` table (backend/src/db/tenant-schema.ts) has no such columns
-    // (it's pax_adults/pax_children/pax_infants and assigned_to), and
-    // `contact_id` is NOT NULL with a FK while a chatbot-only visitor's
-    // conversation has no linked contact — so this insert always 500s for a
-    // conversation without a contact_id. That route file is outside this
-    // slice's fileAllowlist (desktop/** + chatbot.ts only), so we assert the
-    // real (broken) response here instead of a fabricated success path.
+    // Create lead: the visitor has a name and an email, so the backend creates (or
+    // reuses) a contact, creates the lead, links both to the conversation and the page
+    // opens the new lead.
     await page.getByRole('button', { name: 'More actions' }).click();
     const createLeadOption = page.getByRole('menuitem', { name: 'Create lead' });
     await expect(createLeadOption).toBeVisible();
@@ -234,8 +225,9 @@ test.describe.serial('Chatbot', () => {
     );
     await createLeadOption.click();
     const createLeadResponse = await createLeadResponsePromise;
-    expect(createLeadResponse.status()).toBe(500);
-    await expect(page.locator('text=Failed to create lead')).toBeVisible({ timeout: 10_000 });
+    expect(createLeadResponse.status()).toBe(201);
+    await expect(page.locator('text=Lead created from conversation')).toBeVisible({ timeout: 10_000 });
+    await expect(page).toHaveURL(/\/leads\/[0-9a-f-]{36}/, { timeout: 10_000 });
   });
 
   test('Conversations list — bulk close and hover-close actions call the real close endpoint', async ({ page }) => {

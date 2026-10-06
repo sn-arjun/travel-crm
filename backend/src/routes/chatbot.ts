@@ -9,6 +9,7 @@ import { z } from 'zod';
 import type { AppContext } from '../types';
 import { success, error } from '../utils/response';
 import { generateId } from '../utils/uuid';
+import { normalizePhone, phoneLookupVariants, inPlaceholders } from '../utils/phone';
 import { AIRouter } from '../services/ai-router';
 
 import { aiAwareErrorHandler, aiUnavailableResponse } from '../utils/ai-unavailable';
@@ -328,29 +329,98 @@ app.post('/conversations/:id/create-lead', async (c) => {
   const conv = await db.prepare(`SELECT * FROM chatbot_conversations WHERE id = ?`).bind(id).first() as any;
   if (!conv) return error(c, 'Conversation not found', 404);
 
-  const qualData = conv.qualification_data ? JSON.parse(conv.qualification_data) : {};
-  const leadId = generateId();
+  // Idempotent: a conversation yields at most one lead.
+  if (conv.lead_id) {
+    return c.json({ success: true, data: { leadId: conv.lead_id, contactId: conv.contact_id ?? null, created: false } });
+  }
+
+  let qualData: Record<string, unknown> = {};
+  try {
+    qualData = conv.qualification_data ? JSON.parse(conv.qualification_data) : {};
+  } catch {
+    qualData = {};
+  }
   const now = new Date().toISOString();
 
-  await db.prepare(`
-    INSERT INTO leads (id, title, status, source, destination, pax_count, estimated_value, contact_id, assignee_id, created_at, updated_at)
-    VALUES (?, ?, 'new', ?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(
-    leadId,
-    `${conv.channel} Inquiry — ${qualData.destination || conv.visitor_name || 'Visitor'}`,
-    `chatbot_${conv.channel}`,
-    qualData.destination || null,
-    qualData.travelers || null,
-    qualData.budget ? parseFloat(qualData.budget) || null : null,
-    conv.contact_id || null,
-    userId,
-    now, now,
-  ).run();
+  // A lead always belongs to a contact: use the linked one, else match the visitor by
+  // phone or email, else create a contact from what the visitor told us.
+  const visitorName = typeof conv.visitor_name === 'string' ? conv.visitor_name.trim() : '';
+  const visitorEmail = typeof conv.visitor_email === 'string' ? conv.visitor_email.trim().toLowerCase() : '';
+  const visitorPhone = typeof conv.visitor_phone === 'string' ? normalizePhone(conv.visitor_phone) : '';
 
-  await db.prepare(`UPDATE chatbot_conversations SET lead_id = ?, status = 'qualified', updated_at = ? WHERE id = ?`)
-    .bind(leadId, now, id).run();
+  let contactId: string | null = conv.contact_id || null;
+  if (!contactId && visitorPhone) {
+    const variants = phoneLookupVariants(visitorPhone);
+    const match = await db
+      .prepare(`SELECT id FROM contacts WHERE COALESCE(is_deleted, 0) = 0 AND phone IN (${inPlaceholders(variants)}) LIMIT 1`)
+      .bind(...variants)
+      .first<{ id: string }>();
+    contactId = match?.id ?? null;
+  }
+  if (!contactId && visitorEmail) {
+    const match = await db
+      .prepare(`SELECT id FROM contacts WHERE COALESCE(is_deleted, 0) = 0 AND lower(email) = ? LIMIT 1`)
+      .bind(visitorEmail)
+      .first<{ id: string }>();
+    contactId = match?.id ?? null;
+  }
+  if (!contactId) {
+    if (!visitorName && !visitorPhone && !visitorEmail) {
+      return error(c, "Add the visitor's name, phone or email before creating a lead", 400);
+    }
+    contactId = generateId();
+    await db
+      .prepare(
+        `INSERT INTO contacts (id, name, email, phone, type, source, tags, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'customer', ?, '[]', ?, ?, ?)`,
+      )
+      .bind(
+        contactId,
+        visitorName || visitorPhone || visitorEmail,
+        visitorEmail || null,
+        visitorPhone || null,
+        conv.channel === 'whatsapp' ? 'whatsapp' : 'website',
+        userId,
+        now,
+        now,
+      )
+      .run();
+  }
 
-  return c.json({ success: true, data: { leadId } });
+  const destination = typeof qualData.destination === 'string' ? qualData.destination.trim() : '';
+  const travelers = Number(qualData.travelers);
+  const budget = qualData.budget != null ? parseFloat(String(qualData.budget).replace(/[^0-9.]/g, '')) : NaN;
+  const channelLabel = conv.channel === 'whatsapp' ? 'WhatsApp' : 'Website';
+
+  const leadId = generateId();
+  await db
+    .prepare(
+      `INSERT INTO leads (id, contact_id, title, destination, pax_adults, budget, source, status, priority,
+                          assigned_to, notes, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'new', 'warm', ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      leadId,
+      contactId,
+      `${channelLabel} enquiry: ${destination || visitorName || 'new visitor'}`,
+      JSON.stringify(destination ? [destination] : []),
+      Number.isFinite(travelers) && travelers > 0 ? Math.round(travelers) : 1,
+      Number.isFinite(budget) && budget > 0 ? budget : null,
+      conv.channel === 'whatsapp' ? 'whatsapp' : 'website',
+      userId,
+      `Created from a ${channelLabel} chatbot conversation.`,
+      userId,
+      now,
+      now,
+    )
+    .run();
+
+  await db
+    .prepare(`UPDATE chatbot_conversations SET lead_id = ?, contact_id = ?, status = 'qualified', updated_at = ? WHERE id = ?`)
+    .bind(leadId, contactId, now, id)
+    .run();
+
+  return c.json({ success: true, data: { leadId, contactId, created: true } }, 201);
 });
 
 // Chatbot analytics (TICKET-476)

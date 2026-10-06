@@ -72,7 +72,7 @@ export default function ConversationDetailPage() {
   const { mutate: closeConvo, loading: closing } = useApiMutation(
     (data: { notes?: string }) => chatbotApi.conversations.close(conversationId, data),
   );
-  const { mutate: createLead, loading: creatingLead } = useApiMutation(
+  const { mutate: createLead, loading: creatingLead, error: createLeadError } = useApiMutation(
     () => chatbotApi.conversations.createLead(conversationId),
   );
 
@@ -126,10 +126,13 @@ export default function ConversationDetailPage() {
     if (result?.data?.id) {
       toast.success('Lead created from conversation');
       router.push(`/leads/${result.data.id}`);
-    } else {
-      toast.error('Failed to create lead');
     }
   }
+
+  // The server explains why a lead cannot be created (e.g. no visitor details yet).
+  React.useEffect(() => {
+    if (createLeadError) toast.error(createLeadError.message || 'Failed to create lead');
+  }, [createLeadError]);
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && !e.shiftKey) {
