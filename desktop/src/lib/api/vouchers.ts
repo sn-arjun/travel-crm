@@ -1,6 +1,43 @@
 import { client, type ApiResponse, type PaginatedResponse } from './client';
 import { API_ENDPOINTS } from './config';
 
+/** Type-specific voucher payload; which keys are present depends on the voucher type. */
+export interface VoucherDetails {
+  hotelName?: string;
+  hotelAddress?: string;
+  checkIn?: string;
+  checkOut?: string;
+  roomType?: string;
+  roomCount?: number;
+  mealPlan?: string;
+  specialRequests?: string;
+  confirmationNumber?: string;
+  guestNames?: string[];
+  guestEmail?: string;
+  guestPhone?: string;
+  vehicleType?: string;
+  driverName?: string;
+  driverPhone?: string;
+  pickupLocation?: string;
+  pickupTime?: string;
+  dropLocation?: string;
+  route?: string;
+  airline?: string;
+  flightNumber?: string;
+  departureAirport?: string;
+  departureTime?: string;
+  arrivalAirport?: string;
+  arrivalTime?: string;
+  pnr?: string;
+  travelClass?: string;
+  passengers?: Array<{ name: string }>;
+  activityName?: string;
+  dateTime?: string;
+  meetingPoint?: string;
+  duration?: string;
+  [key: string]: unknown;
+}
+
 export interface Voucher {
   id: string;
   leadId: string;
@@ -9,7 +46,7 @@ export interface Voucher {
   supplierName?: string;
   type: 'hotel' | 'transport' | 'flight' | 'activity';
   title: string;
-  details: Record<string, any>;
+  details: VoucherDetails;
   status: 'draft' | 'sent' | 'confirmed';
   language: string;
   itineraryItemId?: string;
@@ -28,7 +65,7 @@ export interface CreateVoucherRequest {
   type: 'hotel' | 'transport' | 'flight' | 'activity';
   supplierId?: string;
   title: string;
-  details: Record<string, any>;
+  details: VoucherDetails;
   language?: string;
   notes?: string;
 }
@@ -36,7 +73,7 @@ export interface CreateVoucherRequest {
 export interface UpdateVoucherRequest {
   title?: string;
   supplierId?: string;
-  details?: Record<string, any>;
+  details?: VoucherDetails;
   language?: string;
   notes?: string;
 }
@@ -61,8 +98,9 @@ export interface BulkSendVoucherRequest {
  * GET/PUT /vouchers rows come back as raw snake_case DB rows (lead_name, created_at, ...);
  * POST returns camelCase. Add the camelCase fields the pages read, keeping the raw ones.
  */
-function normalizeVoucher(raw: any): Voucher {
-  if (!raw || typeof raw !== 'object') return raw;
+function normalizeVoucher(input: unknown): Voucher {
+  if (!input || typeof input !== 'object') return input as Voucher;
+  const raw = input as Record<string, unknown>;
   return {
     ...raw,
     leadId: raw.leadId ?? raw.lead_id,
@@ -96,15 +134,18 @@ export const vouchersApi = {
   }) =>
     client
       .get<ApiResponse<PaginatedResponse<Voucher>>>(API_ENDPOINTS.vouchers.list, { params })
-      .then((res: any) => ({
-        ...res,
-        data: Array.isArray(res?.data) ? res.data.map(normalizeVoucher) : res?.data,
-      })) as Promise<ApiResponse<PaginatedResponse<Voucher>>>,
+      .then((res) => {
+        const body = res as unknown as { data?: unknown };
+        return {
+          ...res,
+          data: Array.isArray(body.data) ? body.data.map(normalizeVoucher) : body.data,
+        };
+      }) as Promise<ApiResponse<PaginatedResponse<Voucher>>>,
 
   getById: (id: string) =>
     client
       .get<ApiResponse<Voucher>>(API_ENDPOINTS.vouchers.byId(id))
-      .then((res: any) => ({ ...res, data: normalizeVoucher(res?.data) })) as Promise<ApiResponse<Voucher>>,
+      .then((res) => ({ ...res, data: normalizeVoucher(res?.data) })),
 
   create: (data: CreateVoucherRequest) =>
     client.post<ApiResponse<Voucher>>(API_ENDPOINTS.vouchers.create, data),

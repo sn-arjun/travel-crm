@@ -1,5 +1,10 @@
 import { leadsApi } from '@/lib/api/leads';
-import type { Lead } from '@travelcrm/shared';
+import type { Lead, Supplier } from '@travelcrm/shared';
+
+/** Suppliers come back with a `category` that the shared type does not declare yet. */
+export function supplierCategory(s: Supplier): string | undefined {
+  return (s as Supplier & { category?: string }).category;
+}
 
 /**
  * One page of lead options for the relation combobox. The leads endpoint returns

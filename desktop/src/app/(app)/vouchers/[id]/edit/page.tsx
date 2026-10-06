@@ -15,6 +15,7 @@ import type { Supplier } from '@travelcrm/shared';
 import { useApiQuery } from '@/hooks/use-api';
 import { toast } from 'sonner';
 import { toDateOnly, fromDateOnly } from '../../_date';
+import { supplierCategory } from '../../_relations';
 
 const VOUCHER_TYPES = ['hotel', 'transport', 'flight', 'activity'] as const;
 
@@ -237,7 +238,7 @@ export default function EditVoucherPage() {
                     fetcher={fetchSupplierOptions}
                     getOptionId={(s: Supplier) => s.id}
                     getOptionLabel={(s: Supplier) => supplierLabel(s)}
-                    getOptionDescription={(s: Supplier) => (s as any).category}
+                    getOptionDescription={supplierCategory}
                     resolveSelected={async (id) => (await suppliersApi.getById(id)).data}
                     placeholder="Select supplier (optional)"
                   />

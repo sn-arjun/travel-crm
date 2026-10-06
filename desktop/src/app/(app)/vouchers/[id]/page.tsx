@@ -69,7 +69,7 @@ function VoucherOverview({ voucher }: { voucher: Voucher }) {
             <DetailRow label="Room type" value={d.roomType} />
             <DetailRow label="Meal plan" value={d.mealPlan} />
             <DetailRow label="Confirmation #" value={d.confirmationNumber} />
-            {d.guestNames?.length > 0 && (
+            {d.guestNames && d.guestNames.length > 0 && (
               <div className="col-span-2">
                 <p className="text-xs text-ds-foreground-muted mb-1">Guests</p>
                 <div className="flex flex-wrap gap-ds-1">
@@ -113,7 +113,7 @@ function VoucherOverview({ voucher }: { voucher: Voucher }) {
             <DetailRow label="To" value={d.arrivalAirport} />
             <DetailRow label="Departure" value={fmtDate(d.departureTime)} />
             <DetailRow label="Arrival" value={fmtDate(d.arrivalTime)} />
-            {d.passengers?.length > 0 && (
+            {d.passengers && d.passengers.length > 0 && (
               <div className="col-span-2">
                 <p className="text-xs text-ds-foreground-muted mb-1">Passengers</p>
                 <div className="flex flex-wrap gap-ds-1">

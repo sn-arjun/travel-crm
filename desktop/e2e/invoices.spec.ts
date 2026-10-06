@@ -406,7 +406,7 @@ test.describe('Invoices', () => {
     await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5_000 });
     await expect(page.getByRole('heading', { name: 'Record Payment' })).toBeVisible();
 
-    const amountInput = page.locator('input[type="number"]').first();
+    const amountInput = page.locator('#invoice-pay-amount');
     await amountInput.fill('5000');
     const refInput = page.getByPlaceholder(/UTR number/i);
     await refInput.fill('E2E-UTR-001');
@@ -415,7 +415,7 @@ test.describe('Invoices', () => {
     await expect(page.getByText('Payment recorded')).toBeVisible({ timeout: 10_000 });
 
     // Balance Due is on the default Overview tab (Totals section)
-    await expect(page.getByText(/Balance Due/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/Balance Due/i).first()).toBeVisible({ timeout: 10_000 });
 
     // Payment History lives under the "Related" tab
     await page.getByRole('tab', { name: 'Related' }).click();
@@ -434,7 +434,7 @@ test.describe('Invoices', () => {
     await page.getByRole('menuitem', { name: 'Record payment' }).click();
     await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5_000 });
 
-    const amountInput = page.locator('input[type="number"]').first();
+    const amountInput = page.locator('#invoice-pay-amount');
     await amountInput.fill('0');
     await page.getByRole('button', { name: 'Record Payment' }).click();
     await expect(page.getByText(/valid payment amount/i)).toBeVisible({ timeout: 5_000 });

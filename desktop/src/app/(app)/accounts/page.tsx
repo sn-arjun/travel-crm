@@ -2,14 +2,48 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Eye, Pencil, Phone, Mail, Trash2, Info } from 'lucide-react';
+import { Eye, Pencil, Phone, Mail, Trash2 } from 'lucide-react';
 import { ListPage } from '@/components/domain';
-import { Button, Tag, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Alert, AlertDescription } from '@/components/ui';
+import { Button, Tag, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui';
 import { suppliersApi } from '@/lib/api/suppliers';
 import { SendMessageDialog } from '@/components/communication/send-message-dialog';
 import { toast } from 'sonner';
-import type { Supplier } from '@travelcrm/shared';
+import { unwrapList } from '@/lib/api/envelope';
 import { toLocalDateString } from '@/lib/dates';
+
+/** A supplier row as the accounts view reads it (camelCase from the API, snake_case tolerated). */
+interface AccountRow {
+  id: string;
+  companyName: string;
+  category: string;
+  contactPerson: string | null;
+  email: string | null;
+  phone: string | null;
+  isActive: boolean;
+}
+
+function str(v: unknown): string | null {
+  return typeof v === 'string' && v !== '' ? v : null;
+}
+
+function toAccount(raw: unknown): AccountRow {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const active = r.isActive ?? r.is_active;
+  return {
+    id: String(r.id ?? ''),
+    companyName: str(r.companyName) ?? str(r.company_name) ?? str(r.name) ?? '',
+    category: str(r.category) ?? str(r.type) ?? '',
+    contactPerson: str(r.contactPerson) ?? str(r.contact_person),
+    email: str(r.email),
+    phone: str(r.phone),
+    isActive: active === true || active === 1,
+  };
+}
+
+async function fetchAccounts(params: { page: number; limit: number; search?: string; category?: string }) {
+  const res = unwrapList<unknown>(await suppliersApi.list(params), { page: params.page, limit: params.limit });
+  return { ...res, data: res.data.map(toAccount) };
+}
 
 const CATEGORY_OPTIONS = [
   { value: 'hotel', label: 'Hotel' },
@@ -21,15 +55,15 @@ const CATEGORY_OPTIONS = [
   { value: 'insurance', label: 'Insurance' },
 ];
 
-function toCsv(rows: Supplier[]) {
+function toCsv(rows: AccountRow[]) {
   const header = ['Company', 'Category', 'Contact Person', 'Email', 'Phone', 'Status'];
-  const lines = rows.map((s: any) => [
-    s.companyName ?? s.company_name ?? s.name ?? '',
-    (s.category ?? s.type ?? '').replace(/_/g, ' '),
-    s.contactPerson ?? s.contact_person ?? '',
+  const lines = rows.map((s) => [
+    s.companyName,
+    s.category.replace(/_/g, ' '),
+    s.contactPerson ?? '',
     s.email ?? '',
     s.phone ?? '',
-    (s.isActive ?? s.is_active) ? 'Active' : 'Inactive',
+    s.isActive ? 'Active' : 'Inactive',
   ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','));
   return [header.join(','), ...lines].join('\n');
 }
@@ -45,57 +79,42 @@ export default function AccountsPage() {
     categoryFilter && { id: 'category', label: 'Category', value: CATEGORY_OPTIONS.find((c) => c.value === categoryFilter)?.label ?? categoryFilter },
   ].filter(Boolean) as { id: string; label: string; value: string }[];
 
-  function openSendMessage(sup: any) {
+  function openSendMessage(sup: AccountRow) {
     setMsgContact({
       id: sup.id,
-      name: sup.companyName || sup.company_name || sup.name || '',
-      email: sup.email || null,
-      phone: sup.phone || null,
+      name: sup.companyName,
+      email: sup.email,
+      phone: sup.phone,
     });
     setMsgDialogOpen(true);
   }
 
   return (
     <>
-      <div className="px-ds-6 pt-ds-4">
-        <Alert>
-          <Info aria-hidden="true" />
-          <AlertDescription>Accounts is a filtered view of your Suppliers. Opening a row takes you to the full Supplier record.</AlertDescription>
-        </Alert>
-      </div>
-
-      <ListPage<Supplier>
+      <ListPage<AccountRow>
         refreshKey={refreshKey}
         title="Accounts"
-        description="Corporate accounts — a filtered view of Suppliers."
+        description="Accounts is a filtered view of your Suppliers. Opening a row takes you to the full Supplier record."
         getRowId={(s) => s.id}
         fetcher={({ page, limit, search }) =>
-          suppliersApi.list({
-            page,
-            limit,
-            search: search || undefined,
-            category: categoryFilter || undefined,
-          })
+          fetchAccounts({ page, limit, search: search || undefined, category: categoryFilter || undefined })
         }
         searchPlaceholder="Search accounts..."
         columns={[
           {
             key: 'company', header: 'Company', sortable: true,
-            cell: (s: any) => <span className="font-medium text-sm">{s.companyName || s.company_name || s.name || '—'}</span>,
+            cell: (s) => <span className="font-medium text-sm">{s.companyName || '—'}</span>,
           },
           {
             key: 'category', header: 'Category', sortable: true,
-            cell: (s: any) => <Tag tone="info">{(s.category ?? s.type ?? '').replace(/_/g, ' ')}</Tag>,
+            cell: (s) => <Tag tone="info">{s.category.replace(/_/g, ' ')}</Tag>,
           },
-          { key: 'contactPerson', header: 'Contact Person', cell: (s: any) => s.contactPerson ?? s.contact_person ?? '—' },
-          { key: 'email', header: 'Email', cell: (s: any) => s.email ?? '—' },
-          { key: 'phone', header: 'Phone', cell: (s: any) => s.phone ?? '—' },
+          { key: 'contactPerson', header: 'Contact Person', cell: (s) => s.contactPerson ?? '—' },
+          { key: 'email', header: 'Email', cell: (s) => s.email ?? '—' },
+          { key: 'phone', header: 'Phone', cell: (s) => s.phone ?? '—' },
           {
             key: 'status', header: 'Status', sortable: true,
-            cell: (s: any) => {
-              const active = s.isActive ?? s.is_active;
-              return <Tag tone={active ? 'success' : 'danger'}>{active ? 'Active' : 'Inactive'}</Tag>;
-            },
+            cell: (s) => <Tag tone={s.isActive ? 'success' : 'danger'}>{s.isActive ? 'Active' : 'Inactive'}</Tag>,
           },
         ]}
         headerActions={
@@ -112,7 +131,7 @@ export default function AccountsPage() {
         filters={activeFilters}
         onRemoveFilter={() => setCategoryFilter('')}
         onClearFilters={() => setCategoryFilter('')}
-        rowActions={(s: any) => (
+        rowActions={(s) => (
           <>
             <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => router.push(`/suppliers/${s.id}`)}>
               <Eye />
@@ -121,7 +140,7 @@ export default function AccountsPage() {
               <Pencil />
             </Button>
             {s.phone && (
-              <Button variant="ghost" size="icon-sm" aria-label="Call" onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(s.phone)}`)}>
+              <Button variant="ghost" size="icon-sm" aria-label="Call" onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(s.phone ?? '')}`)}>
                 <Phone />
               </Button>
             )}
@@ -156,16 +175,13 @@ export default function AccountsPage() {
         ]}
         onExport={async () => {
           try {
-            const all: Supplier[] = [];
+            const all: AccountRow[] = [];
             let page = 1;
             const limit = 100;
             for (;;) {
-              const res = await suppliersApi.list({ page, limit, category: categoryFilter || undefined });
-              const data = (res as any)?.data;
-              const items: Supplier[] = Array.isArray(data) ? data : (data?.data ?? []);
-              all.push(...items);
-              const total = Array.isArray(data) ? items.length : (data?.pagination?.total ?? items.length);
-              if (all.length >= total || items.length === 0) break;
+              const res = await fetchAccounts({ page, limit, category: categoryFilter || undefined });
+              all.push(...res.data);
+              if (all.length >= res.pagination.total || res.data.length === 0) break;
               page += 1;
             }
             const blob = new Blob([toCsv(all)], { type: 'text/csv;charset=utf-8;' });

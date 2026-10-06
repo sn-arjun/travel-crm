@@ -1,35 +1,19 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { Receipt, FileText, Trash2 } from 'lucide-react';
 import { DetailPage } from '@/components/domain';
 import { Badge, Tag, SectionCard, Skeleton, EmptyState, Button, useConfirm } from '@/components/ui';
 import { useApiQuery } from '@/hooks/use-api';
-import { paymentsApi } from '@/lib/api/payments';
+import { paymentsApi, type PaymentRecord } from '@/lib/api/payments';
+import { contactsApi } from '@/lib/api/contacts';
 import { PaymentReceipt } from '@/components/domain/payment-receipt';
 import { toast } from 'sonner';
-
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(amount);
-}
-
-// Payment dates are date-only strings (YYYY-MM-DD); parse them as local dates so
-// the displayed day does not shift with the viewer's timezone.
-function parsePaymentDate(value: string): Date {
-  const m = /^(d{4})-(d{2})-(d{2})/.exec(value);
-  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(value);
-}
-
-const methodTone: Record<string, 'info' | 'success' | 'warning' | 'neutral'> = {
-  bank_transfer: 'info', transfer: 'info', upi: 'info',
-  cash: 'success', card: 'warning', cheque: 'neutral', check: 'neutral',
-};
-
-const methodLabel: Record<string, string> = {
-  bank_transfer: 'Bank Transfer', transfer: 'Bank Transfer', upi: 'UPI',
-  cash: 'Cash', card: 'Card', cheque: 'Cheque', check: 'Cheque', other: 'Other',
-};
+import { formatCurrency } from '@/lib/utils';
+import { formatDisplayDate } from '@/lib/dates';
+import { labelForMethod, methodTone } from '../_methods';
 
 export default function PaymentDetailPage() {
   const params = useParams();
@@ -38,23 +22,13 @@ export default function PaymentDetailPage() {
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [showReceipt, setShowReceipt] = React.useState(false);
 
-  const { data: response, loading } = useApiQuery<any>(
-    () => paymentsApi.getById(paymentId),
-    [paymentId],
-  );
+  const { data: response, loading } = useApiQuery(() => paymentsApi.getById(paymentId), [paymentId]);
+  const payment: PaymentRecord | undefined = response?.data ?? undefined;
 
-  const raw = response?.data as any;
-  const payment = raw ? {
-    ...raw,
-    method: raw.method ?? raw.paymentMethod,
-    paidAt: raw.paidAt ?? raw.paymentDate ?? raw.date,
-    invoiceNumber: raw.invoiceNumber ?? raw.invoice?.invoiceNumber,
-    invoiceId: raw.invoiceId ?? raw.invoice?.id,
-    clientName: raw.clientName ?? raw.invoice?.contactName,
-    clientEmail: raw.clientEmail ?? raw.invoice?.contactEmail,
-    clientPhone: raw.clientPhone ?? raw.invoice?.contactPhone,
-    recordedBy: raw.recordedBy ?? raw.createdBy,
-  } : undefined;
+  const { data: contact } = useApiQuery(
+    async () => (payment?.contactId ? (await contactsApi.getById(payment.contactId)).data : null),
+    [payment?.contactId],
+  );
 
   const handleDelete = async () => {
     const ok = await confirm({
@@ -92,19 +66,23 @@ export default function PaymentDetailPage() {
     );
   }
 
+  const money = (amount: number) => formatCurrency(amount, payment.currency ?? 'INR');
+  const received = formatDisplayDate(payment.paidAt ?? payment.date, 'long');
+  const clientName = payment.clientName ?? contact?.name ?? null;
+
   return (
     <>
       <DetailPage
         entity={payment}
-        title={formatCurrency(payment.amount ?? 0)}
+        title={money(payment.amount ?? 0)}
         subtitle={payment.invoiceNumber ? `Against invoice ${payment.invoiceNumber}` : 'Advance payment'}
-        status={<Tag tone={methodTone[payment.method] ?? 'neutral'}>{methodLabel[payment.method] ?? payment.method}</Tag>}
+        status={<Tag tone={methodTone[payment.method] ?? 'neutral'}>{labelForMethod(payment.method)}</Tag>}
         onBack={() => router.push('/payments')}
-        messaging={payment.clientName ? {
-          recipientId: payment.invoice?.contactId ?? '',
-          recipientName: payment.clientName,
-          email: payment.clientEmail ?? undefined,
-          phone: payment.clientPhone ?? undefined,
+        messaging={clientName && payment.contactId ? {
+          recipientId: payment.contactId,
+          recipientName: clientName,
+          email: contact?.email ?? undefined,
+          phone: contact?.phone ?? undefined,
         } : undefined}
         actions={[
           { label: 'View invoice', icon: <FileText aria-hidden="true" />, onSelect: () => router.push(`/invoices/${payment.invoiceId}`), disabled: !payment.invoiceId },
@@ -117,15 +95,15 @@ export default function PaymentDetailPage() {
               <div className="grid grid-cols-2 gap-ds-4 sm:grid-cols-3">
                 <div>
                   <p className="text-sm text-ds-foreground-muted mb-ds-1">Amount</p>
-                  <p className="text-sm font-bold text-ds-success">{formatCurrency(payment.amount ?? 0)}</p>
+                  <p className="text-sm font-bold text-ds-success">{money(payment.amount ?? 0)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-ds-foreground-muted mb-ds-1">Date</p>
-                  <p className="text-sm font-medium">{payment.paidAt ? parsePaymentDate(payment.paidAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}</p>
+                  <p className="text-sm font-medium">{received || '—'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-ds-foreground-muted mb-ds-1">Method</p>
-                  <Tag tone={methodTone[payment.method] ?? 'neutral'}>{methodLabel[payment.method] ?? payment.method}</Tag>
+                  <Tag tone={methodTone[payment.method] ?? 'neutral'}>{labelForMethod(payment.method)}</Tag>
                 </div>
                 <div>
                   <p className="text-sm text-ds-foreground-muted mb-ds-1">Reference</p>
@@ -133,11 +111,23 @@ export default function PaymentDetailPage() {
                 </div>
                 <div>
                   <p className="text-sm text-ds-foreground-muted mb-ds-1">Client</p>
-                  <p className="text-sm font-medium">{payment.clientName ?? 'N/A'}</p>
+                  {payment.contactId && clientName ? (
+                    <Link href={`/contacts/${payment.contactId}`} className="text-sm font-medium text-ds-primary hover:underline">
+                      {clientName}
+                    </Link>
+                  ) : (
+                    <p className="text-sm font-medium">{clientName ?? '—'}</p>
+                  )}
                 </div>
                 <div>
-                  <p className="text-sm text-ds-foreground-muted mb-ds-1">Recorded by</p>
-                  <p className="text-sm font-medium">{payment.recordedBy ?? 'N/A'}</p>
+                  <p className="text-sm text-ds-foreground-muted mb-ds-1">Invoice</p>
+                  {payment.invoiceId ? (
+                    <Link href={`/invoices/${payment.invoiceId}`} className="text-sm font-medium text-ds-primary hover:underline">
+                      {payment.invoiceNumber ?? 'View invoice'}
+                    </Link>
+                  ) : (
+                    <p className="text-sm font-medium">Advance (no invoice)</p>
+                  )}
                 </div>
               </div>
             </SectionCard>
@@ -154,7 +144,7 @@ export default function PaymentDetailPage() {
             title: 'Linked invoice',
             action: (
               <Button variant="outline" size="sm" onClick={() => router.push(`/invoices/${payment.invoiceId}`)}>
-                <FileText className="h-3.5 w-3.5 mr-1" aria-hidden="true" />
+                <FileText aria-hidden="true" />
                 Open invoice
               </Button>
             ),
@@ -162,9 +152,9 @@ export default function PaymentDetailPage() {
               <div className="flex items-center justify-between px-ds-2 py-ds-3">
                 <div>
                   <p className="text-sm font-medium font-mono">{payment.invoiceNumber ?? payment.invoiceId}</p>
-                  <p className="text-xs text-ds-foreground-muted">{payment.clientName ?? 'N/A'}</p>
+                  <p className="text-xs text-ds-foreground-muted">{clientName ?? '—'}</p>
                 </div>
-                <Badge variant="outline">{formatCurrency(payment.amount ?? 0)}</Badge>
+                <Badge variant="outline">{money(payment.amount ?? 0)}</Badge>
               </div>
             ),
           },
@@ -176,13 +166,12 @@ export default function PaymentDetailPage() {
           payment={{
             id: payment.id,
             amount: payment.amount,
-            paymentDate: payment.paidAt,
+            paymentDate: payment.paidAt ?? payment.date ?? undefined,
             paymentMethod: payment.method,
-            reference: payment.reference,
-            invoiceNumber: payment.invoiceNumber,
-            invoiceId: payment.invoiceId,
-            clientName: payment.clientName,
-            recordedBy: payment.recordedBy,
+            reference: payment.reference ?? undefined,
+            invoiceNumber: payment.invoiceNumber ?? undefined,
+            invoiceId: payment.invoiceId ?? undefined,
+            clientName: clientName ?? undefined,
           }}
           onClose={() => setShowReceipt(false)}
         />

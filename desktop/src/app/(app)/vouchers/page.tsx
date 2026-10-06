@@ -8,6 +8,7 @@ import { ListPage } from '@/components/domain';
 import { Button, ConfirmDialog, Tag, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui';
 import { vouchersApi, type Voucher } from '@/lib/api/vouchers';
 import { toLocalDateString } from '@/lib/dates';
+import { unwrapList } from '@/lib/api/envelope';
 
 function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
   if (status === 'confirmed') return 'success';
@@ -83,10 +84,9 @@ export default function VouchersPage() {
         type: typeFilter || undefined,
         status: statusFilter || undefined,
       });
-      const body = (res as any).data;
-      const items: Voucher[] = Array.isArray(body) ? body : (body?.data ?? []);
+      const { data: items, pagination } = unwrapList<Voucher>(res, { page, limit });
       all.push(...items);
-      const total = (res as any).pagination?.total ?? body?.pagination?.total ?? all.length;
+      const total = pagination.total || all.length;
       if (all.length >= total || items.length === 0) break;
       page += 1;
     }

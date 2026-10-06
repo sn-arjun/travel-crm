@@ -46,7 +46,7 @@ test.describe('Credit Notes', () => {
 
     await page.getByPlaceholder(/Trip cancellation|Overcharge/i).fill(reason);
     await page.locator('input[placeholder*="Flight tickets"]').first().fill(itemDesc);
-    const rateInputs = page.locator('input[type="number"][placeholder="0"]');
+    const rateInputs = page.locator('input[placeholder="0"]');
     await rateInputs.first().fill('1000');
 
     await page.getByRole('button', { name: 'Save', exact: true }).click();
@@ -304,7 +304,7 @@ test.describe('Debit Notes', () => {
 
     await page.getByPlaceholder(/Additional charges|Rate correction/i).fill(reason);
     await page.locator('input[placeholder*="Flight tickets"]').first().fill(itemDesc);
-    const rateInputs = page.locator('input[type="number"][placeholder="0"]');
+    const rateInputs = page.locator('input[placeholder="0"]');
     await rateInputs.first().fill('500');
 
     await page.getByRole('button', { name: 'Save', exact: true }).click();

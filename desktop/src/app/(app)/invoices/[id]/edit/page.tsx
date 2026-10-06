@@ -3,30 +3,21 @@
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { z } from 'zod';
-import { Plus, Trash2 } from 'lucide-react';
 import { EntityForm, FormRow, RelationCombobox } from '@/components/domain';
 import {
-  Input, Textarea, SectionCard, Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-  DatePicker, Separator, Button, Skeleton, EmptyState,
+  Textarea, SectionCard, Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  CurrencyInput, DatePicker, Separator, Button, Skeleton, EmptyState,
 } from '@/components/ui';
 import { useApiQuery } from '@/hooks/use-api';
 import { invoicesApi, type InvoiceLineItem, type UpdateInvoiceRequest } from '@/lib/api/invoices';
-import { contactsApi } from '@/lib/api/contacts';
 import { toast } from 'sonner';
+import { formatCurrency } from '@/lib/utils';
 import { parseLocalDate, toLocalDateString } from '@/lib/dates';
-
-interface LineItem {
-  id: number;
-  description: string;
-  quantity: number;
-  unitPrice: number;
-}
+import {
+  GST_RATES, LineItemsEditor, fetchContactOptions, newLineItem, resolveContact, type LineItem,
+} from '../../_form-shared';
 
 let lineIdCounter = 1000;
-
-function formatCurrency(amount: number, currency = 'INR') {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount);
-}
 
 const schema = z.object({
   contactId: z.string().min(1, 'Please select a contact'),
@@ -49,47 +40,52 @@ export default function EditInvoicePage() {
   const [currency, setCurrency] = React.useState('INR');
   const [initialized, setInitialized] = React.useState(false);
   const [defaultValues, setDefaultValues] = React.useState<InvoiceFormValues | null>(null);
+  const [priceErrors, setPriceErrors] = React.useState<Set<number>>(new Set());
 
-  const { data: invoiceResponse, loading, error } = useApiQuery<any>(
-    () => invoicesApi.getById(invoiceId),
-    [invoiceId],
-  );
+  const { data: invoice, loading, error } = useApiQuery(() => invoicesApi.getDetail(invoiceId), [invoiceId]);
 
   React.useEffect(() => {
-    if (!invoiceResponse?.data || initialized) return;
-    const raw = invoiceResponse.data as any;
+    if (!invoice || initialized) return;
 
-    const existingItems: any[] = raw.items ?? [];
-    const items: LineItem[] = existingItems.length > 0
-      ? existingItems.map((item: any) => ({
+    const items: LineItem[] = invoice.items.length > 0
+      ? invoice.items.map((item) => ({
           id: lineIdCounter++,
-          description: item.description ?? '',
-          quantity: item.quantity ?? 1,
-          unitPrice: item.rate ?? item.unitPrice ?? item.unit_price ?? 0,
+          description: item.description,
+          hsnCode: item.hsnCode ?? '',
+          quantity: item.quantity || 1,
+          unitPrice: item.rate,
         }))
-      : [{ id: lineIdCounter++, description: '', quantity: 1, unitPrice: 0 }];
+      : [newLineItem(lineIdCounter++)];
     setLineItems(items);
-    setCurrency(raw.currency || 'INR');
+    setCurrency(invoice.currency || 'INR');
 
     setDefaultValues({
-      contactId: raw.contactId || raw.contact_id || '',
-      issueDate: raw.issueDate || raw.issue_date ? parseLocalDate(raw.issueDate || raw.issue_date) : new Date(),
-      dueDate: raw.dueDate || raw.due_date ? parseLocalDate(raw.dueDate || raw.due_date) : undefined,
-      discountType: raw.discountType || raw.discount_type || 'percentage',
-      discountValue: raw.discountValue || raw.discount_value ? Number(raw.discountValue || raw.discount_value) : undefined,
-      gstRate: String(existingItems[0]?.taxRate ?? existingItems[0]?.tax_rate ?? 18),
-      notes: raw.notes || '',
-      termsAndConditions: raw.terms || raw.termsAndConditions || '',
+      contactId: invoice.contactId,
+      issueDate: invoice.issueDate ? parseLocalDate(invoice.issueDate) : new Date(),
+      dueDate: invoice.dueDate ? parseLocalDate(invoice.dueDate) : undefined,
+      discountType: invoice.discountType ?? 'percentage',
+      discountValue: invoice.discountValue > 0 ? invoice.discountValue : undefined,
+      gstRate: String(invoice.items[0]?.taxRate ?? 18),
+      notes: invoice.notes ?? '',
+      termsAndConditions: invoice.terms ?? '',
     });
 
     setInitialized(true);
-  }, [invoiceResponse, initialized]);
+  }, [invoice, initialized]);
 
-  function updateLineItem(id: number, field: keyof LineItem, value: string | number) {
+  function updateLineItem(id: number, field: keyof LineItem, value: string | number | undefined) {
     setLineItems((prev) => prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)));
+    if (field === 'unitPrice' && Number(value) > 0) {
+      setPriceErrors((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
   }
   function addLineItem() {
-    setLineItems((prev) => [...prev, { id: lineIdCounter++, description: '', quantity: 1, unitPrice: 0 }]);
+    setLineItems((prev) => [...prev, newLineItem(lineIdCounter++)]);
   }
   function removeLineItem(id: number) {
     setLineItems((prev) => (prev.length > 1 ? prev.filter((item) => item.id !== id) : prev));
@@ -97,11 +93,10 @@ export default function EditInvoicePage() {
 
   const subtotal = lineItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
 
-  const rawInv = invoiceResponse?.data as any;
-  const invoiceStatus = rawInv?.status || 'draft';
+  const invoiceStatus = invoice?.status ?? 'draft';
   const isEditable = invoiceStatus === 'draft';
 
-  if (loading || !defaultValues) {
+  if (loading || (invoice && !defaultValues)) {
     return (
       <div className="flex flex-col gap-ds-4">
         <Skeleton className="h-16 w-full" />
@@ -110,7 +105,7 @@ export default function EditInvoicePage() {
     );
   }
 
-  if (error || !invoiceResponse?.data) {
+  if (error || !invoice || !defaultValues) {
     return (
       <EmptyState
         title="Invoice not found"
@@ -132,7 +127,7 @@ export default function EditInvoicePage() {
 
   return (
     <EntityForm<InvoiceFormValues>
-      title={`Edit Invoice ${rawInv?.invoiceNumber || rawInv?.invoice_number || ''}`}
+      title={`Edit Invoice ${invoice.invoiceNumber}`}
       description="Modify draft invoice details"
       schema={schema}
       defaultValues={defaultValues}
@@ -143,26 +138,28 @@ export default function EditInvoicePage() {
           toast.error('At least one line item with description is required');
           return;
         }
-        const discountAmount = v.discountType === 'percentage'
-          ? subtotal * (v.discountValue ?? 0) / 100
-          : (v.discountValue ?? 0);
+        const badPrice = lineItems.filter((item) => item.description.trim() && !(item.unitPrice > 0));
+        if (badPrice.length > 0) {
+          setPriceErrors(new Set(badPrice.map((item) => item.id)));
+          throw new Error('Unit price must be greater than 0');
+        }
 
         const apiLineItems: InvoiceLineItem[] = lineItems
           .filter((item) => item.description.trim())
           .map((item) => ({
             description: item.description,
+            hsnCode: item.hsnCode || undefined,
             quantity: item.quantity,
             rate: item.unitPrice,
             taxRate: parseFloat(v.gstRate) || 0,
           }));
 
         const request: UpdateInvoiceRequest = {
-          issueDate: v.issueDate ? toLocalDateString(v.issueDate) : undefined,
           dueDate: v.dueDate ? toLocalDateString(v.dueDate) : undefined,
           items: apiLineItems,
-          discount: discountAmount > 0 ? discountAmount : undefined,
+          discountType: v.discountType,
+          discountValue: v.discountValue && v.discountValue > 0 ? v.discountValue : 0,
           notes: v.notes || undefined,
-          terms: v.termsAndConditions || undefined,
         };
 
         const result = await invoicesApi.update(invoiceId, request);
@@ -190,17 +187,11 @@ export default function EditInvoicePage() {
                   <RelationCombobox
                     value={form.watch('contactId') || null}
                     onChange={(id) => form.setValue('contactId', id ?? '', { shouldDirty: true, shouldValidate: true })}
-                    fetcher={async (q, page) => {
-                      const r = await contactsApi.list({ search: q, page, limit: 20 });
-                      const data = r.data as any;
-                      const items = Array.isArray(data) ? data : (data?.data ?? []);
-                      const total = data?.pagination?.total ?? items.length;
-                      return { items, total };
-                    }}
-                    getOptionId={(c: any) => c.id}
-                    getOptionLabel={(c: any) => c.name || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim()}
-                    getOptionDescription={(c: any) => c.email ?? undefined}
-                    resolveSelected={async (id) => (await contactsApi.getById(id)).data as any}
+                    fetcher={fetchContactOptions}
+                    getOptionId={(c) => c.id}
+                    getOptionLabel={(c) => c.name}
+                    getOptionDescription={(c) => c.email ?? undefined}
+                    resolveSelected={resolveContact}
                     disabled
                     placeholder="Contact"
                     error={form.formState.errors.contactId?.message}
@@ -217,34 +208,18 @@ export default function EditInvoicePage() {
 
             <SectionCard title="Line Items" required>
               <div className="flex flex-col gap-ds-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-ds-foreground-muted">At least one item with a description is required</span>
-                  <Button type="button" variant="outline" size="sm" onClick={addLineItem}>
-                    <Plus className="h-3.5 w-3.5 mr-1" aria-hidden="true" />Add Item
-                  </Button>
-                </div>
-                <div className="grid grid-cols-[1fr_80px_120px_120px_32px] gap-ds-2 text-xs font-medium text-ds-foreground-muted px-ds-1">
-                  <span>Description</span>
-                  <span>Qty</span>
-                  <span>Unit Price</span>
-                  <span>Amount</span>
-                  <span />
-                </div>
-                {lineItems.map((item) => (
-                  <div key={item.id} className="grid grid-cols-[1fr_80px_120px_120px_32px] gap-ds-2 items-center">
-                    <Input placeholder="e.g., Flight tickets, Hotel booking..." value={item.description} onChange={(e) => updateLineItem(item.id, 'description', e.target.value)} />
-                    <Input type="number" min={1} value={item.quantity} onChange={(e) => updateLineItem(item.id, 'quantity', parseInt(e.target.value) || 1)} />
-                    <Input type="number" min={0} value={item.unitPrice || ''} onChange={(e) => updateLineItem(item.id, 'unitPrice', parseFloat(e.target.value) || 0)} placeholder="0" />
-                    <Input value={(item.quantity * item.unitPrice).toLocaleString('en-IN')} readOnly className="bg-ds-surface-sunken text-right font-medium" />
-                    <Button type="button" variant="ghost" size="icon-sm" onClick={() => removeLineItem(item.id)} className="text-ds-foreground-muted hover:text-ds-danger">
-                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                    </Button>
-                  </div>
-                ))}
+                <LineItemsEditor
+                  items={lineItems}
+                  currency={currency}
+                  priceErrors={priceErrors}
+                  onChange={updateLineItem}
+                  onAdd={addLineItem}
+                  onRemove={removeLineItem}
+                />
 
                 <Separator className="my-ds-2" />
 
-                <div className="flex flex-col gap-ds-2 max-w-sm ml-auto">
+                <div className="flex flex-col gap-ds-2 max-w-sm ml-auto w-full">
                   <div className="flex justify-between text-sm">
                     <span className="text-ds-foreground-muted">Subtotal</span>
                     <span className="font-medium">{formatCurrency(subtotal, currency)}</span>
@@ -253,26 +228,29 @@ export default function EditInvoicePage() {
                     <span className="text-sm text-ds-foreground-muted shrink-0">Discount</span>
                     <div className="flex items-center gap-ds-1">
                       <Select value={discountType} onValueChange={(v) => form.setValue('discountType', v as 'percentage' | 'fixed', { shouldDirty: true })}>
-                        <SelectTrigger className="w-20 h-8 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="w-20 h-8 text-xs" aria-label="Discount type"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="percentage">%</SelectItem>
                           <SelectItem value="fixed">{'₹'}</SelectItem>
                         </SelectContent>
                       </Select>
-                      <Input className="w-20 h-8 text-sm" type="number" min={0} value={discountValue} onChange={(e) => form.setValue('discountValue', parseFloat(e.target.value) || 0, { shouldDirty: true })} placeholder="0" />
+                      <CurrencyInput
+                        value={form.watch('discountValue')}
+                        onChange={(v) => form.setValue('discountValue', v, { shouldDirty: true })}
+                        currency={currency}
+                        aria-label="Discount value"
+                      />
                     </div>
                     <span className="text-sm font-medium w-24 text-right">-{formatCurrency(discountAmount, currency)}</span>
                   </div>
                   <div className="flex items-center justify-between gap-ds-2">
                     <span className="text-sm text-ds-foreground-muted shrink-0">GST</span>
                     <Select value={gstRate} onValueChange={(v) => form.setValue('gstRate', v, { shouldDirty: true })}>
-                      <SelectTrigger className="w-20 h-8 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="w-20 h-8 text-xs" aria-label="GST rate"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="0">0%</SelectItem>
-                        <SelectItem value="5">5%</SelectItem>
-                        <SelectItem value="12">12%</SelectItem>
-                        <SelectItem value="18">18%</SelectItem>
-                        <SelectItem value="28">28%</SelectItem>
+                        {GST_RATES.map((rate) => (
+                          <SelectItem key={rate} value={rate}>{rate}%</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <span className="text-sm font-medium w-24 text-right">+{formatCurrency(gstAmount, currency)}</span>

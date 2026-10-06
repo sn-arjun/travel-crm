@@ -8,28 +8,32 @@ import {
   Button, Tag, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, useConfirm,
 } from '@/components/ui';
 import { SendMessageDialog } from '@/components/communication/send-message-dialog';
-import { invoicesApi } from '@/lib/api/invoices';
+import { invoicesApi, normalizeInvoiceDetail, type InvoiceDetail } from '@/lib/api/invoices';
 import { exportsApi } from '@/lib/api/exports';
 import { toast } from 'sonner';
 import { unwrapList } from '@/lib/api/envelope';
-import type { Invoice } from '@travelcrm/shared';
-import { toLocalDateString } from '@/lib/dates';
+import { formatDisplayDate, toLocalDateString } from '@/lib/dates';
 
 function formatCurrency(amount: number, currency = 'INR') {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount);
 }
 
-async function downloadInvoicesZip(invoiceIds: string[]) {
-  const queued = await exportsApi.invoicesBulkPdf({ invoiceIds });
-  const jobId = (queued as any)?.data?.id;
-  if (!jobId) throw new Error('Export job was not created');
+interface ExportJob {
+  id: string;
+  status: string;
+}
 
-  let job = (queued as any).data;
+async function downloadInvoicesZip(invoiceIds: string[]) {
+  const queued = (await exportsApi.invoicesBulkPdf({ invoiceIds })) as unknown as { data?: ExportJob };
+  const jobId = queued?.data?.id;
+  if (!jobId || !queued.data) throw new Error('Export job was not created');
+
+  let job: ExportJob = queued.data;
   const deadline = Date.now() + 30_000;
   while (job.status !== 'completed' && job.status !== 'failed' && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    const statusRes = await exportsApi.getJobStatus(jobId);
-    job = (statusRes as any).data;
+    const statusRes = (await exportsApi.getJobStatus(jobId)) as unknown as { data: ExportJob };
+    job = statusRes.data;
   }
   if (job.status !== 'completed') throw new Error('Export did not complete in time');
 
@@ -68,26 +72,10 @@ export default function InvoicesPage() {
     statusFilter && { id: 'status', label: 'Status', value: STATUS_LABELS[statusFilter] ?? statusFilter },
   ].filter(Boolean) as { id: string; label: string; value: string }[];
 
-  function normalize(inv: any) {
-    return {
-      ...inv,
-      invoiceNumber: inv.invoiceNumber || inv.invoice_number,
-      totalAmount: inv.totalAmount ?? inv.total ?? 0,
-      paidAmount: inv.paidAmount ?? inv.paid_amount ?? 0,
-      balanceDue: inv.balanceDue ?? inv.balance_due ?? ((inv.totalAmount ?? inv.total ?? 0) - (inv.paidAmount ?? inv.paid_amount ?? 0)),
-      issueDate: inv.issueDate || inv.issue_date || inv.created_at,
-      dueDate: inv.dueDate || inv.due_date,
-      clientName: inv.clientName || inv.contactName || inv.contact_name || 'N/A',
-      contactEmail: inv.contactEmail ?? inv.contact_email ?? null,
-      contactPhone: inv.contactPhone ?? inv.contact_phone ?? null,
-      contactId: inv.contactId ?? inv.contact_id ?? '',
-    };
-  }
-
-  function openSendMessage(inv: any) {
+  function openSendMessage(inv: InvoiceDetail) {
     setMsgContact({
-      id: inv.contactId || '',
-      name: inv.clientName,
+      id: inv.contactId,
+      name: inv.contactName || 'Client',
       email: inv.contactEmail,
       phone: inv.contactPhone,
     });
@@ -113,28 +101,28 @@ export default function InvoicesPage() {
 
   return (
     <>
-      <ListPage<Invoice>
+      <ListPage<InvoiceDetail>
         title="Invoices"
         description="Track billing, payments, and outstanding balances."
-        getRowId={(inv: any) => inv.id}
+        getRowId={(inv) => inv.id}
         refreshKey={refreshKey}
         fetcher={async ({ page, limit, search }) => {
-          const res = unwrapList<Invoice>(
+          const res = unwrapList<unknown>(
             await invoicesApi.list({ page, limit, search: search || undefined, status: statusFilter || undefined }),
           );
-          return { ...res, data: res.data.map(normalize) };
+          return { ...res, data: res.data.map(normalizeInvoiceDetail).filter((i): i is InvoiceDetail => i !== null) };
         }}
         searchPlaceholder="Search invoices, clients..."
         columns={[
-          { key: 'invoiceNumber', header: 'Invoice #', sortable: true, cell: (inv: any) => <span className="font-mono text-sm font-medium">{inv.invoiceNumber ?? '—'}</span> },
-          { key: 'clientName', header: 'Client', cell: (inv: any) => <span className="text-sm font-medium">{inv.clientName}</span> },
-          { key: 'issueDate', header: 'Issue Date', sortable: true, cell: (inv: any) => inv.issueDate ? new Date(inv.issueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—' },
-          { key: 'dueDate', header: 'Due Date', sortable: true, cell: (inv: any) => inv.dueDate ? new Date(inv.dueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—' },
-          { key: 'totalAmount', header: 'Amount', align: 'right', sortable: true, cell: (inv: any) => formatCurrency(inv.totalAmount, inv.currency) },
-          { key: 'balanceDue', header: 'Balance', align: 'right', cell: (inv: any) => (
+          { key: 'invoiceNumber', header: 'Invoice #', sortable: true, cell: (inv) => <span className="font-mono text-sm font-medium">{inv.invoiceNumber || '—'}</span> },
+          { key: 'clientName', header: 'Client', cell: (inv) => <span className="text-sm font-medium">{inv.contactName || '—'}</span> },
+          { key: 'issueDate', header: 'Issue Date', sortable: true, cell: (inv) => formatDisplayDate(inv.issueDate, 'medium') || '—' },
+          { key: 'dueDate', header: 'Due Date', sortable: true, cell: (inv) => formatDisplayDate(inv.dueDate, 'medium') || '—' },
+          { key: 'totalAmount', header: 'Amount', align: 'right', sortable: true, cell: (inv) => formatCurrency(inv.totalAmount, inv.currency) },
+          { key: 'balanceDue', header: 'Balance', align: 'right', cell: (inv) => (
               <span className={inv.balanceDue > 0 ? 'text-ds-warning' : 'text-ds-success'}>{formatCurrency(inv.balanceDue, inv.currency)}</span>
             ) },
-          { key: 'status', header: 'Status', sortable: true, cell: (inv: any) => <Tag tone={statusTone(inv.status)}>{STATUS_LABELS[inv.status] ?? inv.status}</Tag> },
+          { key: 'status', header: 'Status', sortable: true, cell: (inv) => <Tag tone={statusTone(inv.status)}>{STATUS_LABELS[inv.status] ?? inv.status}</Tag> },
         ]}
         primaryAction={
           <Button size="sm" onClick={() => router.push('/invoices/new')}>
@@ -155,7 +143,7 @@ export default function InvoicesPage() {
         filters={activeFilters}
         onRemoveFilter={() => setStatusFilter('')}
         onClearFilters={() => setStatusFilter('')}
-        rowActions={(inv: any) => (
+        rowActions={(inv) => (
           <>
             <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => router.push(`/invoices/${inv.id}`)}>
               <Eye />
@@ -176,14 +164,14 @@ export default function InvoicesPage() {
             </Button>
           </>
         )}
-        onRowClick={(inv: any) => router.push(`/invoices/${inv.id}`)}
+        onRowClick={(inv) => router.push(`/invoices/${inv.id}`)}
         bulkActions={[
           {
             label: 'Download PDFs',
             icon: <Download aria-hidden="true" />,
             onSelect: async (rows) => {
               try {
-                await downloadInvoicesZip(rows.map((r: any) => r.id));
+                await downloadInvoicesZip(rows.map((r) => r.id));
                 toast.success(`Downloaded ${rows.length} invoice(s)`);
               } catch {
                 toast.error('Failed to download invoices');
@@ -202,7 +190,7 @@ export default function InvoicesPage() {
                 confirmLabel: 'Delete',
               });
               if (!ok) return;
-              await Promise.all(rows.map((r: any) => invoicesApi.delete(r.id)));
+              await Promise.all(rows.map((r) => invoicesApi.delete(r.id)));
               toast.success(`${rows.length} invoice(s) deleted`);
               setRefreshKey((k) => k + 1);
             },
@@ -210,7 +198,7 @@ export default function InvoicesPage() {
         ]}
         onExport={async (rows) => {
           try {
-            await downloadInvoicesZip(rows.map((r: any) => r.id));
+            await downloadInvoicesZip(rows.map((r) => r.id));
             toast.success('Invoices exported');
           } catch {
             toast.error('Failed to export invoices');

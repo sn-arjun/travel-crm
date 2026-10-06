@@ -5,13 +5,15 @@ import { useRouter } from 'next/navigation';
 import { FilePlus, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { ListPage } from '@/components/domain';
-import { Button, Tag } from '@/components/ui';
+import { Button, Tag, useConfirm } from '@/components/ui';
 import { useApiMutation } from '@/hooks/use-api';
-import { debitNotesApi, type CreditNote as DebitNote } from '@/lib/api/credit-notes';
-import { toLocalDateString } from '@/lib/dates';
+import { debitNotesApi, type CreditNote } from '@/lib/api/credit-notes';
+import type { PaginatedResponse } from '@/lib/api/client';
+import { formatDisplayDate, toLocalDateString } from '@/lib/dates';
+import { formatCurrency as formatMoney } from '@/lib/utils';
 
 function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
+  return formatMoney(amount, 'INR');
 }
 
 function statusTone(status: string): 'neutral' | 'primary' | 'success' | 'warning' | 'danger' {
@@ -20,7 +22,7 @@ function statusTone(status: string): 'neutral' | 'primary' | 'success' | 'warnin
   return 'neutral';
 }
 
-function toCsv(rows: DebitNote[]) {
+function toCsv(rows: CreditNote[]) {
   const header = ['Note #', 'Contact', 'Subtotal', 'Tax', 'Total', 'Status', 'Created'];
   const lines = rows.map((n) => [
     n.invoiceNumber ?? '',
@@ -36,13 +38,19 @@ function toCsv(rows: DebitNote[]) {
 
 export default function DebitNotesPage() {
   const router = useRouter();
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const { mutate: applyNote } = useApiMutation(
     ({ id, amount }: { id: string; amount: number }) => debitNotesApi.apply(id, { amount }),
   );
 
-  const handleApply = async (note: DebitNote) => {
-    if (!confirm(`Apply debit note ${note.invoiceNumber} of ${formatCurrency(note.total)} to linked invoice?`)) return;
+  const handleApply = async (note: CreditNote) => {
+    const ok = await confirm({
+      title: 'Apply debit note',
+      description: `Apply debit note ${note.invoiceNumber} of ${formatCurrency(note.total)} to the linked invoice? This changes the invoice balance.`,
+      confirmLabel: 'Apply',
+    });
+    if (!ok) return;
     try {
       await applyNote({ id: note.id, amount: note.total });
       toast.success('Debit note applied successfully');
@@ -52,7 +60,8 @@ export default function DebitNotesPage() {
   };
 
   return (
-    <ListPage<DebitNote>
+    <>
+    <ListPage<CreditNote>
       title="Debit Notes"
       description="Debits issued against invoices."
       getRowId={(n) => n.id}
@@ -65,7 +74,7 @@ export default function DebitNotesPage() {
         { key: 'status', header: 'Status', cell: (n) => <Tag tone={statusTone(n.status)}>{n.status}</Tag> },
         {
           key: 'createdAt', header: 'Created', sortable: true,
-          cell: (n) => (n.createdAt ? new Date(n.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'),
+          cell: (n) => formatDisplayDate(n.createdAt) || '—',
         },
       ]}
       primaryAction={
@@ -84,36 +93,34 @@ export default function DebitNotesPage() {
         <div className="space-y-ds-4">
           <div className="grid grid-cols-2 gap-ds-3 text-sm">
             <div>
-              <p className="text-ds-foreground-subtle text-xs mb-1">Contact</p>
+              <p className="text-ds-foreground-subtle text-xs mb-ds-1">Contact</p>
               <p className="font-medium">{n.contactName ?? '—'}</p>
             </div>
             <div>
-              <p className="text-ds-foreground-subtle text-xs mb-1">Status</p>
+              <p className="text-ds-foreground-subtle text-xs mb-ds-1">Status</p>
               <Tag tone={statusTone(n.status)}>{n.status}</Tag>
             </div>
             <div>
-              <p className="text-ds-foreground-subtle text-xs mb-1">Subtotal</p>
+              <p className="text-ds-foreground-subtle text-xs mb-ds-1">Subtotal</p>
               <p className="font-medium">{formatCurrency(n.subtotal)}</p>
             </div>
             <div>
-              <p className="text-ds-foreground-subtle text-xs mb-1">Tax</p>
+              <p className="text-ds-foreground-subtle text-xs mb-ds-1">Tax</p>
               <p className="font-medium">{formatCurrency(n.totalTax)}</p>
             </div>
             <div className="col-span-2">
-              <p className="text-ds-foreground-subtle text-xs mb-1">Total</p>
+              <p className="text-ds-foreground-subtle text-xs mb-ds-1">Total</p>
               <p className="text-lg font-bold">{formatCurrency(n.total)}</p>
             </div>
             {n.notes && (
               <div className="col-span-2">
-                <p className="text-ds-foreground-subtle text-xs mb-1">Notes</p>
+                <p className="text-ds-foreground-subtle text-xs mb-ds-1">Notes</p>
                 <p className="text-sm">{n.notes}</p>
               </div>
             )}
             <div className="col-span-2">
-              <p className="text-ds-foreground-subtle text-xs mb-1">Created</p>
-              <p className="font-medium">
-                {n.createdAt ? new Date(n.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
-              </p>
+              <p className="text-ds-foreground-subtle text-xs mb-ds-1">Created</p>
+              <p className="font-medium">{formatDisplayDate(n.createdAt) || '—'}</p>
             </div>
           </div>
           {n.status === 'issued' && (
@@ -136,12 +143,12 @@ export default function DebitNotesPage() {
       ]}
       onExport={async (rows) => {
         try {
-          const all: DebitNote[] = [];
+          const all: CreditNote[] = [];
           let page = 1;
           const limit = 200;
           let total = Infinity;
           while (all.length < total) {
-            const res: any = await debitNotesApi.list({ page, limit });
+            const res: PaginatedResponse<CreditNote> = await debitNotesApi.list({ page, limit });
             all.push(...res.data);
             total = res.pagination.total;
             if (res.data.length === 0) break;
@@ -171,5 +178,7 @@ export default function DebitNotesPage() {
         </Button>
       }
     />
+    {confirmDialog}
+    </>
   );
 }

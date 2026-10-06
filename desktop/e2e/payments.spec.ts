@@ -231,7 +231,7 @@ test.describe('Payments — record from the invoice detail page', () => {
     const utr = `UTR-INV-${Date.now()}`;
     await openRecordPaymentDialog(page, invoice.id);
 
-    const amountInput = page.locator('input[type="number"]').first();
+    const amountInput = page.locator('#invoice-pay-amount');
     await amountInput.clear();
     await amountInput.fill('5000');
     const refInput = page.getByPlaceholder(/utr/i);
@@ -253,7 +253,7 @@ test.describe('Payments — record from the invoice detail page', () => {
     const { invoice } = await newInvoice();
     await openRecordPaymentDialog(page, invoice.id);
 
-    const amountInput = page.locator('input[type="number"]').first();
+    const amountInput = page.locator('#invoice-pay-amount');
     await amountInput.clear();
     await amountInput.fill('0');
     await page.getByRole('button', { name: /record payment/i }).click();

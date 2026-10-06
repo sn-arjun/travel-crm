@@ -1,6 +1,25 @@
 import { client, type ApiResponse, type PaginatedResponse } from './client';
 import { API_ENDPOINTS } from './config';
-import type { Payment } from '@travelcrm/shared';
+
+/** A payment row as the pages read it (camelCase fields added on top of the raw row). */
+export interface PaymentRecord {
+  id: string;
+  invoiceId: string | null;
+  contactId: string | null;
+  invoiceNumber: string | null;
+  clientName: string | null;
+  amount: number;
+  currency?: string;
+  method: string;
+  reference?: string | null;
+  notes?: string | null;
+  type?: string | null;
+  /** Date-only (YYYY-MM-DD) date the payment was received. */
+  date: string | null;
+  paidAt: string | null;
+  recordedBy: string | null;
+  createdAt: string | null;
+}
 
 export interface CreatePaymentRequest {
   invoiceId: string;
@@ -32,17 +51,20 @@ export interface LinkInvoiceRequest {
  * Backend returns payment rows as-is (snake_case, contact_name/invoice_number
  * from the join). Add the camelCase fields the pages read, keeping the raw ones.
  */
-function normalizePayment<T>(raw: any): T {
-  if (!raw || typeof raw !== 'object') return raw;
+type RawRow = Record<string, unknown>;
+
+function normalizePayment<T>(raw: unknown): T {
+  if (!raw || typeof raw !== 'object') return raw as T;
+  const row = raw as RawRow;
   return {
-    ...raw,
-    invoiceId: raw.invoiceId ?? raw.invoice_id ?? null,
-    contactId: raw.contactId ?? raw.contact_id ?? null,
-    invoiceNumber: raw.invoiceNumber ?? raw.invoice_number ?? null,
-    clientName: raw.clientName ?? raw.contact_name ?? null,
-    paidAt: raw.paidAt ?? raw.date ?? null,
-    recordedBy: raw.recordedBy ?? raw.created_by ?? null,
-    createdAt: raw.createdAt ?? raw.created_at ?? null,
+    ...row,
+    invoiceId: row.invoiceId ?? row.invoice_id ?? null,
+    contactId: row.contactId ?? row.contact_id ?? null,
+    invoiceNumber: row.invoiceNumber ?? row.invoice_number ?? null,
+    clientName: row.clientName ?? row.contact_name ?? null,
+    paidAt: row.paidAt ?? row.date ?? null,
+    recordedBy: row.recordedBy ?? row.created_by ?? null,
+    createdAt: row.createdAt ?? row.created_at ?? null,
   } as T;
 }
 
@@ -60,27 +82,30 @@ export const paymentsApi = {
     const { paymentMethod, ...rest } = params ?? {};
     const apiParams = paymentMethod ? { ...rest, method: paymentMethod } : rest;
     return client
-      .get<ApiResponse<PaginatedResponse<Payment>>>(API_ENDPOINTS.payments.list, { params: apiParams })
-      .then((res: any) => ({
-        ...res,
-        data: Array.isArray(res?.data) ? res.data.map(normalizePayment) : res?.data,
-      })) as Promise<ApiResponse<PaginatedResponse<Payment>>>;
+      .get<ApiResponse<PaginatedResponse<PaymentRecord>>>(API_ENDPOINTS.payments.list, { params: apiParams })
+      .then((res) => {
+        const body = res as unknown as { data?: unknown };
+        return {
+          ...res,
+          data: Array.isArray(body.data) ? body.data.map(normalizePayment) : body.data,
+        };
+      }) as Promise<ApiResponse<PaginatedResponse<PaymentRecord>>>;
   },
 
   getById: (id: string) =>
     client
-      .get<ApiResponse<Payment>>(API_ENDPOINTS.payments.byId(id))
-      .then((res: any) => ({ ...res, data: normalizePayment(res?.data) })) as Promise<ApiResponse<Payment>>,
+      .get<ApiResponse<PaymentRecord>>(API_ENDPOINTS.payments.byId(id))
+      .then((res) => ({ ...res, data: normalizePayment<PaymentRecord>(res?.data) })),
 
   create: (data: CreatePaymentRequest) =>
-    client.post<ApiResponse<Payment>>(API_ENDPOINTS.payments.create, data),
+    client.post<ApiResponse<PaymentRecord>>(API_ENDPOINTS.payments.create, data),
 
   update: (id: string, data: UpdatePaymentRequest) =>
-    client.put<ApiResponse<Payment>>(API_ENDPOINTS.payments.byId(id), data),
+    client.put<ApiResponse<PaymentRecord>>(API_ENDPOINTS.payments.byId(id), data),
 
   delete: (id: string) =>
     client.delete<ApiResponse<void>>(API_ENDPOINTS.payments.byId(id)),
 
   linkInvoice: (id: string, data: LinkInvoiceRequest) =>
-    client.post<ApiResponse<Payment>>(API_ENDPOINTS.payments.linkInvoice(id), data),
+    client.post<ApiResponse<PaymentRecord>>(API_ENDPOINTS.payments.linkInvoice(id), data),
 };

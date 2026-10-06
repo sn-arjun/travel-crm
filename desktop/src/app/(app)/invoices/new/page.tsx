@@ -3,37 +3,26 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { z } from 'zod';
-import { Plus, Trash2 } from 'lucide-react';
 import { EntityForm, FormRow, RelationCombobox } from '@/components/domain';
 import {
-  Input, Textarea, SectionCard, Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-  CurrencyInput, DatePicker, Separator, Button, Combobox,
+  Textarea, SectionCard, Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  CurrencyInput, DatePicker, Separator,
 } from '@/components/ui';
 import { invoicesApi, type InvoiceLineItem, type CreateInvoiceRequest } from '@/lib/api/invoices';
-import { contactsApi } from '@/lib/api/contacts';
-import { leadsApi } from '@/lib/api/leads';
-import { hsnCodesApi } from '@/lib/api/hsn-codes';
 import { toast } from 'sonner';
+import { formatCurrency } from '@/lib/utils';
 import { toLocalDateString } from '@/lib/dates';
-
-interface LineItem {
-  id: number;
-  description: string;
-  hsnCode: string;
-  quantity: number;
-  unitPrice: number;
-}
+import {
+  GST_RATES, LineItemsEditor, fetchContactOptions, fetchLeadOptions, newLineItem, resolveContact, resolveLead,
+  type LineItem,
+} from '../_form-shared';
 
 let lineIdCounter = 1;
-
-function formatCurrency(amount: number, currency = 'INR') {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount);
-}
 
 const schema = z.object({
   contactId: z.string().min(1, 'Please select a contact'),
   leadId: z.string().optional(),
-  invoiceType: z.string(),
+  invoiceType: z.enum(['tax_invoice', 'proforma']),
   issueDate: z.date(),
   dueDate: z.date().optional(),
   currency: z.string(),
@@ -47,27 +36,10 @@ type InvoiceFormValues = z.infer<typeof schema>;
 
 export default function NewInvoicePage() {
   const router = useRouter();
-  const [lineItems, setLineItems] = React.useState<LineItem[]>([
-    { id: lineIdCounter++, description: '', hsnCode: '', quantity: 1, unitPrice: 0 },
-  ]);
-  const [hsnSearch, setHsnSearch] = React.useState('');
+  const [lineItems, setLineItems] = React.useState<LineItem[]>([newLineItem(lineIdCounter++)]);
   const [priceErrors, setPriceErrors] = React.useState<Set<number>>(new Set());
 
-  const hsnQueryRef = React.useRef<{ code: string; description: string }[]>([]);
-  const [hsnCodes, setHsnCodes] = React.useState<{ code: string; description: string }[]>([]);
-  React.useEffect(() => {
-    let cancelled = false;
-    hsnCodesApi.list({ search: hsnSearch || undefined }).then((r) => {
-      if (cancelled) return;
-      const data = (r.data as any) ?? [];
-      const list = Array.isArray(data) ? data : (data?.data ?? []);
-      setHsnCodes(list);
-      hsnQueryRef.current = list;
-    }).catch(() => setHsnCodes([]));
-    return () => { cancelled = true; };
-  }, [hsnSearch]);
-
-  function updateLineItem(id: number, field: keyof LineItem, value: string | number) {
+  function updateLineItem(id: number, field: keyof LineItem, value: string | number | undefined) {
     setLineItems((prev) => prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)));
     if (field === 'unitPrice' && Number(value) > 0) {
       setPriceErrors((prev) => {
@@ -79,7 +51,7 @@ export default function NewInvoicePage() {
     }
   }
   function addLineItem() {
-    setLineItems((prev) => [...prev, { id: lineIdCounter++, description: '', hsnCode: '', quantity: 1, unitPrice: 0 }]);
+    setLineItems((prev) => [...prev, newLineItem(lineIdCounter++)]);
   }
   function removeLineItem(id: number) {
     setLineItems((prev) => (prev.length > 1 ? prev.filter((item) => item.id !== id) : prev));
@@ -117,9 +89,6 @@ export default function NewInvoicePage() {
           setPriceErrors(new Set(badPrice.map((item) => item.id)));
           throw new Error('Unit price must be greater than 0');
         }
-        const discountAmount = v.discountType === 'percentage'
-          ? subtotal * (v.discountValue ?? 0) / 100
-          : (v.discountValue ?? 0);
 
         const apiLineItems: InvoiceLineItem[] = lineItems
           .filter((item) => item.description.trim())
@@ -134,10 +103,10 @@ export default function NewInvoicePage() {
         const request: CreateInvoiceRequest = {
           contactId: v.contactId,
           leadId: v.leadId || undefined,
-          type: v.invoiceType as any,
+          type: v.invoiceType,
           items: apiLineItems,
           discountType: v.discountType,
-          discountValue: discountAmount > 0 ? discountAmount : undefined,
+          discountValue: v.discountValue && v.discountValue > 0 ? v.discountValue : undefined,
           dueDate: v.dueDate ? toLocalDateString(v.dueDate) : undefined,
           notes: v.notes || undefined,
           currency: v.currency,
@@ -175,7 +144,7 @@ export default function NewInvoicePage() {
                       name="invoiceType"
                       value={type.value}
                       checked={form.watch('invoiceType') === type.value}
-                      onChange={() => form.setValue('invoiceType', type.value, { shouldDirty: true })}
+                      onChange={() => form.setValue('invoiceType', type.value as 'tax_invoice' | 'proforma', { shouldDirty: true })}
                     />
                     <span className="text-sm font-medium">{type.label}</span>
                   </label>
@@ -189,17 +158,11 @@ export default function NewInvoicePage() {
                   <RelationCombobox
                     value={form.watch('contactId') || null}
                     onChange={(id) => form.setValue('contactId', id ?? '', { shouldDirty: true, shouldValidate: true })}
-                    fetcher={async (q, page) => {
-                      const r = await contactsApi.list({ search: q, page, limit: 20 });
-                      const data = r.data as any;
-                      const items = Array.isArray(data) ? data : (data?.data ?? []);
-                      const total = data?.pagination?.total ?? items.length;
-                      return { items, total };
-                    }}
-                    getOptionId={(c: any) => c.id}
-                    getOptionLabel={(c: any) => c.name || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim()}
-                    getOptionDescription={(c: any) => c.email ?? undefined}
-                    resolveSelected={async (id) => (await contactsApi.getById(id)).data as any}
+                    fetcher={fetchContactOptions}
+                    getOptionId={(c) => c.id}
+                    getOptionLabel={(c) => c.name}
+                    getOptionDescription={(c) => c.email ?? undefined}
+                    resolveSelected={resolveContact}
                     placeholder="Search contacts..."
                     searchPlaceholder="Type to search contacts..."
                     required
@@ -210,16 +173,10 @@ export default function NewInvoicePage() {
                   <RelationCombobox
                     value={form.watch('leadId') || null}
                     onChange={(id) => form.setValue('leadId', id ?? '', { shouldDirty: true })}
-                    fetcher={async (q, page) => {
-                      const r = await leadsApi.list({ search: q, page, limit: 20 });
-                      const data = r.data as any;
-                      const items = Array.isArray(data) ? data : (data?.data ?? []);
-                      const total = data?.pagination?.total ?? items.length;
-                      return { items, total };
-                    }}
-                    getOptionId={(l: any) => l.id}
-                    getOptionLabel={(l: any) => l.title ?? l.id}
-                    resolveSelected={async (id) => (await leadsApi.getById(id)).data as any}
+                    fetcher={fetchLeadOptions}
+                    getOptionId={(l) => l.id}
+                    getOptionLabel={(l) => l.title ?? l.id}
+                    resolveSelected={resolveLead}
                     placeholder="Search leads..."
                     searchPlaceholder="Type to search leads..."
                   />
@@ -248,49 +205,18 @@ export default function NewInvoicePage() {
 
             <SectionCard title="Line Items" required>
               <div className="flex flex-col gap-ds-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-ds-foreground-muted">At least one item with a description is required</span>
-                  <Button type="button" variant="outline" size="sm" onClick={addLineItem}>
-                    <Plus className="h-3.5 w-3.5 mr-1" aria-hidden="true" />Add Item
-                  </Button>
-                </div>
-                <div className="grid grid-cols-[1fr_140px_80px_120px_120px_32px] gap-ds-2 text-xs font-medium text-ds-foreground-muted px-ds-1">
-                  <span>Description</span>
-                  <span>HSN/SAC</span>
-                  <span>Qty</span>
-                  <span>Unit Price</span>
-                  <span>Amount</span>
-                  <span />
-                </div>
-                {lineItems.map((item) => (
-                  <div key={item.id} className="grid grid-cols-[1fr_140px_80px_120px_120px_32px] gap-ds-2 items-center">
-                    <Input placeholder="e.g., Flight tickets, Hotel booking..." value={item.description} onChange={(e) => updateLineItem(item.id, 'description', e.target.value)} />
-                    <Combobox
-                      options={hsnCodes.map((h) => ({ value: h.code, label: `${h.code} — ${h.description}` }))}
-                      value={item.hsnCode}
-                      onValueChange={(v) => updateLineItem(item.id, 'hsnCode', v)}
-                      onSearch={setHsnSearch}
-                      placeholder="HSN/SAC"
-                      searchPlaceholder="Search HSN codes..."
-                      className="h-9 text-xs"
-                    />
-                    <Input type="number" min={1} value={item.quantity} onChange={(e) => updateLineItem(item.id, 'quantity', parseInt(e.target.value) || 1)} />
-                    <div>
-                      <Input type="number" min={0} value={item.unitPrice || ''} onChange={(e) => updateLineItem(item.id, 'unitPrice', parseFloat(e.target.value) || 0)} placeholder="0" aria-label="Unit price" aria-invalid={priceErrors.has(item.id) || undefined} />
-                      {priceErrors.has(item.id) && (
-                        <p role="alert" className="mt-ds-1 text-xs text-ds-danger">Unit price must be greater than 0</p>
-                      )}
-                    </div>
-                    <Input value={(item.quantity * item.unitPrice).toLocaleString('en-IN')} readOnly className="bg-ds-surface-sunken text-right font-medium" />
-                    <Button type="button" variant="ghost" size="icon-sm" onClick={() => removeLineItem(item.id)} className="text-ds-foreground-muted hover:text-ds-danger">
-                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                    </Button>
-                  </div>
-                ))}
+                <LineItemsEditor
+                  items={lineItems}
+                  currency={currency}
+                  priceErrors={priceErrors}
+                  onChange={updateLineItem}
+                  onAdd={addLineItem}
+                  onRemove={removeLineItem}
+                />
 
                 <Separator className="my-ds-2" />
 
-                <div className="flex flex-col gap-ds-2 max-w-sm ml-auto">
+                <div className="flex flex-col gap-ds-2 max-w-sm ml-auto w-full">
                   <div className="flex justify-between text-sm">
                     <span className="text-ds-foreground-muted">Subtotal</span>
                     <span className="font-medium">{formatCurrency(subtotal, currency)}</span>
@@ -299,26 +225,29 @@ export default function NewInvoicePage() {
                     <span className="text-sm text-ds-foreground-muted shrink-0">Discount</span>
                     <div className="flex items-center gap-ds-1">
                       <Select value={discountType} onValueChange={(v) => form.setValue('discountType', v as 'percentage' | 'fixed', { shouldDirty: true })}>
-                        <SelectTrigger className="w-20 h-8 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="w-20 h-8 text-xs" aria-label="Discount type"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="percentage">%</SelectItem>
                           <SelectItem value="fixed">{'₹'}</SelectItem>
                         </SelectContent>
                       </Select>
-                      <CurrencyInput value={discountValue} onChange={(v) => form.setValue('discountValue', v, { shouldDirty: true })} currency={currency} />
+                      <CurrencyInput
+                        value={form.watch('discountValue')}
+                        onChange={(v) => form.setValue('discountValue', v, { shouldDirty: true })}
+                        currency={currency}
+                        aria-label="Discount value"
+                      />
                     </div>
                     <span className="text-sm font-medium w-24 text-right">-{formatCurrency(discountAmount, currency)}</span>
                   </div>
                   <div className="flex items-center justify-between gap-ds-2">
                     <span className="text-sm text-ds-foreground-muted shrink-0">GST</span>
                     <Select value={gstRate} onValueChange={(v) => form.setValue('gstRate', v, { shouldDirty: true })}>
-                      <SelectTrigger className="w-20 h-8 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="w-20 h-8 text-xs" aria-label="GST rate"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="0">0%</SelectItem>
-                        <SelectItem value="5">5%</SelectItem>
-                        <SelectItem value="12">12%</SelectItem>
-                        <SelectItem value="18">18%</SelectItem>
-                        <SelectItem value="28">28%</SelectItem>
+                        {GST_RATES.map((rate) => (
+                          <SelectItem key={rate} value={rate}>{rate}%</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <span className="text-sm font-medium w-24 text-right">+{formatCurrency(gstAmount, currency)}</span>

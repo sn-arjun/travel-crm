@@ -8,10 +8,12 @@ import { toast } from 'sonner';
 import { EntityForm, FormRow, RelationCombobox } from '@/components/domain';
 import {
   Input, Textarea, SectionCard, Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-  Separator, Button,
+  Separator, Button, CurrencyInput,
 } from '@/components/ui';
 import { debitNotesApi, type CreateDebitNoteRequest } from '@/lib/api/credit-notes';
-import { invoicesApi } from '@/lib/api/invoices';
+import { invoicesApi, normalizeInvoiceDetail, type InvoiceDetail } from '@/lib/api/invoices';
+import { unwrapList } from '@/lib/api/envelope';
+import { formatCurrency as formatMoney } from '@/lib/utils';
 
 interface LineItem {
   id: number;
@@ -24,7 +26,7 @@ interface LineItem {
 let lineIdCounter = 1;
 
 function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
+  return formatMoney(amount, 'INR');
 }
 
 const schema = z.object({
@@ -93,25 +95,18 @@ export default function NewDebitNotePage() {
           <SectionCard title="Invoice" required>
             <div className="grid gap-ds-4 sm:grid-cols-2">
               <FormRow name="invoiceId" label="Invoice" required wide>
-                <RelationCombobox<any>
+                <RelationCombobox<InvoiceDetail>
                   value={form.watch('invoiceId') || null}
                   onChange={(id) => form.setValue('invoiceId', id ?? '', { shouldDirty: true, shouldValidate: true })}
                   fetcher={async (q, page) => {
-                    const r: any = await invoicesApi.list({ search: q, page, limit: 20 });
-                    const items = r.data.map((inv: any) => ({
-                      ...inv,
-                      invoiceNumber: inv.invoiceNumber ?? inv.invoice_number,
-                      contactName: inv.contactName ?? inv.contact_name ?? inv.contact?.name,
-                    }));
-                    return { items, total: r.pagination?.total ?? items.length };
+                    const r = unwrapList<unknown>(await invoicesApi.list({ search: q || undefined, page, limit: 20 }));
+                    const items = r.data.map(normalizeInvoiceDetail).filter((i): i is InvoiceDetail => i !== null);
+                    return { items, total: r.pagination.total };
                   }}
                   getOptionId={(inv) => inv.id}
-                  getOptionLabel={(inv) => inv.invoiceNumber}
-                  getOptionDescription={(inv) => inv.contactName ?? undefined}
-                  resolveSelected={async (id) => {
-                    const inv: any = (await invoicesApi.getById(id)).data;
-                    return { ...inv, invoiceNumber: inv.invoiceNumber ?? inv.invoice_number, contactName: inv.contactName ?? inv.contact_name ?? inv.contact?.name };
-                  }}
+                  getOptionLabel={(inv) => inv.invoiceNumber || inv.id}
+                  getOptionDescription={(inv) => inv.contactName || undefined}
+                  resolveSelected={(id) => invoicesApi.getDetail(id)}
                   placeholder="Select an invoice"
                   searchPlaceholder="Search invoices..."
                   required
@@ -142,11 +137,11 @@ export default function NewDebitNotePage() {
               </div>
               {lineItems.map((item) => (
                 <div key={item.id} className="grid grid-cols-[1fr_80px_120px_100px_120px_32px] gap-ds-2 items-center">
-                  <Input placeholder="e.g., Flight tickets, Hotel booking..." value={item.description} onChange={(e) => updateLineItem(item.id, 'description', e.target.value)} />
-                  <Input type="number" min={1} value={item.quantity} onChange={(e) => updateLineItem(item.id, 'quantity', parseInt(e.target.value) || 1)} />
-                  <Input type="number" min={0} value={item.rate || ''} onChange={(e) => updateLineItem(item.id, 'rate', parseFloat(e.target.value) || 0)} placeholder="0" />
+                  <Input placeholder="e.g., Flight tickets, Hotel booking..." aria-label="Description" value={item.description} onChange={(e) => updateLineItem(item.id, 'description', e.target.value)} />
+                  <Input type="number" min={1} aria-label="Quantity" value={item.quantity} onChange={(e) => updateLineItem(item.id, 'quantity', parseInt(e.target.value, 10) || 1)} />
+                  <CurrencyInput value={item.rate || undefined} onChange={(v) => updateLineItem(item.id, 'rate', v ?? 0)} placeholder="0" aria-label="Rate" />
                   <Select value={String(item.taxRate)} onValueChange={(v) => updateLineItem(item.id, 'taxRate', parseFloat(v))}>
-                    <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="h-9 text-xs" aria-label="Tax rate"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="0">0%</SelectItem>
                       <SelectItem value="5">5%</SelectItem>
@@ -156,7 +151,7 @@ export default function NewDebitNotePage() {
                     </SelectContent>
                   </Select>
                   <Input value={(item.quantity * item.rate).toLocaleString('en-IN')} readOnly className="bg-ds-surface-sunken text-right font-medium" />
-                  <Button type="button" variant="ghost" size="icon-sm" onClick={() => removeLineItem(item.id)} className="text-ds-foreground-muted hover:text-ds-danger">
+                  <Button type="button" variant="ghost" size="icon-sm" aria-label="Remove item" onClick={() => removeLineItem(item.id)} className="text-ds-foreground-muted hover:text-ds-danger">
                     <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                   </Button>
                 </div>

@@ -7,12 +7,12 @@ import { EntityForm, FormRow, RelationCombobox } from '@/components/domain';
 import { CurrencyInput, DatePicker, Input, SectionCard, Switch, Textarea, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui';
 import { toast } from 'sonner';
 import { paymentsApi, type CreatePaymentRequest } from '@/lib/api/payments';
-import { invoicesApi } from '@/lib/api/invoices';
+import { invoicesApi, normalizeInvoiceDetail, type InvoiceDetail } from '@/lib/api/invoices';
 import { leadsApi } from '@/lib/api/leads';
-
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
-}
+import { unwrapList } from '@/lib/api/envelope';
+import { formatCurrency } from '@/lib/utils';
+import { toLocalDateString } from '@/lib/dates';
+import type { Lead } from '@travelcrm/shared';
 
 const schema = z.object({
   amount: z.number({ message: 'Amount is required' }).positive('Amount must be greater than zero'),
@@ -41,13 +41,13 @@ function InvoicePrefill({
 }: {
   invoiceId: string;
   loaded: boolean;
-  onLoaded: (invoice: any) => void;
+  onLoaded: (invoice: InvoiceDetail) => void;
 }) {
   React.useEffect(() => {
     if (!invoiceId || loaded) return;
     let cancelled = false;
-    invoicesApi.getById(invoiceId).then((res) => {
-      if (!cancelled && res?.data) onLoaded(res.data);
+    invoicesApi.getDetail(invoiceId).then((invoice) => {
+      if (!cancelled && invoice) onLoaded(invoice);
     }).catch(() => {});
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -57,7 +57,7 @@ function InvoicePrefill({
 
 export default function NewPaymentPage() {
   const router = useRouter();
-  const [selectedInvoice, setSelectedInvoice] = React.useState<any>(null);
+  const [selectedInvoice, setSelectedInvoice] = React.useState<InvoiceDetail | null>(null);
 
   return (
     <EntityForm<PaymentForm>
@@ -78,9 +78,9 @@ export default function NewPaymentPage() {
       onCancel={() => router.back()}
       onSubmit={async (v) => {
         if (selectedInvoice && !v.isAdvance) {
-          const balanceDue = selectedInvoice.balanceDue ?? selectedInvoice.balance_due ?? 0;
+          const balanceDue = selectedInvoice.balanceDue;
           if (balanceDue > 0 && v.amount > balanceDue) {
-            toast.error(`Amount (${formatCurrency(v.amount)}) exceeds invoice balance due (${formatCurrency(balanceDue)})`);
+            toast.error(`Amount (${formatCurrency(v.amount, selectedInvoice.currency)}) exceeds invoice balance due (${formatCurrency(balanceDue, selectedInvoice.currency)})`);
             throw new Error('amount exceeds balance');
           }
         }
@@ -88,11 +88,7 @@ export default function NewPaymentPage() {
           invoiceId: v.invoiceId || '',
           amount: v.amount,
           method: v.paymentMethod,
-          date: [
-            v.paymentDate.getFullYear(),
-            String(v.paymentDate.getMonth() + 1).padStart(2, '0'),
-            String(v.paymentDate.getDate()).padStart(2, '0'),
-          ].join('-'),
+          date: toLocalDateString(v.paymentDate),
           reference: v.reference || undefined,
           notes: v.notes || undefined,
           isAdvance: v.isAdvance || undefined,
@@ -106,13 +102,13 @@ export default function NewPaymentPage() {
         <>
           <SectionCard title="Payment details" required>
             <div className="grid gap-ds-4 sm:grid-cols-2">
-              <FormRow name="amount" label="Amount" required hint={selectedInvoice && (selectedInvoice.balanceDue ?? selectedInvoice.balance_due ?? 0) > 0
-                ? `Invoice balance due: ${formatCurrency(selectedInvoice.balanceDue ?? selectedInvoice.balance_due ?? 0)}`
+              <FormRow name="amount" label="Amount" required hint={selectedInvoice && selectedInvoice.balanceDue > 0
+                ? `Invoice balance due: ${formatCurrency(selectedInvoice.balanceDue, selectedInvoice.currency)}`
                 : undefined}>
                 <CurrencyInput
                   value={form.watch('amount')}
                   onChange={(v) => form.setValue('amount', v as number, { shouldDirty: true, shouldValidate: true })}
-                  currency="INR"
+                  currency={selectedInvoice?.currency ?? 'INR'}
                 />
               </FormRow>
               <FormRow name="paymentDate" label="Payment date" required>
@@ -123,7 +119,7 @@ export default function NewPaymentPage() {
               </FormRow>
               <FormRow name="paymentMethod" label="Payment method" required>
                 <Select value={form.watch('paymentMethod')} onValueChange={(v) => form.setValue('paymentMethod', v, { shouldDirty: true })}>
-                  <SelectTrigger id="paymentMethod"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="paymentMethod" aria-label="Payment method"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="cash">Cash</SelectItem>
                     <SelectItem value="check">Cheque</SelectItem>
@@ -134,7 +130,7 @@ export default function NewPaymentPage() {
                   </SelectContent>
                 </Select>
               </FormRow>
-              <FormRow name="reference" label="Reference number" hint="e.g., Cheque #123, UTR #456">
+              <FormRow name="reference" label="Reference number" hint="e.g., Cheque no. 123, UTR 456">
                 <Input id="reference" {...form.register('reference')} />
               </FormRow>
             </div>
@@ -159,17 +155,16 @@ export default function NewPaymentPage() {
           {form.watch('isAdvance') ? (
             <SectionCard title="Lead reference" description="Link this advance payment to a lead for tracking before an invoice is created.">
               <FormRow name="leadId" label="Lead">
-                <RelationCombobox
+                <RelationCombobox<Lead>
                   value={form.watch('leadId') || null}
                   onChange={(id) => form.setValue('leadId', id ?? '', { shouldDirty: true })}
                   fetcher={async (q, page) => {
-                    // client.get resolves to the response body: { data: rows[], pagination }
-                    const r = (await leadsApi.list({ search: q, page, limit: 20 })) as unknown as { data: any[]; pagination?: { total: number } };
-                    return { items: r.data ?? [], total: r.pagination?.total ?? r.data?.length ?? 0 };
+                    const r = unwrapList<Lead>(await leadsApi.list({ search: q || undefined, page, limit: 20 }));
+                    return { items: r.data, total: r.pagination.total };
                   }}
-                  getOptionId={(l: any) => l.id}
-                  getOptionLabel={(l: any) => l.title ?? l.id}
-                  resolveSelected={async (id) => (await leadsApi.getById(id)).data}
+                  getOptionId={(l) => l.id}
+                  getOptionLabel={(l) => l.title ?? l.id}
+                  resolveSelected={async (id) => (await leadsApi.getById(id)).data ?? null}
                   placeholder="Search leads..."
                 />
               </FormRow>
@@ -181,31 +176,31 @@ export default function NewPaymentPage() {
                 loaded={!!selectedInvoice}
                 onLoaded={(inv) => {
                   setSelectedInvoice(inv);
-                  const balance = inv.balanceDue ?? inv.balance_due ?? 0;
+                  const balance = inv.balanceDue;
                   if (balance > 0 && form.getValues('amount') === undefined) {
                     form.setValue('amount', balance, { shouldDirty: true, shouldValidate: true });
                   }
                 }}
               />
               <FormRow name="invoiceId" label="Invoice" required>
-                <RelationCombobox
+                <RelationCombobox<InvoiceDetail>
                   value={form.watch('invoiceId') || null}
-                  onChange={(id, item: any) => {
+                  onChange={(id, item) => {
                     form.setValue('invoiceId', id ?? '', { shouldDirty: true, shouldValidate: true });
                     setSelectedInvoice(item ?? null);
-                    if (item) {
-                      const balance = item.balanceDue ?? item.balance_due ?? 0;
-                      if (balance > 0) form.setValue('amount', balance, { shouldDirty: true, shouldValidate: true });
+                    if (item && item.balanceDue > 0) {
+                      form.setValue('amount', item.balanceDue, { shouldDirty: true, shouldValidate: true });
                     }
                   }}
                   fetcher={async (q, page) => {
-                    const r = (await invoicesApi.list({ search: q, page, limit: 20 })) as unknown as { data: any[]; pagination?: { total: number } };
-                    return { items: r.data ?? [], total: r.pagination?.total ?? r.data?.length ?? 0 };
+                    const r = unwrapList<unknown>(await invoicesApi.list({ search: q || undefined, page, limit: 20 }));
+                    const items = r.data.map(normalizeInvoiceDetail).filter((i): i is InvoiceDetail => i !== null);
+                    return { items, total: r.pagination.total };
                   }}
-                  getOptionId={(inv: any) => inv.id}
-                  getOptionLabel={(inv: any) => inv.invoiceNumber ?? inv.invoice_number ?? inv.id}
-                  getOptionDescription={(inv: any) => formatCurrency(inv.totalAmount ?? inv.total ?? 0)}
-                  resolveSelected={async (id) => (await invoicesApi.getById(id)).data}
+                  getOptionId={(inv) => inv.id}
+                  getOptionLabel={(inv) => inv.invoiceNumber || inv.id}
+                  getOptionDescription={(inv) => `${inv.contactName ? `${inv.contactName} · ` : ''}${formatCurrency(inv.totalAmount, inv.currency)}`}
+                  resolveSelected={(id) => invoicesApi.getDetail(id)}
                   placeholder="Search invoices..."
                   error={form.formState.errors.invoiceId?.message}
                 />
@@ -214,15 +209,15 @@ export default function NewPaymentPage() {
                 <div className="bg-ds-surface-sunken rounded-ds-md p-ds-3 text-sm flex flex-col gap-ds-1 mt-ds-2">
                   <div className="flex justify-between">
                     <span className="text-ds-foreground-muted">Invoice total</span>
-                    <span className="font-medium">{formatCurrency(selectedInvoice.totalAmount ?? selectedInvoice.total ?? 0)}</span>
+                    <span className="font-medium">{formatCurrency(selectedInvoice.totalAmount, selectedInvoice.currency)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-ds-foreground-muted">Paid</span>
-                    <span className="font-medium text-ds-success">{formatCurrency(selectedInvoice.paidAmount ?? selectedInvoice.paid_amount ?? 0)}</span>
+                    <span className="font-medium text-ds-success">{formatCurrency(selectedInvoice.paidAmount, selectedInvoice.currency)}</span>
                   </div>
                   <div className="flex justify-between border-t border-ds-border pt-ds-1">
                     <span className="font-semibold">Balance due</span>
-                    <span className="font-bold text-ds-warning">{formatCurrency(selectedInvoice.balanceDue ?? selectedInvoice.balance_due ?? 0)}</span>
+                    <span className="font-bold text-ds-warning">{formatCurrency(selectedInvoice.balanceDue, selectedInvoice.currency)}</span>
                   </div>
                 </div>
               )}

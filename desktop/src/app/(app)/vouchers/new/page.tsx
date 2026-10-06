@@ -13,7 +13,7 @@ import { vouchersApi, type CreateVoucherRequest } from '@/lib/api/vouchers';
 import { leadsApi } from '@/lib/api/leads';
 import { suppliersApi } from '@/lib/api/suppliers';
 import { fetchSupplierOptions, supplierLabel } from '@/lib/api/rate-cards';
-import { fetchLeadOptions } from '../_relations';
+import { fetchLeadOptions, supplierCategory } from '../_relations';
 import type { Lead, Supplier } from '@travelcrm/shared';
 import { toast } from 'sonner';
 import { toDateOnly } from '../_date';
@@ -210,6 +210,8 @@ export default function NewVoucherPage() {
                     getOptionLabel={(l: Lead) => l.title}
                     getOptionDescription={(l: Lead) => l.destination ?? undefined}
                     resolveSelected={async (id) => (await leadsApi.getById(id)).data}
+                    placeholder="Select lead"
+                    searchPlaceholder="Search leads..."
                   />
                 </FormRow>
                 <FormRow name="voucherType" label="Voucher type" required>
@@ -233,7 +235,7 @@ export default function NewVoucherPage() {
                     fetcher={fetchSupplierOptions}
                     getOptionId={(s: Supplier) => s.id}
                     getOptionLabel={(s: Supplier) => supplierLabel(s)}
-                    getOptionDescription={(s: Supplier) => (s as any).category}
+                    getOptionDescription={supplierCategory}
                     resolveSelected={async (id) => (await suppliersApi.getById(id)).data}
                     placeholder="Select supplier (optional)"
                   />
