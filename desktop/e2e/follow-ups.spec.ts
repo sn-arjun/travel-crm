@@ -26,8 +26,8 @@ let alpha: any;
 let beta: any;
 let createdId = '';
 let overdueId = '';
-let bulkIds: string[] = [];
-let cancelIds: string[] = [];
+const bulkIds: string[] = [];
+const cancelIds: string[] = [];
 
 /* ─── data helpers ─── */
 

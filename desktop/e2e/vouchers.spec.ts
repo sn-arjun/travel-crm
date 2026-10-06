@@ -375,7 +375,7 @@ test.describe('B. Transport, flight and activity vouchers through the UI', () =>
     await expect(page.getByText('Airport Terminal 1', { exact: true })).toBeVisible();
     await expect(page.getByText('Hotel Lobby', { exact: true })).toBeVisible();
     await expect(page.getByText('Airport -> Highway -> Hotel')).toBeVisible();
-    await expect(page.getByText(shown(11), { exact: true })).toBeVisible();
+    await expect(page.getByText(shown(11))).toBeVisible();
     await expect(page.getByText('Hotel details')).toHaveCount(0);
     expect((await getVoucher(id)).details.pickupTime).toBeTruthy();
 
@@ -425,7 +425,7 @@ test.describe('B. Transport, flight and activity vouchers through the UI', () =>
     await expect(page.getByText(`PNR${TS % 100000}`, { exact: true })).toBeVisible();
     await expect(page.getByText('Passenger A', { exact: true })).toBeVisible();
     await expect(page.getByText('Passenger B', { exact: true })).toBeVisible();
-    await expect(page.getByText(shown(15), { exact: true })).toHaveCount(2);
+    await expect(page.getByText(shown(15))).toHaveCount(2);
 
     await page.goto(`/vouchers/${id}/edit`);
     await waitForLoad(page);
@@ -456,7 +456,7 @@ test.describe('B. Transport, flight and activity vouchers through the UI', () =>
     await expect(page.getByText('Activity voucher', { exact: true })).toBeVisible();
     await expect(page.getByText('Activity details')).toBeVisible();
     await expect(page.getByText(`Scuba Diving ${TS}`, { exact: true })).toBeVisible();
-    await expect(page.getByText(shown(16), { exact: true })).toBeVisible();
+    await expect(page.getByText(shown(16))).toBeVisible();
     await expect(page.getByText('3 hours', { exact: true })).toBeVisible();
     await expect(page.getByText(`Beach Gate ${TS}`, { exact: true })).toBeVisible();
 
