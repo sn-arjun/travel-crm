@@ -15,7 +15,7 @@
 import { type Page } from '@playwright/test';
 import { test, expect } from './fixtures';
 import { waitForLoad } from './helpers/auth';
-import { pickDate as pickDateAt } from './helpers/date-picker';
+import { pickDate as pickDateAt, localDay } from './helpers/date-picker';
 import { api, seedContact, seedTraveller } from './helpers/api-seed';
 import * as fs from 'node:fs';
 
@@ -397,7 +397,7 @@ test.describe('Travellers: list', () => {
   test('passport expiry tag: valid, expiring soon and expired all render real dates', async ({ page }) => {
     const ts = Date.now();
     const day = 86_400_000;
-    const iso = (offset: number) => new Date(Date.now() + offset * day).toISOString().split('T')[0];
+    const iso = (offset: number) => localDay(new Date(Date.now() + offset * day));
     await track(await seedTraveller({ firstName: `ExpOk${ts}`, lastName: 'T', passportNumber: `EO${ts}`.slice(0, 20), passportExpiryDate: iso(900) }));
     await track(await seedTraveller({ firstName: `ExpSoon${ts}`, lastName: 'T', passportNumber: `ES${ts}`.slice(0, 20), passportExpiryDate: iso(90) }));
     await track(await seedTraveller({ firstName: `ExpGone${ts}`, lastName: 'T', passportNumber: `EG${ts}`.slice(0, 20), passportExpiryDate: iso(-30) }));
@@ -513,7 +513,7 @@ test.describe('Travellers: detail', () => {
 
   test('passport status tag reflects valid vs expired', async ({ page }) => {
     const ts = Date.now();
-    const iso = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString().split('T')[0];
+    const iso = (days: number) => localDay(new Date(Date.now() + days * 86_400_000));
     const ok = await track(await seedTraveller({ firstName: `Valid${ts}`, passportNumber: `PV${ts}`.slice(0, 20), passportExpiryDate: iso(500) }));
     const bad = await track(await seedTraveller({ firstName: `Expired${ts}`, passportNumber: `PX${ts}`.slice(0, 20), passportExpiryDate: iso(-10) }));
 

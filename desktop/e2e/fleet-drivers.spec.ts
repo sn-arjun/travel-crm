@@ -2,7 +2,7 @@ import { type Page } from '@playwright/test';
 import { test, expect } from './fixtures';
 import { waitForLoad, getAuthToken, API_URL } from './helpers/auth';
 import { seedDriver, api } from './helpers/api-seed';
-import { pickDate as pickDateAt } from './helpers/date-picker';
+import { pickDate as pickDateAt, localDay } from './helpers/date-picker';
 
 /**
  * Opens the Nth "Pick a date" DatePicker trigger, optionally navigates
@@ -462,7 +462,7 @@ test.describe('Fleet Drivers', () => {
   test('list shows license expiry badge computed from licenseExpiry, not a static label', async ({ page }) => {
     const expiredDriver = await seedDriver({
       name: `Expired-${Date.now()}`,
-      licenseExpiry: new Date(Date.now() - 5 * 86400000).toISOString().split('T')[0],
+      licenseExpiry: localDay(new Date(Date.now() - 5 * 86400000)),
     });
 
     await page.goto('/fleet/drivers');

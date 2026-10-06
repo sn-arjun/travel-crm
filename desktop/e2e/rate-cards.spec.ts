@@ -2,7 +2,7 @@ import { type Page } from '@playwright/test';
 import { test, expect } from './fixtures';
 import { waitForLoad, navigateTo } from './helpers/auth';
 import { api, seedRateCard, seedSupplier } from './helpers/api-seed';
-import { calendarDialog, dayButton, pickDate as pickDateAt } from './helpers/date-picker';
+import { calendarDialog, dayButton, pickDate as pickDateAt, localDay } from './helpers/date-picker';
 
 const RAW_MESSAGING_ANCHORS = 'a[href^="tel:"], a[href^="mailto:"], a[href^="https://wa.me"], a[href^="wa.me"]';
 
@@ -450,8 +450,8 @@ test.describe('Rate Cards', () => {
       destination: dest,
       serviceType: 'activity',
       season: 'peak',
-      validFrom: new Date(Date.now() - 60 * day).toISOString().slice(0, 10),
-      validTo: new Date(Date.now() - 30 * day).toISOString().slice(0, 10),
+      validFrom: localDay(new Date(Date.now() - 60 * day)),
+      validTo: localDay(new Date(Date.now() - 30 * day)),
     });
     const otherSeason = await seedRateCard({ name: `Lookup season ${dest}`, destination: dest, serviceType: 'activity', season: 'off_peak' });
 

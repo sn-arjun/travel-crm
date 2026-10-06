@@ -1,4 +1,5 @@
 import { type Page } from '@playwright/test';
+import { localDay } from './helpers/date-picker';
 import { test, expect } from './fixtures';
 import { waitForLoad, navigateTo } from './helpers/auth';
 import { api } from './helpers/api-seed';
@@ -312,7 +313,7 @@ test.describe('Marketing Social Content', () => {
     const festival = (await api('POST', '/marketing/festivals', {
       name: `E2E Festival Campaign ${ts}`,
       festivalName: `E2E Festival ${ts}`,
-      festivalDate: new Date(Date.now() + 86400000 * 10).toISOString().split('T')[0],
+      festivalDate: localDay(new Date(Date.now() + 86400000 * 10)),
       daysBefore: 7,
       campaignType: 'email',
     }).catch(() => ({ data: null }))).data;

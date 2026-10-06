@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures';
+import { localDay } from './helpers/date-picker';
 import { waitForLoad } from './helpers/auth';
 import { seedVehicle, seedDriver } from './helpers/api-seed';
 
@@ -132,7 +133,7 @@ test.describe('Fleet Alerts', () => {
     // Seed a vehicle with an already-expired document via direct field so an
     // alert is guaranteed to render, then confirm the alert card deep-links.
     const vehicle = await seedVehicle({
-      insuranceExpiry: new Date(Date.now() - 86400000 * 5).toISOString().split('T')[0],
+      insuranceExpiry: localDay(new Date(Date.now() - 86400000 * 5)),
     });
 
     await page.goto('/fleet/alerts');

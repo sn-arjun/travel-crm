@@ -1,4 +1,5 @@
 import { getAuthToken, API_URL } from './auth';
+import { localDay } from './date-picker';
 
 let token: string | null = null;
 
@@ -47,7 +48,7 @@ export async function seedLead(contactId: string, overrides: Record<string, any>
     contactId,
     title: `E2E Lead ${Date.now()}`,
     destinations: ['Bali'],
-    travelDate: new Date().toISOString().split('T')[0],
+    travelDate: localDay(new Date()),
     tripType: 'domestic',
     source: 'website',
     ...overrides,
@@ -108,8 +109,8 @@ export async function seedVoucher(leadId: string, overrides: Record<string, any>
     details: {
       guestNames: ['E2E Guest'],
       hotelName: 'E2E Hotel',
-      checkIn: new Date().toISOString().split('T')[0],
-      checkOut: new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0],
+      checkIn: localDay(new Date()),
+      checkOut: localDay(new Date(Date.now() + 86400000 * 3)),
       roomType: 'standard',
       roomCount: 1,
       mealPlan: 'EP',
@@ -200,8 +201,8 @@ export async function seedRateCard(overrides: Record<string, any> = {}) {
     sellingPrice: 7500,
     currency: 'INR',
     unit: 'per_person',
-    validFrom: new Date().toISOString().split('T')[0],
-    validTo: new Date(Date.now() + 86400000 * 365).toISOString().split('T')[0],
+    validFrom: localDay(new Date()),
+    validTo: localDay(new Date(Date.now() + 86400000 * 365)),
     isActive: 1,
     ...overrides,
   };
@@ -253,7 +254,7 @@ export async function seedPayment(invoiceId: string, overrides: Record<string, a
   const data = {
     invoiceId,
     amount: 5000,
-    date: new Date().toISOString().split('T')[0],
+    date: localDay(new Date()),
     method: 'transfer',
     reference: `TEST-PAY-${Date.now()}`,
     ...overrides,

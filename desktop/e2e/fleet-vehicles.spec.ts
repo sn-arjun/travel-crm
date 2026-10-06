@@ -13,16 +13,16 @@
 import { type Page } from '@playwright/test';
 import { test, expect } from './fixtures';
 import { waitForLoad } from './helpers/auth';
-import { pickDate } from './helpers/date-picker';
+import { pickDate, localDay } from './helpers/date-picker';
 import { seedVehicle, api } from './helpers/api-seed';
 
 const TAG = Date.now().toString(36).toUpperCase();
 const REG = `E2E${TAG}`;
 const SEARCH_PLACEHOLDER = 'Search by registration, make, or model...';
 
-const today = new Date().toISOString().slice(0, 10);
+const today = localDay(new Date());
 const asDate = (ymd: string) => new Date(Number(ymd.slice(0, 4)), Number(ymd.slice(5, 7)) - 1, Number(ymd.slice(8, 10)));
-const inDays = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+const inDays = (n: number) => localDay(new Date(Date.now() + n * 86_400_000));
 
 const CREATED = {
   reg: REG,

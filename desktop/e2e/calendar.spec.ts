@@ -1,9 +1,10 @@
 import { test, expect } from './fixtures';
+import { localDay } from './helpers/date-picker';
 import { waitForLoad, navigateTo } from './helpers/auth';
 import { api, seedContact, seedLead } from './helpers/api-seed';
 
 function todayStr() {
-  return new Date().toISOString().split('T')[0]!;
+  return localDay(new Date());
 }
 
 test.describe('Calendar & Events', () => {
