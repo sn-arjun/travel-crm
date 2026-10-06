@@ -35,7 +35,11 @@ export async function seedContact(overrides: Record<string, any> = {}) {
     ...overrides,
   };
   const res = await api('POST', '/contacts', data);
-  return res.data ?? res;
+  if (!res?.data?.id) {
+    // Fail here with the server's answer instead of handing back an object without an id.
+    throw new Error(`seedContact failed: ${JSON.stringify(res).slice(0, 500)}`);
+  }
+  return res.data;
 }
 
 export async function seedLead(contactId: string, overrides: Record<string, any> = {}) {

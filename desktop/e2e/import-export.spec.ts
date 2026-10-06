@@ -575,9 +575,11 @@ test('cancelling a pending import from history marks it Cancelled', async ({ pag
   await goto(page, '/settings/import');
   const row = page.getByRole('row').filter({ hasText: name });
   await expect(row).toContainText('Pending');
-  page.once('dialog', (d) => d.accept());
   await row.hover();
   await row.getByRole('button', { name: 'Cancel or remove' }).click();
+  // Themed confirm dialog (useConfirm), not a native window.confirm.
+  const confirmDialog = page.getByRole('alertdialog').or(page.getByRole('dialog')).filter({ hasText: 'Remove import record?' });
+  await confirmDialog.getByRole('button', { name: 'Remove', exact: true }).click();
   await expect(page.getByText('Removed', { exact: true })).toBeVisible();
   await expect(page.getByRole('row').filter({ hasText: name })).toContainText('Cancelled');
   expect((await jobStatus(jobId)).status).toBe('cancelled');
