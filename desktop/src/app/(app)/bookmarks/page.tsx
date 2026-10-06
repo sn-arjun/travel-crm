@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { bookmarksApi } from '@/lib/api/bookmarks';
 import type { Bookmark } from '@/lib/api/bookmarks';
+import { unwrapList } from '@/lib/api/envelope';
 import { toLocalDateString } from '@/lib/dates';
 
 const ENTITY_ROUTES: Record<Bookmark['entityType'], string> = {
@@ -83,14 +84,15 @@ export default function BookmarksPage() {
       description="Items you've starred for quick access."
       getRowId={(b) => b.id}
       fetcher={async ({ page, limit, search }) => {
-        const res = await bookmarksApi.list({ page, limit, entityType: filterType ?? undefined });
-        if (!search) return res;
-        const data = res.data as unknown;
-        const items = Array.isArray(data) ? data : ((data as { data?: Bookmark[] })?.data ?? []);
-        const filtered = items.filter((b) =>
+        const list = unwrapList<Bookmark>(
+          await bookmarksApi.list({ page, limit, entityType: filterType ?? undefined }),
+          { page, limit },
+        );
+        if (!search) return list;
+        const filtered = list.data.filter((b) =>
           b.entityName.toLowerCase().includes(search.toLowerCase()),
         );
-        return { ...res, data: filtered, pagination: { ...(res as any).pagination, total: filtered.length } };
+        return { ...list, data: filtered, pagination: { ...list.pagination, total: filtered.length } };
       }}
       searchPlaceholder="Search bookmarks..."
       filters={filters}

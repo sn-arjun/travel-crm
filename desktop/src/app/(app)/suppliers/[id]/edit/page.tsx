@@ -50,11 +50,11 @@ export default function SupplierEditPage() {
   const supplierId = params.id as string;
 
   const { data: supplierResponse, loading, error } = useApiQuery(
-    () => suppliersApi.getById(supplierId),
+    () => suppliersApi.getRecord(supplierId),
     [supplierId],
   );
 
-  const supplier = supplierResponse?.data as any;
+  const supplier = supplierResponse?.data;
 
   if (loading) {
     return (
@@ -83,9 +83,9 @@ export default function SupplierEditPage() {
       title="Edit Supplier"
       schema={schema}
       defaultValues={{
-        companyName: supplier.company_name ?? supplier.name ?? '',
-        category: supplier.category ?? 'hotel',
-        contactPerson: supplier.contact_person ?? supplier.contactPerson ?? '',
+        companyName: supplier.companyName,
+        category: (supplier.category as SupplierFormValues['category'] | undefined) ?? 'hotel',
+        contactPerson: supplier.contactPerson ?? '',
         phone,
         phoneCountryCode,
         email: supplier.email ?? '',
@@ -94,12 +94,12 @@ export default function SupplierEditPage() {
         city: supplier.city ?? '',
         state: supplier.state ?? '',
         country: supplier.country ?? '',
-        postalCode: supplier.postal_code ?? supplier.postalCode ?? '',
-        gstNumber: supplier.gst_number ?? supplier.gstNumber ?? '',
-        taxId: supplier.tax_id ?? supplier.taxId ?? '',
+        postalCode: supplier.postalCode ?? '',
+        gstNumber: supplier.gstNumber ?? '',
+        taxId: supplier.taxId ?? '',
         notes: supplier.notes ?? '',
-        status: supplier.status ?? 'active',
-        isPreferred: supplier.is_preferred ?? supplier.isPreferred ?? false,
+        status: supplier.status === 'inactive' ? 'inactive' : 'active',
+        isPreferred: supplier.isPreferred,
       }}
       onCancel={() => router.back()}
       submitLabel="Save Changes"

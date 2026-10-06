@@ -71,6 +71,8 @@ export default function DocumentsPage() {
   const [renaming, setRenaming] = React.useState(false);
 
   const [refreshKey, setRefreshKey] = React.useState(0);
+  // The detail drawer keeps the row it was opened with; renamed rows show their new name there.
+  const [renamed, setRenamed] = React.useState<Record<string, string>>({});
 
   React.useEffect(() => {
     const leadId = searchParams.get('leadId');
@@ -153,7 +155,9 @@ export default function DocumentsPage() {
     if (!renameTarget || !renameValue.trim()) return;
     setRenaming(true);
     try {
-      await documentsApi.update(renameTarget.id, { name: renameValue.trim() });
+      const newName = renameValue.trim();
+      await documentsApi.update(renameTarget.id, { name: newName });
+      setRenamed((r) => ({ ...r, [renameTarget.id]: newName }));
       toast.success('Document renamed');
       setRenameTarget(null);
       setRefreshKey((k) => k + 1);
@@ -250,7 +254,7 @@ export default function DocumentsPage() {
             <div className="flex items-center gap-ds-3">
               <FileText className="size-8 text-ds-foreground-subtle" aria-hidden="true" />
               <div>
-                <p className="font-medium text-ds-foreground">{d.name}</p>
+                <p className="font-medium text-ds-foreground">{renamed[d.id] ?? d.name}</p>
                 <p className="text-sm text-ds-foreground-muted">{formatBytes(d.size)} · {getFileType(d.mimeType)}</p>
               </div>
             </div>
@@ -297,7 +301,7 @@ export default function DocumentsPage() {
             </div>
           </div>
         )}
-        detailTitle={(d) => d.name}
+        detailTitle={(d) => renamed[d.id] ?? d.name}
         bulkActions={[
           {
             label: 'Delete',

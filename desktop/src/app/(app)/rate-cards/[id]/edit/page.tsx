@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { EntityForm, FormRow, RelationCombobox } from '@/components/domain';
 import { Button, CurrencyInput, DatePicker, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Textarea } from '@/components/ui';
 import { fetchSupplierOptions, fromDateOnly, rateCardsApi, supplierLabel, toDateOnly } from '@/lib/api/rate-cards';
+import { PageContainer } from '@/components/layout/page-container';
 import { suppliersApi } from '@/lib/api/suppliers';
 import type { Supplier } from '@travelcrm/shared';
 
@@ -73,10 +74,10 @@ export default function EditRateCardPage() {
 
   if (!defaultValues) {
     return (
-      <div className="flex flex-col gap-ds-4 p-ds-6">
+      <PageContainer>
         <Skeleton className="h-9 w-64" />
         <Skeleton className="h-64 w-full" />
-      </div>
+      </PageContainer>
     );
   }
 

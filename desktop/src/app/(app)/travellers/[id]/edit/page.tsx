@@ -2,61 +2,22 @@
 
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { z } from 'zod';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { EntityForm, FormRow } from '@/components/domain';
 import { Button, Input, SectionCard, Combobox, PhoneInput, DatePicker } from '@/components/ui';
 import { useApiQuery } from '@/hooks/use-api';
-import { travellersApi, toDateOnly, parseDateOnly } from '@/lib/api/visa';
+import { travellersApi, toDateOnly, parseDateOnly, normalizeTraveller } from '@/lib/api/visa';
+import { unwrapEntity } from '@/lib/api/envelope';
+import {
+  COUNTRIES,
+  travellerSchema,
+  travellerExtraPayload,
+  TravellerPreferencesSection,
+  type TravellerFormValues,
+} from '../../_lib/form-shared';
 import { toast } from 'sonner';
 
-const COUNTRIES = [
-  'Afghan', 'Albanian', 'Algerian', 'American', 'Andorran', 'Angolan', 'Argentine', 'Armenian',
-  'Australian', 'Austrian', 'Azerbaijani', 'Bahamian', 'Bahraini', 'Bangladeshi', 'Belgian',
-  'Belizean', 'Beninese', 'Bhutanese', 'Bolivian', 'Bosnian', 'Brazilian', 'British', 'Bruneian',
-  'Bulgarian', 'Burkinabe', 'Burmese', 'Burundian', 'Cambodian', 'Cameroonian', 'Canadian',
-  'Chilean', 'Chinese', 'Colombian', 'Congolese', 'Costa Rican', 'Croatian', 'Cuban', 'Cypriot',
-  'Czech', 'Danish', 'Djiboutian', 'Dominican', 'Dutch', 'Ecuadorian', 'Egyptian', 'Emirati',
-  'Eritrean', 'Estonian', 'Ethiopian', 'Fijian', 'Filipino', 'Finnish', 'French', 'Gabonese',
-  'Gambian', 'Georgian', 'German', 'Ghanaian', 'Greek', 'Guatemalan', 'Guinean', 'Haitian',
-  'Honduran', 'Hungarian', 'Icelandic', 'Indian', 'Indonesian', 'Iranian', 'Iraqi', 'Irish',
-  'Israeli', 'Italian', 'Ivorian', 'Jamaican', 'Japanese', 'Jordanian', 'Kazakhstani', 'Kenyan',
-  'Korean', 'Kuwaiti', 'Kyrgyz', 'Laotian', 'Latvian', 'Lebanese', 'Liberian', 'Libyan',
-  'Lithuanian', 'Luxembourgish', 'Macedonian', 'Malagasy', 'Malawian', 'Malaysian', 'Maldivian',
-  'Malian', 'Maltese', 'Mauritanian', 'Mauritian', 'Mexican', 'Moldovan', 'Mongolian', 'Montenegrin',
-  'Moroccan', 'Mozambican', 'Namibian', 'Nepalese', 'New Zealander', 'Nicaraguan', 'Nigerian',
-  'Norwegian', 'Omani', 'Pakistani', 'Palestinian', 'Panamanian', 'Paraguayan', 'Peruvian', 'Polish',
-  'Portuguese', 'Qatari', 'Romanian', 'Russian', 'Rwandan', 'Saudi Arabian', 'Senegalese', 'Serbian',
-  'Singaporean', 'Slovakian', 'Slovenian', 'Somali', 'South African', 'South Sudanese', 'Spanish',
-  'Sri Lankan', 'Sudanese', 'Surinamese', 'Swedish', 'Swiss', 'Syrian', 'Taiwanese', 'Tajikistani',
-  'Tanzanian', 'Thai', 'Togolese', 'Tunisian', 'Turkish', 'Turkmen', 'Ugandan', 'Ukrainian',
-  'Uruguayan', 'Uzbekistani', 'Venezuelan', 'Vietnamese', 'Yemeni', 'Zambian', 'Zimbabwean',
-].map((n) => ({ value: n, label: n }));
 
-const schema = z.object({
-  firstName: z.string().min(1, 'First name is required'),
-  lastName: z.string().min(1, 'Last name is required'),
-  passportNumber: z.string().min(1, 'Passport number is required'),
-  dateOfBirth: z.date().optional(),
-  passportExpiryDate: z.date().optional(),
-  nationality: z.string().optional(),
-  email: z.string().email('Enter a valid email').optional().or(z.literal('')),
-  phone: z.string().optional(),
-});
-type TravellerFormValues = z.infer<typeof schema>;
-
-function normalize(raw: any) {
-  return {
-    firstName: raw.firstName ?? raw.first_name ?? '',
-    lastName: raw.lastName ?? raw.last_name ?? '',
-    passportNumber: raw.passportNumber ?? raw.passport_number ?? '',
-    dateOfBirth: raw.dateOfBirth ?? raw.date_of_birth,
-    passportExpiryDate: raw.passportExpiryDate ?? raw.passport_expiry_date,
-    nationality: raw.nationality,
-    email: raw.email,
-    phone: raw.phone,
-  };
-}
 
 export default function EditTravellerPage() {
   const router = useRouter();
@@ -65,8 +26,8 @@ export default function EditTravellerPage() {
   const [nationalitySearch, setNationalitySearch] = React.useState('');
 
   const { data: travellerResponse, loading, error } = useApiQuery(() => travellersApi.getById(travellerId), [travellerId]);
-  const travellerRaw = ((travellerResponse?.data as any)?.data ?? travellerResponse?.data) as any;
-  const traveller = travellerRaw ? normalize(travellerRaw) : undefined;
+  const travellerRaw = unwrapEntity<unknown>(travellerResponse);
+  const traveller = travellerRaw && typeof travellerRaw === 'object' ? normalizeTraveller(travellerRaw) : undefined;
 
   const filteredNationalities = React.useMemo(() => {
     if (!nationalitySearch) return COUNTRIES;
@@ -97,7 +58,7 @@ export default function EditTravellerPage() {
     <EntityForm<TravellerFormValues>
       title="Edit traveller"
       description={`${traveller.firstName} ${traveller.lastName}`.trim()}
-      schema={schema}
+      schema={travellerSchema}
       defaultValues={{
         firstName: traveller.firstName,
         lastName: traveller.lastName,
@@ -107,10 +68,16 @@ export default function EditTravellerPage() {
         nationality: traveller.nationality || '',
         email: traveller.email || '',
         phone: traveller.phone || '',
+        frequentFlyerNumbers: traveller.frequentFlyerNumbers || '',
+        mealPreference: traveller.mealPreference || '',
+        seatPreference: traveller.seatPreference || '',
+        emergencyContactName: traveller.emergencyContactName || '',
+        emergencyContactPhone: traveller.emergencyContactPhone || '',
+        medicalNotes: traveller.medicalNotes || '',
       }}
       onCancel={() => router.back()}
       onSubmit={async (v) => {
-        const result = await travellersApi.update(travellerId, {
+        const payload = {
           firstName: v.firstName,
           lastName: v.lastName || '',
           passportNumber: v.passportNumber,
@@ -119,7 +86,9 @@ export default function EditTravellerPage() {
           nationality: v.nationality || undefined,
           email: v.email || undefined,
           phone: v.phone || undefined,
-        });
+          ...travellerExtraPayload(v),
+        };
+        const result = await travellersApi.update(travellerId, payload);
         if (result?.data) {
           toast.success('Traveller updated successfully');
           router.push(`/travellers/${travellerId}`);
@@ -193,6 +162,8 @@ export default function EditTravellerPage() {
               </FormRow>
             </div>
           </SectionCard>
+
+          <TravellerPreferencesSection form={form} />
         </>
       )}
     />

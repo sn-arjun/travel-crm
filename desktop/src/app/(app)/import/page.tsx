@@ -15,6 +15,8 @@ import { PageHeader } from '@/components/ui/page-header';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { importsApi } from '@/lib/api/imports';
+import { unwrapEntity } from '@/lib/api/envelope';
+import { PageContainer } from '@/components/layout/page-container';
 import { useRealtimeEvent } from '@/hooks/use-realtime-event';
 
 type EntityType = 'contacts' | 'leads' | 'suppliers' | 'rate_cards' | 'travellers';
@@ -35,7 +37,6 @@ const CRM_FIELDS: Record<EntityType, Array<{ value: string; label: string; requi
     { value: 'email', label: 'Email', required: true },
     { value: 'phone', label: 'Phone' },
     { value: 'company', label: 'Company' },
-    { value: 'type', label: 'Type' },
     { value: 'tags', label: 'Tags' },
   ],
   leads: [
@@ -120,6 +121,21 @@ function autoMap(headers: string[], entityType: EntityType): Record<string, stri
 
 type Step = 1 | 2 | 3 | 4;
 
+/** What the upload endpoint answers beyond the bare job record. */
+interface UploadedJob {
+  jobId?: string;
+  id?: string;
+  headers?: string[];
+  previewData?: Record<string, string>[];
+  totalRows?: number;
+}
+
+type ImportEvent = ImportProgress & { jobId?: string };
+
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error && err.message ? err.message : fallback;
+}
+
 interface ImportProgress {
   status?: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
   processedRows?: number;
@@ -150,7 +166,7 @@ export default function ImportPage() {
   const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Real-time import progress via WebSocket
-  useRealtimeEvent(['import:progress', 'import:completed', 'import:failed'], (data: any) => {
+  useRealtimeEvent(['import:progress', 'import:completed', 'import:failed'], (data: ImportEvent) => {
     if (data?.jobId === uploadedJobId) {
       setProgress(data);
       if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
@@ -224,22 +240,22 @@ export default function ImportPage() {
     if (!file || !entityType) return;
     setIsUploading(true);
     try {
-      const res = await importsApi.upload({ file, type: entityType, skipHeader: true }) as any;
-      const data = res?.data ?? res;
+      const res = await importsApi.upload({ file, type: entityType, skipHeader: true });
+      const data = unwrapEntity<UploadedJob>(res);
       const jobId = data?.jobId ?? data?.id;
-      const uploadHeaders: string[] = data?.headers ?? [];
-      const preview: Record<string, string>[] = data?.previewData ?? [];
+      const uploadHeaders = data?.headers ?? [];
+      const preview = data?.previewData ?? [];
       const rows = data?.totalRows ?? 0;
 
-      setUploadedJobId(jobId);
+      setUploadedJobId(jobId ?? null);
       setHeaders(uploadHeaders);
       setPreviewData(preview);
       setTotalRows(rows);
       // Auto-map columns
       setMappings(autoMap(uploadHeaders, entityType as EntityType));
       setStep(2);
-    } catch (err: any) {
-      toast.error(err?.message || 'Upload failed');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Upload failed'));
     } finally {
       setIsUploading(false);
     }
@@ -265,8 +281,8 @@ export default function ImportPage() {
       // arrive, but polling must not depend on the WS connection flag being accurate.
       pollRef.current = setInterval(async () => {
         try {
-          const res = await importsApi.getProgress(uploadedJobId) as any;
-          const job = res?.data ?? res;
+          const res = await importsApi.getProgress(uploadedJobId);
+          const job = unwrapEntity<ImportProgress>(res);
           setProgress(job);
           if (job?.status === 'completed' || job?.status === 'failed' || job?.status === 'cancelled') {
             clearInterval(pollRef.current!);
@@ -276,8 +292,8 @@ export default function ImportPage() {
         } catch { /* ignore poll errors */ }
       }, 2000);
 
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to start import');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to start import'));
       setIsImporting(false);
     }
   }
@@ -333,8 +349,8 @@ export default function ImportPage() {
   const STEP_LABELS = ['Upload', 'Map Columns', 'Preview & Duplicates', 'Import'];
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="px-ds-6 pt-ds-4">
+    <PageContainer>
+      <div>
         <PageHeader
           title="Import Data"
           description={`Step ${step} of 4 — ${STEP_LABELS[step - 1]}`}
@@ -354,7 +370,7 @@ export default function ImportPage() {
       </div>
 
       {/* Step Indicator */}
-      <div className="border-b border-ds-border px-ds-6 py-ds-4">
+      <div className="border-b border-ds-border pb-ds-4">
         <div className="flex items-center">
           {STEP_LABELS.map((label, i) => (
             <React.Fragment key={i}>
@@ -376,7 +392,7 @@ export default function ImportPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-ds-6">
+      <div>
         <div className="mx-auto max-w-4xl space-y-ds-4">
 
           {/* STEP 1: Upload */}
@@ -475,7 +491,6 @@ export default function ImportPage() {
                   {headers.map(header => {
                     const sampleVal = previewData[0]?.[header] ?? '';
                     const isMapped = mappings[header] && mappings[header] !== '__skip';
-                    const mappedField = availableFields.find(f => f.value === mappings[header]);
                     return (
                       <div key={header} className={cn(
                         'flex items-start gap-ds-3 rounded-ds-lg border p-ds-3',
@@ -764,6 +779,6 @@ export default function ImportPage() {
           )}
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }

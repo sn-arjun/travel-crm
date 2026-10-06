@@ -421,8 +421,8 @@ test.describe('Suppliers: list page', () => {
     const row = rowFor(page, name);
     await expect(row).toBeVisible({ timeout: 10_000 });
     await row.hover();
-    page.once('dialog', (d) => d.accept());
     await row.getByRole('button', { name: 'Delete' }).click();
+    await page.locator('[role="alertdialog"], [role="dialog"]').getByRole('button', { name: 'Delete' }).click();
 
     await expect(page.locator('tbody tr', { hasText: name })).toHaveCount(0, { timeout: 10_000 });
     await expectNoErrorToast(page);

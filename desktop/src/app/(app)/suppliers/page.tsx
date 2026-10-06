@@ -8,28 +8,13 @@ import { ListPage } from '@/components/domain';
 import type { DataTableColumn } from '@/components/ui/data-table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SendMessageDialog } from '@/components/communication/send-message-dialog';
 import { useApiQuery } from '@/hooks/use-api';
-import { suppliersApi } from '@/lib/api/suppliers';
+import { suppliersApi, type SupplierRecord } from '@/lib/api/suppliers';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { toLocalDateString } from '@/lib/dates';
-
-interface SupplierRow {
-  id: string;
-  company_name?: string;
-  name?: string;
-  category?: string;
-  contact_person?: string;
-  contactPerson?: string;
-  email?: string;
-  phone?: string;
-  rating?: number;
-  status?: string;
-  is_preferred?: boolean;
-  isPreferred?: boolean;
-}
 
 const CATEGORY_OPTIONS = [
   { value: 'hotel', label: 'Hotel' },
@@ -50,12 +35,14 @@ function toCsvValue(v: unknown) {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+type SupplierRow = SupplierRecord;
+
 async function exportSuppliersCsv(params: { category?: string; status?: string; isPreferred?: boolean; search: string }) {
   const rows: SupplierRow[] = [];
   let page = 1;
   const limit = 100;
   while (true) {
-    const res: any = await suppliersApi.list({
+    const res = await suppliersApi.listRecords({
       page,
       limit,
       search: params.search || undefined,
@@ -63,9 +50,9 @@ async function exportSuppliersCsv(params: { category?: string; status?: string; 
       status: params.status,
       isPreferred: params.isPreferred || undefined,
     });
-    const items: SupplierRow[] = res?.data?.data ?? (Array.isArray(res?.data) ? res.data : []);
+    const items = res.data;
     rows.push(...items);
-    const total = res?.pagination?.total ?? res?.data?.pagination?.total ?? items.length;
+    const total = res.pagination?.total ?? items.length;
     if (rows.length >= total || items.length === 0) break;
     page += 1;
   }
@@ -74,14 +61,14 @@ async function exportSuppliersCsv(params: { category?: string; status?: string; 
   const lines = [header.join(',')];
   for (const s of rows) {
     lines.push([
-      toCsvValue(s.company_name || s.name),
+      toCsvValue(s.companyName),
       toCsvValue(s.category),
-      toCsvValue(s.contact_person || s.contactPerson),
+      toCsvValue(s.contactPerson),
       toCsvValue(s.email),
       toCsvValue(s.phone),
       toCsvValue(s.rating),
       toCsvValue(s.status),
-      toCsvValue(s.is_preferred || s.isPreferred ? 'Yes' : 'No'),
+      toCsvValue(s.isPreferred ? 'Yes' : 'No'),
     ].join(','));
   }
   const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
@@ -98,8 +85,8 @@ async function exportSuppliersCsv(params: { category?: string; status?: string; 
 function SupplierDetailPanel({ supplierId }: { supplierId: string }) {
   const router = useRouter();
   const [sendOpen, setSendOpen] = React.useState(false);
-  const { data, loading } = useApiQuery(() => suppliersApi.getById(supplierId), [supplierId]);
-  const s: any = data?.data;
+  const { data, loading } = useApiQuery(() => suppliersApi.getRecord(supplierId), [supplierId]);
+  const s = data?.data;
 
   if (loading) {
     return (
@@ -110,8 +97,8 @@ function SupplierDetailPanel({ supplierId }: { supplierId: string }) {
   }
   if (!s) return null;
 
-  const name = s.company_name || s.name || 'Unknown';
-  const isPreferred = s.is_preferred ?? s.isPreferred ?? false;
+  const name = s.companyName || 'Unknown';
+  const isPreferred = s.isPreferred;
 
   return (
     <div className="flex flex-col gap-ds-4">
@@ -121,9 +108,9 @@ function SupplierDetailPanel({ supplierId }: { supplierId: string }) {
         </Avatar>
         <div>
           <div className="flex items-center gap-ds-2">
-            <Badge variant="outline" className="text-[10px] capitalize">{(s.category ?? 'other').replace(/_/g, ' ')}</Badge>
+            <Badge variant="outline" className="text-xs capitalize">{(s.category ?? 'other').replace(/_/g, ' ')}</Badge>
             {isPreferred && (
-              <Badge className="text-[10px] bg-ds-warning-subtle text-ds-warning-on-subtle">
+              <Badge className="text-xs bg-ds-warning-subtle text-ds-warning-on-subtle">
                 <Star className="h-3 w-3" aria-hidden="true" /> Preferred
               </Badge>
             )}
@@ -133,7 +120,7 @@ function SupplierDetailPanel({ supplierId }: { supplierId: string }) {
 
       <div className="flex items-center gap-ds-2 flex-wrap">
         {s.phone && (
-          <Button variant="outline" size="sm" onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(s.phone)}`)}>
+          <Button variant="outline" size="sm" onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(s.phone ?? '')}`)}>
             <Phone aria-hidden="true" /> Call
           </Button>
         )}
@@ -153,7 +140,7 @@ function SupplierDetailPanel({ supplierId }: { supplierId: string }) {
       <div className="grid grid-cols-1 gap-ds-2 text-sm">
         <div className="flex justify-between">
           <span className="text-ds-foreground-muted">Contact Person</span>
-          <span className="font-medium">{s.contact_person || s.contactPerson || '—'}</span>
+          <span className="font-medium">{s.contactPerson || '—'}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-ds-foreground-muted">Email</span>
@@ -186,6 +173,7 @@ function SupplierDetailPanel({ supplierId }: { supplierId: string }) {
 
 export default function SuppliersPage() {
   const router = useRouter();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [categoryFilter, setCategoryFilter] = React.useState('all');
   const [statusFilter, setStatusFilter] = React.useState('all');
   const [preferredFilter, setPreferredFilter] = React.useState(false);
@@ -210,11 +198,11 @@ export default function SuppliersPage() {
       cell: (s) => (
         <div className="flex items-center gap-ds-3">
           <Avatar className="h-8 w-8">
-            <AvatarFallback className="text-xs">{getInitials(s.company_name || s.name || '')}</AvatarFallback>
+            <AvatarFallback className="text-xs">{getInitials(s.companyName)}</AvatarFallback>
           </Avatar>
           <span className="font-medium text-sm flex items-center gap-ds-1">
-            {s.company_name || s.name}
-            {(s.is_preferred || s.isPreferred) && (
+            {s.companyName}
+            {s.isPreferred && (
               <Star className="h-3.5 w-3.5 text-ds-warning fill-current" aria-label="Preferred" />
             )}
           </span>
@@ -227,7 +215,7 @@ export default function SuppliersPage() {
       sortable: true,
       cell: (s) => <Badge variant="outline" className="text-xs capitalize">{(s.category ?? 'other').replace(/_/g, ' ')}</Badge>,
     },
-    { key: 'contact_person', header: 'Contact Person', minWidth: 'min-w-36', cell: (s) => <span className="text-sm">{s.contact_person || s.contactPerson || '—'}</span> },
+    { key: 'contact_person', header: 'Contact Person', minWidth: 'min-w-36', cell: (s) => <span className="text-sm">{s.contactPerson || '—'}</span> },
     { key: 'email', header: 'Email', minWidth: 'min-w-48', cell: (s) => <span className="text-sm text-ds-foreground-muted">{s.email ?? '—'}</span> },
     { key: 'phone', header: 'Phone', cell: (s) => <span className="text-sm">{s.phone ?? '—'}</span> },
     {
@@ -245,7 +233,7 @@ export default function SuppliersPage() {
   ];
 
   return (
-    <div className="p-ds-6">
+    <>
       <ListPage<SupplierRow>
         refreshKey={refetchKey}
         title="Suppliers"
@@ -254,7 +242,7 @@ export default function SuppliersPage() {
         serverSort
         fetcher={({ page, limit, search, sort }) => {
           lastSearchRef.current = search;
-          return suppliersApi.list({
+          return suppliersApi.listRecords({
             page,
             limit,
             // The backend reads snake_case sort params (column keys are the DB column names).
@@ -265,8 +253,6 @@ export default function SuppliersPage() {
             isPreferred: preferredFilter || undefined,
           });
         }}
-        extractItems={(r: any) => r?.data?.data ?? (Array.isArray(r?.data) ? r.data : [])}
-        extractTotal={(r: any) => r?.pagination?.total ?? r?.data?.pagination?.total ?? 0}
         columns={columns}
         searchPlaceholder="Search suppliers..."
         filters={activeFilters}
@@ -328,7 +314,13 @@ export default function SuppliersPage() {
               size="icon-sm"
               aria-label="Delete"
               onClick={async () => {
-                if (confirm(`Delete ${s.company_name || s.name}?`)) {
+                const ok = await confirm({
+                  title: 'Delete supplier',
+                  description: `Delete ${s.companyName}? This cannot be undone.`,
+                  confirmLabel: 'Delete',
+                  tone: 'destructive',
+                });
+                if (ok) {
                   try {
                     await suppliersApi.delete(s.id);
                     toast.success('Supplier deleted');
@@ -344,7 +336,7 @@ export default function SuppliersPage() {
           </>
         )}
         renderDetail={(s) => <SupplierDetailPanel supplierId={s.id} />}
-        detailTitle={(s) => s.company_name || s.name || 'Supplier'}
+        detailTitle={(s) => s.companyName || 'Supplier'}
         bulkActions={[
           {
             label: 'Delete',
@@ -369,6 +361,7 @@ export default function SuppliersPage() {
         emptyDescription="Add your first supplier to get started."
         emptyIcon={<Star aria-hidden="true" />}
       />
-    </div>
+      {confirmDialog}
+    </>
   );
 }

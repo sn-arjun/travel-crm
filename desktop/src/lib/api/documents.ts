@@ -73,7 +73,7 @@ export const documentsApi = {
     if (data.leadId) formData.append('leadId', data.leadId);
     if (data.itineraryId) formData.append('itineraryId', data.itineraryId);
 
-    return client.post<ApiResponse<Document>>(API_ENDPOINTS.documents.upload, formData as any);
+    return client.post<ApiResponse<Document>>(API_ENDPOINTS.documents.upload, formData);
   },
 
   update: (id: string, data: UpdateDocumentRequest) =>

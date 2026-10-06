@@ -136,7 +136,7 @@ export default function RateCardsPage() {
         onClearFilters={() => setCategoryFilter('')}
         headerActions={
           <Select value={categoryFilter || 'all'} onValueChange={(v) => setCategoryFilter(v === 'all' ? '' : v)}>
-            <SelectTrigger className="h-9 w-[160px]">
+            <SelectTrigger className="h-9 w-40">
               <SelectValue placeholder="All Categories" />
             </SelectTrigger>
             <SelectContent>

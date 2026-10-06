@@ -102,7 +102,15 @@ test.describe('Documents', () => {
     await page.getByRole('button', { name: /Save/i }).click();
     await expect(page.locator('text=Document renamed').first()).toBeVisible({ timeout: 10_000 });
     await waitForLoad(page);
-    await expect(page.locator(`text=${renamedDocName}`).first()).toBeVisible({ timeout: 10_000 });
+    // The search box still holds the old name, so the renamed row is (correctly)
+    // filtered out until the user searches for the new name.
+    await page.getByPlaceholder(/Search documents/i).fill(renamedDocName);
+    await page.waitForTimeout(1000);
+    await waitForLoad(page);
+    await expect(page.locator(`table tbody tr:has-text("${renamedDocName}")`).first()).toBeVisible({ timeout: 10_000 });
+
+    // Close the detail drawer so the table row is reachable.
+    await page.keyboard.press('Escape');
 
     // Verify persisted via API too
     const listRes = await api('GET', `/documents?search=${encodeURIComponent(renamedDocName)}`);

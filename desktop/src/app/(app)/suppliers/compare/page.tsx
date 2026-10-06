@@ -9,6 +9,9 @@ import { SectionCard } from '@/components/ui/section-card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { DatePicker } from '@/components/ui/date-picker';
+import { PageContainer } from '@/components/layout/page-container';
+import { toLocalDateString } from '@/lib/dates';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
@@ -16,15 +19,24 @@ import { Spinner } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { suppliersApi, type RateComparison } from '@/lib/api/suppliers';
 
+// Rate cards created on /rate-cards use the five category values; cards added
+// from a supplier profile may carry a free-text service name, so both are offered.
 const SERVICE_TYPES = [
-  'Standard Room', 'Deluxe Room', 'Suite', 'Breakfast', 'Full Board',
-  'Economy', 'Premium Economy', 'Business', 'First Class',
-  'Sedan', 'SUV', 'Tempo Traveller', 'Bus', 'Luxury Coach',
-  'City Tour', 'Adventure', 'Water Sports', 'Cultural Tour',
-  'Day Package', 'Multi-Day Package', 'Custom Tour',
-  'Standard', 'Premium', 'Villa', 'All Inclusive',
-  'Standard Booking', 'Premium Booking',
-  'Visa Processing', 'Guide Service', 'Travel Insurance',
+  { value: 'hotel', label: 'Hotel' },
+  { value: 'transport', label: 'Transport' },
+  { value: 'activity', label: 'Activity' },
+  { value: 'meal', label: 'Meal' },
+  { value: 'flight', label: 'Flight' },
+  ...[
+    'Standard Room', 'Deluxe Room', 'Suite', 'Breakfast', 'Full Board',
+    'Economy', 'Premium Economy', 'Business', 'First Class',
+    'Sedan', 'SUV', 'Tempo Traveller', 'Bus', 'Luxury Coach',
+    'City Tour', 'Adventure', 'Water Sports', 'Cultural Tour',
+    'Day Package', 'Multi-Day Package', 'Custom Tour',
+    'Standard', 'Premium', 'Villa', 'All Inclusive',
+    'Standard Booking', 'Premium Booking',
+    'Visa Processing', 'Guide Service', 'Travel Insurance',
+  ].map((s) => ({ value: s, label: s })),
 ];
 
 const SEASONS = [
@@ -39,7 +51,7 @@ export default function SupplierComparePage() {
   const [serviceType, setServiceType] = React.useState('');
   const [destination, setDestination] = React.useState('');
   const [season, setSeason] = React.useState('');
-  const [date, setDate] = React.useState('');
+  const [date, setDate] = React.useState<Date | undefined>(undefined);
   const [results, setResults] = React.useState<RateComparison[]>([]);
   const [hasSearched, setHasSearched] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
@@ -55,7 +67,7 @@ export default function SupplierComparePage() {
         service_type: serviceType,
         destination,
         season: season && season !== 'any' ? season : undefined,
-        date: date || undefined,
+        date: date ? toLocalDateString(date) : undefined,
       });
       setHasSearched(true);
       setResults(Array.isArray(result?.data) ? result.data : []);
@@ -73,7 +85,7 @@ export default function SupplierComparePage() {
   const highestRate = sortedResults.length > 0 ? sortedResults[sortedResults.length - 1]!.rate : 0;
 
   return (
-    <div className="flex flex-col gap-ds-4 p-ds-6">
+    <PageContainer>
       <PageHeader
         title="Compare Supplier Rates"
         description="Compare rates across suppliers for the same service."
@@ -89,10 +101,10 @@ export default function SupplierComparePage() {
           <div className="flex flex-col gap-ds-1">
             <Label>Service Type <span className="text-ds-danger">*</span></Label>
             <Select value={serviceType} onValueChange={setServiceType}>
-              <SelectTrigger><SelectValue placeholder="Select service type" /></SelectTrigger>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Select service type" /></SelectTrigger>
               <SelectContent>
                 {SERVICE_TYPES.map((s) => (
-                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -108,7 +120,7 @@ export default function SupplierComparePage() {
           <div className="flex flex-col gap-ds-1">
             <Label>Season</Label>
             <Select value={season} onValueChange={setSeason}>
-              <SelectTrigger><SelectValue placeholder="Any season" /></SelectTrigger>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Any season" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="any">Any Season</SelectItem>
                 {SEASONS.map((s) => (
@@ -119,7 +131,7 @@ export default function SupplierComparePage() {
           </div>
           <div className="flex flex-col gap-ds-1">
             <Label>Travel Date</Label>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <DatePicker value={date} onChange={setDate} placeholder="Any date" />
           </div>
           <div className="sm:col-span-2">
             <Button onClick={handleCompare} disabled={loading || !serviceType || !destination}>
@@ -194,6 +206,6 @@ export default function SupplierComparePage() {
           )}
         </SectionCard>
       )}
-    </div>
+    </PageContainer>
   );
 }

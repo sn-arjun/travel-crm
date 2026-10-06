@@ -11,24 +11,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { DataTableColumn } from '@/components/ui/data-table';
 import { useApiMutation } from '@/hooks/use-api';
 import { notificationsApi, type Notification } from '@/lib/api/notifications';
-import { toLocalDateString } from '@/lib/dates';
+import { toLocalDateString, formatDisplayDate } from '@/lib/dates';
+import { routeForNotification } from '@/lib/notifications/route';
 
-const REF_TYPE_ROUTES: Record<string, string> = {
-  lead: '/leads',
-  invoice: '/invoices',
-  payment: '/payments',
-  contact: '/contacts',
-  task: '/tasks',
-  follow_up: '/follow-ups',
-};
-
+/** The page a notification points at, or null when it only lives in the list. */
 function getNotificationRoute(n: Notification): string | null {
-  if (n.actionUrl) return n.actionUrl;
-  if (n.referenceType && n.referenceId) {
-    const prefix = REF_TYPE_ROUTES[n.referenceType];
-    if (prefix) return `${prefix}/${n.referenceId}`;
-  }
-  return null;
+  const route = routeForNotification(n);
+  return route === '/notifications' ? null : route;
 }
 
 function formatTimeAgo(createdAt: string): string {
@@ -41,7 +30,7 @@ function formatTimeAgo(createdAt: string): string {
   if (minutes < 60) return `${minutes}m ago`;
   if (hours < 24) return `${hours}h ago`;
   if (days < 7) return `${days}d ago`;
-  return new Date(createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  return formatDisplayDate(createdAt, 'short');
 }
 
 const NOTIFICATION_TYPES = [
@@ -156,7 +145,7 @@ export default function NotificationsPage() {
     {
       key: 'type',
       header: 'Type',
-      width: '160px',
+      minWidth: 'min-w-40',
       cell: (n) => (
         <Tag tone="neutral" size="sm">
           {NOTIFICATION_TYPES.find((t) => t.value === n.type)?.label ?? n.type}
@@ -166,13 +155,13 @@ export default function NotificationsPage() {
     {
       key: 'read',
       header: 'Status',
-      width: '110px',
+      minWidth: 'min-w-28',
       cell: (n) => <Tag tone={n.read ? 'neutral' : 'primary'} size="sm">{n.read ? 'Read' : 'Unread'}</Tag>,
     },
     {
       key: 'createdAt',
       header: 'When',
-      width: '120px',
+      minWidth: 'min-w-28',
       align: 'right',
       cell: (n) => <span className="text-sm text-ds-foreground-subtle">{formatTimeAgo(n.createdAt)}</span>,
     },

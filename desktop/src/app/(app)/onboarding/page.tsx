@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
+import { PageContainer } from '@/components/layout/page-container';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import {
@@ -100,7 +102,7 @@ export default function OnboardingPage() {
   const stepId = STEPS[currentStep]!.id;
 
   return (
-    <div className="mx-auto max-w-2xl py-8 space-y-8">
+    <PageContainer width="narrow" className="gap-ds-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Welcome to TravelCRM Pro</h1>
         <p className="text-muted-foreground mt-1">Let&apos;s set up your workspace in a few quick steps.</p>
@@ -150,7 +152,7 @@ export default function OnboardingPage() {
               </div>
               <div className="space-y-2">
                 <Label>Phone</Label>
-                <Input value={form.company_phone} onChange={(e) => update('company_phone', e.target.value)} placeholder="+91 98765 43210" />
+                <PhoneInput value={form.company_phone} onChange={(value) => update('company_phone', value)} />
               </div>
               <div className="space-y-2 col-span-2">
                 <Label>Website</Label>
@@ -281,6 +283,6 @@ export default function OnboardingPage() {
           </Button>
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

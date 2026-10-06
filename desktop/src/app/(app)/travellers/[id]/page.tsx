@@ -12,9 +12,11 @@ import {
 } from '@/components/ui';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { travellersApi, visaApi, parseDateOnly, normalizeTraveller, travellerDocumentsApi, type Traveller, type VisaRecord } from '@/lib/api/visa';
+import { travellersApi, visaApi, parseDateOnly, normalizeTraveller, travellerDocumentsApi, visaTypeLabel, type Traveller, type VisaRecord } from '@/lib/api/visa';
 import { documentsApi, type Document as DocType } from '@/lib/api/documents';
 import { contactsApi } from '@/lib/api/contacts';
+import { unwrapEntity, unwrapList } from '@/lib/api/envelope';
+import type { Contact } from '@travelcrm/shared';
 import { toast } from 'sonner';
 
 function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
@@ -51,15 +53,15 @@ export default function TravellerDetailPage() {
     [travellerId],
   );
 
-  const { mutate: deleteTraveller, loading: isDeleting } = useApiMutation<string, any>(
+  const { mutate: deleteTraveller, loading: isDeleting } = useApiMutation<string, unknown>(
     () => travellersApi.delete(travellerId),
   );
 
-  const { mutate: linkContact, loading: isLinking } = useApiMutation<string, any>(
+  const { mutate: linkContact, loading: isLinking } = useApiMutation<string, unknown>(
     (contactId) => travellersApi.linkContact(travellerId, contactId),
   );
 
-  const { mutate: unlinkContact, loading: isUnlinking } = useApiMutation<void, any>(
+  const { mutate: unlinkContact, loading: isUnlinking } = useApiMutation<void, unknown>(
     () => travellersApi.unlinkContact(travellerId),
   );
 
@@ -69,14 +71,13 @@ export default function TravellerDetailPage() {
   );
 
   const documents: DocType[] = React.useMemo(() => {
-    if (!docsResponse?.data) return [];
-    const d = (docsResponse.data as any)?.data ?? docsResponse.data;
-    return Array.isArray(d) ? d : [];
+    if (!docsResponse) return [];
+    return unwrapList<DocType>(docsResponse).data;
   }, [docsResponse]);
 
   const traveller: Traveller | undefined = React.useMemo(() => {
-    const raw = ((travellerResponse?.data as any)?.data ?? travellerResponse?.data) as any;
-    return raw ? normalizeTraveller(raw) : undefined;
+    const raw = unwrapEntity<unknown>(travellerResponse);
+    return raw && typeof raw === 'object' ? normalizeTraveller(raw) : undefined;
   }, [travellerResponse]);
 
   // The traveller endpoint returns only contact_id; resolve the name for display.
@@ -86,22 +87,13 @@ export default function TravellerDetailPage() {
     [linkedContactId],
   );
   const linkedContactName: string | undefined = React.useMemo(() => {
-    const c = ((contactResponse as any)?.data?.data ?? (contactResponse as any)?.data) as any;
-    return c?.name || `${c?.firstName ?? ''} ${c?.lastName ?? ''}`.trim() || undefined;
+    if (!contactResponse) return undefined;
+    const c = unwrapEntity<Contact | undefined>(contactResponse);
+    return c?.name || undefined;
   }, [contactResponse]);
 
-  const visaRecords: VisaRecord[] = React.useMemo(() => {
-    if (!visaResponse?.data) return [];
-    const all = Array.isArray(visaResponse.data) ? visaResponse.data : (visaResponse.data as any)?.data ?? [];
-    // The visa endpoint filters by traveller_id server-side and returns snake_case rows.
-    return all.map((v: any): VisaRecord => ({
-      ...v,
-      countryName: v.countryName ?? v.destination_country ?? v.country ?? '',
-      visaType: v.visaType ?? v.visa_type,
-      applicationDate: v.applicationDate ?? v.application_date ?? v.created_at,
-      expiryDate: v.expiryDate ?? v.expiry_date ?? v.expected_date,
-    }));
-  }, [visaResponse]);
+  // visaApi.list already resolves to normalised, camelCase rows filtered server-side.
+  const visaRecords: VisaRecord[] = visaResponse?.data ?? [];
 
   async function handleDelete() {
     const result = await deleteTraveller(travellerId);
@@ -268,6 +260,35 @@ export default function TravellerDetailPage() {
               </div>
             </SectionCard>
 
+            <SectionCard title="Preferences & Emergency Contact">
+              <div className="grid gap-ds-6 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <p className="text-xs text-ds-foreground-muted font-semibold">Frequent Flyer Numbers</p>
+                  <p className="text-sm font-medium mt-1">{traveller.frequentFlyerNumbers || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-ds-foreground-muted font-semibold">Meal Preference</p>
+                  <p className="text-sm font-medium mt-1">{traveller.mealPreference || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-ds-foreground-muted font-semibold">Seat Preference</p>
+                  <p className="text-sm font-medium mt-1">{traveller.seatPreference || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-ds-foreground-muted font-semibold">Emergency Contact</p>
+                  <p className="text-sm font-medium mt-1">{traveller.emergencyContactName || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-ds-foreground-muted font-semibold">Emergency Phone</p>
+                  <p className="text-sm font-medium mt-1">{traveller.emergencyContactPhone || '—'}</p>
+                </div>
+                <div className="sm:col-span-2">
+                  <p className="text-xs text-ds-foreground-muted font-semibold">Medical Notes</p>
+                  <p className="text-sm font-medium mt-1">{traveller.medicalNotes || '—'}</p>
+                </div>
+              </div>
+            </SectionCard>
+
             <SectionCard
               title="Linked Contact"
               actions={
@@ -325,7 +346,7 @@ export default function TravellerDetailPage() {
                   {visaRecords.map((v) => (
                     <TableRow key={v.id} className="cursor-pointer hover:bg-ds-surface-sunken" onClick={() => router.push(`/visa/${v.id}`)}>
                       <TableCell className="font-medium text-sm">{v.countryName}</TableCell>
-                      <TableCell className="text-sm">{v.visaType || '—'}</TableCell>
+                      <TableCell className="text-sm">{visaTypeLabel(v.visaType)}</TableCell>
                       <TableCell className="text-sm">{formatDate(v.applicationDate)}</TableCell>
                       <TableCell className="text-sm">{formatDate(v.expiryDate)}</TableCell>
                       <TableCell><Tag tone={statusTone(v.status)}>{v.status}</Tag></TableCell>
@@ -383,15 +404,12 @@ export default function TravellerDetailPage() {
               value={linkContactId}
               onChange={(id) => setLinkContactId(id)}
               fetcher={async (q, page) => {
-                const r = await contactsApi.list({ search: q, page, limit: 20 });
-                const data = r.data as any;
-                const items = Array.isArray(data) ? data : (data?.data ?? []);
-                const total = data?.pagination?.total ?? items.length;
-                return { items, total };
+                const list = unwrapList<Contact>(await contactsApi.list({ search: q, page, limit: 20 }));
+                return { items: list.data, total: list.pagination?.total ?? list.data.length };
               }}
-              getOptionId={(c: any) => c.id}
-              getOptionLabel={(c: any) => c.name || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim()}
-              getOptionDescription={(c: any) => c.email ?? undefined}
+              getOptionId={(c: Contact) => c.id}
+              getOptionLabel={(c: Contact) => c.name}
+              getOptionDescription={(c: Contact) => c.email ?? undefined}
               placeholder="Select a contact"
               searchPlaceholder="Search contacts..."
             />

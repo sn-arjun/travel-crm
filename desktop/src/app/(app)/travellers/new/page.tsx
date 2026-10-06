@@ -2,48 +2,22 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { z } from 'zod';
 import { EntityForm, FormRow, RelationCombobox } from '@/components/domain';
 import { Input, SectionCard, Combobox, PhoneInput, DatePicker } from '@/components/ui';
 import { travellersApi, toDateOnly } from '@/lib/api/visa';
 import { contactsApi } from '@/lib/api/contacts';
+import { unwrapEntity, unwrapList } from '@/lib/api/envelope';
+import type { Contact } from '@travelcrm/shared';
+import {
+  COUNTRIES,
+  travellerSchema,
+  travellerExtraPayload,
+  TravellerPreferencesSection,
+  type TravellerFormValues,
+} from '../_lib/form-shared';
 import { toast } from 'sonner';
 
-const COUNTRIES = [
-  'Afghan', 'Albanian', 'Algerian', 'American', 'Andorran', 'Angolan', 'Argentine', 'Armenian',
-  'Australian', 'Austrian', 'Azerbaijani', 'Bahamian', 'Bahraini', 'Bangladeshi', 'Belgian',
-  'Belizean', 'Beninese', 'Bhutanese', 'Bolivian', 'Bosnian', 'Brazilian', 'British', 'Bruneian',
-  'Bulgarian', 'Burkinabe', 'Burmese', 'Burundian', 'Cambodian', 'Cameroonian', 'Canadian',
-  'Chilean', 'Chinese', 'Colombian', 'Congolese', 'Costa Rican', 'Croatian', 'Cuban', 'Cypriot',
-  'Czech', 'Danish', 'Djiboutian', 'Dominican', 'Dutch', 'Ecuadorian', 'Egyptian', 'Emirati',
-  'Eritrean', 'Estonian', 'Ethiopian', 'Fijian', 'Filipino', 'Finnish', 'French', 'Gabonese',
-  'Gambian', 'Georgian', 'German', 'Ghanaian', 'Greek', 'Guatemalan', 'Guinean', 'Haitian',
-  'Honduran', 'Hungarian', 'Icelandic', 'Indian', 'Indonesian', 'Iranian', 'Iraqi', 'Irish',
-  'Israeli', 'Italian', 'Ivorian', 'Jamaican', 'Japanese', 'Jordanian', 'Kazakhstani', 'Kenyan',
-  'Korean', 'Kuwaiti', 'Kyrgyz', 'Laotian', 'Latvian', 'Lebanese', 'Liberian', 'Libyan',
-  'Lithuanian', 'Luxembourgish', 'Macedonian', 'Malagasy', 'Malawian', 'Malaysian', 'Maldivian',
-  'Malian', 'Maltese', 'Mauritanian', 'Mauritian', 'Mexican', 'Moldovan', 'Mongolian', 'Montenegrin',
-  'Moroccan', 'Mozambican', 'Namibian', 'Nepalese', 'New Zealander', 'Nicaraguan', 'Nigerian',
-  'Norwegian', 'Omani', 'Pakistani', 'Palestinian', 'Panamanian', 'Paraguayan', 'Peruvian', 'Polish',
-  'Portuguese', 'Qatari', 'Romanian', 'Russian', 'Rwandan', 'Saudi Arabian', 'Senegalese', 'Serbian',
-  'Singaporean', 'Slovakian', 'Slovenian', 'Somali', 'South African', 'South Sudanese', 'Spanish',
-  'Sri Lankan', 'Sudanese', 'Surinamese', 'Swedish', 'Swiss', 'Syrian', 'Taiwanese', 'Tajikistani',
-  'Tanzanian', 'Thai', 'Togolese', 'Tunisian', 'Turkish', 'Turkmen', 'Ugandan', 'Ukrainian',
-  'Uruguayan', 'Uzbekistani', 'Venezuelan', 'Vietnamese', 'Yemeni', 'Zambian', 'Zimbabwean',
-].map((n) => ({ value: n, label: n }));
 
-const schema = z.object({
-  firstName: z.string().min(1, 'First name is required'),
-  lastName: z.string().min(1, 'Last name is required'),
-  passportNumber: z.string().min(1, 'Passport number is required'),
-  dateOfBirth: z.date().optional(),
-  passportExpiryDate: z.date().optional(),
-  nationality: z.string().optional(),
-  email: z.string().email('Enter a valid email').optional().or(z.literal('')),
-  phone: z.string().optional(),
-  contactId: z.string().optional(),
-});
-type TravellerFormValues = z.infer<typeof schema>;
 
 export default function NewTravellerPage() {
   const router = useRouter();
@@ -59,15 +33,17 @@ export default function NewTravellerPage() {
     <EntityForm<TravellerFormValues>
       title="New traveller"
       description="Capture passenger and passport details for travel bookings."
-      schema={schema}
+      schema={travellerSchema}
       defaultValues={{
         firstName: '', lastName: '', passportNumber: '', dateOfBirth: undefined,
         passportExpiryDate: undefined, nationality: '', email: '', phone: '', contactId: '',
+        frequentFlyerNumbers: '', mealPreference: '', seatPreference: '',
+        emergencyContactName: '', emergencyContactPhone: '', medicalNotes: '',
       }}
       prefillFromParams={{ contactId: 'contactId' }}
       onCancel={() => router.back()}
       onSubmit={async (v) => {
-        const result = await travellersApi.create({
+        const payload = {
           firstName: v.firstName,
           lastName: v.lastName || '',
           passportNumber: v.passportNumber,
@@ -77,11 +53,12 @@ export default function NewTravellerPage() {
           email: v.email || undefined,
           phone: v.phone || undefined,
           contactId: v.contactId || undefined,
-        });
+          ...travellerExtraPayload(v),
+        };
+        const result = await travellersApi.create(payload);
         if (result?.data) {
           toast.success('Traveller created successfully');
-          const data = result.data as any;
-          router.push(data?.id ? `/travellers/${data.id}` : '/travellers');
+          router.push(result.data.id ? `/travellers/${result.data.id}` : '/travellers');
         } else {
           toast.error('Failed to create traveller');
         }
@@ -95,16 +72,13 @@ export default function NewTravellerPage() {
                   value={form.watch('contactId') || null}
                   onChange={(id) => form.setValue('contactId', id ?? '', { shouldDirty: true })}
                   fetcher={async (q, page) => {
-                    const r = await contactsApi.list({ search: q, page, limit: 20 });
-                    const data = r.data as any;
-                    const items = Array.isArray(data) ? data : (data?.data ?? []);
-                    const total = data?.pagination?.total ?? items.length;
-                    return { items, total };
+                    const list = unwrapList<Contact>(await contactsApi.list({ search: q, page, limit: 20 }));
+                    return { items: list.data, total: list.pagination?.total ?? list.data.length };
                   }}
-                  getOptionId={(c: any) => c.id}
-                  getOptionLabel={(c: any) => c.name || `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim()}
-                  getOptionDescription={(c: any) => c.email ?? undefined}
-                  resolveSelected={async (id) => (await contactsApi.getById(id)).data as any}
+                  getOptionId={(c: Contact) => c.id}
+                  getOptionLabel={(c: Contact) => c.name}
+                  getOptionDescription={(c: Contact) => c.email ?? undefined}
+                  resolveSelected={async (id) => unwrapEntity<Contact>(await contactsApi.getById(id))}
                   placeholder="Select a contact"
                   searchPlaceholder="Search contacts..."
                 />
@@ -177,6 +151,8 @@ export default function NewTravellerPage() {
               </FormRow>
             </div>
           </SectionCard>
+
+          <TravellerPreferencesSection form={form} />
         </>
       )}
     />

@@ -14,7 +14,8 @@ import { FileDropzone } from '@/components/ui/file-dropzone';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { suppliersApi, type SupplierLedger, type SupplierPayment, type SupplierRateCard } from '@/lib/api/suppliers';
-import { toLocalDateString } from '@/lib/dates';
+import { unwrapList } from '@/lib/api/envelope';
+import { formatDisplayDate, toLocalDateString } from '@/lib/dates';
 
 interface SupplierDocument {
   id: string;
@@ -127,7 +128,7 @@ export default function SupplierDetailPage() {
   const [isSavingPayment, setIsSavingPayment] = React.useState(false);
 
   const { data: supplierResponse, loading, error, refetch } = useApiQuery(
-    () => suppliersApi.getById(supplierId),
+    () => suppliersApi.getRecord(supplierId),
     [supplierId],
   );
 
@@ -135,21 +136,19 @@ export default function SupplierDetailPage() {
   const { data: paymentsResponse, refetch: refetchPayments } = useApiQuery(() => suppliersApi.getPayments(supplierId), [supplierId]);
   const { data: ledgerResponse } = useApiQuery(() => suppliersApi.getLedger(supplierId), [supplierId]);
 
-  const { mutate: deleteSupplier } = useApiMutation<string, any>(() => suppliersApi.delete(supplierId));
-  const { mutate: togglePreferred } = useApiMutation<boolean, any>(
+  const { mutate: deleteSupplier } = useApiMutation<string, unknown>(() => suppliersApi.delete(supplierId));
+  const { mutate: togglePreferred } = useApiMutation<boolean, unknown>(
     (isPreferred) => suppliersApi.togglePreferred(supplierId, { isPreferred }),
   );
 
-  const supplier = supplierResponse?.data as any;
+  const supplier = supplierResponse?.data;
 
   const rateCards: SupplierRateCard[] = React.useMemo(() => {
-    const d = rateCardsResponse?.data;
-    return Array.isArray(d) ? d : (d as any)?.data ?? [];
+    return rateCardsResponse ? unwrapList<SupplierRateCard>(rateCardsResponse).data : [];
   }, [rateCardsResponse]);
 
   const payments: SupplierPayment[] = React.useMemo(() => {
-    const d = paymentsResponse?.data;
-    return Array.isArray(d) ? d : (d as any)?.data ?? [];
+    return paymentsResponse ? unwrapList<SupplierPayment>(paymentsResponse).data : [];
   }, [paymentsResponse]);
 
   const ledger: SupplierLedger[] = React.useMemo(() => {
@@ -163,7 +162,7 @@ export default function SupplierDetailPage() {
   async function handleDelete() {
     const ok = await confirm({
       title: 'Delete supplier',
-      description: `Are you sure you want to delete ${supplier?.company_name || supplier?.name}? This action cannot be undone.`,
+      description: `Are you sure you want to delete ${supplier?.companyName}? This action cannot be undone.`,
       confirmLabel: 'Delete',
       tone: 'destructive',
     });
@@ -179,8 +178,7 @@ export default function SupplierDetailPage() {
 
   async function handleTogglePreferred() {
     if (!supplier) return;
-    const current = supplier.is_preferred ?? supplier.isPreferred ?? false;
-    const result = await togglePreferred(!current);
+    const result = await togglePreferred(!supplier.isPreferred);
     if (result) {
       toast.success('Supplier preference updated');
       refetch();
@@ -230,11 +228,11 @@ export default function SupplierDetailPage() {
     );
   }
 
-  const supplierName = supplier.company_name || supplier.name || 'Unknown';
-  const isPreferred = supplier.is_preferred ?? supplier.isPreferred ?? false;
+  const supplierName = supplier.companyName || 'Unknown';
+  const isPreferred = supplier.isPreferred;
 
   return (
-    <div className="p-ds-6">
+    <>
       <DetailPage
         entity={supplier}
         title={supplierName}
@@ -274,7 +272,7 @@ export default function SupplierDetailPage() {
               <div className="flex flex-col gap-ds-3 text-sm">
                 <div className="flex justify-between">
                   <span className="text-ds-foreground-muted">Contact Person</span>
-                  <span className="font-medium">{supplier.contact_person || supplier.contactPerson || '—'}</span>
+                  <span className="font-medium">{supplier.contactPerson || '—'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-ds-foreground-muted">Email</span>
@@ -288,11 +286,11 @@ export default function SupplierDetailPage() {
                   <span className="text-ds-foreground-muted">Website</span>
                   <span className="font-medium">{supplier.website || '—'}</span>
                 </div>
-                {(supplier.address || supplier.city || supplier.state || supplier.country || supplier.postal_code || supplier.postalCode) && (
+                {(supplier.address || supplier.city || supplier.state || supplier.country || supplier.postalCode) && (
                   <div className="flex justify-between">
                     <span className="text-ds-foreground-muted">Location</span>
-                    <span className="font-medium text-right max-w-[220px]">
-                      {[supplier.address, supplier.city, supplier.state, supplier.country, supplier.postal_code || supplier.postalCode].filter(Boolean).join(', ')}
+                    <span className="font-medium text-right max-w-56">
+                      {[supplier.address, supplier.city, supplier.state, supplier.country, supplier.postalCode].filter(Boolean).join(', ')}
                     </span>
                   </div>
                 )}
@@ -311,11 +309,11 @@ export default function SupplierDetailPage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-ds-foreground-muted">GST Number</span>
-                  <span className="font-mono font-medium">{supplier.gst_number || supplier.gstNumber || '—'}</span>
+                  <span className="font-mono font-medium">{supplier.gstNumber || '—'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-ds-foreground-muted">Tax ID</span>
-                  <span className="font-mono font-medium">{supplier.tax_id || supplier.taxId || '—'}</span>
+                  <span className="font-mono font-medium">{supplier.taxId || '—'}</span>
                 </div>
               </div>
             </SectionCard>
@@ -328,8 +326,8 @@ export default function SupplierDetailPage() {
 
             <SectionCard title="Timeline" className="lg:col-span-2">
               <div className="flex flex-col gap-ds-1 text-sm text-ds-foreground-muted">
-                <p>Created {new Date(supplier.created_at || supplier.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                <p>Last updated {new Date(supplier.updated_at || supplier.updatedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                <p>Created {formatDisplayDate(supplier.createdAt)}</p>
+                <p>Last updated {formatDisplayDate(supplier.updatedAt)}</p>
               </div>
             </SectionCard>
           </div>
@@ -512,6 +510,6 @@ export default function SupplierDetailPage() {
       </Dialog>
 
       {confirmDialog}
-    </div>
+    </>
   );
 }

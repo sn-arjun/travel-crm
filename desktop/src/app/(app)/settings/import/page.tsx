@@ -56,7 +56,6 @@ const CRM_FIELDS: Record<string, Array<{ value: string; label: string; required?
     { value: 'email', label: 'Email', required: true },
     { value: 'phone', label: 'Phone' },
     { value: 'company', label: 'Company' },
-    { value: 'type', label: 'Type' },
     { value: 'tags', label: 'Tags' },
   ],
   leads: [
@@ -546,6 +545,12 @@ function ImportSettingsPageContent() {
             description="Recent import jobs and their status"
             getRowId={(j) => j.id}
             fetcher={historyFetcher}
+            filters={activeFilters}
+            onRemoveFilter={(id) => (id === 'type' ? setFilterType('all') : setFilterStatus('all'))}
+            onClearFilters={() => {
+              setFilterType('all');
+              setFilterStatus('all');
+            }}
             columns={[
               { key: 'fileName', header: 'File', sortable: false },
               {
