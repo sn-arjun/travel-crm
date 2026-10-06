@@ -1,0 +1,42 @@
+{
+  "id": "B35",
+  "title": "Backend follow-ups from the page batches: invoice issue date + terms, dashboard report date range, previous-period rows, follow-up status filter",
+  "lane": "backend",
+  "backend": true,
+  "wave": "W6",
+  "dependsOn": ["B33"],
+  "parallelGroup": "W6-backend",
+  "bugIds": [],
+  "fixReqs": [],
+  "estFiles": 12,
+  "goal": "Close the backend gaps the desktop page batches (B18, B19, B22) had to work around, additively, so the desktop can drop its workarounds.",
+  "context": "Added by the orchestrator 2026-10-06 from desktop/audit/fix/requests/B18.md and B22.md and the B19 hand-off. Baseline: backend vitest 39 files / 1068 passed, tsc 0. A schema-drift guard test (backend/test/schema-drift.test.ts) compares tenant-schema.ts with the migrated DB - every new column needs BOTH a migration and the schema entry. Next free migration number: 0039. Response shapes must stay additive for the Flutter apps (grep packages/shared/lib, packages/crm_app/lib) and the desktop (desktop/src/lib/api).",
+  "steps": [
+    "Invoices: the desktop new/edit forms send `issueDate` and `terms`, but invoices have no issue_date column and terms is not persisted (detail falls back to created_at). Add migration 0039 with invoices.issue_date (TEXT ISO date, nullable; backfill from date(created_at)) and invoices.terms (TEXT, nullable) if missing; add both to tenant-schema.ts and the invoice validators; accept them on POST and PUT; return `issueDate` and `terms` on GET /invoices and GET /invoices/:id (additive). Tests: create with issueDate+terms -> read back; update -> read back; omitted -> issueDate defaults to the creation date.",
+    "Reports: `GET /reports/dashboard` takes no date filter - accept optional date_from/date_to (and the same presets the other reports accept) and apply them to its figures; unchanged behaviour when omitted. Test both.",
+    "Report engine `previous_period`: for ungrouped multi-row reports it returns only the first row. Return the full previous-period row set in the same shape as the current-period rows (additive: keep any existing summary field). Test with a report that returns several rows.",
+    "Follow-ups: `GET /follow-ups` only returns pending items, so the desktop cannot show completed follow-ups (e.g. for a contact's last interaction). Add an optional `status` query (pending | completed | cancelled | all; default keeps today's behaviour = pending) that composes with the existing filters incl. contactId. Test.",
+    "Run the full suite and tsc; prove migrations 0000-0039 apply on an empty DB (the schema-drift guard does this)."
+  ],
+  "filesAllowlist": [
+    "backend/drizzle/tenant/0039_*.sql",
+    "backend/src/db/tenant-schema.ts",
+    "backend/src/routes/invoices.ts",
+    "backend/src/routes/reports.ts",
+    "backend/src/routes/follow-ups.ts",
+    "backend/src/services/report-engine.ts",
+    "backend/src/services/reports/**",
+    "backend/src/validators/**",
+    "backend/src/types/**",
+    "backend/test/**"
+  ],
+  "mustNotTouch": ["backend/.dev.vars", "desktop/**", "packages/**", "backend/drizzle/tenant/00[0-3][0-8]*"],
+  "acceptance": [
+    "Invoice issueDate and terms round-trip through POST/PUT/GET; schema-drift guard passes.",
+    "GET /reports/dashboard honours date_from/date_to; previous_period returns all rows.",
+    "GET /follow-ups?status=completed|all works with contactId.",
+    "backend vitest 0 failed, passed >= 1068; tsc 0."
+  ],
+  "gates": {"typecheck": false, "unit": false, "lint": false, "build": false, "backendTests": true, "flutter": false, "specs": []},
+  "notes": "Report the exact new/changed request and response fields so the desktop sweep (B30) can remove the workarounds in dashboard-data.ts, invoices edit, and contacts detail."
+}
