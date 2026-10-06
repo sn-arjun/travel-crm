@@ -1,15 +1,13 @@
 'use client';
 
+import { AiFeaturePageGate } from '@/components/domain/ai/ai-feature-page-gate';
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
 import {
   Calendar,
   Check,
   FileText,
-  Lock,
   Receipt,
-  Sparkles,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -24,7 +22,6 @@ import {
   Tag,
   Textarea,
 } from '@/components/ui';
-import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { aiExtractionsApi, type AiExtraction, type ExtractionSourceType } from '@/lib/api/ai-extractions';
 
@@ -325,42 +322,9 @@ function ExtractionDetailContent({ id }: { id: string }) {
 
 export default function AiExtractionDetailPage() {
   const params = useParams<{ id: string }>();
-  const { enabled, reason, upgradeHref, loading } = useFeatureGate('ai_extraction');
-
-  if (loading) {
-    return (
-      <div className="flex flex-col gap-ds-4">
-        <Skeleton className="h-9 w-64" />
-        <Skeleton className="h-96 w-full" />
-      </div>
-    );
-  }
-
-  if (!enabled) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-ds-3 rounded-ds-lg border border-dashed border-ds-border py-ds-9 text-center">
-        <div className="flex size-12 items-center justify-center rounded-ds-full bg-ds-surface-sunken">
-          <Lock className="size-5 text-ds-foreground-muted" aria-hidden="true" />
-        </div>
-        <div>
-          <p className="text-sm font-medium text-ds-foreground">
-            {reason === 'cap_exceeded' ? "Today's AI extraction quota is used up" : 'AI Extractions is not on your plan'}
-          </p>
-          <p className="mt-ds-1 text-xs text-ds-foreground-muted">
-            {reason === 'cap_exceeded'
-              ? 'Your quota resets automatically tomorrow, or upgrade for a higher daily limit.'
-              : 'Upgrade your plan to unlock AI-powered extraction from calls, emails, and documents.'}
-          </p>
-        </div>
-        <Button asChild size="sm" className="gap-ds-2">
-          <Link href={upgradeHref}>
-            <Sparkles className="size-3.5" aria-hidden="true" />
-            {reason === 'cap_exceeded' ? 'Upgrade for more' : 'Upgrade to enable'}
-          </Link>
-        </Button>
-      </div>
-    );
-  }
-
-  return <ExtractionDetailContent id={params.id} />;
+  return (
+    <AiFeaturePageGate feature="ai_extraction" title="AI Extraction" featureName="AI Extractions" benefit="AI-powered extraction from calls, emails, and documents">
+      <ExtractionDetailContent id={params.id} />
+    </AiFeaturePageGate>
+  );
 }

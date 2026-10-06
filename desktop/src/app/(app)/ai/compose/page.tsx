@@ -1,5 +1,6 @@
 'use client';
 
+import { PageContainer } from '@/components/layout/page-container';
 import * as React from 'react';
 import { Loader2, MessageSquare, Copy, Send, Sparkles, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -15,12 +16,13 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { aiApi, type ComposedMessage } from '@/lib/api/ai';
+import { aiApi, isAiUnavailableError, type AiUnavailableError, type ComposedMessage } from '@/lib/api/ai';
 import { communicationsApi } from '@/lib/api/communications';
 import { contactsApi } from '@/lib/api/contacts';
 import type { Contact } from '@travelcrm/shared';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { RelationCombobox } from '@/components/domain/relation-combobox';
+import { AiUnavailableNotice } from '@/components/domain/ai/ai-unavailable-notice';
 import { PageHeader } from '@/components/ui/page-header';
 import { AiGate } from '@/components/domain/ai/ai-gate';
 import { AiQuotaBadge } from '@/components/domain/ai/quota-badge';
@@ -40,6 +42,7 @@ export default function ComposePage() {
   const [language, setLanguage] = React.useState('en');
   const [loading, setLoading] = React.useState(false);
   const [message, setMessage] = React.useState<ComposedMessage | null>(null);
+  const [aiError, setAiError] = React.useState<AiUnavailableError | null>(null);
   const [contentId, setContentId] = React.useState<string | undefined>();
   const [sendDialogOpen, setSendDialogOpen] = React.useState(false);
   const [sendType, setSendType] = React.useState<'email' | 'sms' | 'whatsapp'>('email');
@@ -55,6 +58,7 @@ export default function ComposePage() {
     setLoading(true);
     setMessage(null);
     setContentId(undefined);
+    setAiError(null);
 
     try {
       const response = await aiApi.composeMessage({
@@ -69,6 +73,10 @@ export default function ComposePage() {
       setSendType(channel);
       toast.success('Message composed successfully');
     } catch (err) {
+      if (isAiUnavailableError(err)) {
+        setAiError(err);
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'Failed to compose message';
       toast.error(msg);
     } finally {
@@ -113,7 +121,7 @@ export default function ComposePage() {
   };
 
   return (
-    <div className="space-y-6">
+    <PageContainer>
       <PageHeader
         title="AI Message Composer"
         description="Generate professional messages for email, SMS, and WhatsApp with AI"
@@ -219,7 +227,9 @@ export default function ComposePage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {!message && !loading && (
+            {aiError && !loading && <AiUnavailableNotice error={aiError} onRetry={handleGenerate} />}
+
+            {!message && !loading && !aiError && (
               <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
                 <MessageSquare className="h-12 w-12 mb-3 opacity-30" />
                 <p className="text-sm">No message composed yet</p>
@@ -326,6 +336,6 @@ export default function ComposePage() {
         </DialogContent>
       </Dialog>
       </AiGate>
-    </div>
+    </PageContainer>
   );
 }

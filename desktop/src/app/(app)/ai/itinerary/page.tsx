@@ -1,5 +1,6 @@
 'use client';
 
+import { PageContainer } from '@/components/layout/page-container';
 import * as React from 'react';
 import { Loader2, Map, Save, Clock, MapPin, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -10,7 +11,9 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
-import { aiApi, type GeneratedItinerary } from '@/lib/api/ai';
+import { AiUnavailableNotice } from '@/components/domain/ai/ai-unavailable-notice';
+import { CurrencyInput } from '@/components/ui/currency-input';
+import { aiApi, isAiUnavailableError, type AiUnavailableError, type GeneratedItinerary } from '@/lib/api/ai';
 import { itinerariesApi } from '@/lib/api/itineraries';
 import { leadsApi } from '@/lib/api/leads';
 import type { Lead } from '@travelcrm/shared';
@@ -25,7 +28,8 @@ export default function ItineraryPage() {
   const router = useRouter();
   const [destination, setDestination] = React.useState('');
   const [duration, setDuration] = React.useState('7');
-  const [budget, setBudget] = React.useState('');
+  const [budget, setBudget] = React.useState<number | undefined>(undefined);
+  const [aiError, setAiError] = React.useState<AiUnavailableError | null>(null);
   const [preferences, setPreferences] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [itinerary, setItinerary] = React.useState<GeneratedItinerary | null>(null);
@@ -40,6 +44,7 @@ export default function ItineraryPage() {
     setLoading(true);
     setItinerary(null);
     setContentId(undefined);
+    setAiError(null);
 
     try {
       const trimmedDuration = parseInt(duration, 10);
@@ -48,7 +53,7 @@ export default function ItineraryPage() {
         prompt,
         destination: destination.trim(),
         duration: trimmedDuration,
-        budget: budget ? parseFloat(budget) : undefined,
+        budget,
         preferences: preferences
           ? preferences.split(',').map((p) => p.trim()).filter(Boolean)
           : undefined,
@@ -58,6 +63,10 @@ export default function ItineraryPage() {
       if (returnedId) setContentId(returnedId);
       toast.success('Itinerary generated successfully');
     } catch (err) {
+      if (isAiUnavailableError(err)) {
+        setAiError(err);
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'Failed to generate itinerary';
       toast.error(msg);
     } finally {
@@ -110,7 +119,7 @@ export default function ItineraryPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <PageContainer>
       <PageHeader
         title="AI Itinerary Generator"
         description="Generate detailed day-by-day travel itineraries with AI"
@@ -152,13 +161,12 @@ export default function ItineraryPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="budget">Budget (USD)</Label>
-              <Input
+              <Label htmlFor="budget">Budget (INR)</Label>
+              <CurrencyInput
                 id="budget"
-                type="number"
-                placeholder="e.g., 5000"
+                placeholder="e.g., 150,000"
                 value={budget}
-                onChange={(e) => setBudget(e.target.value)}
+                onChange={setBudget}
               />
             </div>
 
@@ -215,7 +223,9 @@ export default function ItineraryPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {!itinerary && !loading && (
+            {aiError && !loading && <AiUnavailableNotice error={aiError} onRetry={handleGenerate} />}
+
+            {!itinerary && !loading && !aiError && (
               <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
                 <Map className="h-12 w-12 mb-3 opacity-30" />
                 <p className="text-sm">No itinerary generated yet</p>
@@ -239,7 +249,7 @@ export default function ItineraryPage() {
                   </div>
                   <div className="flex items-center gap-1">
                     <Clock className="h-4 w-4" />
-                    {itinerary.startDate} to {itinerary.endDate}
+                    {itinerary.duration ?? itinerary.items.length} days
                   </div>
                 </div>
 
@@ -327,6 +337,6 @@ export default function ItineraryPage() {
         </DialogContent>
       </Dialog>
       </AiGate>
-    </div>
+    </PageContainer>
   );
 }

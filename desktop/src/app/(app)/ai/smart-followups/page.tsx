@@ -1,22 +1,20 @@
 'use client';
 
+import { PageContainer } from '@/components/layout/page-container';
+import { AiFeaturePageGate } from '@/components/domain/ai/ai-feature-page-gate';
 import * as React from 'react';
-import Link from 'next/link';
 import {
   BellRing,
   Calendar,
   CheckCircle2,
   Clock,
   Loader2,
-  Lock,
   Send,
-  Sparkles,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { RelationCombobox } from '@/components/domain';
 import { Button, Card, CardContent, EmptyState, Separator, Skeleton, Tag } from '@/components/ui';
-import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { useApiQuery } from '@/hooks/use-api';
 import { aiApi, type SmartFollowup } from '@/lib/api/ai';
 import { leadsApi } from '@/lib/api/leads';
@@ -81,7 +79,7 @@ function SmartFollowupsContent() {
   const processed = followups.filter((f) => (f.status ?? 'pending') !== 'pending');
 
   return (
-    <div className="flex flex-col gap-ds-6">
+    <PageContainer>
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-ds-foreground">Smart Follow-ups</h1>
         <p className="mt-ds-1 text-ds-foreground-muted">
@@ -237,47 +235,14 @@ function SmartFollowupsContent() {
           )}
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }
 
 export default function SmartFollowupsPage() {
-  const { enabled, reason, upgradeHref, loading } = useFeatureGate('ai_intelligence');
-
-  if (loading) {
-    return (
-      <div className="flex flex-col gap-ds-4">
-        <Skeleton className="h-9 w-64" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
-  }
-
-  if (!enabled) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-ds-3 rounded-ds-lg border border-dashed border-ds-border py-ds-9 text-center">
-        <div className="flex size-12 items-center justify-center rounded-ds-full bg-ds-surface-sunken">
-          <Lock className="size-5 text-ds-foreground-muted" aria-hidden="true" />
-        </div>
-        <div>
-          <p className="text-sm font-medium text-ds-foreground">
-            {reason === 'cap_exceeded' ? "Today's AI intelligence quota is used up" : 'AI Intelligence is not on your plan'}
-          </p>
-          <p className="mt-ds-1 text-xs text-ds-foreground-muted">
-            {reason === 'cap_exceeded'
-              ? 'Your quota resets automatically tomorrow, or upgrade for a higher daily limit.'
-              : 'Upgrade your plan to unlock AI-powered smart follow-ups.'}
-          </p>
-        </div>
-        <Button asChild size="sm" className="gap-ds-2">
-          <Link href={upgradeHref}>
-            <Sparkles className="size-3.5" aria-hidden="true" />
-            {reason === 'cap_exceeded' ? 'Upgrade for more' : 'Upgrade to enable'}
-          </Link>
-        </Button>
-      </div>
-    );
-  }
-
-  return <SmartFollowupsContent />;
+  return (
+    <AiFeaturePageGate feature="ai_intelligence" title="Smart Follow-ups" featureName="AI Intelligence" benefit="AI-powered smart follow-ups">
+      <SmartFollowupsContent />
+    </AiFeaturePageGate>
+  );
 }

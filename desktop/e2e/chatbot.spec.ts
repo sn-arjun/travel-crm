@@ -74,13 +74,46 @@ test.describe.serial('Chatbot', () => {
   const visitorName = `E2E Visitor ${ts}`;
   const visitorEmail = `e2e-visitor-${ts}@test.com`;
 
+  // Self-sufficient: this spec never relies on feature flags left behind by other
+  // specs. beforeAll switches ai_chatbot on (restoring it in afterAll). On a plan that
+  // does not include the chatbot, PUT /ai/settings/features refuses to enable it, so
+  // the spec deliberately asserts the gated state instead of seeding conversations.
+  let gated = false;
+  let flagWasEnabled: boolean | undefined;
+
   test.beforeAll(async () => {
+    const settings = await api('GET', '/ai/settings');
+    const flag = (settings?.data?.aiFeatures ?? []).find((f: { key: string }) => f.key === 'ai_chatbot');
+    flagWasEnabled = flag?.enabled;
+    const res = await api('PUT', '/ai/settings/features', { features: { ai_chatbot: true } });
+    gated = (res?.data?.denied ?? []).includes('ai_chatbot');
+    if (gated) return;
     conversationId = await seedConversation({
       visitorId,
       visitorName,
       visitorEmail,
       message: `Hi, I want to book a trip to Bali ${ts}`,
     });
+  });
+
+  test.afterAll(async () => {
+    if (!gated && flagWasEnabled === false) {
+      await api('PUT', '/ai/settings/features', { features: { ai_chatbot: false } });
+    }
+  });
+
+  test.beforeEach(({}, testInfo) => {
+    const isGatedCheck = testInfo.title.startsWith('Gated plan');
+    test.skip(gated !== isGatedCheck, gated ? 'ai_chatbot is not on this plan' : 'ai_chatbot is enabled');
+  });
+
+  test('Gated plan — chatbot pages show the upgrade state, never a raw 403 or error toast', async ({ page }) => {
+    await page.goto('/chatbot');
+    await waitForLoad(page);
+    await waitForGateResolved(page);
+    await expect(page.locator('text=/upgrade|not on your plan|quota is used up/i').first()).toBeVisible({ timeout: 10_000 });
+    const bodyText = await page.locator('body').innerText();
+    expect(bodyText).not.toMatch(/\b403\b|Forbidden/);
   });
 
   test('Conversations list — gate resolves, seeded conversation appears with real values', async ({ page }) => {

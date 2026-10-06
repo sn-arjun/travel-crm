@@ -20,15 +20,20 @@ export interface ExtractedLead {
   phone?: string;
   source?: string;
   notes?: string;
+  destination?: string;
+  travelDate?: string;
+  contentId?: string;
   confidence: number;
 }
 
 export interface GeneratedItinerary {
   title: string;
   description: string;
-  startDate: string;
-  endDate: string;
+  startDate?: string;
+  endDate?: string;
   destination: string;
+  duration?: number;
+  contentId?: string;
   items: Array<{
     day: number;
     title: string;
@@ -275,7 +280,7 @@ export interface Recommendation {
 
 export interface DocumentScan {
   id: string;
-  documentType: 'passport' | 'visa' | 'invoice';
+  documentType: 'passport' | 'visa' | 'invoice' | 'business_card';
   status: 'pending' | 'applied' | 'rejected';
   fileName?: string;
   extractedFields: Array<{ key: string; label: string; value: string; confidence: number }>;
@@ -819,6 +824,173 @@ export interface ScannedBusinessCard {
   confidence: number;
 }
 
+/**
+ * Raised when the AI provider cannot produce a usable answer. The backend
+ * answers 200 with a stub payload when the Workers AI binding is missing (local
+ * and test environments), and with an unparsable payload when the model's reply
+ * is not valid JSON. Pages catch this and render a friendly retry state instead
+ * of presenting the stub as a real result.
+ */
+export type AiUnavailableReason = 'not_configured' | 'unreadable';
+
+export class AiUnavailableError extends Error {
+  readonly reason: AiUnavailableReason;
+
+  constructor(reason: AiUnavailableReason) {
+    super(
+      reason === 'not_configured'
+        ? 'AI is not configured on this server yet.'
+        : 'The AI returned a reply that could not be read. Please try again.',
+    );
+    this.name = 'AiUnavailableError';
+    this.reason = reason;
+  }
+}
+
+export function isAiUnavailableError(err: unknown): err is AiUnavailableError {
+  return err instanceof AiUnavailableError;
+}
+
+/** Null when the model output looks real; otherwise why it is unusable. */
+function classifyAiOutput(value: unknown): AiUnavailableReason | null {
+  if (!value || typeof value !== 'object') return 'unreadable';
+  const o = value as Record<string, unknown>;
+  if (typeof o.note === 'string' && /AI not available/i.test(o.note)) return 'not_configured';
+  if (typeof o.error === 'string' || Object.keys(o).length === 0) return 'unreadable';
+  return null;
+}
+
+interface RawExtractedLead {
+  name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  destination?: string | null;
+  travelDates?: { from?: string | null; to?: string | null } | null;
+  notes?: string | null;
+  specialRequests?: string | null;
+  confidence?: number | null;
+}
+
+interface RawExtractLeadResponse {
+  contentId?: string;
+  extracted?: RawExtractedLead;
+  source?: string;
+}
+
+function normalizeExtractedLead(raw: RawExtractLeadResponse): ExtractedLead {
+  const reason = classifyAiOutput(raw.extracted);
+  if (reason) throw new AiUnavailableError(reason);
+  const e = raw.extracted as RawExtractedLead;
+  const [firstName, ...rest] = (e.name ?? '').trim().split(/\s+/).filter(Boolean);
+  const confidence = typeof e.confidence === 'number' ? (e.confidence <= 1 ? e.confidence * 100 : e.confidence) : 0;
+  return {
+    firstName: firstName || undefined,
+    lastName: rest.join(' ') || undefined,
+    email: e.email ?? undefined,
+    phone: e.phone ?? undefined,
+    source: raw.source,
+    notes: [e.notes, e.specialRequests].filter(Boolean).join(' - ') || undefined,
+    destination: e.destination ?? undefined,
+    travelDate: e.travelDates?.from ?? undefined,
+    contentId: raw.contentId,
+    confidence: Math.round(confidence),
+  };
+}
+
+interface RawItineraryDay {
+  dayNumber?: number;
+  title?: string;
+  description?: string;
+  activities?: Array<{ time?: string; activity?: string; description?: string; location?: string }>;
+}
+
+interface RawGenerateItineraryResponse {
+  contentId?: string;
+  itinerary?: { title?: string; destination?: string; duration?: number; days?: RawItineraryDay[] };
+}
+
+function normalizeGeneratedItinerary(raw: RawGenerateItineraryResponse): GeneratedItinerary {
+  const reason = classifyAiOutput(raw.itinerary);
+  if (reason) throw new AiUnavailableError(reason);
+  const it = raw.itinerary as NonNullable<RawGenerateItineraryResponse['itinerary']>;
+  const days = it.days ?? [];
+  if (days.length === 0) throw new AiUnavailableError('unreadable');
+  return {
+    title: it.title ?? '',
+    description: `${it.duration ?? days.length}-day itinerary`,
+    destination: it.destination ?? '',
+    duration: it.duration ?? days.length,
+    contentId: raw.contentId,
+    items: days.map((d, i) => {
+      const acts = d.activities ?? [];
+      const lines = acts.map((a) => [a.time, a.activity ?? a.description].filter(Boolean).join(' '));
+      return {
+        day: d.dayNumber ?? i + 1,
+        title: d.title ?? `Day ${i + 1}`,
+        description: [d.description, ...lines].filter(Boolean).join('\n'),
+        location: acts.find((a) => a.location)?.location,
+        time: acts.find((a) => a.time)?.time,
+      };
+    }),
+  };
+}
+
+function assertComposedMessage(res: ApiResponse<ComposeMessageResult>): ApiResponse<ComposeMessageResult> {
+  const message = (res.data as Partial<ComposeMessageResult> | undefined)?.message;
+  if (message === undefined) return res; // not the backend envelope - hand back untouched
+  const reason = classifyAiOutput(message) ?? (typeof message.body === 'string' && message.body.trim() ? null : 'unreadable');
+  if (reason) throw new AiUnavailableError(reason);
+  return res;
+}
+
+interface RawDocumentScanRow {
+  id: string;
+  document_type?: string;
+  documentType?: string;
+  image_url?: string | null;
+  extracted_data?: string | Record<string, unknown> | null;
+  confidence?: number | null;
+  entity_id?: string | null;
+  status?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+const SCAN_TYPES: Record<string, DocumentScan['documentType']> = {
+  passport: 'passport',
+  visa: 'visa',
+  visa_document: 'visa',
+  invoice: 'invoice',
+  supplier_invoice: 'invoice',
+  business_card: 'business_card',
+};
+
+function humanizeKey(key: string): string {
+  const spaced = key.replace(/[_-]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+/** The scans list/detail endpoints return raw snake_case DB rows; the UI wants DocumentScan. */
+function normalizeDocumentScan(row: RawDocumentScanRow | DocumentScan): DocumentScan {
+  if ('extractedFields' in row) return row;
+  const data = parseMaybeJson<Record<string, unknown>>(row.extracted_data, {});
+  const overall = typeof row.confidence === 'number' ? Math.round(row.confidence <= 1 ? row.confidence * 100 : row.confidence) : 0;
+  const status = row.status === 'applied' || row.status === 'rejected' ? row.status : 'pending';
+  return {
+    id: row.id,
+    documentType: SCAN_TYPES[row.document_type ?? row.documentType ?? ''] ?? 'passport',
+    status,
+    fileName: row.image_url ? decodeURIComponent(row.image_url.split('/').pop() ?? '') || undefined : undefined,
+    extractedFields: Object.entries(data)
+      .filter(([, v]) => v !== null && v !== undefined && typeof v !== 'object')
+      .map(([key, value]) => ({ key, label: humanizeKey(key), value: String(value), confidence: overall })),
+    overallConfidence: overall,
+    contactId: row.entity_id ?? undefined,
+    createdAt: row.created_at ?? '',
+    reviewedAt: status === 'pending' ? undefined : row.updated_at,
+  };
+}
+
 export const aiApi = {
   conversations: {
     list: (params?: { page?: number; limit?: number }) =>
@@ -888,11 +1060,22 @@ export const aiApi = {
   generateInvoice: (data: { itinerary: Record<string, unknown>; currency?: string; markupPercent?: number }) =>
     client.post<ApiResponse<GeneratedInvoice>>('/ai/generate-invoice', data),
 
-  extractLead: (data: { text: string; sourceUrl?: string }) =>
-    client.post<ApiResponse<ExtractedLead>>(API_ENDPOINTS.ai.extractLead, data),
+  extractLead: async (data: { text: string; sourceUrl?: string }) => {
+    const res = await client.post<ApiResponse<ExtractedLead | RawExtractLeadResponse>>(API_ENDPOINTS.ai.extractLead, data);
+    const raw = res.data as RawExtractLeadResponse | undefined;
+    if (!raw || typeof raw !== 'object' || !('extracted' in raw)) return res as ApiResponse<ExtractedLead>;
+    return { ...res, data: normalizeExtractedLead(raw) } as ApiResponse<ExtractedLead>;
+  },
 
-  generateItinerary: (data: { prompt: string; destination: string; duration: number; budget?: number; preferences?: string[] }) =>
-    client.post<ApiResponse<GeneratedItinerary>>(API_ENDPOINTS.ai.generateItinerary, data),
+  generateItinerary: async (data: { prompt: string; destination: string; duration: number; budget?: number; preferences?: string[] }) => {
+    const res = await client.post<ApiResponse<GeneratedItinerary | RawGenerateItineraryResponse>>(
+      API_ENDPOINTS.ai.generateItinerary,
+      data,
+    );
+    const raw = res.data as RawGenerateItineraryResponse | undefined;
+    if (!raw || typeof raw !== 'object' || !('itinerary' in raw)) return res as ApiResponse<GeneratedItinerary>;
+    return { ...res, data: normalizeGeneratedItinerary(raw) } as ApiResponse<GeneratedItinerary>;
+  },
 
   composeMessage: (data: {
     channel: 'whatsapp' | 'email' | 'sms';
@@ -906,7 +1089,10 @@ export const aiApi = {
       lastInteraction?: string;
       additionalContext?: string;
     };
-  }) => client.post<ApiResponse<ComposeMessageResult>>(API_ENDPOINTS.ai.composeMessage, data),
+  }) =>
+    client
+      .post<ApiResponse<ComposeMessageResult>>(API_ENDPOINTS.ai.composeMessage, data)
+      .then(assertComposedMessage),
 
   suggestReplies: (data: { message: string; context?: string }) =>
     client.post<ApiResponse<{ suggestions: SuggestedReply[] }>>(API_ENDPOINTS.ai.suggestReplies, data),
@@ -993,13 +1179,17 @@ export const aiApi = {
       return client.post<ApiResponse<OcrSupplierInvoiceResult>>(API_ENDPOINTS.ai.intelligence.ocrSupplierInvoice, formData as unknown as Record<string, unknown>);
     },
 
-    listDocumentScans: (params?: { page?: number; limit?: number; search?: string; status?: string; documentType?: string }) =>
-      client.get<PaginatedResponse<DocumentScan>>('/ai/intelligence/document-scans', {
+    listDocumentScans: async (params?: { page?: number; limit?: number; search?: string; status?: string; documentType?: string }) => {
+      const res = await client.get<PaginatedResponse<DocumentScan | RawDocumentScanRow>>('/ai/intelligence/document-scans', {
         params: params as unknown as Record<string, string | number | boolean | undefined>,
-      }),
+      });
+      return { ...res, data: (res.data ?? []).map(normalizeDocumentScan) } as PaginatedResponse<DocumentScan>;
+    },
 
-    getDocumentScanById: (id: string) =>
-      client.get<ApiResponse<DocumentScan>>(`/ai/intelligence/document-scans/${id}`),
+    getDocumentScanById: async (id: string) => {
+      const res = await client.get<ApiResponse<DocumentScan | RawDocumentScanRow>>(`/ai/intelligence/document-scans/${id}`);
+      return { ...res, data: normalizeDocumentScan(res.data) } as ApiResponse<DocumentScan>;
+    },
 
     applyDocumentScan: (id: string, data?: { fields?: Record<string, string> }) =>
       client.post<ApiResponse<DocumentScan>>(`/ai/intelligence/document-scans/${id}/apply`, data),

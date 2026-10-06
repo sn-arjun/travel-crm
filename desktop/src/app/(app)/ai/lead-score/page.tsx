@@ -1,13 +1,13 @@
 'use client';
 
+import { PageContainer } from '@/components/layout/page-container';
+import { AiFeaturePageGate } from '@/components/domain/ai/ai-feature-page-gate';
 import * as React from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, Lock, Sparkles, Target } from 'lucide-react';
+import { ArrowRight, Target } from 'lucide-react';
 import { toast } from 'sonner';
 import { RelationCombobox } from '@/components/domain';
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Skeleton } from '@/components/ui';
-import { useFeatureGate } from '@/hooks/use-feature-gate';
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui';
 import { leadsApi } from '@/lib/api/leads';
 import type { Lead } from '@travelcrm/shared';
 
@@ -24,7 +24,7 @@ function LeadScoreIndexContent() {
   };
 
   return (
-    <div className="flex flex-col gap-ds-6">
+    <PageContainer>
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-ds-foreground">AI Lead Scoring</h1>
         <p className="mt-ds-1 text-ds-foreground-muted">
@@ -66,47 +66,14 @@ function LeadScoreIndexContent() {
           </Button>
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }
 
 export default function LeadScoreIndexPage() {
-  const { enabled, reason, upgradeHref, loading } = useFeatureGate('ai_intelligence');
-
-  if (loading) {
-    return (
-      <div className="flex flex-col gap-ds-4">
-        <Skeleton className="h-9 w-64" />
-        <Skeleton className="h-64 w-full max-w-lg" />
-      </div>
-    );
-  }
-
-  if (!enabled) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-ds-3 rounded-ds-lg border border-dashed border-ds-border py-ds-9 text-center">
-        <div className="flex size-12 items-center justify-center rounded-ds-full bg-ds-surface-sunken">
-          <Lock className="size-5 text-ds-foreground-muted" aria-hidden="true" />
-        </div>
-        <div>
-          <p className="text-sm font-medium text-ds-foreground">
-            {reason === 'cap_exceeded' ? "Today's AI intelligence quota is used up" : 'AI Intelligence is not on your plan'}
-          </p>
-          <p className="mt-ds-1 text-xs text-ds-foreground-muted">
-            {reason === 'cap_exceeded'
-              ? 'Your quota resets automatically tomorrow, or upgrade for a higher daily limit.'
-              : 'Upgrade your plan to unlock AI-powered lead scoring.'}
-          </p>
-        </div>
-        <Button asChild size="sm" className="gap-ds-2">
-          <Link href={upgradeHref}>
-            <Sparkles className="size-3.5" aria-hidden="true" />
-            {reason === 'cap_exceeded' ? 'Upgrade for more' : 'Upgrade to enable'}
-          </Link>
-        </Button>
-      </div>
-    );
-  }
-
-  return <LeadScoreIndexContent />;
+  return (
+    <AiFeaturePageGate feature="ai_intelligence" title="Lead Scoring" featureName="AI Intelligence" benefit="AI-powered lead scoring">
+      <LeadScoreIndexContent />
+    </AiFeaturePageGate>
+  );
 }

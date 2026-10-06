@@ -1,5 +1,27 @@
 import { test, expect } from './fixtures';
 import { waitForLoad } from './helpers/auth';
+import { api } from './helpers/api-seed';
+
+// Self-sufficient: the page assertions below need ai_assistant on, whatever an earlier
+// spec left behind. Restore the tenant's original flag state afterwards.
+let assistantWasEnabled: boolean | undefined;
+let plan = '';
+
+test.beforeAll(async () => {
+  const settings = await api('GET', '/ai/settings');
+  plan = settings?.data?.plan ?? '';
+  const flag = (settings?.data?.aiFeatures ?? []).find((f: { key: string }) => f.key === 'ai_assistant');
+  assistantWasEnabled = flag?.enabled;
+  if (assistantWasEnabled === false) {
+    await api('PUT', '/ai/settings/features', { features: { ai_assistant: true } });
+  }
+});
+
+test.afterAll(async () => {
+  if (assistantWasEnabled === false) {
+    await api('PUT', '/ai/settings/features', { features: { ai_assistant: false } });
+  }
+});
 
 test.describe('AI Settings & Usage', () => {
   test('AI Settings page — gate, provider, quotas, feature toggles', async ({ page }) => {
@@ -14,13 +36,14 @@ test.describe('AI Settings & Usage', () => {
     await page.waitForURL('**/settings/ai');
     await waitForLoad(page);
 
-    // Demo tenant is on the enterprise plan with ai_assistant enabled, so the
+    // ai_assistant is enabled (beforeAll), so the
     // working page renders — never the upgrade/disabled affordance, never an error toast.
     await expect(page.locator('text=AI Assistant is not available')).toHaveCount(0);
     await expect(page.locator('text=/^(Try Again)$/')).toHaveCount(0);
 
     // Plan badge and provider section.
-    await expect(page.getByText('enterprise', { exact: false }).first()).toBeVisible();
+    expect(plan).not.toBe('');
+    await expect(page.getByText(plan, { exact: false }).first()).toBeVisible();
     await expect(page.locator('text=Cloudflare Workers AI')).toBeVisible();
     await expect(page.locator('text=Claude API')).toBeVisible();
 

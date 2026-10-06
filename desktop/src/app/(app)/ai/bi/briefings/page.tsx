@@ -1,11 +1,11 @@
 'use client';
 
+import { PageContainer } from '@/components/layout/page-container';
 import * as React from 'react';
 import { FileText, RefreshCw, Lightbulb, BarChart3, Star, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button, Badge, EmptyState, PageHeader, SectionCard, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Separator, Skeleton, Tag } from '@/components/ui';
 import { AiGate } from '@/components/domain/ai/ai-gate';
-import { cn } from '@/lib/utils';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { aiApi, type BriefingData } from '@/lib/api/ai';
 
@@ -176,7 +176,7 @@ function BriefingsContent() {
 
 export default function BriefingsPage() {
   return (
-    <div className="flex flex-col gap-ds-4">
+    <PageContainer>
       <PageHeader
         title="Daily Briefings"
         description="AI-generated business summaries with key metrics and action items"
@@ -189,6 +189,6 @@ export default function BriefingsPage() {
       <AiGate>
         <BriefingsContent />
       </AiGate>
-    </div>
+    </PageContainer>
   );
 }

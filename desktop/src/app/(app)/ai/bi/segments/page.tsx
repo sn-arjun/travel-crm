@@ -1,7 +1,8 @@
 'use client';
 
+import { PageContainer } from '@/components/layout/page-container';
 import * as React from 'react';
-import { Layers, RotateCw, Users, DollarSign, Search } from 'lucide-react';
+import { Layers, RotateCw, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Button,
@@ -174,7 +175,7 @@ function SegmentsContent() {
 
 export default function SegmentsPage() {
   return (
-    <div className="flex flex-col gap-ds-4">
+    <PageContainer>
       <PageHeader
         title="Customer Segments"
         description="AI-clustered customer segments with lifetime value"
@@ -187,6 +188,6 @@ export default function SegmentsPage() {
       <AiGate>
         <SegmentsContent />
       </AiGate>
-    </div>
+    </PageContainer>
   );
 }

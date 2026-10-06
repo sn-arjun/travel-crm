@@ -1,9 +1,9 @@
 'use client';
 
+import { PageContainer } from '@/components/layout/page-container';
 import * as React from 'react';
 import Link from 'next/link';
 import {
-  BarChart3,
   Heart,
   DollarSign,
   TrendingUp,
@@ -221,7 +221,7 @@ function BiDashboardContent() {
 
 export default function BIDashboardPage() {
   return (
-    <div className="flex flex-col gap-ds-4">
+    <PageContainer>
       <PageHeader
         title="Business Intelligence"
         description="AI-driven analytics, health scores, and trend analysis for your business"
@@ -230,6 +230,6 @@ export default function BIDashboardPage() {
       <AiGate>
         <BiDashboardContent />
       </AiGate>
-    </div>
+    </PageContainer>
   );
 }

@@ -1,7 +1,8 @@
 'use client';
 
+import { PageContainer } from '@/components/layout/page-container';
 import * as React from 'react';
-import { Heart, RefreshCw, TrendingUp, RotateCw } from 'lucide-react';
+import { Heart, RefreshCw, RotateCw } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Badge,
@@ -12,7 +13,6 @@ import {
   Progress,
   SectionCard,
   Skeleton,
-  Stat,
 } from '@/components/ui';
 import { AiGate } from '@/components/domain/ai/ai-gate';
 import { cn } from '@/lib/utils';
@@ -168,7 +168,7 @@ function HealthScoreContent() {
 
 export default function HealthScorePage() {
   return (
-    <div className="flex flex-col gap-ds-4">
+    <PageContainer>
       <PageHeader
         title="Business Health Score"
         description="Overall business health with category breakdowns and trends"
@@ -181,6 +181,6 @@ export default function HealthScorePage() {
       <AiGate>
         <HealthScoreContent />
       </AiGate>
-    </div>
+    </PageContainer>
   );
 }

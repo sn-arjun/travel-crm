@@ -1,5 +1,6 @@
 'use client';
 
+import { PageContainer } from '@/components/layout/page-container';
 import * as React from 'react';
 import { Globe, RefreshCw, TrendingUp, TrendingDown, Download } from 'lucide-react';
 import {
@@ -244,7 +245,7 @@ function DestinationsContent() {
 
 export default function DestinationsPage() {
   return (
-    <div className="flex flex-col gap-ds-4">
+    <PageContainer>
       <PageHeader
         title="Destination Analytics"
         description="Profitability, demand patterns, and trending destinations"
@@ -257,6 +258,6 @@ export default function DestinationsPage() {
       <AiGate>
         <DestinationsContent />
       </AiGate>
-    </div>
+    </PageContainer>
   );
 }

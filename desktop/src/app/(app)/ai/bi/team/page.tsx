@@ -1,5 +1,6 @@
 'use client';
 
+import { PageContainer } from '@/components/layout/page-container';
 import * as React from 'react';
 import { Users, RefreshCw, Trophy, TrendingUp, DollarSign, Download } from 'lucide-react';
 import {
@@ -56,7 +57,6 @@ function TeamPerformanceContent() {
     {
       key: 'rank',
       header: 'Rank',
-      width: '64px',
       cell: (_r, index) =>
         index === 0 ? (
           <Trophy className="size-4 text-ds-warning" aria-hidden="true" />
@@ -162,7 +162,7 @@ function TeamPerformanceContent() {
 
 export default function TeamPerformancePage() {
   return (
-    <div className="flex flex-col gap-ds-4">
+    <PageContainer>
       <PageHeader
         title="Team Performance"
         description="Agent performance metrics and comparisons"
@@ -175,6 +175,6 @@ export default function TeamPerformancePage() {
       <AiGate>
         <TeamPerformanceContent />
       </AiGate>
-    </div>
+    </PageContainer>
   );
 }

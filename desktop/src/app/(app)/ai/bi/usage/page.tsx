@@ -1,5 +1,6 @@
 'use client';
 
+import { PageContainer } from '@/components/layout/page-container';
 import * as React from 'react';
 import { Activity, Brain, BarChart3, RefreshCw } from 'lucide-react';
 import {
@@ -120,7 +121,7 @@ function UsageContent() {
 
 export default function UsagePage() {
   return (
-    <div className="flex flex-col gap-ds-4">
+    <PageContainer>
       <PageHeader
         title="AI Usage Statistics"
         description="Track AI feature usage, API calls, and token consumption"
@@ -133,6 +134,6 @@ export default function UsagePage() {
       <AiGate>
         <UsageContent />
       </AiGate>
-    </div>
+    </PageContainer>
   );
 }

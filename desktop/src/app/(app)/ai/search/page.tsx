@@ -1,16 +1,16 @@
 'use client';
 
+import { PageContainer } from '@/components/layout/page-container';
 import * as React from 'react';
 import { Loader2, Search, Sparkles, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { aiApi, type NlQueryResult } from '@/lib/api/ai';
 import { PageHeader } from '@/components/ui/page-header';
-import { AiGate } from '@/components/domain/ai/ai-gate';
+import { AiFeaturePageGate } from '@/components/domain/ai/ai-feature-page-gate';
 import { AiQuotaBadge } from '@/components/domain/ai/quota-badge';
 
 const EXAMPLE_QUERIES = [
@@ -22,7 +22,7 @@ const EXAMPLE_QUERIES = [
   'List all leads from website source',
 ];
 
-export default function SearchPage() {
+function SearchContent() {
   const [query, setQuery] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [result, setResult] = React.useState<NlQueryResult | null>(null);
@@ -56,14 +56,12 @@ export default function SearchPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <PageContainer>
       <PageHeader
         title="Natural Language Search"
         description="Ask questions about your CRM data in plain English"
         actions={<AiQuotaBadge capKey="ai_requests" />}
       />
-
-      <AiGate>
       {/* Search Bar */}
       <Card>
         <CardContent className="pt-6">
@@ -212,7 +210,19 @@ export default function SearchPage() {
           </CardContent>
         </Card>
       </div>
-      </AiGate>
-    </div>
+    </PageContainer>
+  );
+}
+
+export default function SearchPage() {
+  return (
+    <AiFeaturePageGate
+      feature="ai_intelligence"
+      title="Natural Language Search"
+      featureName="AI Intelligence"
+      benefit="natural language search across your CRM data"
+    >
+      <SearchContent />
+    </AiFeaturePageGate>
   );
 }
