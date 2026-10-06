@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Plus, MapPin, MoreHorizontal, FileText, Copy, Loader2, Trash2, Pencil, Eye, Download } from 'lucide-react';
+import { Plus, MapPin, MoreHorizontal, FileText, Copy, Loader2, Trash2, Pencil, Eye, Download, LayoutTemplate } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,38 +12,71 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { FilterBar } from '@/components/domain/filter-bar';
-import { cn } from '@/lib/utils';
-import { useApiMutation } from '@/hooks/use-api';
+import { PageContainer } from '@/components/layout/page-container';
+import { PageHeader } from '@/components/layout/page-header';
+import { cn, formatCurrency } from '@/lib/utils';
 import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
-import { itinerariesApi } from '@/lib/api/itineraries';
+import { itinerariesApi, errorMessage } from '@/lib/api/itineraries';
+import { unwrapList } from '@/lib/api/envelope';
 import { useAuthStore } from '@/stores/auth-store';
-import type { Itinerary } from '@travelcrm/shared';
-import { toLocalDateString } from '@/lib/dates';
+import { formatDisplayDate, toLocalDateString } from '@/lib/dates';
+
+/** One row of GET /itineraries. */
+interface ItineraryRow {
+  id: string;
+  title: string;
+  status?: string;
+  currency?: string;
+  leadTitle?: string | null;
+  contactName?: string | null;
+  daysCount?: number;
+  totalCost?: number;
+  totalSelling?: number;
+  grandTotal?: number;
+  versionNumber?: number;
+  startDate?: string | null;
+  endDate?: string | null;
+  createdAt?: string;
+}
+
+const STATUS_STYLES: Record<string, string> = {
+  draft: 'bg-ds-surface-sunken text-ds-foreground-muted',
+  sent: 'bg-ds-info-subtle text-ds-info-on-subtle',
+  approved: 'bg-ds-success-subtle text-ds-success-on-subtle',
+  rejected: 'bg-ds-danger-subtle text-ds-danger-on-subtle',
+  expired: 'bg-ds-warning-subtle text-ds-warning-on-subtle',
+};
 
 function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    draft: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
-    sent: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    approved: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-    rejected: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-    expired: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-  };
-  return <Badge variant="outline" className={cn('border-transparent text-[11px]', styles[status] ?? 'bg-slate-100 text-slate-700')}>{status}</Badge>;
+  return (
+    <Badge variant="outline" className={cn('border-transparent text-xs', STATUS_STYLES[status] ?? STATUS_STYLES.draft)}>
+      {status}
+    </Badge>
+  );
+}
+
+function durationLabel(daysCount: number | undefined): string {
+  const days = daysCount ?? 0;
+  return `${days}D/${Math.max(0, days - 1)}N`;
 }
 
 export default function ItinerariesPage() {
   const router = useRouter();
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   // RBAC: get user role from auth store
-  const user = useAuthStore((s) => s.user);
-  const role = (user as any)?.role ?? '';
+  const role = useAuthStore((s) => s.user?.role ?? '') as string;
   const canSeeCost = role === 'admin' || role === 'sales_manager' || role === 'manager';
 
   const [search, setSearch] = React.useState('');
   const [statusFilter, setStatusFilter] = React.useState('');
   const [drawerOpen, setDrawerOpen] = React.useState(false);
-  const [selectedItinerary, setSelectedItinerary] = React.useState<any>(null);
+  const [selectedItinerary, setSelectedItinerary] = React.useState<ItineraryRow | null>(null);
+  const [cloneLoading, setCloneLoading] = React.useState(false);
+  const [deleteLoading, setDeleteLoading] = React.useState(false);
+  const [exporting, setExporting] = React.useState(false);
 
   const fetcher = React.useCallback(
     (page: number, limit: number) =>
@@ -56,30 +89,15 @@ export default function ItinerariesPage() {
     [search, statusFilter],
   );
 
-  const { items: itineraries, loading, loadingMore, hasMore, total, error, sentinelRef, refetch } = useInfiniteScroll({
+  const { items: itineraries, loading, loadingMore, hasMore, total, error, sentinelRef, refetch } = useInfiniteScroll<ItineraryRow>({
     fetcher,
     limit: 30,
   });
 
-  const { mutate: cloneItinerary, loading: cloneLoading } = useApiMutation(
-    (id: string) => itinerariesApi.clone(id, {}).then(res => {
-      if (res && typeof res === 'object' && 'data' in res) {
-        return (res as any).data;
-      }
-      return res;
-    }),
-  );
-
-  const { mutate: deleteItinerary, loading: deleteLoading } = useApiMutation(
-    (id: string) => itinerariesApi.delete(id),
-  );
-
-  const [exporting, setExporting] = React.useState(false);
-
   const handleExport = async () => {
     setExporting(true);
     try {
-      const rows: any[] = [];
+      const rows: ItineraryRow[] = [];
       let page = 1;
       const limit = 100;
       // Walk every page of the current filtered query, not just what's loaded on screen
@@ -90,28 +108,24 @@ export default function ItinerariesPage() {
           search: search || undefined,
           status: statusFilter || undefined,
         });
-        const data = (res as any)?.data;
-        const items = Array.isArray(data) ? data : (data?.data ?? []);
+        const { data: items, pagination } = unwrapList<ItineraryRow>(res);
         rows.push(...items);
-        const total = data?.pagination?.total ?? items.length;
-        if (rows.length >= total || items.length === 0) break;
+        const rowTotal = pagination?.total ?? items.length;
+        if (rows.length >= rowTotal || items.length === 0) break;
         page += 1;
       }
 
       const header = ['Title', 'Client', 'Start Date', 'End Date', 'Duration', 'Status', 'Currency', 'Grand Total'];
-      const csvRows = rows.map((it: any) => {
-        const daysCount = it.daysCount ?? 0;
-        return [
-          it.title ?? '',
-          it.contactName ?? '',
-          it.startDate ?? '',
-          it.endDate ?? '',
-          `${daysCount}D/${Math.max(0, daysCount - 1)}N`,
-          it.status ?? 'draft',
-          it.currency ?? 'INR',
-          String(it.grandTotal ?? it.totalSelling ?? 0),
-        ];
-      });
+      const csvRows = rows.map((it) => [
+        it.title ?? '',
+        it.contactName ?? '',
+        it.startDate ?? '',
+        it.endDate ?? '',
+        durationLabel(it.daysCount),
+        it.status ?? 'draft',
+        it.currency ?? 'INR',
+        String(it.grandTotal ?? it.totalSelling ?? 0),
+      ]);
       const csv = [header, ...csvRows]
         .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
         .join('\n');
@@ -127,92 +141,101 @@ export default function ItinerariesPage() {
       URL.revokeObjectURL(url);
       toast.success('Itineraries exported successfully');
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to export itineraries';
-      toast.error(errorMsg);
+      toast.error(errorMessage(err, 'Failed to export itineraries'));
     } finally {
       setExporting(false);
     }
   };
 
   const handleClone = async (id: string) => {
+    setCloneLoading(true);
     try {
-      await cloneItinerary(id);
+      await itinerariesApi.clone(id, {});
       toast.success('Itinerary cloned successfully');
       refetch();
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to clone itinerary';
-      toast.error(errorMsg);
+      toast.error(errorMessage(err, 'Failed to clone itinerary'));
+    } finally {
+      setCloneLoading(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this itinerary? This action cannot be undone.')) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Delete itinerary',
+      description: 'Delete this itinerary? This action cannot be undone.',
+      tone: 'destructive',
+      confirmLabel: 'Delete',
+    });
+    if (!ok) return;
+    setDeleteLoading(true);
     try {
-      await deleteItinerary(id);
+      await itinerariesApi.delete(id);
       toast.success('Itinerary deleted successfully');
       refetch();
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to delete itinerary';
-      toast.error(errorMsg);
+      toast.error(errorMessage(err, 'Failed to delete itinerary'));
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Itineraries</h1>
-          <p className="text-sm text-muted-foreground">{total} itineraries</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={handleExport} disabled={exporting || total === 0}>
-            {exporting ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Download className="h-4 w-4 mr-1.5" />}
-            Export
-          </Button>
-          <Link href="/itineraries/new">
-            <Button><Plus className="h-4 w-4 mr-1.5" /> New Itinerary</Button>
-          </Link>
-        </div>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="Itineraries"
+        description={`${total} itineraries`}
+        actions={
+          <>
+            <Button variant="outline" onClick={() => router.push('/itineraries/templates')}>
+              <LayoutTemplate className="size-4 mr-1.5" aria-hidden="true" /> Templates
+            </Button>
+            <Button variant="outline" onClick={handleExport} disabled={exporting || total === 0}>
+              {exporting ? <Loader2 className="size-4 mr-1.5 animate-spin" aria-hidden="true" /> : <Download className="size-4 mr-1.5" aria-hidden="true" />}
+              Export
+            </Button>
+            <Link href="/itineraries/new">
+              <Button><Plus className="size-4 mr-1.5" aria-hidden="true" /> New Itinerary</Button>
+            </Link>
+          </>
+        }
+      />
 
-      <div className="px-6 py-3 border-b">
-        <FilterBar
-          searchValue={search}
-          onSearchChange={setSearch}
-          searchPlaceholder="Search itineraries..."
-          activeFilters={statusFilter ? [{ id: 'status', label: 'Status', value: statusFilter }] : []}
-          onRemoveFilter={() => setStatusFilter('')}
-          onClearFilters={() => setStatusFilter('')}
-          actions={
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="">All Status</option>
-              <option value="draft">Draft</option>
-              <option value="sent">Sent</option>
-              <option value="approved">Approved</option>
-              <option value="rejected">Rejected</option>
-              <option value="expired">Expired</option>
-            </select>
-          }
-        />
-      </div>
+      <FilterBar
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search itineraries..."
+        activeFilters={statusFilter ? [{ id: 'status', label: 'Status', value: statusFilter }] : []}
+        onRemoveFilter={() => setStatusFilter('')}
+        onClearFilters={() => setStatusFilter('')}
+        actions={
+          <select
+            aria-label="Filter by status"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="">All Status</option>
+            <option value="draft">Draft</option>
+            <option value="sent">Sent</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+            <option value="expired">Expired</option>
+          </select>
+        }
+      />
 
       {error && (
-        <div className="px-6 py-3 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800">
-          <p className="text-sm text-red-800 dark:text-red-200">
+        <div role="alert" data-testid="list-error" className="rounded-md bg-ds-danger-subtle px-ds-4 py-ds-3">
+          <p className="text-sm text-ds-danger-on-subtle">
             {error.message ? `Error: ${error.message}` : 'Failed to load itineraries'}
           </p>
         </div>
       )}
 
-      <div className="flex-1 overflow-auto">
+      <div>
         {loading && (
-          <div className="p-6 space-y-3">
+          <div className="space-y-ds-3">
             {Array.from({ length: 6 }).map((_, i) => (
               <Skeleton key={i} className="h-12 w-full" />
             ))}
@@ -221,12 +244,12 @@ export default function ItinerariesPage() {
 
         {!loading && itineraries.length === 0 && (
           <EmptyState
-            icon={<FileText className="h-8 w-8" />}
+            icon={<FileText className="size-8" aria-hidden="true" />}
             title="No itineraries found"
             description={search || statusFilter ? 'Try adjusting your search or filters.' : 'Start building your first multi-day itinerary.'}
             action={
               <Link href="/itineraries/new">
-                <Button variant="outline" size="sm"><Plus className="h-4 w-4 mr-1" /> Create Itinerary</Button>
+                <Button variant="outline" size="sm"><Plus className="size-4 mr-1" aria-hidden="true" /> Create Itinerary</Button>
               </Link>
             }
           />
@@ -238,21 +261,19 @@ export default function ItinerariesPage() {
               <TableRow>
                 <TableHead>Itinerary</TableHead>
                 <TableHead>Client</TableHead>
-                <TableHead>Dates</TableHead>
+                <TableHead>Created</TableHead>
                 <TableHead>Duration</TableHead>
                 {canSeeCost && <TableHead className="text-right">Cost</TableHead>}
                 {canSeeCost && <TableHead className="text-right">Selling</TableHead>}
                 <TableHead>Status</TableHead>
-                <TableHead className="w-10" />
+                <TableHead className="w-10"><span className="sr-only">Actions</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {itineraries.map((it: any) => {
-                const daysCount = it.daysCount ?? 0;
+              {itineraries.map((it) => {
+                const currency = it.currency ?? 'INR';
                 const totalCost = it.totalCost ?? 0;
                 const totalSelling = it.totalSelling ?? it.grandTotal ?? 0;
-                const currency = it.currency ?? 'INR';
-                const currencySymbol = currency === 'INR' ? '\u20B9' : currency === 'USD' ? '$' : currency + ' ';
 
                 return (
                   <TableRow
@@ -264,51 +285,47 @@ export default function ItinerariesPage() {
                       <div>
                         <p className="font-medium text-sm">{it.title}</p>
                         {it.leadTitle && (
-                          <p className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />{it.leadTitle}</p>
+                          <p className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="size-3" aria-hidden="true" />{it.leadTitle}</p>
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm">{it.contactName || 'N/A'}</TableCell>
+                    <TableCell className="text-sm">{it.contactName || '—'}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {it.startDate && it.endDate
-                        ? `${new Date(it.startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} – ${new Date(it.endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`
-                        : it.createdAt
-                        ? new Date(it.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
-                        : 'N/A'}
+                      {it.createdAt ? formatDisplayDate(it.createdAt, 'short') : '—'}
                     </TableCell>
-                    <TableCell className="text-sm">{daysCount}D/{Math.max(0, daysCount - 1)}N</TableCell>
+                    <TableCell className="text-sm">{durationLabel(it.daysCount)}</TableCell>
                     {canSeeCost && (
                       <TableCell className="text-right text-sm text-muted-foreground">
-                        {currencySymbol}{totalCost.toLocaleString('en-IN')}
+                        {formatCurrency(totalCost, currency)}
                       </TableCell>
                     )}
                     {canSeeCost && (
                       <TableCell className="text-right text-sm font-medium">
-                        {currencySymbol}{totalSelling.toLocaleString('en-IN')}
+                        {formatCurrency(totalSelling, currency)}
                       </TableCell>
                     )}
                     <TableCell><StatusBadge status={it.status ?? 'draft'} /></TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button variant="ghost" size="icon-sm" onClick={(e) => { e.stopPropagation(); setSelectedItinerary(it); setDrawerOpen(true); }}>
-                          <Eye className="h-3.5 w-3.5" />
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                        <Button variant="ghost" size="icon-sm" aria-label="Preview" onClick={(e) => { e.stopPropagation(); setSelectedItinerary(it); setDrawerOpen(true); }}>
+                          <Eye className="size-3.5" aria-hidden="true" />
                         </Button>
-                        <Button variant="ghost" size="icon-sm" onClick={(e) => { e.stopPropagation(); router.push(`/itineraries/${it.id}/edit`); }}>
-                          <Pencil className="h-3.5 w-3.5" />
+                        <Button variant="ghost" size="icon-sm" aria-label="Edit" onClick={(e) => { e.stopPropagation(); router.push(`/itineraries/${it.id}/edit`); }}>
+                          <Pencil className="size-3.5" aria-hidden="true" />
                         </Button>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon-sm" onClick={(e) => e.stopPropagation()}><MoreHorizontal className="h-4 w-4" /></Button>
+                            <Button variant="ghost" size="icon-sm" aria-label="More actions" onClick={(e) => e.stopPropagation()}><MoreHorizontal className="size-4" aria-hidden="true" /></Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={(e) => { e.stopPropagation(); router.push(`/itineraries/${it.id}`); }}>
-                              <FileText className="h-3.5 w-3.5 mr-2" />View Full Details
+                              <FileText className="size-3.5 mr-2" aria-hidden="true" />View Full Details
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleClone(it.id); }} disabled={cloneLoading}>
-                              <Copy className="h-3.5 w-3.5 mr-2" />Duplicate
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); void handleClone(it.id); }} disabled={cloneLoading}>
+                              <Copy className="size-3.5 mr-2" aria-hidden="true" />Duplicate
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDelete(it.id); }} disabled={deleteLoading} className="text-red-600">
-                              <Trash2 className="h-3.5 w-3.5 mr-2" />Delete
+                            <DropdownMenuItem variant="destructive" onClick={(e) => { e.stopPropagation(); void handleDelete(it.id); }} disabled={deleteLoading}>
+                              <Trash2 className="size-3.5 mr-2" aria-hidden="true" />Delete
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -324,43 +341,45 @@ export default function ItinerariesPage() {
         {/* Infinite scroll sentinel */}
         <div ref={sentinelRef} className="h-4" />
         {loadingMore && (
-          <div className="flex items-center justify-center py-4">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <div className="flex items-center justify-center py-ds-4">
+            <Loader2 className="size-5 animate-spin text-muted-foreground" aria-hidden="true" />
             <span className="ml-2 text-sm text-muted-foreground">Loading more...</span>
           </div>
         )}
         {!hasMore && itineraries.length > 0 && (
-          <p className="text-center text-xs text-muted-foreground py-4">All itineraries loaded</p>
+          <p className="text-center text-xs text-muted-foreground py-ds-4">All itineraries loaded</p>
         )}
       </div>
 
+      {confirmDialog}
+
       {/* Detail Drawer */}
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent className="w-[420px] sm:w-[500px]">
+        <SheetContent className="w-full sm:max-w-lg">
           {selectedItinerary && (
             <>
               <SheetHeader>
                 <SheetTitle className="pr-6">{selectedItinerary.title}</SheetTitle>
               </SheetHeader>
-              <div className="mt-4 space-y-4">
+              <div className="mt-4 space-y-ds-4 px-ds-4">
                 <div className="flex items-center gap-2 flex-wrap">
                   <StatusBadge status={selectedItinerary.status ?? 'draft'} />
                   {selectedItinerary.currency && (
                     <Badge variant="outline" className="text-xs">{selectedItinerary.currency}</Badge>
                   )}
                 </div>
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-2 gap-ds-4 text-sm">
                   <div>
                     <p className="text-muted-foreground">Lead</p>
-                    <p className="font-medium">{selectedItinerary.leadTitle || 'N/A'}</p>
+                    <p className="font-medium">{selectedItinerary.leadTitle || '—'}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Client</p>
-                    <p className="font-medium">{selectedItinerary.contactName || 'N/A'}</p>
+                    <p className="font-medium">{selectedItinerary.contactName || '—'}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Duration</p>
-                    <p className="font-medium">{(selectedItinerary.daysCount ?? 0)}D/{Math.max(0, (selectedItinerary.daysCount ?? 0) - 1)}N</p>
+                    <p className="font-medium">{durationLabel(selectedItinerary.daysCount)}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Version</p>
@@ -369,20 +388,22 @@ export default function ItinerariesPage() {
                   {canSeeCost && (
                     <div>
                       <p className="text-muted-foreground">Cost</p>
-                      <p className="font-mono font-medium">₹{(selectedItinerary.totalCost ?? 0).toLocaleString('en-IN')}</p>
+                      <p className="font-mono font-medium">{formatCurrency(selectedItinerary.totalCost ?? 0, selectedItinerary.currency ?? 'INR')}</p>
                     </div>
                   )}
                   <div>
                     <p className="text-muted-foreground">Grand Total</p>
-                    <p className="font-mono font-semibold text-green-600">₹{(selectedItinerary.grandTotal ?? selectedItinerary.totalSelling ?? 0).toLocaleString('en-IN')}</p>
+                    <p className="font-mono font-semibold text-ds-success">
+                      {formatCurrency(selectedItinerary.grandTotal ?? selectedItinerary.totalSelling ?? 0, selectedItinerary.currency ?? 'INR')}
+                    </p>
                   </div>
                 </div>
-                <div className="flex gap-2 pt-4 border-t">
+                <div className="flex gap-2 pt-4 border-t border-ds-border">
                   <Button className="flex-1" onClick={() => { setDrawerOpen(false); router.push(`/itineraries/${selectedItinerary.id}`); }}>
-                    <FileText className="h-4 w-4 mr-1.5" />Full View
+                    <FileText className="size-4 mr-1.5" aria-hidden="true" />Full View
                   </Button>
                   <Button variant="outline" onClick={() => { setDrawerOpen(false); router.push(`/itineraries/${selectedItinerary.id}/edit`); }}>
-                    <Pencil className="h-4 w-4 mr-1.5" />Edit
+                    <Pencil className="size-4 mr-1.5" aria-hidden="true" />Edit
                   </Button>
                 </div>
               </div>
@@ -390,6 +411,6 @@ export default function ItinerariesPage() {
           )}
         </SheetContent>
       </Sheet>
-    </div>
+    </PageContainer>
   );
 }

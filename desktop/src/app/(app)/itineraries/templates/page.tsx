@@ -2,30 +2,22 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Copy, Eye, FileText, MapPin, Trash2 } from 'lucide-react';
+import { Copy, Eye, FileText, MapPin, Plus, Trash2 } from 'lucide-react';
 import { ListPage } from '@/components/domain';
-import { Button, Tag, Input, Label, useConfirm } from '@/components/ui';
-import { Combobox } from '@/components/ui/combobox';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Button, Tag, Input, Label, Textarea, useConfirm } from '@/components/ui';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import type { DataTableColumn } from '@/components/ui/data-table';
-import { useApiMutation, useApiQuery } from '@/hooks/use-api';
-import { client, type ApiResponse, type PaginatedResponse } from '@/lib/api/client';
-import { API_ENDPOINTS } from '@/lib/api/config';
-import { leadsApi } from '@/lib/api/leads';
+import {
+  itineraryTemplatesApi, templateDays, errorMessage, ITINERARY_TEMPLATE_CATEGORIES,
+  type ItineraryTemplate, type ItineraryTemplateCategory,
+} from '@/lib/api/itineraries';
+import { unwrapEntity, unwrapList } from '@/lib/api/envelope';
 import { toast } from 'sonner';
-import { toLocalDateString } from '@/lib/dates';
+import { formatDisplayDate, toLocalDateString } from '@/lib/dates';
+import { LeadCombobox } from '../_components/lead-combobox';
 
-interface ItineraryTemplate {
-  id: string;
-  title: string;
-  description?: string;
-  destination?: string;
-  durationDays?: number;
-  category?: string;
-  templateData?: { days?: unknown[] } | null;
-  createdAt: string;
-  updatedAt: string;
-}
+const MAX_TEMPLATE_DAYS = 60;
 
 function exportTemplatesCsv(rows: ItineraryTemplate[]) {
   const header = ['Title', 'Category', 'Destination', 'Duration (days)', 'Created'];
@@ -34,7 +26,7 @@ function exportTemplatesCsv(rows: ItineraryTemplate[]) {
     t.category ?? '',
     t.destination ?? '',
     t.durationDays != null ? String(t.durationDays) : '',
-    new Date(t.createdAt).toLocaleDateString('en-IN'),
+    formatDisplayDate(t.createdAt),
   ]);
   const csv = [header, ...lines]
     .map((row) => row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
@@ -53,39 +45,32 @@ export default function ItineraryTemplatesPage() {
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [selectedTemplate, setSelectedTemplate] = React.useState<ItineraryTemplate | null>(null);
   const [refreshKey, setRefreshKey] = React.useState(0);
+
+  // Use template -> create itinerary
   const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
   const [newTitle, setNewTitle] = React.useState('');
-  const [newLeadId, setNewLeadId] = React.useState('');
-  const [leadSearch, setLeadSearch] = React.useState('');
+  const [newLeadId, setNewLeadId] = React.useState<string | null>(null);
+  const [isCreating, setIsCreating] = React.useState(false);
 
-  const { data: leadsResponse } = useApiQuery(
-    () => leadsApi.list({ page: 1, limit: 20, search: leadSearch || undefined }),
-    [leadSearch],
-  );
-
-  const leadOptions = React.useMemo(() => {
-    if (!leadsResponse) return [];
-    const data = (leadsResponse as any)?.data;
-    const items = Array.isArray(data) ? data : (data as any)?.data ?? [];
-    return items.map((l: any) => ({
-      value: l.id,
-      label: `${l.title}${l.contactName ? ` - ${l.contactName}` : ''}`,
-    }));
-  }, [leadsResponse]);
-
-  const { mutate: createFromTemplate, loading: isCreating } = useApiMutation<
-    { templateId: string; leadId: string; title: string },
-    ApiResponse<{ id: string }>
-  >((data) => client.post<ApiResponse<{ id: string }>>(API_ENDPOINTS.itineraryTemplates.createFrom, data));
-
-  const { mutate: deleteTemplate } = useApiMutation((id: string) =>
-    client.delete<ApiResponse<void>>(API_ENDPOINTS.itineraryTemplates.byId(id)),
-  );
+  // New template
+  const [isNewTemplateOpen, setIsNewTemplateOpen] = React.useState(false);
+  const [tplTitle, setTplTitle] = React.useState('');
+  const [tplDestination, setTplDestination] = React.useState('');
+  const [tplCategory, setTplCategory] = React.useState<ItineraryTemplateCategory | ''>('');
+  const [tplDescription, setTplDescription] = React.useState('');
+  const [tplDays, setTplDays] = React.useState(3);
+  const [tplOutline, setTplOutline] = React.useState<string[]>(['', '', '']);
+  const [tplErrors, setTplErrors] = React.useState<{ title?: string; days?: string }>({});
+  const [isSavingTemplate, setIsSavingTemplate] = React.useState(false);
 
   async function openPreview(t: ItineraryTemplate) {
     setSelectedTemplate(t);
-    const res = await client.get<ApiResponse<ItineraryTemplate>>(API_ENDPOINTS.itineraryTemplates.byId(t.id));
-    if (res.data) setSelectedTemplate(res.data);
+    try {
+      const full = unwrapEntity<ItineraryTemplate>(await itineraryTemplatesApi.getById(t.id));
+      if (full?.id) setSelectedTemplate(full);
+    } catch {
+      // The list row is enough to show the basics; the day count falls back to 0
+    }
   }
 
   async function handleCreateFromTemplate() {
@@ -98,18 +83,20 @@ export default function ItineraryTemplatesPage() {
       return;
     }
 
-    const result = await createFromTemplate({ templateId: selectedTemplate.id, leadId: newLeadId, title: newTitle });
-
-    if (result) {
+    setIsCreating(true);
+    try {
+      const result = unwrapEntity<{ id?: string }>(
+        await itineraryTemplatesApi.createFrom({ templateId: selectedTemplate.id, leadId: newLeadId, title: newTitle.trim() }),
+      );
       toast.success('Itinerary created from template');
       setIsCreateDialogOpen(false);
       setSelectedTemplate(null);
-      setNewLeadId('');
-      setLeadSearch('');
-      const id = result.data?.id;
-      router.push(id ? `/itineraries/${id}` : '/itineraries');
-    } else {
-      toast.error('Failed to create itinerary');
+      setNewLeadId(null);
+      router.push(result?.id ? `/itineraries/${result.id}` : '/itineraries');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to create itinerary'));
+    } finally {
+      setIsCreating(false);
     }
   }
 
@@ -121,12 +108,75 @@ export default function ItineraryTemplatesPage() {
       confirmLabel: 'Delete',
     });
     if (!ok) return;
-    const result = await deleteTemplate(template.id);
-    if (result) {
+    try {
+      await itineraryTemplatesApi.delete(template.id);
       toast.success('Template deleted');
       setRefreshKey((k) => k + 1);
-    } else {
-      toast.error('Failed to delete template');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to delete template'));
+    }
+  }
+
+  function resetNewTemplate() {
+    setTplTitle('');
+    setTplDestination('');
+    setTplCategory('');
+    setTplDescription('');
+    setTplDays(3);
+    setTplOutline(['', '', '']);
+    setTplErrors({});
+  }
+
+  function changeTemplateDays(raw: string) {
+    const n = Math.floor(Number(raw));
+    if (!Number.isFinite(n)) return;
+    const days = Math.min(MAX_TEMPLATE_DAYS, Math.max(1, n));
+    setTplDays(days);
+    setTplOutline((prev) => Array.from({ length: days }, (_, i) => prev[i] ?? ''));
+    setTplErrors((e) => ({ ...e, days: undefined }));
+  }
+
+  async function handleSaveTemplate() {
+    const errors: { title?: string; days?: string } = {};
+    if (!tplTitle.trim()) errors.title = 'Enter a template name';
+    if (!Number.isInteger(tplDays) || tplDays < 1) errors.days = 'Enter at least 1 day';
+    setTplErrors(errors);
+    if (errors.title || errors.days) {
+      toast.error('Please fix the highlighted fields');
+      return;
+    }
+
+    const templateData = JSON.stringify({
+      days: tplOutline.map((title, i) => ({
+        dayNumber: i + 1,
+        title: title.trim() || `Day ${i + 1}`,
+        description: '',
+        city: tplDestination.trim() || undefined,
+        items: [],
+      })),
+      inclusions: [],
+      exclusions: [],
+      termsConditions: '',
+    });
+
+    setIsSavingTemplate(true);
+    try {
+      await itineraryTemplatesApi.create({
+        title: tplTitle.trim(),
+        description: tplDescription.trim() || null,
+        destination: tplDestination.trim() || null,
+        durationDays: tplDays,
+        category: tplCategory || null,
+        templateData,
+      });
+      toast.success('Template created');
+      setIsNewTemplateOpen(false);
+      resetNewTemplate();
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to create template'));
+    } finally {
+      setIsSavingTemplate(false);
     }
   }
 
@@ -160,9 +210,11 @@ export default function ItineraryTemplatesPage() {
       key: 'createdAt',
       header: 'Created',
       sortable: true,
-      cell: (t) => new Date(t.createdAt).toLocaleDateString('en-IN'),
+      cell: (t) => formatDisplayDate(t.createdAt),
     },
   ];
+
+  const previewDays = selectedTemplate ? templateDays(selectedTemplate) : [];
 
   return (
     <>
@@ -171,10 +223,13 @@ export default function ItineraryTemplatesPage() {
         description="Reusable itinerary blueprints you can turn into new itineraries."
         getRowId={(t) => t.id}
         refreshKey={refreshKey}
+        primaryAction={
+          <Button onClick={() => { resetNewTemplate(); setIsNewTemplateOpen(true); }}>
+            <Plus className="mr-ds-1" aria-hidden="true" /> New template
+          </Button>
+        }
         fetcher={({ page, limit, search }) =>
-          client.get<ApiResponse<PaginatedResponse<ItineraryTemplate>>>(API_ENDPOINTS.itineraryTemplates.list, {
-            params: { page, limit, search: search || undefined },
-          })
+          itineraryTemplatesApi.list({ page, limit, search: search || undefined })
         }
         columns={columns}
         searchPlaceholder="Search templates…"
@@ -231,7 +286,7 @@ export default function ItineraryTemplatesPage() {
                 confirmLabel: 'Delete',
               });
               if (!ok) return;
-              await Promise.all(rows.map((r) => deleteTemplate(r.id)));
+              await Promise.all(rows.map((r) => itineraryTemplatesApi.delete(r.id).catch(() => null)));
               toast.success('Templates deleted');
               setRefreshKey((k) => k + 1);
             },
@@ -240,12 +295,9 @@ export default function ItineraryTemplatesPage() {
         onExport={async (rows) => {
           try {
             // Export the full filtered dataset, not just the loaded page.
-            const res = await client.get<ApiResponse<PaginatedResponse<ItineraryTemplate>>>(
-              API_ENDPOINTS.itineraryTemplates.list,
-              { params: { page: 1, limit: 1000 } },
-            );
-            const all = res.data?.data ?? rows;
-            exportTemplatesCsv(all);
+            const res = await itineraryTemplatesApi.list({ page: 1, limit: 1000 });
+            const all = unwrapList<ItineraryTemplate>(res).data;
+            exportTemplatesCsv(all.length > 0 ? all : rows);
             toast.success('Templates exported');
           } catch {
             exportTemplatesCsv(rows);
@@ -266,6 +318,7 @@ export default function ItineraryTemplatesPage() {
             <>
               <DialogHeader>
                 <DialogTitle>{selectedTemplate.title}</DialogTitle>
+                <DialogDescription className="sr-only">Template preview</DialogDescription>
               </DialogHeader>
               <div className="space-y-ds-4">
                 {selectedTemplate.description && (
@@ -284,9 +337,19 @@ export default function ItineraryTemplatesPage() {
                   </div>
                   <div>
                     <span className="text-ds-foreground-muted">Days planned:</span>
-                    <p className="font-medium">{selectedTemplate.templateData?.days?.length ?? 0} day items</p>
+                    <p className="font-medium">{previewDays.length} day items</p>
                   </div>
                 </div>
+                {previewDays.length > 0 && (
+                  <ol className="max-h-48 space-y-ds-1 overflow-y-auto text-sm">
+                    {previewDays.map((d, i) => (
+                      <li key={i} className="flex gap-ds-2">
+                        <span className="w-14 shrink-0 text-ds-foreground-muted">Day {d.dayNumber ?? i + 1}</span>
+                        <span className="min-w-0 truncate">{d.title || '—'}</span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setSelectedTemplate(null)}>
@@ -307,10 +370,17 @@ export default function ItineraryTemplatesPage() {
       </Dialog>
 
       {/* Create from template dialog */}
-      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+      <Dialog
+        open={isCreateDialogOpen}
+        onOpenChange={(open) => {
+          setIsCreateDialogOpen(open);
+          if (!open) setNewLeadId(null);
+        }}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Create Itinerary from Template</DialogTitle>
+            <DialogDescription className="sr-only">Choose a title and a lead for the new itinerary</DialogDescription>
           </DialogHeader>
           <div className="space-y-ds-4">
             <p className="text-sm text-ds-foreground-muted">
@@ -326,16 +396,8 @@ export default function ItineraryTemplatesPage() {
               />
             </div>
             <div className="space-y-ds-2">
-              <Label htmlFor="newLead">Link to lead *</Label>
-              <Combobox
-                options={leadOptions}
-                value={newLeadId}
-                onValueChange={setNewLeadId}
-                onSearch={setLeadSearch}
-                placeholder="Search leads by name…"
-                searchPlaceholder="Search leads…"
-                emptyText="No leads found"
-              />
+              <Label>Link to lead *</Label>
+              <LeadCombobox value={newLeadId} onChange={setNewLeadId} required aria-label="Link to lead" />
             </div>
           </div>
           <DialogFooter>
@@ -343,15 +405,115 @@ export default function ItineraryTemplatesPage() {
               variant="outline"
               onClick={() => {
                 setIsCreateDialogOpen(false);
-                setNewLeadId('');
-                setLeadSearch('');
+                setNewLeadId(null);
               }}
               disabled={isCreating}
             >
               Cancel
             </Button>
-            <Button onClick={handleCreateFromTemplate} disabled={isCreating}>
+            <Button onClick={() => void handleCreateFromTemplate()} disabled={isCreating}>
               {isCreating ? 'Creating…' : 'Create itinerary'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* New template dialog */}
+      <Dialog open={isNewTemplateOpen} onOpenChange={(open) => { if (!isSavingTemplate) setIsNewTemplateOpen(open); }}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>New itinerary template</DialogTitle>
+            <DialogDescription>
+              Outline the days now. You can price each day when you create an itinerary from the template.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-ds-4">
+            <div className="space-y-ds-2">
+              <Label htmlFor="tplTitle">Template name *</Label>
+              <Input
+                id="tplTitle"
+                value={tplTitle}
+                onChange={(e) => { setTplTitle(e.target.value); setTplErrors((er) => ({ ...er, title: undefined })); }}
+                placeholder="e.g. Kerala Backwaters & Hills - 5N/6D"
+                aria-invalid={tplErrors.title ? true : undefined}
+              />
+              {tplErrors.title && <p role="alert" className="text-xs text-ds-danger">{tplErrors.title}</p>}
+            </div>
+            <div className="grid gap-ds-4 sm:grid-cols-2">
+              <div className="space-y-ds-2">
+                <Label htmlFor="tplDestination">Destination</Label>
+                <Input
+                  id="tplDestination"
+                  value={tplDestination}
+                  onChange={(e) => setTplDestination(e.target.value)}
+                  placeholder="e.g. Kerala"
+                />
+              </div>
+              <div className="space-y-ds-2">
+                <Label htmlFor="tplCategory">Category</Label>
+                <Select value={tplCategory} onValueChange={(v) => setTplCategory(v as ItineraryTemplateCategory)}>
+                  <SelectTrigger id="tplCategory"><SelectValue placeholder="Choose a category" /></SelectTrigger>
+                  <SelectContent>
+                    {ITINERARY_TEMPLATE_CATEGORIES.map((c) => (
+                      <SelectItem key={c} value={c} className="capitalize">{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-ds-2">
+              <Label htmlFor="tplDescription">Description</Label>
+              <Textarea
+                id="tplDescription"
+                value={tplDescription}
+                onChange={(e) => setTplDescription(e.target.value)}
+                placeholder="What makes this package special?"
+                rows={2}
+              />
+            </div>
+            <div className="space-y-ds-2">
+              <div className="flex items-end gap-ds-3">
+                <div className="w-32 space-y-ds-2">
+                  <Label htmlFor="tplDays">Days *</Label>
+                  <Input
+                    id="tplDays"
+                    type="number"
+                    min={1}
+                    max={MAX_TEMPLATE_DAYS}
+                    value={tplDays}
+                    onChange={(e) => changeTemplateDays(e.target.value)}
+                    aria-invalid={tplErrors.days ? true : undefined}
+                  />
+                </div>
+                <p className="pb-ds-2 text-sm text-ds-foreground-muted">
+                  {Math.max(0, tplDays - 1)} nights / {tplDays} days
+                </p>
+              </div>
+              {tplErrors.days && <p role="alert" className="text-xs text-ds-danger">{tplErrors.days}</p>}
+            </div>
+            <div className="space-y-ds-2">
+              <Label>Day outline</Label>
+              <div className="max-h-56 space-y-ds-2 overflow-y-auto pr-ds-1">
+                {tplOutline.map((title, i) => (
+                  <div key={i} className="flex items-center gap-ds-2">
+                    <span className="w-14 shrink-0 text-sm text-ds-foreground-muted">Day {i + 1}</span>
+                    <Input
+                      value={title}
+                      onChange={(e) => setTplOutline((prev) => prev.map((t, j) => (j === i ? e.target.value : t)))}
+                      placeholder={i === 0 ? 'e.g. Arrive and transfer to hotel' : `Day ${i + 1} title`}
+                      aria-label={`Day ${i + 1} title`}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsNewTemplateOpen(false)} disabled={isSavingTemplate}>
+              Cancel
+            </Button>
+            <Button onClick={() => void handleSaveTemplate()} disabled={isSavingTemplate}>
+              {isSavingTemplate ? 'Saving…' : 'Create template'}
             </Button>
           </DialogFooter>
         </DialogContent>

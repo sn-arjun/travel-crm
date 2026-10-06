@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import {
-  Mail, MessageCircle, Phone, Send, Loader2, ChevronRight, Eye, ArrowLeft, FileText,
+  Mail, MessageCircle, Phone, Send, Loader2, ChevronRight, Eye, ArrowLeft, FileText, TriangleAlert,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,11 +13,11 @@ import { Separator } from '@/components/ui/separator';
 import {
   Dialog, DialogContent, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 
 import { cn } from '@/lib/utils';
 import { communicationsApi } from '@/lib/api/communications';
+import { useAuthStore } from '@/stores/auth-store';
 import { toast } from 'sonner';
 
 /* ─── Template types ─── */
@@ -29,19 +29,31 @@ interface MessageTemplate {
   subject?: string;
   content: string;
   variables?: string[];
+  /** Hidden unless the caller supplies this variable (e.g. a share link). */
+  requires?: 'share_link';
 }
+
+/** Values a caller can supply for template placeholders. Anything omitted stays as `{{name}}`. */
+export type MessageVariableName =
+  | 'customer_name' | 'first_name' | 'company_name' | 'agent_name'
+  | 'destination' | 'travel_date' | 'return_date' | 'pax_count' | 'amount'
+  | 'share_link';
+
+export type MessageVariables = Partial<Record<MessageVariableName, string>>;
 
 /* ─── Local fallback templates (used when API templates not available) ─── */
 const LOCAL_TEMPLATES: MessageTemplate[] = [
   // Email
   { id: 'tpl-welcome-email', name: 'Welcome Email', channel: 'email', category: 'greeting', subject: 'Welcome to {{company_name}}!', content: 'Dear {{customer_name}},\n\nWelcome to our travel services! We\'re excited to help you plan your perfect trip.\n\nBest regards,\n{{agent_name}}', variables: ['customer_name', 'company_name', 'agent_name'] },
   { id: 'tpl-followup-email', name: 'Follow-up Email', channel: 'email', category: 'follow_up', subject: 'Following up on your travel inquiry', content: 'Hi {{customer_name}},\n\nI wanted to follow up on your recent inquiry about {{destination}}. We have some great packages available for your travel dates.\n\nWould you like to schedule a call to discuss the details?\n\nBest,\n{{agent_name}}', variables: ['customer_name', 'destination', 'agent_name'] },
-  { id: 'tpl-quotation-email', name: 'Quotation Email', channel: 'email', category: 'quotation', subject: 'Your Travel Quote - {{destination}}', content: 'Dear {{customer_name}},\n\nThank you for your interest in traveling to {{destination}}. Please find below our quotation:\n\nPackage: {{destination}} Trip\nTravel Date: {{travel_date}}\nPassengers: {{pax_count}}\nTotal Amount: {{amount}}\n\nThis quote is valid for 7 days. Please let us know if you\'d like to proceed.\n\nRegards,\n{{agent_name}}', variables: ['customer_name', 'destination', 'travel_date', 'pax_count', 'amount', 'agent_name'] },
+  { id: 'tpl-quotation-email', name: 'Quotation Email', channel: 'email', category: 'quotation', subject: 'Your Travel Quote - {{destination}}', content: 'Dear {{customer_name}},\n\nThank you for your interest in traveling to {{destination}}. Please find below our quotation:\n\nPackage: {{destination}} Trip\nTravel Date: {{travel_date}}\nPassengers: {{pax_count}}\nTotal Amount: {{amount}}\nDay-by-day plan: {{share_link}}\n\nThis quote is valid for 7 days. Please let us know if you\'d like to proceed.\n\nRegards,\n{{agent_name}}\n{{company_name}}', variables: ['customer_name', 'destination', 'travel_date', 'pax_count', 'amount', 'agent_name', 'company_name'] },
+  { id: 'tpl-itinerary-email', name: 'Itinerary Link Email', channel: 'email', category: 'quotation', subject: 'Your {{destination}} itinerary from {{company_name}}', content: 'Hi {{customer_name}},\n\nYour {{destination}} itinerary is ready. You can view the day-by-day plan here:\n{{share_link}}\n\nTotal package price: {{amount}}\n\nWarm regards,\n{{agent_name}}\n{{company_name}}', variables: ['customer_name', 'destination', 'share_link', 'amount', 'agent_name', 'company_name'], requires: 'share_link' },
   { id: 'tpl-booking-email', name: 'Booking Confirmation', channel: 'email', category: 'booking', subject: 'Booking Confirmed - {{destination}}', content: 'Dear {{customer_name}},\n\nYour booking for {{destination}} has been confirmed!\n\nTravel Date: {{travel_date}}\nReturn Date: {{return_date}}\nPassengers: {{pax_count}}\n\nWe will send you the detailed itinerary shortly.\n\nHappy travels!\n{{agent_name}}', variables: ['customer_name', 'destination', 'travel_date', 'return_date', 'pax_count', 'agent_name'] },
   { id: 'tpl-reminder-email', name: 'Payment Reminder', channel: 'email', category: 'reminder', subject: 'Payment Reminder - {{destination}} Trip', content: 'Dear {{customer_name}},\n\nThis is a friendly reminder that your payment of {{amount}} for the {{destination}} trip is due.\n\nPlease make the payment at your earliest convenience.\n\nThank you,\n{{agent_name}}', variables: ['customer_name', 'amount', 'destination', 'agent_name'] },
   // WhatsApp
   { id: 'tpl-welcome-wa', name: 'Welcome WhatsApp', channel: 'whatsapp', category: 'greeting', content: 'Hi {{first_name}}! Welcome to {{company_name}}. We\'re thrilled to help you plan your dream vacation. How can we assist you today?', variables: ['first_name', 'company_name'] },
   { id: 'tpl-followup-wa', name: 'Follow-up WhatsApp', channel: 'whatsapp', category: 'follow_up', content: 'Hi {{first_name}}, just following up on your inquiry about {{destination}}. We have some amazing deals available! Would you like to know more?', variables: ['first_name', 'destination'] },
+  { id: 'tpl-itinerary-wa', name: 'Itinerary Link WhatsApp', channel: 'whatsapp', category: 'quotation', content: 'Hi {{first_name}}, your {{destination}} itinerary from {{company_name}} is ready: {{share_link}}\nPackage price: {{amount}}', variables: ['first_name', 'destination', 'company_name', 'share_link', 'amount'], requires: 'share_link' },
   { id: 'tpl-booking-wa', name: 'Booking Confirmation WA', channel: 'whatsapp', category: 'booking', content: 'Hi {{first_name}}! Great news - your {{destination}} trip is confirmed for {{travel_date}}. We\'ll share the complete itinerary soon. Happy travels!', variables: ['first_name', 'destination', 'travel_date'] },
   { id: 'tpl-reminder-wa', name: 'Payment Reminder WA', channel: 'whatsapp', category: 'reminder', content: 'Hi {{first_name}}, a gentle reminder about your pending payment of {{amount}} for the {{destination}} trip. Please let us know if you have any questions.', variables: ['first_name', 'amount', 'destination'] },
   // SMS
@@ -49,6 +61,47 @@ const LOCAL_TEMPLATES: MessageTemplate[] = [
   { id: 'tpl-reminder-sms', name: 'Payment Reminder SMS', channel: 'sms', category: 'reminder', content: 'Reminder: Payment of {{amount}} due for {{destination}} trip. Contact us for details.', variables: ['amount', 'destination'] },
   { id: 'tpl-booking-sms', name: 'Booking Confirmed SMS', channel: 'sms', category: 'booking', content: 'Booking confirmed! {{destination}} trip on {{travel_date}} for {{pax_count}} pax. Itinerary coming soon!', variables: ['destination', 'travel_date', 'pax_count'] },
 ];
+
+const PLACEHOLDER_RE = /\{\{\s*([a-z_]+)\s*\}\}/g;
+
+/** Unique `{{name}}` placeholders that are still present in `text`. */
+function findPlaceholders(text: string): string[] {
+  const found = new Set<string>();
+  for (const m of text.matchAll(PLACEHOLDER_RE)) {
+    if (m[1]) found.add(m[1]);
+  }
+  return [...found];
+}
+
+/** Preview body with unresolved `{{name}}` placeholders highlighted. */
+function HighlightedBody({ text }: { text: string }) {
+  const parts = text.split(/(\{\{\s*[a-z_]+\s*\}\})/g);
+  return (
+    <div className="text-sm whitespace-pre-wrap leading-relaxed">
+      {parts.map((part, i) =>
+        /^\{\{/.test(part) ? (
+          <mark key={i} className="rounded-sm bg-ds-warning-subtle px-ds-1 text-ds-warning-on-subtle">{part}</mark>
+        ) : (
+          <React.Fragment key={i}>{part}</React.Fragment>
+        ),
+      )}
+    </div>
+  );
+}
+
+function PlaceholderWarning({ count }: { count: number }) {
+  if (count === 0) return null;
+  return (
+    <div
+      role="status"
+      data-testid="placeholder-warning"
+      className="flex items-center gap-ds-2 rounded-md bg-ds-warning-subtle px-ds-3 py-ds-2 text-xs text-ds-warning-on-subtle"
+    >
+      <TriangleAlert className="size-4 shrink-0" aria-hidden="true" />
+      <span>{count} {count === 1 ? 'placeholder needs a value' : 'placeholders need values'}</span>
+    </div>
+  );
+}
 
 /* ─── Props ─── */
 export interface SendMessageDialogProps {
@@ -62,17 +115,27 @@ export interface SendMessageDialogProps {
   };
   /** Pre-select a channel */
   defaultChannel?: 'email' | 'whatsapp' | 'sms';
+  /**
+   * Values for template placeholders (destination, dates, amount, share link ...).
+   * `customer_name` / `first_name` default to the contact, `company_name` to the tenant
+   * and `agent_name` to the signed-in user. Unresolved placeholders stay as `{{name}}`.
+   */
+  variables?: MessageVariables;
 }
 
 type Step = 'channel' | 'template' | 'compose' | 'preview';
 
-export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel }: SendMessageDialogProps) {
+export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel, variables }: SendMessageDialogProps) {
   const [step, setStep] = React.useState<Step>(defaultChannel ? 'template' : 'channel');
   const [channel, setChannel] = React.useState<'email' | 'whatsapp' | 'sms'>(defaultChannel ?? 'email');
   const [selectedTemplate, setSelectedTemplate] = React.useState<MessageTemplate | null>(null);
   const [subject, setSubject] = React.useState('');
   const [body, setBody] = React.useState('');
   const [isSending, setIsSending] = React.useState(false);
+
+  const tenant = useAuthStore((s) => s.tenant);
+  const user = useAuthStore((s) => s.user);
+  const tenantName = tenant?.name ?? (tenant as { companyName?: string } | null)?.companyName;
 
   // Reset when dialog opens/closes
   React.useEffect(() => {
@@ -85,22 +148,34 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel 
     }
   }, [open, defaultChannel]);
 
-  const channelTemplates = LOCAL_TEMPLATES.filter((t) => t.channel === channel);
+  const values = React.useMemo<MessageVariables>(() => {
+    const merged: MessageVariables = {
+      customer_name: contact.name,
+      first_name: contact.name.split(' ')[0] ?? contact.name,
+      company_name: tenantName,
+      agent_name: user?.name,
+      ...variables,
+    };
+    // Drop blanks so they stay as visible placeholders instead of empty text
+    for (const key of Object.keys(merged) as MessageVariableName[]) {
+      if (!merged[key]?.trim()) delete merged[key];
+    }
+    return merged;
+  }, [contact.name, tenantName, user?.name, variables]);
+
+  const channelTemplates = LOCAL_TEMPLATES.filter(
+    (t) => t.channel === channel && (!t.requires || !!values[t.requires]),
+  );
 
   function substituteVariables(text: string): string {
-    const firstName = contact.name.split(' ')[0] ?? contact.name;
-    return text
-      .replace(/\{\{customer_name\}\}/g, contact.name)
-      .replace(/\{\{first_name\}\}/g, firstName)
-      .replace(/\{\{company_name\}\}/g, 'TravelCRM')
-      .replace(/\{\{agent_name\}\}/g, 'Your Travel Agent')
-      .replace(/\{\{destination\}\}/g, '[Destination]')
-      .replace(/\{\{travel_date\}\}/g, '[Travel Date]')
-      .replace(/\{\{return_date\}\}/g, '[Return Date]')
-      .replace(/\{\{pax_count\}\}/g, '[Pax Count]')
-      .replace(/\{\{amount\}\}/g, '[Amount]')
-      .replace(/\{\{[^}]+\}\}/g, '[...]');
+    // A line that exists to carry the share link is dropped when there is no link
+    const lines = values.share_link
+      ? text
+      : text.split('\n').filter((line) => !line.includes('{{share_link}}')).join('\n');
+    return lines.replace(PLACEHOLDER_RE, (whole, name: string) => values[name as MessageVariableName] ?? whole);
   }
+
+  const unresolvedCount = findPlaceholders(`${channel === 'email' ? subject : ''}\n${body}`).length;
 
   function selectChannel(ch: 'email' | 'whatsapp' | 'sms') {
     setChannel(ch);
@@ -149,8 +224,10 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel 
       });
       toast.success(`${channel === 'email' ? 'Email' : channel === 'whatsapp' ? 'WhatsApp message' : 'SMS'} sent via Communication Hub`);
       onOpenChange(false);
-    } catch (err: any) {
-      toast.error(err?.message || `Failed to send ${channel}`);
+    } catch (err) {
+      // The API client throws plain `{ status, message }` objects, not Error instances
+      const message = err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message) : '';
+      toast.error(message || `Failed to send ${channel}`);
     } finally {
       setIsSending(false);
     }
@@ -177,22 +254,27 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel 
         {/* Header */}
         <div className="flex items-center gap-3 px-6 pt-6 pb-3">
           {step !== 'channel' && (
-            <Button variant="ghost" size="icon-sm" onClick={() => {
-              if (step === 'template') setStep('channel');
-              else if (step === 'compose') setStep('template');
-              else if (step === 'preview') setStep('compose');
-            }}>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Back"
+              onClick={() => {
+                if (step === 'template') setStep('channel');
+                else if (step === 'compose') setStep('template');
+                else if (step === 'preview') setStep('compose');
+              }}
+            >
               <ArrowLeft className="h-4 w-4" />
             </Button>
           )}
-          <div>
+          <div className="min-w-0">
             <DialogTitle className="text-base">
               {step === 'channel' && 'Send Message'}
               {step === 'template' && `Choose Template`}
               {step === 'compose' && `Compose ${channelLabel[channel]}`}
               {step === 'preview' && `Preview & Send`}
             </DialogTitle>
-            <DialogDescription className="text-xs">
+            <DialogDescription className="text-xs truncate">
               To: {contact.name} {channel !== 'email' && contact.phone ? `(${contact.phone})` : ''} {channel === 'email' && contact.email ? `(${contact.email})` : ''}
             </DialogDescription>
           </div>
@@ -213,7 +295,7 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel 
                   canSendEmail ? 'hover:bg-accent cursor-pointer' : 'opacity-50 cursor-not-allowed',
                 )}
               >
-                <div className="h-10 w-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+                <div className="h-10 w-10 rounded-full bg-ds-info-subtle text-ds-info-on-subtle flex items-center justify-center shrink-0">
                   <Mail className="h-5 w-5" />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -231,7 +313,7 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel 
                   canSendPhone ? 'hover:bg-accent cursor-pointer' : 'opacity-50 cursor-not-allowed',
                 )}
               >
-                <div className="h-10 w-10 rounded-full bg-green-100 text-green-600 flex items-center justify-center shrink-0">
+                <div className="h-10 w-10 rounded-full bg-ds-success-subtle text-ds-success-on-subtle flex items-center justify-center shrink-0">
                   <MessageCircle className="h-5 w-5" />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -249,7 +331,7 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel 
                   canSendPhone ? 'hover:bg-accent cursor-pointer' : 'opacity-50 cursor-not-allowed',
                 )}
               >
-                <div className="h-10 w-10 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center shrink-0">
+                <div className="h-10 w-10 rounded-full bg-ds-primary-subtle text-ds-primary-on-subtle flex items-center justify-center shrink-0">
                   <Phone className="h-5 w-5" />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -303,9 +385,9 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel 
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="text-sm font-medium">{tpl.name}</p>
-                          <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{substituteVariables(tpl.content).slice(0, 120)}...</p>
+                          <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{substituteVariables(tpl.content).replace(/\s+/g, ' ').slice(0, 120)}...</p>
                         </div>
-                        <Badge variant="secondary" className="text-[10px] shrink-0 capitalize">{tpl.category.replace('_', ' ')}</Badge>
+                        <Badge variant="secondary" className="text-xs shrink-0 capitalize">{tpl.category.replace('_', ' ')}</Badge>
                       </div>
                     </CardContent>
                   </Card>
@@ -324,7 +406,7 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel 
               {selectedTemplate && (
                 <>
                   <span className="mx-1">-</span>
-                  <Badge variant="secondary" className="text-[10px]">{selectedTemplate.name}</Badge>
+                  <Badge variant="secondary" className="text-xs">{selectedTemplate.name}</Badge>
                 </>
               )}
             </div>
@@ -352,11 +434,13 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel 
                 className="resize-none"
               />
               {channel === 'sms' && (
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   {body.length}/160 characters ({Math.ceil(body.length / 160) || 1} segment{Math.ceil(body.length / 160) > 1 ? 's' : ''})
                 </p>
               )}
             </div>
+
+            <PlaceholderWarning count={unresolvedCount} />
 
             <DialogFooter className="pt-2">
               <Button variant="outline" onClick={() => setStep('template')}>Back</Button>
@@ -385,18 +469,20 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel 
                   </span>
                 </div>
                 {channel === 'email' && subject && (
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-3">
                     <span className="text-xs text-muted-foreground">Subject</span>
-                    <span className="text-sm font-medium">{subject}</span>
+                    <span className="text-sm font-medium text-right">{subject}</span>
                   </div>
                 )}
                 <Separator />
-                <div className="text-sm whitespace-pre-wrap leading-relaxed">{body}</div>
+                <HighlightedBody text={body} />
               </CardContent>
             </Card>
 
+            <PlaceholderWarning count={unresolvedCount} />
+
             <p className="text-xs text-muted-foreground">
-              This message will be sent via the Communication Hub and logged in the contact's activity timeline.
+              This message will be sent via the Communication Hub and logged in the contact&apos;s activity timeline.
             </p>
 
             <DialogFooter className="pt-2">

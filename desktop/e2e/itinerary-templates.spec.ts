@@ -239,3 +239,28 @@ test.describe('Itinerary Templates', () => {
     expect(await page.locator(RAW_MESSAGING_ANCHORS).count()).toBe(0);
   });
 });
+
+test.describe('Itinerary Templates — create', () => {
+  test('New template creates a template that is listed and previews its day outline', async ({ page }) => {
+    const title = `Fresh Template ${Date.now()}`;
+    await page.goto('/itineraries/templates');
+    await waitForLoad(page);
+
+    await page.getByRole('button', { name: /new template/i }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.locator('#tplTitle').fill(title);
+    await dialog.locator('#tplDestination').fill('Coorg');
+    await dialog.locator('#tplDays').fill('2');
+    await dialog.getByLabel('Day 1 title').fill('Arrive in Madikeri');
+    await dialog.getByRole('button', { name: /create template/i }).click();
+    await expect(page.locator('text=Template created').first()).toBeVisible({ timeout: 10_000 });
+
+    await searchList(page, title);
+    const row = page.locator(`table tbody tr:has-text("${title}")`).first();
+    await expect(row).toBeVisible({ timeout: 10_000 });
+    await expect(row).toContainText('2 days');
+    await row.click();
+    await expect(page.getByRole('dialog').getByText('2 day items')).toBeVisible();
+    await expect(page.getByRole('dialog').getByText('Arrive in Madikeri')).toBeVisible();
+  });
+});

@@ -1,6 +1,7 @@
 import { test, expect } from './fixtures';
 import { waitForLoad } from './helpers/auth';
-import { seedContact, seedLead, seedItinerary, api } from './helpers/api-seed';
+import { pickDate } from './helpers/date-picker';
+import { seedContact, seedLead, seedItinerary, seedRateCard, api } from './helpers/api-seed';
 
 // ---------------------------------------------------------------------------
 // Full round trip: create via form -> list -> detail -> edit prefill -> edit
@@ -37,7 +38,7 @@ test.describe('Itinerary — full lifecycle via form UI', () => {
     await leadOption.first().click();
 
     // Valid until date
-    await page.locator('#validity').fill(new Date(Date.now() + 86400000 * 10).toISOString().split('T')[0]!);
+    await pickDate(page, page.locator('#validity'), new Date(Date.now() + 86400000 * 10));
     await page.locator('#desc').fill('E2E full lifecycle description');
 
     // Add an activity to day 1 so cost/selling totals are non-trivial
@@ -76,8 +77,10 @@ test.describe('Itinerary — full lifecycle via form UI', () => {
     await expect(page.getByRole('button', { name: /edit/i }).first()).toBeVisible();
     await expect(page.getByRole('button', { name: /email/i }).first()).toBeVisible();
     await expect(page.getByRole('button', { name: /whatsapp/i }).first()).toBeVisible();
-    await expect(page.getByRole('button', { name: /preview pdf/i }).first()).toBeVisible();
-    await expect(page.getByRole('button', { name: /download pdf/i }).first()).toBeVisible();
+    await page.getByRole('button', { name: /more/i }).click();
+    await expect(page.getByRole('menuitem', { name: /preview pdf/i })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: /download pdf/i })).toBeVisible();
+    await page.keyboard.press('Escape');
 
     // No direct mailto/wa.me/tel links anywhere on the detail page
     expect(await page.locator('a[href^="mailto:"]').count()).toBe(0);
@@ -127,8 +130,9 @@ test.describe('Itinerary — full lifecycle via form UI', () => {
     // ── DELETE from detail page ──
     await page.goto(`/itineraries/${itineraryId}`);
     await waitForLoad(page);
-    page.on('dialog', (dialog) => dialog.accept());
-    await page.getByRole('button', { name: /^delete$/i }).click();
+    await page.getByRole('button', { name: /more/i }).click();
+    await page.getByRole('menuitem', { name: /^delete$/i }).click();
+    await page.getByRole('dialog').getByRole('button', { name: /^delete$/i }).click();
     await page.waitForURL('**/itineraries', { timeout: 10_000 });
     await waitForLoad(page);
 
@@ -304,8 +308,8 @@ test.describe('Itinerary — versions, clone, share link, PDF', () => {
     await page.goto(`/itineraries/${itinerary.id}`);
     await waitForLoad(page);
 
-    const cloneBtn = page.getByRole('button', { name: /duplicate/i }).first();
-    await cloneBtn.click();
+    await page.getByRole('button', { name: /more/i }).click();
+    await page.getByRole('menuitem', { name: /duplicate/i }).click();
     await page.waitForURL((url) => /\/itineraries\/[^/]+$/.test(url.pathname) && !url.pathname.endsWith(`/${itinerary.id}`), { timeout: 10_000 });
     await waitForLoad(page);
     expect(page.url()).not.toContain(itinerary.id);
@@ -353,8 +357,9 @@ test.describe('Itinerary — versions, clone, share link, PDF', () => {
 
     await page.goto(`/itineraries/${itinerary.id}`);
     await waitForLoad(page);
-    await expect(page.getByRole('button', { name: /preview pdf/i })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole('button', { name: /download pdf/i })).toBeVisible();
+    await page.getByRole('button', { name: /more/i }).click();
+    await expect(page.getByRole('menuitem', { name: /preview pdf/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('menuitem', { name: /download pdf/i })).toBeVisible();
   });
 });
 
@@ -393,5 +398,51 @@ test.describe('Itinerary builder — Lead relation combobox', () => {
     await waitForLoad(page);
 
     await expect(page.getByText(new RegExp(lead.title)).first()).toBeVisible({ timeout: 10_000 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rate-card picker (real names and prices) and quotation placeholders
+// ---------------------------------------------------------------------------
+
+test.describe('Itinerary — rate cards and quotation email', () => {
+  test('edit page: rate card picker shows real name and prices and applies them', async ({ page }) => {
+    const contact = await seedContact();
+    const lead = await seedLead(contact.id);
+    const itinerary = await seedItinerary(lead.id);
+    const rcName = `Kathakali Show ${Date.now()}`;
+    await seedRateCard({ name: rcName, serviceType: 'activity', destination: 'Kochi', costPrice: 450, sellingPrice: 650 });
+
+    await page.goto(`/itineraries/${itinerary.id}/edit`);
+    await waitForLoad(page);
+    await page.getByRole('button', { name: 'Activity', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Select from Rate Card' }).last().click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByPlaceholder(/search rate cards/i).fill(rcName);
+    const row = dialog.locator('li').filter({ hasText: rcName });
+    await expect(row).toBeVisible({ timeout: 10_000 });
+    await expect(row).toContainText('₹450');
+    await expect(row).toContainText('₹650');
+    await expect(row).not.toContainText('N/A');
+    await row.getByRole('button', { name: 'Select' }).click();
+    await expect(page.locator('text=Rate card applied').first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByLabel('Activity name').last()).toHaveValue(rcName);
+  });
+
+  test('quotation email from the Share tab has no placeholder text', async ({ page }) => {
+    const contact = await seedContact({ email: 'quote-client@example.com' });
+    const lead = await seedLead(contact.id);
+    const itinerary = await seedItinerary(lead.id);
+
+    await page.goto(`/itineraries/${itinerary.id}`);
+    await waitForLoad(page);
+    await page.getByRole('tab', { name: /share/i }).click();
+    await page.getByRole('button', { name: /send via email/i }).click();
+    await page.getByText('Quotation Email', { exact: true }).click();
+    const body = await page.locator('#msg-body').inputValue();
+    const subject = await page.locator('#msg-subject').inputValue();
+    expect(`${subject}\n${body}`).not.toMatch(/\[[A-Za-z ]+\]/);
+    expect(body).not.toContain('{{amount}}');
+    expect(body).toContain('₹');
   });
 });

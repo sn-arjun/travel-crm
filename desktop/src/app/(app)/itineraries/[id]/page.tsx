@@ -2,168 +2,222 @@
 
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Mail, MessageSquare, Copy, Download, MapPin, Calendar, Users, DollarSign, Loader2, Trash2, Plus, Link2, Link2Off, ExternalLink, Eye, Pencil, FileText } from 'lucide-react';
+import {
+  Mail, MessageSquare, Copy, Download, MapPin, Calendar, Users, Loader2, Trash2, Plus, Link2, Link2Off,
+  Eye, Pencil, FileText, MoreHorizontal,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { cn } from '@/lib/utils';
-import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { itinerariesApi } from '@/lib/api/itineraries';
-import { SendMessageDialog } from '@/components/communication/send-message-dialog';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { useConfirm } from '@/components/ui/confirm-dialog';
+import { PageContainer } from '@/components/layout/page-container';
+import { PageHeader } from '@/components/layout/page-header';
+import { cn, formatCurrency } from '@/lib/utils';
+import { useApiQuery } from '@/hooks/use-api';
+import {
+  itinerariesApi, toItineraryDetail, formatDestination, errorMessage,
+  type ItineraryItem, type ItineraryVersion,
+} from '@/lib/api/itineraries';
+import { leadsApi } from '@/lib/api/leads';
+import { unwrapEntity, unwrapList } from '@/lib/api/envelope';
+import { formatDisplayDate, parseLocalDate } from '@/lib/dates';
+import {
+  SendMessageDialog, type MessageVariables,
+} from '@/components/communication/send-message-dialog';
 import { useAuthStore } from '@/stores/auth-store';
 import { API_BASE_URL } from '@/lib/api/config';
-import type { Itinerary } from '@travelcrm/shared';
 
+/** Trip facts the itinerary borrows from its lead. */
+interface LeadTrip {
+  destinations?: string[];
+  destination?: unknown;
+  travelDate?: string | null;
+  returnDate?: string | null;
+  paxAdults?: number;
+  paxChildren?: number;
+  paxInfants?: number;
+}
+
+type VersionRow = ItineraryVersion & { version?: number; version_number?: number };
+
+interface ItemDetails {
+  hotelName?: string;
+  airline?: string;
+  activityName?: string;
+  restaurantName?: string;
+  checkInDate?: string;
+  checkOutDate?: string;
+  departureAirport?: string;
+  arrivalAirport?: string;
+  pickupLocation?: string;
+  dropLocation?: string;
+  duration?: string;
+}
+
+const STATUS_STYLES: Record<string, string> = {
+  draft: 'bg-ds-surface-sunken text-ds-foreground-muted',
+  sent: 'bg-ds-info-subtle text-ds-info-on-subtle',
+  approved: 'bg-ds-success-subtle text-ds-success-on-subtle',
+  rejected: 'bg-ds-danger-subtle text-ds-danger-on-subtle',
+  expired: 'bg-ds-warning-subtle text-ds-warning-on-subtle',
+};
 
 function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    draft: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
-    sent: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    approved: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-    rejected: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-  };
-  return <Badge className={cn('border-transparent text-[11px]', styles[status])}>{status.charAt(0).toUpperCase() + status.slice(1)}</Badge>;
+  return (
+    <Badge className={cn('border-transparent text-xs', STATUS_STYLES[status])}>
+      {status.charAt(0).toUpperCase() + status.slice(1)}
+    </Badge>
+  );
+}
+
+function parseDetails(value: string | undefined): ItemDetails {
+  if (!value) return {};
+  try {
+    return JSON.parse(value) as ItemDetails;
+  } catch {
+    return {};
+  }
+}
+
+function describeItem(item: ItineraryItem): { name: string; detail: string } {
+  const d = parseDetails(item.detailsJson);
+  const name = item.title || d.hotelName || d.airline || d.activityName || d.restaurantName || `${item.type} activity`;
+  const detail =
+    d.checkInDate && d.checkOutDate ? `${formatDisplayDate(d.checkInDate)} to ${formatDisplayDate(d.checkOutDate)}`
+    : d.departureAirport && d.arrivalAirport ? `${d.departureAirport} → ${d.arrivalAirport}`
+    : d.pickupLocation && d.dropLocation ? `${d.pickupLocation} → ${d.dropLocation}`
+    : d.duration || '';
+  return { name, detail };
+}
+
+function paxSummary(lead: LeadTrip | null): string | undefined {
+  if (!lead) return undefined;
+  const parts: string[] = [];
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  if (lead.paxAdults) parts.push(plural(lead.paxAdults, 'adult', 'adults'));
+  if (lead.paxChildren) parts.push(plural(lead.paxChildren, 'child', 'children'));
+  if (lead.paxInfants) parts.push(plural(lead.paxInfants, 'infant', 'infants'));
+  return parts.length > 0 ? parts.join(', ') : undefined;
 }
 
 export default function ItineraryDetailPage() {
   const router = useRouter();
   const params = useParams();
   const id = params.id as string;
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   // RBAC: get user role from auth store
-  const user = useAuthStore((s) => s.user);
-  const role = (user as any)?.role ?? '';
+  const role = useAuthStore((s) => s.user?.role ?? '') as string;
   const canSeeCost = role === 'admin' || role === 'sales_manager' || role === 'manager';
 
-  // Send dialog state
   const [sendDialogOpen, setSendDialogOpen] = React.useState(false);
   const [sendChannel, setSendChannel] = React.useState<'email' | 'whatsapp'>('email');
 
-  // Share link state
   const [shareLink, setShareLink] = React.useState<string | null>(null);
   const [shareLinkLoading, setShareLinkLoading] = React.useState(false);
+  const [deleteLoading, setDeleteLoading] = React.useState(false);
+  const [cloneLoading, setCloneLoading] = React.useState(false);
+  const [createVersionLoading, setCreateVersionLoading] = React.useState(false);
 
-  const { data: itinerary, loading, error, refetch } = useApiQuery(
-    () => itinerariesApi.getById(id).then(res => {
-      if (res && typeof res === 'object' && 'data' in res) {
-        return (res as any).data as Itinerary;
-      }
-      return res as Itinerary;
-    }),
+  const { data: itinerary, loading, error } = useApiQuery(
+    () => itinerariesApi.getById(id).then(toItineraryDetail),
     [id],
   );
 
-  const { mutate: deleteItinerary, loading: deleteLoading } = useApiMutation(
-    (itemId: string) => itinerariesApi.delete(itemId),
+  const leadId = itinerary?.leadId;
+  const { data: leadTrip } = useApiQuery<LeadTrip | null>(
+    () => (leadId ? leadsApi.getById(leadId).then((res) => unwrapEntity<LeadTrip>(res)) : Promise.resolve(null)),
+    [leadId],
   );
 
-  const { mutate: cloneItinerary, loading: cloneLoading } = useApiMutation(
-    (itemId: string) => itinerariesApi.clone(itemId, {}).then(res => {
-      if (res && typeof res === 'object' && 'data' in res) {
-        return (res as any).data;
-      }
-      return res;
-    }),
-  );
-
-  // Versions
-  const { data: versionsData, loading: versionsLoading, refetch: refetchVersions } = useApiQuery(
-    () => itinerariesApi.getVersions(id).then(res => {
-      if (res && typeof res === 'object' && 'data' in res) {
-        const d = (res as any).data;
-        if (Array.isArray(d)) return d;
-        if (d && typeof d === 'object' && 'data' in d && Array.isArray(d.data)) return d.data;
-        return [];
-      }
-      return [];
-    }),
+  const { data: versionsData, loading: versionsLoading, refetch: refetchVersions } = useApiQuery<VersionRow[]>(
+    () => itinerariesApi.getVersions(id).then((res) => unwrapList<VersionRow>(res).data),
     [id],
   );
-
   const versions = versionsData ?? [];
 
-  const { mutate: createVersion, loading: createVersionLoading } = useApiMutation(
-    (itemId: string) => itinerariesApi.createNewVersion(itemId, {}).then(res => {
-      if (res && typeof res === 'object' && 'data' in res) {
-        return (res as any).data;
-      }
-      return res;
-    }),
-  );
-
   const handleClone = async () => {
+    setCloneLoading(true);
     try {
-      const result = await cloneItinerary(id);
-      if (result && typeof result === 'object' && 'id' in result) {
+      const result = unwrapEntity<{ id?: string }>(await itinerariesApi.clone(id, {}));
+      if (result?.id) {
         toast.success('Itinerary cloned successfully');
-        router.push(`/itineraries/${(result as any).id}`);
+        router.push(`/itineraries/${result.id}`);
       } else {
         toast.error('Failed to clone itinerary');
       }
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to clone itinerary';
-      toast.error(errorMsg);
+      toast.error(errorMessage(err, 'Failed to clone itinerary'));
+    } finally {
+      setCloneLoading(false);
     }
   };
 
   const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this itinerary? This action cannot be undone.')) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Delete itinerary',
+      description: 'Delete this itinerary? This action cannot be undone.',
+      tone: 'destructive',
+      confirmLabel: 'Delete',
+    });
+    if (!ok) return;
+    setDeleteLoading(true);
     try {
-      await deleteItinerary(id);
+      await itinerariesApi.delete(id);
       toast.success('Itinerary deleted successfully');
       router.push('/itineraries');
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to delete itinerary';
-      toast.error(errorMsg);
+      toast.error(errorMessage(err, 'Failed to delete itinerary'));
+      setDeleteLoading(false);
     }
   };
 
-  // Create new version handler
   const handleCreateVersion = async () => {
+    setCreateVersionLoading(true);
     try {
-      const result = await createVersion(id);
-      if (result && typeof result === 'object' && 'id' in result) {
-        toast.success('New version created');
-        router.push(`/itineraries/${(result as any).id}`);
-      } else {
-        toast.success('New version created');
-        refetchVersions();
-      }
+      const result = unwrapEntity<{ id?: string }>(await itinerariesApi.createNewVersion(id, {}));
+      toast.success('New version created');
+      if (result?.id) router.push(`/itineraries/${result.id}`);
+      else void refetchVersions();
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to create new version';
-      toast.error(errorMsg);
+      toast.error(errorMessage(err, 'Failed to create new version'));
+    } finally {
+      setCreateVersionLoading(false);
     }
   };
 
-  // Generate share link handler
   const handleGenerateShareLink = async () => {
     setShareLinkLoading(true);
     try {
-      const result = await itinerariesApi.createShareLink(id, { expiryDays: 30, accessLevel: 'view' });
-      const data = (result as any)?.data ?? result;
-      // Backend returns { shareUrl, shareToken }
-      const url = data?.shareUrl ?? data?.link ?? data?.url;
+      const result = unwrapEntity<{ shareUrl?: string; link?: string; url?: string }>(
+        await itinerariesApi.createShareLink(id, { expiryDays: 30, accessLevel: 'view' }),
+      );
+      const url = result?.shareUrl ?? result?.link ?? result?.url;
       if (url) {
         setShareLink(url);
-        await navigator.clipboard.writeText(url);
-        toast.success('Share link generated and copied to clipboard');
+        try {
+          await navigator.clipboard.writeText(url);
+          toast.success('Share link generated and copied to clipboard');
+        } catch {
+          toast.success('Share link generated');
+        }
       } else {
         toast.error('Failed to generate share link');
       }
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to generate share link';
-      toast.error(errorMsg);
+      toast.error(errorMessage(err, 'Failed to generate share link'));
     } finally {
       setShareLinkLoading(false);
     }
   };
 
-  // Revoke share link handler
   const handleRevokeShareLink = async () => {
     setShareLinkLoading(true);
     try {
@@ -171,591 +225,530 @@ export default function ItineraryDetailPage() {
       setShareLink(null);
       toast.success('Share link revoked');
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to revoke share link';
-      toast.error(errorMsg);
+      toast.error(errorMessage(err, 'Failed to revoke share link'));
     } finally {
       setShareLinkLoading(false);
     }
   };
 
-  // PDF preview handler (opens in-app preview page)
-  const handlePdfPreview = () => {
-    router.push(`/itineraries/${id}/pdf`);
-  };
+  const handlePdfPreview = () => router.push(`/itineraries/${id}/pdf`);
 
-  // PDF download handler (downloads actual PDF from backend)
   const handlePdfDownload = () => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : '';
-    const url = `${API_BASE_URL}/itineraries/${id}/pdf${token ? `?token=${token}` : ''}`;
-    window.open(url, '_blank');
+    window.open(`${API_BASE_URL}/itineraries/${id}/pdf${token ? `?token=${token}` : ''}`, '_blank');
     toast.success('PDF download started');
   };
 
+  const days = React.useMemo(() => itinerary?.days ?? [], [itinerary]);
+  const daysCount = days.length || 1;
+  const nightsCount = Math.max(0, daysCount - 1);
+  const currency = itinerary?.currency ?? 'INR';
+  const money = (n: number) => formatCurrency(n, currency);
+
+  const destination = formatDestination(leadTrip?.destinations ?? leadTrip?.destination ?? itinerary?.lead?.destination);
+  const contact = itinerary?.contact ?? {};
+  const contactName = contact.name ?? '';
+  const totalCost = itinerary?.totalCost ?? 0;
+  const totalSelling = itinerary?.totalSelling ?? itinerary?.grandTotal ?? 0;
+  const grandTotal = itinerary?.grandTotal ?? 0;
+  const margin = totalSelling - totalCost;
+  const marginPct = totalSelling > 0 ? ((margin / totalSelling) * 100).toFixed(1) : '0';
+
+  const travelStart = leadTrip?.travelDate ? parseLocalDate(leadTrip.travelDate) : null;
+  const travelEnd = React.useMemo(() => {
+    if (leadTrip?.returnDate) return parseLocalDate(leadTrip.returnDate);
+    if (!travelStart || Number.isNaN(travelStart.getTime())) return null;
+    const end = new Date(travelStart);
+    end.setDate(end.getDate() + nightsCount);
+    return end;
+  }, [leadTrip?.returnDate, travelStart, nightsCount]);
+  const validTravel = travelStart !== null && !Number.isNaN(travelStart.getTime());
+
+  // Recipient and placeholder values for the Communication Hub composer
+  const recipient = {
+    id: contact.id ?? itinerary?.leadId ?? id,
+    name: contactName || itinerary?.lead?.title || 'Client',
+    email: contact.email ?? null,
+    phone: contact.phone ?? null,
+  };
+  const messageVariables = React.useMemo<MessageVariables>(
+    () => ({
+      destination,
+      travel_date: validTravel ? formatDisplayDate(travelStart) : undefined,
+      return_date: travelEnd && !Number.isNaN(travelEnd.getTime()) ? formatDisplayDate(travelEnd) : undefined,
+      pax_count: paxSummary(leadTrip ?? null),
+      amount: grandTotal > 0 ? money(grandTotal) : undefined,
+      share_link: shareLink ?? undefined,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [destination, travelStart, travelEnd, validTravel, leadTrip, grandTotal, currency, shareLink],
+  );
+
+  function openSend(channel: 'email' | 'whatsapp') {
+    setSendChannel(channel);
+    setSendDialogOpen(true);
+  }
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
+      <PageContainer>
+        <div className="flex items-center justify-center py-ds-9">
+          <Loader2 className="size-8 animate-spin text-ds-foreground-subtle" aria-label="Loading itinerary" />
+        </div>
+      </PageContainer>
     );
   }
 
   if (error || !itinerary) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <p className="text-muted-foreground mb-4">
+      <PageContainer>
+        <div className="py-ds-9 text-center">
+          <p className="mb-ds-4 text-ds-foreground-muted">
             {error ? `Error: ${error.message}` : 'Itinerary not found'}
           </p>
           <Button onClick={() => router.push('/itineraries')}>Back to Itineraries</Button>
         </div>
-      </div>
+      </PageContainer>
     );
   }
 
-  // Backend returns days at root level with items inside each day
-  const itin = itinerary as any;
-  const days = itin.days ?? [];
-  const inclusions: string[] = Array.isArray(itin.inclusions) ? itin.inclusions : [];
-  const exclusions: string[] = Array.isArray(itin.exclusions) ? itin.exclusions : [];
-  const termsConditions: string = itin.termsConditions ?? '';
+  const inclusions = Array.isArray(itinerary.inclusions) ? itinerary.inclusions : [];
+  const exclusions = Array.isArray(itinerary.exclusions) ? itinerary.exclusions : [];
+  const termsConditions = itinerary.termsConditions ?? '';
+  const shareLinkActive = itinerary.shareLinkActive ?? !!shareLink;
+  const viewCount = itinerary.viewCount ?? 0;
+  const lastViewedAt = itinerary.lastViewedAt ?? null;
 
-  // Use backend-calculated totals
-  const totalCost = itin.totalCost ?? 0;
-  const totalSelling = itin.totalSelling ?? itin.grandTotal ?? 0;
-  const grandTotal = itin.grandTotal ?? 0;
-  const margin = totalSelling - totalCost;
-  const marginPct = totalSelling > 0 ? ((margin / totalSelling) * 100).toFixed(1) : '0';
-  const currency = itin.currency ?? 'INR';
-  const currencySymbol = currency === 'INR' ? '\u20B9' : currency === 'USD' ? '$' : currency === 'EUR' ? '\u20AC' : currency + ' ';
-
-  // Build contact object for SendMessageDialog from lead/contact data
-  const contact = itin.contact ?? {};
-  const lead = itin.lead ?? {};
-  const leadContact = {
-    id: contact.id ?? lead.id ?? id,
-    name: contact.name ?? lead.title ?? 'Client',
-    email: contact.email ?? null,
-    phone: contact.phone ?? null,
-  };
-
-  // Share link active state
-  const shareLinkActive = itin.shareLinkActive ?? !!shareLink;
-  const viewCount = itin.viewCount ?? 0;
-  const lastViewedAt = itin.lastViewedAt ?? null;
-
-  // Calculate days count for duration display
-  const daysCount = days.length || 1;
+  const metaParts = [
+    `${daysCount}D/${nightsCount}N`,
+    destination,
+    contactName,
+  ].filter(Boolean);
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon-sm" onClick={() => router.push('/itineraries')}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h1 className="text-xl font-bold" style={{ fontFamily: 'var(--font-display)' }}>{itinerary.title}</h1>
-            <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
-              <StatusBadge status={itinerary.status ?? 'draft'} />
-              <span className="flex items-center gap-1">
-                <Calendar className="h-3.5 w-3.5" />
-                {daysCount}D/{Math.max(0, daysCount - 1)}N
-              </span>
-              {lead.destination && (
-                <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{lead.destination}</span>
-              )}
-              {contact.name && (
-                <span className="flex items-center gap-1"><Users className="h-3.5 w-3.5" />{contact.name}</span>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* Edit button */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => router.push(`/itineraries/${id}/edit`)}
-          >
-            <Pencil className="h-4 w-4 mr-1" /> Edit
-          </Button>
-          {/* Email button */}
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={deleteLoading}
-            onClick={() => { setSendChannel('email'); setSendDialogOpen(true); }}
-          >
-            <Mail className="h-4 w-4 mr-1" /> Email
-          </Button>
-          {/* WhatsApp button */}
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={deleteLoading}
-            onClick={() => { setSendChannel('whatsapp'); setSendDialogOpen(true); }}
-          >
-            <MessageSquare className="h-4 w-4 mr-1" /> WhatsApp
-          </Button>
-          {/* Preview PDF button */}
-          <Button variant="outline" size="sm" disabled={deleteLoading} onClick={handlePdfPreview}>
-            <FileText className="h-4 w-4 mr-1" /> Preview PDF
-          </Button>
-          {/* Download PDF button */}
-          <Button variant="outline" size="sm" disabled={deleteLoading} onClick={handlePdfDownload}>
-            <Download className="h-4 w-4 mr-1" /> Download PDF
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleClone} disabled={cloneLoading}>
-            <Copy className="h-4 w-4 mr-1" /> Duplicate
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleDelete} disabled={deleteLoading} className="text-red-600">
-            <Trash2 className="h-4 w-4 mr-1" /> Delete
-          </Button>
-        </div>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title={itinerary.title}
+        badge={<StatusBadge status={itinerary.status ?? 'draft'} />}
+        breadcrumbs={[{ label: 'Itineraries', href: '/itineraries' }, { label: itinerary.title }]}
+        description={metaParts.join(' · ')}
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={() => router.push(`/itineraries/${id}/edit`)}>
+              <Pencil className="size-4 mr-1" aria-hidden="true" /> Edit
+            </Button>
+            <Button variant="outline" size="sm" disabled={deleteLoading} onClick={() => openSend('email')}>
+              <Mail className="size-4 mr-1" aria-hidden="true" /> Email
+            </Button>
+            <Button variant="outline" size="sm" disabled={deleteLoading} onClick={() => openSend('whatsapp')}>
+              <MessageSquare className="size-4 mr-1" aria-hidden="true" /> WhatsApp
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" aria-label="More actions">
+                  <MoreHorizontal className="size-4 mr-1" aria-hidden="true" /> More
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={handlePdfPreview}>
+                  <FileText className="size-4" aria-hidden="true" /> Preview PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={handlePdfDownload}>
+                  <Download className="size-4" aria-hidden="true" /> Download PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void handleClone()} disabled={cloneLoading}>
+                  <Copy className="size-4" aria-hidden="true" /> Duplicate
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onSelect={() => void handleDelete()} disabled={deleteLoading}>
+                  <Trash2 className="size-4" aria-hidden="true" /> Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        }
+      />
 
-      {/* SendMessageDialog */}
       <SendMessageDialog
         open={sendDialogOpen}
         onOpenChange={setSendDialogOpen}
-        contact={leadContact}
+        contact={recipient}
         defaultChannel={sendChannel}
+        variables={messageVariables}
       />
+      {confirmDialog}
 
-      {/* Tabs */}
-      <div className="flex-1 overflow-auto">
-        <Tabs defaultValue="itinerary" className="h-full flex flex-col">
-          <TabsList className="px-6 py-3 border-b rounded-none w-full justify-start">
-            <TabsTrigger value="itinerary">Itinerary</TabsTrigger>
-            {canSeeCost && <TabsTrigger value="costs">Costs</TabsTrigger>}
-            <TabsTrigger value="versions">Versions</TabsTrigger>
-            <TabsTrigger value="share">Share</TabsTrigger>
-          </TabsList>
+      <Tabs defaultValue="itinerary">
+        <TabsList>
+          <TabsTrigger value="itinerary">Itinerary</TabsTrigger>
+          {canSeeCost && <TabsTrigger value="costs">Costs</TabsTrigger>}
+          <TabsTrigger value="versions">Versions</TabsTrigger>
+          <TabsTrigger value="share">Share</TabsTrigger>
+        </TabsList>
 
-          {/* Itinerary Tab */}
-          <TabsContent value="itinerary" className="flex-1 overflow-auto p-6">
-            <div className="max-w-4xl mx-auto space-y-4">
-              {/* Summary Cards */}
-              <div className={cn('grid gap-4 mb-6', canSeeCost ? 'grid-cols-4' : 'grid-cols-2')}>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-xs text-muted-foreground mb-1">Travel Dates</div>
-                    <p className="font-semibold text-sm">
-                      {itinerary.startDate && itinerary.endDate
-                        ? `${new Date(itinerary.startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} - ${new Date(itinerary.endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`
-                        : 'N/A'}
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-xs text-muted-foreground mb-1">Duration</div>
-                    <p className="font-semibold text-sm">{daysCount} Days / {Math.max(0, daysCount - 1)} Nights</p>
-                  </CardContent>
-                </Card>
-                {canSeeCost && (
-                  <>
-                    <Card>
-                      <CardContent className="pt-6">
-                        <div className="text-xs text-muted-foreground mb-1">Total Cost</div>
-                        <p className="font-semibold text-sm">{currencySymbol}{totalCost.toLocaleString('en-IN')}</p>
-                      </CardContent>
-                    </Card>
-                    <Card>
-                      <CardContent className="pt-6">
-                        <div className="text-xs text-muted-foreground mb-1">Grand Total</div>
-                        <p className="font-semibold text-sm text-green-600">{currencySymbol}{grandTotal.toLocaleString('en-IN')}</p>
-                      </CardContent>
-                    </Card>
-                  </>
-                )}
-              </div>
-
-              {/* Inclusions */}
-              {inclusions.length > 0 && (
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base text-green-700 dark:text-green-400">Inclusions</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ul className="list-disc list-inside space-y-1 text-sm">
-                      {inclusions.map((item, idx) => (
-                        <li key={idx}>{item}</li>
-                      ))}
-                    </ul>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Exclusions */}
-              {exclusions.length > 0 && (
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base text-red-700 dark:text-red-400">Exclusions</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ul className="list-disc list-inside space-y-1 text-sm">
-                      {exclusions.map((item, idx) => (
-                        <li key={idx}>{item}</li>
-                      ))}
-                    </ul>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Day-by-Day Activities */}
-              <div className="space-y-3">
-                {days.length > 0 ? (
-                  days.map((day: any, idx: number) => {
-                    const items = day.items ?? [];
-                    return (
-                      <Card key={day.id ?? idx}>
-                        <CardHeader className="pb-3">
-                          <CardTitle className="text-base">
-                            Day {day.dayNumber ?? idx + 1}{day.title ? ` - ${day.title}` : ''}
-                            {day.city && <span className="text-sm font-normal text-muted-foreground ml-2">({day.city})</span>}
-                          </CardTitle>
-                          {day.description && (
-                            <div
-                              className="text-sm text-muted-foreground prose prose-sm dark:prose-invert max-w-none mt-1"
-                              dangerouslySetInnerHTML={{ __html: day.description }}
-                            />
-                          )}
-                        </CardHeader>
-                        <CardContent className="space-y-2">
-                          {items.length > 0 ? (
-                            items.map((item: any, itemIdx: number) => {
-                              // Parse detailsJson if it's a string
-                              const details = typeof item.detailsJson === 'string'
-                                ? (() => { try { return JSON.parse(item.detailsJson); } catch { return {}; } })()
-                                : (item.detailsJson ?? {});
-
-                              const itemName = item.title
-                                || details.hotelName || details.airline || details.activityName
-                                || details.restaurantName || `${item.type} Activity`;
-
-                              const itemDetail = details.checkInDate && details.checkOutDate
-                                ? `${details.checkInDate} to ${details.checkOutDate}`
-                                : details.departureAirport && details.arrivalAirport
-                                ? `${details.departureAirport} \u2192 ${details.arrivalAirport}`
-                                : details.pickupLocation && details.dropLocation
-                                ? `${details.pickupLocation} \u2192 ${details.dropLocation}`
-                                : details.duration || '';
-
-                              return (
-                                <div key={item.id ?? itemIdx} className="flex gap-3 p-3 rounded-lg bg-muted/30">
-                                  <div className="text-sm flex-1">
-                                    <p className="font-medium">{itemName}</p>
-                                    {itemDetail && (
-                                      <p className="text-xs text-muted-foreground">{itemDetail}</p>
-                                    )}
-                                    {canSeeCost && (item.sellingPrice || item.costPrice) ? (
-                                      <p className="text-xs text-muted-foreground mt-1">
-                                        {currencySymbol}{(item.sellingPrice ?? item.costPrice ?? 0).toLocaleString('en-IN')}
-                                        {item.quantity > 1 && ` x ${item.quantity}`}
-                                      </p>
-                                    ) : null}
-                                  </div>
-                                  <Badge variant="outline" className="text-[10px] h-fit capitalize">
-                                    {item.type}
-                                  </Badge>
-                                </div>
-                              );
-                            })
-                          ) : (
-                            <p className="text-sm text-muted-foreground italic">No activities planned</p>
-                          )}
-                        </CardContent>
-                      </Card>
-                    );
-                  })
-                ) : (
+        {/* Itinerary Tab */}
+        <TabsContent value="itinerary">
+          <div className="max-w-4xl space-y-ds-4">
+            <div className={cn('grid gap-ds-4', canSeeCost ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-2')}>
+              <Card>
+                <CardContent>
+                  <div className="mb-1 flex items-center gap-1 text-xs text-ds-foreground-muted"><Calendar className="size-3.5" aria-hidden="true" /> Travel Dates</div>
+                  <p className="text-sm font-semibold">
+                    {validTravel && travelEnd
+                      ? `${formatDisplayDate(travelStart, 'short')} - ${formatDisplayDate(travelEnd)}`
+                      : 'Not set'}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent>
+                  <div className="mb-1 flex items-center gap-1 text-xs text-ds-foreground-muted"><MapPin className="size-3.5" aria-hidden="true" /> Duration</div>
+                  <p className="text-sm font-semibold">{daysCount} Days / {nightsCount} Nights</p>
+                </CardContent>
+              </Card>
+              {canSeeCost && (
+                <>
                   <Card>
-                    <CardContent className="pt-6">
-                      <p className="text-sm text-muted-foreground italic">No days planned yet</p>
+                    <CardContent>
+                      <div className="mb-1 text-xs text-ds-foreground-muted">Total Cost</div>
+                      <p className="text-sm font-semibold">{money(totalCost)}</p>
                     </CardContent>
                   </Card>
-                )}
-              </div>
+                  <Card>
+                    <CardContent>
+                      <div className="mb-1 flex items-center gap-1 text-xs text-ds-foreground-muted"><Users className="size-3.5" aria-hidden="true" /> Grand Total</div>
+                      <p className="text-sm font-semibold text-ds-success">{money(grandTotal)}</p>
+                    </CardContent>
+                  </Card>
+                </>
+              )}
+            </div>
 
-              {/* Terms & Conditions */}
-              {termsConditions && (
+            {inclusions.length > 0 && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base text-ds-success">Inclusions</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ul className="list-inside list-disc space-y-1 text-sm">
+                    {inclusions.map((item, idx) => <li key={idx}>{item}</li>)}
+                  </ul>
+                </CardContent>
+              </Card>
+            )}
+
+            {exclusions.length > 0 && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base text-ds-danger">Exclusions</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ul className="list-inside list-disc space-y-1 text-sm">
+                    {exclusions.map((item, idx) => <li key={idx}>{item}</li>)}
+                  </ul>
+                </CardContent>
+              </Card>
+            )}
+
+            <div className="space-y-ds-3">
+              {days.length > 0 ? (
+                days.map((day, idx) => {
+                  const items = day.items ?? [];
+                  return (
+                    <Card key={day.id ?? idx}>
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-base">
+                          Day {day.dayNumber ?? idx + 1}{day.title ? ` - ${day.title}` : ''}
+                          {day.city && <span className="ml-2 text-sm font-normal text-ds-foreground-muted">({day.city})</span>}
+                        </CardTitle>
+                        {day.description && (
+                          <div
+                            className="prose prose-sm mt-1 max-w-none text-sm text-ds-foreground-muted dark:prose-invert"
+                            dangerouslySetInnerHTML={{ __html: day.description }}
+                          />
+                        )}
+                      </CardHeader>
+                      <CardContent className="space-y-ds-2">
+                        {items.length > 0 ? (
+                          items.map((item, itemIdx) => {
+                            const { name, detail } = describeItem(item);
+                            const unit = item.sellingPrice || item.costPrice || 0;
+                            return (
+                              <div key={item.id ?? itemIdx} className="flex gap-ds-3 rounded-lg bg-ds-surface-sunken p-ds-3">
+                                <div className="min-w-0 flex-1 text-sm">
+                                  <p className="font-medium">{name}</p>
+                                  {detail && <p className="text-xs text-ds-foreground-muted">{detail}</p>}
+                                  {canSeeCost && unit > 0 && (
+                                    <p className="mt-1 text-xs text-ds-foreground-muted">
+                                      {money(unit)}
+                                      {(item.quantity ?? 1) > 1 && ` x ${item.quantity}`}
+                                    </p>
+                                  )}
+                                </div>
+                                <Badge variant="outline" className="h-fit text-xs capitalize">{item.type}</Badge>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <p className="text-sm italic text-ds-foreground-muted">No activities planned</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })
+              ) : (
                 <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base">Terms & Conditions</CardTitle>
-                  </CardHeader>
                   <CardContent>
-                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{termsConditions}</p>
+                    <p className="text-sm italic text-ds-foreground-muted">No days planned yet</p>
                   </CardContent>
                 </Card>
               )}
             </div>
-          </TabsContent>
 
-          {/* Costs Tab (only visible to authorized roles) */}
-          {canSeeCost && (
-            <TabsContent value="costs" className="flex-1 overflow-auto p-6">
-              <div className="max-w-4xl mx-auto">
-                <Card>
-                  <CardHeader><CardTitle className="text-base">Cost Breakdown</CardTitle></CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div className="text-sm space-y-2">
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Total Cost:</span>
-                          <span className="font-medium">{currencySymbol}{totalCost.toLocaleString('en-IN')}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Total Selling:</span>
-                          <span className="font-medium">{currencySymbol}{totalSelling.toLocaleString('en-IN')}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Tax:</span>
-                          <span className="font-medium">{currencySymbol}{(itin.totalTax ?? 0).toLocaleString('en-IN')}</span>
-                        </div>
-                        <div className="border-t pt-2 flex justify-between font-semibold">
-                          <span>Grand Total:</span>
-                          <span className="text-green-600">{currencySymbol}{grandTotal.toLocaleString('en-IN')}</span>
-                        </div>
-                        <div className="flex justify-between font-semibold text-sm">
-                          <span>Margin ({marginPct}%):</span>
-                          <span className={cn(margin > 0 ? 'text-green-600' : 'text-red-500')}>
-                            {currencySymbol}{margin.toLocaleString('en-IN')}
-                          </span>
-                        </div>
+            {termsConditions && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">Terms & Conditions</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="whitespace-pre-wrap text-sm text-ds-foreground-muted">{termsConditions}</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </TabsContent>
+
+        {/* Costs Tab (only visible to authorized roles) */}
+        {canSeeCost && (
+          <TabsContent value="costs">
+            <div className="max-w-4xl">
+              <Card>
+                <CardHeader><CardTitle className="text-base">Cost Breakdown</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="space-y-ds-4">
+                    <div className="space-y-ds-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-ds-foreground-muted">Total Cost:</span>
+                        <span className="font-medium">{money(totalCost)}</span>
                       </div>
-
-                      {days.length > 0 && (
-                        <div className="border-t pt-4">
-                          <h4 className="text-sm font-semibold mb-3">Items by Day</h4>
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead>Day</TableHead>
-                                <TableHead>Item</TableHead>
-                                <TableHead className="text-right">Type</TableHead>
-                                <TableHead className="text-right">Cost</TableHead>
-                                <TableHead className="text-right">Selling</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {days.flatMap((day: any, dayIdx: number) =>
-                                (day.items ?? []).map((item: any, itemIdx: number) => (
-                                  <TableRow key={`${dayIdx}-${itemIdx}`}>
-                                    <TableCell className="text-sm">Day {day.dayNumber ?? dayIdx + 1}</TableCell>
-                                    <TableCell className="text-sm">{item.title || 'Item'}</TableCell>
-                                    <TableCell className="text-right text-sm capitalize">{item.type}</TableCell>
-                                    <TableCell className="text-right text-sm">{currencySymbol}{(item.costPrice ?? 0).toLocaleString('en-IN')}</TableCell>
-                                    <TableCell className="text-right text-sm">{currencySymbol}{(item.sellingPrice ?? 0).toLocaleString('en-IN')}</TableCell>
-                                  </TableRow>
-                                ))
-                              )}
-                            </TableBody>
-                          </Table>
-                        </div>
-                      )}
+                      <div className="flex justify-between">
+                        <span className="text-ds-foreground-muted">Total Selling:</span>
+                        <span className="font-medium">{money(totalSelling)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-ds-foreground-muted">Tax:</span>
+                        <span className="font-medium">{money(itinerary.totalTax ?? 0)}</span>
+                      </div>
+                      <div className="flex justify-between border-t border-ds-border pt-ds-2 font-semibold">
+                        <span>Grand Total:</span>
+                        <span className="text-ds-success">{money(grandTotal)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm font-semibold">
+                        <span>Margin ({marginPct}%):</span>
+                        <span className={cn(margin > 0 ? 'text-ds-success' : 'text-ds-danger')}>{money(margin)}</span>
+                      </div>
                     </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </TabsContent>
-          )}
 
-          {/* Versions Tab */}
-          <TabsContent value="versions" className="flex-1 overflow-auto p-6">
-            <div className="max-w-4xl mx-auto">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-semibold text-muted-foreground">Version History</h3>
-                <Button size="sm" onClick={handleCreateVersion} disabled={createVersionLoading}>
-                  {createVersionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
-                  Create New Version
-                </Button>
-              </div>
+                    {days.some((d) => (d.items ?? []).length > 0) && (
+                      <div className="border-t border-ds-border pt-ds-4">
+                        <h4 className="mb-ds-3 text-sm font-semibold">Items by Day</h4>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Day</TableHead>
+                              <TableHead>Item</TableHead>
+                              <TableHead className="text-right">Type</TableHead>
+                              <TableHead className="text-right">Cost</TableHead>
+                              <TableHead className="text-right">Selling</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {days.flatMap((day, dayIdx) =>
+                              (day.items ?? []).map((item, itemIdx) => (
+                                <TableRow key={`${dayIdx}-${itemIdx}`}>
+                                  <TableCell className="text-sm">Day {day.dayNumber ?? dayIdx + 1}</TableCell>
+                                  <TableCell className="text-sm">{item.title || 'Item'}</TableCell>
+                                  <TableCell className="text-right text-sm capitalize">{item.type}</TableCell>
+                                  <TableCell className="text-right text-sm">{money(item.costPrice ?? 0)}</TableCell>
+                                  <TableCell className="text-right text-sm">{money(item.sellingPrice ?? 0)}</TableCell>
+                                </TableRow>
+                              )),
+                            )}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+        )}
 
-              <div className="space-y-3">
-                {/* Current itinerary as a version card */}
-                <Card className="border-primary bg-primary/5">
+        {/* Versions Tab */}
+        <TabsContent value="versions">
+          <div className="max-w-4xl">
+            <div className="mb-ds-4 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-ds-foreground-muted">Version History</h3>
+              <Button size="sm" onClick={() => void handleCreateVersion()} disabled={createVersionLoading}>
+                {createVersionLoading ? <Loader2 className="size-4 animate-spin mr-1" aria-hidden="true" /> : <Plus className="size-4 mr-1" aria-hidden="true" />}
+                Create New Version
+              </Button>
+            </div>
+
+            <div className="space-y-ds-3">
+              <Card className="border-ds-primary bg-ds-primary-subtle">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base">
+                      Version {itinerary.version ?? 1} <Badge className="ml-2">Current</Badge>
+                    </CardTitle>
+                    <span className="text-xs text-ds-foreground-muted">
+                      {itinerary.createdAt ? formatDisplayDate(itinerary.createdAt) : 'Recently'}
+                    </span>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-ds-foreground-muted">
+                    Current version - {daysCount} day itinerary{destination ? ` for ${destination}` : ''}
+                  </p>
+                </CardContent>
+              </Card>
+
+              {versionsLoading && (
+                <div className="flex items-center justify-center py-ds-6">
+                  <Loader2 className="size-6 animate-spin text-ds-foreground-subtle" aria-label="Loading versions" />
+                </div>
+              )}
+
+              {!versionsLoading && versions.map((ver) => (
+                <Card
+                  key={ver.id}
+                  className="cursor-pointer transition-shadow hover:shadow-sm"
+                  onClick={() => router.push(`/itineraries/${ver.id}`)}
+                >
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-base">
-                        Version {itin.version ?? 1} <Badge className="ml-2">Current</Badge>
+                        Version {ver.versionNumber ?? ver.version_number ?? ver.version ?? '?'}
                       </CardTitle>
-                      <span className="text-xs text-muted-foreground">
-                        {itinerary.createdAt ? new Date(itinerary.createdAt).toLocaleDateString('en-IN') : 'Recently'}
+                      <span className="text-xs text-ds-foreground-muted">
+                        {ver.createdAt ? formatDisplayDate(ver.createdAt) : ''}
                       </span>
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-sm text-muted-foreground">
-                      Current version - {daysCount} day itinerary
-                      {lead.destination ? ` for ${lead.destination}` : ''}
+                    <p className="text-sm text-ds-foreground-muted">
+                      {ver.changes ?? 'Saved snapshot'}
                     </p>
                   </CardContent>
                 </Card>
+              ))}
 
-                {/* Fetched version history */}
-                {versionsLoading && (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  </div>
-                )}
-
-                {!versionsLoading && versions.length > 0 && versions.map((ver: any) => (
-                  <Card
-                    key={ver.id}
-                    className="cursor-pointer hover:shadow-sm transition-shadow"
-                    onClick={() => router.push(`/itineraries/${ver.id}`)}
-                  >
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-base">
-                          Version {ver.versionNumber ?? ver.version_number ?? ver.version ?? '?'}
-                        </CardTitle>
-                        <span className="text-xs text-muted-foreground">
-                          {ver.createdAt ? new Date(ver.createdAt).toLocaleDateString('en-IN') : ''}
-                        </span>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-sm text-muted-foreground">
-                        {ver.changes ?? `Created by ${ver.createdBy ?? 'user'}`}
-                      </p>
-                    </CardContent>
-                  </Card>
-                ))}
-
-                {!versionsLoading && versions.length === 0 && (
-                  <p className="text-sm text-muted-foreground italic mt-4">
-                    No previous versions. Click &quot;Create New Version&quot; to save a snapshot.
-                  </p>
-                )}
-              </div>
+              {!versionsLoading && versions.length === 0 && (
+                <p className="mt-ds-4 text-sm italic text-ds-foreground-muted">
+                  No previous versions. Click &quot;Create New Version&quot; to save a snapshot.
+                </p>
+              )}
             </div>
-          </TabsContent>
+          </div>
+        </TabsContent>
 
-          {/* Share Tab */}
-          <TabsContent value="share" className="flex-1 overflow-auto p-6">
-            <div className="max-w-2xl mx-auto space-y-4">
-              {/* Share Link Section */}
-              <Card>
-                <CardHeader><CardTitle className="text-base">Public Share Link</CardTitle></CardHeader>
-                <CardContent className="space-y-4">
-                  {(shareLinkActive || shareLink) ? (
-                    <div className="space-y-3">
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={shareLink ?? `Share link generated - click Generate to get a new URL`}
-                          readOnly
-                          className="flex-1 px-3 py-2 rounded-md border text-sm bg-muted/30"
-                        />
-                        {shareLink && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              if (shareLink) {
-                                navigator.clipboard.writeText(shareLink);
-                                toast.success('Link copied to clipboard');
-                              }
-                            }}
-                          >
-                            <Copy className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                      {viewCount > 0 && (
-                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1"><Eye className="h-3.5 w-3.5" /> {viewCount} views</span>
-                          {lastViewedAt && (
-                            <span>Last viewed: {new Date(lastViewedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                          )}
-                        </div>
+        {/* Share Tab */}
+        <TabsContent value="share">
+          <div className="max-w-2xl space-y-ds-4">
+            <Card>
+              <CardHeader><CardTitle className="text-base">Public Share Link</CardTitle></CardHeader>
+              <CardContent className="space-y-ds-4">
+                {(shareLinkActive || shareLink) ? (
+                  <div className="space-y-ds-3">
+                    <div className="flex gap-ds-2">
+                      <Input
+                        readOnly
+                        aria-label="Share link"
+                        value={shareLink ?? 'Share link generated - click Regenerate to get a new URL'}
+                        className="flex-1 bg-ds-surface-sunken"
+                      />
+                      {shareLink && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          aria-label="Copy share link"
+                          onClick={() => {
+                            void navigator.clipboard.writeText(shareLink).then(
+                              () => toast.success('Link copied to clipboard'),
+                              () => toast.error('Could not copy the link'),
+                            );
+                          }}
+                        >
+                          <Copy className="size-4" aria-hidden="true" />
+                        </Button>
                       )}
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleGenerateShareLink}
-                          disabled={shareLinkLoading}
-                        >
-                          {shareLinkLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Link2 className="h-4 w-4 mr-1" />}
-                          Regenerate Link
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-red-600"
-                          onClick={handleRevokeShareLink}
-                          disabled={shareLinkLoading}
-                        >
-                          {shareLinkLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Link2Off className="h-4 w-4 mr-1" />}
-                          Revoke Link
-                        </Button>
-                      </div>
                     </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <p className="text-sm text-muted-foreground">
-                        Generate a public link that clients can use to view this itinerary.
-                      </p>
-                      <Button
-                        size="sm"
-                        onClick={handleGenerateShareLink}
-                        disabled={shareLinkLoading}
-                      >
-                        {shareLinkLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Link2 className="h-4 w-4 mr-1" />}
-                        Generate Share Link
+                    {viewCount > 0 && (
+                      <div className="flex items-center gap-ds-4 text-xs text-ds-foreground-muted">
+                        <span className="flex items-center gap-1"><Eye className="size-3.5" aria-hidden="true" /> {viewCount} views</span>
+                        {lastViewedAt && <span>Last viewed: {formatDisplayDate(lastViewedAt)}</span>}
+                      </div>
+                    )}
+                    <div className="flex gap-ds-2">
+                      <Button variant="outline" size="sm" onClick={() => void handleGenerateShareLink()} disabled={shareLinkLoading}>
+                        {shareLinkLoading ? <Loader2 className="size-4 animate-spin mr-1" aria-hidden="true" /> : <Link2 className="size-4 mr-1" aria-hidden="true" />}
+                        Regenerate Link
+                      </Button>
+                      <Button variant="outline" size="sm" className="text-ds-danger" onClick={() => void handleRevokeShareLink()} disabled={shareLinkLoading}>
+                        {shareLinkLoading ? <Loader2 className="size-4 animate-spin mr-1" aria-hidden="true" /> : <Link2Off className="size-4 mr-1" aria-hidden="true" />}
+                        Revoke Link
                       </Button>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Send via Communication Hub */}
-              <Card>
-                <CardHeader><CardTitle className="text-base">Send to Client</CardTitle></CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="flex-1"
-                      onClick={() => { setSendChannel('email'); setSendDialogOpen(true); }}
-                    >
-                      <Mail className="h-4 w-4 mr-1" /> Send via Email
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="flex-1"
-                      onClick={() => { setSendChannel('whatsapp'); setSendDialogOpen(true); }}
-                    >
-                      <MessageSquare className="h-4 w-4 mr-1" /> Send via WhatsApp
+                  </div>
+                ) : (
+                  <div className="space-y-ds-3">
+                    <p className="text-sm text-ds-foreground-muted">
+                      Generate a public link that clients can use to view this itinerary.
+                    </p>
+                    <Button size="sm" onClick={() => void handleGenerateShareLink()} disabled={shareLinkLoading}>
+                      {shareLinkLoading ? <Loader2 className="size-4 animate-spin mr-1" aria-hidden="true" /> : <Link2 className="size-4 mr-1" aria-hidden="true" />}
+                      Generate Share Link
                     </Button>
                   </div>
-                </CardContent>
-              </Card>
+                )}
+              </CardContent>
+            </Card>
 
-              {/* Export */}
-              <Card>
-                <CardHeader><CardTitle className="text-base">Export</CardTitle></CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="flex gap-2">
-                    <Button variant="outline" className="flex-1" onClick={handlePdfPreview}>
-                      <FileText className="h-4 w-4 mr-2" /> Preview PDF
-                    </Button>
-                    <Button variant="outline" className="flex-1" onClick={handlePdfDownload}>
-                      <Download className="h-4 w-4 mr-2" /> Download PDF
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-        </Tabs>
-      </div>
-    </div>
+            <Card>
+              <CardHeader><CardTitle className="text-base">Send to Client</CardTitle></CardHeader>
+              <CardContent className="space-y-ds-3">
+                <p className="text-xs text-ds-foreground-muted">
+                  Sent through the Communication Hub with a template you can edit, and logged against the client&apos;s record.
+                </p>
+                <div className="flex gap-ds-2">
+                  <Button size="sm" variant="outline" className="flex-1" disabled={!recipient.email} onClick={() => openSend('email')}>
+                    <Mail className="size-4 mr-1" aria-hidden="true" /> Send via Email
+                  </Button>
+                  <Button size="sm" variant="outline" className="flex-1" disabled={!recipient.phone} onClick={() => openSend('whatsapp')}>
+                    <MessageSquare className="size-4 mr-1" aria-hidden="true" /> Send via WhatsApp
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader><CardTitle className="text-base">Export</CardTitle></CardHeader>
+              <CardContent className="space-y-ds-2">
+                <div className="flex gap-ds-2">
+                  <Button variant="outline" className="flex-1" onClick={handlePdfPreview}>
+                    <FileText className="size-4 mr-2" aria-hidden="true" /> Preview PDF
+                  </Button>
+                  <Button variant="outline" className="flex-1" onClick={handlePdfDownload}>
+                    <Download className="size-4 mr-2" aria-hidden="true" /> Download PDF
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
+    </PageContainer>
   );
 }
