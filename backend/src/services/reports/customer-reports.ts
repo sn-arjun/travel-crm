@@ -69,7 +69,7 @@ const customerReports: ReportDefinition[] = [
         allowedGroupBy: [],
         defaultSort: { column: 'days_until_birthday', order: 'asc' },
         // An "as of today" report: the date range never narrows it, so bind the filter to today.
-        dateColumn: "date('now')",
+        ignoreDateRange: true,
         // contacts have no assigned_to; a salesperson sees the customers they created
         ownerColumn: 'c.created_by',
         baseQuery: `
@@ -117,7 +117,7 @@ const customerReports: ReportDefinition[] = [
         allowedGroupBy: [],
         defaultSort: { column: 'last_booking_date', order: 'asc' },
         // An "as of today" report: the date range never narrows it, so bind the filter to today.
-        dateColumn: "date('now')",
+        ignoreDateRange: true,
         baseQuery: `
       SELECT
         c.name as customer_name,

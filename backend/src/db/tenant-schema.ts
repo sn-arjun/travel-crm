@@ -370,6 +370,8 @@ export const invoices = sqliteTable('invoices', {
   currency: text('currency').default('INR'),
   status: text('status').default('draft'), // draft, sent, paid, partially_paid, overdue, cancelled
   dueDate: text('due_date'),
+  issueDate: text('issue_date'), // ISO date (YYYY-MM-DD)
+  terms: text('terms'),
   paidAmount: real('paid_amount').default(0),
   balanceDue: real('balance_due').default(0),
   notes: text('notes'),

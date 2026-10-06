@@ -22,50 +22,83 @@ reportRoutes.get('/dashboard', async (c) => {
     const today = new Date().toISOString().split('T')[0];
     const monthStart = today.substring(0, 7) + '-01';
 
+    // Optional date range (date_from/date_to or a date_preset). When omitted the behaviour is
+    // unchanged: lists are unfiltered and the "this month" figures run from the 1st of the month.
+    const dq = c.req.query();
+    const dPreset = dq.date_preset || dq.datePreset;
+    let rFrom: string | undefined = dq.date_from || dq.startDate;
+    let rTo: string | undefined = dq.date_to || dq.endDate;
+    if (dPreset && !rFrom && !rTo) {
+      try {
+        const resolved = resolveDateRange(dPreset);
+        rFrom = resolved.from;
+        rTo = resolved.to;
+      } catch { /* invalid preset -> no range */ }
+    }
+    const dayOf = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : null);
+    const from = dayOf(rFrom);
+    const to = dayOf(rTo);
+    // Range clause for list-style figures (only filters when a range was supplied)
+    const rangeClause = (col: string): { sql: string; params: string[] } => {
+      const parts: string[] = [];
+      const params: string[] = [];
+      if (from) { parts.push(`DATE(${col}) >= DATE(?)`); params.push(from); }
+      if (to) { parts.push(`DATE(${col}) <= DATE(?)`); params.push(to); }
+      return { sql: parts.length ? ' AND ' + parts.join(' AND ') : '', params };
+    };
+    const leadRange = rangeClause('created_at');
+    const hotRange = rangeClause('l.created_at');
+    const actRange = rangeClause('created_at');
+    const fuRange = rangeClause('scheduled_at');
+    // Financial window: default = month to date
+    const finFrom = from ?? monthStart;
+    const finTo = to ?? '9999-12-31';
+
     const [pipelineResult, hotLeadsResult, followUpResult, recentActivitiesResult, financialResult, collectionsResult] = await Promise.all([
       // 1. Pipeline summary
       tenantDb.prepare(
         `SELECT status, COUNT(*) as count, COALESCE(SUM(budget), 0) as total_value
-         FROM leads WHERE is_deleted = 0
+         FROM leads WHERE is_deleted = 0${leadRange.sql}
          GROUP BY status`
-      ).all(),
+      ).bind(...leadRange.params).all(),
       // 2. Hot leads (top 5)
       tenantDb.prepare(
         `SELECT l.id, l.title, l.destination, l.budget, l.status, l.priority, l.created_at as createdAt,
                 l.contact_id as contactId, l.travel_date as travelDate
          FROM leads l
-         WHERE l.priority = 'hot' AND l.status NOT IN ('won', 'lost') AND l.is_deleted = 0
+         WHERE l.priority = 'hot' AND l.status NOT IN ('won', 'lost') AND l.is_deleted = 0${hotRange.sql}
          ORDER BY l.created_at DESC LIMIT 5`
-      ).all(),
+      ).bind(...hotRange.params).all(),
       // 3. Follow-up counts
       tenantDb.prepare(
         `SELECT COUNT(*) as total,
                 SUM(CASE WHEN scheduled_at < datetime('now') AND completed_at IS NULL THEN 1 ELSE 0 END) as overdue,
                 SUM(CASE WHEN completed_at IS NULL THEN 1 ELSE 0 END) as pending
-         FROM follow_ups WHERE created_by = ?`
-      ).bind(userId).all(),
+         FROM follow_ups WHERE created_by = ?${fuRange.sql}`
+      ).bind(userId, ...fuRange.params).all(),
       // 4. Recent activities
       tenantDb.prepare(
         `SELECT id, lead_id as leadId, type, content as description, created_at as createdAt, created_by as createdBy
          FROM lead_activities
+         WHERE 1 = 1${actRange.sql}
          ORDER BY created_at DESC LIMIT 10`
-      ).all(),
+      ).bind(...actRange.params).all(),
       // 5. Financial summary
       tenantDb.prepare(
         `SELECT
-          COALESCE(SUM(CASE WHEN status = 'paid' AND DATE(updated_at) >= DATE(?) THEN total ELSE 0 END), 0) as revenue_this_month,
+          COALESCE(SUM(CASE WHEN status = 'paid' AND DATE(updated_at) >= DATE(?) AND DATE(updated_at) <= DATE(?) THEN total ELSE 0 END), 0) as revenue_this_month,
           COALESCE(SUM(CASE WHEN status IN ('sent', 'partially_paid', 'overdue') THEN balance_due ELSE 0 END), 0) as outstanding,
           COALESCE(SUM(CASE WHEN status IN ('sent', 'partially_paid', 'overdue') AND due_date < ? THEN balance_due ELSE 0 END), 0) as overdue,
-          COALESCE(SUM(CASE WHEN DATE(created_at) >= DATE(?) THEN total ELSE 0 END), 0) as invoiced_this_month
+          COALESCE(SUM(CASE WHEN DATE(created_at) >= DATE(?) AND DATE(created_at) <= DATE(?) THEN total ELSE 0 END), 0) as invoiced_this_month
          FROM invoices
          WHERE type IN ('tax_invoice', 'proforma') AND status != 'cancelled'`
-      ).bind(monthStart, today, monthStart).first(),
-      // 6. Collections this month
+      ).bind(finFrom, finTo, today, finFrom, finTo).first(),
+      // 6. Collections in the window
       tenantDb.prepare(
         `SELECT COALESCE(SUM(amount), 0) as collections
          FROM payments
-         WHERE type = 'incoming' AND DATE(date) >= DATE(?)`
-      ).bind(monthStart).first(),
+         WHERE type = 'incoming' AND DATE(date) >= DATE(?) AND DATE(date) <= DATE(?)`
+      ).bind(finFrom, finTo).first(),
     ]);
 
     return success(c, {

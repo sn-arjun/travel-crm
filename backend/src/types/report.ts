@@ -15,8 +15,10 @@ export interface ReportResult {
         total: number;
         page: number;
         per_page: number;
+        hasMore?: boolean;
     };
     previous_period?: Record<string, any>;
+    previous_period_rows?: Record<string, any>[];
     changes?: Record<string, any>;
     cached_at?: string;
 }
@@ -53,6 +55,7 @@ export interface ReportDefinition {
     defaultSort: { column: string; order: 'asc' | 'desc' };
     requiredRole: string[];
     columns: ReportColumn[];
+    ignoreDateRange?: boolean; // As-of-now report: any date range is ignored
     dateColumn?: string; // Qualified column for date filtering (e.g. 's.created_at')
     ownerColumn?: string; // Column limiting a salesperson to their own rows (default 'assigned_to')
     drillDown?: DrillDownConfig[];

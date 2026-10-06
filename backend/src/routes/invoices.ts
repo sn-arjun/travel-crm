@@ -34,6 +34,8 @@ const createInvoiceSchema = z.object({
   discountType: z.enum(['percentage', 'fixed']).optional(),
   discountValue: z.number().min(0).default(0),
   dueDate: z.string().optional(),
+  issueDate: z.string().optional().nullable(),
+  terms: z.string().optional().nullable(),
   notes: z.string().optional(),
   bankDetails: z.record(z.string(), z.any()).optional(),
   currency: z.string().default('INR'),
@@ -134,6 +136,7 @@ invoiceRoutes.get('/', async (c) => {
         i.subtotal, i.discount_type, i.discount_value, i.discount_amount,
         i.taxable_amount, i.tax_type, i.cgst, i.sgst, i.igst, i.vat_amount,
         i.total_tax, i.total, i.currency, i.status, i.due_date,
+        i.issue_date, i.terms,
         i.paid_amount, i.balance_due, i.notes, i.created_by, i.created_at, i.updated_at,
         c.name as contact_name, c.email as contact_email, c.phone as contact_phone
       FROM invoices i
@@ -241,11 +244,11 @@ invoiceRoutes.post('/', zValidator('json', createInvoiceSchema), async (c) => {
           discount_type, discount_value, discount_amount, taxable_amount,
           tax_type, cgst, sgst, igst, vat_amount, total_tax, total,
           currency, status, due_date, paid_amount, balance_due, notes,
-          bank_details, created_by, created_at, updated_at
+          bank_details, created_by, created_at, updated_at, issue_date, terms
         ) VALUES (
           ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
           ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20,
-          ?21, ?22, ?23, ?24, ?25, ?26, ?27
+          ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29
         )`
       )
       .bind(
@@ -275,7 +278,9 @@ invoiceRoutes.post('/', zValidator('json', createInvoiceSchema), async (c) => {
         data.bankDetails ? JSON.stringify(data.bankDetails) : null,
         userId,
         now,
-        now
+        now,
+        data.issueDate || now.split('T')[0],
+        data.terms || null
       )
       .run();
 
@@ -376,6 +381,7 @@ invoiceRoutes.get('/:id', async (c) => {
           i.subtotal, i.discount_type, i.discount_value, i.discount_amount,
           i.taxable_amount, i.tax_type, i.cgst, i.sgst, i.igst, i.vat_amount,
           i.total_tax, i.total, i.currency, i.status, i.due_date,
+          i.issue_date, i.terms,
           i.paid_amount, i.balance_due, i.notes, i.bank_details, i.created_by,
           i.created_at, i.updated_at,
           c.name as contact_name, c.email as contact_email, c.phone as contact_phone
@@ -488,6 +494,8 @@ invoiceRoutes.put('/:id', zValidator('json', updateInvoiceSchema), async (c) => 
     const updateData: Record<string, any> = {};
     if (data.notes !== undefined) updateData.notes = data.notes;
     if (data.dueDate !== undefined) updateData.due_date = data.dueDate;
+    if (data.issueDate) updateData.issue_date = data.issueDate;
+    if (data.terms !== undefined) updateData.terms = data.terms;
     if (data.discountType !== undefined) updateData.discount_type = data.discountType;
     if (data.discountValue !== undefined) updateData.discount_value = data.discountValue;
 

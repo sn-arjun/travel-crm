@@ -69,6 +69,8 @@ const fleetReports: ReportDefinition[] = [
         allowedFilters: ['status', 'type'],
         allowedGroupBy: ['status', 'type'],
         defaultSort: { column: 'type', order: 'asc' },
+        // An "as of today" report: the date range never narrows it, so bind the filter to today.
+        ignoreDateRange: true,
         baseQuery: `
       SELECT
         type,

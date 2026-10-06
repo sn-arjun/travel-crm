@@ -82,7 +82,7 @@ export class ReportEngine {
         const bindings: any[] = [];
 
         // Date range filter
-        if (dateFrom && dateTo) {
+        if (dateFrom && dateTo && !report.ignoreDateRange) {
             const dateColumn = params.date_column || report.dateColumn || 'created_at';
             if (query.includes('{DATE_FILTER}')) {
                 query = query.replace('{DATE_FILTER}', ` AND ${dateColumn} BETWEEN ? AND ? `);
@@ -174,7 +174,12 @@ export class ReportEngine {
         }
 
         const currentReq = this._buildQuery(report, params, userId, userRole, params.date_from, params.date_to);
-        const stmts: any[] = [db.prepare(currentReq.query).bind(...currentReq.bindings)];
+        // stmts[0] = current rows, stmts[1] = real total row count (same query without LIMIT/OFFSET)
+        const countSql = `SELECT COUNT(*) AS total FROM (${currentReq.query.replace(/\s*LIMIT \? OFFSET \?\s*$/, '')})`;
+        const stmts: any[] = [
+            db.prepare(currentReq.query).bind(...currentReq.bindings),
+            db.prepare(countSql).bind(...currentReq.bindings.slice(0, -2)),
+        ];
 
         let prevReq;
         if (params.compare === 'true' && params.date_from && params.date_to) {
@@ -204,6 +209,8 @@ export class ReportEngine {
             throw new Error(`Report query failed: ${dbErr.message || 'Unknown database error'}`);
         }
         const currentData = results[0].results as Record<string, any>[];
+        const countRow = (results[1]?.results as Record<string, any>[] | undefined)?.[0];
+        const totalRows = Number(countRow?.total);
 
         const page = params.page ? Number(params.page) : 1;
         let perPage = params.per_page ? Number(params.per_page) : 25;
@@ -213,15 +220,19 @@ export class ReportEngine {
             data: currentData,
             columns: report.columns,
             meta: {
-                total: currentData.length === perPage ? -1 : currentData.length + ((page - 1) * perPage),
+                // Real row count (never -1); falls back to rows seen so far if the count is unavailable
+                total: Number.isFinite(totalRows) ? totalRows : currentData.length + ((page - 1) * perPage),
                 page,
-                per_page: perPage
+                per_page: perPage,
+                hasMore: (Number.isFinite(totalRows) ? totalRows : currentData.length + ((page - 1) * perPage)) > page * perPage
             }
         };
 
-        if (results.length > 1) {
-            const prevData = results[1].results as Record<string, any>[];
+        if (results.length > 2) {
+            const prevData = results[2].results as Record<string, any>[];
             // Format prev data as a keyed map for easier lookup if grouped, or just single object if aggregated
+            // Full previous-period row set, same shape as the current-period rows (additive)
+            response.previous_period_rows = prevData;
             if (params.group_by) {
                 const prevMap: Record<string, any> = {};
                 for (const row of prevData) {

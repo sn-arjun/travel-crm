@@ -41,14 +41,15 @@ function buildFollowUpQuery(
   teamView: boolean,
   now: string,
   contactId?: string,
+  status: string = 'pending',
 ): { sql: string; params: unknown[] } {
   const today = now.split('T')[0];
   const todayStart = `${today}T00:00:00.000Z`;
   const todayEnd = `${today}T23:59:59.999Z`;
   const in7Days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  let whereClause = `f.status = 'pending'`;
-  const params: unknown[] = [];
+  let whereClause = status === 'all' ? '1 = 1' : 'f.status = ?';
+  const params: unknown[] = status === 'all' ? [] : [status];
 
   // RBAC: salesperson only sees own follow-ups unless team view by manager/admin
   const canSeeTeam = (role === 'admin' || role === 'sales_manager') && teamView;
@@ -85,7 +86,7 @@ function buildFollowUpQuery(
     JOIN contacts c ON c.id = l.contact_id
     LEFT JOIN users u ON u.id = f.created_by
     WHERE ${whereClause}
-    ORDER BY f.scheduled_at ASC
+    ORDER BY f.scheduled_at ${status === 'pending' ? 'ASC' : 'DESC'}
   `;
 
   return { sql, params };
@@ -105,7 +106,13 @@ followUpRoutes.get('/', requirePermission('leads', 'view'), async (c) => {
 
   const contactId = c.req.query('contactId') || undefined;
 
-  const { sql, params } = buildFollowUpQuery(tenantDb, filter, userId, role, teamView, now, contactId);
+  // status: pending (default) | completed | cancelled | all
+  const status = (c.req.query('status') || 'pending').toLowerCase();
+  if (!['pending', 'completed', 'cancelled', 'missed', 'all'].includes(status)) {
+    return error(c, 'status must be one of pending, completed, cancelled, missed, all', 400);
+  }
+
+  const { sql, params } = buildFollowUpQuery(tenantDb, filter, userId, role, teamView, now, contactId, status);
 
   const result = await tenantDb.prepare(sql).bind(...params).all();
 
