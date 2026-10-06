@@ -11,6 +11,7 @@ import {
 import { useApiQuery } from '@/hooks/use-api';
 import { campaignsApi } from '@/lib/api/campaigns';
 import { templatesApi, type MessageTemplate } from '@/lib/api/templates';
+import { unwrapList } from '@/lib/api/envelope';
 import type { Campaign } from '@travelcrm/shared';
 import { toast } from 'sonner';
 
@@ -37,7 +38,7 @@ export default function EditCampaignPage() {
 
   if (loading) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-ds-4">
+      <div className="flex min-h-64 flex-col items-center justify-center gap-ds-4">
         <Loader2 className="size-10 animate-spin text-ds-foreground-muted" aria-hidden="true" />
         <p className="text-ds-foreground-muted">Loading campaign...</p>
       </div>
@@ -117,20 +118,19 @@ export default function EditCampaignPage() {
                       value={form.watch('templateId') || null}
                       onChange={(id) => form.setValue('templateId', id ?? '', { shouldDirty: true, shouldValidate: true })}
                       fetcher={async (q, page) => {
-                        const r = await templatesApi.list({ channel: campaign.type, search: q, page, limit: 20 });
-                        const data = r.data as any;
-                        const items = Array.isArray(data) ? data : (data?.data ?? []);
-                        const total = data?.pagination?.total ?? items.length;
-                        return { items, total };
+                        const r = unwrapList<MessageTemplate>(
+                          await templatesApi.list({ channel: campaign.type, search: q || undefined, page, limit: 20 }),
+                        );
+                        return { items: r.data, total: r.pagination.total };
                       }}
                       getOptionId={(t: MessageTemplate) => t.id}
                       getOptionLabel={(t: MessageTemplate) => t.name}
                       getOptionDescription={(t: MessageTemplate) => t.subject}
                       resolveSelected={async (id) => {
-                        const r = await templatesApi.list({ channel: campaign.type, limit: 100 });
-                        const data = r.data as any;
-                        const items: MessageTemplate[] = Array.isArray(data) ? data : (data?.data ?? []);
-                        return items.find((t) => t.id === id) ?? null;
+                        const r = unwrapList<MessageTemplate>(
+                          await templatesApi.list({ channel: campaign.type, limit: 100 }),
+                        );
+                        return r.data.find((t) => t.id === id) ?? null;
                       }}
                       placeholder="Choose a template"
                       searchPlaceholder="Search templates..."

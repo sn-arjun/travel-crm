@@ -98,7 +98,7 @@ test.describe('A. Opt-out full round trip', () => {
     await waitForLoad(page);
 
     // ── Assert it's gone from the opted-out list ──
-    await expect(page.getByText(contact.name)).not.toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('tr').filter({ hasText: contact.name })).toHaveCount(0, { timeout: 8_000 });
 
     // ── Assert the underlying contact really was opted back in ──
     // (GET /contacts/:id doesn't project the optedOut column, so verify via

@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { z } from 'zod';
 import { Mail, MessageSquare } from 'lucide-react';
@@ -13,9 +14,15 @@ import { useApiQuery } from '@/hooks/use-api';
 import { campaignsApi } from '@/lib/api/campaigns';
 import { templatesApi, type MessageTemplate } from '@/lib/api/templates';
 import { contactsApi } from '@/lib/api/contacts';
+import { marketingApi, type MarketingSegment } from '@/lib/api/marketing';
+import { unwrapList } from '@/lib/api/envelope';
 import { toast } from 'sonner';
 
 const SMS_LIMIT = 160;
+
+function daysFromNow(days: number): Date {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+}
 
 const leadStatuses = ['new', 'contacted', 'qualified', 'proposal_sent', 'negotiation', 'won', 'lost'];
 
@@ -38,6 +45,8 @@ const schema = z.object({
   message: 'Select at least one tag', path: ['tags'],
 }).refine((v) => v.audienceType !== 'lead_status' || v.statuses.length > 0, {
   message: 'Select at least one status', path: ['statuses'],
+}).refine((v) => v.audienceType !== 'segment' || !!v.segmentId, {
+  message: 'Select a segment', path: ['segmentId'],
 }).refine((v) => v.contentSource !== 'template' || !!v.templateId, {
   message: 'Select a template', path: ['templateId'],
 }).refine((v) => v.contentSource !== 'custom' || !!v.body?.trim(), {
@@ -55,6 +64,9 @@ export default function NewCampaignPage() {
 
   const { data: tagsResponse } = useApiQuery(() => contactsApi.getTags(), []);
   const availableTags: string[] = (tagsResponse?.data ?? []) as string[];
+  const prefillSegmentId = searchParams.get('segmentId') || '';
+  const prefillFestival = searchParams.get('festivalName') || '';
+  const prefillSubject = searchParams.get('subject') || '';
 
   return (
     <EntityForm<CampaignFormValues>
@@ -62,16 +74,16 @@ export default function NewCampaignPage() {
       description="Reach contacts by email, SMS or WhatsApp."
       schema={schema}
       defaultValues={{
-        name: '',
+        name: prefillFestival && prefillFestival !== 'Custom' ? `${prefillFestival} Campaign` : '',
         type: 'email',
         description: '',
-        audienceType: 'tags',
+        audienceType: prefillSegmentId ? 'segment' : 'tags',
         tags: [],
         statuses: [],
-        segmentId: searchParams.get('segmentId') || '',
-        contentSource: 'template',
+        segmentId: prefillSegmentId,
+        contentSource: prefillSubject ? 'custom' : 'template',
         templateId: '',
-        subject: '',
+        subject: prefillSubject,
         body: '',
         scheduleType: 'now',
         scheduleDate: undefined,
@@ -111,13 +123,19 @@ export default function NewCampaignPage() {
         const created = result.data;
 
         if (v.scheduleType === 'later' && scheduledAt) {
-          const scheduled = await campaignsApi.schedule(created.id, { scheduledAt: scheduledAt.toISOString() });
-          if (scheduled) toast.success('Campaign scheduled successfully!');
-          else toast.error('Campaign created but failed to schedule');
+          try {
+            await campaignsApi.schedule(created.id, { scheduledAt: scheduledAt.toISOString() });
+            toast.success('Campaign scheduled successfully');
+          } catch {
+            toast.error('Campaign saved as a draft, but it could not be scheduled');
+          }
         } else if (v.scheduleType === 'now') {
-          const sent = await campaignsApi.send(created.id, { sendImmediately: true });
-          if (sent) toast.success('Campaign launched successfully!');
-          else toast.error('Campaign created but failed to send');
+          try {
+            await campaignsApi.send(created.id, { sendImmediately: true });
+            toast.success('Campaign launched successfully');
+          } catch {
+            toast.error('Campaign saved as a draft, but it could not be sent');
+          }
         } else {
           toast.success('Campaign saved as draft');
         }
@@ -131,12 +149,6 @@ export default function NewCampaignPage() {
         const statuses = form.watch('statuses') || [];
         const body = form.watch('body') || '';
         const scheduleType = form.watch('scheduleType');
-
-        const { data: templatesResponse } = useApiQuery(
-          () => templatesApi.list({ channel: type, limit: 100 }),
-          [type],
-        );
-        const apiTemplates: MessageTemplate[] = (templatesResponse?.data as any)?.data ?? (templatesResponse?.data as any) ?? [];
 
         return (
           <>
@@ -222,8 +234,32 @@ export default function NewCampaignPage() {
                 )}
 
                 {audienceType === 'segment' && (
-                  <FormRow name="segmentId" label="Segment ID" hint="Pass ?segmentId=… from a saved segment to prefill this.">
-                    <Input id="segmentId" placeholder="Segment ID" {...form.register('segmentId')} />
+                  <FormRow name="segmentId" label="Segment" required wide hint="Pick a saved audience segment.">
+                    <RelationCombobox
+                      value={form.watch('segmentId') || null}
+                      onChange={(id) => form.setValue('segmentId', id ?? '', { shouldDirty: true, shouldValidate: true })}
+                      fetcher={async (q, page) => {
+                        const r = unwrapList<MarketingSegment>(
+                          await marketingApi.segments.list({ search: q || undefined, page, limit: 20 }),
+                        );
+                        return { items: r.data, total: r.pagination.total };
+                      }}
+                      resolveSelected={async (id) => {
+                        try {
+                          return (await marketingApi.segments.get(id)).data;
+                        } catch {
+                          return null;
+                        }
+                      }}
+                      getOptionId={(s: MarketingSegment) => s.id}
+                      getOptionLabel={(s: MarketingSegment) => s.name}
+                      getOptionDescription={(s: MarketingSegment) => `${s.contactCount.toLocaleString('en-IN')} contacts`}
+                      placeholder="Choose a segment"
+                      searchPlaceholder="Search segments..."
+                      emptyText="No segments found"
+                      aria-label="Segment"
+                      error={form.formState.errors.segmentId?.message}
+                    />
                   </FormRow>
                 )}
               </div>
@@ -250,12 +286,12 @@ export default function NewCampaignPage() {
                       value={form.watch('templateId') || null}
                       onChange={(id) => form.setValue('templateId', id ?? '', { shouldDirty: true, shouldValidate: true })}
                       fetcher={async (q, page) => {
-                        const r = await templatesApi.list({ channel: type, search: q, page, limit: 20 });
-                        const data = r.data as any;
-                        const items = Array.isArray(data) ? data : (data?.data ?? []);
-                        const total = data?.pagination?.total ?? items.length;
-                        return { items, total };
+                        const r = unwrapList<MessageTemplate>(
+                          await templatesApi.list({ channel: type, search: q || undefined, page, limit: 20 }),
+                        );
+                        return { items: r.data, total: r.pagination.total };
                       }}
+                      aria-label="Template"
                       getOptionId={(t: MessageTemplate) => t.id}
                       getOptionLabel={(t: MessageTemplate) => t.name}
                       getOptionDescription={(t: MessageTemplate) => t.subject}
@@ -264,11 +300,10 @@ export default function NewCampaignPage() {
                       emptyText={`No ${type} templates found`}
                       error={form.formState.errors.templateId?.message}
                     />
-                    {apiTemplates.length === 0 && (
-                      <p className="mt-ds-1 text-xs text-ds-foreground-muted">
-                        No {type} templates found. <a href="/communication/templates/new" className="text-ds-primary hover:underline">Create one</a>.
-                      </p>
-                    )}
+                    <p className="mt-ds-1 text-xs text-ds-foreground-muted">
+                      Need a new {type} template?{' '}
+                      <Link href="/communication/templates/new" className="text-ds-primary hover:underline">Create one</Link>.
+                    </p>
                   </FormRow>
                 )}
 
@@ -320,7 +355,7 @@ export default function NewCampaignPage() {
                         value={form.watch('scheduleDate')}
                         onChange={(d) => form.setValue('scheduleDate', d, { shouldDirty: true, shouldValidate: true })}
                         minDate={new Date()}
-                        maxDate={new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)}
+                        maxDate={daysFromNow(90)}
                         placeholder="Pick a date"
                       />
                     </FormRow>

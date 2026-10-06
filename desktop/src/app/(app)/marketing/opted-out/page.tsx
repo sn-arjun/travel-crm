@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Ban, Mail, MessageSquare, Phone, Smartphone, UserCheck } from 'lucide-react';
+import { Ban, Mail, MessageSquare, Smartphone, UserCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { ListPage } from '@/components/domain';
 import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tag } from '@/components/ui';
@@ -159,7 +159,7 @@ export default function OptedOutPage() {
             key: 'optOutReason',
             header: 'Reason',
             cell: (c) => (
-              <span className="block max-w-[200px] truncate text-ds-foreground-subtle" title={c.optOutReason}>
+              <span className="block max-w-52 truncate text-ds-foreground-subtle" title={c.optOutReason}>
                 {c.optOutReason || '—'}
               </span>
             ),

@@ -2,14 +2,14 @@
 
 import * as React from 'react';
 import {
-  Sparkles, Copy, Pencil, Trash2, Instagram, Facebook, Linkedin, Twitter,
+  Sparkles, Copy, Trash2, Instagram, Facebook, Linkedin, Twitter,
   Eye, Loader2, Lightbulb, Check, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ListPage } from '@/components/domain';
 import {
   Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-  Textarea, Label, Tag, Skeleton, Separator, EmptyState,
+  Textarea, Label, Tag, Skeleton, Separator,
 } from '@/components/ui';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -27,13 +27,13 @@ const TONES = ['professional', 'casual', 'exciting', 'informative'] as const;
 function PlatformIcon({ platform }: { platform: string }) {
   switch (platform) {
     case 'instagram':
-      return <Instagram className="size-4 text-pink-600" aria-hidden="true" />;
+      return <Instagram className="size-4 text-ds-chart-5" aria-hidden="true" />;
     case 'facebook':
-      return <Facebook className="size-4 text-blue-600" aria-hidden="true" />;
+      return <Facebook className="size-4 text-ds-info" aria-hidden="true" />;
     case 'linkedin':
-      return <Linkedin className="size-4 text-blue-700" aria-hidden="true" />;
+      return <Linkedin className="size-4 text-ds-primary" aria-hidden="true" />;
     case 'twitter':
-      return <Twitter className="size-4 text-sky-500" aria-hidden="true" />;
+      return <Twitter className="size-4 text-ds-chart-2" aria-hidden="true" />;
     default:
       return null;
   }
@@ -247,7 +247,7 @@ function GenerateDialog({
                   }
                 >
                   <PlatformIcon platform={p} />
-                  <span className="text-[11px] capitalize">{p}</span>
+                  <span className="text-xs capitalize">{p}</span>
                 </button>
               ))}
             </div>

@@ -325,7 +325,7 @@ test.describe('Marketing Social Content', () => {
       await page.waitForTimeout(800);
       await waitForLoad(page);
 
-      const card = page.locator(`text=${festival.festivalName}`).locator('../../..').first();
+      const card = page.getByRole('article', { name: `Festival campaign ${festival.festivalName}` });
       await expect(card).toBeVisible({ timeout: 10_000 });
 
       // Toggle activate/deactivate and assert the change persists via the API.
@@ -340,8 +340,9 @@ test.describe('Marketing Social Content', () => {
       expect(Boolean(updated?.isActive ?? updated?.is_active)).toBe(!wasActive);
 
       // Delete via the row's dropdown menu.
-      await card.getByRole('button').filter({ hasText: '' }).last().click();
+      await card.getByRole('button', { name: /More actions/i }).click();
       await page.getByRole('menuitem', { name: /Delete/i }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
       await expect(page.locator(`text=${festival.festivalName}`)).toHaveCount(0, { timeout: 10_000 });
 
       const afterDelete = await api('GET', `/marketing/festivals/${festival.id}`).catch(() => ({ success: false }));

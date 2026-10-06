@@ -299,6 +299,21 @@ export interface MarketingCampaignRecipient {
   errorMessage?: string;
 }
 
+/** Raw wire shape from /marketing/campaigns/:id/recipients (snake_case rows). */
+interface RawRecipient {
+  id: string;
+  contact_id?: string | null;
+  contact_name?: string | null;
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  status: MarketingCampaignRecipient['status'];
+  sent_at?: string | null;
+  opened_at?: string | null;
+  clicked_at?: string | null;
+  error_message?: string | null;
+}
+
 export interface FestivalCampaign {
   id: string;
   name: string;
@@ -426,11 +441,11 @@ export const marketingApi = {
     },
 
     recipients: async (id: string, params?: { page?: number; limit?: number; status?: string }) => {
-      const res = await client.get<{ success: boolean; data: any[] | { data: any[] }; pagination?: { total: number } }>(
+      const res = await client.get<{ success: boolean; data: RawRecipient[] | { data: RawRecipient[] }; pagination?: { total: number } }>(
         `${CAMPAIGNS_BASE}/${id}/recipients`,
         { params },
       );
-      const rows = extractList<any>(res.data);
+      const rows = extractList<RawRecipient>(res.data);
       const total = extractTotal(res.data, res.pagination?.total ?? rows.length);
       const items: MarketingCampaignRecipient[] = rows.map((r) => ({
         id: r.id,

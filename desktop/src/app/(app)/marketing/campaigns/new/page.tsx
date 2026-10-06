@@ -10,6 +10,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { marketingApi, type MarketingSegment } from '@/lib/api/marketing';
+import { unwrapList } from '@/lib/api/envelope';
 
 const schema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -85,16 +86,15 @@ export default function NewMarketingCampaignPage() {
                   value={form.watch('segmentId') || null}
                   onChange={(id) => form.setValue('segmentId', id ?? '', { shouldDirty: true })}
                   fetcher={async (query, page) => {
-                    const r = await marketingApi.segments.list({ search: query, page, limit: 20 });
-                    const data = r.data as any;
-                    const items = Array.isArray(data) ? data : (data?.data ?? []);
-                    const total = data?.pagination?.total ?? items.length;
-                    return { items, total };
+                    const r = unwrapList<MarketingSegment>(
+                      await marketingApi.segments.list({ search: query || undefined, page, limit: 20 }),
+                    );
+                    return { items: r.data, total: r.pagination.total };
                   }}
                   getOptionId={(s) => s.id}
                   getOptionLabel={(s) => s.name}
                   getOptionDescription={(s) => `${s.contactCount} contacts`}
-                  resolveSelected={async () => null}
+                  resolveSelected={async (sid) => marketingApi.segments.get(sid).then((r) => r.data).catch(() => null)}
                   placeholder="All contacts"
                   searchPlaceholder="Search segments..."
                 />

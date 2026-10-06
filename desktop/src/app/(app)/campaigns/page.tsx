@@ -12,6 +12,7 @@ import { campaignsApi } from '@/lib/api/campaigns';
 import type { Campaign } from '@travelcrm/shared';
 import { toast } from 'sonner';
 import { toLocalDateString } from '@/lib/dates';
+import { unwrapList } from '@/lib/api/envelope';
 
 function channelIcon(type: string) {
   if (type === 'email') return <Mail className="size-3.5" aria-hidden="true" />;
@@ -214,9 +215,9 @@ export default function CampaignsPage() {
               type: typeFilter || undefined,
               status: statusFilter || undefined,
             });
-            const data = res.data as any;
-            const items: Campaign[] = Array.isArray(data) ? data : (data?.data ?? []);
-            const total: number = data?.pagination?.total ?? items.length;
+            const page_ = unwrapList<Campaign>(res);
+            const items = page_.data;
+            const total = page_.pagination.total;
             for (const item of items) {
               if (!seen.has(item.id)) {
                 seen.add(item.id);

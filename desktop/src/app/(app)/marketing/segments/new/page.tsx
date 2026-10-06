@@ -154,7 +154,7 @@ export default function NewSegmentPage() {
                       return (
                         <div key={rule.id} className="flex items-center gap-ds-2">
                           {ri > 0 && (
-                            <Badge variant="secondary" className="text-[10px] shrink-0 w-10 justify-center">
+                            <Badge variant="secondary" className="text-xs shrink-0 w-10 justify-center">
                               {group.logic}
                             </Badge>
                           )}

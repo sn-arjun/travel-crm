@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/select';
 import { SectionCard } from '@/components/ui';
 import { marketingApi, type MarketingSegment } from '@/lib/api/marketing';
+import { unwrapList } from '@/lib/api/envelope';
 
 const schema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -59,7 +60,7 @@ export default function EditMarketingCampaignPage() {
 
   if (loadError) {
     return (
-      <div className="flex flex-col items-center justify-center gap-ds-4 h-full">
+      <div className="flex flex-col items-center justify-center gap-ds-4 min-h-64">
         <p className="text-ds-danger">Failed to load campaign</p>
         <Button variant="outline" onClick={() => router.back()}>Go Back</Button>
       </div>
@@ -127,11 +128,10 @@ export default function EditMarketingCampaignPage() {
                   value={form.watch('segmentId') || null}
                   onChange={(sid) => form.setValue('segmentId', sid ?? '', { shouldDirty: true })}
                   fetcher={async (query, page) => {
-                    const r = await marketingApi.segments.list({ search: query, page, limit: 20 });
-                    const data = r.data as any;
-                    const items = Array.isArray(data) ? data : (data?.data ?? []);
-                    const total = data?.pagination?.total ?? items.length;
-                    return { items, total };
+                    const r = unwrapList<MarketingSegment>(
+                      await marketingApi.segments.list({ search: query || undefined, page, limit: 20 }),
+                    );
+                    return { items: r.data, total: r.pagination.total };
                   }}
                   getOptionId={(s) => s.id}
                   getOptionLabel={(s) => s.name}

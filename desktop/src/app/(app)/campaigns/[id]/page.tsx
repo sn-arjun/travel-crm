@@ -8,8 +8,10 @@ import {
 import { DetailPage } from '@/components/domain';
 import {
   Button, Tag, SectionCard, Skeleton, EmptyState, DataTable, Dialog, DialogContent,
-  DialogHeader, DialogTitle, DialogFooter, DatePicker, Input, Label,
+  DialogHeader, DialogTitle, DialogFooter, DatePicker, Input, Label, useConfirm,
 } from '@/components/ui';
+import { PageContainer } from '@/components/layout/page-container';
+import { formatDisplayDate } from '@/lib/dates';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
 import {
@@ -45,6 +47,7 @@ export default function CampaignDetailPage() {
   const params = useParams();
   const campaignId = params.id as string;
 
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [showScheduleDialog, setShowScheduleDialog] = React.useState(false);
   const [scheduleDate, setScheduleDate] = React.useState<Date | undefined>(undefined);
   const [scheduleTime, setScheduleTime] = React.useState('');
@@ -91,7 +94,12 @@ export default function CampaignDetailPage() {
   }, [wsConnected, campaignStatus, refetch]);
 
   async function handleSendNow() {
-    if (!confirm('Are you sure you want to send this campaign now?')) return;
+    const ok = await confirm({
+      title: 'Send this campaign now?',
+      description: 'Messages go out to every recipient straight away and cannot be recalled.',
+      confirmLabel: 'Send now',
+    });
+    if (!ok) return;
     const result = await sendCampaign({ sendImmediately: true });
     if (result) {
       toast.success('Campaign sent!');
@@ -120,7 +128,14 @@ export default function CampaignDetailPage() {
   }
 
   async function handleCancel() {
-    if (!confirm('Are you sure you want to cancel this campaign?')) return;
+    const ok = await confirm({
+      title: 'Cancel this campaign?',
+      description: 'Pending messages will not be sent. Messages already delivered are not affected.',
+      confirmLabel: 'Cancel campaign',
+      cancelLabel: 'Keep campaign',
+      tone: 'destructive',
+    });
+    if (!ok) return;
     const result = await cancelCampaign({ reason: 'Cancelled by user' });
     if (result) {
       toast.success('Campaign cancelled');
@@ -131,7 +146,13 @@ export default function CampaignDetailPage() {
   }
 
   async function handleDelete() {
-    if (!confirm('Are you sure you want to delete this campaign? This cannot be undone.')) return;
+    const ok = await confirm({
+      title: 'Delete this campaign?',
+      description: 'The campaign and its recipient history will be removed permanently.',
+      confirmLabel: 'Delete',
+      tone: 'destructive',
+    });
+    if (!ok) return;
     const result = await deleteCampaign(undefined);
     if (result !== undefined) {
       toast.success('Campaign deleted');
@@ -143,11 +164,11 @@ export default function CampaignDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col gap-ds-4 p-ds-6">
+      <PageContainer>
         <Skeleton className="h-9 w-64" />
         <Skeleton className="h-48 w-full" />
         <Skeleton className="h-64 w-full" />
-      </div>
+      </PageContainer>
     );
   }
 
@@ -245,7 +266,7 @@ export default function CampaignDetailPage() {
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-ds-foreground-muted">Created</span>
                   <span className="font-medium">
-                    {campaign.createdAt ? new Date(campaign.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                    {campaign.createdAt ? formatDisplayDate(new Date(campaign.createdAt)) : '—'}
                   </span>
                 </div>
                 {campaign.scheduledAt && (
@@ -340,6 +361,7 @@ export default function CampaignDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </>
   );
 }

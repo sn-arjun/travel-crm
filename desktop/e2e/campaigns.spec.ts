@@ -25,7 +25,16 @@ test.describe('A. Campaign full round trip', () => {
     const audienceCombobox = page.locator('#audienceType');
     await audienceCombobox.click();
     await page.getByRole('option', { name: /Custom segment/i }).click();
-    await page.getByPlaceholder(/^Segment ID$/i).fill(`seg-${ts}`);
+    const segRes = await api('POST', '/marketing/segments', {
+      name: `E2E-Seg-${ts}`,
+      criteria: { groups: [{ logic: 'AND', rules: [{ field: 'city', operator: 'equals', value: 'Mumbai' }] }] },
+    });
+    const segment = segRes.data ?? segRes;
+    // The segment is picked from a searchable list, never typed as an id.
+    expect(await page.getByPlaceholder(/^Segment ID$/i).count()).toBe(0);
+    await page.getByRole('combobox', { name: /Segment/i }).click();
+    await page.getByPlaceholder(/Search segments/i).fill(segment.name);
+    await page.getByRole('option', { name: new RegExp(segment.name) }).click();
 
     // Content: switch to custom content so we can assert exact subject/body text later.
     const contentSourceCombobox = page.locator('#contentSource');
@@ -145,8 +154,8 @@ test.describe('A. Campaign full round trip', () => {
 
     // ── DELETE via UI dropdown, assert gone ──
     await page.getByRole('button', { name: /More actions/i }).click();
-    page.once('dialog', async (dialog) => { await dialog.accept(); });
     await page.getByRole('menuitem', { name: /Delete/i }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
     await waitForLoad(page);
     await expect(page).toHaveURL(/\/campaigns$/, { timeout: 15_000 });
 
@@ -418,9 +427,9 @@ test.describe('D. Schedule, send and cancel', () => {
 
     // "Cancel schedule" lives in the overflow actions menu for scheduled campaigns
     // (the primary action slot shows Schedule/Send now instead, since canEdit is true).
-    page.once('dialog', async (dialog) => { await dialog.accept(); });
     await page.getByRole('button', { name: /More actions/i }).click();
     await page.getByRole('menuitem', { name: /Cancel schedule/i }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancel campaign' }).click();
     await waitForLoad(page);
 
     // The status badge/heading area should now read "cancelled" — not
@@ -438,8 +447,8 @@ test.describe('D. Schedule, send and cancel', () => {
     await page.goto(`/campaigns/${campaign.id}`);
     await waitForLoad(page);
 
-    page.once('dialog', async (dialog) => { await dialog.accept(); });
     await page.getByRole('button', { name: /Send now/i }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Send now' }).click();
     await waitForLoad(page);
 
     await expect(page.locator('text=Draft').first()).toHaveCount(0, { timeout: 10_000 });
