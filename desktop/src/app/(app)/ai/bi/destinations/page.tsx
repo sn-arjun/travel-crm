@@ -124,7 +124,7 @@ function DestinationsContent() {
 
   return (
     <div className="flex flex-col gap-ds-4">
-      <AiAvailabilityBanner note="Trending destinations are live data." />
+      <AiAvailabilityBanner note="Profitability and trending figures below are live data; only the AI commentary is unavailable." />
       <div className="flex justify-end">
         <Button variant="outline" size="sm" className="gap-ds-2" onClick={() => refetchProfit()}>
           <RefreshCw className="size-4" aria-hidden="true" />

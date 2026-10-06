@@ -10,7 +10,17 @@ import { Hono } from 'hono';
 import type { AppContext } from '../types';
 import { success, error, paginated, notFound } from '../utils/response';
 import { generateId } from '../utils/uuid';
-import { AIRouter, type AITask } from '../services/ai-router';
+import { AIRouter, AiUnavailableError, type AITask, type AIResponse } from '../services/ai-router';
+
+/** Runs the AI call only; resolves null when no provider is available so the caller can still return its SQL data. */
+async function routeOrNull(router: AIRouter, task: AITask, prompt: string, system: string): Promise<AIResponse | null> {
+  try {
+    return await router.route(task, prompt, system);
+  } catch (e) {
+    if (e instanceof AiUnavailableError) return null;
+    throw e;
+  }
+}
 import { incrementUsage } from '../middleware/usage-cap';
 
 import { aiAwareErrorHandler } from '../utils/ai-unavailable';
@@ -266,7 +276,15 @@ app.get('/destination-profitability', async (c) => {
 
   const router = new AIRouter(env);
   const prompt = `Analyze destination profitability for a travel agency. Data: ${JSON.stringify(destinations.results || [])}. Output JSON: { destinations: [{ name, revenue, margin, leadCount, conversionRate, recommendation }], topPerformer, underPerformer, insights: [string] }`;
-  const aiResult = await router.route('destination_profitability', prompt, 'You are a travel business analyst. Analyze destination data and provide actionable insights. Always respond with valid JSON.');
+  const aiResult = await routeOrNull(router, 'destination_profitability', prompt, 'You are a travel business analyst. Analyze destination data and provide actionable insights. Always respond with valid JSON.');
+
+  if (!aiResult) {
+    // No AI provider: the SQL aggregates are still real, only the commentary is missing.
+    return success(c, {
+      destinations: destinations.results || [], topPerformer: null, underPerformer: null, insights: null,
+      rawData: destinations.results || [], aiUnavailable: true, model: null, cost: 0, provider: null,
+    });
+  }
 
   let parsed;
   try {
@@ -410,7 +428,14 @@ app.get('/team-performance', async (c) => {
 
   const router = new AIRouter(env);
   const prompt = `Score salesperson effectiveness for a travel agency team. Data: ${JSON.stringify(teamStats.results || [])}. Output JSON: { rankings: [{ userId, name, score: 0-100, strengths: [string], improvements: [string] }], topPerformer, insights: [string], coachingNeeds: [{ userId, area, suggestion }] }`;
-  const aiResult = await router.route('salesperson_scoring', prompt, 'You are a sales performance analyst. Be constructive and specific. Always respond with valid JSON.');
+  const aiResult = await routeOrNull(router, 'salesperson_scoring', prompt, 'You are a sales performance analyst. Be constructive and specific. Always respond with valid JSON.');
+
+  if (!aiResult) {
+    return success(c, {
+      rankings: null, topPerformer: null, insights: null, coachingNeeds: null,
+      rawData: teamStats.results || [], aiUnavailable: true, model: null, cost: 0, provider: null,
+    });
+  }
 
   let parsed;
   try {
@@ -595,7 +620,15 @@ app.get('/lost-deal-analysis', async (c) => {
 
   const router = new AIRouter(env);
   const prompt = `Analyze lost deals for a travel agency. By reason: ${JSON.stringify(byReason.results || [])}. By status breakdown: ${JSON.stringify(byStatus.results || [])}. Recent lost: ${JSON.stringify((lostLeads.results || []).slice(0, 20))}. Output JSON: { patterns: [string], topReasons: [{ reason, count, lostValue, actionItem }], stageDropoffs: [{ stage, count, suggestion }], recoverable: number, recommendations: [string] }`;
-  const aiResult = await router.route('lost_deal_analysis', prompt, 'You are a sales strategy analyst. Identify patterns in lost deals and suggest recovery actions. Always respond with valid JSON.');
+  const aiResult = await routeOrNull(router, 'lost_deal_analysis', prompt, 'You are a sales strategy analyst. Identify patterns in lost deals and suggest recovery actions. Always respond with valid JSON.');
+
+  if (!aiResult) {
+    return success(c, {
+      patterns: null, topReasons: byReason.results || [], stageDropoffs: null, recoverable: null, recommendations: null,
+      rawByReason: byReason.results || [], rawByStatus: byStatus.results || [],
+      aiUnavailable: true, model: null, cost: 0, provider: null,
+    });
+  }
 
   let parsed;
   try {

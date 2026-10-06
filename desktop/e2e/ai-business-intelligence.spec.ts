@@ -276,17 +276,14 @@ test.describe('Team Performance', () => {
 
     await expect(page.locator('h1, h2').filter({ hasText: /Team Performance/i }).first()).toBeVisible();
 
-    // The team scoring endpoint needs an AI provider; without one the page shows the honest notice.
-    await expect(page.getByTestId('ai-unavailable').or(page.locator('text=Total revenue'))).toBeVisible({
-      timeout: 15_000,
-    });
-    if (await page.getByTestId('ai-unavailable').isVisible().catch(() => false)) {
-      await expect(page.getByTestId('ai-unavailable')).toContainText(/AI is not configured yet/i);
-      await assertNoLeakedError(page);
-      return;
+    // Without an AI provider the real team figures still render (never the full-page notice);
+    // a non-blocking banner explains that only the AI commentary is missing.
+    await expect(page.locator('text=Total revenue')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('ai-unavailable')).toHaveCount(0);
+    const banner = page.getByTestId('ai-unavailable-banner');
+    if (await banner.isVisible().catch(() => false)) {
+      await expect(banner).toContainText(/AI is not configured yet/i);
     }
-
-    await expect(page.locator('text=Total revenue')).toBeVisible();
     await expect(page.locator('text=Total deals closed')).toBeVisible();
     await expect(page.locator('text=Avg conversion rate')).toBeVisible();
 

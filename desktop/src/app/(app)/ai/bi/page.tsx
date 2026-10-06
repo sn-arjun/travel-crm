@@ -121,7 +121,7 @@ function BiDashboardContent() {
 
   return (
     <div className="flex flex-col gap-ds-6">
-      <AiAvailabilityBanner note="Revenue, trending destinations and lead source figures below are live data." />
+      <AiAvailabilityBanner note="Revenue, trending destinations, lead source and lost-deal figures below are live data; only the AI commentary is unavailable." />
       <div className="grid grid-cols-1 gap-ds-4 md:grid-cols-3">
         <Stat
           label="Health Score"

@@ -364,6 +364,21 @@ describe('aiApi', () => {
       expect(isAiUnavailableError(err)).toBe(true);
     });
 
+    it('keeps the real SQL rows when the backend flags aiUnavailable (team performance)', async () => {
+      vi.mocked(client.get).mockResolvedValue({
+        data: {
+          rankings: null,
+          insights: null,
+          aiUnavailable: true,
+          rawData: [{ id: 'u1', name: 'Asha', total_leads: 10, won_leads: 4, revenue: 400000, avg_deal_size: 100000 }],
+        },
+      });
+      const res = await aiApi.bi.getTeamPerformance({ period: 'month' });
+      expect(res.data).toEqual([
+        { userId: 'u1', userName: 'Asha', dealsClosedCount: 4, revenue: 400000, conversionRate: 40, avgDealValue: 100000 },
+      ]);
+    });
+
     it('exposes status and code so generic hooks keep the error', () => {
       const e = new AiUnavailableError('not_configured');
       expect(e.status).toBe(503);

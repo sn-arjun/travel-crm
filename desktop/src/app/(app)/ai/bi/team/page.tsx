@@ -22,6 +22,7 @@ import { AiGate } from '@/components/domain/ai/ai-gate';
 import { useApiQuery } from '@/hooks/use-api';
 import { aiApi, isAiUnavailableError, type TeamPerformanceMetrics } from '@/lib/api/ai';
 import { AiUnavailableNotice } from '@/components/domain/ai/ai-unavailable-notice';
+import { AiAvailabilityBanner } from '@/components/domain/ai/ai-availability-banner';
 import { toLocalDateString } from '@/lib/dates';
 
 function toCsv(rows: TeamPerformanceMetrics[]) {
@@ -126,6 +127,7 @@ function TeamPerformanceContent() {
         </Button>
       </div>
 
+      <AiAvailabilityBanner note="Team figures below are live data; only the AI scoring commentary is unavailable." />
       {unavailable ? (
         <SectionCard>
           <AiUnavailableNotice error={unavailable} onRetry={() => refetch()} />

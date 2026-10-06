@@ -132,6 +132,13 @@ test.describe('AI Lead Scoring', () => {
     // "Calculate score" action rather than a dead end.
     await expect(page.locator('text=No score calculated yet')).toBeVisible({ timeout: 15_000 });
     await page.locator('button', { hasText: 'Calculate score' }).click();
+    await expect(page.locator('text=Overall score').or(page.getByTestId('ai-unavailable'))).toBeVisible({ timeout: 20_000 });
+
+    // No AI provider: the page says so plainly instead of showing a made-up result.
+    if (await page.getByTestId('ai-unavailable').isVisible().catch(() => false)) {
+      await expect(page.getByTestId('ai-unavailable')).toContainText(/AI is not configured yet/i);
+      return;
+    }
 
     // Detail page renders the live score, a progress bar, and factor breakdown.
     await expect(page.locator('text=Overall score')).toBeVisible({ timeout: 20_000 });
@@ -150,6 +157,13 @@ test.describe('AI Lead Scoring', () => {
     // First visit for this lead — calculate the initial score.
     await expect(page.locator('text=No score calculated yet')).toBeVisible({ timeout: 15_000 });
     await page.locator('button', { hasText: 'Calculate score' }).click();
+    await expect(page.locator('text=Overall score').or(page.getByTestId('ai-unavailable'))).toBeVisible({ timeout: 20_000 });
+
+    // No AI provider: the page says so plainly instead of showing a made-up result.
+    if (await page.getByTestId('ai-unavailable').isVisible().catch(() => false)) {
+      await expect(page.getByTestId('ai-unavailable')).toContainText(/AI is not configured yet/i);
+      return;
+    }
     await expect(page.locator('text=Overall score')).toBeVisible({ timeout: 20_000 });
 
     const recalcButton = page.locator('button', { hasText: 'Recalculate' });
@@ -204,6 +218,15 @@ test.describe('AI Smart Follow-ups', () => {
     // Real network round trip: on success the combobox selection is cleared
     // back to its placeholder (toast auto-dismisses too fast to reliably
     // assert on, so the durable signal is the form resetting).
+    await Promise.race([
+      combobox.filter({ hasText: 'Select a lead to generate a follow-up…' }).waitFor({ timeout: 20_000 }),
+      page.getByTestId('ai-unavailable').waitFor({ timeout: 20_000 }),
+    ]).catch(() => {});
+    // No AI provider: the page says so plainly instead of showing a made-up result.
+    if (await page.getByTestId('ai-unavailable').isVisible().catch(() => false)) {
+      await expect(page.getByTestId('ai-unavailable')).toContainText(/AI is not configured yet/i);
+      return;
+    }
     await expect(combobox).toContainText('Select a lead to generate a follow-up…', { timeout: 20_000 });
   });
 

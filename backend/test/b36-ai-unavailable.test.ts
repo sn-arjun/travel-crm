@@ -118,6 +118,27 @@ it('GET /ai/bi/cash-flow-forecast returns 503 AI_UNAVAILABLE', async () => {    
     expect(await usageOf()).toBe(7);
   });
 
+  // Endpoints that mix SQL aggregates with AI commentary keep the real data and flag the missing commentary.
+  const dataCases: Array<[string, string, string[]]> = [
+    ['destination-profitability', '/ai/bi/destination-profitability', ['rawData']],
+    ['team-performance', '/ai/bi/team-performance', ['rawData']],
+    ['lost-deal-analysis', '/ai/bi/lost-deal-analysis', ['rawByReason', 'rawByStatus']],
+  ];
+  for (const [name, path, rawKeys] of dataCases) {
+    it(`GET ${path} (${name}) returns 200 with real data, null AI text and aiUnavailable:true`, async () => {
+      const before = await usageOf();
+      const res = await call('GET', path, adminToken);
+      expect(res.status).toBe(200);
+      const body: any = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.data.aiUnavailable).toBe(true);
+      for (const k of rawKeys) expect(Array.isArray(body.data[k])).toBe(true);
+      expect(body.data.provider).toBeNull();
+      expect(JSON.stringify(body)).not.toContain('Cloudflare AI not available');
+      expect(await usageOf()).toBe(before);
+    });
+  }
+
   it('GET /ai/settings reports truthful provider flags and available:false', async () => {
     const res = await call('GET', '/ai/settings', adminToken);
     expect(res.status).toBe(200);
