@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, FileText, PhoneOff } from 'lucide-react';
 import { ListPage } from '@/components/domain';
-import { Button, Tag, Skeleton, EmptyState } from '@/components/ui';
+import { Button, Tag, Skeleton } from '@/components/ui';
 import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { voipApi, type TranscriptSearchResult } from '@/lib/api/voip';
 

@@ -15,9 +15,11 @@ import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { useApiQuery } from '@/hooks/use-api';
 import { voipApi, type CallAnalytics, type Call } from '@/lib/api/voip';
 import { cn } from '@/lib/utils';
+import { PageContainer } from '@/components/layout/page-container';
 import { toLocalDateString } from '@/lib/dates';
 
-function formatDuration(seconds: number): string {
+function formatDuration(rawSeconds: number): string {
+  const seconds = Math.round(rawSeconds);
   if (!seconds) return '0s';
   const hrs = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
@@ -139,7 +141,7 @@ export default function CallAnalyticsPage() {
   }
 
   const columns: DataTableColumn<TopCaller>[] = [
-    { key: 'rank', header: '#', width: '48px', cell: (_r, i) => <span className="text-ds-foreground-muted">{i + 1}</span> },
+    { key: 'rank', header: '#', width: '3rem', cell: (_r, i) => <span className="text-ds-foreground-muted">{i + 1}</span> },
     { key: 'number', header: 'Number', cell: (c) => <span className="font-mono text-sm font-medium">{c.number}</span> },
     { key: 'count', header: 'Total calls', cell: (c) => <Tag tone="neutral">{c.count}</Tag> },
     { key: 'totalDuration', header: 'Total duration', cell: (c) => <span className="text-sm">{formatDuration(c.totalDuration)}</span> },
@@ -147,7 +149,7 @@ export default function CallAnalyticsPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-ds-6">
+    <PageContainer>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-ds-3">
           <Button variant="ghost" size="icon-sm" onClick={() => router.back()} aria-label="Go back">
@@ -222,11 +224,11 @@ export default function CallAnalyticsPage() {
                   {callsByHour.map((count, i) => (
                     <div key={i} className="flex flex-1 flex-col items-center gap-ds-1">
                       <div
-                        className="min-h-[2px] w-full rounded-t bg-ds-primary transition-all"
+                        className="min-h-0.5 w-full rounded-t bg-ds-primary transition-all"
                         style={{ height: `${(count / maxHourCount) * 100}%` }}
                         title={`${hourLabels[i]}: ${count} calls`}
                       />
-                      {i % 3 === 0 && <span className="text-[9px] text-ds-foreground-muted">{hourLabels[i]}</span>}
+                      {i % 3 === 0 && <span className="text-xs text-ds-foreground-muted">{hourLabels[i]}</span>}
                     </div>
                   ))}
                 </div>
@@ -249,7 +251,7 @@ export default function CallAnalyticsPage() {
                           className="flex h-full items-center justify-end rounded bg-ds-primary px-ds-2 transition-all"
                           style={{ width: `${(callsByDay[i] / maxDayCount) * 100}%` }}
                         >
-                          {callsByDay[i] > 0 && <span className="text-[10px] font-medium text-ds-primary-foreground">{callsByDay[i]}</span>}
+                          {callsByDay[i] > 0 && <span className="text-xs font-medium text-ds-primary-foreground">{callsByDay[i]}</span>}
                         </div>
                       </div>
                     </div>
@@ -276,6 +278,6 @@ export default function CallAnalyticsPage() {
           </Card>
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }

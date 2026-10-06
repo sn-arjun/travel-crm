@@ -96,7 +96,66 @@ export interface CreateLeadFromConversationRequest {
  * camelCase contract this module's types declare. Normalize at the boundary
  * so the rest of the app can rely on the typed shape.
  */
-function normalizeMessage(raw: any): ChatbotMessage {
+interface RawMessage {
+  id?: string;
+  role?: string;
+  sender?: string;
+  conversationId?: string;
+  conversation_id?: string;
+  text?: string;
+  content?: string;
+  attachments?: ChatbotMessage['attachments'];
+  timestamp: string;
+}
+
+interface RawConversation {
+  id: string;
+  visitorId?: string;
+  visitor_id?: string;
+  visitorName?: string | null;
+  visitor_name?: string | null;
+  visitorEmail?: string | null;
+  visitor_email?: string | null;
+  channel: ChatbotConversation['channel'];
+  status: ChatbotConversation['status'];
+  messages?: RawMessage[] | string | null;
+  startedAt?: string;
+  created_at?: string;
+  endedAt?: string | null;
+  closed_at?: string | null;
+  handedOffTo?: string | null;
+  assigned_user_id?: string | null;
+  notes?: string;
+}
+
+interface RawChannelConfig {
+  id?: string;
+  channel: string;
+  enabled?: number | boolean;
+  name?: string;
+  description?: string;
+  branding_logo?: string | null;
+  greeting?: string;
+  welcomeMessage?: string;
+  widget_position?: string;
+  branding_color?: string;
+  auto_reply?: string;
+}
+
+interface RawPagination {
+  page?: number;
+  limit?: number;
+  offset?: number;
+  total?: number;
+  totalPages?: number;
+}
+
+interface RawConversationList {
+  data?: RawConversation[];
+  pagination?: RawPagination;
+}
+
+function normalizeMessage(raw: RawMessage): ChatbotMessage {
   const role = raw.role ?? raw.sender;
   return {
     id: raw.id ?? `${raw.timestamp}-${Math.random().toString(36).slice(2)}`,
@@ -108,13 +167,13 @@ function normalizeMessage(raw: any): ChatbotMessage {
   };
 }
 
-function normalizeConversation(raw: any): ChatbotConversation {
+function normalizeConversation(raw: RawConversation): ChatbotConversation {
   let messages: ChatbotMessage[] = [];
   if (Array.isArray(raw.messages)) {
     messages = raw.messages.map(normalizeMessage);
   } else if (typeof raw.messages === 'string' && raw.messages) {
     try {
-      messages = JSON.parse(raw.messages).map(normalizeMessage);
+      messages = (JSON.parse(raw.messages) as RawMessage[]).map(normalizeMessage);
     } catch {
       messages = [];
     }
@@ -128,14 +187,14 @@ function normalizeConversation(raw: any): ChatbotConversation {
     channel: raw.channel,
     status: raw.status,
     messages,
-    startedAt: raw.startedAt ?? raw.created_at,
+    startedAt: raw.startedAt ?? raw.created_at ?? '',
     endedAt: raw.endedAt ?? raw.closed_at ?? undefined,
     handedOffTo: raw.handedOffTo ?? raw.assigned_user_id ?? undefined,
     notes: raw.notes,
   };
 }
 
-function normalizeConfig(rows: any[]): ChatbotConfig {
+function normalizeConfig(rows: RawChannelConfig[]): ChatbotConfig {
   const web = rows.find((r) => r.channel === 'web');
   const source = web ?? rows[0];
   return {
@@ -146,7 +205,7 @@ function normalizeConfig(rows: any[]): ChatbotConfig {
     avatar: source?.branding_logo ?? undefined,
     welcomeMessage: source?.greeting ?? source?.welcomeMessage ?? '',
     channels: rows.map((r) => ({
-      platform: r.channel,
+      platform: r.channel as ChatbotConfig['channels'][number]['platform'],
       enabled: !!r.enabled,
       config: {
         position: r.widget_position,
@@ -161,7 +220,7 @@ function normalizeConfig(rows: any[]): ChatbotConfig {
 export const chatbotApi = {
   config: {
     get: async (): Promise<ApiResponse<ChatbotConfig>> => {
-      const res = await client.get<ApiResponse<any[]>>(API_ENDPOINTS.chatbot.config);
+      const res = await client.get<ApiResponse<RawChannelConfig[]>>(API_ENDPOINTS.chatbot.config);
       return { ...res, data: normalizeConfig(Array.isArray(res.data) ? res.data : []) };
     },
 
@@ -206,18 +265,18 @@ export const chatbotApi = {
       sortBy?: string;
       sortOrder?: 'asc' | 'desc';
     }): Promise<ApiResponse<PaginatedResponse<ChatbotConversation>>> => {
-      const res = await client.get<any>(API_ENDPOINTS.chatbot.conversations, { params });
-      const raw = res.data;
-      const items: any[] = Array.isArray(raw) ? raw : (raw?.data ?? []);
-      const pagination = raw?.pagination ?? res.pagination ?? { page: 1, limit: params?.limit ?? 20, total: items.length, totalPages: 1 };
+      const res = await client.get<RawConversationList>(API_ENDPOINTS.chatbot.conversations, { params });
+      const raw = res.data as unknown as RawConversationList | RawConversation[];
+      const items: RawConversation[] = Array.isArray(raw) ? raw : (raw?.data ?? []);
+      const pagination: RawPagination = (Array.isArray(raw) ? undefined : raw?.pagination) ?? (res as { pagination?: RawPagination }).pagination ?? { page: 1, limit: params?.limit ?? 20, total: items.length, totalPages: 1 };
       return {
         ...res,
         data: {
           data: items.map(normalizeConversation),
           pagination: {
             page: pagination.page ?? Math.floor((pagination.offset ?? 0) / (pagination.limit || 1)) + 1,
-            limit: pagination.limit,
-            total: pagination.total,
+            limit: pagination.limit ?? params?.limit ?? 20,
+            total: pagination.total ?? items.length,
             totalPages: pagination.totalPages ?? Math.ceil((pagination.total ?? 0) / (pagination.limit || 1)),
           },
         },
@@ -225,7 +284,7 @@ export const chatbotApi = {
     },
 
     getById: async (id: string): Promise<ApiResponse<ChatbotConversation>> => {
-      const res = await client.get<ApiResponse<any>>(API_ENDPOINTS.chatbot.conversationById(id));
+      const res = await client.get<ApiResponse<RawConversation>>(API_ENDPOINTS.chatbot.conversationById(id));
       return { ...res, data: normalizeConversation(res.data) };
     },
 

@@ -5,9 +5,9 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   Bot, Briefcase, Clock, Globe, Loader2, MessageCircle, MessageSquare, Send, User, UserPlus, X,
 } from 'lucide-react';
-import { DetailPage } from '@/components/domain';
+import { DetailPage, RelationCombobox } from '@/components/domain';
 import {
-  Button, Skeleton, EmptyState, Tag, SectionCard, Textarea, Input, Label,
+  Button, Skeleton, EmptyState, Tag, SectionCard, Textarea, Label,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui';
 import type { TimelineItem } from '@/components/ui/timeline';
@@ -18,7 +18,22 @@ import {
   type SendReplyRequest,
   type HandoffRequest,
 } from '@/lib/api/chatbot';
+import { usersApi } from '@/lib/api/users';
+import type { User as TeamUser } from '@travelcrm/shared';
 import { toast } from 'sonner';
+
+/** Shows the teammate a conversation was handed to by name instead of a raw id. */
+function HandedOffTo({ userId }: { userId: string }) {
+  const [name, setName] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    usersApi.getById(userId)
+      .then((res) => { if (!cancelled) setName(res.data?.name || res.data?.email || null); })
+      .catch(() => { if (!cancelled) setName(null); });
+    return () => { cancelled = true; };
+  }, [userId]);
+  return <span className="text-xs text-ds-foreground-muted">Handed to: {name ?? 'a teammate'}</span>;
+}
 
 function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
   if (status === 'active') return 'success';
@@ -80,11 +95,11 @@ export default function ConversationDetailPage() {
   }
 
   async function handleHandoff() {
-    if (!handoffAssignTo.trim()) {
-      toast.error('Please specify who to hand off to');
+    if (!handoffAssignTo) {
+      toast.error('Please choose a team member to hand off to');
       return;
     }
-    const result = await handoff({ assignTo: handoffAssignTo.trim(), reason: handoffReason || undefined });
+    const result = await handoff({ assignTo: handoffAssignTo, reason: handoffReason || undefined });
     if (result) {
       toast.success('Conversation handed off');
       setShowHandoff(false);
@@ -199,7 +214,7 @@ export default function ConversationDetailPage() {
                           <div className={`rounded-ds-lg px-ds-3 py-ds-2 text-sm ${isBot ? 'bg-ds-info-subtle text-ds-foreground' : 'bg-ds-surface-sunken text-ds-foreground'}`}>
                             {msg.text}
                           </div>
-                          <p className="mt-ds-1 text-[10px] text-ds-foreground-muted">
+                          <p className="mt-ds-1 text-xs text-ds-foreground-muted">
                             {new Date(msg.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                           </p>
                         </div>
@@ -263,7 +278,7 @@ export default function ConversationDetailPage() {
                   {conversation.handedOffTo && (
                     <div className="flex items-center gap-ds-2">
                       <UserPlus className="size-3.5 text-ds-foreground-muted" aria-hidden="true" />
-                      <span className="text-xs text-ds-foreground-muted">Handed to: {conversation.handedOffTo}</span>
+                      <HandedOffTo userId={conversation.handedOffTo} />
                     </div>
                   )}
                 </div>
@@ -305,10 +320,19 @@ export default function ConversationDetailPage() {
           <div className="space-y-ds-4">
             <div className="space-y-ds-2">
               <Label>Assign to <span className="text-ds-danger">*</span></Label>
-              <Input
-                placeholder="Agent name or ID"
-                value={handoffAssignTo}
-                onChange={(e) => setHandoffAssignTo(e.target.value)}
+              <RelationCombobox<TeamUser>
+                value={handoffAssignTo || null}
+                onChange={(id) => setHandoffAssignTo(id ?? '')}
+                fetcher={async (q, page) => {
+                  const r = await usersApi.list({ search: q, page, limit: 20 });
+                  return { items: r.data, total: r.pagination.total };
+                }}
+                getOptionId={(u) => u.id}
+                getOptionLabel={(u) => u.name || u.email}
+                getOptionDescription={(u) => u.email}
+                resolveSelected={async (id) => (await usersApi.getById(id)).data}
+                placeholder="Select a team member"
+                searchPlaceholder="Search team…"
               />
             </div>
             <div className="space-y-ds-2">

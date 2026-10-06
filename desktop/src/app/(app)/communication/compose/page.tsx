@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 
 import { EntityForm, FormRow, RelationCombobox } from '@/components/domain';
-import { Input, SectionCard, Textarea } from '@/components/ui';
+import { Input, SectionCard, Textarea, useConfirm } from '@/components/ui';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -15,7 +15,19 @@ import { communicationsApi } from '@/lib/api/communications';
 import { contactsApi } from '@/lib/api/contacts';
 import { templatesApi, type MessageTemplate } from '@/lib/api/templates';
 import { useApiQuery } from '@/hooks/use-api';
+import { useAuthStore } from '@/stores/auth-store';
 import type { Contact } from '@travelcrm/shared';
+
+const PLACEHOLDER_RE = /\{\{\s*([a-z_]+)\s*\}\}/gi;
+
+/** Fill the placeholders we know from the recipient; anything else is left as {{name}}. */
+function fillPlaceholders(text: string, values: Record<string, string | undefined>): string {
+  return text.replace(PLACEHOLDER_RE, (whole, key: string) => values[key.toLowerCase()] ?? whole);
+}
+
+function unresolvedPlaceholders(text: string): string[] {
+  return [...new Set([...text.matchAll(PLACEHOLDER_RE)].map((m) => m[1] ?? ''))];
+}
 
 const schema = z.object({
   contactId: z.string().min(1, 'Pick a recipient'),
@@ -29,6 +41,8 @@ export default function ComposeEmailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const leadId = searchParams.get('leadId') ?? undefined;
+  const { confirm, dialog: confirmDialog } = useConfirm();
+  const agentName = useAuthStore((st) => st.user?.name);
 
   const { data: templatesResponse } = useApiQuery(
     () => templatesApi.list({ channel: 'email', limit: 50 }),
@@ -37,6 +51,7 @@ export default function ComposeEmailPage() {
   const apiTemplates: MessageTemplate[] = (templatesResponse?.data?.data ?? templatesResponse?.data ?? []) as MessageTemplate[];
 
   return (
+    <>
     <EntityForm<ComposeForm>
       title="Compose email"
       description="Send a new email through the Communication Hub."
@@ -46,10 +61,29 @@ export default function ComposeEmailPage() {
       onCancel={() => router.back()}
       submitLabel="Send"
       onSubmit={async (values) => {
+        const recipient = (await contactsApi.getById(values.contactId)).data;
+        const known: Record<string, string | undefined> = {
+          customer_name: recipient?.name,
+          name: recipient?.name,
+          first_name: recipient?.name?.split(' ')[0],
+          email: recipient?.email ?? undefined,
+          agent_name: agentName,
+        };
+        const subject = fillPlaceholders(values.subject ?? '', known);
+        const body = fillPlaceholders(values.body, known);
+        const left = unresolvedPlaceholders(`${subject}\n${body}`);
+        if (left.length > 0) {
+          const ok = await confirm({
+            title: 'Placeholders still need values',
+            description: `This message still contains ${left.map((k) => `{{${k}}}`).join(', ')}. Send anyway?`,
+            confirmLabel: 'Send anyway',
+          });
+          if (!ok) return;
+        }
         await communicationsApi.send({
           contact_id: values.contactId,
           channel: 'email',
-          message: values.subject ? `[Subject: ${values.subject}]\n${values.body}` : values.body,
+          message: subject ? `[Subject: ${subject}]\n${body}` : body,
           lead_id: leadId,
         });
         toast.success('Email sent successfully!');
@@ -125,5 +159,7 @@ export default function ComposeEmailPage() {
         </>
       )}
     />
+    {confirmDialog}
+    </>
   );
 }

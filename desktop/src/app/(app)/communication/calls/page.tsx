@@ -109,7 +109,7 @@ export default function CallLogPage() {
       searchPlaceholder="Search by phone number…"
       columns={[
         {
-          key: 'direction', header: 'Direction', width: '120px',
+          key: 'direction', header: 'Direction', width: '7.5rem',
           cell: (c) => (
             <div className="flex items-center gap-ds-2">
               {c.direction === 'inbound' ? (

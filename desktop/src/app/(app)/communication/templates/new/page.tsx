@@ -194,7 +194,7 @@ export default function NewTemplatePage() {
                           bodyRef.current = el;
                         }}
                         placeholder={`Write your ${channel} template here...\n\nUse variables like {customer_name}, {destination} for personalization.`}
-                        className="min-h-[280px] font-mono leading-relaxed resize-none"
+                        className="min-h-72 font-mono leading-relaxed resize-none"
                       />
                     </FormRow>
                     <p className="text-ds-xs text-ds-foreground-subtle mt-ds-2">
@@ -272,7 +272,7 @@ export default function NewTemplatePage() {
                     </div>
                   )}
                   <Separator />
-                  <div className="rounded-ds-lg border border-ds-border p-ds-4 bg-ds-surface-sunken min-h-[200px]">
+                  <div className="rounded-ds-lg border border-ds-border p-ds-4 bg-ds-surface-sunken min-h-48">
                     <pre className="text-ds-sm whitespace-pre-wrap font-sans leading-relaxed">
                       {fillVariables(content, previewContact) || 'No content yet'}
                     </pre>

@@ -65,8 +65,8 @@ function ChatbotConversationsContent() {
           sortOrder: 'desc',
         }).then((res) => {
           if (!search.trim()) return res;
-          const data = res.data as any;
-          const items: ChatbotConversation[] = Array.isArray(data) ? data : (data?.data ?? []);
+          const data = res.data;
+          const items: ChatbotConversation[] = data?.data ?? [];
           const q = search.toLowerCase();
           const filtered = items.filter((c) =>
             (c.visitorName ?? '').toLowerCase().includes(q)
@@ -195,8 +195,8 @@ function ChatbotConversationsContent() {
               status: statusFilter || undefined,
               channel: channelFilter || undefined,
             });
-            const data = res.data as any;
-            const items: ChatbotConversation[] = Array.isArray(data) ? data : (data?.data ?? []);
+            const data = res.data;
+            const items: ChatbotConversation[] = data?.data ?? [];
             const total: number = data?.pagination?.total ?? items.length;
             for (const item of items) {
               if (!seen.has(item.id)) {

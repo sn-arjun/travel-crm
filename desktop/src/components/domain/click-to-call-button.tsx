@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { cn } from '@/lib/utils';
 
 interface ClickToCallButtonProps {
@@ -27,12 +28,19 @@ export function ClickToCallButton({
   className,
 }: ClickToCallButtonProps) {
   const router = useRouter();
+  const { enabled } = useFeatureGate('voip_calling');
+
+  // Calling is plan-gated: render nothing rather than a button that cannot work.
+  if (!enabled) return null;
 
   const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
     onCallStart?.(phoneNumber);
-    router.push(`/communication/calls/dial?phone=${encodeURIComponent(phoneNumber)}`);
+    const query = new URLSearchParams({ phone: phoneNumber });
+    if (contactId) query.set('contactId', contactId);
+    if (leadId) query.set('leadId', leadId);
+    router.push(`/communication/calls/dial?${query.toString()}`);
   };
 
   const sizeClasses = {
@@ -48,11 +56,10 @@ export function ClickToCallButton({
             onClick={handleClick}
             size="icon"
             variant="ghost"
-
-            className={cn(sizeClasses[size], 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/30', className)}
+            aria-label={`Call ${contactName || phoneNumber}`}
+            className={cn(sizeClasses[size], 'text-ds-success hover:bg-ds-success-subtle hover:text-ds-success-on-subtle', className)}
           >
             <Phone className={size === 'sm' ? 'h-4 w-4' : 'h-5 w-5'} />
-            <span className="sr-only">Call {contactName || phoneNumber}</span>
           </Button>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">

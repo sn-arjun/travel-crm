@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { voipApi } from '@/lib/api/voip';
+import { voipApi, type CallOutcome } from '@/lib/api/voip';
 
 interface CallControlsPanelProps {
   callId: string;
@@ -21,7 +21,6 @@ interface CallControlsPanelProps {
 }
 
 type CallStatus = 'connecting' | 'connected' | 'on_hold' | 'ended';
-type CallOutcome = 'connected' | 'no_answer' | 'busy' | 'voicemail';
 
 export function CallControlsPanel({ callId, callerName, phoneNumber, onEndCall, onCallStatusChange }: CallControlsPanelProps) {
   const [status, setStatus] = React.useState<CallStatus>('connecting');
@@ -29,20 +28,38 @@ export function CallControlsPanel({ callId, callerName, phoneNumber, onEndCall, 
   const [isOnHold, setIsOnHold] = React.useState(false);
   const [callDuration, setCallDuration] = React.useState(0);
   const [showPostCallDialog, setShowPostCallDialog] = React.useState(false);
-  const [callOutcome, setCallOutcome] = React.useState<CallOutcome>('connected');
+  const [callOutcome, setCallOutcome] = React.useState<CallOutcome>('interested');
   const [notes, setNotes] = React.useState('');
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-  // Simulate call connection after 2 seconds
+  // Follow the real call state from the provider instead of assuming it connected.
   React.useEffect(() => {
-    if (status === 'connecting') {
-      const timer = setTimeout(() => {
-        setStatus('connected');
-        onCallStatusChange?.('connected');
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [status, onCallStatusChange]);
+    if (status !== 'connecting') return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await voipApi.calls.getById(callId);
+        const callStatus = res.data?.status;
+        if (cancelled) return;
+        if (callStatus === 'in-progress') {
+          setStatus('connected');
+          onCallStatusChange?.('connected');
+        } else if (callStatus && ['completed', 'busy', 'no-answer', 'canceled', 'failed'].includes(callStatus)) {
+          setStatus('ended');
+          onCallStatusChange?.('ended');
+          setShowPostCallDialog(true);
+        }
+      } catch {
+        // keep waiting; the next poll retries
+      }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [status, callId, onCallStatusChange]);
 
   // Call duration timer
   React.useEffect(() => {
@@ -77,6 +94,12 @@ export function CallControlsPanel({ callId, callerName, phoneNumber, onEndCall, 
   };
 
   const handleEndCall = async () => {
+    try {
+      await voipApi.calls.end(callId);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to end the call');
+      return;
+    }
     setStatus('ended');
     onCallStatusChange?.('ended');
     setShowPostCallDialog(true);
@@ -85,36 +108,29 @@ export function CallControlsPanel({ callId, callerName, phoneNumber, onEndCall, 
   const handlePostCallSubmit = async () => {
     setIsSubmitting(true);
     try {
-      // Log call with outcome and notes
-      // The API call would be made here to save call details
-      // For now, we'll simulate the API call
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      toast.success(`Call logged: ${callOutcome}`, {
-        description: notes ? `Notes: ${notes}` : undefined,
-      });
+      await voipApi.calls.update(callId, { outcome: callOutcome, notes: notes.trim() || undefined });
+      toast.success('Call logged');
       setShowPostCallDialog(false);
       onEndCall?.();
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to log call';
-      toast.error(errorMessage);
+      toast.error(error instanceof Error ? error.message : 'Failed to log call');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const statusConfig = {
-    connecting: { label: 'Connecting...', color: 'bg-amber-100 text-amber-800' },
-    connected: { label: 'Connected', color: 'bg-emerald-100 text-emerald-800' },
-    on_hold: { label: 'On Hold', color: 'bg-blue-100 text-blue-800' },
-    ended: { label: 'Call Ended', color: 'bg-gray-100 text-gray-800' },
+    connecting: { label: 'Connecting...', color: 'bg-ds-warning-subtle text-ds-warning-on-subtle' },
+    connected: { label: 'Connected', color: 'bg-ds-success-subtle text-ds-success-on-subtle' },
+    on_hold: { label: 'On hold', color: 'bg-ds-info-subtle text-ds-info-on-subtle' },
+    ended: { label: 'Call ended', color: 'bg-ds-surface-sunken text-ds-foreground-muted' },
   };
 
   const config = statusConfig[status];
 
   return (
     <>
-      <Card className="fixed bottom-6 right-6 w-80 shadow-lg border-0 bg-gradient-to-br from-slate-50 to-white dark:from-slate-900 dark:to-slate-950">
+      <Card className="fixed bottom-6 right-6 w-80 shadow-lg border-0 bg-ds-surface-raised">
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1">
@@ -141,9 +157,9 @@ export function CallControlsPanel({ callId, callerName, phoneNumber, onEndCall, 
               variant={isMuted ? 'destructive' : 'outline'}
               className="h-12 w-12 rounded-full p-0"
               disabled={status === 'connecting' || status === 'ended'}
+              aria-label={isMuted ? 'Unmute' : 'Mute'}
             >
               {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-              <span className="sr-only">{isMuted ? 'Unmute' : 'Mute'}</span>
             </Button>
 
             <Button
@@ -152,26 +168,27 @@ export function CallControlsPanel({ callId, callerName, phoneNumber, onEndCall, 
               variant={isOnHold ? 'secondary' : 'outline'}
               className="h-12 w-12 rounded-full p-0"
               disabled={status === 'connecting' || status === 'ended'}
+              aria-label={isOnHold ? 'Resume' : 'Hold'}
             >
               {isOnHold ? <Play className="h-5 w-5" /> : <Pause className="h-5 w-5" />}
-              <span className="sr-only">{isOnHold ? 'Resume' : 'Hold'}</span>
             </Button>
 
             <Button
               onClick={handleEndCall}
               size="lg"
-              className="h-12 w-12 rounded-full bg-red-600 hover:bg-red-700 p-0"
+              variant="destructive"
+              className="h-12 w-12 rounded-full p-0"
               disabled={status === 'ended'}
+              aria-label="End call"
             >
               <PhoneOff className="h-5 w-5" />
-              <span className="sr-only">End call</span>
             </Button>
           </div>
 
-          {/* AI Transcript hint */}
-          <div className="flex items-center gap-2 rounded-lg bg-blue-50 p-2.5 dark:bg-blue-950/30">
-            <Sparkles className="h-4 w-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />
-            <p className="text-xs text-blue-700 dark:text-blue-300">Call transcript will be available after the call ends</p>
+          {/* Transcript hint */}
+          <div className="flex items-center gap-2 rounded-lg bg-ds-info-subtle p-2.5">
+            <Sparkles className="h-4 w-4 text-ds-info-on-subtle flex-shrink-0" />
+            <p className="text-xs text-ds-info-on-subtle">Call transcript will be available after the call ends</p>
           </div>
         </CardContent>
       </Card>
@@ -180,21 +197,23 @@ export function CallControlsPanel({ callId, callerName, phoneNumber, onEndCall, 
       <Dialog open={showPostCallDialog} onOpenChange={setShowPostCallDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Log Call Outcome</DialogTitle>
+            <DialogTitle>Log call outcome</DialogTitle>
             <DialogDescription>Record how the call ended and add any notes for follow-up.</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Call Outcome</label>
+              <label className="text-sm font-medium">Call outcome</label>
               <Select value={callOutcome} onValueChange={(value) => setCallOutcome(value as CallOutcome)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="connected">Connected</SelectItem>
-                  <SelectItem value="no_answer">No Answer</SelectItem>
-                  <SelectItem value="busy">Busy</SelectItem>
+                  <SelectItem value="interested">Interested</SelectItem>
+                  <SelectItem value="not_interested">Not interested</SelectItem>
+                  <SelectItem value="follow_up_needed">Follow-up needed</SelectItem>
+                  <SelectItem value="wrong_number">Wrong number</SelectItem>
+                  <SelectItem value="no_answer">No answer</SelectItem>
                   <SelectItem value="voicemail">Voicemail</SelectItem>
                 </SelectContent>
               </Select>
@@ -216,7 +235,7 @@ export function CallControlsPanel({ callId, callerName, phoneNumber, onEndCall, 
               Cancel
             </Button>
             <Button onClick={handlePostCallSubmit} disabled={isSubmitting}>
-              {isSubmitting ? 'Logging...' : 'Log & Close'}
+              {isSubmitting ? 'Logging...' : 'Log & close'}
             </Button>
           </DialogFooter>
         </DialogContent>

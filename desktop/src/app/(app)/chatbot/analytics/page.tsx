@@ -13,6 +13,7 @@ import {
 import { useApiQuery } from '@/hooks/use-api';
 import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { chatbotApi, type ChatbotAnalytics } from '@/lib/api/chatbot';
+import { PageContainer } from '@/components/layout/page-container';
 
 function StatCard({
   label, value, icon: Icon, subtext,
@@ -67,7 +68,7 @@ function ChatbotAnalyticsContent() {
     : 0;
 
   return (
-    <div className="flex flex-col gap-ds-6">
+    <PageContainer>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-ds-3">
           <Button variant="ghost" size="icon-sm" onClick={() => router.back()} aria-label="Back">
@@ -120,15 +121,15 @@ function ChatbotAnalyticsContent() {
                 <div className="grid grid-cols-3 gap-ds-3 text-center">
                   <div>
                     <p className="text-sm font-medium">{totalConversations}</p>
-                    <p className="text-[10px] text-ds-foreground-muted">Total</p>
+                    <p className="text-xs text-ds-foreground-muted">Total</p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-ds-success">{resolvedConversations}</p>
-                    <p className="text-[10px] text-ds-foreground-muted">Resolved</p>
+                    <p className="text-xs text-ds-foreground-muted">Resolved</p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-ds-warning">{activeConversations}</p>
-                    <p className="text-[10px] text-ds-foreground-muted">Active</p>
+                    <p className="text-xs text-ds-foreground-muted">Active</p>
                   </div>
                 </div>
               </CardContent>
@@ -151,7 +152,7 @@ function ChatbotAnalyticsContent() {
           </div>
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }
 

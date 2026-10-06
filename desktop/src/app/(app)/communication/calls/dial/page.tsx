@@ -7,6 +7,7 @@ import { Phone, PhoneOff, Delete, Clock, ArrowLeft, User, Loader2 } from 'lucide
 import { Button, Card, CardContent, CardHeader, CardTitle, PhoneInput, SectionCard, Skeleton } from '@/components/ui';
 import { RelationCombobox } from '@/components/domain';
 import { cn } from '@/lib/utils';
+import { PageContainer } from '@/components/layout/page-container';
 import { toast } from 'sonner';
 import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
@@ -99,7 +100,7 @@ function DialPadPage() {
   }
 
   return (
-    <div className="flex flex-col gap-ds-4">
+    <PageContainer>
       <div className="flex items-center gap-ds-3">
         <Button variant="ghost" size="icon-sm" onClick={() => router.back()} aria-label="Go back">
           <ArrowLeft className="size-4" />
@@ -141,7 +142,7 @@ function DialPadPage() {
                 <PhoneInput value={number} onChange={setNumber} countryCode={countryCode} onCountryCodeChange={setCountryCode} placeholder="XXXXX XXXXX" />
               </div>
 
-              <div className="mx-auto grid max-w-[280px] grid-cols-3 gap-ds-3">
+              <div className="mx-auto grid max-w-72 grid-cols-3 gap-ds-3">
                 {dialPadKeys.map((key) => (
                   <button
                     key={key.label}
@@ -153,7 +154,7 @@ function DialPadPage() {
                     )}
                   >
                     <span>{key.label}</span>
-                    {key.sub && <span className="text-[10px] tracking-widest text-ds-foreground-muted">{key.sub}</span>}
+                    {key.sub && <span className="text-xs tracking-widest text-ds-foreground-muted">{key.sub}</span>}
                   </button>
                 ))}
               </div>
@@ -243,6 +244,6 @@ function DialPadPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageContainer>
   );
 }

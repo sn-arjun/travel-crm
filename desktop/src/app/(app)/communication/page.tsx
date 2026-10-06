@@ -72,7 +72,7 @@ function toCsv(rows: CommunicationLog[]) {
     r.channel ?? r.type ?? '',
     (r.message ?? r.content ?? r.subject ?? '').replace(/\n/g, ' ').replace(/"/g, '""'),
     r.status,
-    r.sentAt,
+    r.sentAt ?? r.createdAt,
   ].map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','));
   return [header.join(','), ...lines].join('\n');
 }
@@ -172,7 +172,7 @@ export default function CommunicationPage() {
           key: 'preview',
           header: 'Message',
           cell: (l) => (
-            <span className="line-clamp-1 text-sm text-ds-foreground-muted">
+            <span className="line-clamp-1 max-w-xs text-sm text-ds-foreground-muted">
               {l.message ?? l.content ?? l.subject ?? 'No preview'}
             </span>
           ),
@@ -190,7 +190,10 @@ export default function CommunicationPage() {
           key: 'sentAt',
           header: 'Sent',
           sortable: true,
-          cell: (l) => (l.sentAt ? new Date(l.sentAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'),
+          cell: (l) => {
+            const when = l.sentAt ?? l.createdAt;
+            return when ? new Date(when).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+          },
         },
       ]}
       primaryAction={
@@ -229,7 +232,7 @@ export default function CommunicationPage() {
             </Avatar>
             <div>
               <p className="text-sm font-semibold">{l.recipient ?? 'Unknown contact'}</p>
-              <p className="text-xs text-ds-foreground-muted">{l.sentAt ? new Date(l.sentAt).toLocaleString('en-IN') : ''}</p>
+              <p className="text-xs text-ds-foreground-muted">{(l.sentAt ?? l.createdAt) ? new Date((l.sentAt ?? l.createdAt) as string).toLocaleString('en-IN') : ''}</p>
             </div>
           </div>
           {l.subject && <p className="text-sm font-medium">{l.subject}</p>}

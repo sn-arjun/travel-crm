@@ -10,7 +10,6 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -18,6 +17,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { PageHeader } from '@/components/ui/page-header';
+import { PageContainer } from '@/components/layout/page-container';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
@@ -148,7 +148,7 @@ export default function BulkSendPage() {
   };
 
   return (
-    <div className="flex flex-col gap-ds-4">
+    <PageContainer width="narrow">
       <PageHeader
         title="Bulk send"
         description="Send a message to multiple contacts through the Communication Hub."
@@ -372,6 +372,6 @@ export default function BulkSendPage() {
           </Card>
         )}
       </div>
-    </div>
+    </PageContainer>
   );
 }

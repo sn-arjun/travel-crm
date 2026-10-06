@@ -46,7 +46,8 @@ export interface CommunicationLog {
   content?: string;
   status: 'queued' | 'sent' | 'delivered' | 'read' | 'failed';
   direction?: 'inbound' | 'outbound';
-  sentAt: string;
+  sentAt?: string | null;
+  createdAt?: string;
   sentBy?: string;
   externalId?: string;
   errorMessage?: string;

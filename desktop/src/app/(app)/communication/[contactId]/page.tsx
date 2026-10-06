@@ -122,7 +122,8 @@ export default function ContactCommunicationHubPage() {
               {logs.map((log) => {
                 const isOutbound = log.direction !== 'inbound';
                 const channel = log.channel ?? log.type ?? 'email';
-                const sentDate = log.sentAt ? new Date(log.sentAt) : null;
+                const sentAt = log.sentAt ?? log.createdAt;
+                const sentDate = sentAt ? new Date(sentAt) : null;
 
                 return (
                   <div key={log.id} className={`flex gap-ds-3 ${isOutbound ? 'flex-row-reverse' : ''}`}>
@@ -139,7 +140,7 @@ export default function ContactCommunicationHubPage() {
                       >
                         <div className={`mb-ds-1 flex items-center gap-ds-1 ${isOutbound ? 'justify-end' : ''}`}>
                           {channelIcon(channel)}
-                          <span className="text-[10px] font-medium uppercase">{channel}</span>
+                          <span className="text-xs font-medium uppercase">{channel}</span>
                         </div>
                         {log.subject && (
                           <p className="mb-ds-1 text-xs font-semibold">{log.subject}</p>
@@ -147,7 +148,7 @@ export default function ContactCommunicationHubPage() {
                         <p className="whitespace-pre-wrap text-sm">{log.message ?? log.content}</p>
                       </div>
                       <div className={`mt-ds-1 flex items-center gap-ds-2 ${isOutbound ? 'justify-end' : ''}`}>
-                        <span className="text-[10px] text-ds-foreground-subtle">
+                        <span className="text-xs text-ds-foreground-subtle">
                           {sentDate ? sentDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : ''}{' '}
                           {sentDate ? sentDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ''}
                         </span>
