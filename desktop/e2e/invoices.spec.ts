@@ -92,15 +92,8 @@ test.describe('Invoices', () => {
     await expect(page.locator('p').filter({ hasText: 'Issue Date' }).first()).toBeVisible();
     await expect(page.locator('p').filter({ hasText: 'Due Date' }).first()).toBeVisible();
     await expect(page.getByText('E2E full flow notes')).toBeVisible();
-    // NOTE: "Terms & Conditions" is dead input end-to-end for invoices — both the create
-    // and edit forms collect it, and the desktop UpdateInvoiceRequest type even declares a
-    // `terms` field, but backend/src/routes/invoices.ts's create/update Zod schemas have no
-    // `terms` key at all, and the `invoices` table (backend/src/db/tenant-schema.ts) has no
-    // terms/terms_conditions column (only itineraries does). The value is silently discarded
-    // in both directions. This is a real gap outside this slice's fileAllowlist (backend/
-    // isn't covered), so it's asserted here as current behavior rather than dropped from
-    // coverage: the typed value must NOT appear post-create.
-    await expect(page.getByText('Custom terms for E2E test')).toHaveCount(0);
+    // Terms & Conditions are saved with the invoice and shown on the detail page.
+    await expect(page.getByText('Custom terms for E2E test')).toBeVisible();
 
     // No raw tel:/mailto:/wa.me anchors — outbound contact must go through Communication Hub
     expect(await page.locator('a[href^="tel:"], a[href^="mailto:"], a[href^="wa.me"], a[href^="https://wa.me"]').count()).toBe(0);
@@ -111,20 +104,18 @@ test.describe('Invoices', () => {
     await expect(page.locator(`text=${contact.name}`).first()).toBeVisible({ timeout: 10_000 });
     await expect(page.locator(`input[value="${itemDesc}"]`)).toBeVisible({ timeout: 10_000 });
     await expect(page.getByPlaceholder('Any notes for the client...')).toHaveValue('E2E full flow notes');
-    // Terms is blank on edit too, since create never persisted it (see note above)
-    await expect(page.locator('textarea').last()).toHaveValue('');
+    // The terms typed on create come back pre-filled on edit.
+    await expect(page.locator('textarea').last()).toHaveValue('Custom terms for E2E test');
 
     // Contact combobox is intentionally disabled on edit (contact cannot be changed post-creation)
     const editContactCombo = page.locator('button[role="combobox"]').filter({ hasText: contact.name });
     await expect(editContactCombo).toBeDisabled();
 
-    // 4. Edit a value, save, assert the change persisted (terms is typed here too, but per
-    // the note above it is dropped by the backend regardless of create vs. update — verified
-    // via API below rather than asserted on the page, to document rather than hide the gap)
+    // 4. Edit a value (and the terms), save, assert both persisted
     const updatedDesc = `Updated-${ts}`;
     const editDescInput = page.locator(`input[value="${itemDesc}"]`);
     await editDescInput.fill(updatedDesc);
-    await page.locator('textarea').last().fill('Custom terms for E2E test');
+    await page.locator('textarea').last().fill('Updated terms for E2E test');
     await page.getByRole('button', { name: 'Save changes' }).click();
     await expect(page.getByText('Invoice updated successfully')).toBeVisible({ timeout: 10_000 });
     await page.waitForURL(`**/invoices/${invoiceId}`, { timeout: 10_000 });
@@ -135,7 +126,8 @@ test.describe('Invoices', () => {
     const fetched = await api('GET', `/invoices/${invoiceId}`);
     const fetchedItems = fetched.data.items ?? [];
     expect(fetchedItems.some((it: any) => it.description === updatedDesc)).toBe(true);
-    expect(fetched.data.terms).toBeFalsy();
+    expect(fetched.data.terms).toBe('Updated terms for E2E test');
+    expect(fetched.data.issue_date).toBeTruthy();
 
     // 5. Void (distinct from delete: POST /invoices/:id/void sets status -> 'void',
     // while DELETE sets status -> 'cancelled' — see the delete test below) — assert status changes

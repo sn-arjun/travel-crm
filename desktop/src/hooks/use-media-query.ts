@@ -1,24 +1,25 @@
 'use client';
 
-import { useCallback, useSyncExternalStore } from 'react';
+import { useEffect, useState } from 'react';
 
 /**
  * Hook to track a CSS media query match.
  */
 export function useMediaQuery(query: string): boolean {
-  const subscribe = useCallback(
-    (onChange: () => void) => {
-      const media = window.matchMedia(query);
-      media.addEventListener('change', onChange);
-      return () => media.removeEventListener('change', onChange);
-    },
-    [query],
-  );
-  return useSyncExternalStore(
-    subscribe,
-    () => window.matchMedia(query).matches,
-    () => false,
-  );
+  // Starts false so server and first client render agree; the real value is read after mount.
+  const [matches, setMatches] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMatches(media.matches);
+
+    const listener = (event: MediaQueryListEvent) => setMatches(event.matches);
+    media.addEventListener('change', listener);
+    return () => media.removeEventListener('change', listener);
+  }, [query]);
+
+  return matches;
 }
 
 /* Breakpoints matching the design system (media-query widths, not layout values). */
