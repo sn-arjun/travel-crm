@@ -182,7 +182,7 @@ export async function pickDate(page: Page, trigger: Locator, isoDate: string): P
 
 /** No spinners + network quiet, then dwell. */
 export async function settle(page: Page, ms = 900): Promise<void> {
-  await page.waitForFunction(() => document.querySelectorAll('.animate-spin').length === 0, undefined, { timeout: 20_000 }).catch(() => {});
+  await page.waitForFunction(() => document.querySelectorAll('.animate-spin, [data-slot="skeleton"]').length === 0, undefined, { timeout: 20_000 }).catch(() => {});
   await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
   await pause(page, ms);
 }

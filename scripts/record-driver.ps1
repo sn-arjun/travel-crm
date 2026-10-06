@@ -26,8 +26,8 @@ param(
   [string]$Avd = 'Resizable_Experimental',
   [string]$Serial = 'emulator-5554',
   [int]$Pace = 100,
-  [double]$Lat = 9.9312,                  # check-in position shown on screen
-  [double]$Lng = 76.2673,
+  [double]$Lat = 10.1520,                  # check-in position shown on screen
+  [double]$Lng = 76.4019,
   [switch]$NoRecord,                      # dry run: run the flow without screenrecord
   [switch]$AcceptLocationDialog,          # warm-up run (use with -NoRecord) that taps "Turn on" on the Location Accuracy dialog
   [switch]$DebugShots,                   # screencap after every GEO mark (.work/dbg-N.png)
@@ -86,9 +86,13 @@ Adb shell wm dismiss-keyguard | Out-Null
 # the test injects text programmatically: switch the on-screen keyboard (and its floating toolbar) off for the take
 $imes = @(Adb shell ime list -s 2>$null) | Where-Object { $_ -match "/" } | ForEach-Object { $_.Trim() }
 foreach ($ime in $imes) { Adb shell ime disable $ime | Out-Null }
+Adb shell settings put secure stylus_handwriting_enabled 0 | Out-Null
+Adb shell pm disable-user --user 0 com.google.android.inputmethod.latin | Out-Null   # Gboard draws a floating toolbar next to focused fields
 
 # clean status bar (demo mode)
 $hhmm = [DateTime]::UtcNow.AddMinutes(330).ToString('HHmm')
+$pick = if ($h.tPick) { $h.tPick } elseif ($h.pickupHHMM) { $h.pickupHHMM } else { $null }
+if ($pick -match '^(\d{1,2}):(\d{2})$') { $hhmm = ([DateTime]::Today.AddHours([int]$Matches[1]).AddMinutes([int]$Matches[2] - 20)).ToString("HHmm") }   # show a clock shortly before the pickup
 Adb shell settings put global sysui_demo_allowed 1 | Out-Null
 $demo = 'am broadcast -a com.android.systemui.demo -e command'
 Adb shell "$demo enter" | Out-Null
@@ -169,6 +173,7 @@ try {
 }
 finally {
   $log.Close()
+  Adb shell pm enable com.google.android.inputmethod.latin | Out-Null
   foreach ($ime in $imes) { Adb shell ime enable $ime | Out-Null }
 }
 

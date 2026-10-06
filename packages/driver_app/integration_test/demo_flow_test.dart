@@ -213,9 +213,9 @@ void main() {
     await waitSnackGone(tester);
     await showTouch(tester, find.byKey(const Key('action-check-in')));
     // the emulator only delivers a fix while the app is listening: re-send it now (host script reacts to GEO)
-    _mark('GEO 76.2673 9.9312');
+    _mark('GEO 76.4019 10.1520');
     await dwell(tester, 2000);
-    _mark('GEO 76.2673 9.9312');
+    _mark('GEO 76.4019 10.1520');
     await pumpUntil(tester, find.byKey(const Key('check-in-coords')));
     await dwell(tester, 2600);
     await showTouch(tester, find.byKey(const Key('confirm-check-in')));

@@ -247,7 +247,6 @@ async function seedAll(): Promise<Ids> {
       completed: ['accepted', 'en_route', 'started', 'completed'], started: ['accepted', 'en_route', 'started'], accepted: ['accepted'], assigned: [], cancelled: ['cancelled'],
     };
     for (const st of seq[t.final] ?? []) await call('tripStatus', 'PUT', `/fleet/trips/${r.id}/status`, { status: st, ...(st === 'cancelled' ? { reason: t.cancelReason } : {}) });
-    if (t.final === 'completed' && t.key !== 'T01') await call('tripInvoices', 'POST', `/fleet/trips/${r.id}/generate-invoice`, {});
     if (t.rating) await call('tripRating', 'POST', `/fleet/drivers/${ids.drivers[t.driver]}/rate`, { tripId: r.id, rating: t.rating });
   }
   for (const c of D.TRIP_COSTS) await call('tripCosts', 'POST', `/fleet/trips/${ids.trips[c.trip]}/costs`, { costType: c.costType, amount: c.amount, description: c.description });
