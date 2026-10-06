@@ -24,7 +24,14 @@ activityLogRoutes.get('/', rbac(['admin']), async (c) => {
   const userId = c.req.query('userId');
 
   const conditions = [];
-  if (action) conditions.push(eq(activityLogs.action, action));
+  if (action) {
+    // Actions are stored as `<verb>` or `<verb>_<entity>` (e.g. `update_user`), so a
+    // filter on `update` matches the exact action and every action in that group.
+    const groupPrefix = `${action.replace(/[\\%_]/g, '\\$&')}\\_%`;
+    conditions.push(
+      sql`(${activityLogs.action} = ${action} OR ${activityLogs.action} LIKE ${groupPrefix} ESCAPE '\\')`,
+    );
+  }
   if (entityType) conditions.push(eq(activityLogs.entityType, entityType));
   if (userId) conditions.push(eq(activityLogs.userId, userId));
 
