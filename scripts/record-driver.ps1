@@ -83,6 +83,9 @@ Adb shell settings put system screen_off_timeout 1800000 | Out-Null
 Adb shell settings put secure show_ime_with_hard_keyboard 0 | Out-Null
 Adb shell input keyevent KEYCODE_WAKEUP | Out-Null
 Adb shell wm dismiss-keyguard | Out-Null
+# the test injects text programmatically: switch the on-screen keyboard (and its floating toolbar) off for the take
+$imes = @(Adb shell ime list -s 2>$null) | Where-Object { $_ -match "/" } | ForEach-Object { $_.Trim() }
+foreach ($ime in $imes) { Adb shell ime disable $ime | Out-Null }
 
 # clean status bar (demo mode)
 $hhmm = [DateTime]::UtcNow.AddMinutes(330).ToString('HHmm')
@@ -164,7 +167,10 @@ try {
   $p.WaitForExit()
   $exit = $p.ExitCode
 }
-finally { $log.Close() }
+finally {
+  $log.Close()
+  foreach ($ime in $imes) { Adb shell ime enable $ime | Out-Null }
+}
 
 # ── 5. stop + pull ──────────────────────────────────────────
 if ($recProc) {

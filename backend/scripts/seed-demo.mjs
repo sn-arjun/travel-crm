@@ -217,6 +217,19 @@ step('A.9#8 trip timeline', () => {
   }
 });
 
+// trip invoices (hire billing) are dated on the day the trip finished
+step('A.9#6 trip invoices', () => {
+  for (const t of D.TRIPS) {
+    const tid = seed.trips[t.key]; if (!tid) continue;
+    const row = get('SELECT invoice_id i, completed_at c, pickup_datetime p FROM trip_assignments WHERE id=?', tid);
+    if (!row?.i) continue;
+    const when = row.c ?? row.p;
+    run('UPDATE invoices SET created_at=?, updated_at=? WHERE id=?', when, when, row.i);
+  }
+  // issue dates follow created_at (the API stamps them with the seeding day)
+  run("UPDATE invoices SET issue_date=substr(created_at,1,10) WHERE issue_date IS NOT NULL");
+});
+
 // 9. content tables with no non-AI creation path
 step('A.9#9 notifications', () => {
   run('DELETE FROM notifications');

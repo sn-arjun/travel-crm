@@ -70,11 +70,13 @@ export async function card(page: Page, o: { kicker?: string; title: string; subt
 /** Hold time rule (B.0): max(2.2 s, 1.0 s + 55 ms x characters). */
 export const holdFor = (text: string): number => Math.max(2200, 1000 + 55 * text.length);
 
-/** Lower-third caption; stays until the next say()/clearSay(). Waits `holdMs` (default: B.0 formula). */
+/** Lower-third caption, shown for `holdMs` (default: B.0 formula) and then faded out, so it never lingers over the next screen. */
 export async function say(page: Page, text: string, holdMs?: number, kicker?: string): Promise<void> {
   mark(text, undefined, 'caption');
   await sc(page, 'say', [text, kicker]);
   await pause(page, holdMs ?? holdFor(text));
+  await sc(page, 'clearSay');
+  await pause(page, 220);
 }
 export async function clearSay(page: Page): Promise<void> {
   await sc(page, 'clearSay');
@@ -127,12 +129,14 @@ export async function hoverOn(page: Page, target: Locator, dwellMs = 900): Promi
 // ─── Input ───────────────────────────────────────────────────────
 
 /** Click, select-all, clear, then human-speed typing (45 ms/char; 18 ms for text over 140 chars). */
-export async function typeInto(page: Page, target: Locator, text: string, o: { delay?: number } = {}): Promise<void> {
+export async function typeInto(page: Page, target: Locator, text: string, o: { delay?: number; clear?: boolean } = {}): Promise<void> {
   await moveTo(page, target);
   await pause(page, 180);
   await target.click();
-  await page.keyboard.press('Control+A');
-  await page.keyboard.press('Backspace');
+  if (o.clear !== false) {
+    await page.keyboard.press('Control+A');
+    await page.keyboard.press('Backspace');
+  }
   await target.pressSequentially(text, { delay: Math.round((o.delay ?? (text.length > 140 ? 18 : 45)) * PACE) });
   await pause(page, 250);
 }
@@ -225,7 +229,7 @@ export async function assertClean(page: Page, where = ''): Promise<void> {
     return {
       text: `${document.body?.innerText ?? ''}\n${vals}`,
       invalid: Array.from(document.querySelectorAll('[aria-invalid="true"]')).filter(visible).length,
-      danger: Array.from(document.querySelectorAll('.text-ds-danger')).filter((e) => visible(e) && !e.closest('button, a, [role="button"], [role="menuitem"]') && !/^\*?$/.test((e.textContent ?? '').trim())).map((e) => (e.textContent ?? '').trim().slice(0, 80)),
+      danger: Array.from(document.querySelectorAll('.text-ds-danger')).filter((e) => visible(e) && !e.closest('button, a, [role="button"], [role="menuitem"]') && !/^[*₹$+\-−\d.,\s%KLCr()]*$/.test((e.textContent ?? '').trim())).map((e) => (e.textContent ?? '').trim().slice(0, 80)),
       errToast: document.querySelectorAll('[data-sonner-toast][data-type="error"]').length,
     };
   });

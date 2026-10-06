@@ -98,7 +98,7 @@ test('story-A: enquiry to airport transfer (scenes 1-6)', async ({ page, context
     await typeInto(page, page.locator('#title'), D.PRIYA.title);
     const dest = page.getByPlaceholder(/Type & press Enter|Add more/i).first();
     for (const d of D.PRIYA.destinations) {
-      await typeInto(page, dest, d);
+      await typeInto(page, dest, d, { clear: false });
       await page.keyboard.press('Enter');
       await pause(page, 250);
     }
@@ -137,7 +137,11 @@ test('story-A: enquiry to airport transfer (scenes 1-6)', async ({ page, context
     await expect(page.getByText('Note added').first()).toBeVisible();
     mark('2.12');
     await say(page, "Notes and calls stay on the lead's timeline", 3200);
+    // APP: the Activity tab does not pick up the status change made on this same page until the lead is reloaded (reported)
+    await page.reload();
+    await settle(page, 1200);
     await clickOn(page, page.getByRole('tab', { name: /Activity/i }).or(page.getByRole('button', { name: /^Activity$/ })).first());
+    await expect(page.getByText(/Qualified/i).first()).toBeVisible();
     await dwell(page, 2000);
     await assertClean(page, 'scene 2');
 
