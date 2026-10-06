@@ -1,4 +1,3 @@
-// @ts-nocheck - runs under plain node (type stripping); not covered by the desktop tsconfig strictness
 /**
  * Quality gate + chapter files for the showcase videos (STORYBOARD D.8 / D.9).
  *
@@ -56,14 +55,14 @@ export function validateChapters(text: string, totalSec: number, minLen = 10): s
   if (lines.length < 3) errs.push(`need at least 3 chapters, have ${lines.length}`);
   const secs = lines.map((l) => {
     const m = /^(?:(\d+):)?(\d{1,2}):(\d{2}) /.exec(l);
-    return m ? (m[1] ? +m[1] * 3600 : 0) + +m[2] * 60 + +m[3] : NaN;
+    return m ? (m[1] ? +m[1] * 3600 : 0) + +(m[2] ?? 0) * 60 + +(m[3] ?? 0) : NaN;
   });
   secs.forEach((s, i) => {
     if (Number.isNaN(s)) errs.push(`unparseable line: ${lines[i]}`);
-    else if (i > 0 && s <= secs[i - 1]) errs.push(`not strictly ascending at: ${lines[i]}`);
-    const next = i + 1 < secs.length ? secs[i + 1] : totalSec;
+    else if (i > 0 && s <= (secs[i - 1] ?? -1)) errs.push(`not strictly ascending at: ${lines[i]}`);
+    const next = (i + 1 < secs.length ? secs[i + 1] : undefined) ?? totalSec;
     if (!Number.isNaN(s) && next - s < minLen) errs.push(`chapter shorter than ${minLen}s: ${lines[i]}`);
-    if (/[<>]/.test(lines[i])) errs.push(`< or > in title: ${lines[i]}`);
+    if (/[<>]/.test(lines[i] ?? '')) errs.push(`< or > in title: ${lines[i]}`);
   });
   return errs;
 }
@@ -85,11 +84,11 @@ export function frameCheck(video: string, framesDir: string, everySec = 10): Fra
   const txt = fs.existsSync(path.join(framesDir, 'luma.txt')) ? fs.readFileSync(path.join(framesDir, 'luma.txt'), 'utf8') : '';
   const samples: { t: number; luma: number }[] = [];
   let idx = 0;
-  for (const m of txt.matchAll(/YAVG=([\d.]+)/g)) samples.push({ t: idx++ * everySec, luma: parseFloat(m[1]) });
+  for (const m of txt.matchAll(/YAVG=([\d.]+)/g)) samples.push({ t: idx++ * everySec, luma: parseFloat(m[1] ?? '0') });
   const flashes: string[] = [];
   for (let i = 1; i < samples.length; i++) {
-    const a = samples[i - 1].luma, b = samples[i].luma;
-    if ((a > 245 && b > 245) || (a < 8 && b < 8)) flashes.push(`consecutive ${a > 245 ? 'white' : 'black'} samples at ${samples[i - 1].t}s and ${samples[i].t}s`);
+    const a = samples[i - 1]?.luma ?? 128, b = samples[i]?.luma ?? 128;
+    if ((a > 245 && b > 245) || (a < 8 && b < 8)) flashes.push(`consecutive ${a > 245 ? 'white' : 'black'} samples at ${samples[i - 1]?.t}s and ${samples[i]?.t}s`);
   }
   const blackSegments = Array.from((bd.stderr || '').matchAll(/black_start:([\d.]+).*?black_duration:([\d.]+)/g)).map((m) => `black ${m[1]}s for ${m[2]}s`);
   return { samples, flashes, blackSegments };
@@ -128,7 +127,7 @@ export function gate(o: GateOptions): GateResult {
       const j = JSON.parse(fs.readFileSync(f, 'utf8'));
       const cards = (j.marks as { type?: string; name: string; atMs: number }[]).filter((m) => m.type === 'card');
       cards.forEach((c, i) => {
-        const end = i + 1 < cards.length ? cards[i + 1].atMs : j.durationMs;
+        const end = cards[i + 1]?.atMs ?? j.durationMs;
         const len = (end - c.atMs) / 1000;
         if (len < o.minChapterSec!) failures.push(`chapter "${c.name}" is ${len.toFixed(1)}s (< ${o.minChapterSec}s)`);
         if (o.maxChapterSecWarn && len > o.maxChapterSecWarn) warnings.push(`chapter "${c.name}" is ${len.toFixed(1)}s (> ${o.maxChapterSecWarn}s)`);
@@ -147,7 +146,7 @@ export function gate(o: GateOptions): GateResult {
 
 function arg(a: string[], k: string): string[] {
   const out: string[] = [];
-  for (let i = 0; i < a.length; i++) if (a[i] === k && a[i + 1]) out.push(a[++i]);
+  for (let i = 0; i < a.length; i++) if (a[i] === k && a[i + 1]) out.push(a[++i] ?? '');
   return out;
 }
 

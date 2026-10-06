@@ -1,4 +1,3 @@
-// @ts-nocheck - runs under plain node (type stripping); not covered by the desktop tsconfig strictness
 /**
  * Demo seeder (API phase) for the client videos.
  *
@@ -19,6 +18,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// @ts-expect-error TS5097 - plain `node` type stripping needs the explicit .ts extension
 import * as D from './demo-data.ts';
 
 const API = (process.env.E2E_API_URL ?? 'http://localhost:8787/api/v1').replace(/\/+$/, '');
@@ -55,14 +55,18 @@ async function call(label: string, method: string, p: string, body?: unknown): P
   return r.json?.data ?? r.json ?? {};
 }
 
-async function login(email = D.DEMO_EMAIL, password = D.DEMO_PASSWORD) {
-  const res = await fetch(`${API}/auth/login`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, tenantId: D.TENANT_ID }),
-  });
-  const json: Json = await res.json();
-  if (!json?.data?.accessToken) throw new Error(`login failed: ${JSON.stringify(json)}`);
-  token = json.data.accessToken;
+async function login(emails: string[] = [D.DEMO_EMAIL, D.BOOTSTRAP_EMAIL], password = D.DEMO_PASSWORD) {
+  let last = '';
+  for (const email of emails) {
+    const res = await fetch(`${API}/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, tenantId: D.TENANT_ID }),
+    });
+    const json: Json = await res.json();
+    if (json?.data?.accessToken) { token = json.data.accessToken; return; }
+    last = JSON.stringify(json);
+  }
+  throw new Error(`login failed: ${last}`);
 }
 
 const rows = (d: Json): Json[] => (Array.isArray(d) ? d : Array.isArray(d?.items) ? d.items : Array.isArray(d?.data) ? d.data : []);
@@ -75,6 +79,7 @@ interface Ids {
   suppliers: Record<string, string>; rateCards: Record<string, string>; templates: Record<string, string>;
   invoices: Record<string, string>; vouchers: Record<string, string>; vehicles: Record<string, string>;
   drivers: Record<string, string>; trips: Record<string, string>; tasks: Record<string, string>;
+  segments?: Record<string, string>; campaigns: Record<string, string>;
   liveTrip?: { id: string; pickupHHMM: string };
   rejections: string[]; counters: Record<string, number>;
 }
@@ -83,12 +88,12 @@ async function seedAll(): Promise<Ids> {
   // Wipe + re-create the base tenant/admin (idempotency anchor).
   const reset = await fetch(`${API}/test/reset`, { method: 'POST' });
   if (!reset.ok) throw new Error(`/test/reset failed: ${reset.status} ${await reset.text()}`);
-  await login();
+  await login([D.BOOTSTRAP_EMAIL]);
 
   const ids: Ids = {
     d0: D.d0(), apiUrl: API, tenantId: D.TENANT_ID, demoEmail: D.DEMO_EMAIL, demoPassword: D.DEMO_PASSWORD,
     staff: { ananya: D.ADMIN_ID }, contacts: {}, leads: {}, suppliers: {}, rateCards: {}, templates: {}, invoices: {},
-    vouchers: {}, vehicles: {}, drivers: {}, trips: {}, tasks: {}, rejections, counters,
+    vouchers: {}, vehicles: {}, drivers: {}, trips: {}, tasks: {}, campaigns: {}, rejections, counters,
   };
 
   // settings
@@ -98,14 +103,14 @@ async function seedAll(): Promise<Ids> {
   await call('settings', 'PUT', '/settings/itinerary-defaults', D.ITINERARY_DEFAULTS);
 
   // staff
-  const me = D.STAFF[0];
+  const me = D.STAFF[0]!;
   await call('staff', 'PUT', '/users/me', { name: me.name, phone: me.phone, department: me.department });
   for (const s of D.STAFF.slice(1)) {
     const u = await call('staff', 'POST', '/users', { email: s.email, name: s.name, role: s.role, phone: s.phone, department: s.department });
     if (!u) continue;
   }
   const team = rows(await call('staffList', 'GET', '/users?limit=100'));
-  for (const s of D.STAFF) {
+  for (const s of D.STAFF.slice(1)) {
     const u = team.find((x) => String(x.email).toLowerCase() === s.email.toLowerCase());
     if (u?.id) ids.staff[s.key] = u.id; else rejections.push(`staff id missing for ${s.key}`);
   }
@@ -155,7 +160,7 @@ async function seedAll(): Promise<Ids> {
     ids.leads[l.key] = r.id;
     const lit = D.LEAD_ITINERARIES[l.key];
     if (lit && ids.templates[lit.template]) await call('itineraries', 'POST', '/itinerary-templates/create-from', { templateId: ids.templates[lit.template], leadId: r.id, title: lit.title });
-    for (const st of path_[l.status]) {
+    for (const st of path_[l.status] ?? []) {
       await call('leadStatus', 'PUT', `/leads/${r.id}/status`, { status: st, ...(st === 'lost' ? { lostReason: l.lostReason } : {}) });
     }
   }
@@ -241,7 +246,7 @@ async function seedAll(): Promise<Ids> {
     const seq: Record<string, string[]> = {
       completed: ['accepted', 'en_route', 'started', 'completed'], started: ['accepted', 'en_route', 'started'], accepted: ['accepted'], assigned: [], cancelled: ['cancelled'],
     };
-    for (const st of seq[t.final]) await call('tripStatus', 'PUT', `/fleet/trips/${r.id}/status`, { status: st, ...(st === 'cancelled' ? { reason: t.cancelReason } : {}) });
+    for (const st of seq[t.final] ?? []) await call('tripStatus', 'PUT', `/fleet/trips/${r.id}/status`, { status: st, ...(st === 'cancelled' ? { reason: t.cancelReason } : {}) });
     if (t.rating) await call('tripRating', 'POST', `/fleet/drivers/${ids.drivers[t.driver]}/rate`, { tripId: r.id, rating: t.rating });
   }
   for (const c of D.TRIP_COSTS) await call('tripCosts', 'POST', `/fleet/trips/${ids.trips[c.trip]}/costs`, { costType: c.costType, amount: c.amount, description: c.description });
@@ -281,6 +286,45 @@ async function seedAll(): Promise<Ids> {
   for (const n of D.STICKY_NOTES) await call('stickyNotes', 'POST', '/sticky-notes', n);
   for (const t of D.MESSAGE_TEMPLATES) await call('messageTemplates', 'POST', '/templates', { channel: t.channel, name: t.name, category: t.category, content: t.content, ...('subject' in t ? { subject: t.subject } : {}) });
 
+  // visa desk: travellers + applications
+  const travellers: Record<string, string> = {};
+  for (const t of D.TRAVELLERS) {
+    const r = await call('travellers', 'POST', '/travellers', {
+      contactId: ids.contacts[t.contact], firstName: t.firstName, lastName: t.lastName, passportNumber: t.passportNumber,
+      dateOfBirth: t.dateOfBirth, gender: t.gender, nationality: t.nationality, passportExpiryDate: t.passportExpiryDate,
+      email: D.CONTACTS.find((x) => x.key === t.contact)?.email, phone: D.CONTACTS.find((x) => x.key === t.contact)?.phone,
+    });
+    if (r?.id) travellers[t.key] = r.id;
+  }
+  for (const v of D.VISAS) {
+    const r = await call('visaApplications', 'POST', '/visa', {
+      travellerId: travellers[v.traveller], ...(v.lead ? { leadId: ids.leads[v.lead] } : {}), destinationCountry: v.country, visaType: v.type,
+      ...(v.expectedIn !== undefined ? { expectedDate: D.day(v.expectedIn) } : {}),
+    });
+    if (!r?.id) continue;
+    await call('visaApplications', 'PUT', `/visa/${r.id}`, {
+      status: v.status, ...(v.applicationNumber ? { applicationNumber: v.applicationNumber } : {}), ...(v.appliedAgo !== undefined ? { appliedDate: D.day(-v.appliedAgo) } : {}),
+      ...(v.embassy ? { embassyName: v.embassy } : {}), ...(v.visaNumber ? { visaNumber: v.visaNumber, visaIssueDate: D.day(-3), visaEntryType: 'single', approvedDate: D.day(-3) } : {}),
+      ...(v.expiresIn !== undefined ? { visaExpiryDate: D.day(v.expiresIn) } : {}), ...(v.expectedIn !== undefined ? { expectedDate: D.day(v.expectedIn) } : {}),
+    });
+  }
+
+  // marketing: segments (filters that match seeded contacts) + campaigns
+  const segments: Record<string, string> = {};
+  for (const s of D.SEGMENTS) {
+    const r = await call('segments', 'POST', '/marketing/segments', { name: s.name, description: s.description, filtersJson: JSON.stringify(s.filters), isDynamic: true });
+    if (r?.id) segments[s.key] = r.id;
+  }
+  ids.segments = segments;
+  ids.campaigns = {};
+  for (const cp of D.CAMPAIGNS) {
+    const r = await call('campaigns', 'POST', '/marketing/campaigns', {
+      name: cp.name, type: cp.type, segmentId: segments[cp.segment], messageBody: cp.body, ...(cp.subject ? { emailSubject: cp.subject } : {}),
+      ...(cp.inDays !== undefined ? { scheduledAt: D.at(cp.inDays, '10:00') } : {}),
+    });
+    if (r?.id) ids.campaigns[cp.name] = r.id;
+  }
+
   return ids;
 }
 
@@ -295,6 +339,7 @@ async function ensureLiveTrip(ids: Ids): Promise<void> {
   if (p.minutesOfDay > 21 * 60 + 30) throw new Error(`pickup ${p.hhmm} IST is after 21:30 IST - too late to record`);
 
   const vehicleId = ids.vehicles.VH1, driverId = ids.drivers.DR1;
+  if (!vehicleId || !driverId) throw new Error("seed.json has no Ravi / KA 05 MN 4521 - run the full seed first");
   // Cancel any earlier open H5 trip for Ravi so the vehicle/driver conflict check passes.
   const open = rows(await call('liveTripList', 'GET', `/fleet/trips?driverId=${driverId}&limit=100`));
   for (const t of open) {
@@ -328,6 +373,9 @@ async function verify(ids: Ids): Promise<boolean> {
     ['fleet/trips', '/fleet/trips?limit=100', D.TRIPS.length + (ids.liveTrip ? 1 : 0)],
     ['tasks', '/tasks?view=all&limit=100', D.TASKS.length],
     ['users', '/users?limit=100', D.STAFF.length],
+    ['visa', '/visa?limit=100', D.VISAS.length],
+    ['marketing/segments', '/marketing/segments?limit=100', D.SEGMENTS.length],
+    ['marketing/campaigns', '/marketing/campaigns?limit=100', D.CAMPAIGNS.length],
   ];
   let ok = true;
   const dump: string[] = [];
@@ -342,6 +390,47 @@ async function verify(ids: Ids): Promise<boolean> {
     report.push(`${good ? 'ok  ' : 'FAIL'} ${name}: ${got} (expected ${want}${name === 'fleet/trips' ? '+' : ''})`);
     dump.push(JSON.stringify(list));
   }
+
+  // every segment must resolve to real contacts (a campaign "Send" needs recipients)
+  for (const [key, id] of Object.entries(ids.segments ?? {})) {
+    const r = await raw('GET', `/marketing/segments/${id}/contacts?limit=1`);
+    const n = Number(r.json?.pagination?.total ?? r.json?.data?.total ?? 0);
+    if (n < 1) ok = false;
+    report.push(`${n >= 1 ? 'ok  ' : 'FAIL'} segment ${key}: ${n} matching contacts`);
+  }
+
+  // plan / feature flags: the tenant is on a plan that un-gates every module the story shows
+  {
+    const r = await raw('GET', '/ai/settings');
+    const feats: Json = r.json?.data?.features ?? r.json?.data ?? {};
+    const list: Json[] = Array.isArray(feats) ? feats : Object.entries(feats).map(([k, v]) => ({ key: k, ...(typeof v === 'object' ? (v as object) : { enabled: v }) }));
+    const off = list.filter((f) => (f.enabled ?? f.isEnabled) === false).map((f) => f.key ?? f.featureKey);
+    if (r.status >= 400 || off.length) ok = false;
+    report.push(`${r.status < 400 && !off.length ? 'ok  ' : 'FAIL'} feature flags: ${list.length} features, disabled: ${off.length ? off.join(', ') : 'none'}`);
+  }
+
+  // dashboard/report figures: closed sales in the current month and invoiced revenue in each of the last six months
+  {
+    const [y, m] = D.d0().split('-').map(Number) as [number, number];
+    const iso = (yy: number, mm: number, dd: number) => new Date(Date.UTC(yy, mm, dd)).toISOString().slice(0, 10);
+    await raw('DELETE', '/reports/cache');
+    const sales = await raw('GET', `/reports/sales_summary?date_from=${iso(y, m - 1, 1)}&date_to=${iso(y, m, 0)}`);
+    const srows: Json[] = rows(sales.json?.data?.data ?? sales.json?.data ?? []);
+    const won = srows.reduce((a, r) => a + Number(r.won_leads ?? 0), 0);
+    const rev = srows.reduce((a, r) => a + Number(r.total_revenue ?? 0), 0);
+    if (won < 1 || rev <= 0) ok = false;
+    report.push(`${won >= 1 && rev > 0 ? 'ok  ' : 'FAIL'} sales this month: ${won} won, revenue ${rev}`);
+    const trend: string[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const res = await raw('GET', `/reports/revenue_summary?date_from=${iso(y, m - 1 - i, 1)}&date_to=${iso(y, m - i, 0)}`);
+      const r2: Json[] = rows(res.json?.data?.data ?? res.json?.data ?? []);
+      const total = r2.filter((r) => r.status !== 'cancelled').reduce((a, r) => a + Number(r.total_amount ?? 0), 0);
+      trend.push(`${iso(y, m - 1 - i, 1).slice(0, 7)}=${Math.round(total)}`);
+      if (total <= 0) ok = false;
+    }
+    report.push(`${trend.some((t) => t.endsWith('=0')) ? 'FAIL' : 'ok  '} invoiced revenue by month: ${trend.join('  ')}`);
+  }
+
   const text = dump.join('\n');
   for (const re of D.BANNED_PATTERNS) {
     const m = text.match(re);

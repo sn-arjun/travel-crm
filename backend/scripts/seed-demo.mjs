@@ -29,6 +29,18 @@ const workDir = path.join(repoRoot, 'desktop/showcase/.work');
 const args = new Set(process.argv.slice(2));
 const log = (m) => console.log(`[seed-demo] ${m}`);
 
+// UUIDv7 (project rule: time-ordered ids everywhere)
+let lastMs = 0, seq = 0;
+function uuid7() {
+  let ms = Date.now();
+  if (ms === lastMs) seq = (seq + 1) & 0xfff; else { lastMs = ms; seq = Math.floor(Math.random() * 0x400); }
+  const b = new Uint8Array(16); crypto.getRandomValues(b);
+  b[0] = (ms / 2 ** 40) & 255; b[1] = (ms / 2 ** 32) & 255; b[2] = (ms / 2 ** 24) & 255; b[3] = (ms / 2 ** 16) & 255; b[4] = (ms / 2 ** 8) & 255; b[5] = ms & 255;
+  b[6] = 0x70 | (seq >> 8); b[7] = seq & 255; b[8] = (b[8] & 0x3f) | 0x80;
+  const h = [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
 function runSeed(extra = []) {
   const r = spawnSync(process.execPath, ['--no-warnings', seedTs, ...extra], { stdio: 'inherit', env: process.env });
   return r.status ?? 1;
@@ -60,7 +72,7 @@ if (args.has('--pre-roll') || args.has('--between-takes')) {
   const d = new Db(file);
   d.exec('PRAGMA busy_timeout = 15000');
   const ago = (m) => new Date(Date.now() - m * 60_000).toISOString().replace(/\.\d{3}Z$/, 'Z');
-  const id = () => crypto.randomUUID();
+  const id = () => uuid7();
   if (args.has('--pre-roll')) {
     const start = new Date(D0.day(D0.TRAVEL_START_OFFSET) + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
     d.prepare("INSERT INTO message_log (id,contact_id,channel,content,direction,status,sent_at,delivered_at,created_at) VALUES (?,?,'whatsapp',?,'incoming','delivered',?,?,?)")
@@ -105,17 +117,6 @@ function step(name, fn) {
   try { fn(); } catch (e) { skipped.push(`${name}: ${e.message}`); log(`  ! ${name} skipped: ${e.message}`); }
 }
 
-// UUIDv7
-let lastMs = 0, seq = 0;
-function uuid7() {
-  let ms = Date.now();
-  if (ms === lastMs) seq = (seq + 1) & 0xfff; else { lastMs = ms; seq = Math.floor(Math.random() * 0x400); }
-  const b = new Uint8Array(16); crypto.getRandomValues(b);
-  b[0] = (ms / 2 ** 40) & 255; b[1] = (ms / 2 ** 32) & 255; b[2] = (ms / 2 ** 24) & 255; b[3] = (ms / 2 ** 16) & 255; b[4] = (ms / 2 ** 8) & 255; b[5] = ms & 255;
-  b[6] = 0x70 | (seq >> 8); b[7] = seq & 255; b[8] = (b[8] & 0x3f) | 0x80;
-  const h = [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
-}
 const iso = (d) => new Date(d).toISOString().replace(/\.\d{3}Z$/, 'Z');
 const nowMs = Date.now();
 const minsAgo = (m) => iso(nowMs - m * 60_000);
@@ -141,6 +142,12 @@ step('A.9#1 identities', () => {
   run("DELETE FROM users WHERE email LIKE '%@e2e.test'");
   run("UPDATE tenants SET company_name='Malabar Coast Travels', subdomain='malabarcoast' WHERE id='00000000-0000-0000-0000-000000000000'");
   run(`UPDATE tenants SET company_name='Sahyadri Holidays' WHERE id='${D.TENANT_ID}'`);
+});
+
+// 2. the signed-in user must not show admin@demo.com anywhere (sidebar footer, profile, team page)
+step('A.9#2 login email', () => {
+  run('UPDATE users SET email=? WHERE id=?', D.DEMO_EMAIL, D.ADMIN_ID);
+  run('UPDATE tenant_users SET email=? WHERE user_id=?', D.DEMO_EMAIL, D.ADMIN_ID);
 });
 
 // 3. staff look real
@@ -277,6 +284,19 @@ step('A.9#9 call_logs', () => {
     run('INSERT INTO call_logs (id,contact_id,direction,from_number,to_number,duration_seconds,status,outcome,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
       uuid7(), seed.contacts[ck], dir, dir === 'outbound' ? '+918047182290' : c.phone, dir === 'outbound' ? c.phone : '+918047182290', dur, status, outcome, D.ADMIN_ID, minsAgo(ago), minsAgo(ago));
   });
+});
+step('A.11 campaigns', () => {
+  for (const cp of D.CAMPAIGNS) {
+    const id = seed.campaigns?.[cp.name]; if (!id) continue;
+    if (cp.final === 'sent') {
+      const [sent, opened, clicked, failed] = cp.stats;
+      const t = minsAgo(cp.agoDays * 1440);
+      run("UPDATE marketing_campaigns SET status='sent', scheduled_at=?, total_recipients=?, sent_count=?, delivered_count=?, failed_count=?, opened_count=?, clicked_count=?, created_at=?, updated_at=? WHERE id=?",
+        t, sent + failed, sent, sent - failed, failed, opened, clicked, minsAgo((cp.agoDays + 3) * 1440), t, id);
+    } else if (cp.final === 'scheduled') {
+      run("UPDATE marketing_campaigns SET status='scheduled' WHERE id=?", id);
+    }
+  }
 });
 step('A.12 usage caps', () => {
   run('DELETE FROM tenant_usage_caps');

@@ -1,4 +1,3 @@
-// @ts-nocheck - runs under plain node (type stripping); not covered by the desktop tsconfig strictness
 /**
  * Demo dataset for the client videos — "Sahyadri Holidays".
  * Single source of truth (STORYBOARD section A). Imported by demo-seed.ts and by every showcase spec.
@@ -12,6 +11,12 @@
 // ─── Dates (IST) ─────────────────────────────────────────────────
 
 const IST_OFFSET_MIN = 330;
+
+/** Split "2026-10-03" / "09:30" into three numbers (noUncheckedIndexedAccess-safe). */
+function nums(s: string, sep: string): [number, number, number] {
+  const p = s.split(sep).map(Number);
+  return [p[0] ?? 0, p[1] ?? 0, p[2] ?? 0];
+}
 
 /** Shift a Date by the IST offset so UTC getters read IST wall-clock. */
 function istWall(d: Date): Date {
@@ -30,15 +35,15 @@ export function d0(): string {
 
 /** YYYY-MM-DD for D0 + offset days. */
 export function day(offset: number): string {
-  const [y, m, dd] = d0().split('-').map(Number);
+  const [y, m, dd] = nums(d0(), '-');
   const t = new Date(Date.UTC(y, m - 1, dd + offset));
   return t.toISOString().slice(0, 10);
 }
 
 /** UTC ISO instant for D0+offset at the given IST wall-clock time. */
 export function at(offset: number, hhmm: string): string {
-  const [h, mi] = hhmm.split(':').map(Number);
-  const [y, m, dd] = day(offset).split('-').map(Number);
+  const [h, mi] = nums(hhmm, ':');
+  const [y, m, dd] = nums(day(offset), '-');
   return new Date(Date.UTC(y, m - 1, dd, h, mi) - IST_OFFSET_MIN * 60_000).toISOString();
 }
 
@@ -63,7 +68,10 @@ export const TRAVEL_START_OFFSET = 76;
 
 export const TENANT_ID = '01960000-0000-7000-8000-000000000001';
 export const ADMIN_ID = '01960000-0000-7000-8000-0000000000a1';
-export const DEMO_EMAIL = 'admin@demo.com'; // login email stays (A.9 #2 rename is optional)
+/** The signed-in demo user's email (STORYBOARD A.9 #2). seed-demo.mjs renames the account to this after /test/reset. */
+export const DEMO_EMAIL = 'ananya.menon@example.com';
+/** What /test/reset creates before the rename. Only the seeder's first login uses it. */
+export const BOOTSTRAP_EMAIL = 'admin@demo.com';
 export const DEMO_PASSWORD = 'Admin@123';
 
 export const COMPANY = {
@@ -149,7 +157,7 @@ export interface ContactSeed {
   country: string;
   phone: string;
   email: string;
-  source: 'manual' | 'website' | 'referral' | 'ad' | 'facebook' | 'google';
+  source: 'manual' | 'website' | 'referral' | 'ad' | 'facebook' | 'google' | 'walkin';
   tags: string[];
   company?: string;
   type?: 'customer' | 'agent';
@@ -159,7 +167,6 @@ export interface ContactSeed {
 }
 
 const IN = 'India';
-// walkin is not accepted by POST /contacts (enum: manual|website|referral|ad|facebook|google) -> manual
 export const CONTACTS: ContactSeed[] = [
   { key: 'C01', name: 'Priya Nair', city: 'Bengaluru', state: 'Karnataka', country: IN, phone: '+919845023117', email: 'priya.nair@example.com', source: 'website', tags: ['family', 'kerala', 'whatsapp-enquiry'], age: 2,
     extra: { address: 'Prestige Shantiniketan, Whitefield', notes: 'Travels with husband Vivek and children Aditi (11) and Kabir (8). Vegetarian.' } },
@@ -170,12 +177,12 @@ export const CONTACTS: ContactSeed[] = [
   { key: 'C06', name: 'Vikram Singh Rathore', city: 'Jaipur', state: 'Rajasthan', country: IN, phone: '+919414028816', email: 'vikram.rathore@example.com', source: 'referral', tags: ['heritage'], age: 95 },
   { key: 'C07', name: 'Ananya Krishnan', city: 'Chennai', state: 'Tamil Nadu', country: IN, phone: '+919840017325', email: 'ananya.krishnan@example.com', source: 'google', tags: ['japan'], age: 3 },
   { key: 'C08', name: 'Siddharth Rao', city: 'Hyderabad', state: 'Telangana', country: IN, phone: '+919849033618', email: 'siddharth.rao@example.com', source: 'referral', tags: ['corporate'], company: 'Northstar Analytics Pvt Ltd', age: 30 },
-  { key: 'C09', name: 'Meenakshi Sundaram', city: 'Coimbatore', state: 'Tamil Nadu', country: IN, phone: '+919443056271', email: 'meenakshi.s@example.com', source: 'manual', tags: ['pilgrimage', 'senior-citizens'], age: 55 },
+  { key: 'C09', name: 'Meenakshi Sundaram', city: 'Coimbatore', state: 'Tamil Nadu', country: IN, phone: '+919443056271', email: 'meenakshi.s@example.com', source: 'walkin', tags: ['pilgrimage', 'senior-citizens'], age: 55 },
   { key: 'C10', name: 'Aditya Joshi', city: 'Ahmedabad', state: 'Gujarat', country: IN, phone: '+919825041896', email: 'aditya.joshi@example.com', source: 'website', tags: ['family'], age: 21 },
   { key: 'C11', name: 'Fatima Sheikh', city: 'Lucknow', state: 'Uttar Pradesh', country: IN, phone: '+919415072638', email: 'fatima.sheikh@example.com', source: 'website', tags: ['family', 'kashmir'], age: 5 },
   { key: 'C12', name: 'Harpreet Kaur', city: 'Chandigarh', state: 'Chandigarh', country: IN, phone: '+919814029573', email: 'harpreet.kaur@example.com', source: 'facebook', tags: ['adventure', 'ladakh'], age: 19 },
   { key: 'C13', name: 'Karan Malhotra', city: 'Gurugram', state: 'Haryana', country: IN, phone: '+919810085412', email: 'karan.malhotra@example.com', source: 'google', tags: ['family', 'dubai'], age: 36 },
-  { key: 'C14', name: 'Divya Menon', city: 'Kochi', state: 'Kerala', country: IN, phone: '+919447061825', email: 'divya.menon@example.com', source: 'manual', tags: ['weekend'], age: 28 },
+  { key: 'C14', name: 'Divya Menon', city: 'Kochi', state: 'Kerala', country: IN, phone: '+919447061825', email: 'divya.menon@example.com', source: 'walkin', tags: ['weekend'], age: 28 },
   { key: 'C15', name: 'Suresh Pillai', city: 'Thiruvananthapuram', state: 'Kerala', country: IN, phone: '+919446038214', email: 'suresh.pillai@example.com', source: 'referral', tags: ['repeat'], age: 210 },
   { key: 'C16', name: 'Ishaan Chatterjee', city: 'Kolkata', state: 'West Bengal', country: IN, phone: '+919830047192', email: 'ishaan.c@example.com', source: 'google', tags: ['europe'], age: 17 },
   { key: 'C17', name: 'Pooja Agarwal', city: 'Indore', state: 'Madhya Pradesh', country: IN, phone: '+919826053017', email: 'pooja.agarwal@example.com', source: 'facebook', tags: ['family'], age: 60 },
@@ -381,8 +388,8 @@ export const T_KER: TemplateSeed = {
 function lite(dest: string, titles: string[], priced: [number, number][]): TplDay[] {
   return titles.map((t, i) => ({
     title: t, city: dest,
-    items: i < priced.length && priced[i][1] > 0
-      ? [{ type: (i % 2 === 0 ? 'hotel' : 'activity') as 'hotel' | 'activity', title: t, cost: priced[i][0], sell: priced[i][1], qty: 1 }]
+    items: (priced[i]?.[1] ?? 0) > 0
+      ? [{ type: (i % 2 === 0 ? 'hotel' : 'activity') as 'hotel' | 'activity', title: t, cost: priced[i]?.[0] ?? 0, sell: priced[i]?.[1] ?? 0, qty: 1 }]
       : [],
   }));
 }
@@ -619,6 +626,101 @@ export const MESSAGE_LOG = [
   { dir: 'outgoing', channel: 'whatsapp', contact: 'C35', status: 'read', content: 'Hi Daniel, your Goa Christmas villa advance has been received. Thank you!', ago: 2 * 1440 + 60 },
   { dir: 'incoming', channel: 'whatsapp', contact: 'C14', status: 'delivered', content: 'Can we get a late check-out at Munnar?', ago: 600 },
 ] as const;
+
+// ─── Six months of trading history ───────────────────────────────
+// Repeat customers and closed sales spread over the last six calendar months, so the dashboard KPIs, the revenue
+// trend and the sales / team reports have real, non-zero figures in the current month and a visible trend.
+// Appended to the base arrays above (the seeder, the SQL backdating and the verifier all iterate those arrays).
+
+/** Days before D0 for "day `dom` of the calendar month `monthsBack` months ago"; the current month never lands in the future. */
+export function monthDay(monthsBack: number, dom: number): number {
+  const [y, m, dd] = nums(d0(), '-');
+  const target = Date.UTC(y, m - 1 - monthsBack, monthsBack === 0 ? Math.min(dom, dd) : Math.min(dom, 28));
+  return Math.max(0, Math.round((Date.UTC(y, m - 1, dd) - target) / 86_400_000));
+}
+
+interface HistorySale {
+  key: string; contact: ContactSeed; title: string; destinations: string[]; tripType: LeadSeed['tripType']; adults: number; children: number;
+  budget: number; assignee: string; source: LeadSeed['source']; template: string; invoiceLine: string; rate: number;
+  monthsBack: number; dom: number; method: string; reference: string;
+}
+const repeat = (key: string, name: string, city: string, state: string, phone: string, tags: string[], age: number): ContactSeed =>
+  ({ key, name, city, state, country: IN, phone, email: `${name.toLowerCase().replace(/[^a-z]+/g, '.')}@example.com`, source: 'referral', tags, age });
+
+const HISTORY_CONTACTS: ContactSeed[] = [
+  repeat('C40', 'Anjali Bhat', 'Mysuru', 'Karnataka', '+919845611201', ['family', 'repeat'], 230),
+  repeat('C41', 'Mohan Krishnan', 'Chennai', 'Tamil Nadu', '+919840622312', ['repeat', 'kerala'], 210),
+  repeat('C42', 'Lavanya Rao', 'Hyderabad', 'Telangana', '+919849633423', ['family', 'international'], 190),
+  repeat('C43', 'Deepak Nambiar', 'Kozhikode', 'Kerala', '+919447644534', ['family'], 170),
+  repeat('C44', 'Aarti Bose', 'Kolkata', 'West Bengal', '+919830655645', ['honeymoon'], 150),
+  repeat('C45', 'Pradeep Hegde', 'Udupi', 'Karnataka', '+919448666756', ['weekend'], 135),
+  repeat('C46', 'Swati Kulkarni', 'Pune', 'Maharashtra', '+919822677867', ['heritage', 'international'], 120),
+  repeat('C47', 'Gopal Menon', 'Thrissur', 'Kerala', '+919446688978', ['family', 'repeat'], 105),
+];
+const c = (k: string): ContactSeed => HISTORY_CONTACTS.find((x) => x.key === k)!;
+
+const HISTORY_SALES: HistorySale[] = [
+  { key: 'W01', contact: c('C40'), title: 'Coorg Coffee Estate Retreat — Bhat family', destinations: ['Coorg'], tripType: 'family', adults: 2, children: 2, budget: 80000, assignee: 'sneha', source: 'referral', template: 'T-GOA', invoiceLine: 'Coorg coffee estate retreat — 3N', rate: 75000, monthsBack: 0, dom: 2, method: 'transfer', reference: 'UTR 362300118840' },
+  { key: 'W02', contact: c('C41'), title: 'Wayanad Monsoon Escape — Krishnan', destinations: ['Wayanad'], tripType: 'domestic', adults: 2, children: 0, budget: 56000, assignee: 'sneha', source: 'walkin', template: 'T-KER', invoiceLine: 'Wayanad monsoon escape — 2N', rate: 52000, monthsBack: 0, dom: 3, method: 'other', reference: 'UPI 6301 7742 1180' },
+  { key: 'W03', contact: c('C42'), title: 'Sri Lanka Coastal Circuit — Rao family', destinations: ['Colombo', 'Galle'], tripType: 'international', adults: 2, children: 2, budget: 230000, assignee: 'farhan', source: 'google', template: 'T-DXB', invoiceLine: 'Sri Lanka coastal circuit — 5N', rate: 215000, monthsBack: 1, dom: 6, method: 'transfer', reference: 'UTR 362000417733' },
+  { key: 'W04', contact: c('C43'), title: 'Andaman Family Break — Nambiar', destinations: ['Port Blair', 'Havelock'], tripType: 'family', adults: 2, children: 1, budget: 150000, assignee: 'sneha', source: 'website', template: 'T-GOA', invoiceLine: 'Andaman family break — 4N', rate: 140000, monthsBack: 1, dom: 19, method: 'card', reference: 'POS 447190' },
+  { key: 'W05', contact: c('C44'), title: 'Kashmir Houseboat Honeymoon — Bose', destinations: ['Srinagar', 'Gulmarg'], tripType: 'honeymoon', adults: 2, children: 0, budget: 165000, assignee: 'rahul', source: 'facebook', template: 'T-KAS', invoiceLine: 'Kashmir honeymoon — 5N', rate: 155000, monthsBack: 2, dom: 8, method: 'transfer', reference: 'UTR 361600294410' },
+  { key: 'W06', contact: c('C45'), title: 'Ooty & Coonoor Weekend — Hegde', destinations: ['Ooty'], tripType: 'domestic', adults: 2, children: 0, budget: 40000, assignee: 'sneha', source: 'referral', template: 'T-KER', invoiceLine: 'Ooty & Coonoor weekend — 2N', rate: 38000, monthsBack: 2, dom: 23, method: 'other', reference: 'UPI 6283 5510 4467' },
+  { key: 'W07', contact: c('C46'), title: 'Bhutan Cultural Circuit — Kulkarni', destinations: ['Paro', 'Thimphu'], tripType: 'international', adults: 2, children: 0, budget: 250000, assignee: 'farhan', source: 'google', template: 'T-RAJ', invoiceLine: 'Bhutan cultural circuit — 6N', rate: 238000, monthsBack: 3, dom: 11, method: 'transfer', reference: 'UTR 361300772096' },
+  { key: 'W08', contact: c('C47'), title: 'Rajasthan Fort & Desert — Menon family', destinations: ['Jaipur', 'Jaisalmer'], tripType: 'family', adults: 4, children: 0, budget: 200000, assignee: 'rahul', source: 'referral', template: 'T-RAJ', invoiceLine: 'Rajasthan fort & desert circuit — 6N', rate: 190000, monthsBack: 4, dom: 15, method: 'transfer', reference: 'UTR 361000338821' },
+  { key: 'W09', contact: c('C41'), title: 'Kerala Ayurveda Escape — Krishnan', destinations: ['Kovalam'], tripType: 'domestic', adults: 2, children: 0, budget: 120000, assignee: 'sneha', source: 'referral', template: 'T-KER', invoiceLine: 'Kerala Ayurveda escape — 5N', rate: 114000, monthsBack: 5, dom: 10, method: 'card', reference: 'POS 439027' },
+  { key: 'W10', contact: c('C42'), title: 'Dubai Family Holiday — Rao family', destinations: ['Dubai'], tripType: 'international', adults: 2, children: 2, budget: 320000, assignee: 'farhan', source: 'referral', template: 'T-DXB', invoiceLine: 'Dubai family holiday — 5N', rate: 305000, monthsBack: 2, dom: 15, method: 'transfer', reference: 'UTR 361600571829' },
+  { key: 'W11', contact: c('C47'), title: 'Thailand Island Hopping — Menon family', destinations: ['Phuket', 'Krabi'], tripType: 'international', adults: 4, children: 0, budget: 240000, assignee: 'farhan', source: 'google', template: 'T-DXB', invoiceLine: 'Thailand island hopping — 6N', rate: 228000, monthsBack: 3, dom: 24, method: 'card', reference: 'POS 441873' },
+  { key: 'W12', contact: c('C40'), title: 'Goa Beach Week — Bhat family', destinations: ['Goa'], tripType: 'family', adults: 2, children: 2, budget: 140000, assignee: 'sneha', source: 'referral', template: 'T-GOA', invoiceLine: 'Goa beach week — 6N', rate: 133000, monthsBack: 4, dom: 4, method: 'other', reference: 'UPI 6276 4419 0083' },
+];
+
+CONTACTS.push(...HISTORY_CONTACTS);
+for (const s of HISTORY_SALES) {
+  const age = monthDay(s.monthsBack, s.dom);
+  LEADS.push({
+    key: s.key, title: s.title, contact: s.contact.key, destinations: s.destinations, tripType: s.tripType, travel: -Math.max(1, age - 10), ret: -Math.max(0, age - 14),
+    adults: s.adults, children: s.children, budget: s.budget, status: 'won', priority: 'warm', source: s.source, assignee: s.assignee, age,
+  });
+  LEAD_ITINERARIES[s.key] = { template: s.template, title: s.title };
+  const total = Math.round(s.rate * 1.05);
+  INVOICES.push({ key: `I-${s.key}`, contact: s.contact.key, lead: s.key, type: 'tax_invoice', lines: [{ description: s.invoiceLine, rate: s.rate }], age, due: -age + 14, target: 'paid' });
+  PAYMENTS.push({ invoice: `I-${s.key}`, amount: total, daysAgo: Math.max(0, age - 2), method: s.method, reference: s.reference });
+}
+
+// ─── Visa desk ───────────────────────────────────────────────────
+
+export interface TravellerSeed { key: string; contact: string; firstName: string; lastName: string; passportNumber: string; dateOfBirth: string; gender: 'male' | 'female'; nationality: string; passportExpiryDate: string }
+export const TRAVELLERS: TravellerSeed[] = [
+  { key: 'TR1', contact: 'C13', firstName: 'Karan', lastName: 'Malhotra', passportNumber: 'Z1234567', dateOfBirth: '1986-04-12', gender: 'male', nationality: 'Indian', passportExpiryDate: '2033-08-19' },
+  { key: 'TR2', contact: 'C16', firstName: 'Ishaan', lastName: 'Chatterjee', passportNumber: 'P7740192', dateOfBirth: '1988-09-03', gender: 'male', nationality: 'Indian', passportExpiryDate: '2031-02-27' },
+  { key: 'TR3', contact: 'C07', firstName: 'Ananya', lastName: 'Krishnan', passportNumber: 'K5521830', dateOfBirth: '1991-01-22', gender: 'female', nationality: 'Indian', passportExpiryDate: '2032-11-05' },
+  { key: 'TR4', contact: 'C23', firstName: 'Tanvi', lastName: 'Deshpande', passportNumber: 'M3308815', dateOfBirth: '1993-06-30', gender: 'female', nationality: 'Indian', passportExpiryDate: '2030-07-14' },
+];
+export interface VisaSeed { traveller: string; lead?: string; country: string; type: 'tourist' | 'business'; status: 'documents_collecting' | 'applied' | 'processing' | 'approved'; appliedAgo?: number; expectedIn?: number; applicationNumber?: string; visaNumber?: string; embassy?: string; expiresIn?: number }
+export const VISAS: VisaSeed[] = [
+  { traveller: 'TR1', lead: 'L06', country: 'United Arab Emirates', type: 'tourist', status: 'documents_collecting', expectedIn: 40, embassy: 'UAE e-Visa Service' },
+  { traveller: 'TR2', lead: 'L09', country: 'France', type: 'tourist', status: 'applied', appliedAgo: 6, expectedIn: 12, applicationNumber: 'FRA-BLR-26-48213', embassy: 'VFS Global, Bengaluru' },
+  { traveller: 'TR3', lead: 'L17', country: 'Japan', type: 'tourist', status: 'processing', appliedAgo: 12, expectedIn: 8, applicationNumber: 'JPN-CHE-26-11094', embassy: 'Consulate General of Japan, Chennai' },
+  { traveller: 'TR4', lead: 'L07', country: 'Indonesia', type: 'tourist', status: 'approved', appliedAgo: 9, applicationNumber: 'IDN-EV-26-775201', visaNumber: 'IDN-VOA-9930412', embassy: 'Indonesia e-Visa', expiresIn: 170 },
+];
+
+// ─── Marketing: segments + campaigns ─────────────────────────────
+
+const rule = (field: string, operator: string, value: string) => ({ field, operator, value });
+export const SEGMENTS: { key: string; name: string; description: string; filters: Record<string, unknown> }[] = [
+  { key: 'families', name: 'Families with kids', description: 'Contacts tagged family', filters: { logic: 'OR', rules: [rule('tags', 'contains', 'family')] } },
+  { key: 'honeymooners', name: 'Honeymooners', description: 'Couples planning a honeymoon', filters: { logic: 'OR', rules: [rule('tags', 'contains', 'honeymoon')] } },
+  { key: 'repeat', name: 'Repeat travellers', description: 'Guests who have travelled with us before', filters: { logic: 'OR', rules: [rule('tags', 'contains', 'repeat')] } },
+  { key: 'kerala', name: 'Kerala enquiries', description: 'Kerala-bound families and couples', filters: { logic: 'OR', rules: [rule('tags', 'contains', 'kerala')] } },
+  { key: 'corporate', name: 'Corporate accounts', description: 'Offsites and sales meets', filters: { logic: 'OR', rules: [rule('tags', 'contains', 'corporate')] } },
+];
+export const CAMPAIGNS: { name: string; type: 'email' | 'whatsapp'; segment: string; subject?: string; body: string; final: 'sent' | 'scheduled' | 'draft'; stats?: [number, number, number, number]; agoDays?: number; inDays?: number }[] = [
+  { name: 'Diwali Getaways 2026 — Goa & Udaipur', type: 'email', segment: 'families', subject: 'Diwali getaways from ₹24,999 — Goa & Udaipur',
+    body: 'Hi {{first_name}},\n\nThis Diwali, give the family a break. Goa beach stays and Udaipur lake palaces, hand-picked by our team, from ₹24,999 per person.\n\nReply to this email and we will hold your dates.\n\nSahyadri Holidays', final: 'sent', stats: [412, 188, 47, 6], agoDays: 6 },
+  { name: 'Winter in Europe — early bird', type: 'email', segment: 'repeat', subject: 'Early-bird Europe departures for next winter',
+    body: 'Hi {{first_name}},\n\nOur early-bird Europe departures are open: Paris, the Swiss Alps and Rome, with limited seats.\n\nSahyadri Holidays', final: 'scheduled', inDays: 5 },
+  { name: 'Monsoon Munnar weekends', type: 'whatsapp', segment: 'kerala', body: 'Hi {{first_name}}, tea-estate weekends in Munnar are open for the coming weeks. Reply YES and we will share the plan. — Sahyadri Holidays', final: 'draft' },
+];
 
 // ─── Banned strings (A.13) — also asserted against everything seeded ─────
 
