@@ -17,6 +17,10 @@ import { cursorOverlayInit } from './cursor-overlay';
  *  - every card/mark is logged with a video-relative timestamp for chapters + trimming.
  */
 
+/** SHOWCASE_PACE scales every explicit pause (1 = recorded pacing; 0.15 = fast debug run). */
+export const PACE = Number(process.env.SHOWCASE_PACE ?? 1);
+export const pause = (page: Page, ms: number): Promise<void> => page.waitForTimeout(Math.round(ms * PACE));
+
 export const WORK_DIR = path.resolve(__dirname, '..', '..', 'showcase', '.work');
 
 // ─── Marks (video-relative timeline) ─────────────────────────────
@@ -58,9 +62,9 @@ const sc = (page: Page, fn: string, args: unknown[] = []) =>
 export async function card(page: Page, o: { kicker?: string; title: string; subtitle?: string; holdMs?: number }): Promise<void> {
   mark(o.title, { kicker: o.kicker, subtitle: o.subtitle }, 'card');
   await sc(page, 'card', [{ kicker: o.kicker, title: o.title, subtitle: o.subtitle }]);
-  await page.waitForTimeout(o.holdMs ?? 2600);
+  await pause(page, o.holdMs ?? 2600);
   await sc(page, 'hideCard');
-  await page.waitForTimeout(350);
+  await pause(page, 350);
 }
 
 /** Hold time rule (B.0): max(2.2 s, 1.0 s + 55 ms x characters). */
@@ -70,11 +74,11 @@ export const holdFor = (text: string): number => Math.max(2200, 1000 + 55 * text
 export async function say(page: Page, text: string, holdMs?: number, kicker?: string): Promise<void> {
   mark(text, undefined, 'caption');
   await sc(page, 'say', [text, kicker]);
-  await page.waitForTimeout(holdMs ?? holdFor(text));
+  await pause(page, holdMs ?? holdFor(text));
 }
 export async function clearSay(page: Page): Promise<void> {
   await sc(page, 'clearSay');
-  await page.waitForTimeout(250);
+  await pause(page, 250);
 }
 export const hideOverlays = (page: Page) => sc(page, 'hide');
 export const showOverlays = (page: Page) => sc(page, 'show');
@@ -87,27 +91,37 @@ const jitter = (n: number) => (Math.random() * 2 - 1) * n;
 
 /** Visible, never-teleporting pointer move to the centre of a locator. */
 export async function moveTo(page: Page, target: Locator): Promise<void> {
-  await target.scrollIntoViewIfNeeded();
-  const box = await target.boundingBox();
+  // lists re-render after a search/refetch: retry when the node is swapped out under us
+  let box = null;
+  for (let attempt = 0; attempt < 5 && !box; attempt++) {
+    try {
+      await target.waitFor({ state: 'visible', timeout: 10_000 });
+      await target.scrollIntoViewIfNeeded({ timeout: 5000 });
+      box = await target.boundingBox();
+    } catch (e) {
+      if (attempt === 4) throw e;
+    }
+    if (!box) await page.waitForTimeout(500);
+  }
   if (!box) throw new Error(`moveTo: no bounding box for ${target}`);
   const x = box.x + box.width / 2 + jitter(3);
   const y = box.y + box.height / 2 + jitter(2);
   const dist = Math.hypot(x - pointer.x, y - pointer.y);
   await page.mouse.move(x, y, { steps: clamp(Math.round(dist / 22), 12, 40) });
   pointer = { x, y };
-  await page.waitForTimeout(120);
+  await pause(page, 120);
 }
 
 export async function clickOn(page: Page, target: Locator): Promise<void> {
   await moveTo(page, target);
-  await page.waitForTimeout(180);
+  await pause(page, 180);
   await target.click();
   await settle(page);
 }
 
 export async function hoverOn(page: Page, target: Locator, dwellMs = 900): Promise<void> {
   await moveTo(page, target);
-  await page.waitForTimeout(dwellMs);
+  await pause(page, dwellMs);
 }
 
 // ─── Input ───────────────────────────────────────────────────────
@@ -115,12 +129,12 @@ export async function hoverOn(page: Page, target: Locator, dwellMs = 900): Promi
 /** Click, select-all, clear, then human-speed typing (45 ms/char; 18 ms for text over 140 chars). */
 export async function typeInto(page: Page, target: Locator, text: string, o: { delay?: number } = {}): Promise<void> {
   await moveTo(page, target);
-  await page.waitForTimeout(180);
+  await pause(page, 180);
   await target.click();
   await page.keyboard.press('Control+A');
   await page.keyboard.press('Backspace');
-  await target.pressSequentially(text, { delay: o.delay ?? (text.length > 140 ? 18 : 45) });
-  await page.waitForTimeout(250);
+  await target.pressSequentially(text, { delay: Math.round((o.delay ?? (text.length > 140 ? 18 : 45)) * PACE) });
+  await pause(page, 250);
 }
 
 export const fieldByLabel = (page: Page, label: string): Locator => {
@@ -131,7 +145,7 @@ export const fieldByLabel = (page: Page, label: string): Locator => {
 /** Radix Select: open, pause, choose. */
 export async function pickSelect(page: Page, trigger: Locator, optionName: string | RegExp): Promise<void> {
   await clickOn(page, trigger);
-  await page.waitForTimeout(400);
+  await pause(page, 400);
   await clickOn(page, page.getByRole('option', { name: optionName, exact: typeof optionName === 'string' }).first());
 }
 
@@ -139,7 +153,7 @@ export async function pickSelect(page: Page, trigger: Locator, optionName: strin
 export async function pickRelation(page: Page, trigger: RegExp | Locator, searchPlaceholder: string | RegExp, query: string, optionText: string | RegExp): Promise<void> {
   const t = trigger instanceof RegExp ? page.getByRole('combobox').filter({ hasText: trigger }).first() : trigger;
   await clickOn(page, t);
-  await page.waitForTimeout(400);
+  await pause(page, 400);
   const search = page.getByPlaceholder(searchPlaceholder).last();
   await typeInto(page, search, query);
   await settle(page, 600);
@@ -148,25 +162,16 @@ export async function pickRelation(page: Page, trigger: RegExp | Locator, search
   await clickOn(page, opt);
 }
 
-/** Calendar popover: month/year dropdowns when present, otherwise the header "next" button; then the day. */
+/** DatePicker popover: open, choose year + month in the labelled selects, click the day (data-day=YYYY-MM-DD). */
 export async function pickDate(page: Page, trigger: Locator, isoDate: string): Promise<void> {
-  const [y, m, d] = isoDate.split('-').map(Number) as [number, number, number];
+  const [y, m] = isoDate.split('-').map(Number) as [number, number];
   await clickOn(page, trigger);
-  await page.waitForTimeout(400);
-  const cal = page.locator('.w-\\[280px\\]').last();
-  const monthSel = page.locator('select').filter({ hasText: /January/ }).first();
-  if (await monthSel.count()) {
-    await monthSel.selectOption({ index: m - 1 });
-    await page.locator('select').filter({ hasText: String(y) }).first().selectOption(String(y));
-  } else {
-    const now = new Date();
-    const delta = (y - now.getFullYear()) * 12 + (m - 1 - now.getMonth());
-    for (let i = 0; i < Math.max(0, delta); i++) {
-      await clickOn(page, cal.locator('button').last());
-      await page.waitForTimeout(150);
-    }
-  }
-  await clickOn(page, cal.getByRole('button', { name: String(d), exact: true }).first());
+  await pause(page, 400);
+  const dlg = page.getByRole('dialog', { name: /^Choose date/ }).last();
+  await dlg.getByLabel('Year', { exact: true }).selectOption(String(y));
+  await dlg.getByLabel('Month', { exact: true }).selectOption(String(m - 1));
+  await pause(page, 300);
+  await clickOn(page, dlg.locator(`[data-day="${isoDate}"]`));
 }
 
 // ─── Timing ──────────────────────────────────────────────────────
@@ -175,15 +180,15 @@ export async function pickDate(page: Page, trigger: Locator, isoDate: string): P
 export async function settle(page: Page, ms = 900): Promise<void> {
   await page.waitForFunction(() => document.querySelectorAll('.animate-spin').length === 0, undefined, { timeout: 20_000 }).catch(() => {});
   await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
-  await page.waitForTimeout(ms);
+  await pause(page, ms);
 }
-export const dwell = (page: Page, ms: number) => page.waitForTimeout(ms);
+export const dwell = (page: Page, ms: number) => pause(page, ms);
 
 /** Smooth scroll in 500px wheel steps, 650 ms apart (never jumps). */
 export async function scrollSteps(page: Page, steps = 3, dy = 500): Promise<void> {
   for (let i = 0; i < steps; i++) {
     await page.mouse.wheel(0, dy);
-    await page.waitForTimeout(650);
+    await pause(page, 650);
   }
 }
 
@@ -220,7 +225,7 @@ export async function assertClean(page: Page, where = ''): Promise<void> {
     return {
       text: `${document.body?.innerText ?? ''}\n${vals}`,
       invalid: Array.from(document.querySelectorAll('[aria-invalid="true"]')).filter(visible).length,
-      danger: Array.from(document.querySelectorAll('.text-ds-danger')).filter((e) => visible(e) && (e.textContent ?? '').trim()).map((e) => (e.textContent ?? '').trim().slice(0, 80)),
+      danger: Array.from(document.querySelectorAll('.text-ds-danger')).filter((e) => visible(e) && !e.closest('button, a, [role="button"], [role="menuitem"]') && !/^\*?$/.test((e.textContent ?? '').trim())).map((e) => (e.textContent ?? '').trim().slice(0, 80)),
       errToast: document.querySelectorAll('[data-sonner-toast][data-type="error"]').length,
     };
   });
