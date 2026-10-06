@@ -1,6 +1,6 @@
 import { test, expect } from './fixtures';
 import { waitForLoad } from './helpers/auth';
-import { seedCampaign, seedEmailTemplate, api } from './helpers/api-seed';
+import { seedCampaign, seedContact, seedEmailTemplate, api } from './helpers/api-seed';
 
 // ─── A. FULL ROUND TRIP — create via wizard, list, detail, edit, delete ───────
 
@@ -442,6 +442,8 @@ test.describe('D. Schedule, send and cancel', () => {
   });
 
   test('D3: send now transitions the campaign out of draft', async ({ page }) => {
+    // Sending needs at least one recipient; a freshly reset tenant has no contacts.
+    const recipient = await seedContact({ name: `E2E-SendNow-Recipient-${Date.now()}` });
     const campaign = await seedCampaign({ name: `E2E-SendNow-${Date.now()}` });
 
     await page.goto(`/campaigns/${campaign.id}`);
@@ -454,6 +456,7 @@ test.describe('D. Schedule, send and cancel', () => {
     await expect(page.locator('text=Draft').first()).toHaveCount(0, { timeout: 10_000 });
 
     await api('DELETE', `/campaigns/${campaign.id}`);
+    await api('DELETE', `/contacts/${recipient.id}`);
   });
 });
 
@@ -510,6 +513,8 @@ test.describe('G. Edit access guard', () => {
     // so seedCampaign({ status: 'completed' }) silently stays draft. Drive
     // the campaign through the real send lifecycle instead to reach a
     // genuinely non-editable state.
+    // Sending needs at least one recipient; a freshly reset tenant has no contacts.
+    const recipient = await seedContact({ name: `E2E-NoEdit-Recipient-${Date.now()}` });
     const campaign = await seedCampaign({ name: `E2E-NoEdit-${Date.now()}` });
     await api('POST', `/campaigns/${campaign.id}/send`, { sendImmediately: true });
 
@@ -520,5 +525,6 @@ test.describe('G. Edit access guard', () => {
     expect(await page.locator('body').innerText()).not.toContain('Something went wrong');
 
     await api('DELETE', `/campaigns/${campaign.id}`);
+    await api('DELETE', `/contacts/${recipient.id}`);
   });
 });
