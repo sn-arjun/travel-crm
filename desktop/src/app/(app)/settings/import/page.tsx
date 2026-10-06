@@ -31,6 +31,7 @@ import { Tag } from '@/components/ui/tag';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { ListPage } from '@/components/domain';
+import type { ListFilter } from '@/components/domain/list-page';
 import type { LucideIcon } from 'lucide-react';
 import { PageHeader } from '@/components/ui/page-header';
 import { useConfirm } from '@/components/ui/confirm-dialog';
@@ -186,6 +187,18 @@ function ImportSettingsPageContent() {
   const [filterType, setFilterType] = React.useState('all');
   const [filterStatus, setFilterStatus] = React.useState('all');
   const [refreshKey, setRefreshKey] = React.useState(0);
+
+  // The history list refetches when these change (ListPage only reloads on filters / refreshKey).
+  const activeFilters = React.useMemo<ListFilter[]>(() => {
+    const list: ListFilter[] = [];
+    if (filterType !== 'all') {
+      list.push({ id: 'type', label: 'Type', value: IMPORT_TYPES.find((t) => t.value === filterType)?.label ?? filterType });
+    }
+    if (filterStatus !== 'all') {
+      list.push({ id: 'status', label: 'Status', value: statusConfig[filterStatus]?.label ?? filterStatus });
+    }
+    return list;
+  }, [filterType, filterStatus]);
 
   const headers: string[] = uploadedJob?.headers ?? [];
   const availableFields = CRM_FIELDS[importType] ?? [];
