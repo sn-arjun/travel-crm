@@ -194,16 +194,11 @@ test.describe.serial('Chatbot', () => {
     // Stats card reflects real message counts (not fabricated placeholders).
     await expect(page.locator('text=Messages').first()).toBeVisible();
 
-    // Send message opens SendMessageDialog (Communication Hub) — never a
-    // direct mailto:/wa.me anchor — because visitorEmail is set on this conversation.
+    // Messaging goes through the Communication Hub and needs a CRM contact. A chatbot-only
+    // visitor has none, so there is no Send message action (and never a mailto:/wa.me anchor).
     await expect(page.locator('a[href^="mailto:"]')).toHaveCount(0);
     await expect(page.locator('a[href^="wa.me"]')).toHaveCount(0);
-    const sendMessageButton = page.getByRole('button', { name: /Send message/i });
-    await expect(sendMessageButton).toBeVisible();
-    await sendMessageButton.click();
-    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 10_000 });
-    await page.keyboard.press('Escape');
-    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Send message/i })).toHaveCount(0);
 
     // Agent reply — real POST /chatbot/conversations/:id/reply round trip.
     const replyText = `E2E agent reply ${ts}`;

@@ -155,7 +155,9 @@ export default function EditInvoicePage() {
           }));
 
         const request: UpdateInvoiceRequest = {
+          issueDate: v.issueDate ? toLocalDateString(v.issueDate) : undefined,
           dueDate: v.dueDate ? toLocalDateString(v.dueDate) : undefined,
+          terms: v.termsAndConditions?.trim() ?? "",
           items: apiLineItems,
           discountType: v.discountType,
           discountValue: v.discountValue && v.discountValue > 0 ? v.discountValue : 0,

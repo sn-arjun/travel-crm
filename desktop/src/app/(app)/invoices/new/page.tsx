@@ -107,7 +107,9 @@ export default function NewInvoicePage() {
           items: apiLineItems,
           discountType: v.discountType,
           discountValue: v.discountValue && v.discountValue > 0 ? v.discountValue : undefined,
+          issueDate: v.issueDate ? toLocalDateString(v.issueDate) : undefined,
           dueDate: v.dueDate ? toLocalDateString(v.dueDate) : undefined,
+          terms: v.termsAndConditions?.trim() || undefined,
           notes: v.notes || undefined,
           currency: v.currency,
         };

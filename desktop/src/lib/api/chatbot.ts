@@ -33,6 +33,8 @@ export interface ChatbotConversation {
   visitorId?: string;
   visitorName?: string;
   visitorEmail?: string;
+  /** CRM contact this visitor is linked to; messaging needs it. */
+  contactId?: string;
   channel: 'web' | 'facebook' | 'whatsapp' | 'telegram';
   status: 'active' | 'closed' | 'handed_off';
   messages: ChatbotMessage[];
@@ -116,6 +118,8 @@ interface RawConversation {
   visitor_name?: string | null;
   visitorEmail?: string | null;
   visitor_email?: string | null;
+  contactId?: string | null;
+  contact_id?: string | null;
   channel: ChatbotConversation['channel'];
   status: ChatbotConversation['status'];
   messages?: RawMessage[] | string | null;
@@ -184,6 +188,7 @@ function normalizeConversation(raw: RawConversation): ChatbotConversation {
     visitorId: raw.visitorId ?? raw.visitor_id,
     visitorName: raw.visitorName ?? raw.visitor_name ?? undefined,
     visitorEmail: raw.visitorEmail ?? raw.visitor_email ?? undefined,
+    contactId: raw.contactId ?? raw.contact_id ?? undefined,
     channel: raw.channel,
     status: raw.status,
     messages,

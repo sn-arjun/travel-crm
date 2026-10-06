@@ -17,19 +17,33 @@ export interface CreateLeadRequest {
   tripType: 'domestic' | 'international' | 'honeymoon' | 'family' | 'group' | 'corporate' | 'adventure' | 'pilgrimage';
   source: 'manual' | 'website' | 'facebook' | 'google' | 'referral' | 'walkin';
   priority?: 'hot' | 'warm' | 'cold';
-  assignedTo?: string;
+  assignedTo?: string | null;
   specialRequirements?: string;
   notes?: string;
 }
 
 export interface UpdateLeadRequest {
+  contactId?: string;
+  title?: string;
+  destinations?: string[];
+  travelDate?: string;
+  returnDate?: string;
+  paxAdults?: number;
+  paxChildren?: number;
+  paxInfants?: number;
+  budget?: number;
+  currency?: string;
+  tripType?: CreateLeadRequest['tripType'];
   firstName?: string;
   lastName?: string;
   email?: string;
   phone?: string;
   source?: string;
   status?: string;
-  assignedTo?: string;
+  priority?: CreateLeadRequest['priority'];
+  /** null marks the lead unassigned. */
+  assignedTo?: string | null;
+  specialRequirements?: string;
   notes?: string;
   customFields?: Record<string, unknown>;
 }
@@ -110,6 +124,7 @@ export const leadsApi = {
     status?: string;
     source?: string;
     assignedTo?: string;
+    priority?: string;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
   }) =>

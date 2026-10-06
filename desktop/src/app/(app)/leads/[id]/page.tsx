@@ -212,7 +212,7 @@ export default function LeadDetailPage() {
         validityDate: itineraryForm.validityDate ? toLocalDateString(itineraryForm.validityDate) : undefined,
         notes: itineraryForm.notes || undefined,
         days: [{ dayNumber: 1, title: 'Day 1' }],
-      } as unknown as Parameters<typeof itinerariesApi.create>[0]);
+      });
       toast.success('Itinerary created');
       setIsItineraryDialogOpen(false);
       setItineraryForm({ title: '', validityDate: undefined, notes: '' });

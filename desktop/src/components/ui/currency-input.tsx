@@ -39,12 +39,17 @@ export function CurrencyInput({
     onChange(isNaN(num) ? undefined : num);
   }
 
-  function handleFocus() {
+  function handleFocus(e: React.FocusEvent<HTMLInputElement>) {
     setFocused(true);
     if (value !== undefined) setDisplayValue(String(value));
+    // Select the whole amount so typing (or a test `fill()`) replaces it instead of appending.
+    const input = e.currentTarget;
+    requestAnimationFrame(() => input.select());
+    props.onFocus?.(e);
   }
 
-  function handleBlur() {
+  function handleBlur(e: React.FocusEvent<HTMLInputElement>) {
+    props.onBlur?.(e);
     setFocused(false);
     if (value !== undefined) setDisplayValue(value.toLocaleString(locale));
   }

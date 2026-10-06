@@ -51,9 +51,12 @@ export interface ReportColumn {
 }
 
 export interface ReportMeta {
+  /** Real row count for the whole report (not just this page). */
   total: number;
   page: number;
   per_page: number;
+  /** True when more rows exist beyond this page. */
+  hasMore?: boolean;
 }
 
 export interface ReportResult<T = ReportRow> {
@@ -61,6 +64,8 @@ export interface ReportResult<T = ReportRow> {
   columns: ReportColumn[];
   meta: ReportMeta;
   /** Ungrouped reports: one row. Grouped reports: rows keyed by the group value. */
+  /** Full previous-period rows (same shape as `data`); present when `compare=true`. */
+  previous_period_rows?: T[];
   previous_period?: Record<string, ReportCell | Record<string, ReportCell>>;
   cached_at?: string;
 }

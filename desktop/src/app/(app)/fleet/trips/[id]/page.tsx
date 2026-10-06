@@ -14,6 +14,7 @@ import {
   EmptyState, Skeleton, useConfirm,
 } from '@/components/ui';
 import { PageContainer } from '@/components/layout/page-container';
+import { useApiQuery } from '@/hooks/use-api';
 import { fleetApi, type Trip, type TripCost, type TripTimeline } from '@/lib/api/fleet';
 import { toast } from 'sonner';
 import { TRIP_STATUS_LABELS, VEHICLE_TYPE_LABELS } from '@travelcrm/shared';
@@ -57,12 +58,6 @@ export default function TripDetailPage() {
   });
   const { confirm, dialog } = useConfirm();
 
-  const [trip, setTrip] = React.useState<Trip | null>(null);
-  const [timeline, setTimeline] = React.useState<TripTimeline[]>([]);
-  const [costs, setCosts] = React.useState<TripCost[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [timelineLoading, setTimelineLoading] = React.useState(true);
-  const [costsLoading, setCostsLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
   const [updatedAt, setUpdatedAt] = React.useState<Date | null>(null);
   const [isUpdatingStatus, setIsUpdatingStatus] = React.useState(false);
@@ -70,35 +65,37 @@ export default function TripDetailPage() {
   const [isGeneratingInvoice, setIsGeneratingInvoice] = React.useState(false);
   const [isGeneratingVoucher, setIsGeneratingVoucher] = React.useState(false);
 
-  /** Re-reads trip, timeline and costs. A silent load never swaps content for skeletons. */
-  const load = React.useCallback(async (silent: boolean) => {
-    if (!silent) setRefreshing(true);
-    try {
-      const [tripRes, timelineRes, costsRes] = await Promise.all([
-        fleetApi.trips.getById(tripId),
-        fleetApi.trips.getTimeline(tripId).catch(() => null),
-        fleetApi.trips.listCosts(tripId).catch(() => null),
-      ]);
-      setTrip(tripRes.data ?? null);
-      if (timelineRes) setTimeline(Array.isArray(timelineRes.data) ? timelineRes.data : []);
-      if (costsRes) setCosts(Array.isArray(costsRes.data) ? costsRes.data : []);
-      setUpdatedAt(new Date());
-    } catch {
-      if (!silent) toast.error('Failed to load trip details');
-    } finally {
-      setLoading(false);
-      setTimelineLoading(false);
-      setCostsLoading(false);
-      setRefreshing(false);
-    }
+  // Timeline and costs are best-effort: when one fails the last good copy stays on screen.
+  const lastGood = React.useRef<{ timeline: TripTimeline[]; costs: TripCost[] }>({ timeline: [], costs: [] });
+  const { data: bundle, loading, refetch } = useApiQuery(async () => {
+    const [tripRes, timelineRes, costsRes] = await Promise.all([
+      fleetApi.trips.getById(tripId),
+      fleetApi.trips.getTimeline(tripId).catch(() => null),
+      fleetApi.trips.listCosts(tripId).catch(() => null),
+    ]);
+    if (timelineRes) lastGood.current.timeline = Array.isArray(timelineRes.data) ? timelineRes.data : [];
+    if (costsRes) lastGood.current.costs = Array.isArray(costsRes.data) ? costsRes.data : [];
+    setUpdatedAt(new Date());
+    return { trip: tripRes.data ?? null, timeline: lastGood.current.timeline, costs: lastGood.current.costs };
   }, [tripId]);
+  const trip: Trip | null = bundle?.trip ?? null;
+  const timeline = bundle?.timeline ?? [];
+  const costs = bundle?.costs ?? [];
+  const timelineLoading = loading;
+  const costsLoading = loading;
 
-  React.useEffect(() => {
-    setLoading(true);
-    setTimelineLoading(true);
-    setCostsLoading(true);
-    void load(true);
-  }, [load]);
+  /** Re-reads trip, timeline and costs. A silent load never swaps content for skeletons. */
+  const load = React.useCallback(
+    async (silent: boolean) => {
+      if (!silent) setRefreshing(true);
+      try {
+        await refetch({ silent: true });
+      } finally {
+        setRefreshing(false);
+      }
+    },
+    [refetch],
+  );
 
   const active = isTripActive(trip?.status);
   React.useEffect(() => {

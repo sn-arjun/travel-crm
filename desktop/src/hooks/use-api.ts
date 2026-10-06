@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ApiError } from '@/lib/api';
 
 // ============================================================================
@@ -30,32 +30,76 @@ interface UsePaginationState {
 // useApiQuery
 // ============================================================================
 
+export interface RefetchOptions {
+  /**
+   * Keep the current data (and `loading: false`) while the request is in flight.
+   * Use it for polling and manual refresh so content never swaps for a skeleton.
+   * A failed silent refetch keeps the last good data and does not raise an error.
+   */
+  silent?: boolean;
+}
+
+function depsChanged(a: unknown[], b: unknown[]): boolean {
+  return a.length !== b.length || a.some((v, i) => !Object.is(v, b[i]));
+}
+
 /**
  * Hook for fetching data from the API with automatic error handling and refetch.
  */
 export function useApiQuery<T>(
   fetcher: () => Promise<T>,
   deps: unknown[] = [],
-): UseApiQueryState<T> & { refetch: () => Promise<void> } {
+): UseApiQueryState<T> & { refetch: (options?: RefetchOptions) => Promise<void> } {
   const [state, setState] = useState<UseApiQueryState<T>>({
     data: null,
     loading: true,
     error: null,
   });
+  const fetcherRef = useRef(fetcher);
+  const requestId = useRef(0);
+  useEffect(() => {
+    fetcherRef.current = fetcher;
+  });
 
-  const refetch = useCallback(async () => {
+  // When the dependencies change, show the loading state in the same render (no stale data flash).
+  const [prevDeps, setPrevDeps] = useState(deps);
+  if (depsChanged(prevDeps, deps)) {
+    setPrevDeps(deps);
     setState({ data: null, loading: true, error: null });
+  }
+
+  const run = useCallback(async (silent: boolean) => {
+    const id = ++requestId.current;
     try {
-      const result = await fetcher();
-      setState({ data: result, loading: false, error: null });
+      const result = await fetcherRef.current();
+      if (id === requestId.current) setState({ data: result, loading: false, error: null });
     } catch (error) {
-      const apiError = error instanceof Object && 'status' in error ? (error as ApiError) : { status: 0, message: 'Unknown error' };
-      setState({ data: null, loading: false, error: apiError });
+      if (id !== requestId.current) return;
+      if (silent) {
+        setState((prev) => (prev.loading ? { ...prev, loading: false } : prev));
+      } else {
+        const apiError = error instanceof Object && 'status' in error ? (error as ApiError) : { status: 0, message: 'Unknown error' };
+        setState({ data: null, loading: false, error: apiError });
+      }
     }
-  }, [fetcher]);
+  }, []);
+
+  const refetch = useCallback(
+    async (options?: RefetchOptions) => {
+      // Handlers such as onClick={refetch} pass an event object; only an explicit flag counts.
+      const silent = options?.silent === true;
+      if (!silent) setState({ data: null, loading: true, error: null });
+      await run(silent);
+    },
+    [run],
+  );
 
   useEffect(() => {
-    refetch();
+    void run(false);
+    return () => {
+      requestId.current++;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
   return { ...state, refetch };
@@ -149,7 +193,8 @@ export function usePaginatedQuery<T>(
   }, [page, limit, fetcher]);
 
   useEffect(() => {
-    refetch();
+    // Deferred so the loading state is not set synchronously inside the effect.
+    queueMicrotask(() => void refetch());
   }, [page, limit, refetch]);
 
   return {
@@ -224,7 +269,8 @@ export function useApiInfiniteQuery<T>(
   }, [limit, initialLimit, fetcher]);
 
   useEffect(() => {
-    refetch();
+    // Deferred so the loading state is not set synchronously inside the effect.
+    queueMicrotask(() => void refetch());
   }, [refetch]);
 
   const hasMore = state.pagination.page < state.pagination.totalPages;

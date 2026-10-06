@@ -149,8 +149,6 @@ export interface ReportContextValue {
   paramsKey: string;
   rangeLabel: string;
   compare: boolean;
-  /** Date params of the window just before the selected one (for compare). */
-  previousParams: ReportExecuteParams;
   /** Bumped by Refresh; sections refetch when it changes. */
   refreshKey: number;
 }
@@ -204,7 +202,6 @@ export function ReportPageTemplate({
       paramsKey: JSON.stringify(params),
       rangeLabel: rangeLabel(range),
       compare: showCompare && compare,
-      previousParams: previousRangeParams(range),
       refreshKey,
     };
   }, [range, compare, showCompare, refreshKey]);

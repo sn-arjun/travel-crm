@@ -76,8 +76,7 @@ export default function LeadsPage() {
             limit,
             search: search || undefined,
             status: statusFilter || undefined,
-            // The server supports a priority filter; the typed client just does not list it yet.
-            ...({ priority: priorityFilter || undefined } as Record<string, string | undefined>),
+            priority: priorityFilter || undefined,
             sortBy: sort ? (sort.column === 'value' ? 'budget' : sort.column) : 'createdAt',
             sortOrder: sort?.direction ?? 'desc',
           })

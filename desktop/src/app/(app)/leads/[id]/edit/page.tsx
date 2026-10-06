@@ -106,15 +106,15 @@ export default function EditLeadPage() {
           paxInfants: v.paxInfants,
           budget: v.budget,
           currency: v.currency,
-          tripType: v.tripType,
+          tripType: v.tripType as UpdateLeadRequest['tripType'],
           source: v.source,
           status: v.status,
-          priority: v.priority,
+          priority: v.priority as UpdateLeadRequest['priority'],
           // Unassigned sends an explicit null; otherwise keep the chosen agent.
           assignedTo: v.unassigned ? null : v.assignedTo || undefined,
           specialRequirements: v.specialRequirements || undefined,
           notes: v.notes || undefined,
-        } as unknown as UpdateLeadRequest);
+        });
         if (result) {
           toast.success('Lead updated successfully');
           router.push(`/leads/${leadId}`);

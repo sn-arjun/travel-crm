@@ -118,7 +118,7 @@ export type { BaseChartProps, PieChartProps, ChartSeries } from './chart';
 export { Combobox } from './combobox';
 export type { ComboboxOption } from './combobox';
 export { CommandPalette } from './command-palette';
-export { DatePicker } from './date-picker';
+export { DatePicker, DateTimePicker } from './date-picker';
 export { CurrencyInput } from './currency-input';
 export { PhoneInput } from './phone-input';
 export { AddressAutocomplete } from './address-autocomplete';

@@ -83,6 +83,9 @@ export interface ListPageProps<T> {
 
   // Filtering
   searchPlaceholder?: string;
+  /** Controlled search text. Omit to let the list own it; pair with `onSearchChange` to clear it from the page. */
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
   filters?: ListFilter[];
   onRemoveFilter?: (id: string) => void;
   onClearFilters?: () => void;
@@ -131,6 +134,8 @@ export function ListPage<T>({
   primaryAction,
   headerActions,
   searchPlaceholder = 'Search…',
+  searchValue,
+  onSearchChange,
   filters = [],
   onRemoveFilter,
   onClearFilters,
@@ -149,7 +154,15 @@ export function ListPage<T>({
   limit = 20,
   className,
 }: ListPageProps<T>) {
-  const [search, setSearch] = React.useState('');
+  const [ownSearch, setOwnSearch] = React.useState('');
+  const search = searchValue ?? ownSearch;
+  const setSearch = React.useCallback(
+    (value: string) => {
+      setOwnSearch(value);
+      onSearchChange?.(value);
+    },
+    [onSearchChange],
+  );
   const debouncedSearch = useDebouncedValue(search, 300);
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
   const [detailRow, setDetailRow] = React.useState<T | null>(null);

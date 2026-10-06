@@ -173,9 +173,10 @@ export default function ConversationDetailPage() {
         subtitle={`Started ${new Date(conversation.startedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`}
         status={<Tag tone={statusTone(conversation.status)}>{conversation.status.replace('_', ' ')}</Tag>}
         onBack={() => router.back()}
-        messaging={conversation.visitorEmail ? {
-          recipientId: conversation.id,
-          recipientName: conversation.visitorName || conversation.visitorEmail,
+        // Messages go to a CRM contact; an unlinked visitor has none, so the action stays hidden.
+        messaging={conversation.contactId ? {
+          recipientId: conversation.contactId,
+          recipientName: conversation.visitorName || conversation.visitorEmail || 'Visitor',
           email: conversation.visitorEmail,
         } : undefined}
         primaryActions={

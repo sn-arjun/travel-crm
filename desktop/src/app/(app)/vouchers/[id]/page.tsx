@@ -20,6 +20,15 @@ function fmtDate(s?: string): string | undefined {
   return d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString('en-IN', DATE_FMT) : s;
 }
 
+/** Like fmtDate, but keeps the time of day for stored ISO datetimes ("12 Oct 2026, 10:30 am"). */
+function fmtDateTime(s?: string): string | undefined {
+  if (!s) return s;
+  if (!s.includes('T')) return fmtDate(s);
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s;
+  return `${d.toLocaleDateString('en-IN', DATE_FMT)}, ${d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}`;
+}
+
 function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
   if (status === 'confirmed') return 'success';
   if (status === 'sent') return 'info';
@@ -90,7 +99,7 @@ function VoucherOverview({ voucher }: { voucher: Voucher }) {
             <DetailRow label="Driver" value={d.driverName} />
             <DetailRow label="Driver phone" value={d.driverPhone} />
             <DetailRow label="Pickup location" value={d.pickupLocation} />
-            <DetailRow label="Pickup time" value={fmtDate(d.pickupTime)} />
+            <DetailRow label="Pickup time" value={fmtDateTime(d.pickupTime)} />
             <DetailRow label="Drop location" value={d.dropLocation} />
             {d.route && (
               <div className="col-span-2">
@@ -111,8 +120,8 @@ function VoucherOverview({ voucher }: { voucher: Voucher }) {
             <DetailRow label="Class" value={d.travelClass} />
             <DetailRow label="From" value={d.departureAirport} />
             <DetailRow label="To" value={d.arrivalAirport} />
-            <DetailRow label="Departure" value={fmtDate(d.departureTime)} />
-            <DetailRow label="Arrival" value={fmtDate(d.arrivalTime)} />
+            <DetailRow label="Departure" value={fmtDateTime(d.departureTime)} />
+            <DetailRow label="Arrival" value={fmtDateTime(d.arrivalTime)} />
             {d.passengers && d.passengers.length > 0 && (
               <div className="col-span-2">
                 <p className="text-xs text-ds-foreground-muted mb-1">Passengers</p>
@@ -131,7 +140,7 @@ function VoucherOverview({ voucher }: { voucher: Voucher }) {
         <SectionCard title="Activity details">
           <div className="grid grid-cols-2 gap-ds-4">
             <DetailRow label="Activity" value={d.activityName} />
-            <DetailRow label="Date/Time" value={fmtDate(d.dateTime)} />
+            <DetailRow label="Date/Time" value={fmtDateTime(d.dateTime)} />
             <DetailRow label="Meeting point" value={d.meetingPoint} />
             <DetailRow label="Duration" value={d.duration} />
           </div>

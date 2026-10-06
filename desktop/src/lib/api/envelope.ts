@@ -31,6 +31,8 @@ export interface ReportEnvelope<T = unknown, C = unknown, M = unknown> {
   data: T[];
   columns: C[];
   meta: M | undefined;
+  /** Full previous-period rows, present when the request asked for `compare=true`. */
+  previousRows?: T[];
 }
 
 function isObject(v: unknown): v is Json {
@@ -134,7 +136,13 @@ export function unwrapReport<T = unknown, C = unknown, M = unknown>(res: unknown
   const rows = Array.isArray(inner.data) ? inner.data : Array.isArray(res.data) ? res.data : [];
   const columns = Array.isArray(inner.columns) ? inner.columns : Array.isArray(res.columns) ? res.columns : [];
   const meta = (inner.meta ?? res.meta) as M | undefined;
-  return { data: rows as T[], columns: columns as C[], meta };
+  const prev = inner.previous_period_rows ?? res.previous_period_rows;
+  return {
+    data: rows as T[],
+    columns: columns as C[],
+    meta,
+    ...(Array.isArray(prev) ? { previousRows: prev as T[] } : {}),
+  };
 }
 
 const WRAPPER_KEYS = new Set(['data', 'success', 'message']);

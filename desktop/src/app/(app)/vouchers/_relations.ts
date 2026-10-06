@@ -1,4 +1,5 @@
 import { leadsApi } from '@/lib/api/leads';
+import { unwrapList } from '@/lib/api/envelope';
 import type { Lead, Supplier } from '@travelcrm/shared';
 
 /** Suppliers come back with a `category` that the shared type does not declare yet. */
@@ -6,18 +7,8 @@ export function supplierCategory(s: Supplier): string | undefined {
   return (s as Supplier & { category?: string }).category;
 }
 
-/**
- * One page of lead options for the relation combobox. The leads endpoint returns
- * `{ data: Lead[], pagination }` while the client types it as a nested paginated body,
- * so accept both shapes.
- */
+/** One page of lead options for the relation combobox. */
 export async function fetchLeadOptions(query: string, page: number): Promise<{ items: Lead[]; total: number }> {
-  const res = (await leadsApi.list({ search: query || undefined, page, limit: 20 })) as unknown as {
-    data?: Lead[] | { data?: Lead[]; pagination?: { total?: number } };
-    pagination?: { total?: number };
-  };
-  const body = res?.data;
-  const items = Array.isArray(body) ? body : (body?.data ?? []);
-  const total = res?.pagination?.total ?? (Array.isArray(body) ? undefined : body?.pagination?.total) ?? items.length;
-  return { items, total };
+  const res = unwrapList<Lead>(await leadsApi.list({ search: query || undefined, page, limit: 20 }), { page, limit: 20 });
+  return { items: res.data, total: res.pagination.total };
 }

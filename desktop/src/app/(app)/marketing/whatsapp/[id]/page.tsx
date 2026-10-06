@@ -12,7 +12,7 @@ import { Tag } from '@/components/ui/tag';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
-import { useFeatureGate } from '@/hooks/use-feature-gate';
+import { useFeatureGate, UPGRADE_HREF } from '@/hooks/use-feature-gate';
 import {
   whatsappCampaignsApi,
   type WhatsappCampaign,
@@ -174,7 +174,7 @@ export default function WhatsappCampaignDetailPage() {
             : 'Upgrade your plan to send bulk WhatsApp campaigns from approved templates.'}
         </p>
         <Button size="sm" variant="outline" asChild>
-          <a href="/settings/billing">{reason === 'cap_exceeded' ? 'View usage' : 'Upgrade plan'}</a>
+          <a href={UPGRADE_HREF}>{reason === 'cap_exceeded' ? 'View usage' : 'Upgrade plan'}</a>
         </Button>
       </div>
     );

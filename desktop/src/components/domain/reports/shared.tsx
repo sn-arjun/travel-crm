@@ -21,7 +21,7 @@ import {
 import { useReportContext } from '@/components/domain/report-page-template';
 import { useThemeTokens } from '@/design-system/tokens/use-theme-tokens';
 import { unwrapReport } from '@/lib/api/envelope';
-import { reportsApi, type ReportExecuteParams } from '@/lib/api/reports';
+import { reportsApi, type ReportExecuteParams, type ReportMeta } from '@/lib/api/reports';
 import { usersApi } from '@/lib/api/users';
 import { parseLocalDate } from '@/lib/dates';
 
@@ -130,6 +130,10 @@ export interface ReportQuery<T> {
   error: string | null;
   /** Same report for the window just before the selected range; only when Compare is on and `withPrevious` was asked for. */
   previousRows: T[] | null;
+  /** Real total row count reported by the server (rows.length when unknown). */
+  total: number;
+  /** True when the server holds more rows than were loaded. */
+  hasMore: boolean;
   retry: () => void;
 }
 
@@ -156,10 +160,10 @@ export function useReport<T>(
     loading: true,
     error: null,
     previousRows: null,
+    total: 0,
+    hasMore: false,
   });
   const [retryKey, setRetryKey] = React.useState(0);
-  const extraRef = React.useRef(extra);
-  extraRef.current = extra;
 
   const params = React.useMemo(() => {
     const merged: ReportExecuteParams = { per_page: 100, ...extra, ...ctx.params };
@@ -175,27 +179,26 @@ export function useReport<T>(
   React.useEffect(() => {
     let cancelled = false;
     setState((s) => ({ ...s, loading: true, error: null }));
-    const wantPrevious = Boolean(opts.withPrevious && ctx.compare && !opts.ignoreRange);
-    const previousRequest = wantPrevious
-      ? reportsApi
-          .execute<T>(reportId, { per_page: 100, ...extraRef.current, ...ctx.previousParams })
-          .then((res) => unwrapReport<T>(res).data)
-          .catch(() => null)
-      : Promise.resolve(null);
-    Promise.all([reportsApi.execute<T>(reportId, params), previousRequest])
-      .then(([res, previousRows]) => {
+    // With compare on, `params` carries compare=true and the server returns the previous window's rows.
+    reportsApi
+      .execute<T>(reportId, params)
+      .then((res) => {
         if (cancelled) return;
-        const env = unwrapReport<T>(res);
+        const env = unwrapReport<T, unknown, ReportMeta>(res);
+        const rows = Array.isArray(env.data) ? env.data : [];
+        const wantPrevious = Boolean(opts.withPrevious && ctx.compare && !opts.ignoreRange);
         setState({
-          rows: Array.isArray(env.data) ? env.data : [],
+          rows,
           loading: false,
           error: null,
-          previousRows: Array.isArray(previousRows) ? previousRows : null,
+          previousRows: wantPrevious && env.previousRows ? env.previousRows : null,
+          total: Math.max(Number(env.meta?.total) || 0, rows.length),
+          hasMore: env.meta?.hasMore === true,
         });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setState({ rows: [], loading: false, error: errorMessage(err), previousRows: null });
+        setState({ rows: [], loading: false, error: errorMessage(err), previousRows: null, total: 0, hasMore: false });
       });
     return () => {
       cancelled = true;
@@ -477,6 +480,11 @@ export function ReportSection<T>({
     <div className="space-y-ds-4">
       {kpis && <ReportKpis items={kpis(q.rows, q.previousRows)} />}
       {children(q.rows)}
+      {q.hasMore && (
+        <p className="text-center text-sm text-ds-foreground-muted" data-testid="report-more-rows">
+          {`Showing the first ${q.rows.length.toLocaleString('en-IN')} of ${q.total.toLocaleString('en-IN')} rows. Export the report to get every row.`}
+        </p>
+      )}
     </div>
   );
 }

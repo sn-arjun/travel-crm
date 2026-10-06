@@ -70,6 +70,42 @@ describe('useApiQuery', () => {
 
     expect(result.current.data).toEqual({ count: 2 });
   });
+
+  it('keeps data and loading=false during a silent refetch', async () => {
+    let resolveSecond: (v: { count: number }) => void = () => {};
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce({ count: 1 })
+      .mockImplementationOnce(() => new Promise((r) => { resolveSecond = r; }));
+
+    const { result } = renderHook(() => useApiQuery(fetcher));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let pending: Promise<void> = Promise.resolve();
+    act(() => {
+      pending = result.current.refetch({ silent: true });
+    });
+    expect(result.current.loading).toBe(false);
+    expect(result.current.data).toEqual({ count: 1 });
+
+    await act(async () => {
+      resolveSecond({ count: 2 });
+      await pending;
+    });
+    expect(result.current.data).toEqual({ count: 2 });
+  });
+
+  it('keeps the last good data when a silent refetch fails', async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce({ count: 1 }).mockRejectedValueOnce({ status: 500, message: 'boom' });
+    const { result } = renderHook(() => useApiQuery(fetcher));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.refetch({ silent: true });
+    });
+    expect(result.current.data).toEqual({ count: 1 });
+    expect(result.current.error).toBeNull();
+  });
 });
 
 describe('useApiMutation', () => {

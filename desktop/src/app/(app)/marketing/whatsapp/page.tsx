@@ -7,7 +7,7 @@ import { Eye, Lock, MessageCircle, Pause, Pencil, Plus, Send, Trash2, X } from '
 import { ListPage } from '@/components/domain';
 import { Button, Skeleton, Tag } from '@/components/ui';
 import { useConfirm } from '@/components/ui/confirm-dialog';
-import { useFeatureGate } from '@/hooks/use-feature-gate';
+import { useFeatureGate, UPGRADE_HREF } from '@/hooks/use-feature-gate';
 import {
   whatsappCampaignsApi,
   type WhatsappCampaign,
@@ -90,7 +90,7 @@ function UpsellState({ reason }: { reason: 'not_in_plan' | 'cap_exceeded' }) {
         </p>
       </div>
       <Button size="sm" variant="outline" asChild>
-        <a href="/settings/billing">{reason === 'cap_exceeded' ? 'View usage' : 'Upgrade plan'}</a>
+        <a href={UPGRADE_HREF}>{reason === 'cap_exceeded' ? 'View usage' : 'Upgrade plan'}</a>
       </Button>
     </div>
   );

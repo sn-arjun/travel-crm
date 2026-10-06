@@ -112,21 +112,20 @@ export default function ActivityLogPage() {
         const res = await activityLogsApi.list({
           page,
           limit,
+          // The server matches the exact action and the whole verb group (update, update_user, ...).
+          ...(action !== 'all' ? { action } : {}),
           ...(entityType !== 'all' ? { entityType } : {}),
           ...(presetUserId ? { userId: presetUserId } : {}),
         });
-        // The backend matches actions exactly (e.g. 'update_user') and has no free-text
-        // search, so the action group and the search term narrow each fetched page here.
+        // The backend has no free-text search, so the search term narrows each fetched page here.
         const term = search.trim().toLowerCase();
         const rows = (res as unknown as { data?: ActivityLogEntry[] })?.data;
-        if ((!term && action === 'all') || !Array.isArray(rows)) return res;
-        const matches = rows.filter((e) => {
-          if (action !== 'all' && e.action !== action && !e.action.startsWith(`${action}_`)) return false;
-          if (!term) return true;
-          return [e.userName, e.userId, e.entityType, e.entityName, e.action, e.details].some((v) =>
+        if (!term || !Array.isArray(rows)) return res;
+        const matches = rows.filter((e) =>
+          [e.userName, e.userId, e.entityType, e.entityName, e.action, e.details].some((v) =>
             (v ?? '').toLowerCase().includes(term),
-          );
-        });
+          ),
+        );
         return { ...(res as object), data: matches };
       }}
       extractItems={(r) => {

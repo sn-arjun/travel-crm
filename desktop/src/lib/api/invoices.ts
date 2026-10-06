@@ -19,7 +19,9 @@ export interface CreateInvoiceRequest {
   items: InvoiceLineItem[];
   discountType?: 'percentage' | 'fixed';
   discountValue?: number;
+  issueDate?: string;
   dueDate?: string;
+  terms?: string;
   notes?: string;
   bankDetails?: Record<string, unknown>;
   currency?: string;
@@ -32,6 +34,7 @@ export interface UpdateInvoiceRequest {
   items?: InvoiceLineItem[];
   discountType?: 'percentage' | 'fixed';
   discountValue?: number;
+  terms?: string;
   notes?: string;
   customFields?: Record<string, unknown>;
 }
@@ -69,7 +72,7 @@ export interface InvoiceDetail {
   contactEmail: string | null;
   contactPhone: string | null;
   leadId: string | null;
-  /** Invoices carry no separate issue date; this is the creation date. */
+  /** The invoice issue date (falls back to the creation date for older invoices). */
   issueDate: string | null;
   dueDate: string | null;
   subtotal: number;

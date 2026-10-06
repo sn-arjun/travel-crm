@@ -76,7 +76,17 @@ export interface VisaChecklistItem {
   completedAt?: string;
 }
 
-export interface CreateTravellerRequest {
+/** Optional traveller columns the backend stores alongside the core identity fields. */
+export interface TravellerExtraFields {
+  frequentFlyerNumbers?: string;
+  mealPreference?: string;
+  seatPreference?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  medicalNotes?: string;
+}
+
+export interface CreateTravellerRequest extends TravellerExtraFields {
   firstName: string;
   lastName: string;
   passportNumber: string;
@@ -90,7 +100,7 @@ export interface CreateTravellerRequest {
   customFields?: Record<string, unknown>;
 }
 
-export interface UpdateTravellerRequest {
+export interface UpdateTravellerRequest extends TravellerExtraFields {
   firstName?: string;
   lastName?: string;
   passportNumber?: string;

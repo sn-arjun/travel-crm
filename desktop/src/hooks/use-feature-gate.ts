@@ -39,7 +39,8 @@ const CAP_KEYS: Partial<Record<GatedFeature, string>> = {
   whatsapp_campaigns: 'whatsapp_messages',
 };
 
-const UPGRADE_HREF = '/settings/billing';
+/** Plan + usage live on the AI settings page; there is no separate billing page. */
+export const UPGRADE_HREF = '/settings/ai';
 
 /**
  * Resolve whether a plan-gated feature may be used.

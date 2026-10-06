@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Lock } from 'lucide-react';
 import { Button, EmptyState, Skeleton } from '@/components/ui';
-import { useFeatureGate } from '@/hooks/use-feature-gate';
+import { useFeatureGate, UPGRADE_HREF } from '@/hooks/use-feature-gate';
 import { whatsappCampaignsApi, type WhatsappCampaign } from '@/lib/api/whatsapp-campaigns';
 import { WhatsappCampaignFormPage } from '../../whatsapp-campaign-form';
 
@@ -43,7 +43,7 @@ export default function EditWhatsappCampaignPage() {
         </div>
         <p className="text-sm font-medium text-ds-foreground">WhatsApp Campaigns is not available on your plan</p>
         <Button size="sm" variant="outline" asChild>
-          <a href="/settings/billing">Upgrade plan</a>
+          <a href={UPGRADE_HREF}>Upgrade plan</a>
         </Button>
       </div>
     );

@@ -2,7 +2,7 @@
 
 import { Lock } from 'lucide-react';
 import { Button, Skeleton } from '@/components/ui';
-import { useFeatureGate } from '@/hooks/use-feature-gate';
+import { useFeatureGate, UPGRADE_HREF } from '@/hooks/use-feature-gate';
 import { WhatsappCampaignFormPage } from '../whatsapp-campaign-form';
 
 export default function NewWhatsappCampaignPage() {
@@ -30,7 +30,7 @@ export default function NewWhatsappCampaignPage() {
             : 'Upgrade your plan to send bulk WhatsApp campaigns from approved templates.'}
         </p>
         <Button size="sm" variant="outline" asChild>
-          <a href="/settings/billing">{reason === 'cap_exceeded' ? 'View usage' : 'Upgrade plan'}</a>
+          <a href={UPGRADE_HREF}>{reason === 'cap_exceeded' ? 'View usage' : 'Upgrade plan'}</a>
         </Button>
       </div>
     );

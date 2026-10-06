@@ -69,7 +69,7 @@ export default function NewLeadPage() {
       onCancel={() => router.back()}
       onSubmit={async (v) => {
         // Unassigned submits an explicit null (skips auto-assignment); an empty picker omits the field.
-        const payload: Omit<CreateLeadRequest, 'assignedTo'> & { assignedTo?: string | null } = {
+        const payload: CreateLeadRequest = {
           contactId: v.contactId,
           title: v.title,
           destinations: v.destinations,
@@ -87,7 +87,7 @@ export default function NewLeadPage() {
           specialRequirements: v.specialRequirements || undefined,
           notes: v.notes || undefined,
         };
-        const result = await leadsApi.create(payload as CreateLeadRequest);
+        const result = await leadsApi.create(payload);
         if (result) {
           toast.success('Lead created successfully');
           router.push('/leads');

@@ -3,6 +3,7 @@ import type { UseFormReturn } from 'react-hook-form';
 import { z } from 'zod';
 import { FormRow } from '@/components/domain';
 import { Input, SectionCard, Textarea } from '@/components/ui';
+import type { TravellerExtraFields } from '@/lib/api/visa';
 
 export const COUNTRIES = [
   'Afghan', 'Albanian', 'Algerian', 'American', 'Andorran', 'Angolan', 'Argentine', 'Armenian',
@@ -46,11 +47,8 @@ export const travellerSchema = z.object({
 });
 export type TravellerFormValues = z.infer<typeof travellerSchema>;
 
-/**
- * Optional traveller columns the backend stores but the shared request types
- * do not list yet. Empty strings are sent as undefined so they never clobber data.
- */
-export function travellerExtraPayload(v: TravellerFormValues) {
+/** Optional traveller columns. Empty strings are sent as undefined so they never clobber data. */
+export function travellerExtraPayload(v: TravellerFormValues): TravellerExtraFields {
   return {
     frequentFlyerNumbers: v.frequentFlyerNumbers || undefined,
     mealPreference: v.mealPreference || undefined,

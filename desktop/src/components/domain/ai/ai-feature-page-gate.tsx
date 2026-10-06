@@ -10,7 +10,6 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useFeatureGate, type GatedFeature } from '@/hooks/use-feature-gate';
 
-// The hook's upgradeHref (/settings/billing) has no page yet; AI plan + usage live here.
 const UPGRADE_HREF = '/settings/ai';
 
 interface AiFeaturePageGateProps {

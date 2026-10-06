@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { EntityForm, FormRow, RelationCombobox } from '@/components/domain';
 import {
   Input, Textarea, SectionCard, Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-  DatePicker, Spinner,
+  DatePicker, DateTimePicker, Spinner,
 } from '@/components/ui';
 import { vouchersApi, type UpdateVoucherRequest } from '@/lib/api/vouchers';
 import { suppliersApi } from '@/lib/api/suppliers';
@@ -310,7 +310,7 @@ export default function EditVoucherPage() {
                     </Select>
                   </FormRow>
                   <FormRow name="pickupTime" label="Pickup time" required>
-                    <DatePicker value={form.watch('pickupTime')} onChange={(d) => form.setValue('pickupTime', d, { shouldDirty: true, shouldValidate: true })} />
+                    <DateTimePicker value={form.watch('pickupTime')} onChange={(d) => form.setValue('pickupTime', d, { shouldDirty: true, shouldValidate: true })} />
                   </FormRow>
                   <FormRow name="driverName" label="Driver name">
                     <Input id="driverName" {...form.register('driverName')} />
@@ -347,10 +347,10 @@ export default function EditVoucherPage() {
                     <Input id="arrivalAirport" {...form.register('arrivalAirport')} />
                   </FormRow>
                   <FormRow name="departureTime" label="Departure time" required>
-                    <DatePicker value={form.watch('departureTime')} onChange={(d) => form.setValue('departureTime', d, { shouldDirty: true, shouldValidate: true })} />
+                    <DateTimePicker value={form.watch('departureTime')} onChange={(d) => form.setValue('departureTime', d, { shouldDirty: true, shouldValidate: true })} />
                   </FormRow>
                   <FormRow name="arrivalTime" label="Arrival time" required>
-                    <DatePicker value={form.watch('arrivalTime')} onChange={(d) => form.setValue('arrivalTime', d, { shouldDirty: true, shouldValidate: true })} />
+                    <DateTimePicker value={form.watch('arrivalTime')} onChange={(d) => form.setValue('arrivalTime', d, { shouldDirty: true, shouldValidate: true })} />
                   </FormRow>
                   <FormRow name="travelClass" label="Travel class">
                     <Select value={form.watch('travelClass') || 'economy'} onValueChange={(v) => form.setValue('travelClass', v, { shouldDirty: true })}>
@@ -380,7 +380,7 @@ export default function EditVoucherPage() {
                     <Input id="activityName" {...form.register('activityName')} />
                   </FormRow>
                   <FormRow name="dateTime" label="Date & time" required>
-                    <DatePicker value={form.watch('dateTime')} onChange={(d) => form.setValue('dateTime', d, { shouldDirty: true, shouldValidate: true })} />
+                    <DateTimePicker value={form.watch('dateTime')} onChange={(d) => form.setValue('dateTime', d, { shouldDirty: true, shouldValidate: true })} />
                   </FormRow>
                   <FormRow name="duration" label="Duration">
                     <Input id="duration" {...form.register('duration')} />

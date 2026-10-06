@@ -2,7 +2,7 @@
  * Data layer for the dashboard. Every figure shown on the page is derived from
  * the reports API (period-aware) or from small, server-limited lists.
  */
-import { reportsApi } from '@/lib/api/reports';
+import { reportsApi, type DashboardResponse } from '@/lib/api/reports';
 import { unwrapEntity, unwrapReport } from '@/lib/api/envelope';
 import { toLocalDateString } from '@/lib/dates';
 
@@ -127,7 +127,7 @@ function summariseRevenue(rows: RevenueRow[]): { invoiced: number; collectionRat
 
 async function reportRows<T>(id: string, window: DateWindow): Promise<T[] | null> {
   try {
-    const res = await reportsApi.execute(id, {
+    const res = await reportsApi.execute<T>(id, {
       date_from: window.from.toISOString(),
       date_to: window.to.toISOString(),
       per_page: 500,
@@ -215,7 +215,7 @@ export interface DashboardSummary {
 
 export async function loadDashboardSummary(): Promise<DashboardSummary> {
   const res = await reportsApi.getDashboard();
-  const d = unwrapEntity<Partial<DashboardSummary>>(res);
+  const d = unwrapEntity<Partial<DashboardResponse>>(res);
   return {
     pipeline: d.pipeline ?? [],
     followUps: d.followUps ?? { total: 0, overdue: 0, pending: 0 },
