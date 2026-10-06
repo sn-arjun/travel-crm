@@ -172,7 +172,7 @@ void main() {
             w.key is ValueKey<String> && (w.key! as ValueKey<String>).value.startsWith('trip-card-'))
         : find.byKey(const Key('trip-card-$_tripId'));
     await pumpUntil(tester, card);
-    _mark('CAPTION Todays jobs are waiting the moment he logs in');
+    _mark("CAPTION Today's jobs are waiting the moment he logs in");
     await dwell(tester, 2500);
     await showTouch(tester, find.byKey(const Key('tab-upcoming')));
     await dwell(tester, 1500);
@@ -186,6 +186,8 @@ void main() {
     _mark('CAPTION Pickup, flight notes and one-tap navigation');
     await dwell(tester, 1800);
     await slowScroll(tester, -420);
+    // the passenger number is shown as stored (the desktop trip form keeps national digits only)
+    expect(find.byKey(const Key('passenger-phone'), skipOffstage: false), findsWidgets);
     await dwell(tester, 900);
     await slowScroll(tester, 420);
     await dwell(tester, 600);

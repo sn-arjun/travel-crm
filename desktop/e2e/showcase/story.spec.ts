@@ -414,3 +414,93 @@ test('story-A: enquiry to airport transfer (scenes 1-6)', async ({ page, context
 });
 
 void API_URL; void rupees; void fieldByLabel; void hideOverlays; void showOverlays; void moveTo; void clearSay;
+
+test('story-B: back at the office (scenes 8-9)', async ({ page, context }, testInfo) => {
+  test.setTimeout(10 * 60_000);
+  const handoff = JSON.parse(fs.readFileSync(HANDOFF, 'utf8')) as Handoff;
+  await installOverlays(context);
+  startRecording();
+  attachListeners(page);
+  let finished = false;
+  try {
+    await page.goto('/dashboard');
+    await settle(page, 1200);
+
+    // ───────────── Scene 8 — Back at the office ─────────────
+    await card(page, { kicker: 'Scene 8 of 9', title: 'Back at the office', subtitle: 'Every step from the road, already on the record' });
+    await page.goto(`/fleet/trips/${handoff.tripId}`);
+    await settle(page, 1500);
+    await expect(page.getByText('Completed', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Ravi Kumar').first()).toBeVisible();
+    fs.mkdirSync(WORK_DIR, { recursive: true });
+    await hideOverlays(page);
+    await page.screenshot({ path: path.join(WORK_DIR, 'trip-completed.png') });
+    await showOverlays(page);
+    mark('8.1');
+    await say(page, "The trip record updated itself from Ravi's phone", 4000);
+    await clickOn(page, page.getByRole('tab', { name: 'Activity' }).or(page.getByRole('button', { name: 'Activity' })).first());
+    await settle(page, 1000);
+    for (const label of [/Accepted/i, /En route/i, /Checked in/i, /Trip started|Started/i, /Completed/i]) {
+      await expect(page.getByText(label).first()).toBeVisible();
+    }
+    mark('8.2');
+    await say(page, 'Accepted, en route, GPS check-in, completed — all timestamped', 3000);
+    for (const label of [/Accepted/i, /En route/i, /Checked in/i, /Completed/i]) {
+      await hoverOn(page, page.getByText(label).first(), 900);
+    }
+    await assertClean(page, 'scene 8 trip');
+    await clickOn(page, sidebar(page, '/fleet'));
+    await page.waitForURL('**/fleet');
+    await settle(page, 1500);
+    await expect(page.getByText('Recently Completed').first()).toBeVisible();
+    await hoverOn(page, page.getByText('Recently Completed').first(), 1500);
+    mark('8.3');
+    await say(page, 'Utilisation and availability update automatically', 3200);
+    await hoverOn(page, page.getByText('Fleet Status').first(), 1500);
+    await expect(page.getByText('Top Drivers').first()).toBeVisible();
+    await hoverOn(page, page.getByText('Top Drivers').first(), 800);
+    await expect(page.getByText('Ravi Kumar').first()).toBeVisible();
+    mark('8.4');
+    await say(page, 'See which drivers your clients love', 3200);
+    await assertClean(page, 'scene 8');
+
+    // ───────────── Scene 9 — The day at a glance ─────────────
+    await card(page, { kicker: 'Scene 9 of 9', title: 'The day at a glance', subtitle: 'Dashboards and reports that run themselves' });
+    await clickOn(page, sidebar(page, '/dashboard'));
+    await page.waitForURL('**/dashboard');
+    await settle(page, 2000);
+    for (const t of ['New Leads', 'Follow-ups Today', 'Bookings']) await expect(page.getByText(t).first()).toBeVisible();
+    await hoverOn(page, page.getByText('New Leads').first(), 800);
+    mark('9.1');
+    await say(page, 'Leads, follow-ups, revenue and collections — live', 4500);
+    await scrollSteps(page, 5, 450);
+    mark('9.2');
+    await say(page, "Today's work is already in the pipeline and timeline", 3500);
+    await page.mouse.wheel(0, -4000);
+    await pause(page, 600);
+    await assertClean(page, 'scene 9 dashboard');
+    await clickOn(page, sidebar(page, '/reports'));
+    await page.waitForURL('**/reports');
+    await settle(page, 1200);
+    await clickOn(page, page.getByRole('link', { name: /Sales Reports/i }).first());
+    await page.waitForURL('**/reports/sales');
+    await settle(page, 2200);
+    await expect(page.getByText('Total Revenue').first()).toBeVisible();
+    mark('9.3');
+    await say(page, 'Drill into sales, finance, fleet and marketing', 5000);
+    await page.goBack();
+    await page.waitForURL('**/reports');
+    await settle(page, 1000);
+    await clickOn(page, page.getByRole('link', { name: /Fleet Reports/i }).first());
+    await page.waitForURL('**/reports/fleet');
+    await settle(page, 2200);
+    mark('9.4');
+    await say(page, 'One platform from first message to final drop-off', 5000);
+    await assertClean(page, 'scene 9');
+    await dwell(page, 1200);
+    finished = true;
+  } finally {
+    if (!finished) await page.screenshot({ path: path.join(WORK_DIR, 'fail-partB.png') }).catch(() => {});
+    await finishRecording(page, 'partB', testInfo);
+  }
+});

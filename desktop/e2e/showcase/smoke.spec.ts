@@ -6,7 +6,7 @@
  *     npx playwright test --config=playwright.showcase.config.ts smoke
  * Out: desktop/showcase/.work/smoke.webm, marks-smoke.json, violations-smoke.json
  */
-import { test, expect } from '../fixtures';
+import { test, expect } from './showcase-fixtures';
 import {
   assertClean, attachListeners, card, clearSay, clickOn, finishRecording, hoverOn, installOverlays, mark, say, scrollSteps, settle, startRecording, typeInto,
 } from './showcase-helpers';

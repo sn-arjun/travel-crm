@@ -54,6 +54,14 @@ export function inMinutes(min: number): string {
 
 /** Round "now + leadMin" up to the next quarter hour (IST wall clock). Returns UTC ISO + HH:MM IST. */
 export function pickupTime(leadMin = 50): { iso: string; hhmm: string; minutesOfDay: number } {
+  // DEMO_PICKUP=HH:MM pins the flight to a daytime slot (IST) when the take is recorded outside 08:00-20:30; still "today".
+  const pinned = process.env.DEMO_PICKUP;
+  if (pinned && /^\d{1,2}:\d{2}$/.test(pinned)) {
+    const [h, m] = nums(pinned, ':');
+    const [y, mo, dd] = nums(d0(), '-');
+    const when = new Date(Date.UTC(y, mo - 1, dd, h, m) - IST_OFFSET_MIN * 60_000);
+    return { iso: when.toISOString(), hhmm: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`, minutesOfDay: h * 60 + m };
+  }
   const t = Date.now() + leadMin * 60_000;
   const q = 15 * 60_000;
   const rounded = new Date(Math.ceil(t / q) * q);

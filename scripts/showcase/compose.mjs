@@ -159,7 +159,7 @@ async function main() {
   await renderAll([
     { html: templates.intro(), out: P('intro.png') },
     { html: templates.outro(), out: P('outro.png') },
-    { html: templates.scene({ kicker: 'Scene 7', title: sceneCard, subtitle: 'TravelCRM Driver app on Android' }), out: P('scene7.png') },
+    { html: templates.scene({ kicker: 'Scene 7 of 9', title: sceneCard, subtitle: 'TravelCRM Driver app on Android' }), out: P('scene7.png') },
   ]);
   cardClip(P('intro.png'), 5, P('intro.mp4'));
   cardClip(P('outro.png'), 6, P('outro.mp4'));
