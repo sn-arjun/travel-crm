@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatDisplayDate, parseLocalDate, toLocalDateString, toLocalDateTimeInput } from './dates';
+import {
+  formatDisplayDate, formatDisplayDateTime, isTimestampString, minutesBetween, parseLocalDate,
+  toLocalDateString, toLocalDateTimeInput, toLocalDayKey,
+} from './dates';
 
 // Built from local components, so these hold in any TZ the suite runs under
 // (verified with TZ=Asia/Kolkata and TZ=America/Los_Angeles).
@@ -46,5 +49,43 @@ describe('formatDisplayDate', () => {
     expect(formatDisplayDate('2026-10-15')).toMatch(/15 Oct 2026/);
     expect(formatDisplayDate(new Date(2026, 9, 15), 'short')).toMatch(/15 Oct/);
     expect(formatDisplayDate('2026-10-15', 'long')).toMatch(/15 October 2026/);
+  });
+});
+
+// 2026-10-06T19:30:00Z is 01:00 on 7 Oct in Asia/Kolkata and 12:30 on 6 Oct in America/Los_Angeles.
+describe('timestamps vs calendar dates', () => {
+  const TS = '2026-10-06T19:30:00Z';
+  const tz = process.env.TZ;
+
+  it('tells timestamps from date-only values', () => {
+    expect(isTimestampString(TS)).toBe(true);
+    expect(isTimestampString('2026-10-07 14:45')).toBe(true);
+    expect(isTimestampString('2026-10-15')).toBe(false);
+    expect(isTimestampString('2026-10-15T00:00:00.000Z')).toBe(false);
+  });
+
+  it('formatDisplayDate converts a timestamp to the local day', () => {
+    if (tz === 'Asia/Kolkata') expect(formatDisplayDate(TS)).toBe('7 Oct 2026');
+    if (tz === 'America/Los_Angeles') expect(formatDisplayDate(TS)).toBe('6 Oct 2026');
+    expect(toLocalDayKey(TS)).toBe(toLocalDateString(new Date(TS)));
+  });
+
+  it('formatDisplayDate never shifts date-only values', () => {
+    expect(formatDisplayDate('2026-10-07')).toBe('7 Oct 2026');
+    expect(formatDisplayDate('2026-10-07T00:00:00.000Z')).toBe('7 Oct 2026');
+    expect(toLocalDayKey('2026-10-07')).toBe('2026-10-07');
+  });
+
+  it('formatDisplayDateTime shows local date and time', () => {
+    if (tz === 'Asia/Kolkata') expect(formatDisplayDateTime(TS)).toBe('7 Oct 2026, 1:00 am');
+    if (tz === 'America/Los_Angeles') expect(formatDisplayDateTime(TS)).toBe('6 Oct 2026, 12:30 pm');
+    expect(formatDisplayDateTime('2026-10-07 14:45')).toBe('7 Oct 2026, 2:45 pm');
+    expect(formatDisplayDateTime('2026-10-07')).toBe('7 Oct 2026');
+    expect(formatDisplayDateTime(null)).toBe('');
+  });
+
+  it('minutesBetween measures local date-times', () => {
+    expect(minutesBetween('2026-10-07 14:45', '2026-10-07 18:15')).toBe(210);
+    expect(minutesBetween('2026-10-07 14:45', 'nope')).toBeNull();
   });
 });

@@ -30,7 +30,7 @@ import { eventsApi, type CalendarEvent, type CreateEventRequest, type UpdateEven
 import { leadsApi } from '@/lib/api/leads';
 import { toast } from 'sonner';
 import Link from 'next/link';
-import { toLocalDateString } from '@/lib/dates';
+import { toLocalDateString, toLocalDayKey } from '@/lib/dates';
 import { PageContainer } from '@/components/layout/page-container';
 import { chartColors } from '@/design-system/tokens';
 import { unwrapList, unwrapEntity } from '@/lib/api/envelope';
@@ -146,7 +146,7 @@ function CalendarGrid({
 
   const getDayEvents = (day: number) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    return events.filter((e) => (e.startTime || '').split('T')[0] === dateStr);
+    return events.filter((e) => toLocalDayKey(e.startTime || '') === dateStr);
   };
 
   type Cell = { day: number; inMonth: boolean; dayStr: string };
@@ -253,10 +253,10 @@ function WeekView({
   const ROW_HEIGHT = 60; // px per hour
 
   const getEventsForDay = (dayStr: string) =>
-    events.filter((e) => (e.startTime || '').split('T')[0] === dayStr);
+    events.filter((e) => toLocalDayKey(e.startTime || '') === dayStr);
 
   const getAllDayEvents = (dayStr: string) =>
-    events.filter((e) => e.all_day && (e.startTime || '').split('T')[0] === dayStr);
+    events.filter((e) => e.all_day && toLocalDayKey(e.startTime || '') === dayStr);
 
   return (
     <div className="border rounded-lg overflow-hidden flex flex-col">
@@ -415,7 +415,7 @@ function DayView({
   const isToday = dayStr === todayStr;
   const ROW_HEIGHT = 64; // px per hour
 
-  const dayEvents = events.filter((e) => (e.startTime || '').split('T')[0] === dayStr);
+  const dayEvents = events.filter((e) => toLocalDayKey(e.startTime || '') === dayStr);
   const allDayEvents = dayEvents.filter((e) => e.all_day);
   const timedEvents = dayEvents.filter((e) => !e.all_day);
 
@@ -752,7 +752,7 @@ export default function CalendarPage() {
   const handleEventDrop = async (eventId: string, newDateStr: string) => {
     const event = allEvents.find((e) => e.id === eventId);
     if (!event) return;
-    const oldDateStr = (event.startTime || '').split('T')[0];
+    const oldDateStr = toLocalDayKey(event.startTime || '');
     if (oldDateStr === newDateStr) return;
     const start = event.startTime ? new Date(event.startTime) : null;
     const end = event.endTime ? new Date(event.endTime) : null;
@@ -809,7 +809,7 @@ export default function CalendarPage() {
   };
 
   const selectedDateEvents = selectedDate
-    ? events.filter((e) => (e.startTime || '').split('T')[0] === selectedDate)
+    ? events.filter((e) => toLocalDayKey(e.startTime || '') === selectedDate)
     : [];
 
   // ─── View-aware header label ───
@@ -891,7 +891,7 @@ export default function CalendarPage() {
 
   const handleEventClick = (event: typeof events[number]) => {
     // Set selected date to the event's date and open side panel
-    const eventDate = (event.startTime || '').split('T')[0];
+    const eventDate = toLocalDayKey(event.startTime || '');
     if (eventDate) {
       setSelectedDate(eventDate);
     }
@@ -902,7 +902,7 @@ export default function CalendarPage() {
       toast.error('Title is required');
       return;
     }
-    const startDate = (editEvent.startTime || '').split('T')[0] ?? selectedDate ?? toLocalDateString(new Date());
+    const startDate = (toLocalDayKey(editEvent.startTime || '') || selectedDate) ?? toLocalDateString(new Date());
     try {
       await updateMutation.mutate({ id: editEvent.id, data: buildEventPayload(editFormData, startDate) });
       toast.success('Event updated');
