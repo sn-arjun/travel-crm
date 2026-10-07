@@ -18,6 +18,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { communicationsApi } from '@/lib/api/communications';
 import { useAuthStore } from '@/stores/auth-store';
+import { useCompanyProfile } from '@/hooks/use-company-profile';
 import { toast } from 'sonner';
 
 /* ─── Template types ─── */
@@ -35,7 +36,8 @@ interface MessageTemplate {
 
 /** Values a caller can supply for template placeholders. Anything omitted stays as `{{name}}`. */
 export type MessageVariableName =
-  | 'customer_name' | 'first_name' | 'company_name' | 'agent_name'
+  | 'customer_name' | 'first_name' | 'company_name' | 'company_phone' | 'company_email'
+  | 'agent_name' | 'agent_email'
   | 'destination' | 'travel_date' | 'return_date' | 'pax_count' | 'amount'
   | 'share_link';
 
@@ -135,7 +137,8 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel,
 
   const tenant = useAuthStore((s) => s.tenant);
   const user = useAuthStore((s) => s.user);
-  const tenantName = tenant?.name ?? (tenant as { companyName?: string } | null)?.companyName;
+  const company = useCompanyProfile(open);
+  const tenantName = company?.name || tenant?.name || (tenant as { companyName?: string } | null)?.companyName;
 
   // Reset when dialog opens/closes
   React.useEffect(() => {
@@ -153,7 +156,10 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel,
       customer_name: contact.name,
       first_name: contact.name.split(' ')[0] ?? contact.name,
       company_name: tenantName,
+      company_phone: company?.phone,
+      company_email: company?.email,
       agent_name: user?.name,
+      agent_email: user?.email,
       ...variables,
     };
     // Drop blanks so they stay as visible placeholders instead of empty text
@@ -161,7 +167,7 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel,
       if (!merged[key]?.trim()) delete merged[key];
     }
     return merged;
-  }, [contact.name, tenantName, user?.name, variables]);
+  }, [contact.name, tenantName, company?.phone, company?.email, user?.name, user?.email, variables]);
 
   const channelTemplates = LOCAL_TEMPLATES.filter(
     (t) => t.channel === channel && (!t.requires || !!values[t.requires]),
