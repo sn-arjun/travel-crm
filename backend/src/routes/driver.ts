@@ -6,7 +6,7 @@ import { generateId } from '../utils/uuid';
 import { success, created, paginated, error, notFound, forbidden } from '../utils/response';
 import { driverAuth } from '../middleware/driver-auth';
 import { phoneLookupVariants, inPlaceholders } from '../utils/phone';
-import { localDayWindowUtc, isValidTimeZone, DEFAULT_TIMEZONE } from '../utils/tz';
+import { localDayWindowUtc, getTenantTimeZone } from '../utils/tz';
 import {
   loginSchema,
   verifyOtpSchema,
@@ -24,20 +24,6 @@ const driver = new Hono<AppContext>();
 // ============================================================================
 // HELPER: JWT signing for driver tokens
 // ============================================================================
-
-/** Tenant calendar timezone from settings (key 'timezone' / 'company_timezone'); defaults to Asia/Kolkata. */
-async function getTenantTimeZone(db: D1Database): Promise<string> {
-  try {
-    const row = await db.prepare(
-      `SELECT value FROM settings WHERE key IN ('timezone', 'company_timezone') AND value IS NOT NULL AND value != ''
-       ORDER BY CASE key WHEN 'timezone' THEN 0 ELSE 1 END LIMIT 1`
-    ).first() as { value: string } | null;
-    if (row && isValidTimeZone(row.value)) return row.value;
-  } catch {
-    // settings table unavailable — fall through to default
-  }
-  return DEFAULT_TIMEZONE;
-}
 
 function getSecretKey(secret: string): Uint8Array {
   return new TextEncoder().encode(secret);
