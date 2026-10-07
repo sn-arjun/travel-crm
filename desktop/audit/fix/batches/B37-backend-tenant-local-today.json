@@ -1,0 +1,42 @@
+{
+  "id": "B37",
+  "title": "Backend: 'today' means the tenant's local day everywhere (not UTC); contacts import accepts a single name column",
+  "lane": "backend",
+  "backend": true,
+  "wave": "W7",
+  "dependsOn": ["B35", "B36"],
+  "parallelGroup": "W7-backend",
+  "bugIds": [],
+  "fixReqs": [],
+  "estFiles": 26,
+  "goal": "For a tenant in Asia/Kolkata, every 'today' decision on the server (overdue, due today, valid today, expiring in N days, today's follow-ups, daily reminders, 'this month') must use the tenant's local calendar day. Right now most of them use the UTC date, so between 00:00 and 05:30 IST they are a day behind.",
+  "context": "Added by the orchestrator 2026-10-07 from the B31 run-1 triage: GET /rate-cards/lookup compares validity with new Date().toISOString() (UTC), so a rate card valid from the local today is excluded for the first 5.5 hours of the day. Survey: 53 occurrences of `toISOString().split('T')[0]` / `.slice(0,10)` across 21 backend files (fleet.ts 11, cron/auto-reminders.ts 11, cron/fleet-alerts.ts 4, reports.ts 3, business-intelligence.ts 3, report-engine.ts 2, visa.ts 2, tasks.ts 2, invoices.ts 2, calls.ts 2, trip-invoice-generator.ts, exports/pdf-export.ts, vouchers.ts, rate-cards.ts, public.ts, planner.ts, payments.ts, contacts.ts, ai-extractions.ts, queues/ai-extraction-queue.ts, cron/overdue-tasks.ts) plus 7 SQL `date('now')`. B08 already added backend/src/utils/tz.ts (DEFAULT_TIMEZONE 'Asia/Kolkata', isValidTimeZone, localDayWindowUtc) and resolved the tenant timezone from the settings keys `timezone` / `company_timezone` for the driver 'today' tab (see backend/src/routes/driver.ts) - reuse that resolution; do not invent a second one. Dates are stored as TEXT: date-only columns as 'YYYY-MM-DD' (local calendar dates entered by users), timestamps as UTC ISO strings. Baseline: backend vitest 43 files / 1111 passed, tsc 0. Cron jobs run without a request context: resolve the timezone per tenant from the same settings.",
+  "steps": [
+    "Extend backend/src/utils/tz.ts with small pure helpers (unit-tested with fixed instants on both sides of local midnight, e.g. 2026-10-06T19:00:00Z = 00:30 IST on 7 Oct): localDateString(timeZone, now?) -> 'YYYY-MM-DD' of the local day; addDaysLocal(dateString, n); localMonthWindow(timeZone, now?) -> {startDate, endDate, startIso, endIso}; and a single `getTenantTimeZone(db)` (move/reuse the lookup B08 wrote in driver.ts; cache per request). Fallback Asia/Kolkata.",
+    "Go through EVERY occurrence of the UTC-date idiom and every SQL date('now') in backend/src (re-grep; the survey above is a guide, not a contract) and classify it: (A) means 'today / N days from today / this month' for business logic -> replace with the tenant-local helper; for SQL comparing a UTC timestamp column to 'today' use the UTC window [startIso, endIso) of the local day (localDayWindowUtc); for date-only columns compare with the local date string. (B) formats a STORED timestamp or builds a filename/label -> leave UTC only if the value is not shown to users as a calendar date; if it is shown, use the local day. (C) genuinely UTC by design (e.g. token expiry, audit timestamps) -> leave, add nothing. Keep a table of file:line -> class -> change in your report (it will be long - that is expected).",
+    "Rate cards: GET /rate-cards/lookup and the vehicle-rate-card lookup must treat validFrom/validTo as local calendar dates (inclusive on both ends) against the tenant-local today. Test: at 00:30 IST a card valid from that local date is returned; a card that expired the previous local date is not.",
+    "Crons (auto-reminders, fleet-alerts, overdue-tasks): compute 'today', 'tomorrow', 'in N days' per tenant in that tenant's zone. Test one reminder and one alert at 00:30 IST and at 23:30 IST.",
+    "Reports / BI: date presets (today, this_week, this_month, last_month, ...) and 'as of today' reports resolve in the tenant zone; the report cache key already includes the params - make sure a preset's resolved range does not go stale across local midnight (include the resolved local date in the key or resolve before keying).",
+    "Contacts import (from requests B29/B30): the import mapping must accept a single `name` column as well as firstName/lastName (name wins when present; firstName+lastName still work; at least one of them required). Additive. Test both shapes. Report the exact accepted mapping keys so the desktop mapping UI can offer 'Name'.",
+    "Run the full suite 3 times (time-dependent tests must use injected/fixed clocks - do not rely on the wall clock), tsc, and a fresh-DB migration apply if you add a migration (next free number: 0040)."
+  ],
+  "filesAllowlist": [
+    "backend/src/utils/tz.ts",
+    "backend/src/utils/**",
+    "backend/src/routes/**",
+    "backend/src/cron/**",
+    "backend/src/queues/**",
+    "backend/src/services/**",
+    "backend/src/validators/**",
+    "backend/test/**"
+  ],
+  "mustNotTouch": ["backend/.dev.vars", "backend/drizzle/tenant/00[0-3]*", "desktop/**", "packages/**"],
+  "acceptance": [
+    "No business-logic 'today' on the server is derived from the UTC date; the classification table accounts for every occurrence.",
+    "Rate-card lookup, reminders/alerts, overdue tasks, follow-ups due today, invoice overdue, visa/vehicle/driver document expiry and report presets behave correctly at 00:30 IST and 23:30 IST (tests with fixed instants).",
+    "Contacts import accepts a single name column.",
+    "backend vitest 0 failed on 3 consecutive runs, passed >= 1111; tsc 0."
+  ],
+  "gates": {"typecheck": false, "unit": false, "lint": false, "build": false, "backendTests": true, "flutter": false, "specs": []},
+  "notes": "Response shapes stay additive (Flutter apps + desktop). If a change in server 'today' semantics makes an existing desktop e2e assumption wrong, list the spec and the assumption in your report - do not edit desktop/."
+}
