@@ -628,15 +628,16 @@
       "manual": true
     },
     "showcase": {
-      "status": "gate-failed",
-      "timestamp": "2026-10-02T10:09:39.225Z",
-      "error": "showcase: Running 2 tests using 1 worker\n\n  ✓  1 [showcase-setup] › e2e\\global-setup.ts:8:6 › authenticate as admin (3.0s)\n  [00:05] section: Authentication & App Shell\n  [00:27] section: Dashboard",
-      "repairAttempts": 2
+      "status": "ok",
+      "timestamp": "2026-10-07T20:46:18.448Z",
+      "error": null,
+      "note": "re-recorded in the fix pass: TravelCRM-Demo.mp4 (story, 10:20) and TravelCRM-Full-Walkthrough.mp4 (29:53); both pass the finalize gate",
+      "manual": true
     }
   },
   "lastCompleted": {
-    "id": "cleanup",
+    "id": "showcase",
     "status": "ok",
-    "timestamp": "2026-10-07T15:35:12.120Z"
+    "timestamp": "2026-10-07T20:46:18.448Z"
   }
 }
