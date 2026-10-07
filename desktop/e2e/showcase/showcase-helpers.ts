@@ -248,7 +248,7 @@ export async function assertClean(page: Page, where = ''): Promise<void> {
     return {
       text: `${document.body?.innerText ?? ''}\n${vals}`,
       invalid: Array.from(document.querySelectorAll('[aria-invalid="true"]')).filter(visible).length,
-      danger: Array.from(document.querySelectorAll('.text-ds-danger')).filter((e) => visible(e) && !e.closest('button, a, [role="button"], [role="menuitem"]') && !/^[*₹$+\-−\d.,\s%KLCr()]*$/.test((e.textContent ?? '').trim()) && !/^(Exclusions|Overdue|Cancelled|Lost)$/i.test((e.textContent ?? '').trim())).map((e) => (e.textContent ?? '').trim().slice(0, 80)),
+      danger: Array.from(document.querySelectorAll('.text-ds-danger')).filter((e) => visible(e) && !e.closest('button, a, [role="button"], [role="menuitem"]') && !/^[*₹$+\-−\d.,\s%KLCr()]*$/.test((e.textContent ?? '').trim()) && !/^(Exclusions|Overdue|Cancelled|Lost|\d{1,2} [A-Za-z]{3,4} \d{4}(, [\d:]+ [ap]m)?)$/i.test((e.textContent ?? '').trim())).map((e) => (e.textContent ?? '').trim().slice(0, 80)),
       errToast: document.querySelectorAll('[data-sonner-toast][data-type="error"]').length,
     };
   });

@@ -42,6 +42,33 @@ export async function openRow(page: Page, rowText: string | RegExp, urlRe: RegEx
   await settle(page, 1300);
 }
 
+const API_URL = (process.env.E2E_API_URL ?? 'http://localhost:8787/api/v1').replace(/\/+$/, '');
+
+/** Off-camera setup: log in as the demo user and POST/GET through the API (used to stage records the story creates live). */
+export async function apiCall(method: string, p: string, body?: unknown): Promise<any> {
+  const login = await fetch(`${API_URL}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'ananya.menon@example.com', password: 'Admin@123', tenantId: '01960000-0000-7000-8000-000000000001' }) });
+  const token = ((await login.json()) as { data: { accessToken: string } }).data.accessToken;
+  const res = await fetch(API_URL + p, { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+  return res.json();
+}
+
+/** The Nair family lead is created live in the story; the walkthrough stages it through the API so chapters can link to it. */
+export async function ensurePriyaLead(): Promise<string> {
+  const existing = await apiCall('GET', `/leads?search=${encodeURIComponent('Kerala Backwaters Family Holiday')}`);
+  const list = (existing?.data?.data ?? existing?.data ?? []) as { id: string; title: string }[];
+  const found = list.find((l) => l.title === 'Kerala Backwaters Family Holiday');
+  if (found) return found.id;
+  const contacts = await apiCall('GET', `/contacts?search=${encodeURIComponent('Priya Nair')}`);
+  const c = ((contacts?.data?.data ?? contacts?.data ?? []) as { id: string; name: string }[]).find((x) => x.name === 'Priya Nair');
+  if (!c) throw new Error('Priya Nair contact missing: run the demo seed first');
+  const r = await apiCall('POST', '/leads', {
+    contactId: c.id, title: 'Kerala Backwaters Family Holiday', destinations: ['Munnar', 'Thekkady', 'Alleppey', 'Kumarakom'], tripType: 'family',
+    travelDate: '2026-12-22', returnDate: '2026-12-27', paxAdults: 2, paxChildren: 2, budget: 125000, priority: 'hot', source: 'website',
+  });
+  if (!r?.data?.id) throw new Error(`could not stage Priya's lead: ${JSON.stringify(r).slice(0, 300)}`);
+  return r.data.id;
+}
+
 export interface PartCtx { page: Page; created: Record<string, string> }
 
 /** Everything a part needs around its body: overlays, listeners, marks, a failure screenshot and the saved video. */
