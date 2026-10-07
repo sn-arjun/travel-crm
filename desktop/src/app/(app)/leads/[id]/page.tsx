@@ -23,7 +23,9 @@ import { LEAD_STATUS_LABELS } from '@travelcrm/shared';
 import { toast } from 'sonner';
 import type { TimelineItem } from '@/components/ui/timeline';
 import { unwrapList } from '@/lib/api/envelope';
-import { formatDisplayDate, toLocalDateString } from '@/lib/dates';
+import { formatDisplayDate, formatDisplayDateTime, toLocalDateString } from '@/lib/dates';
+import { Skeleton } from '@/components/ui';
+import { PageContainer } from '@/components/layout/page-container';
 import {
   leadDestination, leadSourceLabel, passengerSummary, priorityLabel, tripTypeLabel, type LeadRow,
 } from '../lead-labels';
@@ -32,6 +34,7 @@ interface NoteRow { id: string; content: string; createdByName?: string; created
 interface ActivityRow {
   id?: string; type?: string; content?: string; description?: string;
   createdByName?: string; createdBy?: string; createdAt?: string; created_at?: string;
+  metadata?: string | Record<string, unknown> | null;
 }
 interface FollowUpRow {
   id: string; type?: string; notes?: string; status?: string; completedAt?: string | null;
@@ -54,6 +57,38 @@ function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' |
   if (status === 'lost') return 'danger';
   if (status === 'proposal_sent' || status === 'negotiation') return 'warning';
   return 'info';
+}
+
+const ACTIVITY_TYPE_TITLES: Record<string, string> = {
+  note: 'Note added',
+  call: 'Call logged',
+  email: 'Email sent',
+  whatsapp: 'WhatsApp message sent',
+  sms: 'SMS sent',
+  status_change: 'Status changed',
+  assignment: 'Lead reassigned',
+  follow_up: 'Follow-up scheduled',
+};
+
+function statusText(value: unknown): string {
+  return typeof value === 'string' && value ? (LEAD_STATUS_LABELS[value as keyof typeof LEAD_STATUS_LABELS] || value.replace(/_/g, ' ')) : '';
+}
+
+/** Human title for an activity row; never a raw enum such as `status_change`. */
+function activityTitle(a: ActivityRow): string {
+  const text = a.content || a.description;
+  if (a.type === 'status_change') {
+    let meta: Record<string, unknown> = {};
+    try {
+      meta = typeof a.metadata === 'string' ? (JSON.parse(a.metadata) as Record<string, unknown>) : (a.metadata ?? {});
+    } catch { /* metadata is optional detail */ }
+    const from = statusText(meta.old_status ?? meta.oldStatus);
+    const to = statusText(meta.new_status ?? meta.newStatus);
+    const base = from && to ? `Status changed from ${from} to ${to}` : to ? `Status changed to ${to}` : 'Status changed';
+    return text ? `${base} — ${text}` : base;
+  }
+  if (text) return text;
+  return ACTIVITY_TYPE_TITLES[a.type ?? ''] ?? 'Activity recorded';
 }
 
 /** Short date for a note, or '' when the timestamp is missing/unparseable (never "Invalid Date"). */
@@ -98,11 +133,20 @@ export default function LeadDetailPage() {
 
   const { data: leadResponse, loading, error, refetch } = useApiQuery(() => leadsApi.getById(leadId), [leadId]);
   const { data: notesResponse, loading: notesLoading, refetch: refetchNotes } = useApiQuery(() => leadsApi.getNotes(leadId), [leadId]);
-  const { data: activitiesResponse, loading: activitiesLoading } = useApiQuery(() => leadsApi.getActivities(leadId), [leadId]);
+  const { data: activitiesResponse, loading: activitiesLoading, refetch: refetchActivities } = useApiQuery(() => leadsApi.getActivities(leadId), [leadId]);
   const { data: followUpsResponse, refetch: refetchFollowUps } = useApiQuery(() => leadsApi.getFollowUps(leadId), [leadId]);
   const { data: invoicesResponse, refetch: refetchInvoices } = useApiQuery(() => invoicesApi.list({ leadId }), [leadId]);
   const { data: itinerariesResponse, refetch: refetchItineraries } = useApiQuery(() => itinerariesApi.list({ leadId }), [leadId]);
   const { data: documentsResponse, refetch: refetchDocuments } = useApiQuery(() => documentsApi.list({ leadId }), [leadId]);
+
+  /** Re-reads the lead and every list on the page after a change; silent, so nothing flashes a loader. */
+  function refreshAll() {
+    const silent = { silent: true } as const;
+    void Promise.all([
+      refetch(silent), refetchNotes(silent), refetchActivities(silent), refetchFollowUps(silent),
+      refetchInvoices(silent), refetchItineraries(silent), refetchDocuments(silent),
+    ]);
+  }
 
   const { mutate: deleteLead, loading: isDeleting } = useApiMutation(() => leadsApi.delete(leadId));
   const { mutate: updateStatus, loading: isUpdatingStatus, error: statusError, reset: resetStatusError } = useApiMutation((data: UpdateLeadStatusRequest) => leadsApi.updateStatus(leadId, data));
@@ -138,7 +182,7 @@ export default function LeadDetailPage() {
       setIsStatusDialogOpen(false);
       setNewStatus('');
       setLostReason('');
-      refetch();
+      refreshAll();
     }
     // On failure the reason is shown inline in the dialog (statusError).
   }
@@ -150,7 +194,7 @@ export default function LeadDetailPage() {
       toast.success('Note added');
       setNoteContent('');
       setIsNoteDialogOpen(false);
-      refetchNotes();
+      refreshAll();
     } catch { toast.error('Failed to add note'); }
   }
 
@@ -158,7 +202,7 @@ export default function LeadDetailPage() {
     try {
       await leadsApi.deleteNote(leadId, noteId);
       toast.success('Note deleted');
-      refetchNotes();
+      refreshAll();
     } catch { toast.error('Failed to delete note'); }
   }
 
@@ -176,7 +220,7 @@ export default function LeadDetailPage() {
       toast.success('Follow-up scheduled');
       setIsFollowUpDialogOpen(false);
       setFollowUpForm({ scheduledAt: undefined, type: 'call', notes: '' });
-      refetchFollowUps();
+      refreshAll();
     } catch { toast.error('Failed to create follow-up'); }
     finally { setIsCreatingFollowUp(false); }
   }
@@ -197,7 +241,7 @@ export default function LeadDetailPage() {
       toast.success('Invoice created');
       setIsInvoiceDialogOpen(false);
       setInvoiceForm({ type: 'proforma', dueDate: undefined, items: [{ description: '', quantity: 1, rate: 0 }], notes: '' });
-      refetchInvoices();
+      refreshAll();
     } catch { toast.error('Failed to create invoice'); }
     finally { setIsCreatingInvoice(false); }
   }
@@ -216,7 +260,7 @@ export default function LeadDetailPage() {
       toast.success('Itinerary created');
       setIsItineraryDialogOpen(false);
       setItineraryForm({ title: '', validityDate: undefined, notes: '' });
-      refetchItineraries();
+      refreshAll();
     } catch { toast.error('Failed to create itinerary'); }
     finally { setIsCreatingItinerary(false); }
   }
@@ -229,17 +273,22 @@ export default function LeadDetailPage() {
       toast.success('Document uploaded');
       setIsDocUploadDialogOpen(false);
       setDocForm({ file: null, name: '', category: 'general' });
-      refetchDocuments();
+      refreshAll();
     } catch { toast.error('Failed to upload document'); }
     finally { setIsUploadingDoc(false); }
   }
 
   if (loading) {
     return (
-      <div className="flex min-h-64 flex-col items-center justify-center gap-4">
-        <Loader2 className="h-12 w-12 animate-spin text-ds-foreground-muted" />
-        <p className="text-ds-foreground-muted">Loading lead...</p>
-      </div>
+      <PageContainer>
+        <div className="flex flex-col gap-ds-4" data-testid="lead-skeleton" aria-busy="true">
+          <Skeleton className="h-14 w-full" />
+          <Skeleton className="h-9 w-72" />
+          <Skeleton className="h-44 w-full" />
+          <Skeleton className="h-44 w-full" />
+          <Skeleton className="h-40 w-full" />
+        </div>
+      </PageContainer>
     );
   }
 
@@ -259,9 +308,9 @@ export default function LeadDetailPage() {
 
   const activityItems: TimelineItem[] = activities.map((a, idx) => ({
     id: a.id || String(idx),
-    title: a.content || a.description || `${a.type || 'activity'}`,
+    title: activityTitle(a),
     description: a.createdByName || a.createdBy || undefined,
-    timestamp: (a.createdAt || a.created_at) ? new Date((a.createdAt || a.created_at) as string).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
+    timestamp: formatDisplayDateTime(a.createdAt || a.created_at),
     tone: a.type === 'status_change' ? 'primary' : 'neutral',
   }));
 
@@ -292,7 +341,7 @@ export default function LeadDetailPage() {
           { label: 'Schedule follow-up', icon: <Plus aria-hidden="true" />, onSelect: () => setIsFollowUpDialogOpen(true) },
           { label: 'Delete', icon: <Trash2 aria-hidden="true" />, destructive: true, separatorBefore: true, onSelect: () => setIsDeleteDialogOpen(true) },
         ]}
-        messaging={{ recipientId: lead.contactId || '', recipientName: contactName, email: contactEmail, phone: contactPhone }}
+        messaging={{ recipientId: lead.contactId || '', recipientName: contactName, email: contactEmail, phone: contactPhone, onSent: refreshAll }}
         overview={
           <div className="flex flex-col gap-ds-4">
             <SectionCard title="Trip Details">

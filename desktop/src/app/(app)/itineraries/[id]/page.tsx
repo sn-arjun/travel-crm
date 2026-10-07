@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { PageContainer } from '@/components/layout/page-container';
+import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/layout/page-header';
 import { cn, formatCurrency } from '@/lib/utils';
 import { useApiQuery } from '@/hooks/use-api';
@@ -292,8 +293,11 @@ export default function ItineraryDetailPage() {
   if (loading) {
     return (
       <PageContainer>
-        <div className="flex items-center justify-center py-ds-9">
-          <Loader2 className="size-8 animate-spin text-ds-foreground-subtle" aria-label="Loading itinerary" />
+        <div className="flex flex-col gap-ds-4" role="status" aria-busy="true" aria-label="Loading itinerary" data-testid="itinerary-skeleton">
+          <Skeleton className="h-14 w-full" />
+          <Skeleton className="h-9 w-72" />
+          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-40 w-full" />
         </div>
       </PageContainer>
     );

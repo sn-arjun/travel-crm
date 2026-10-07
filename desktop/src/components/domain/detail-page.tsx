@@ -71,6 +71,8 @@ export interface DetailPageProps<T> {
     recipientName: string;
     email?: string;
     phone?: string;
+    /** Called after a message was sent, e.g. to refetch the page's activity. */
+    onSent?: () => void;
   };
 
   className?: string;
@@ -204,6 +206,7 @@ export function DetailPage<T>({
         <SendMessageDialog
           open={messageOpen}
           onOpenChange={setMessageOpen}
+          onSent={messaging.onSent}
           contact={{
             id: messaging.recipientId,
             name: messaging.recipientName,

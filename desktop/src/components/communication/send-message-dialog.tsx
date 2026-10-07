@@ -17,6 +17,8 @@ import { Card, CardContent } from '@/components/ui/card';
 
 import { cn } from '@/lib/utils';
 import { communicationsApi } from '@/lib/api/communications';
+import { templatesApi, type MessageTemplate as ApiMessageTemplate } from '@/lib/api/templates';
+import { unwrapList } from '@/lib/api/envelope';
 import { useAuthStore } from '@/stores/auth-store';
 import { useCompanyProfile } from '@/hooks/use-company-profile';
 import { toast } from 'sonner';
@@ -123,11 +125,13 @@ export interface SendMessageDialogProps {
    * and `agent_name` to the signed-in user. Unresolved placeholders stay as `{{name}}`.
    */
   variables?: MessageVariables;
+  /** Called after a message was sent, so the host page can refresh its activity. */
+  onSent?: () => void;
 }
 
 type Step = 'channel' | 'template' | 'compose' | 'preview';
 
-export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel, variables }: SendMessageDialogProps) {
+export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel, variables, onSent }: SendMessageDialogProps) {
   const [step, setStep] = React.useState<Step>(defaultChannel ? 'template' : 'channel');
   const [channel, setChannel] = React.useState<'email' | 'whatsapp' | 'sms'>(defaultChannel ?? 'email');
   const [selectedTemplate, setSelectedTemplate] = React.useState<MessageTemplate | null>(null);
@@ -148,6 +152,7 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel,
       setSelectedTemplate(null);
       setSubject('');
       setBody('');
+      setTemplateSearch('');
     }
   }, [open, defaultChannel]);
 
@@ -169,9 +174,46 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel,
     return merged;
   }, [contact.name, tenantName, company?.phone, company?.email, user?.name, user?.email, variables]);
 
-  const channelTemplates = LOCAL_TEMPLATES.filter(
-    (t) => t.channel === channel && (!t.requires || !!values[t.requires]),
+  // The tenant's own templates (Communication > Templates) come first, built-in starters after
+  const [tenantTemplates, setTenantTemplates] = React.useState<MessageTemplate[]>([]);
+  const [templateSearch, setTemplateSearch] = React.useState('');
+  React.useEffect(() => {
+    if (!open || step !== 'template') return;
+    let cancelled = false;
+    templatesApi
+      .list({ channel, limit: 100 })
+      .then((res) => {
+        if (cancelled) return;
+        const rows = unwrapList<ApiMessageTemplate>(res).data;
+        setTenantTemplates(
+          rows
+            .filter((t) => t.channel === channel && t.isActive !== 0 && t.content)
+            .map((t) => ({
+              id: `tenant-${t.id}`,
+              name: t.name,
+              channel: t.channel,
+              category: t.category || 'custom',
+              subject: t.subject || undefined,
+              content: t.content,
+            })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setTenantTemplates([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, step, channel]);
+
+  const needle = templateSearch.trim().toLowerCase();
+  const matchesSearch = (t: MessageTemplate) =>
+    !needle || `${t.name} ${t.category} ${t.content}`.toLowerCase().includes(needle);
+  const ownTemplates = tenantTemplates.filter(matchesSearch);
+  const starterTemplates = LOCAL_TEMPLATES.filter(
+    (t) => t.channel === channel && (!t.requires || !!values[t.requires]) && matchesSearch(t),
   );
+  const channelTemplates = [...ownTemplates, ...starterTemplates];
 
   function substituteVariables(text: string): string {
     // A line that exists to carry the share link is dropped when there is no link
@@ -230,6 +272,7 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel,
       });
       toast.success(`${channel === 'email' ? 'Email' : channel === 'whatsapp' ? 'WhatsApp message' : 'SMS'} sent via Communication Hub`);
       onOpenChange(false);
+      onSent?.();
     } catch (err) {
       // The API client throws plain `{ status, message }` objects, not Error instances
       const message = err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message) : '';
@@ -358,6 +401,15 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel,
                 {channelIcon[channel]}
                 <Badge variant="outline" className="text-xs">{channelLabel[channel]}</Badge>
               </div>
+              {tenantTemplates.length > 0 && (
+                <Input
+                  className="mt-2"
+                  value={templateSearch}
+                  onChange={(e) => setTemplateSearch(e.target.value)}
+                  placeholder="Search templates..."
+                  aria-label="Search templates"
+                />
+              )}
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-4">
               <div className="space-y-2">
@@ -379,6 +431,9 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel,
 
                 {channelTemplates.length > 0 && (
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider pt-2 pb-1">Templates</p>
+                )}
+                {channelTemplates.length === 0 && needle && (
+                  <p className="text-sm text-muted-foreground text-center py-4">No templates match your search</p>
                 )}
 
                 {channelTemplates.map((tpl) => (

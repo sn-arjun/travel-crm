@@ -13,6 +13,7 @@ import {
   Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
   CurrencyInput, DatePicker, useConfirm,
 } from '@/components/ui';
+import { PageContainer } from '@/components/layout/page-container';
 import { useApiQuery } from '@/hooks/use-api';
 import { invoicesApi, type InvoiceDetail } from '@/lib/api/invoices';
 import { paymentsApi } from '@/lib/api/payments';
@@ -168,10 +169,14 @@ export default function InvoiceDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col gap-ds-4">
-        <Skeleton className="h-16 w-full" />
-        <Skeleton className="h-64 w-full" />
-      </div>
+      <PageContainer>
+        <div className="flex flex-col gap-ds-4" data-testid="invoice-skeleton" aria-busy="true">
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-9 w-72" />
+          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-40 w-full" />
+        </div>
+      </PageContainer>
     );
   }
 

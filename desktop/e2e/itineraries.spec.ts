@@ -445,4 +445,23 @@ test.describe('Itinerary — rate cards and quotation email', () => {
     expect(body).not.toContain('{{amount}}');
     expect(body).toContain('₹');
   });
+
+  test('quotation email resolves the company name from the company profile (no unresolved placeholders)', async ({ page }) => {
+    const company = `Sahyadri Holidays ${Date.now()}`;
+    await api('PUT', '/settings/company', { company_name: company });
+    const contact = await seedContact({ email: 'quote-company@example.com' });
+    const lead = await seedLead(contact.id);
+    const itinerary = await seedItinerary(lead.id);
+
+    await page.goto(`/itineraries/${itinerary.id}`);
+    await waitForLoad(page);
+    await page.getByRole('tab', { name: /share/i }).click();
+    await page.getByRole('button', { name: /send via email/i }).click();
+    await page.getByText('Quotation Email', { exact: true }).click();
+    await expect(page.locator('#msg-body')).toContainText(company);
+    const body = await page.locator('#msg-body').inputValue();
+    const subject = await page.locator('#msg-subject').inputValue();
+    expect(`${subject}\n${body}`).not.toMatch(/\{\{[a-z_]+\}\}/);
+    await expect(page.getByTestId('placeholder-warning')).toHaveCount(0);
+  });
 });

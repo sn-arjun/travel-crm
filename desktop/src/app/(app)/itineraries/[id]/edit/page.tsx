@@ -19,6 +19,7 @@ import { Badge } from '@/components/ui/badge';
 import { DatePicker } from '@/components/ui/date-picker';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { PageContainer } from '@/components/layout/page-container';
+import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/layout/page-header';
 import { useApiQuery } from '@/hooks/use-api';
 import {
@@ -466,9 +467,11 @@ export default function ItineraryEditPage() {
   if (loading) {
     return (
       <PageContainer width="narrow">
-        <div className="flex flex-col items-center justify-center gap-ds-4 py-ds-9">
-          <Loader2 className="size-10 animate-spin text-ds-foreground-subtle" aria-hidden="true" />
-          <p className="text-ds-foreground-muted">Loading itinerary...</p>
+        <div className="flex flex-col gap-ds-4" role="status" aria-busy="true" aria-label="Loading itinerary" data-testid="itinerary-edit-skeleton">
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-40 w-full" />
         </div>
       </PageContainer>
     );

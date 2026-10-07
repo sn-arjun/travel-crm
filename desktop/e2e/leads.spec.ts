@@ -1,6 +1,6 @@
 import { test, expect } from './fixtures';
 import { waitForLoad, getAuthToken, API_URL } from './helpers/auth';
-import { seedContact, seedLead, api } from './helpers/api-seed';
+import { seedContact, seedLead, seedEmailTemplate, api } from './helpers/api-seed';
 import { pickDate } from './helpers/date-picker';
 
 test.describe('Leads', () => {
@@ -333,6 +333,29 @@ test.describe('Leads', () => {
     expect(await page.locator('a[href^="mailto:"]').count()).toBe(0);
   });
 
+  test('message dialog lists the tenant templates before the built-in ones', async ({ page }) => {
+    const contact = await seedContact({ email: `tpl-${Date.now()}@e2e.test`, phone: '+919000300003' });
+    const lead = await seedLead(contact.id, { title: `TplLead-${Date.now()}` });
+    const tpl = await seedEmailTemplate({ name: `Houseboat Offer ${Date.now()}`, category: 'quotation' });
+
+    await page.goto(`/leads/${lead.id}`);
+    await waitForLoad(page);
+    await page.getByRole('button', { name: 'Send message' }).first().click();
+    await page.getByRole('dialog').getByText('Email', { exact: true }).first().click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText(tpl.name, { exact: true })).toBeVisible({ timeout: 10_000 });
+    // Tenant templates come first, built-in starters after
+    const names = await dialog.locator('p.text-sm.font-medium').allTextContents();
+    expect(names.indexOf(tpl.name)).toBeGreaterThanOrEqual(0);
+    expect(names.indexOf(tpl.name)).toBeLessThan(names.indexOf('Welcome Email'));
+
+    // Search narrows both lists
+    await dialog.getByLabel('Search templates').fill('Houseboat Offer');
+    await expect(dialog.getByText('Welcome Email', { exact: true })).toHaveCount(0);
+    await expect(dialog.getByText(tpl.name, { exact: true })).toBeVisible();
+  });
+
   // ─────────────────────────────────────────────────────────────
   // Export
   // ─────────────────────────────────────────────────────────────
@@ -374,6 +397,10 @@ test.describe('Leads', () => {
     await expect(page.locator('text=Status updated successfully')).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('text=Qualified').first()).toBeVisible({ timeout: 10_000 });
 
+    // The Activity tab shows the change without a reload
+    await page.getByRole('tab', { name: 'Activity' }).click();
+    await expect(page.getByText(/Status changed from .+ to Qualified/)).toBeVisible({ timeout: 10_000 });
+
     const fetched = await api('GET', `/leads/${lead.id}`);
     expect(fetched.data.status).toBe('qualified');
   });
@@ -396,6 +423,11 @@ test.describe('Leads', () => {
     const notesList = Array.isArray(notesRes.data) ? notesRes.data : (notesRes.data?.data ?? []);
     const created = notesList.find((n: any) => n.content === noteContent);
     expect(created).toBeTruthy();
+
+    // The new note also appears in the Activity tab without a reload
+    await page.getByRole('tab', { name: 'Activity' }).click();
+    await expect(page.getByText(noteContent).first()).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('tab', { name: 'Overview' }).click();
 
     // Delete via UI
     await page.locator('button[aria-label="Delete note"]').first().click();
