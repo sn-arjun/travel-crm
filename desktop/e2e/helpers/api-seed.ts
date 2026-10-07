@@ -1,5 +1,6 @@
 import { getAuthToken, API_URL } from './auth';
 import { localDay } from './date-picker';
+import { invalidateAuthState } from '../fixtures';
 
 let token: string | null = null;
 
@@ -33,7 +34,12 @@ export async function api(method: string, path: string, body?: any): Promise<any
           body: body ? JSON.stringify(body) : undefined,
         });
       } catch (e) {
-        if (!retryable || attempt >= 2 || !isTransportError(e)) throw e;
+        // A POST is retried only when a reused keep-alive socket was already closed by the server
+        // (the request never reached a handler); other POST transport errors still surface.
+        const staleSocket = /other side closed|ECONNRESET/i.test(
+          `${(e as Error)?.message ?? ''} ${(e as { cause?: Error })?.cause?.message ?? ''}`,
+        );
+        if (attempt >= 2 || !isTransportError(e) || !(retryable || staleSocket)) throw e;
         await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
       }
     }
@@ -46,7 +52,10 @@ export async function api(method: string, path: string, body?: any): Promise<any
   }
   // A reset rebuilds the users table: a token minted before it names a user row that no longer
   // exists, so any write that records created_by fails its foreign key (the old "contact.id undefined").
-  if (isReset) token = null;
+  if (isReset) {
+    token = null;
+    invalidateAuthState(); // browser sessions minted before the reset are stale too
+  }
   return res.json();
 }
 

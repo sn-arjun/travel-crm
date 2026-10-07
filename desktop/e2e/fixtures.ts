@@ -133,6 +133,11 @@ export async function freshAuthState(): Promise<AuthState> {
   return structuredClone(await inflight);
 }
 
+/** Forget the cached session. Call after `/test/reset`: it replaces the user rows, so a session minted before it names a user that no longer exists. */
+export function invalidateAuthState(): void {
+  cache = null;
+}
+
 export const test = base.extend({
   // The callback is named `provide`, not `use`: the react-hooks lint rule mistakes `use(...)` for a React hook.
   storageState: async ({}, provide) => {
