@@ -43,8 +43,14 @@ export function CurrencyInput({
     setFocused(true);
     if (value !== undefined) setDisplayValue(String(value));
     // Select the whole amount so typing (or a test `fill()`) replaces it instead of appending.
+    // The frame callback must not act late: select() can pull focus back from the next field and
+    // would also swallow the first characters of a fast typist, so it only runs while this field is
+    // still focused and untouched.
     const input = e.currentTarget;
-    requestAnimationFrame(() => input.select());
+    const focusText = value !== undefined ? String(value) : '';
+    requestAnimationFrame(() => {
+      if (document.activeElement === input && input.value === focusText) input.select();
+    });
     props.onFocus?.(e);
   }
 
