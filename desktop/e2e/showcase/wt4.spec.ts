@@ -1,8 +1,8 @@
 /** Walkthrough part 4: Travellers & fleet (chapters 14-20). The driver-app chapter (21) is inserted by compose.mjs after this part. */
-import { expect, test } from './showcase-fixtures';
 import * as D from './demo-data';
-import { assertClean, chapter, clickOn, dwell, hoverOn, nav, openRow, recordPart, say, search, settle, typeInto } from './walkthrough-kit';
+import { expect, test } from './showcase-fixtures';
 import { pause, pickDate, pickRelation, pickSelect } from './showcase-helpers';
+import { assertClean, chapter, clickOn, dwell, hoverOn, nav, openRow, recordPart, say, search, settle, typeInto } from './walkthrough-kit';
 
 const labelField = (page: import('@playwright/test').Page, label: RegExp) => page.locator('label', { hasText: label }).locator('..');
 

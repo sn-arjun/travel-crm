@@ -1,10 +1,10 @@
 /** Walkthrough part 5: Productivity & communication (chapters 22-29): tasks, calendar, follow-ups, documents, inbox, templates, calls, chatbot. */
 import * as path from 'node:path';
 
-import { expect, test } from './showcase-fixtures';
 import * as D from './demo-data';
-import { assertClean, chapter, clickOn, dwell, ensurePriyaLead, hoverOn, nav, openRow, recordPart, say, search, settle, typeInto } from './walkthrough-kit';
+import { expect, test } from './showcase-fixtures';
 import { pause, pickDate, pickDateTime, pickRelation, pickSelect } from './showcase-helpers';
+import { assertClean, chapter, clickOn, dwell, ensurePriyaLead, hoverOn, nav, openRow, recordPart, say, search, settle, typeInto } from './walkthrough-kit';
 
 const PDF = path.resolve(__dirname, 'fixtures', 'nair-family-passports.pdf');
 

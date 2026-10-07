@@ -1,8 +1,8 @@
 /** Walkthrough part 6: Marketing (chapters 30-36): dashboard, campaigns, segments, flyers and branding, festivals, opted-out, WhatsApp. */
-import { expect, test } from './showcase-fixtures';
 import * as D from './demo-data';
-import { assertClean, chapter, clickOn, dwell, hoverOn, nav, openRow, recordPart, say, scrollSteps, search, settle, typeInto } from './walkthrough-kit';
+import { expect, test } from './showcase-fixtures';
 import { pause, pickDate, pickRelation, pickSelect } from './showcase-helpers';
+import { assertClean, chapter, clickOn, dwell, hoverOn, nav, openRow, recordPart, say, scrollSteps, search, settle, typeInto } from './walkthrough-kit';
 
 test('wt6: marketing (chapters 30-36)', async ({ page, context }, testInfo) => {
   test.setTimeout(30 * 60_000);

@@ -13,9 +13,9 @@
  *
  * Erasable TypeScript only; runs under plain node >= 22.18.
  */
+import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { ff, ffmpegPath, durationSec } from '../../../scripts/showcase/ffmpeg.mjs';

@@ -7,10 +7,10 @@
  */
 import * as path from 'node:path';
 
-import { expect, test } from './showcase-fixtures';
 import * as D from './demo-data';
-import { assertClean, chapter, clickOn, dwell, hoverOn, nav, openRow, recordPart, say, scrollSteps, search, settle, typeInto } from './walkthrough-kit';
+import { expect, test } from './showcase-fixtures';
 import { pause, pickSelect } from './showcase-helpers';
+import { assertClean, chapter, clickOn, dwell, hoverOn, nav, openRow, recordPart, say, scrollSteps, search, settle, typeInto } from './walkthrough-kit';
 
 const CSV = path.resolve(__dirname, 'fixtures', 'sahyadri-new-enquiries.csv');
 

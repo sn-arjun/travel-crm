@@ -1,10 +1,11 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
+import { cursorOverlayInit } from './cursor-overlay';
+import { BANNED_PATTERNS } from './demo-data';
+
 import type { BrowserContext, Locator, Page, TestInfo } from '@playwright/test';
 
-import { BANNED_PATTERNS } from './demo-data';
-import { cursorOverlayInit } from './cursor-overlay';
 
 /**
  * Recording harness for the client demo videos (STORYBOARD D.2-D.5).

@@ -1,8 +1,8 @@
 /** Walkthrough part 2: Sales & supply (chapters 6-9). See full-walkthrough.spec.ts for the overall layout. */
-import { expect, test } from './showcase-fixtures';
 import * as D from './demo-data';
-import { assertClean, chapter, clickOn, dwell, hoverOn, nav, openRow, recordPart, say, search, settle, typeInto } from './walkthrough-kit';
+import { expect, test } from './showcase-fixtures';
 import { pickRelation, pickSelect } from './showcase-helpers';
+import { assertClean, chapter, clickOn, dwell, hoverOn, nav, openRow, recordPart, say, search, settle, typeInto } from './walkthrough-kit';
 
 void D;
 

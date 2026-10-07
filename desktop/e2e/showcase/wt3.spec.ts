@@ -1,8 +1,8 @@
 /** Walkthrough part 3: Revenue (chapters 10-13): invoices, payments, credit and debit notes, vouchers. */
-import { expect, test } from './showcase-fixtures';
 import * as D from './demo-data';
-import { assertClean, chapter, clickOn, dwell, hoverOn, nav, openRow, recordPart, say, search, settle, typeInto } from './walkthrough-kit';
+import { expect, test } from './showcase-fixtures';
 import { pause, pickDateTime, pickRelation, pickSelect } from './showcase-helpers';
+import { assertClean, chapter, clickOn, dwell, hoverOn, nav, openRow, recordPart, say, search, settle, typeInto } from './walkthrough-kit';
 
 test('wt3: invoices, payments, credit and debit notes, vouchers (chapters 10-13)', async ({ page, context }, testInfo) => {
   test.setTimeout(25 * 60_000);

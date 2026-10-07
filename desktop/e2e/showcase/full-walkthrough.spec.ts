@@ -19,13 +19,14 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-import { expect, test as authed } from './showcase-fixtures';
 import { test as anon } from '@playwright/test';
+
 import * as D from './demo-data';
+import { expect, test as authed } from './showcase-fixtures';
+import { fieldByLabel, hideOverlays, mark, moveTo, pause, pickDate, pickDateTime, pickRelation, pickSelect, showOverlays } from './showcase-helpers';
 import {
   assertClean, chapter, clickOn, dwell, hoverOn, nav, openRow, recordPart, say, scrollSteps, search, settle, sidebar, typeInto,
 } from './walkthrough-kit';
-import { fieldByLabel, hideOverlays, mark, moveTo, pause, pickDate, pickDateTime, pickRelation, pickSelect, showOverlays } from './showcase-helpers';
 
 void fs; void path; void fieldByLabel; void hideOverlays; void showOverlays; void moveTo; void pickDate; void pickDateTime; void pickRelation; void pickSelect; void scrollSteps; void sidebar; void D;
 
