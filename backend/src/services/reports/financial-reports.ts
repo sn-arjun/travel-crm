@@ -99,12 +99,12 @@ const financialReports: ReportDefinition[] = [
         i.balance_due,
         i.due_date,
         i.status,
-        CAST(julianday('now') - julianday(i.due_date) AS INTEGER) as days_overdue,
+        CAST(julianday('{TODAY}') - julianday(i.due_date) AS INTEGER) as days_overdue,
         CASE
-          WHEN julianday('now') - julianday(i.due_date) <= 0 THEN 'current'
-          WHEN julianday('now') - julianday(i.due_date) <= 30 THEN '1-30 days'
-          WHEN julianday('now') - julianday(i.due_date) <= 60 THEN '31-60 days'
-          WHEN julianday('now') - julianday(i.due_date) <= 90 THEN '61-90 days'
+          WHEN julianday('{TODAY}') - julianday(i.due_date) <= 0 THEN 'current'
+          WHEN julianday('{TODAY}') - julianday(i.due_date) <= 30 THEN '1-30 days'
+          WHEN julianday('{TODAY}') - julianday(i.due_date) <= 60 THEN '31-60 days'
+          WHEN julianday('{TODAY}') - julianday(i.due_date) <= 90 THEN '61-90 days'
           ELSE '90+ days'
         END as ageing_bucket
       FROM invoices i

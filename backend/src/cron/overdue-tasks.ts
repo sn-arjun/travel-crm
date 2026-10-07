@@ -37,7 +37,7 @@ export async function processOverdueTasks(env: Env, now: Date = new Date()) {
             // Create in-app notification for assignee
             const notifId = generateId();
             await db.prepare(`
-        INSERT INTO notifications (id, user_id, title, body, type, entity_type, entity_id, is_read)
+        INSERT INTO notifications (id, user_id, title, message, type, reference_type, reference_id, is_read)
         VALUES (?, ?, ?, ?, ?, ?, ?, 0)
       `).bind(
                 notifId,
