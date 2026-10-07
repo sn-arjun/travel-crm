@@ -1,9 +1,5 @@
 {
-  "generatedAt": "2026-10-06T20:14:47.048Z",
-  "totalErrors": 3,
-  "files": {
-    "e2e/showcase/demo-data.ts": 1,
-    "e2e/showcase/demo-seed.ts": 1,
-    "e2e/showcase/finalize.ts": 1
-  }
+  "generatedAt": "2026-10-07T15:39:13.173Z",
+  "totalErrors": 0,
+  "files": {}
 }
