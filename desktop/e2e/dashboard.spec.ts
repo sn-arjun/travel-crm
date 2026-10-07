@@ -108,9 +108,10 @@ test.describe('Dashboard', () => {
     await expect(page.locator('text=E2E dashboard sticky note EDITED').first()).toBeVisible();
 
     // Delete
-    const noteCard = page.locator('div', { hasText: 'E2E dashboard sticky note EDITED' }).last();
+    // Scope to this note's card: other notes may exist, and their Delete buttons come first in the DOM.
+    const noteCard = page.locator('div[title="Click to change color"]').filter({ hasText: 'E2E dashboard sticky note EDITED' }).first();
     await noteCard.hover();
-    await page.locator('button[aria-label="Delete note"]').first().click();
+    await noteCard.getByRole('button', { name: 'Delete note' }).click();
     await expect(page.locator('text=E2E dashboard sticky note EDITED')).toHaveCount(0);
     await page.reload();
     await waitForLoad(page);
