@@ -52,7 +52,7 @@ if (args.has('--live-trip') && args.size === 1) {
   // free Ravi and his car, clear the OTP rate-limit log, then create a fresh one.
   const { DatabaseSync: Db } = await import('node:sqlite');
   const dir = path.join(backendDir, '.wrangler/state/v3/d1/miniflare-D1DatabaseObject');
-  const file = process.env.D1_FILE ?? path.join(dir, fs.readdirSync(dir).find((f) => f.endsWith('.sqlite')));
+  const file = process.env.D1_FILE ?? path.join(dir, fs.readdirSync(dir).find((f) => f.endsWith('.sqlite') && f !== 'metadata.sqlite'));
   const d = new Db(file);
   d.exec('PRAGMA busy_timeout = 15000');
   d.exec("UPDATE trip_assignments SET is_deleted=1 WHERE pickup_location LIKE '%Arrival Gate 2%'");
@@ -68,7 +68,7 @@ if (args.has('--pre-roll') || args.has('--between-takes')) {
   const seed0 = JSON.parse(fs.readFileSync(path.join(workDir, 'seed.json'), 'utf8'));
   const { DatabaseSync: Db } = await import('node:sqlite');
   const dir = path.join(backendDir, '.wrangler/state/v3/d1/miniflare-D1DatabaseObject');
-  const file = process.env.D1_FILE ?? path.join(dir, fs.readdirSync(dir).find((f) => f.endsWith('.sqlite')));
+  const file = process.env.D1_FILE ?? path.join(dir, fs.readdirSync(dir).find((f) => f.endsWith('.sqlite') && f !== 'metadata.sqlite'));
   const d = new Db(file);
   d.exec('PRAGMA busy_timeout = 15000');
   const ago = (m) => new Date(Date.now() - m * 60_000).toISOString().replace(/\.\d{3}Z$/, 'Z');
@@ -102,7 +102,7 @@ const { DatabaseSync } = await import('node:sqlite');
 function findDb() {
   if (process.env.D1_FILE) return process.env.D1_FILE;
   const dir = path.join(backendDir, '.wrangler/state/v3/d1/miniflare-D1DatabaseObject');
-  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.sqlite'));
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.sqlite') && f !== 'metadata.sqlite');
   if (files.length !== 1) throw new Error(`expected one sqlite file in ${dir}, found ${files.length}; set D1_FILE`);
   return path.join(dir, files[0]);
 }

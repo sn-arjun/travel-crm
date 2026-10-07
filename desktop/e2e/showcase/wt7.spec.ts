@@ -1,9 +1,6 @@
 /**
- * Walkthrough part 7: Insights & administration (chapters 37-45): AI, reports, import / export, notifications, settings, integrations,
- * super admin, help and bookmarks.
- *
- * AI: this stack has no AI provider (owner default: do not configure one). The AI chapter shows the hub and one page that reads real
- * non-AI data under the app's own "AI is not configured yet" notice; it never triggers or fakes AI output.
+ * Walkthrough part 7: Insights & administration (chapters 38-45): reports, import / export, notifications, settings, integrations,
+ * super admin, help and bookmarks. AI (chapter 37) lives in its own part, wtai.spec.ts, so nothing else ever touches AI.
  */
 import * as path from 'node:path';
 
@@ -14,21 +11,11 @@ import { assertClean, chapter, clickOn, dwell, hoverOn, nav, openRow, recordPart
 
 const CSV = path.resolve(__dirname, 'fixtures', 'sahyadri-new-enquiries.csv');
 
-test('wt7: insights and administration (chapters 37-45)', async ({ page, context }, testInfo) => {
+test('wt7: insights and administration (chapters 38-45)', async ({ page, context }, testInfo) => {
   test.setTimeout(30 * 60_000);
   await recordPart(page, context, 'wt7', testInfo, async () => {
-    await page.goto('/ai');
+    await page.goto('/dashboard');
     await settle(page, 1800);
-
-    // ── 37 AI (kept short and honest) ──
-    await chapter(page, 37, 'AI assistant', 'Switch on when your agency is ready');
-    await expect(page.getByText('AI is not configured yet').first()).toBeVisible();
-    await hoverOn(page, page.getByRole('link', { name: /Business Intelligence/ }).first(), 900);
-    await say(page, 'AI tools are ready to switch on for your workspace', 3200);
-    await page.goto('/ai/bi/destinations');
-    await settle(page, 2200);
-    await say(page, 'Profitability and trends already read your live bookings', 3400);
-    await assertClean(page, 'ch37');
 
     // ── 38 Reports ──
     await chapter(page, 38, 'Reports', 'Branded reports, exportable');

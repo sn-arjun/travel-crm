@@ -45,7 +45,7 @@ const env = {
 const retakes = Number(val('retakes', 2));
 const istMinsNow = (() => { const d = new Date(Date.now() + 330 * 60_000); return d.getUTCHours() * 60 + d.getUTCMinutes(); })();
 if (!env.DEMO_PICKUP && (istMinsNow < 8 * 60 || istMinsNow > 20 * 60 + 30)) env.DEMO_PICKUP = '14:45';
-const WT_PARTS = ['wt1', 'wt2', 'wt3', 'wt4', 'wt5', 'wt6', 'wt7'];
+const WT_PARTS = ['wt1', 'wt2', 'wt3', 'wt4', 'wt5', 'wt6', 'wtai', 'wt7'];
 const STAGES = ['preflight', 'seed', 'storyA', 'driver', 'storyB', 'walkthrough', 'smoke', 'compose', 'finalize'];
 const DEFAULT_SKIP = flag('with-smoke') ? [] : ['smoke'];
 const only = val('only');
@@ -133,6 +133,15 @@ const stage = {
     must(seedDemo([]), 'reseed for the walkthrough');
     must(seedDemo(['--between-takes']), 'between-takes');
     for (const p of parts) {
+      if (p === 'wtai') {
+        // The AI part spends real Workers AI requests (billed): it needs a stack started with `fix-stack.mjs up --slot N --ai`, an explicit
+        // `--ai` here, and it is NEVER retried automatically (a failed take is inspected and re-run by hand).
+        if (!flag('ai')) { log('wtai skipped (pass --ai with a stack started via `fix-stack.mjs up --ai`; its recording is reused if present)'); continue; }
+        env.SHOWCASE_AI = '1';
+        must(playwright(['--grep', 'wtai:']), 'wtai');
+        delete env.SHOWCASE_AI;
+        continue;
+      }
       let attempt = 0;
       withRetakes(p, () => {
         if (attempt++ > 0) { must(seedDemo([]), `reseed for the ${p} retake`); must(seedDemo(['--between-takes']), 'between-takes'); }

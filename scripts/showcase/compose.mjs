@@ -137,13 +137,13 @@ function opts(argv) {
 const readMarks = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
 
 /** trim window of a Playwright recording: first card minus 0.3 s .. last mark plus tail */
-function window_(marksFile, tail = 1.5) {
+function window_(marksFile, tail = 1.5, skipCard = null) {
   const j = readMarks(marksFile);
-  const first = j.marks.find((x) => x.type === 'card') ?? j.marks[0];
+  const first = j.marks.find((x) => x.type === 'card' && x.name !== skipCard) ?? j.marks[0];
   const last = j.marks[j.marks.length - 1];
   const ss = Math.max(0, (first?.atMs ?? 0) / 1000 - 0.3);
   const to = Math.min(j.durationMs / 1000, (last?.atMs ?? j.durationMs) / 1000 + tail);
-  return { ss, to, cards: j.marks.filter((x) => x.type === 'card').map((x) => ({ title: x.name, atS: x.atMs / 1000 - ss })), len: to - ss };
+  return { ss, to, cards: j.marks.filter((x) => x.type === 'card' && x.atMs >= (first?.atMs ?? 0)).map((x) => ({ title: x.name, atS: x.atMs / 1000 - ss })), len: to - ss };
 }
 
 async function main() {
@@ -169,7 +169,7 @@ async function main() {
   const chapters = [];
   let t = 5;
   const addDesktop = (webm, marksFile, name) => {
-    const w = window_(marksFile);
+    const w = window_(marksFile, 1.5, name === 'wt7' ? 'AI assistant' : null); // wt7 was recorded when it still opened with the (honest, no-AI) AI chapter, now its own part wtai
     const dst = P(`${name}.mp4`);
     normalize(webm, dst, { ss: w.ss, to: w.to });
     const len = durationSec(dst);
@@ -202,7 +202,7 @@ async function main() {
     if (o['part-b']) addDesktop(o['part-b'], o['marks-b'], 'partB');
   } else if (mode === 'full') {
     // independent recorded parts, concatenated in order; the driver clip (chapter 21) goes after `--driver-after <part>`
-    const names = (o.parts ?? 'wt1,wt2,wt3,wt4,wt5,wt6,wt7').split(',');
+    const names = (o.parts ?? 'wt1,wt2,wt3,wt4,wt5,wt6,wtai,wt7').split(',');
     for (const n of names) {
       addDesktop(path.join(work, `${n}.webm`), path.join(work, `marks-${n}.json`), n);
       if (o.driver && n === (o['driver-after'] ?? 'wt4')) {
