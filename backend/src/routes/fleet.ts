@@ -795,7 +795,7 @@ fleet.post('/drivers', zValidator('json', createDriverSchema), async (c) => {
   `).bind(
     id, tenantId, data.name, phone,
     data.email ?? null, data.licenseNumber ?? null, data.licenseExpiry ?? null,
-    data.address ?? null, data.emergencyContactName ?? null, data.emergencyContactPhone ?? null,
+    data.address ?? null, data.emergencyContactName ?? null, normalizePhone(data.emergencyContactPhone ?? '') || null,
     data.dateOfJoining ?? null, data.notes ?? null, userId, now, now,
   ).run();
 
@@ -837,7 +837,7 @@ fleet.put('/drivers/:id', zValidator('json', updateDriverSchema), async (c) => {
   if (data.licenseExpiry !== undefined) { sets.push('license_expiry = ?'); params.push(data.licenseExpiry); }
   if (data.address !== undefined) { sets.push('address = ?'); params.push(data.address); }
   if (data.emergencyContactName !== undefined) { sets.push('emergency_contact_name = ?'); params.push(data.emergencyContactName); }
-  if (data.emergencyContactPhone !== undefined) { sets.push('emergency_contact_phone = ?'); params.push(data.emergencyContactPhone); }
+  if (data.emergencyContactPhone !== undefined) { sets.push('emergency_contact_phone = ?'); params.push(normalizePhone(data.emergencyContactPhone ?? '') || null); }
   if (data.dateOfJoining !== undefined) { sets.push('date_of_joining = ?'); params.push(data.dateOfJoining); }
   if (data.notes !== undefined) { sets.push('notes = ?'); params.push(data.notes); }
 
@@ -1205,6 +1205,9 @@ fleet.post('/trips', zValidator('json', createTripSchema), async (c) => {
   `).bind(data.driverId, data.dropDatetime, data.pickupDatetime).first();
   if (driverConflict) return error(c, 'Driver is not available for the selected date range', 400);
 
+  // Store the passenger phone as E.164 (empty -> null)
+  const passengerPhoneE164 = normalizePhone(data.passengerPhone ?? '') || null;
+
   await db.prepare(`
     INSERT INTO trip_assignments (
       id, tenant_id, lead_id, vehicle_id, driver_id, pickup_location, drop_location,
@@ -1219,7 +1222,7 @@ fleet.post('/trips', zValidator('json', createTripSchema), async (c) => {
     id, tenantId, data.leadId ?? null, data.vehicleId, data.driverId,
     data.pickupLocation ?? null, data.dropLocation ?? null,
     data.pickupDatetime, data.dropDatetime,
-    data.passengerName ?? null, data.passengerPhone ?? null,
+    data.passengerName ?? null, passengerPhoneE164,
     data.specialInstructions ?? null, userId,
     data.tripType ?? 'one_way', data.rateCardId ?? null,
     data.estimatedDistanceKm ?? null, data.estimatedDurationMin ?? null,
@@ -1243,7 +1246,7 @@ fleet.post('/trips', zValidator('json', createTripSchema), async (c) => {
   });
 
   // Send customer notification (async, non-blocking)
-  if (data.passengerPhone) {
+  if (passengerPhoneE164) {
     try {
       const driver = await db.prepare('SELECT name, phone FROM drivers WHERE id = ?').bind(data.driverId).first();
       const vehicle = await db.prepare('SELECT registration_number, type FROM vehicles WHERE id = ?').bind(data.vehicleId).first();
@@ -1254,7 +1257,7 @@ fleet.post('/trips', zValidator('json', createTripSchema), async (c) => {
         const settings = await db.prepare('SELECT company_name FROM settings LIMIT 1').first<{ company_name: string }>();
         const message = `Hello ${data.passengerName || 'Guest'}, your vehicle has been assigned for ${pickupDate}.\n\nDriver: ${driver.name}\nPhone: ${driver.phone}\nVehicle: ${(vehicle.type as string).replace(/_/g, ' ')} (${vehicle.registration_number})\n\nPickup: ${data.pickupLocation || 'TBD'} at ${pickupTime}\n\n— ${settings?.company_name || 'TravelCRM'}`;
         await c.env.SMS_QUEUE.send({
-          type: 'whatsapp', to: data.passengerPhone, body: message,
+          type: 'whatsapp', to: passengerPhoneE164, body: message,
           tenantId, entityType: 'trip_assignment', entityId: id,
         });
       }
@@ -1284,7 +1287,7 @@ fleet.post('/trips', zValidator('json', createTripSchema), async (c) => {
         vehicleType: vehicle?.type, vehicleRegistration: vehicle?.registration_number,
         pickupLocation: data.pickupLocation, dropLocation: data.dropLocation,
         pickupDatetime: data.pickupDatetime, dropDatetime: data.dropDatetime,
-        passengerName: data.passengerName, passengerPhone: data.passengerPhone,
+        passengerName: data.passengerName, passengerPhone: passengerPhoneE164,
         tripType: data.tripType ?? 'one_way',
       });
       await db.prepare(`
@@ -1355,7 +1358,7 @@ fleet.put('/trips/:id', zValidator('json', updateTripSchema), async (c) => {
   if (data.pickupDatetime !== undefined) { sets.push('pickup_datetime = ?'); params.push(data.pickupDatetime); }
   if (data.dropDatetime !== undefined) { sets.push('drop_datetime = ?'); params.push(data.dropDatetime); }
   if (data.passengerName !== undefined) { sets.push('passenger_name = ?'); params.push(data.passengerName); }
-  if (data.passengerPhone !== undefined) { sets.push('passenger_phone = ?'); params.push(data.passengerPhone); }
+  if (data.passengerPhone !== undefined) { sets.push('passenger_phone = ?'); params.push(normalizePhone(data.passengerPhone ?? '') || null); }
   if (data.specialInstructions !== undefined) { sets.push('special_instructions = ?'); params.push(data.specialInstructions); }
   // M20 fields
   if (data.tripType !== undefined) { sets.push('trip_type = ?'); params.push(data.tripType); }

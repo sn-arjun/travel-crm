@@ -943,8 +943,25 @@ leadRoutes.get('/:id/activities', requirePermission('leads', 'view'), async (c) 
     .prepare('SELECT COUNT(*) as count FROM lead_activities WHERE lead_id = ?')
     .bind(id).first<{ count: number }>();
 
-  return paginated(c, rows.results, total?.count ?? 0, pageNum, limitNum);
+  // additive: `metadata` stays the stored JSON string; `meta` is the same data parsed, with camelCase keys
+  const items = rows.results.map((row) => ({ ...row, meta: parseActivityMeta(row.metadata) }));
+
+  return paginated(c, items, total?.count ?? 0, pageNum, limitNum);
 });
+
+function parseActivityMeta(raw: unknown): Record<string, unknown> | null {
+  if (raw === null || raw === undefined || raw === '') return null;
+  let parsed: unknown = raw;
+  if (typeof raw === 'string') {
+    try { parsed = JSON.parse(raw); } catch { return null; }
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+    out[k.replace(/_([a-z0-9])/g, (_m, ch: string) => ch.toUpperCase())] = v;
+  }
+  return out;
+}
 
 // ============================================================
 // POST /:id/activities — Log manual activity (TICKET-067)

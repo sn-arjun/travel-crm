@@ -16,6 +16,7 @@ import { sendVerifyOtp, checkVerifyOtp } from '../services/twilio';
 import { sendEmail } from '../services/email';
 import { resetPasswordEmailHtml, accountLockedEmailHtml } from '../templates/reset-email';
 import { success, created, error } from '../utils/response';
+import { getTenantSummary } from '../utils/tenant-summary';
 
 const auth = new Hono<AppContext>();
 
@@ -228,6 +229,7 @@ auth.post(
         department: user.department,
         language: user.language,
       },
+      tenant: await getTenantSummary(tenantDb, tenantId, tenant.companyName),
     });
   }
 );
@@ -409,6 +411,7 @@ auth.post(
         department: user.department,
         language: user.language,
       },
+      tenant: await getTenantSummary(tenantDb, tenantId),
     });
   }
 );
@@ -519,6 +522,7 @@ auth.post(
         department: user.department,
         language: user.language,
       },
+      tenant: await getTenantSummary(tenantDb, tokenData.tenantId),
     });
   }
 );
@@ -798,6 +802,7 @@ auth.post(
         department: null,
         language: 'en',
       },
+      tenant: await getTenantSummary(tenantDb, inviteData.tenantId),
     });
   }
 );
