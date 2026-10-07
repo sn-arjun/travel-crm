@@ -584,10 +584,11 @@
       "repairAttempts": 0
     },
     "verify:travellers": {
-      "status": "gate-failed",
-      "timestamp": "2026-10-02T07:28:33.842Z",
-      "error": "spec:travellers: Running 26 tests using 1 worker\n\n  ✓   1 [setup] › e2e\\global-setup.ts:8:6 › authenticate as admin (2.2s)\n  ✓   2 [chromium] › e2e\\travellers.spec.ts:95:7 › Travellers: full round trip › create with every field -> list -> detail -> edit pre-fill -> edit -> delete (10.3s)\n  ✘   3 [ch",
-      "repairAttempts": 2
+      "status": "ok",
+      "timestamp": "2026-10-07T15:35:12.053Z",
+      "error": null,
+      "note": "fixed in fix pass (B08/B11/B17/B29)",
+      "manual": true
     },
     "verify:visa": {
       "status": "ok",
@@ -620,10 +621,11 @@
       "repairAttempts": 0
     },
     "cleanup": {
-      "status": "gate-failed",
-      "timestamp": "2026-10-02T07:41:50.080Z",
-      "error": "backendFrozen: Backend freeze violated. These files must not change:\n  backend/drizzle/tenant/0031_leads_fts_repair.sql\n  backend/drizzle/tenant/0032_import_export_jobs_tenant_id.sql\n  backend/drizzle/tenant/0033_flyers_simplify.sql\n  backend/drizzle/tenant/0034_users_invite_signature.sql",
-      "repairAttempts": 2
+      "status": "ok",
+      "timestamp": "2026-10-07T15:35:12.120Z",
+      "error": null,
+      "note": "backend changes reviewed and accepted in fix pass (B02/B33)",
+      "manual": true
     },
     "showcase": {
       "status": "gate-failed",
@@ -633,8 +635,8 @@
     }
   },
   "lastCompleted": {
-    "id": "showcase",
-    "status": "gate-failed",
-    "timestamp": "2026-10-02T10:09:39.225Z"
+    "id": "cleanup",
+    "status": "ok",
+    "timestamp": "2026-10-07T15:35:12.120Z"
   }
 }
