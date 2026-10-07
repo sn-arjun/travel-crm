@@ -35,7 +35,8 @@ export async function search(page: Page, placeholder: RegExp | string, term: str
 export async function openRow(page: Page, rowText: string | RegExp, urlRe: RegExp): Promise<void> {
   const row = page.locator('table tbody tr').filter({ hasText: rowText }).first();
   await hoverOn(page, row, 500);
-  await clickOn(page, row);
+  const view = row.getByRole('button', { name: 'View', exact: true }).or(row.getByRole('link', { name: 'View', exact: true }));
+  await clickOn(page, (await view.count()) ? view.first() : row);
   await page.waitForURL(urlRe, { timeout: 20_000 });
   await settle(page, 1300);
 }

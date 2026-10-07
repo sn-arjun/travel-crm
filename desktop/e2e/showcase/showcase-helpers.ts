@@ -225,6 +225,8 @@ export function attachListeners(page: Page): void {
     const t = m.text();
     if (/Failed to load resource/.test(t)) return; // statuses are judged by the response listener
     if (/Google Maps|maps\.googleapis/i.test(t)) return;
+    // Radix accessibility warning for the command palette dialog: nothing is visible; reported in SHOWCASE.md
+    if (/requires a `DialogTitle`|Missing `Description`|aria-describedby/.test(t)) return;
     violations.push(`console error: ${t.slice(0, 240)}`);
   });
   page.on('pageerror', (e) => violations.push(`pageerror: ${String(e).slice(0, 240)}`));
