@@ -64,6 +64,7 @@ yarn-error.log*
 backend/.wrangler-test.toml
 # Local-only: wrangler dev config with AI binding stripped (no Cloudflare auth in this sandbox)
 backend/.wrangler-e2e.toml
+backend/.wrangler-e2e-ai.toml
 # Scratch output of the remake pipeline's vitest gate
 desktop/audit/remake/.vitest-run.json
 

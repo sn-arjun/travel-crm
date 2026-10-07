@@ -2,7 +2,7 @@
 /**
  * Isolated local stack launcher for the fix batches.
  *
- *   node scripts/fix-stack.mjs up     [--slot N] [--reset-db] [--no-build]
+ *   node scripts/fix-stack.mjs up     [--slot N] [--reset-db] [--no-build] [--ai]
  *   node scripts/fix-stack.mjs down   [--slot N]
  *   node scripts/fix-stack.mjs status [--slot N]
  *
@@ -11,6 +11,9 @@
  * builds the desktop app with NEXT_PUBLIC_API_URL pointing at that API (unless --no-build) and serves it
  * with `next start`. Pids/ports are written to audit/fix/stack/slot<N>.json, logs next to it.
  * The local D1 lives in backend/.wrangler/state; it is created, migrated and seeded when missing or with --reset-db.
+ * --ai keeps the Workers AI binding ([ai] in wrangler.toml). That binding always runs REMOTELY on the
+ * logged-in Cloudflare account and is billed per request, so it is opt-in: use it only to record AI
+ * features, never for tests or ordinary runs (without it AI endpoints answer 503 AI_UNAVAILABLE).
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -28,14 +31,16 @@ const [command, ...rest] = process.argv.slice(2);
 let slot = 0;
 let resetDb = false;
 let noBuild = false;
+let withAi = false;
 for (let i = 0; i < rest.length; i++) {
   if (rest[i] === '--slot') slot = Number(rest[++i]);
   else if (rest[i] === '--reset-db') resetDb = true;
   else if (rest[i] === '--no-build') noBuild = true;
+  else if (rest[i] === '--ai') withAi = true;
   else die(`Unknown argument: ${rest[i]}`);
 }
 if (!['up', 'down', 'status'].includes(command) || !Number.isInteger(slot) || slot < 0) {
-  die('Usage: fix-stack.mjs up|down|status [--slot N] [--reset-db] [--no-build]');
+  die('Usage: fix-stack.mjs up|down|status [--slot N] [--reset-db] [--no-build] [--ai]');
 }
 const apiPort = 8787 + 10 * slot;
 const webPort = 3100 + 10 * slot;
@@ -168,6 +173,8 @@ function writeE2eWranglerConfig() {
     if (!skip) out.push(line);
   }
   writeFileSync(path.join(backendDir, '.wrangler-e2e.toml'), out.join('\n'));
+  // The same file with the [ai] binding kept, used only by `up --ai`.
+  writeFileSync(path.join(backendDir, '.wrangler-e2e-ai.toml'), lines.join('\n'));
 }
 
 // ── commands ────────────────────────────────────────────────
@@ -238,11 +245,12 @@ async function up() {
   }
 
   // (3) API
-  log(`starting API on :${apiPort}`);
+  const devConfig = withAi ? '.wrangler-e2e-ai.toml' : '.wrangler-e2e.toml';
+  log(`starting API on :${apiPort}${withAi ? ' with the REMOTE Workers AI binding (billed per request)' : ''}`);
   const apiPid = spawnLogged(
     'npx',
     [
-      'wrangler', 'dev', '--port', String(apiPort), '-c', '.wrangler-e2e.toml',
+      'wrangler', 'dev', '--port', String(apiPort), '-c', devConfig,
       '--var', 'TEST_MODE:true',
       '--var', 'SENDGRID_API_KEY:',
       '--var', 'TWILIO_ACCOUNT_SID:',
