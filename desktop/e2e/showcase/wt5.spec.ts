@@ -171,9 +171,8 @@ test('wt5: tasks, calendar, follow-ups, documents, inbox, templates, calls, chat
     // ── 29 Chatbot ──
     await chapter(page, 29, 'Chatbot', 'A website bot that hands off to your team');
     await nav(page, '/chatbot');
-    await say(page, 'A website chatbot that hands off to your team', 2800);
     await openRow(page, 'Meera', /\/chatbot\/conversations\/[^/]+$/);
-    await dwell(page, 1800);
+    await say(page, 'A website chatbot that hands off to your team', 2800);
     await typeInto(page, page.getByPlaceholder(/Type a reply/i), 'Namaste Meera, a January honeymoon in the Andamans is perfect. May I call you this evening?', { delay: 25 });
     await clickOn(page, page.getByRole('button', { name: 'Send reply' }));
     await settle(page, 1500);

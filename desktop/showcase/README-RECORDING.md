@@ -13,7 +13,26 @@ Source of truth for content: `STORYBOARD.md`. This file is how to run the machin
 
 ## Stages (`node scripts/record-demo.mjs --slot N [--from <stage>] [--only <stage>] [--skip-driver]`)
 `preflight` -> `seed` -> `storyA` -> `driver` -> `storyB` -> `walkthrough` -> `smoke` -> `compose` -> `finalize`
-- `storyA` / `storyB` / `walkthrough` are placeholders until `e2e/showcase/story.spec.ts` / `full-walkthrough.spec.ts` exist (they skip with a message).
+- `storyA` / `storyB` = `e2e/showcase/story.spec.ts` (scenes 1-6 and 8-9); `driver` = scene 7 on the emulator.
+- `walkthrough` re-seeds, then records seven independent parts: `wt1` (full-walkthrough.spec.ts) and `wt2`..`wt7` (`wtN.spec.ts`). A failed part is re-seeded and retaken alone
+  (`--parts wt3,wt5` re-records only those). `compose` joins them in order and inserts the driver clip as chapter 21 after `wt4`.
+
+### Exact commands (slot 2 shown; run from the repo root, stack up with `cd desktop && node scripts/fix-stack.mjs up --slot 2 --reset-db`)
+```bash
+# whole thing, 08:00-20:30 IST
+node scripts/record-demo.mjs --slot 2
+# outside the window: the airport pickup is pinned to an afternoon slot so the story still reads "this afternoon"
+SHOWCASE_IGNORE_WINDOW=1 DEMO_PICKUP=14:45 node scripts/record-demo.mjs --slot 2
+# story only (seed, scenes 1-6, driver, scenes 8-9), then compose + gate
+node scripts/record-demo.mjs --slot 2 --only seed && node scripts/record-demo.mjs --slot 2 --only storyA && node scripts/record-demo.mjs --slot 2 --only driver \
+  && node scripts/record-demo.mjs --slot 2 --only storyB && node scripts/record-demo.mjs --slot 2 --only compose
+# walkthrough only / one part
+node scripts/record-demo.mjs --slot 2 --only walkthrough
+node scripts/record-demo.mjs --slot 2 --only walkthrough --parts wt4
+node scripts/record-demo.mjs --slot 2 --from compose
+```
+Fast dry run of one part (about 1/6 of real time): `SHOWCASE_PACE=0.15 npx playwright test --config=playwright.showcase.config.ts --grep "wt3:"` (from `desktop/`, with `E2E_BASE_URL` / `E2E_API_URL`).
+Delete stale `.work/wt*.webm` / `partA.webm` after dry runs: `compose` treats their presence as "recorded".
 - `compose` builds story/full cuts when their takes exist, otherwise `.work/proof.mp4` from `smoke.webm` + `driver.mp4`.
 - A failure stops the run and names the stage; fix and resume with `--from`.
 

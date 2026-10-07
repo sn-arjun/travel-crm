@@ -39,12 +39,10 @@ test('wt6: marketing (chapters 30-36)', async ({ page, context }, testInfo) => {
 
     // ── 32 Segments ──
     await chapter(page, 32, 'Segments', 'Audiences that update themselves');
-    await page.goto('/marketing/segments');
-    await settle(page, 1500);
-    await say(page, 'Rule-based audiences that update themselves', 2800);
     await page.goto('/marketing/segments/new');
     await settle(page, 1000);
     await typeInto(page, page.locator('#name'), 'Kerala enquiries — Bengaluru');
+    await say(page, 'Rule-based audiences that update themselves', 2800);
     await typeInto(page, page.locator('#description'), 'Bengaluru contacts interested in Kerala');
     await typeInto(page, page.getByPlaceholder('Value...').first(), 'Bengaluru');
     await clickOn(page, page.getByRole('button', { name: 'Add rule', exact: true }));
