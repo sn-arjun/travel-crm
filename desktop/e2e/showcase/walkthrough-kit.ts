@@ -20,7 +20,8 @@ export async function chapter(page: Page, n: number, title: string, subtitle?: s
 
 /** Click a sidebar link, wait for the route and for the page to finish loading. */
 export async function nav(page: Page, href: string, o: { exact?: boolean; ms?: number } = {}): Promise<void> {
-  await clickOn(page, sidebar(page, href));
+  if ((await sidebar(page, href).count()) === 0) await page.goto(href); // pages the sidebar does not link to directly
+  else await clickOn(page, sidebar(page, href));
   await page.waitForURL(o.exact === false ? `**${href}*` : `**${href}`, { timeout: 20_000 });
   await settle(page, o.ms ?? 1200);
 }
