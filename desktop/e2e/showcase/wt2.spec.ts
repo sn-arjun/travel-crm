@@ -1,0 +1,147 @@
+/** Walkthrough part 2: Sales & supply (chapters 6-9). See full-walkthrough.spec.ts for the overall layout. */
+import { expect, test } from './showcase-fixtures';
+import * as D from './demo-data';
+import { assertClean, chapter, clickOn, dwell, hoverOn, nav, openRow, recordPart, say, search, settle, typeInto } from './walkthrough-kit';
+import { pickRelation, pickSelect } from './showcase-helpers';
+
+void D;
+
+test('wt2: itineraries, templates, rate cards, suppliers (chapters 6-9)', async ({ page, context }, testInfo) => {
+  test.setTimeout(25 * 60_000);
+  await recordPart(page, context, 'wt2', testInfo, async () => {
+    await page.goto('/itineraries');
+    await settle(page, 1500);
+
+    // ── 6 Itineraries ──
+    await chapter(page, 6, 'Itineraries', 'Day-by-day plans with live margins');
+    await expect(page.locator('table tbody tr').first()).toBeVisible();
+    await page.getByLabel('Filter by status').selectOption('draft');
+    await settle(page, 1300);
+    await say(page, 'Every quote, by status, with cost and selling price', 3000);
+    await page.getByLabel('Filter by status').selectOption('');
+    await settle(page, 900);
+    await clickOn(page, page.getByRole('link', { name: /New Itinerary/ }).or(page.getByRole('button', { name: /New Itinerary/ })).first());
+    await page.waitForURL('**/itineraries/new');
+    await settle(page, 1000);
+    await typeInto(page, page.locator('#title'), 'Goa Beach Escape — Desai family');
+    await pickRelation(page, page.getByRole('combobox').filter({ hasText: /Search leads/ }).first(), /Search leads/i, 'Goa Beach Escape', /Goa Beach Escape — Desai family/);
+    await typeInto(page, page.locator('#dest'), 'Goa');
+    await typeInto(page, page.getByLabel('Day 1 title'), 'Arrive North Goa');
+    await clickOn(page, page.getByRole('button', { name: /^hotel$/i }).first());
+    await clickOn(page, page.getByRole('button', { name: 'Select from Rate Card' }).first());
+    const picker = page.getByRole('dialog').filter({ hasText: 'Select from Rate Cards' });
+    await typeInto(page, picker.getByPlaceholder('Search rate cards...'), 'Candolim');
+    await settle(page, 1200);
+    await say(page, 'Pick negotiated rates — cost and price fill themselves', 3200);
+    await clickOn(page, picker.locator('li').filter({ hasText: 'Candolim Sands Resort' }).first().getByRole('button', { name: 'Select' }));
+    await expect(page.getByText('Rate card applied').first()).toBeVisible();
+    await dwell(page, 1200);
+    await typeInto(page, page.getByLabel('Day 2 title'), 'Sunset on the Mandovi');
+    await clickOn(page, page.getByRole('button', { name: /^activity$/i }).nth(1));
+    await typeInto(page, page.getByLabel('Activity name').first(), 'Mandovi sunset cruise');
+    await typeInto(page, page.getByLabel('Cost price').nth(1), '1600');
+    await typeInto(page, page.getByLabel('Selling price').nth(1), '2200');
+    await assertClean(page, 'ch6 form');
+    await clickOn(page, page.getByRole('button', { name: /^Save$/ }));
+    await page.waitForURL(/\/itineraries\/[^/]+$/, { timeout: 20_000 });
+    await settle(page, 1800);
+    await clickOn(page, page.getByRole('tab', { name: 'Costs' }));
+    await dwell(page, 1500);
+    await say(page, 'Drag-and-drop day builder with live margins', 2800);
+    await clickOn(page, page.getByRole('tab', { name: 'Versions' }));
+    await dwell(page, 1200);
+    await clickOn(page, page.getByRole('tab', { name: 'Share' }));
+    await dwell(page, 1500);
+    await assertClean(page, 'ch6');
+
+    // ── 7 Itinerary templates ──
+    await chapter(page, 7, 'Itinerary templates', 'Reusable packages, instant quotes');
+    await nav(page, '/itineraries/templates');
+    await search(page, /Search templates/i, 'Rajasthan');
+    const raj = page.locator('table tbody tr').filter({ hasText: 'Rajasthan Royal Heritage' }).first();
+    await clickOn(page, raj.locator('button[aria-label="Preview"]'));
+    await expect(page.getByRole('dialog').getByText('8 days')).toBeVisible();
+    await say(page, 'Preview any package before you use it', 2800);
+    await clickOn(page, page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).first());
+    await clickOn(page, raj.locator('button[aria-label="Use template"]'));
+    const use = page.getByRole('dialog');
+    await pickRelation(page, use.getByRole('combobox').first(), /Search leads/i, 'Rajasthan Royal', /Rajasthan Royal Heritage — 8 days/);
+    await say(page, 'Reusable packages turn into quotes instantly', 2800);
+    await clickOn(page, use.getByRole('button', { name: /Create itinerary/i }));
+    await page.waitForURL(/\/itineraries\/[^/]+$/, { timeout: 20_000 });
+    await settle(page, 1800);
+    await page.goto('/itineraries/templates');
+    await settle(page, 1300);
+    await clickOn(page, page.getByRole('button', { name: /New template/ }));
+    const nt = page.getByRole('dialog');
+    await typeInto(page, nt.locator('#tplTitle'), 'Coorg Coffee Trails — 2N/3D');
+    await typeInto(page, nt.locator('#tplDestination'), 'Coorg');
+    await pickSelect(page, nt.locator('#tplCategory'), 'family');
+    await typeInto(page, nt.locator('#tplDays'), '3');
+    await typeInto(page, nt.getByLabel('Day 1 title'), 'Arrive Madikeri, coffee estate walk');
+    await typeInto(page, nt.getByLabel('Day 2 title'), 'Abbey Falls and Dubare elephant camp');
+    await typeInto(page, nt.getByLabel('Day 3 title'), "Raja's Seat sunrise, depart");
+    await clickOn(page, nt.getByRole('button', { name: 'Create template' }));
+    await settle(page, 1800);
+    await assertClean(page, 'ch7');
+
+    // ── 8 Rate cards ──
+    await chapter(page, 8, 'Rate cards', 'Seasonal supplier pricing');
+    await nav(page, '/rate-cards');
+    await search(page, /Search rate cards/i, 'Kerala');
+    await say(page, 'Seasonal supplier pricing your whole team trusts', 2800);
+    await page.goto('/rate-cards/new');
+    await settle(page, 1000);
+    await typeInto(page, page.locator('#name'), 'Alleppey Sunset Shikara Ride — 2 hrs');
+    await pickSelect(page, page.locator('button#serviceType'), 'Activity');
+    await pickRelation(page, page.getByRole('combobox').filter({ hasText: /Select supplier/ }).first(), /Search/i, 'Lakes', 'Lakes & Lagoons Houseboats');
+    await pickSelect(page, page.locator('button#season'), 'Peak');
+    await typeInto(page, page.locator('#costPrice'), '600');
+    await typeInto(page, page.locator('#sellingPrice'), '850');
+    await pickSelect(page, page.locator('button#unit'), 'Per Person');
+    await assertClean(page, 'ch8 form');
+    await clickOn(page, page.getByRole('button', { name: /^Save$/ }));
+    await page.waitForURL('**/rate-cards', { timeout: 20_000 });
+    await settle(page, 1300);
+    await search(page, /Search rate cards/i, 'Shikara');
+    const rc = page.locator('table tbody tr').filter({ hasText: 'Shikara' }).first();
+    await hoverOn(page, rc, 500);
+    await clickOn(page, rc.getByRole('button', { name: 'Edit' }));
+    await page.waitForURL(/\/rate-cards\/[^/]+\/edit$/);
+    await settle(page, 1200);
+    await typeInto(page, page.locator('#sellingPrice'), '900');
+    await clickOn(page, page.getByRole('button', { name: /^Save/ }));
+    await page.waitForURL('**/rate-cards', { timeout: 20_000 });
+    await settle(page, 1500);
+    await assertClean(page, 'ch8');
+
+    // ── 9 Suppliers & rate comparison ──
+    await chapter(page, 9, 'Suppliers & rate comparison', 'Your supplier network');
+    await nav(page, '/suppliers');
+    await page.goto('/suppliers/new');
+    await settle(page, 1000);
+    await typeInto(page, page.locator('#companyName'), 'Konkan Coast Cabs');
+    await pickSelect(page, page.locator('button#category'), 'Transport');
+    await typeInto(page, page.locator('#contactPerson'), 'Sachin Naik');
+    await typeInto(page, page.locator('input[type="tel"]').first(), '9822061734');
+    await typeInto(page, page.locator('#email'), 'bookings.konkancabs@example.com');
+    await typeInto(page, page.locator('#city'), 'Panaji');
+    await typeInto(page, page.locator('#state'), 'Goa');
+    await typeInto(page, page.locator('#gstNumber'), '30AAKFK2219R1Z4');
+    await say(page, 'Add a supplier with GST and contact details', 2800);
+    await assertClean(page, 'ch9 form');
+    await clickOn(page, page.getByRole('button', { name: /Save Supplier/ }));
+    await page.waitForURL('**/suppliers', { timeout: 20_000 });
+    await settle(page, 1300);
+    await search(page, /Search suppliers/i, 'Konkan');
+    await openRow(page, 'Konkan Coast Cabs', /\/suppliers\/[^/]+$/);
+    await dwell(page, 2000);
+    await nav(page, '/suppliers/compare');
+    await pickSelect(page, page.getByRole('combobox').filter({ hasText: /Select service type/ }), 'Hotel');
+    await typeInto(page, page.getByPlaceholder('e.g., Goa, Maldives, Thailand'), 'Kerala');
+    await clickOn(page, page.getByRole('button', { name: 'Compare Rates' }));
+    await settle(page, 2000);
+    await say(page, 'Compare supplier rates side by side', 3200);
+    await assertClean(page, 'ch9');
+  });
+});

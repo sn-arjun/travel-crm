@@ -18,7 +18,7 @@ const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:3100';
 
 export default defineConfig({
   testDir: './e2e/showcase',
-  testMatch: /(smoke|story|full-walkthrough)\.spec\.ts/,
+  testMatch: /(smoke|story|full-walkthrough|wt\d)\.spec\.ts/,
   outputDir: './showcase/.artifacts',
 
   fullyParallel: false,
