@@ -325,6 +325,9 @@ async function seedAll(): Promise<Ids> {
     if (r?.id) ids.campaigns[cp.name] = r.id;
   }
 
+  // starred leads for the Bookmarks page
+  for (const k of ['L02', 'L03', 'L12']) if (ids.leads[k]) await call('bookmarks', 'POST', '/bookmarks', { entityType: 'lead', entityId: ids.leads[k] });
+
   // marketing: two unsubscribes, a draft WhatsApp broadcast and three flyer templates (the walkthrough builds a flyer from one)
   for (const [key, channel, reason] of [['C27', 'email', 'Unsubscribed from the Diwali campaign'], ['C20', 'whatsapp', 'Asked to stop promotional messages']] as const) {
     if (ids.contacts[key]) await call('optOuts', 'POST', `/marketing/opt-out/${ids.contacts[key]}`, { channel, reason });

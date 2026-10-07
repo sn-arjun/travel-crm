@@ -235,6 +235,8 @@ export function attachListeners(page: Page): void {
     if (s < 400) return;
     const url = r.url();
     if (NET_ALLOW.some((re) => re.test(url))) return;
+    // AI endpoints answer 503 AI_UNAVAILABLE on a stack with no AI provider; the pages say so on screen (shown honestly in the AI chapter)
+    if (s === 503 && /\/ai\//.test(url)) return;
     violations.push(`HTTP ${s} ${r.request().method()} ${url.slice(0, 160)}`);
   });
 }
