@@ -17,6 +17,10 @@ Source of truth for content: `STORYBOARD.md`. This file is how to run the machin
 - `walkthrough` re-seeds, then records seven independent parts: `wt1` (full-walkthrough.spec.ts) and `wt2`..`wt7` (`wtN.spec.ts`). A failed part is re-seeded and retaken alone
   (`--parts wt3,wt5` re-records only those). `compose` joins them in order and inserts the driver clip as chapter 21 after `wt4`.
 
+- Chapter 37 (AI) is its own part `wtai` (`wtai.spec.ts`, 3 real Workers AI requests per take, billed). It is skipped by `walkthrough` unless `--ai` is passed, needs a stack started with
+  `node scripts/fix-stack.mjs up --slot N --ai`, runs with `SHOWCASE_AI=1`, and is never retried automatically. Develop it WITHOUT `--ai` (same clicks, the "AI is not configured yet" notice is the expected result).
+  Order in the video: wt1..wt6, wtai, wt7.
+
 ### Exact commands (slot 2 shown; run from the repo root, stack up with `cd desktop && node scripts/fix-stack.mjs up --slot 2 --reset-db`)
 ```bash
 # whole thing, 08:00-20:30 IST

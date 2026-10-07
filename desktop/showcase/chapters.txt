@@ -1,0 +1,47 @@
+00:00 Introduction
+00:05 Sign in & workspace
+00:37 Dashboard
+01:10 Contacts
+02:24 Leads & pipeline
+04:17 Accounts
+04:28 Itineraries
+05:34 Itinerary templates
+06:33 Rate cards
+07:26 Suppliers & rate comparison
+08:24 Invoices
+09:23 Payments
+09:55 Credit & debit notes
+10:32 Vouchers
+11:15 Travellers
+11:55 Visa
+12:41 Fleet — vehicles
+13:41 Fleet — drivers
+14:19 Fleet — trips
+15:55 Fleet — rate cards
+16:27 Fleet — dashboard & alerts
+16:44 Driver app
+17:52 Tasks
+18:55 Calendar
+19:28 Follow-ups
+20:22 Documents
+20:52 Inbox & bulk send
+21:28 Message templates
+22:08 Calls & VoIP
+22:28 Chatbot
+22:41 Marketing dashboard
+22:50 Campaigns
+23:33 Segments
+24:08 Flyers & branding
+24:48 Festival offers
+25:00 Opted-out contacts
+25:10 WhatsApp campaigns
+25:17 AI assistant
+26:28 Reports
+27:03 Import & export
+27:43 Notifications
+28:02 Settings — company
+28:34 Settings — team
+29:04 Integrations & webhooks
+29:14 Super admin
+29:30 Help & bookmarks
+29:46 Thank you
