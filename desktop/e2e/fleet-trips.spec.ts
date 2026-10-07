@@ -19,6 +19,18 @@ function ymd(d: Date) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/** Human date + time as the trip pages show it, e.g. '15 Nov 2026, 9:30 am' (or '15 Nov, 9:30 am' short). */
+function when(d: Date, hh: number, mm: number, short = false) {
+  const day = d.toLocaleDateString('en-IN', short ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' });
+  const h12 = hh % 12 === 0 ? 12 : hh % 12;
+  return `${day}, ${h12}:${pad(mm)} ${hh < 12 ? 'am' : 'pm'}`;
+}
+
+/** National digits as stored by the form (E.164) and shown on detail: '+91 98765 43210'. */
+function shownPhone(national: string) {
+  return `+91 ${national.slice(0, 5)} ${national.slice(5)}`;
+}
+
 /** A date in the month after today, at the given day-of-month. */
 function nextMonth(day: number) {
   const now = new Date();
@@ -154,7 +166,7 @@ test.describe('Fleet Trips', () => {
     await expect(row).toContainText('Mumbai Airport → Pune City Center');
     await expect(row).toContainText(vehicle.registrationNumber);
     await expect(row).toContainText(driver.name);
-    await expect(row).toContainText(`${ymd(startDay)} 09:30`);
+    await expect(row).toContainText(when(startDay, 9, 30, true));
     await expect(row).toContainText('150 km');
     await expect(row).toContainText(/₹\s?3,500/);
     await expect(row).toContainText(/Assigned/i);
@@ -171,12 +183,12 @@ test.describe('Fleet Trips', () => {
     await expect(page.getByText('Assigned', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('Pickup', { exact: true })).toBeVisible();
     await expect(page.getByText('Drop', { exact: true })).toBeVisible();
-    await expect(page.getByText(`${ymd(startDay)} 09:30`).first()).toBeVisible();
-    await expect(page.getByText(`${ymd(endDay)} 18:45`).first()).toBeVisible();
+    await expect(page.getByText(when(startDay, 9, 30)).first()).toBeVisible();
+    await expect(page.getByText(when(endDay, 18, 45)).first()).toBeVisible();
     await expect(page.getByText('150 km').first()).toBeVisible();
     await expect(page.getByText(/₹\s?3,500/).first()).toBeVisible();
     await expect(page.getByText(passenger).first()).toBeVisible();
-    await expect(page.getByText(phone).first()).toBeVisible();
+    await expect(page.getByText(shownPhone(phone)).first()).toBeVisible();
     await expect(page.getByText(instructions).first()).toBeVisible();
     await expect(page.getByText('Honda City').first()).toBeVisible();
     await expect(page.getByText(vehicle.registrationNumber).first()).toBeVisible();
@@ -190,7 +202,7 @@ test.describe('Fleet Trips', () => {
     expect(created.vehicleId).toBe(vehicle.id);
     expect(created.driverId).toBe(driver.id);
     expect(created.passengerName).toBe(passenger);
-    expect(created.passengerPhone).toBe(phone);
+    expect(created.passengerPhone).toBe(`+91${phone}`);
     expect(created.specialInstructions).toBe(instructions);
     expect(created.estimatedDistanceKm).toBe(150);
     expect(created.estimatedCost).toBe(3500);
@@ -235,12 +247,12 @@ test.describe('Fleet Trips', () => {
     await waitForLoad(page);
 
     await expect(page.locator('h1')).toContainText('Mumbai Domestic Airport → Pune Railway Station');
-    await expect(page.getByText(`${ymd(startDay)} 10:15`).first()).toBeVisible();
-    await expect(page.getByText(`${ymd(endDay)} 19:20`).first()).toBeVisible();
+    await expect(page.getByText(when(startDay, 10, 15)).first()).toBeVisible();
+    await expect(page.getByText(when(endDay, 19, 20)).first()).toBeVisible();
     await expect(page.getByText('165 km').first()).toBeVisible();
     await expect(page.getByText(/₹\s?4,200/).first()).toBeVisible();
     await expect(page.getByText(passenger2).first()).toBeVisible();
-    await expect(page.getByText(phone2).first()).toBeVisible();
+    await expect(page.getByText(shownPhone(phone2)).first()).toBeVisible();
     await expect(page.getByText(instructions2).first()).toBeVisible();
     await expect(page.getByText('Tata Winger').first()).toBeVisible();
     await expect(page.getByText(vehicle2.registrationNumber).first()).toBeVisible();
@@ -250,7 +262,7 @@ test.describe('Fleet Trips', () => {
     expect(updated.dropLocation).toBe('Pune Railway Station');
     expect(updated.vehicleId).toBe(vehicle2.id);
     expect(updated.passengerName).toBe(passenger2);
-    expect(updated.passengerPhone).toBe(phone2);
+    expect(updated.passengerPhone).toBe(`+91${phone2}`);
     expect(updated.specialInstructions).toBe(instructions2);
     expect(updated.estimatedDistanceKm).toBe(165);
     expect(updated.estimatedCost).toBe(4200);

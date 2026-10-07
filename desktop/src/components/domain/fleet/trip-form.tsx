@@ -5,9 +5,10 @@ import { z } from 'zod';
 import type { UseFormReturn } from 'react-hook-form';
 import { FormRow, RelationCombobox } from '@/components/domain';
 import {
-  AddressAutocomplete, Button, CurrencyInput, DatePicker, Input, PhoneInput, SectionCard,
+  AddressAutocomplete, Button, CurrencyInput, DatePicker, Input, SectionCard,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea,
 } from '@/components/ui';
+import { E164PhoneInput } from '@/components/ui/phone-input';
 import { fleetApi } from '@/lib/api/fleet';
 import type { Driver, FleetRateCard, Vehicle } from '@/lib/api/fleet';
 import { leadsApi } from '@/lib/api/leads';
@@ -306,7 +307,7 @@ export function TripFormSections({ form }: { form: UseFormReturn<TripFormValues>
             <Input id="passengerName" {...form.register('passengerName')} placeholder="Full name" />
           </FormRow>
           <FormRow name="passengerPhone" label="Passenger phone">
-            <PhoneInput
+            <E164PhoneInput
               value={form.watch('passengerPhone') ?? ''}
               onChange={(v) => form.setValue('passengerPhone', v, { shouldDirty: true })}
             />

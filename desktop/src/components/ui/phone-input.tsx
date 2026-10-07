@@ -4,6 +4,7 @@ import * as React from 'react';
 import { ChevronDown } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { joinPhone, splitPhone } from '@/lib/phone';
 import {
   Popover,
   PopoverContent,
@@ -137,5 +138,41 @@ export function PhoneInput({
         type="tel"
       />
     </div>
+  );
+}
+
+export interface E164PhoneInputProps {
+  /** Stored value: E.164 ("+919820144562"), a legacy digit-only number, or ''. */
+  value: string;
+  /** Receives E.164, or '' when no digits are entered. */
+  onChange: (value: string) => void;
+  placeholder?: string;
+  className?: string;
+  disabled?: boolean;
+}
+
+/**
+ * `PhoneInput` for forms that keep one string. It splits the stored value for the picker
+ * (legacy digit-only numbers read as +91) and always writes E.164 back.
+ */
+export function E164PhoneInput({ value, onChange, placeholder, className, disabled }: E164PhoneInputProps) {
+  const parts = splitPhone(value);
+  // The picked code is remembered even while no digits are typed yet
+  const [pickedCode, setPickedCode] = React.useState<string | null>(null);
+  const countryCode = parts.national ? parts.countryCode : (pickedCode ?? parts.countryCode);
+
+  return (
+    <PhoneInput
+      value={parts.national}
+      countryCode={countryCode}
+      placeholder={placeholder}
+      className={className}
+      disabled={disabled}
+      onChange={(national) => onChange(joinPhone(countryCode, national))}
+      onCountryCodeChange={(code) => {
+        setPickedCode(code);
+        if (parts.national) onChange(joinPhone(code, parts.national));
+      }}
+    />
   );
 }

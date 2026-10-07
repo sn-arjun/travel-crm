@@ -12,6 +12,7 @@ import {
   TripFormSections, safeTripType, splitDateTime, toIso, tripFormSchema, type TripFormValues,
 } from '@/components/domain/fleet/trip-form';
 import { useApiQuery } from '@/hooks/use-api';
+import { toE164 } from '@/lib/phone';
 import { toast } from 'sonner';
 
 export default function EditTripPage() {
@@ -90,7 +91,7 @@ export default function EditTripPage() {
           driverId: v.driverId,
           leadId: v.leadId || undefined,
           passengerName: v.passengerName ?? '',
-          passengerPhone: v.passengerPhone ?? '',
+          passengerPhone: toE164(v.passengerPhone),
           specialInstructions: v.specialInstructions ?? '',
           startLocation: v.startLocation,
           endLocation: v.endLocation,

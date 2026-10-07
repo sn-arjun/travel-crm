@@ -20,9 +20,12 @@ import { toast } from 'sonner';
 import { TRIP_STATUS_LABELS, VEHICLE_TYPE_LABELS } from '@travelcrm/shared';
 import type { TimelineItem } from '@/components/ui/timeline';
 import {
-  formatCoordinates, formatTripDate, formatTripDateTime, formatTripTime12, formatTripWhen,
+  formatCoordinates, formatTripDay, formatTripDuration, formatTripWhen,
   isTripActive, tripEventLabel, tripEventTone, tripStatusTone, tripTypeLabel,
 } from '@/components/domain/fleet/trip-format';
+import { TRIP_LOAD_MAX_RETRIES, tripLoadView } from '@/components/domain/fleet/trip-load-state';
+import { formatDisplayDate } from '@/lib/dates';
+import { formatPhone } from '@/lib/phone';
 
 const TRIP_STATUS_ORDER = ['assigned', 'accepted', 'en_route', 'started', 'completed'] as const;
 
@@ -67,7 +70,7 @@ export default function TripDetailPage() {
 
   // Timeline and costs are best-effort: when one fails the last good copy stays on screen.
   const lastGood = React.useRef<{ timeline: TripTimeline[]; costs: TripCost[] }>({ timeline: [], costs: [] });
-  const { data: bundle, loading, refetch } = useApiQuery(async () => {
+  const { data: bundle, loading, error, refetch } = useApiQuery(async () => {
     const [tripRes, timelineRes, costsRes] = await Promise.all([
       fleetApi.trips.getById(tripId),
       fleetApi.trips.getTimeline(tripId).catch(() => null),
@@ -83,6 +86,24 @@ export default function TripDetailPage() {
   const costs = bundle?.costs ?? [];
   const timelineLoading = loading;
   const costsLoading = loading;
+
+  // A failed first load (e.g. a request racing the navigation) is retried before the page
+  // settles, so "Trip not found" never flashes for a trip that exists.
+  const [loadRetries, setLoadRetries] = React.useState(0);
+  const [prevTripId, setPrevTripId] = React.useState(tripId);
+  if (prevTripId !== tripId) {
+    setPrevTripId(tripId);
+    setLoadRetries(0);
+  }
+  const view = tripLoadView({ hasTrip: !!trip, loading, error, retries: loadRetries });
+  React.useEffect(() => {
+    if (trip || loading || !error || loadRetries >= TRIP_LOAD_MAX_RETRIES) return;
+    const timer = window.setTimeout(() => {
+      setLoadRetries((n) => n + 1);
+      void refetch();
+    }, 600 * (loadRetries + 1));
+    return () => window.clearTimeout(timer);
+  }, [trip, loading, error, loadRetries, refetch]);
 
   /** Re-reads trip, timeline and costs. A silent load never swaps content for skeletons. */
   const load = React.useCallback(
@@ -233,16 +254,43 @@ export default function TripDetailPage() {
     }
   }
 
-  if (loading) {
+  if (view === 'loading') {
+    // Mirrors the loaded layout (header, stat row, route card, two cards) so nothing jumps
     return (
       <PageContainer>
-        <Skeleton className="h-16 w-full" />
-        <Skeleton className="h-64 w-full" />
+        <div className="flex flex-col gap-ds-6" data-testid="trip-skeleton">
+          <Skeleton className="h-16 w-full" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-ds-4">
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full" />
+          </div>
+          <Skeleton className="h-48 w-full" />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-ds-4">
+            <Skeleton className="h-52 w-full" />
+            <Skeleton className="h-52 w-full" />
+          </div>
+        </div>
       </PageContainer>
     );
   }
 
-  if (!trip) {
+  if (view === 'error') {
+    return (
+      <EmptyState
+        title="Could not load this trip"
+        description="Something went wrong while loading the trip. Check your connection and try again."
+        action={
+          <div className="flex gap-ds-2">
+            <Button onClick={() => { setLoadRetries(0); void refetch(); }}>Try again</Button>
+            <Button variant="outline" onClick={() => router.push('/fleet/trips')}>Back to trips</Button>
+          </div>
+        }
+      />
+    );
+  }
+
+  if (view === 'not-found' || !trip) {
     return (
       <EmptyState
         title="Trip not found"
@@ -283,7 +331,7 @@ export default function TripDetailPage() {
       <DetailPage
         entity={trip}
         title={`${trip.startLocation} → ${trip.endLocation}`}
-        subtitle={`${trip.passengerName || 'No passenger'} · ${tripTypeText} · ${formatTripDate(trip.startTime)}`}
+        subtitle={`${trip.passengerName || 'No passenger'} · ${tripTypeText} · ${formatTripDay(trip.startTime)}`}
         status={<Tag tone={tripStatusTone(trip.status)}>{TRIP_STATUS_LABELS[trip.status as keyof typeof TRIP_STATUS_LABELS] || trip.status}</Tag>}
         onBack={() => router.push('/fleet/trips')}
         messaging={driver ? {
@@ -374,7 +422,7 @@ export default function TripDetailPage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium">{COST_TYPE_LABELS[cost.costType] || cost.costType}</p>
                       {cost.notes && <p className="text-xs text-ds-foreground-muted">{cost.notes}</p>}
-                      <p className="text-xs text-ds-foreground-muted">{new Date(cost.createdAt).toLocaleDateString('en-IN')}</p>
+                      <p className="text-xs text-ds-foreground-muted">{formatDisplayDate(cost.createdAt)}</p>
                     </div>
                     <p className="text-sm font-semibold shrink-0">₹{cost.amount.toLocaleString('en-IN')}</p>
                     <Button variant="ghost" size="icon-sm" aria-label="Delete cost" onClick={() => void handleDeleteCost(cost.id)}>
@@ -418,16 +466,18 @@ export default function TripDetailPage() {
                   <p className="text-sm font-medium mt-0.5">{trip.endLocation}</p>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-ds-4 mt-ds-4 pt-ds-4 border-t border-ds-border">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-ds-4 mt-ds-4 pt-ds-4 border-t border-ds-border">
                 <div>
                   <p className="text-xs text-ds-foreground-muted">Start</p>
-                  <p className="text-sm font-medium mt-0.5">{formatTripDateTime(trip.startTime)}</p>
-                  <p className="text-xs text-ds-foreground-muted">{formatTripTime12(trip.startTime)}</p>
+                  <p className="text-sm font-medium mt-0.5">{formatTripWhen(trip.startTime)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-ds-foreground-muted">End</p>
-                  <p className="text-sm font-medium mt-0.5">{formatTripDateTime(trip.endTime)}</p>
-                  <p className="text-xs text-ds-foreground-muted">{formatTripTime12(trip.endTime)}</p>
+                  <p className="text-sm font-medium mt-0.5">{formatTripWhen(trip.endTime)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-ds-foreground-muted">Duration</p>
+                  <p className="text-sm font-medium mt-0.5">{formatTripDuration(trip.startTime, trip.endTime) || '—'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-ds-foreground-muted">Est. distance</p>
@@ -440,7 +490,7 @@ export default function TripDetailPage() {
               <SectionCard title="Passenger">
                 <div className="flex flex-col gap-ds-3">
                   <div className="flex justify-between"><span className="text-sm text-ds-foreground-muted">Name</span><span className="text-sm font-medium">{trip.passengerName || '—'}</span></div>
-                  <div className="flex justify-between"><span className="text-sm text-ds-foreground-muted">Phone</span><span className="text-sm font-medium">{trip.passengerPhone || '—'}</span></div>
+                  <div className="flex justify-between"><span className="text-sm text-ds-foreground-muted">Phone</span><span className="text-sm font-medium">{formatPhone(trip.passengerPhone) || '—'}</span></div>
                   <div className="flex justify-between items-center"><span className="text-sm text-ds-foreground-muted">Trip type</span><Tag>{tripTypeText}</Tag></div>
                   {trip.leadId && (
                     <div className="flex justify-between items-center">
@@ -481,7 +531,7 @@ export default function TripDetailPage() {
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate">{driver?.name || trip.driverName || '—'}</p>
                       <p className="text-xs text-ds-foreground-muted flex items-center gap-ds-1">
-                        {driver?.phone && <><Phone className="h-3 w-3" aria-hidden="true" />{driver.phone}</>}
+                        {driver?.phone && <><Phone className="h-3 w-3" aria-hidden="true" />{formatPhone(driver.phone)}</>}
                         {driver?.rating ? ` · ★${driver.rating}` : ''}
                       </p>
                     </div>

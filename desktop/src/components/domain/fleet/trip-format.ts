@@ -44,6 +44,23 @@ export function formatTripWhen(iso?: string | null): string {
   return time ? `${date}, ${time}` : date;
 }
 
+/** Human date without the time, e.g. "4 Oct 2026". */
+export function formatTripDay(iso?: string | null): string {
+  if (!iso) return '—';
+  return formatDisplayDate(new Date(iso)) || '—';
+}
+
+/** "4 h 30 min" between two trip timestamps; '' when either is missing or the range is not positive. */
+export function formatTripDuration(startIso?: string | null, endIso?: string | null): string {
+  if (!startIso || !endIso) return '';
+  const minutes = Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 60000);
+  if (!Number.isFinite(minutes) || minutes <= 0) return '';
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const mins = minutes % 60;
+  return [days ? `${days} d` : '', hours ? `${hours} h` : '', mins ? `${mins} min` : ''].filter(Boolean).join(' ');
+}
+
 /** Short human date and time without the year, e.g. "4 Oct, 3:45 pm". */
 export function formatTripWhenShort(iso?: string | null): string {
   if (!iso) return '—';

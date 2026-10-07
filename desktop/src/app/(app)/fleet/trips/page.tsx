@@ -11,7 +11,8 @@ import { fleetApi } from '@/lib/api/fleet';
 import type { Trip } from '@/lib/api/fleet';
 import { toast } from 'sonner';
 import { TRIP_STATUS_LABELS } from '@travelcrm/shared';
-import { formatTripDateTime, tripStatusTone, tripTypeLabel } from '@/components/domain/fleet/trip-format';
+import { formatTripDateTime, formatTripWhenShort, tripStatusTone, tripTypeLabel } from '@/components/domain/fleet/trip-format';
+import { formatPhone } from '@/lib/phone';
 import { toLocalDateString } from '@/lib/dates';
 
 function toCsvValue(v: unknown) {
@@ -78,7 +79,14 @@ export default function TripsPage() {
           {
             key: 'passenger',
             header: 'Passenger',
-            cell: (t) => t.passengerName || '—',
+            cell: (t) => (
+              <span className="flex flex-col leading-tight">
+                <span>{t.passengerName || '—'}</span>
+                {t.passengerPhone && (
+                  <span className="text-xs text-ds-foreground-muted">{formatPhone(t.passengerPhone)}</span>
+                )}
+              </span>
+            ),
           },
           {
             key: 'tripType',
@@ -99,7 +107,7 @@ export default function TripsPage() {
             key: 'startTime',
             header: 'Start',
             sortable: true,
-            cell: (t) => formatTripDateTime(t.startTime),
+            cell: (t) => formatTripWhenShort(t.startTime),
           },
           {
             key: 'distance',

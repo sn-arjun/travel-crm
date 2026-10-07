@@ -6,6 +6,7 @@ import { fleetApi } from '@/lib/api/fleet';
 import {
   TripFormSections, safeTripType, toIso, tripFormSchema, type TripFormValues,
 } from '@/components/domain/fleet/trip-form';
+import { toE164 } from '@/lib/phone';
 import { toast } from 'sonner';
 
 // Stable reference: EntityForm memoises its initial values on this object.
@@ -56,7 +57,7 @@ export default function NewTripPage() {
             rateCardId: v.rateCardId || undefined,
             tripType: safeTripType(v.tripType),
             passengerName: v.passengerName || undefined,
-            passengerPhone: v.passengerPhone || undefined,
+            passengerPhone: toE164(v.passengerPhone) || undefined,
             specialInstructions: v.specialInstructions || undefined,
             startLocation: v.startLocation,
             endLocation: v.endLocation,
