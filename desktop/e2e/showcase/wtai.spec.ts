@@ -1,18 +1,18 @@
 /**
- * Walkthrough part "wtai": chapter 37, the ONLY part that touches AI. It makes at most 4 AI requests per take, each one a single deliberate
+ * Walkthrough part "wtai": chapter 37, the ONLY part that touches AI. It makes at most 3 AI requests per take, each one a single deliberate
  * click (or one page load) with the real result shown for a few seconds:
  *   1. Lead extraction   POST /ai/extract-lead         (paste a WhatsApp enquiry, click "Extract Lead Data")
  *   2. Message composer  POST /ai/compose-message      (one click on "Compose")
- *   3. Lead scoring      GET  /ai/lead-score/:id       (opened by "Get lead score")
- *   4. Team performance  GET  /ai/bi/team-performance  (one page load)
+ *   3. Lead scoring      POST /ai/lead-score/:id/recalculate (the "Recalculate" button; opening the page only shows the stored score)
+ *   (3 AI requests per take; the BI team page was dropped: ~30 s wait, no commentary)
  * There are no loops and no retries on AI calls. The stack must run with the remote Workers AI binding for the real results
  * (`node scripts/fix-stack.mjs up --slot N --ai`, billed per request) and the spec must then be started with SHOWCASE_AI=1.
  * Without SHOWCASE_AI=1 (the default stack has no provider) the same clicks run and the page's own "AI is not configured yet" notice
  * is the expected, honest result: that is how the selectors and navigation are developed without spending a single AI request.
  */
 import { expect, test } from './showcase-fixtures';
-import { assertClean, chapter, clickOn, dwell, hoverOn, recordPart, say, settle, typeInto } from './walkthrough-kit';
 import { pause, pickRelation, pickSelect } from './showcase-helpers';
+import { assertClean, chapter, clickOn, dwell, hoverOn, recordPart, say, settle, typeInto } from './walkthrough-kit';
 
 const AI = process.env.SHOWCASE_AI === '1';
 
@@ -72,22 +72,17 @@ test('wtai: AI assistant, extraction, composer, scoring, business intelligence (
     await say(page, 'Know which leads to call first, and why', 3000);
     if (AI) {
       await clickOn(page, page.getByRole('button', { name: /Recalculate/ }));
-      await page.waitForFunction(() => document.querySelectorAll('.animate-spin').length === 0, undefined, { timeout: 90_000, polling: 250 });
+      await pause(page, 1500);
+      // the button reads "Recalculating..." until the AI answers; wait for it to settle back (once, no retry)
+      await expect(page.getByRole('button', { name: /^Recalculate$/ })).toBeVisible({ timeout: 120_000 });
       await pause(page, 500);
       await expect(page.getByText('Overall score')).toBeVisible();
       await expect(page.locator('[data-sonner-toast][data-type="error"]')).toHaveCount(0);
-      await dwell(page, 4000);
+      await dwell(page, 4500);
     } else {
       await hoverOn(page, page.getByRole('button', { name: /Recalculate/ }), 1000);
     }
     await assertClean(page, 'ch37 scoring');
-
-    // 4 — business intelligence (one page load)
-    await page.goto('/ai/bi/team');
-    await settle(page, 1500);
-    await aiOutcome(page, /Team members/, false);
-    await say(page, 'Team performance with AI commentary on top of live numbers', 3600);
-    await dwell(page, 1500);
-    await assertClean(page, 'ch37 bi');
+    // (The team-performance BI page was tried in the first take: it needs ~30 s and shows no AI commentary, so it is not part of this chapter.)
   });
 });
