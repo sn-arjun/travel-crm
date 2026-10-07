@@ -127,7 +127,7 @@ Future<void> slowScroll(WidgetTester tester, double dy) async {
   final scrollable = find.byType(Scrollable).first;
   for (var i = 0; i < 4; i++) {
     await tester.drag(scrollable, Offset(0, dy / 4));
-    await dwell(tester, 400);
+    await dwell(tester, 600);
   }
 }
 
@@ -145,24 +145,24 @@ void main() {
     // ── ready: the script starts screenrecord now ──
     _clock.start();
     _mark('ready');
-    await dwell(tester, 4000);
+    await dwell(tester, 4500);
 
     // 7.1 login
     _mark('CAPTION Ravi signs in with his mobile number and a one-time code');
-    await dwell(tester, 2000);
+    await dwell(tester, 2800);
     await showTouch(tester, find.byKey(const Key('phone-field')));
-    await typeHuman(tester, find.byKey(const Key('phone-field')), _phone, 140);
-    await dwell(tester, 700);
+    await typeHuman(tester, find.byKey(const Key('phone-field')), _phone, 170);
+    await dwell(tester, 1200);
     await showTouch(tester, find.byKey(const Key('send-otp')));
 
     // 7.2 OTP (explicit Verify tap: the app does not auto-submit)
     await pumpUntil(tester, find.byKey(const Key('verify-otp')));
-    await dwell(tester, 1200);
+    await dwell(tester, 2000);
     for (var i = 0; i < _otp.length && i < 6; i++) {
       await tester.enterText(find.byKey(Key('otp-$i')), _otp[i]);
-      await dwell(tester, 220);
+      await dwell(tester, 320);
     }
-    await dwell(tester, 700);
+    await dwell(tester, 1100);
     await showTouch(tester, find.byKey(const Key('verify-otp')));
 
     // 7.3 Today list
@@ -173,40 +173,40 @@ void main() {
         : find.byKey(const Key('trip-card-$_tripId'));
     await pumpUntil(tester, card);
     _mark("CAPTION Today's jobs are waiting the moment he logs in");
-    await dwell(tester, 2500);
+    await dwell(tester, 4200);
     await showTouch(tester, find.byKey(const Key('tab-upcoming')));
-    await dwell(tester, 1500);
+    await dwell(tester, 2600);
     await showTouch(tester, find.byKey(const Key('tab-today')));
     await pumpUntil(tester, card);
-    await dwell(tester, 800);
+    await dwell(tester, 1200);
     await showTouch(tester, card);
 
     // 7.4 Trip detail
     await pumpUntil(tester, find.byKey(const Key('action-accept')));
     _mark('CAPTION Pickup, flight notes and one-tap navigation');
-    await dwell(tester, 1800);
+    await dwell(tester, 3200);
     await slowScroll(tester, -420);
-    // the passenger number is shown as stored (the desktop trip form keeps national digits only)
-    expect(find.byKey(const Key('passenger-phone'), skipOffstage: false), findsWidgets);
-    await dwell(tester, 900);
+    // the trip form now stores E.164, so the driver sees the formatted international number
+    expect(find.text('+91 98201 44562', skipOffstage: false), findsWidgets);
+    await dwell(tester, 1800);
     await slowScroll(tester, 420);
-    await dwell(tester, 600);
+    await dwell(tester, 1200);
 
     // 7.5 Accept
     _mark('CAPTION One tap to accept - the office sees it instantly');
     await showTouch(tester, find.byKey(const Key('action-accept')));
     await pumpUntil(tester, find.byKey(const Key('confirm-accept')));
-    await dwell(tester, 900);
+    await dwell(tester, 1400);
     await showTouch(tester, find.byKey(const Key('confirm-accept')));
     await pumpUntil(tester, find.byKey(const Key('action-en-route')));
-    await dwell(tester, 2200);
+    await dwell(tester, 3600);
 
     // 7.6 En route
     _mark('CAPTION Live status updates flow back to dispatch');
     await waitSnackGone(tester);
     await showTouch(tester, find.byKey(const Key('action-en-route')));
     await pumpUntil(tester, find.byKey(const Key('action-check-in')));
-    await dwell(tester, 2200);
+    await dwell(tester, 3400);
 
     // 7.7 GPS check-in
     _mark('CAPTION GPS-verified check-in on arrival');
@@ -214,26 +214,26 @@ void main() {
     await showTouch(tester, find.byKey(const Key('action-check-in')));
     // the emulator only delivers a fix while the app is listening: re-send it now (host script reacts to GEO)
     _mark('GEO 76.4019 10.1520');
-    await dwell(tester, 2000);
+    await dwell(tester, 2600);
     _mark('GEO 76.4019 10.1520');
     await pumpUntil(tester, find.byKey(const Key('check-in-coords')));
-    await dwell(tester, 2600);
+    await dwell(tester, 4000);
     await showTouch(tester, find.byKey(const Key('confirm-check-in')));
     await pumpUntil(tester, find.byKey(const Key('action-complete')));
-    await dwell(tester, 2200);
+    await dwell(tester, 3200);
 
     // 7.8 time-skip card (composited over the phone; the script also moves the emulator to the drop point)
     _mark('GEO 76.4285 9.6177');
     _mark('CARD Two hours later - Kumarakom');
-    await dwell(tester, 2800);
+    await dwell(tester, 3400);
 
     // 7.9 Complete -> History
     _mark('CAPTION Trip complete - car and driver free for the next job');
     await waitSnackGone(tester);
     await showTouch(tester, find.byKey(const Key('action-complete')));
-    await dwell(tester, 3000);
+    await dwell(tester, 4200);
     await showTouch(tester, find.byKey(const Key('nav-history')));
-    await dwell(tester, 2600);
+    await dwell(tester, 3800);
 
     _mark('done');
     await dwell(tester, 2000);

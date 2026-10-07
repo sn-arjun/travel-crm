@@ -81,8 +81,13 @@ Adb shell settings put secure location_mode 3 | Out-Null
 Adb emu geo fix $Lng $Lat | Out-Null                      # longitude first
 Adb shell settings put system screen_off_timeout 1800000 | Out-Null
 Adb shell settings put secure show_ime_with_hard_keyboard 0 | Out-Null
-Adb shell input keyevent KEYCODE_WAKEUP | Out-Null
-Adb shell wm dismiss-keyguard | Out-Null
+Adb shell svc power stayon true | Out-Null               # a freshly booted AVD can fall asleep: no frames are drawn and the flutter test then hangs
+for ($w = 0; $w -lt 6; $w++) {
+  Adb shell input keyevent KEYCODE_WAKEUP | Out-Null
+  Adb shell wm dismiss-keyguard | Out-Null
+  Start-Sleep -Seconds 1
+  if ((Adb shell dumpsys power) -match 'mWakefulness=Awake') { break }
+}
 # the test injects text programmatically: switch the on-screen keyboard (and its floating toolbar) off for the take
 $imes = @(Adb shell ime list -s 2>$null) | Where-Object { $_ -match "/" } | ForEach-Object { $_.Trim() }
 foreach ($ime in $imes) { Adb shell ime disable $ime | Out-Null }

@@ -281,12 +281,13 @@ step('A.9#9 ai_followup_suggestions', () => {
 step('A.9#9 chatbot', () => {
   run('DELETE FROM chatbot_conversations'); run('DELETE FROM chatbot_config');
   run("INSERT INTO chatbot_config (id,channel,enabled,greeting,created_at,updated_at) VALUES (?, 'web', 1, ?, ?, ?)", uuid7(), "Hi! I'm Sahyadri's travel assistant. Where would you like to go?", minsAgo(9000), minsAgo(9000));
-  [['Meera', 'active', 'Andaman honeymoon', ['Hi! I am looking at an Andaman honeymoon in January.', 'Lovely choice! How many nights and what is your budget?', '6 nights, around 1.5 lakh for two.']],
-   ['Rahul S', 'handed_off', 'Goa New Year prices', ['What are your Goa packages for New Year week?', 'Prices vary by property. May I connect you with a consultant?', 'Yes please.']],
-   ['Visitor 2041', 'closed', 'visa for Dubai', ['Do you handle Dubai visas?', 'Yes, our visa desk handles Dubai e-visas in 3 working days.']]].forEach(([name, status, , msgs], i) => {
+  [['Meera', 'active', 'meera.sethi@example.com|+919845100234', ['Hi! I am looking at an Andaman honeymoon in January.', 'Lovely choice! How many nights and what is your budget?', '6 nights, around 1.5 lakh for two.']],
+   ['Rahul S', 'handed_off', 'rahul.shetty@example.com|+919810233456', ['What are your Goa packages for New Year week?', 'Prices vary by property. May I connect you with a consultant?', 'Yes please.']],
+   ['Visitor 2041', 'closed', '|', ['Do you handle Dubai visas?', 'Yes, our visa desk handles Dubai e-visas in 3 working days.']]].forEach(([name, status, vis, msgs], i) => {
+    const [vEmail, vPhone] = vis.split('|');
     const messages = msgs.map((content, k) => ({ role: k % 2 === 0 ? 'user' : 'assistant', content, timestamp: minsAgo(300 - i * 40 - k * 2) }));
-    run("INSERT INTO chatbot_conversations (id,channel,visitor_id,visitor_name,language,messages,status,message_count,bot_message_count,last_message_at,created_at,updated_at) VALUES (?, 'web', ?, ?, 'en', ?, ?, ?, ?, ?, ?, ?)",
-      uuid7(), `v-${2041 + i}`, name, JSON.stringify(messages), status, messages.length, Math.floor(messages.length / 2), minsAgo(300 - i * 40), minsAgo(310 - i * 40), minsAgo(300 - i * 40));
+    run("INSERT INTO chatbot_conversations (id,channel,visitor_id,visitor_name,visitor_email,visitor_phone,language,messages,status,message_count,bot_message_count,last_message_at,created_at,updated_at) VALUES (?, 'web', ?, ?, ?, ?, 'en', ?, ?, ?, ?, ?, ?, ?)",
+      uuid7(), `v-${2041 + i}`, name, vEmail || null, vPhone || null, JSON.stringify(messages), status, messages.length, Math.floor(messages.length / 2), minsAgo(300 - i * 40), minsAgo(310 - i * 40), minsAgo(300 - i * 40));
   });
 });
 step('A.9#9 call_logs', () => {

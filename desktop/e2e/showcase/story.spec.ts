@@ -25,7 +25,6 @@ const API_URL = (process.env.E2E_API_URL ?? 'http://localhost:8787/api/v1').repl
 const rupees = (n: number) => `₹${n.toLocaleString('en-IN')}`;
 const dm = (iso: string) => new Date(iso + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
 const shortRange = (a: string, b: string) => dm(a) + '–' + dm(b);
-const quoteBody = (link: string) => ['Hi Priya,', '', 'Thank you for choosing Sahyadri Holidays. Your 5-night Kerala plan is ready:', '• Munnar — 2 nights in a tea-estate family suite', '• Thekkady — plantation villa and Periyar boat cruise', '• Alleppey — private premium houseboat, all meals', '• Kumarakom — lake-view villa', '• Private Innova Crysta with chauffeur throughout', '', 'Package price: ₹1,23,270 for 2 adults and 2 children, including GST.', 'Day-by-day plan: ' + link, '', 'Warm regards,', 'Ananya Menon', 'Sahyadri Holidays'].join('\n');
 const sidebar = (page: import('@playwright/test').Page, href: string) => page.locator(`aside a[href="${href}"]`).first();
 
 interface Handoff { tripId: string; driverPhone: string; driverPhoneE164: string; otp: string; tenantId: string; tPick: string; pickup: string; drop: string; passenger: string; priyaLeadId?: string; priyaInvoiceId?: string; itineraryId?: string; recordedAt: string }
@@ -137,12 +136,11 @@ test('story-A: enquiry to airport transfer (scenes 1-6)', async ({ page, context
     await expect(page.getByText('Note added').first()).toBeVisible();
     mark('2.12');
     await say(page, "Notes and calls stay on the lead's timeline", 3200);
-    // APP: the Activity tab does not pick up the status change made on this same page until the lead is reloaded (reported)
-    await page.reload();
-    await settle(page, 1200);
     await clickOn(page, page.getByRole('tab', { name: /Activity/i }).or(page.getByRole('button', { name: /^Activity$/ })).first());
+    // the timeline refreshes live after the status change and the note: no reload needed
     await expect(page.getByText(/Qualified/i).first()).toBeVisible();
-    await dwell(page, 2000);
+    await expect(page.getByText(/Prefers a private car/i).first()).toBeVisible();
+    await dwell(page, 2200);
     await assertClean(page, 'scene 2');
 
     // ───────────── Scene 3 — Build the itinerary from a template ─────────────
@@ -198,6 +196,32 @@ test('story-A: enquiry to airport transfer (scenes 1-6)', async ({ page, context
     await hoverOn(page, page.getByText(/^Margin/).first(), 600);
     mark('3.6');
     await say(page, 'Cost, price and margin — visible only to your team', 4500);
+    // 3.7 the rate-card picker shows real supplier names and prices; re-applying the same card keeps the quoted totals
+    await clickOn(page, page.getByRole('link', { name: /^Edit$/ }).or(page.getByRole('button', { name: /^Edit$/ })).first());
+    await page.waitForURL(/\/itineraries\/[^/]+\/edit$/);
+    await settle(page, 1500);
+    const activityName = page.locator('input[aria-label="Activity name"]').nth(2);
+    await expect(activityName).toHaveValue(/Kumarakom bird sanctuary/);
+    const itemBox = activityName.locator('xpath=ancestor::div[contains(@class,"bg-ds-surface-sunken")][1]');
+    await moveTo(page, activityName);
+    await dwell(page, 700);
+    await clickOn(page, itemBox.getByRole('button', { name: 'Select from Rate Card' }));
+    const picker = page.getByRole('dialog').filter({ hasText: 'Select from Rate Cards' });
+    await expect(picker).toBeVisible();
+    await settle(page, 800);
+    await typeInto(page, picker.getByPlaceholder('Search rate cards...'), 'Kumarakom');
+    await settle(page, 1200);
+    const pickRow = picker.locator('li').filter({ hasText: 'Kumarakom bird sanctuary sunrise walk' }).first();
+    await expect(pickRow).toContainText('1,800');
+    mark('3.7');
+    await say(page, 'Price any day from your negotiated supplier rates', 3600);
+    await clickOn(page, pickRow.getByRole('button', { name: 'Select' }));
+    await expect(page.getByText('Rate card applied').first()).toBeVisible();
+    await dwell(page, 1200);
+    await clickOn(page, page.getByRole('button', { name: /Save Changes/i }));
+    await page.waitForURL(/\/itineraries\/[^/]+$/, { timeout: 20_000 });
+    await settle(page, 1800);
+    await assertClean(page, 'scene 3 rate card');
     await clickOn(page, page.getByRole('tab', { name: 'Share' }));
     await clickOn(page, page.getByRole('button', { name: /Generate Share Link/i }));
     await expect(page.getByText(/Share link generated/i).first()).toBeVisible();
@@ -216,17 +240,18 @@ test('story-A: enquiry to airport transfer (scenes 1-6)', async ({ page, context
     await expect(sendDlg.getByText(/priya\.nair@example\.com/)).toBeVisible();
     mark('4.1');
     await say(page, 'Email, WhatsApp or SMS — always from one place', 3200);
-    // The built-in quotation template fills destination/date from the itinerary (Kumarakom, 22 Dec) and leaves the agency name unresolved,
-    // so the quote is written in the agent's own words (STORYBOARD 4.3 fallback) - accurate for this client.
-    await clickOn(page, sendDlg.getByText('Write custom message'));
+    // The stock "Quotation Email" resolves destination, dates, amount, agent and the agency's own details: no warning, no edits.
+    await typeInto(page, sendDlg.getByPlaceholder('Search templates...'), 'Quotation Email');
+    await settle(page, 700);
+    await clickOn(page, sendDlg.getByText('Quotation Email', { exact: true }).first());
     await expect(sendDlg.getByText(/Compose Email/i)).toBeVisible();
-    await typeInto(page, sendDlg.locator('#msg-subject'), 'Your Kerala holiday plan — ' + shortRange(travelStart, travelEnd));
-    await moveTo(page, sendDlg.locator('#msg-body'));
-    await sendDlg.locator('#msg-body').fill(quoteBody(shareLink));
-    await pause(page, 600);
+    await pause(page, 900);
     await expect(sendDlg.getByTestId('placeholder-warning')).toHaveCount(0);
+    expect(await sendDlg.locator('#msg-body').inputValue()).not.toMatch(/\{\{|\[/);
+    expect(await sendDlg.locator('#msg-subject').inputValue()).not.toMatch(/\{\{|\[/);
+    await moveTo(page, sendDlg.locator('#msg-body'));
     mark('4.3');
-    await say(page, 'Personalised in seconds, in your own words', 3200);
+    await say(page, 'Your quotation template fills itself in', 3200);
     await clickOn(page, sendDlg.getByRole('button', { name: /^Preview$/ }));
     await expect(sendDlg.getByText('Preview & Send')).toBeVisible();
     mark('4.4');
@@ -340,9 +365,26 @@ test('story-A: enquiry to airport transfer (scenes 1-6)', async ({ page, context
     await hoverOn(page, page.getByText('Active Trips').first(), 500);
     mark('6.1');
     await say(page, 'Every vehicle, driver and live trip at a glance', 3500);
-    await clickOn(page, page.getByRole('button', { name: /New Trip/i }).or(page.getByRole('link', { name: /New Trip/i })).first());
-    await page.waitForURL('**/fleet/trips/new');
-    await settle(page, 800);
+    // the booking is the starting point: Book transfer opens the trip form with the lead, trip type and passenger filled in
+    await clickOn(page, sidebar(page, '/leads'));
+    await page.waitForURL('**/leads');
+    await settle(page, 1000);
+    await typeInto(page, page.getByPlaceholder(/Search leads/i).first(), 'Kerala Honeymoon');
+    await settle(page, 1200);
+    await clickOn(page, page.locator('table tbody tr').filter({ hasText: 'Kerala Honeymoon — Kochi & Kumarakom' }).first());
+    await page.waitForURL(/\/leads\/[^/]+$/);
+    await settle(page, 1200);
+    await expect(page.getByRole('heading', { name: 'Kerala Honeymoon — Kochi & Kumarakom' })).toBeVisible();
+    await hoverOn(page, page.getByRole('button', { name: /Book transfer/i }), 700);
+    mark('6.2');
+    await say(page, 'From the booking, one click books the transfer', 3200);
+    await clickOn(page, page.getByRole('button', { name: /Book transfer/i }));
+    await page.waitForURL(/\/fleet\/trips\/new\?.*leadId=/);
+    await settle(page, 1500);
+    await expect(page.locator('#passengerName')).toHaveValue('Arjun Mehta');
+    await expect(page.locator('#tripType')).toContainText(/Airport Pickup/i);
+    await expect(page.locator('input[type="tel"]').first()).toHaveValue(/98201\s?44562/);
+    await dwell(page, 1200);
     await pickRelation(page, /Select vehicle/, 'Registration or make/model...', 'Innova', 'KA 05 MN 4521');
     mark('6.3');
     await say(page, 'Choose from available vehicles and active drivers', 3000);
@@ -350,15 +392,13 @@ test('story-A: enquiry to airport transfer (scenes 1-6)', async ({ page, context
     const pick = D.pickupTime(50);
     const pickEnd = new Date(new Date(pick.iso).getTime() + 135 * 60_000);
     const endHHMM = new Date(pickEnd.getTime() + 330 * 60_000).toISOString().slice(11, 16);
-    await pickSelect(page, page.locator('#tripType'), /Airport Pickup/i);
     await typeInto(page, page.getByPlaceholder('Enter pickup location'), 'Cochin International Airport (COK), Arrival Gate 2');
     await typeInto(page, page.getByPlaceholder('Enter drop location'), 'Vembanad Lake Resort, Kumarakom');
     await pickDate(page, page.locator('button:has-text("Pick a date")').first(), D.d0());
     await page.locator('#startClock').fill(pick.hhmm);
     await pickDate(page, page.locator('button:has-text("Pick a date")').first(), D.d0());
     await page.locator('#endClock').fill(endHHMM);
-    await typeInto(page, page.locator('#passengerName'), 'Arjun Mehta');
-    await typeInto(page, page.locator('input[type="tel"]').first(), '9820144562');
+    await hoverOn(page, page.locator('#passengerName'), 900);
     await typeInto(page, page.locator('#specialInstructions'), `IndiGo 6E 6171 lands ${pick.hhmm}. Meet at Gate 2 with a Mehta name board. Honeymooners, 3 bags.`, { delay: 22 });
     mark('6.7');
     await say(page, 'Flight details and instructions go straight to the driver', 3200);

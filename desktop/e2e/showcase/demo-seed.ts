@@ -325,6 +325,21 @@ async function seedAll(): Promise<Ids> {
     if (r?.id) ids.campaigns[cp.name] = r.id;
   }
 
+  // marketing: two unsubscribes, a draft WhatsApp broadcast and three flyer templates (the walkthrough builds a flyer from one)
+  for (const [key, channel, reason] of [['C27', 'email', 'Unsubscribed from the Diwali campaign'], ['C20', 'whatsapp', 'Asked to stop promotional messages']] as const) {
+    if (ids.contacts[key]) await call('optOuts', 'POST', `/marketing/opt-out/${ids.contacts[key]}`, { channel, reason });
+  }
+  await call('whatsappCampaigns', 'POST', '/whatsapp-campaigns', {
+    name: 'Diwali greetings to past travellers', templateName: 'diwali_greetings',
+    templateContent: 'Hi {{1}}, Sahyadri Holidays wishes you and your family a bright and happy Diwali. Our festive Goa and Udaipur offers start from ₹24,999 per person.',
+    templateVariables: { '1': 'first_name' }, audienceFilter: { tags: ['repeat'] },
+  });
+  for (const t of [
+    { name: 'Festival offer', category: 'festival', description: 'Headline, offer and contact strip for festival campaigns', sizePreset: 'instagram_post', width: 1080, height: 1080 },
+    { name: 'Destination spotlight', category: 'general', description: 'One hero destination with a short pitch', sizePreset: 'instagram_post', width: 1080, height: 1080 },
+    { name: 'Last-minute deal', category: 'promotional', description: 'Urgent departures at a special price', sizePreset: 'whatsapp_status', width: 1080, height: 1920 },
+  ]) await call('flyerTemplates', 'POST', '/marketing/flyer-templates', { ...t, isQuickCreate: true });
+
   return ids;
 }
 

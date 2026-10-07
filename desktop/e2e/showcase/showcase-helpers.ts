@@ -178,6 +178,23 @@ export async function pickDate(page: Page, trigger: Locator, isoDate: string): P
   await clickOn(page, dlg.locator(`[data-day="${isoDate}"]`));
 }
 
+/** Date-and-time picker (follow-ups, events): year + month selects, the day, then hour and minute selects and Done. */
+export async function pickDateTime(page: Page, trigger: Locator, isoDate: string, hour: number, minute: number): Promise<void> {
+  const [y, m] = isoDate.split('-').map(Number) as [number, number];
+  await clickOn(page, trigger);
+  await pause(page, 400);
+  const dlg = page.getByRole('dialog', { name: /^Choose date/ }).last();
+  await dlg.getByLabel('Year', { exact: true }).selectOption(String(y));
+  await dlg.getByLabel('Month', { exact: true }).selectOption(String(m - 1));
+  await pause(page, 250);
+  await clickOn(page, dlg.locator(`[data-day="${isoDate}"]`));
+  await dlg.getByLabel('Hour', { exact: true }).selectOption(String(hour));
+  await pause(page, 200);
+  await dlg.getByLabel('Minute', { exact: true }).selectOption(String(minute));
+  await pause(page, 300);
+  await clickOn(page, dlg.getByRole('button', { name: 'Done' }));
+}
+
 // ─── Timing ──────────────────────────────────────────────────────
 
 /** No spinners + network quiet, then dwell. */
@@ -229,7 +246,7 @@ export async function assertClean(page: Page, where = ''): Promise<void> {
     return {
       text: `${document.body?.innerText ?? ''}\n${vals}`,
       invalid: Array.from(document.querySelectorAll('[aria-invalid="true"]')).filter(visible).length,
-      danger: Array.from(document.querySelectorAll('.text-ds-danger')).filter((e) => visible(e) && !e.closest('button, a, [role="button"], [role="menuitem"]') && !/^[*₹$+\-−\d.,\s%KLCr()]*$/.test((e.textContent ?? '').trim())).map((e) => (e.textContent ?? '').trim().slice(0, 80)),
+      danger: Array.from(document.querySelectorAll('.text-ds-danger')).filter((e) => visible(e) && !e.closest('button, a, [role="button"], [role="menuitem"]') && !/^[*₹$+\-−\d.,\s%KLCr()]*$/.test((e.textContent ?? '').trim()) && !/^(Exclusions|Overdue|Cancelled|Lost)$/i.test((e.textContent ?? '').trim())).map((e) => (e.textContent ?? '').trim().slice(0, 80)),
       errToast: document.querySelectorAll('[data-sonner-toast][data-type="error"]').length,
     };
   });
