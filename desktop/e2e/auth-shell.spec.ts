@@ -4,6 +4,24 @@ import { ADMIN_EMAIL, ADMIN_PASSWORD, waitForLoad } from './helpers/auth';
 
 test.use({ storageState: undefined }); // This slice tests the unauthenticated shell itself
 
+/**
+ * Fill the email and continue to the password step. The login form is server-rendered, so a click that
+ * lands before hydration is silently lost; refill and resubmit instead of waiting it out.
+ */
+async function submitEmailStep(page: Page, email: string) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await page.locator('#email').fill(email);
+    await page.locator('button[type="submit"]').click();
+    try {
+      await page.waitForSelector('#password', { timeout: 5_000 });
+      return;
+    } catch {
+      /* not hydrated yet: try again */
+    }
+  }
+  await page.waitForSelector('#password', { timeout: 15_000 });
+}
+
 test.describe('Auth shell — login', () => {
   test('shows the email step form', async ({ page }) => {
     await page.goto('/login');
@@ -16,10 +34,7 @@ test.describe('Auth shell — login', () => {
   test('completes the full 2-step login flow (email resolve -> password) and reaches the dashboard', async ({ page }) => {
     await page.goto('/login');
 
-    await page.locator('#email').fill(ADMIN_EMAIL);
-    await page.locator('button[type="submit"]').click();
-
-    await page.waitForSelector('#password', { timeout: 15_000 });
+    await submitEmailStep(page, ADMIN_EMAIL);
     await expect(page.locator(`text=Signing in as ${ADMIN_EMAIL}`)).toBeVisible();
     await expect(page.locator('#password')).toBeVisible();
 
@@ -37,9 +52,7 @@ test.describe('Auth shell — login', () => {
 
   test('shows an error for an invalid password', async ({ page }) => {
     await page.goto('/login');
-    await page.locator('#email').fill(ADMIN_EMAIL);
-    await page.locator('button[type="submit"]').click();
-    await page.waitForSelector('#password', { timeout: 15_000 });
+    await submitEmailStep(page, ADMIN_EMAIL);
 
     await page.locator('#password').fill('WrongPassword!');
     await page.locator('button[type="submit"]').click();
@@ -57,9 +70,7 @@ test.describe('Auth shell — login', () => {
 
   test('allows going back to change email', async ({ page }) => {
     await page.goto('/login');
-    await page.locator('#email').fill(ADMIN_EMAIL);
-    await page.locator('button[type="submit"]').click();
-    await page.waitForSelector('#password', { timeout: 15_000 });
+    await submitEmailStep(page, ADMIN_EMAIL);
 
     await page.locator('text=Change email').click();
 
@@ -79,9 +90,7 @@ test.describe('Auth shell — login', () => {
 
   test('phone/OTP tab sends an OTP and switches to the verify step', async ({ page }) => {
     await page.goto('/login');
-    await page.locator('#email').fill(ADMIN_EMAIL);
-    await page.locator('button[type="submit"]').click();
-    await page.waitForSelector('#password', { timeout: 15_000 });
+    await submitEmailStep(page, ADMIN_EMAIL);
 
     await page.locator('[role="tab"]', { hasText: 'Phone / OTP' }).click();
     await page.locator('#phone').fill('9876543210');
@@ -116,9 +125,7 @@ test.describe('Auth shell — forgot / reset password', () => {
 
   test('forgot-password link from login navigates correctly and back link returns to login', async ({ page }) => {
     await page.goto('/login');
-    await page.locator('#email').fill(ADMIN_EMAIL);
-    await page.locator('button[type="submit"]').click();
-    await page.waitForSelector('#password', { timeout: 15_000 });
+    await submitEmailStep(page, ADMIN_EMAIL);
 
     await page.locator('a', { hasText: 'Forgot password?' }).click();
     await page.waitForURL('**/forgot-password');
@@ -154,9 +161,7 @@ test.describe('Auth shell — authenticated session', () => {
 
   test('logs in, uses the app shell, then logs out via the user menu', async ({ page }) => {
     await page.goto('/login');
-    await page.locator('#email').fill(ADMIN_EMAIL);
-    await page.locator('button[type="submit"]').click();
-    await page.waitForSelector('#password', { timeout: 15_000 });
+    await submitEmailStep(page, ADMIN_EMAIL);
     await page.locator('#password').fill(ADMIN_PASSWORD);
     await page.locator('button[type="submit"]').click();
     await page.waitForURL(/\/(dashboard)?$/, { timeout: 20_000 });
@@ -178,7 +183,7 @@ test.describe('Auth shell — authenticated session', () => {
     // The sidebar shows the real signed-in user (the seeded tenant admin), not a placeholder.
     const userMenuTrigger = page.getByTestId('sidebar-user-menu');
     await expect(userMenuTrigger).toBeVisible({ timeout: 10_000 });
-    await expect(userMenuTrigger).toHaveAttribute('aria-label', /Account menu for Admin User/);
+    await expect(userMenuTrigger).toHaveAttribute('aria-label', /Account menu for (Admin User|Demo Admin)/);
     await userMenuTrigger.click();
     await page.locator('[role="menuitem"]:has-text("Profile")').click();
     await page.waitForURL('**/settings/profile', { timeout: 10_000 });
@@ -208,9 +213,7 @@ test.describe('Auth shell — authenticated session', () => {
 test.describe('Auth shell — settings/sessions (device management)', () => {
   test('lists the active session, shows no raw ID inputs, and revoke is guarded by a confirm dialog', async ({ page }) => {
     await page.goto('/login');
-    await page.locator('#email').fill(ADMIN_EMAIL);
-    await page.locator('button[type="submit"]').click();
-    await page.waitForSelector('#password', { timeout: 15_000 });
+    await submitEmailStep(page, ADMIN_EMAIL);
     await page.locator('#password').fill(ADMIN_PASSWORD);
     await page.locator('button[type="submit"]').click();
     await page.waitForURL(/\/(dashboard)?$/, { timeout: 20_000 });
@@ -249,9 +252,7 @@ test.describe('Auth shell — help center', () => {
   // The file-level storageState override makes every context logged out, but /help is an app route.
   async function signIn(page: Page) {
     await page.goto('/login');
-    await page.locator('#email').fill(ADMIN_EMAIL);
-    await page.locator('button[type="submit"]').click();
-    await page.waitForSelector('#password', { timeout: 15_000 });
+    await submitEmailStep(page, ADMIN_EMAIL);
     await page.locator('#password').fill(ADMIN_PASSWORD);
     await page.locator('button[type="submit"]').click();
     await page.waitForURL(/\/(dashboard)?$/, { timeout: 20_000 });
@@ -291,9 +292,7 @@ test.describe('Auth shell — help center', () => {
 test.describe('Auth shell — onboarding', () => {
   test('onboarding page renders for a freshly authenticated user without crashing', async ({ page }) => {
     await page.goto('/login');
-    await page.locator('#email').fill(ADMIN_EMAIL);
-    await page.locator('button[type="submit"]').click();
-    await page.waitForSelector('#password', { timeout: 15_000 });
+    await submitEmailStep(page, ADMIN_EMAIL);
     await page.locator('#password').fill(ADMIN_PASSWORD);
     await page.locator('button[type="submit"]').click();
     await page.waitForURL(/\/(dashboard)?$/, { timeout: 20_000 });

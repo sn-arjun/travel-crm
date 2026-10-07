@@ -342,6 +342,8 @@ test.describe('Fleet Trips', () => {
     await dSearch.fill(driverA.name);
     await expect(page.locator('[cmdk-item]').filter({ hasText: driverA.name })).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('[cmdk-item]').filter({ hasText: driverB.name })).toHaveCount(0);
+    // A late results refresh can dismiss the popover between the two searches: reopen it if so.
+    if (!(await dSearch.isVisible())) await page.getByRole('combobox').filter({ hasText: /Select driver/i }).click();
     await dSearch.fill(driverB.name);
     await expect(page.locator('[cmdk-item]').filter({ hasText: driverB.name })).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('[cmdk-item]').filter({ hasText: driverA.name })).toHaveCount(0);

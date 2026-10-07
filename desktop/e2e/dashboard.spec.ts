@@ -50,7 +50,8 @@ test.describe('Dashboard', () => {
 
     await page.getByRole('combobox', { name: 'Date range' }).click();
     await page.getByRole('option', { name: 'This Year' }).click();
-    await expect(page.getByText('Revenue (Year)')).toBeVisible();
+    // Six report queries run for the new window; the KPI row shows skeletons until they all return.
+    await expect(page.getByText('Revenue (Year)')).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText('87%')).toHaveCount(0);
   });
 
