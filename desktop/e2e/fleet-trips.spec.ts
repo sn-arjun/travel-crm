@@ -664,7 +664,9 @@ test.describe('Fleet Trips', () => {
     await expect(panel.getByText('Toll', { exact: true })).toBeVisible();
     await expect(panel.getByText(note)).toBeVisible();
     await expect(panel.getByText(/₹\s?450/).first()).toBeVisible();
-    await expect(panel.getByText(new Date().toLocaleDateString('en-IN')).first()).toBeVisible();
+    await expect(
+      panel.getByText(new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })).first(),
+    ).toBeVisible();
     await expect(panel.getByText('Invalid Date')).toHaveCount(0);
 
     // Backend received a real cost row with the note as its description
