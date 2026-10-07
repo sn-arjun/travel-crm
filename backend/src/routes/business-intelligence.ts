@@ -10,6 +10,7 @@ import { Hono } from 'hono';
 import type { AppContext } from '../types';
 import { success, error, paginated, notFound } from '../utils/response';
 import { generateId } from '../utils/uuid';
+import { tenantToday, tenantTimeZone, localMonthWindow, sqlOffsetModifier, daysBetweenLocal } from '../utils/tz';
 import { AIRouter, AiUnavailableError, type AITask, type AIResponse } from '../services/ai-router';
 
 /** Runs the AI call only; resolves null when no provider is available so the caller can still return its SQL data. */
@@ -40,11 +41,13 @@ app.post('/briefings/generate', async (c) => {
   const { type } = await c.req.json<{ type: 'daily' | 'weekly' | 'monthly' }>();
 
   const now = new Date();
+  // the briefing period is the tenant's local day / week / month
+  const { today: localToday } = await tenantToday(c);
   const period = type === 'daily'
-    ? now.toISOString().substring(0, 10)
+    ? localToday
     : type === 'weekly'
-      ? `${now.getFullYear()}-W${String(Math.ceil(((now.getTime() - new Date(now.getFullYear(), 0, 1).getTime()) / 86400000 + 1) / 7)).padStart(2, '0')}`
-      : now.toISOString().substring(0, 7);
+      ? `${localToday.slice(0, 4)}-W${String(Math.ceil((daysBetweenLocal(`${localToday.slice(0, 4)}-01-01`, localToday) + 1) / 7)).padStart(2, '0')}`
+      : localToday.slice(0, 7);
 
   // Collect metrics
   const metrics: Record<string, number | string> = {};
@@ -147,6 +150,7 @@ app.post('/health-score/calculate', async (c) => {
   const env = c.env;
 
   const now = new Date();
+  const { today: localToday } = await tenantToday(c);
   const last30 = new Date(Date.now() - 30 * 86400000).toISOString();
   const prev30 = new Date(Date.now() - 60 * 86400000).toISOString();
 
@@ -159,7 +163,7 @@ app.post('/health-score/calculate', async (c) => {
     db.prepare(`SELECT COUNT(*) as c FROM contacts WHERE created_at >= ?`).bind(last30).first<{ c: number }>(),
     db.prepare(`SELECT COUNT(*) as c FROM follow_ups WHERE status = 'pending' AND scheduled_at < ?`).bind(now.toISOString()).first<{ c: number }>(),
     db.prepare(`SELECT COUNT(*) as c FROM invoices WHERE status = 'paid' AND updated_at >= ?`).bind(last30).first<{ c: number }>(),
-    db.prepare(`SELECT COUNT(*) as c FROM invoices WHERE status = 'sent' AND due_date < ?`).bind(now.toISOString().substring(0, 10)).first<{ c: number }>(),
+    db.prepare(`SELECT COUNT(*) as c FROM invoices WHERE status = 'sent' AND due_date < ?`).bind(localToday).first<{ c: number }>(),
   ]);
 
   const metrics = {
@@ -304,8 +308,9 @@ app.get('/seasonal-demand', async (c) => {
   const db = c.get('tenantDb');
   const env = c.env;
 
+  const seasonalMod = sqlOffsetModifier(await tenantTimeZone(c));
   const monthly = await db.prepare(`
-    SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as lead_count,
+    SELECT strftime('%Y-%m', created_at, '${seasonalMod}') as month, COUNT(*) as lead_count,
       SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END) as won_count
     FROM leads
     WHERE created_at >= datetime('now', '-12 months')
@@ -314,7 +319,7 @@ app.get('/seasonal-demand', async (c) => {
   `).all();
 
   const byDestMonth = await db.prepare(`
-    SELECT destination, strftime('%m', created_at) as month_num, COUNT(*) as count
+    SELECT destination, strftime('%m', created_at, '${seasonalMod}') as month_num, COUNT(*) as count
     FROM leads
     WHERE destination IS NOT NULL AND destination != '' AND created_at >= datetime('now', '-24 months')
     GROUP BY destination, month_num
@@ -384,8 +389,9 @@ app.get('/cash-flow-forecast', async (c) => {
     FROM invoices WHERE status IN ('sent', 'partially_paid')
   `).first<{ receivable: number; count: number }>();
 
+  const cashMod = sqlOffsetModifier(await tenantTimeZone(c));
   const recentPayments = await db.prepare(`
-    SELECT strftime('%Y-%m', updated_at) as month, SUM(total) as amount
+    SELECT strftime('%Y-%m', updated_at, '${cashMod}') as month, SUM(total) as amount
     FROM invoices WHERE status = 'paid' AND updated_at >= datetime('now', '-6 months')
     GROUP BY month ORDER BY month
   `).all();
@@ -681,13 +687,14 @@ app.post('/recommendations/generate', async (c) => {
   const db = c.get('tenantDb');
   const env = c.env;
   const userId = c.get('userId');
+  const { today: recToday } = await tenantToday(c);
 
   // Gather high-level metrics
   const [overdueFollowUps, hotLeads, staleLeads, overdueInvoices] = await Promise.all([
     db.prepare(`SELECT COUNT(*) as c FROM follow_ups WHERE created_by = ? AND status = 'pending' AND scheduled_at < ?`).bind(userId, new Date().toISOString()).first<{ c: number }>(),
     db.prepare(`SELECT COUNT(*) as c FROM leads WHERE assigned_to = ? AND status NOT IN ('won', 'lost', 'closed') AND estimated_value > 100000`).bind(userId).first<{ c: number }>(),
     db.prepare(`SELECT COUNT(*) as c FROM leads WHERE assigned_to = ? AND status NOT IN ('won', 'lost', 'closed') AND updated_at < ?`).bind(userId, new Date(Date.now() - 7 * 86400000).toISOString()).first<{ c: number }>(),
-    db.prepare(`SELECT COUNT(*) as c FROM invoices WHERE created_by = ? AND status = 'sent' AND due_date < ?`).bind(userId, new Date().toISOString().substring(0, 10)).first<{ c: number }>(),
+    db.prepare(`SELECT COUNT(*) as c FROM invoices WHERE created_by = ? AND status = 'sent' AND due_date < ?`).bind(userId, recToday).first<{ c: number }>(),
   ]);
 
   const context = {
@@ -729,12 +736,14 @@ app.get('/usage', async (c) => {
   const period = c.req.query('period') || '30d';
   const days = parseInt(period.replace('d', '')) || 30;
   const since = new Date(Date.now() - days * 86400000).toISOString();
+  const usageMod = sqlOffsetModifier(await tenantTimeZone(c));
 
   const [totalUsage, byTask, byModel, byDay] = await Promise.all([
+
     db.prepare(`SELECT COUNT(*) as calls, COALESCE(SUM(input_tokens), 0) as input_tokens, COALESCE(SUM(output_tokens), 0) as output_tokens, COALESCE(SUM(cost_estimate), 0) as total_cost FROM ai_usage_log WHERE created_at >= ?`).bind(since).first<{ calls: number; input_tokens: number; output_tokens: number; total_cost: number }>(),
     db.prepare(`SELECT task_type, COUNT(*) as calls, COALESCE(SUM(input_tokens + output_tokens), 0) as tokens, COALESCE(SUM(cost_estimate), 0) as cost FROM ai_usage_log WHERE created_at >= ? GROUP BY task_type ORDER BY cost DESC`).bind(since).all(),
     db.prepare(`SELECT model_name, COUNT(*) as calls, COALESCE(SUM(cost_estimate), 0) as cost FROM ai_usage_log WHERE created_at >= ? GROUP BY model_name ORDER BY cost DESC`).bind(since).all(),
-    db.prepare(`SELECT strftime('%Y-%m-%d', created_at) as day, COUNT(*) as calls, COALESCE(SUM(cost_estimate), 0) as cost FROM ai_usage_log WHERE created_at >= ? GROUP BY day ORDER BY day`).bind(since).all(),
+    db.prepare(`SELECT strftime('%Y-%m-%d', created_at, '${usageMod}') as day, COUNT(*) as calls, COALESCE(SUM(cost_estimate), 0) as cost FROM ai_usage_log WHERE created_at >= ? GROUP BY day ORDER BY day`).bind(since).all(),
   ]);
 
   return success(c, {
@@ -749,13 +758,14 @@ app.get('/usage', async (c) => {
 // Revenue pulse widget data (TICKET-491)
 app.get('/revenue-pulse', async (c) => {
   const db = c.get('tenantDb');
-  const now = new Date();
-  const thisMonth = now.toISOString().substring(0, 7);
-  const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().substring(0, 7);
+  const pulseTz = await tenantTimeZone(c);
+  const pulseMod = sqlOffsetModifier(pulseTz);
+  const thisMonth = localMonthWindow(pulseTz).startDate.substring(0, 7);
+  const lastMonth = localMonthWindow(pulseTz, new Date(), -1).startDate.substring(0, 7);
 
   const [currentRevenue, lastRevenue, pipelineValue, avgDealSize] = await Promise.all([
-    db.prepare(`SELECT COALESCE(SUM(total), 0) as t FROM invoices WHERE status = 'paid' AND strftime('%Y-%m', updated_at) = ?`).bind(thisMonth).first<{ t: number }>(),
-    db.prepare(`SELECT COALESCE(SUM(total), 0) as t FROM invoices WHERE status = 'paid' AND strftime('%Y-%m', updated_at) = ?`).bind(lastMonth).first<{ t: number }>(),
+    db.prepare(`SELECT COALESCE(SUM(total), 0) as t FROM invoices WHERE status = 'paid' AND strftime('%Y-%m', updated_at, '${pulseMod}') = ?`).bind(thisMonth).first<{ t: number }>(),
+    db.prepare(`SELECT COALESCE(SUM(total), 0) as t FROM invoices WHERE status = 'paid' AND strftime('%Y-%m', updated_at, '${pulseMod}') = ?`).bind(lastMonth).first<{ t: number }>(),
     db.prepare(`SELECT COALESCE(SUM(estimated_value), 0) as t FROM leads WHERE status NOT IN ('won', 'lost', 'closed')`).first<{ t: number }>(),
     db.prepare(`SELECT COALESCE(AVG(estimated_value), 0) as t FROM leads WHERE status = 'won' AND updated_at >= datetime('now', '-3 months')`).first<{ t: number }>(),
   ]);

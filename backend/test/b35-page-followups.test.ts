@@ -2,6 +2,7 @@ import { env, createExecutionContext, waitOnExecutionContext, applyD1Migrations 
 import { describe, it, expect, beforeAll } from 'vitest';
 import worker from '../src/index';
 import { ReportEngine } from '../src/services/report-engine';
+import { localDateString } from '../src/utils/tz';
 
 const testEnv = env as any;
 const TENANT_ID = '00000000-0000-0000-0000-000000000000';
@@ -25,7 +26,8 @@ async function api(method: string, path: string, token: string, body?: unknown) 
 let adminToken = '';
 let contactId = '';
 let leadId = '';
-const today = new Date().toISOString().split('T')[0];
+// the tenant's calendar day (default zone Asia/Kolkata), not the UTC date
+const today = localDateString('Asia/Kolkata');
 
 beforeAll(async () => {
   await applyD1Migrations(testEnv.MASTER_DB, testEnv.TEST_MIGRATIONS);

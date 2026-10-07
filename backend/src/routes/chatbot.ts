@@ -14,6 +14,7 @@ import { AIRouter } from '../services/ai-router';
 
 import { aiAwareErrorHandler, aiUnavailableResponse } from '../utils/ai-unavailable';
 import { AiUnavailableError } from '../services/ai-router';
+import { getTenantTimeZone, localClock } from '../utils/tz';
 
 const app = new Hono<AppContext>();
 app.onError(aiAwareErrorHandler);
@@ -121,7 +122,7 @@ app.post('/webhook/:channel', async (c) => {
   if (!config) return error(c, 'Chatbot not configured', 404);
 
   // Check business hours
-  const isBusinessHours = checkBusinessHours(config);
+  const isBusinessHours = checkBusinessHours(config, await getTenantTimeZone(db));
 
   // Get or create conversation
   let convId = conversationId;
@@ -553,16 +554,17 @@ app.get('/widget.js', async (c) => {
 // HELPERS
 // ============================================================
 
-function checkBusinessHours(config: any): boolean {
+export function checkBusinessHours(config: any, timeZone: string, now: Date = new Date()): boolean {
   if (!config.business_hours_start || !config.business_hours_end) return true;
-  const now = new Date();
-  const day = now.getDay(); // 0=Sun, 1=Mon...
+  // business hours are the tenant's local wall-clock hours, not the server's (UTC)
+  const clock = localClock(timeZone, now);
+  const day = clock.dow; // 0=Sun, 1=Mon...
   const businessDays: number[] = config.business_days ? JSON.parse(config.business_days) : [1, 2, 3, 4, 5];
   if (!businessDays.includes(day)) return false;
 
   const [startH, startM] = config.business_hours_start.split(':').map(Number);
   const [endH, endM] = config.business_hours_end.split(':').map(Number);
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const currentMinutes = clock.hour * 60 + clock.minute;
   const startMinutes = startH * 60 + startM;
   const endMinutes = endH * 60 + endM;
 

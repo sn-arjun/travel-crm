@@ -10,6 +10,7 @@ import { logActivity } from '../utils/activity-logger';
 import { drizzle } from 'drizzle-orm/d1';
 import { notifications } from '../db/tenant-schema';
 import { broadcastToTenant } from '../utils/realtime';
+import { tenantToday, tenantTimeZone, sqlOffsetModifier } from '../utils/tz';
 
 const invoiceRoutes = new Hono<AppContext>();
 
@@ -48,7 +49,7 @@ const recordPaymentSchema = z.object({
   method: z.string().min(1),
   reference: z.string().optional(),
   notes: z.string().optional(),
-  date: z.string().default(() => new Date().toISOString().split('T')[0]),
+  date: z.string().optional(), // defaults to the tenant-local today in the handler
 });
 
 // ============================================================
@@ -103,12 +104,14 @@ invoiceRoutes.get('/', async (c) => {
     whereClause += ' AND i.lead_id = ?';
     params.push(leadId);
   }
+  // created_at is a UTC timestamp; dateFrom/dateTo are the tenant's local calendar days
+  const listTzMod = sqlOffsetModifier(await tenantTimeZone(c));
   if (dateFrom) {
-    whereClause += ' AND DATE(i.created_at) >= DATE(?)';
+    whereClause += ` AND DATE(i.created_at, '${listTzMod}') >= DATE(?)`;
     params.push(dateFrom);
   }
   if (dateTo) {
-    whereClause += ' AND DATE(i.created_at) <= DATE(?)';
+    whereClause += ` AND DATE(i.created_at, '${listTzMod}') <= DATE(?)`;
     params.push(dateTo);
   }
   if (search) {
@@ -166,7 +169,8 @@ invoiceRoutes.get('/summary', async (c) => {
   const tenantDb = c.get('tenantDb');
 
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const { timeZone: sumTz, today } = await tenantToday(c);
+    const sumMod = sqlOffsetModifier(sumTz);
     const monthStart = today.substring(0, 7) + '-01';
 
     const result = await tenantDb
@@ -174,8 +178,8 @@ invoiceRoutes.get('/summary', async (c) => {
         SELECT
           COALESCE(SUM(CASE WHEN status IN ('sent', 'partially_paid', 'overdue') THEN balance_due ELSE 0 END), 0) as outstanding,
           COALESCE(SUM(CASE WHEN status IN ('sent', 'partially_paid', 'overdue') AND due_date < ? THEN balance_due ELSE 0 END), 0) as overdue,
-          COALESCE(SUM(CASE WHEN status = 'paid' AND DATE(updated_at) >= DATE(?) THEN total ELSE 0 END), 0) as paid_this_month,
-          COALESCE(SUM(CASE WHEN DATE(created_at) >= DATE(?) THEN total ELSE 0 END), 0) as invoiced_this_month
+          COALESCE(SUM(CASE WHEN status = 'paid' AND DATE(updated_at, '${sumMod}') >= DATE(?) THEN total ELSE 0 END), 0) as paid_this_month,
+          COALESCE(SUM(CASE WHEN DATE(created_at, '${sumMod}') >= DATE(?) THEN total ELSE 0 END), 0) as invoiced_this_month
         FROM invoices
         WHERE type IN ('tax_invoice', 'proforma') AND status != 'cancelled'
       `)
@@ -279,7 +283,7 @@ invoiceRoutes.post('/', zValidator('json', createInvoiceSchema), async (c) => {
         userId,
         now,
         now,
-        data.issueDate || now.split('T')[0],
+        data.issueDate || (await tenantToday(c)).today,
         data.terms || null
       )
       .run();

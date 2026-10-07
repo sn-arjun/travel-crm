@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, and } from 'drizzle-orm';
 import type { Env } from '../types';
+import { getTenantTimeZone, localDateString } from '../utils/tz';
 import { itineraries, itineraryDays, itineraryItems } from '../db/tenant-schema';
 
 // Minimal context — no auth, just Env bindings
@@ -38,7 +39,8 @@ publicRoutes.get('/quotation/:token', async (c) => {
   }
 
   // Check expiry
-  if (itin.validityDate && itin.validityDate < new Date().toISOString().split('T')[0]) {
+  // validityDate is a local calendar date: valid through the end of that day in the tenant's timezone
+  if (itin.validityDate && itin.validityDate < localDateString(await getTenantTimeZone(tenantDbBinding))) {
     return c.json({ error: 'This quotation has expired' }, 410);
   }
 

@@ -5,6 +5,8 @@
  * Max 366 instances per expansion to prevent runaway generation.
  */
 
+import { DEFAULT_TIMEZONE, isValidTimeZone, localDateString, localDateStartUtcIso, localClock } from '../utils/tz';
+
 interface RecurrenceRule {
     frequency: 'daily' | 'weekly' | 'monthly';
     interval: number;
@@ -42,47 +44,54 @@ interface ExpandedEvent extends EventRow {
     original_start_at?: string;
 }
 
-function formatDateKey(d: Date): string {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}${m}${day}`;
+// All calendar arithmetic is done in the event's own timezone (default Asia/Kolkata), so an event at
+// 00:30 IST recurs on the right local weekday/date even though its UTC date is the day before.
+
+function formatDateKey(d: Date, tz: string): string {
+    return localDateString(tz, d).replace(/-/g, '');
 }
 
-function addDays(date: Date, days: number): Date {
-    const result = new Date(date);
-    result.setDate(result.getDate() + days);
-    return result;
+/** Shift `date` by whole local calendar days, keeping the local time of day. */
+function addDays(date: Date, days: number, tz: string): Date {
+    return shiftLocalCalendar(date, tz, 0, days);
 }
 
-function addMonths(date: Date, months: number): Date {
-    const result = new Date(date);
-    result.setMonth(result.getMonth() + months);
-    return result;
+function addMonths(date: Date, months: number, tz: string): Date {
+    return shiftLocalCalendar(date, tz, months, 0);
+}
+
+function shiftLocalCalendar(date: Date, tz: string, months: number, days: number): Date {
+    const local = localDateString(tz, date);
+    const [y, m, d] = local.split('-').map(Number);
+    const msIntoDay = date.getTime() - new Date(localDateStartUtcIso(tz, local)).getTime();
+    const target = new Date(Date.UTC(y, m - 1 + months, d + days));
+    const targetLocal = `${String(target.getUTCFullYear()).padStart(4, '0')}-${String(target.getUTCMonth() + 1).padStart(2, '0')}-${String(target.getUTCDate()).padStart(2, '0')}`;
+    return new Date(new Date(localDateStartUtcIso(tz, targetLocal)).getTime() + msIntoDay);
 }
 
 function nextWeeklyOccurrence(
     current: Date,
     interval: number,
-    daysOfWeek?: number[]
+    daysOfWeek: number[] | undefined,
+    tz: string
 ): Date {
     if (!daysOfWeek || daysOfWeek.length === 0) {
-        return addDays(current, 7 * interval);
+        return addDays(current, 7 * interval, tz);
     }
 
-    const currentDay = current.getDay();
+    const currentDay = localClock(tz, current).dow;
     const sorted = [...daysOfWeek].sort((a, b) => a - b);
 
     // Find next day in the current week
     for (const day of sorted) {
         if (day > currentDay) {
-            return addDays(current, day - currentDay);
+            return addDays(current, day - currentDay, tz);
         }
     }
 
     // Wrap to next week (considering interval)
     const daysUntilNextWeek = 7 - currentDay + sorted[0];
-    return addDays(current, daysUntilNextWeek + 7 * (interval - 1));
+    return addDays(current, daysUntilNextWeek + 7 * (interval - 1), tz);
 }
 
 /**
@@ -104,6 +113,7 @@ export function expandRecurrence(
     }
 
     const instances: ExpandedEvent[] = [];
+    const tz = isValidTimeZone(event.timezone) ? event.timezone : DEFAULT_TIMEZONE;
     let current = new Date(event.start_at);
     const duration = event.end_at
         ? new Date(event.end_at).getTime() - new Date(event.start_at).getTime()
@@ -122,7 +132,7 @@ export function expandRecurrence(
 
             instances.push({
                 ...event,
-                id: `${event.id}_${formatDateKey(current)}`,
+                id: `${event.id}_${formatDateKey(current, tz)}`,
                 recurrence_parent_id: event.id,
                 start_at: current.toISOString(),
                 end_at: endAt,
@@ -134,13 +144,13 @@ export function expandRecurrence(
         // Advance to next occurrence
         switch (rule.frequency) {
             case 'daily':
-                current = addDays(current, rule.interval || 1);
+                current = addDays(current, rule.interval || 1, tz);
                 break;
             case 'weekly':
-                current = nextWeeklyOccurrence(current, rule.interval || 1, rule.days_of_week);
+                current = nextWeeklyOccurrence(current, rule.interval || 1, rule.days_of_week, tz);
                 break;
             case 'monthly':
-                current = addMonths(current, rule.interval || 1);
+                current = addMonths(current, rule.interval || 1, tz);
                 break;
             default:
                 return instances; // Unknown frequency, stop

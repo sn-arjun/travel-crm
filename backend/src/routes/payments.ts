@@ -8,6 +8,7 @@ import { success, created, paginated, error, notFound, forbidden } from '../util
 import { logActivity } from '../utils/activity-logger';
 import { notifications } from '../db/tenant-schema';
 import { broadcastToTenant } from '../utils/realtime';
+import { tenantToday } from '../utils/tz';
 
 const paymentRoutes = new Hono<AppContext>();
 
@@ -21,7 +22,7 @@ const recordPaymentSchema = z.object({
   method: z.string().min(1),
   reference: z.string().optional(),
   notes: z.string().optional(),
-  date: z.string().default(() => new Date().toISOString().split('T')[0]),
+  date: z.string().optional(), // defaults to the tenant-local today in the handler
   receiptUrl: z.string().optional(),
 });
 
@@ -102,7 +103,7 @@ paymentRoutes.post('/', zValidator('json', recordPaymentSchema), async (c) => {
         data.method,
         data.reference || null,
         'incoming',
-        data.date,
+        data.date || (await tenantToday(c)).today,
         data.notes || null,
         data.receiptUrl || null,
         userId,

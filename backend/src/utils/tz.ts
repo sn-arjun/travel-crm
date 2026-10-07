@@ -179,6 +179,43 @@ export function tenantTimeZone(c: TzCtx): Promise<string> {
   return p;
 }
 
+/** Wall-clock reading of `now` in `timeZone`: local date, day of week (0 = Sunday) and time. */
+export function localClock(
+  timeZone: string,
+  now: Date = new Date(),
+): { date: string; dow: number; hour: number; minute: number } {
+  const tz = resolveZone(timeZone);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    hourCycle: 'h23',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).formatToParts(now);
+  const num = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+  const date = localDateString(tz, now);
+  const [y, m, d] = date.split('-').map(Number);
+  return { date, dow: new Date(Date.UTC(y, m - 1, d)).getUTCDay(), hour: num('hour') % 24, minute: num('minute') };
+}
+
+/** Whole calendar days from 'YYYY-MM-DD' `from` to `to` (negative if `to` is earlier). */
+export function daysBetweenLocal(from: string, to: string): number {
+  const [fy, fm, fd] = from.slice(0, 10).split('-').map(Number);
+  const [ty, tm, td] = to.slice(0, 10).split('-').map(Number);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86400000);
+}
+
+/**
+ * SQLite datetime modifier ('+05:30') for the zone's UTC offset at `now`,
+ * e.g. strftime('%Y-%m', created_at, '+05:30') groups a UTC timestamp by local month.
+ */
+export function sqlOffsetModifier(timeZone: string, now: Date = new Date()): string {
+  const tz = resolveZone(timeZone);
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'longOffset' }).formatToParts(now);
+  const name = parts.find((p) => p.type === 'timeZoneName')?.value ?? 'GMT';
+  const m = /GMT([+-])(\d{2}):(\d{2})/.exec(name);
+  return m ? `${m[1]}${m[2]}:${m[3]}` : '+00:00';
+}
+
 /** Tenant timezone and its local 'YYYY-MM-DD' today for the current request. */
 export async function tenantToday(c: TzCtx, now: Date = new Date()): Promise<{ timeZone: string; today: string }> {
   const timeZone = await tenantTimeZone(c);

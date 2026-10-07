@@ -52,7 +52,7 @@ const teamReports: ReportDefinition[] = [
         baseQuery: `
       SELECT
         l.assigned_to,
-        strftime('%Y-%m', l.created_at) as month,
+        strftime('%Y-%m', l.created_at, '{TZ}') as month,
         COUNT(l.id) as total_leads,
         SUM(CASE WHEN l.status = 'won' THEN 1 ELSE 0 END) as won_deals,
         COALESCE(SUM(CASE WHEN l.status = 'won' THEN l.budget ELSE 0 END), 0) as revenue,
@@ -60,7 +60,7 @@ const teamReports: ReportDefinition[] = [
         COALESCE(AVG(CASE WHEN l.status = 'won' THEN CAST(julianday(l.updated_at) - julianday(l.created_at) AS REAL) END), 0) as avg_days_to_close
       FROM leads l
       WHERE l.is_deleted = 0 {DATE_FILTER}
-      GROUP BY l.assigned_to, strftime('%Y-%m', l.created_at)
+      GROUP BY l.assigned_to, strftime('%Y-%m', l.created_at, '{TZ}')
       {ORDER_BY}
     `,
         columns: [
@@ -144,7 +144,7 @@ const teamReports: ReportDefinition[] = [
         COUNT(id) as total_tasks,
         SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_tasks,
         SUM(CASE WHEN status = 'pending' OR status = 'in_progress' THEN 1 ELSE 0 END) as pending_tasks,
-        SUM(CASE WHEN due_date < date('now') AND status != 'completed' THEN 1 ELSE 0 END) as overdue_tasks,
+        SUM(CASE WHEN due_date < '{TODAY}' AND status != 'completed' THEN 1 ELSE 0 END) as overdue_tasks,
         COALESCE(SUM(CASE WHEN status = 'completed' THEN 1.0 ELSE 0.0 END) / NULLIF(COUNT(id), 0) * 100, 0) as completion_rate
       FROM tasks
       WHERE 1 = 1 {DATE_FILTER}

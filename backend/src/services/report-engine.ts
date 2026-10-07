@@ -1,6 +1,36 @@
 import { D1Database } from '@cloudflare/workers-types';
 import { ReportParams, ReportResult } from '../types/report';
 import { reportRegistry } from './report-registry';
+import {
+    DEFAULT_TIMEZONE,
+    getTenantTimeZone,
+    localDateString,
+    localDateStartUtcIso,
+    addDaysLocal,
+    sqlOffsetModifier,
+} from '../utils/tz';
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Express a report date bound for the column it filters.
+ *  - date-only column ('YYYY-MM-DD' local dates): instants become the tenant-local date.
+ *  - timestamp column (UTC ISO strings): a bare local date becomes the UTC instant of local midnight
+ *    (start) or of the last millisecond of that local day (end).
+ */
+export function normalizeDateBound(
+    value: string,
+    which: 'from' | 'to',
+    columnType: 'date' | 'timestamp',
+    timeZone: string,
+): string {
+    if (columnType === 'date') {
+        return DATE_ONLY.test(value) ? value : localDateString(timeZone, new Date(value));
+    }
+    if (!DATE_ONLY.test(value)) return value;
+    if (which === 'from') return localDateStartUtcIso(timeZone, value);
+    return new Date(new Date(localDateStartUtcIso(timeZone, addDaysLocal(value, 1))).getTime() - 1).toISOString();
+}
 // @ts-ignore
 import { HonoRequest } from 'hono';
 
@@ -76,20 +106,29 @@ export class ReportEngine {
         userId: string,
         userRole: string,
         dateFrom?: string,
-        dateTo?: string
+        dateTo?: string,
+        timeZone: string = DEFAULT_TIMEZONE,
+        now: Date = new Date()
     ): { query: string; bindings: any[] } {
-        let query = report.baseQuery;
+        // Tenant-calendar tokens: {TODAY} local date, {NOW} current instant, {TZ} SQLite offset modifier
+        let query: string = report.baseQuery
+            .split('{TODAY}').join(localDateString(timeZone, now))
+            .split('{NOW}').join(now.toISOString())
+            .split('{TZ}').join(sqlOffsetModifier(timeZone, now));
         const bindings: any[] = [];
 
         // Date range filter
         if (dateFrom && dateTo && !report.ignoreDateRange) {
             const dateColumn = params.date_column || report.dateColumn || 'created_at';
+            const columnType: 'date' | 'timestamp' = report.dateColumnType === 'date' ? 'date' : 'timestamp';
+            const fromBound = normalizeDateBound(dateFrom, 'from', columnType, timeZone);
+            const toBound = normalizeDateBound(dateTo, 'to', columnType, timeZone);
             if (query.includes('{DATE_FILTER}')) {
                 query = query.replace('{DATE_FILTER}', ` AND ${dateColumn} BETWEEN ? AND ? `);
-                bindings.push(dateFrom, dateTo);
+                bindings.push(fromBound, toBound);
             } else {
                 query = addWhereCondition(query, `${dateColumn} BETWEEN ? AND ?`);
-                bindings.push(dateFrom, dateTo);
+                bindings.push(fromBound, toBound);
             }
         } else if (query.includes('{DATE_FILTER}')) {
             // No dates provided — remove placeholder so query is valid
@@ -173,7 +212,10 @@ export class ReportEngine {
             throw new ForbiddenError('Insufficient permissions for this report');
         }
 
-        const currentReq = this._buildQuery(report, params, userId, userRole, params.date_from, params.date_to);
+        // The tenant's calendar decides 'today', month buckets and date bounds (not the server's UTC clock)
+        const timeZone = await getTenantTimeZone(db);
+        const nowInstant = new Date();
+        const currentReq = this._buildQuery(report, params, userId, userRole, params.date_from, params.date_to, timeZone, nowInstant);
         // stmts[0] = current rows, stmts[1] = real total row count (same query without LIMIT/OFFSET)
         const countSql = `SELECT COUNT(*) AS total FROM (${currentReq.query.replace(/\s*LIMIT \? OFFSET \?\s*$/, '')})`;
         const stmts: any[] = [
@@ -190,10 +232,11 @@ export class ReportEngine {
             const prevToMs = dateFromMs - 86400000; // 1 day before
             const prevFromMs = prevToMs - diff;
 
-            const prevFrom = new Date(prevFromMs).toISOString().split('T')[0];
-            const prevTo = new Date(prevToMs).toISOString().split('T')[0];
+            // previous period expressed as local calendar dates (normalised per column type in _buildQuery)
+            const prevFrom = localDateString(timeZone, new Date(prevFromMs));
+            const prevTo = localDateString(timeZone, new Date(prevToMs));
 
-            prevReq = this._buildQuery(report, params, userId, userRole, prevFrom, prevTo);
+            prevReq = this._buildQuery(report, params, userId, userRole, prevFrom, prevTo, timeZone, nowInstant);
             stmts.push(db.prepare(prevReq.query).bind(...prevReq.bindings));
         }
 

@@ -1,5 +1,6 @@
 import type { Env } from '../types';
 import { createInAppNotification } from '../services/notification-service';
+import { getTenantTimeZone, localDateString, localMonthDay, addDaysLocal, sqlOffsetModifier } from '../utils/tz';
 
 /**
  * Daily cron job (runs at 8 AM) to check for upcoming birthdays and anniversaries.
@@ -22,10 +23,10 @@ export async function checkBirthdayAnniversary(env: Env): Promise<void> {
   }
 }
 
-async function processBirthdaysForTenant(env: Env, db: D1Database, tenantId: string): Promise<void> {
+export async function processBirthdaysForTenant(env: Env, db: D1Database, tenantId: string, now: Date = new Date()): Promise<void> {
   try {
-    const today = new Date();
-    const monthDay = today.toISOString().substring(5, 10); // MM-DD format
+    // 'today' is the tenant's local calendar day (birthdays are local calendar dates)
+    const monthDay = localMonthDay(await getTenantTimeZone(db), now); // MM-DD format
 
     // Find contacts with birthdays today
     const birthdayContacts = await db
@@ -122,13 +123,14 @@ export async function checkInvoiceReminders(env: Env): Promise<void> {
   }
 }
 
-async function processInvoiceRemindersForTenant(env: Env, db: D1Database): Promise<void> {
+export async function processInvoiceRemindersForTenant(env: Env, db: D1Database, now: Date = new Date()): Promise<void> {
   try {
-    const today = new Date().toISOString().substring(0, 10); // YYYY-MM-DD
-    const tomorrow = new Date(Date.now() + 86400000).toISOString().substring(0, 10);
-    const in3Days = new Date(Date.now() + 3 * 86400000).toISOString().substring(0, 10);
-    const yesterday = new Date(Date.now() - 86400000).toISOString().substring(0, 10);
-    const week1Ago = new Date(Date.now() - 7 * 86400000).toISOString().substring(0, 10);
+    // invoice due dates are local calendar dates: count days on the tenant's calendar
+    const today = localDateString(await getTenantTimeZone(db), now); // YYYY-MM-DD
+    const tomorrow = addDaysLocal(today, 1);
+    const in3Days = addDaysLocal(today, 3);
+    const yesterday = addDaysLocal(today, -1);
+    const week1Ago = addDaysLocal(today, -7);
 
     // Due in 3 days
     const dueIn3Days = await db
@@ -259,7 +261,7 @@ async function processInvoiceRemindersForTenant(env: Env, db: D1Database): Promi
     }
 
     // Overdue 14 days — final escalation
-    const week2Ago = new Date(Date.now() - 14 * 86400000).toISOString().substring(0, 10);
+    const week2Ago = addDaysLocal(today, -14);
     const overdue14Days = await db
       .prepare(`
         SELECT id, invoice_number, contact_id, total, due_date, created_by
@@ -338,11 +340,11 @@ export async function checkVisaPassportExpiry(env: Env): Promise<void> {
   }
 }
 
-async function processVisaPassportForTenant(env: Env, db: D1Database): Promise<void> {
+export async function processVisaPassportForTenant(env: Env, db: D1Database, now: Date = new Date()): Promise<void> {
   try {
-    const today = new Date();
-    const in30Days = new Date(today.getTime() + 30 * 86400000).toISOString().substring(0, 10);
-    const in6Months = new Date(today.getTime() + 180 * 86400000).toISOString().substring(0, 10);
+    const today = localDateString(await getTenantTimeZone(db), now);
+    const in30Days = addDaysLocal(today, 30);
+    const in6Months = addDaysLocal(today, 180);
 
     // Check visa expiries in 30 days
     const visasExpiring = await db
@@ -353,9 +355,9 @@ async function processVisaPassportForTenant(env: Env, db: D1Database): Promise<v
         LEFT JOIN leads l ON va.lead_id = l.id
         WHERE va.status = 'approved'
           AND va.visa_expiry_date <= ?
-          AND va.visa_expiry_date >= date('now')
+          AND va.visa_expiry_date >= ?
       `)
-      .bind(in30Days)
+      .bind(in30Days, today)
       .all<{ id: string; country: string; first_name: string; last_name: string; assigned_to?: string; lead_id?: string }>();
 
     for (const visa of visasExpiring.results) {
@@ -383,9 +385,9 @@ async function processVisaPassportForTenant(env: Env, db: D1Database): Promise<v
         FROM travellers t
         WHERE t.passport_expiry_date IS NOT NULL
           AND t.passport_expiry_date <= ?
-          AND t.passport_expiry_date >= date('now')
+          AND t.passport_expiry_date >= ?
       `)
-      .bind(in6Months)
+      .bind(in6Months, today)
       .all<{ id: string; first_name: string; last_name: string; contact_id?: string; passport_expiry: string }>();
 
     for (const passport of passportsExpiring.results) {
@@ -430,10 +432,11 @@ export async function checkMissingVisaDocuments(env: Env): Promise<void> {
   }
 }
 
-async function processMissingVisaDocsForTenant(env: Env, db: D1Database): Promise<void> {
+export async function processMissingVisaDocsForTenant(env: Env, db: D1Database, now: Date = new Date()): Promise<void> {
   try {
-    const today = new Date();
-    const sevenDaysAgo = new Date(today.getTime() - 7 * 86400000).toISOString().substring(0, 10);
+    const tz = await getTenantTimeZone(db);
+    const sevenDaysAgo = addDaysLocal(localDateString(tz, now), -7);
+    const tzMod = sqlOffsetModifier(tz, now);
 
     const pendingVisas = await db
       .prepare(`
@@ -442,7 +445,7 @@ async function processMissingVisaDocsForTenant(env: Env, db: D1Database): Promis
         JOIN travellers t ON va.traveller_id = t.id
         LEFT JOIN contacts c ON t.contact_id = c.id
         WHERE va.status = 'documents_collecting'
-          AND substr(va.created_at, 1, 10) <= ?
+          AND date(va.created_at, '${tzMod}') <= ?
       `)
       .bind(sevenDaysAgo)
       .all<{ id: string; country: string; first_name: string; last_name: string; email?: string }>();
@@ -486,10 +489,11 @@ export async function checkTripReminders(env: Env): Promise<void> {
   }
 }
 
-async function processTripRemindersForTenant(env: Env, db: D1Database): Promise<void> {
+export async function processTripRemindersForTenant(env: Env, db: D1Database, now: Date = new Date()): Promise<void> {
   try {
-    const tomorrow = new Date(Date.now() + 86400000).toISOString().substring(0, 10);
-    const yesterday = new Date(Date.now() - 86400000).toISOString().substring(0, 10);
+    const today = localDateString(await getTenantTimeZone(db), now);
+    const tomorrow = addDaysLocal(today, 1);
+    const yesterday = addDaysLocal(today, -1);
 
     // Trips departing tomorrow
     const departingTomorrow = await db

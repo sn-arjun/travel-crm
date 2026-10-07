@@ -5,6 +5,7 @@ import { success, created, paginated, error, notFound } from '../utils/response'
 import { generateId } from '../utils/uuid';
 import { normalizePhone, phoneLookupVariants, inPlaceholders } from '../utils/phone';
 import { logActivity } from '../utils/activity-logger';
+import { tenantToday, tenantTimeZone, addDaysLocal, daysBetweenLocal, localMonthWindow } from '../utils/tz';
 import {
   createVehicleSchema, updateVehicleSchema, vehicleStatusSchema, vehicleListSchema,
   createDriverSchema, updateDriverSchema, driverStatusSchema, driverListSchema, rateDriverSchema,
@@ -162,8 +163,8 @@ fleet.get('/vehicles/:id', async (c) => {
   `).bind(id).all();
 
   // Documents expiring within 30 days
-  const now = new Date().toISOString().split('T')[0];
-  const thirtyDays = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+  const { today: now } = await tenantToday(c);
+  const thirtyDays = addDaysLocal(now, 30);
   const expiringDocs = await db.prepare(`
     SELECT * FROM vehicle_documents
     WHERE vehicle_id = ? AND is_active = 1 AND expiry_date <= ? AND expiry_date >= ?
@@ -171,10 +172,10 @@ fleet.get('/vehicles/:id', async (c) => {
 
   return success(c, {
     ...parseVehicle(vehicle),
-    documents: (docs.results || []).map(parseVehicleDocument),
+    documents: (docs.results || []).map((r: any) => parseVehicleDocument(r, now)),
     upcomingTrips: (trips.results || []).map(parseTripRow),
     activeTrip: activeTrip.results?.[0] ? parseTripRow(activeTrip.results[0]) : null,
-    documentsExpiringSoon: (expiringDocs.results || []).map(parseVehicleDocument),
+    documentsExpiringSoon: (expiringDocs.results || []).map((r: any) => parseVehicleDocument(r, now)),
   });
 });
 
@@ -417,7 +418,7 @@ fleet.post('/vehicles/:id/documents', async (c) => {
   `).bind(docId, vehicleId, docType, docNumber, key, file.name, expiryDate, issuedDate, now, now).run();
 
   const doc = await db.prepare('SELECT * FROM vehicle_documents WHERE id = ?').bind(docId).first();
-  return created(c, parseVehicleDocument(doc!));
+  return created(c, parseVehicleDocument(doc!, (await tenantToday(c)).today));
 });
 
 fleet.get('/vehicles/:id/documents', async (c) => {
@@ -428,7 +429,7 @@ fleet.get('/vehicles/:id/documents', async (c) => {
     'SELECT * FROM vehicle_documents WHERE vehicle_id = ? AND is_active = 1 ORDER BY type, created_at DESC'
   ).bind(vehicleId).all();
 
-  return success(c, (rows.results || []).map(parseVehicleDocument));
+  { const { today: todayDoc } = await tenantToday(c); return success(c, (rows.results || []).map((r: any) => parseVehicleDocument(r, todayDoc))); }
 });
 
 fleet.get('/vehicles/:vehicleId/documents/:docId/download', async (c) => {
@@ -456,8 +457,8 @@ fleet.get('/documents/expiring', async (c) => {
   const db = c.get('tenantDb');
   const url = new URL(c.req.url);
   const days = parseInt(url.searchParams.get('days') || '30');
-  const today = new Date().toISOString().split('T')[0];
-  const futureDate = new Date(Date.now() + days * 86400000).toISOString().split('T')[0];
+  const { today } = await tenantToday(c);
+  const futureDate = addDaysLocal(today, days);
 
   const rows = await db.prepare(`
     SELECT vd.*, v.registration_number, v.type as vehicle_type, 'vehicle' as owner_type
@@ -546,7 +547,8 @@ fleet.get('/maintenance/due', async (c) => {
   const db = c.get('tenantDb');
   const url = new URL(c.req.url);
   const days = parseInt(url.searchParams.get('days') || '15');
-  const futureDate = new Date(Date.now() + days * 86400000).toISOString().split('T')[0];
+  const { today } = await tenantToday(c);
+  const futureDate = addDaysLocal(today, days);
 
   const rows = await db.prepare(`
     SELECT v.id, v.registration_number, v.type, v.next_service_due, v.odometer_km, v.last_service_date
@@ -725,8 +727,9 @@ fleet.get('/drivers/:id', async (c) => {
   ).bind(id).all();
 
   // Revenue attribution
-  const thisMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
-  const lastMonthStart = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString();
+  const { timeZone: tzDriver, today: todayDrv } = await tenantToday(c);
+  const thisMonthStart = localMonthWindow(tzDriver).startIso;
+  const lastMonthStart = localMonthWindow(tzDriver, new Date(), -1).startIso;
   const [revenueAll, revenueThisMonth, revenueLastMonth, completedTrips, revenueByMonth] = await Promise.all([
     db.prepare(`SELECT COALESCE(SUM(i.total), 0) as total, COUNT(i.id) as count
       FROM invoices i JOIN trip_assignments ta ON ta.invoice_id = i.id
@@ -750,7 +753,7 @@ fleet.get('/drivers/:id', async (c) => {
 
   return success(c, {
     ...parseDriver(driver),
-    documents: (docs.results || []).map(parseDriverDocument),
+    documents: (docs.results || []).map((r: any) => parseDriverDocument(r, todayDrv)),
     upcomingTrips: (trips.results || []).map(parseTripRow),
     recentRatings: ratings.results || [],
     revenue: {
@@ -986,7 +989,7 @@ fleet.post('/drivers/:id/documents', async (c) => {
   `).bind(docId, driverId, docType, docNumber, key, file.name, expiryDate, issuedDate, now, now).run();
 
   const doc = await db.prepare('SELECT * FROM driver_documents WHERE id = ?').bind(docId).first();
-  return created(c, parseDriverDocument(doc!));
+  return created(c, parseDriverDocument(doc!, (await tenantToday(c)).today));
 });
 
 fleet.get('/drivers/:id/documents', async (c) => {
@@ -997,7 +1000,7 @@ fleet.get('/drivers/:id/documents', async (c) => {
     'SELECT * FROM driver_documents WHERE driver_id = ? AND is_active = 1 ORDER BY type, created_at DESC'
   ).bind(driverId).all();
 
-  return success(c, (rows.results || []).map(parseDriverDocument));
+  { const { today: todayDoc } = await tenantToday(c); return success(c, (rows.results || []).map((r: any) => parseDriverDocument(r, todayDoc))); }
 });
 
 fleet.get('/drivers/:driverId/documents/:docId/download', async (c) => {
@@ -1025,8 +1028,8 @@ fleet.get('/documents/drivers/expiring', async (c) => {
   const db = c.get('tenantDb');
   const url = new URL(c.req.url);
   const days = parseInt(url.searchParams.get('days') || '30');
-  const today = new Date().toISOString().split('T')[0];
-  const futureDate = new Date(Date.now() + days * 86400000).toISOString().split('T')[0];
+  const { today } = await tenantToday(c);
+  const futureDate = addDaysLocal(today, days);
 
   const rows = await db.prepare(`
     SELECT dd.*, d.name as driver_name, d.phone as driver_phone
@@ -1245,8 +1248,9 @@ fleet.post('/trips', zValidator('json', createTripSchema), async (c) => {
       const driver = await db.prepare('SELECT name, phone FROM drivers WHERE id = ?').bind(data.driverId).first();
       const vehicle = await db.prepare('SELECT registration_number, type FROM vehicles WHERE id = ?').bind(data.vehicleId).first();
       if (driver && vehicle) {
-        const pickupDate = new Date(data.pickupDatetime).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-        const pickupTime = new Date(data.pickupDatetime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+        const tzPickup = await tenantTimeZone(c);
+        const pickupDate = new Date(data.pickupDatetime).toLocaleDateString('en-IN', { timeZone: tzPickup, weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+        const pickupTime = new Date(data.pickupDatetime).toLocaleTimeString('en-IN', { timeZone: tzPickup, hour: '2-digit', minute: '2-digit' });
         const settings = await db.prepare('SELECT company_name FROM settings LIMIT 1').first<{ company_name: string }>();
         const message = `Hello ${data.passengerName || 'Guest'}, your vehicle has been assigned for ${pickupDate}.\n\nDriver: ${driver.name}\nPhone: ${driver.phone}\nVehicle: ${(vehicle.type as string).replace(/_/g, ' ')} (${vehicle.registration_number})\n\nPickup: ${data.pickupLocation || 'TBD'} at ${pickupTime}\n\n— ${settings?.company_name || 'TravelCRM'}`;
         await c.env.SMS_QUEUE.send({
@@ -1610,11 +1614,12 @@ fleet.get('/dashboard', async (c) => {
   const db = c.get('tenantDb');
   const now = new Date().toISOString();
   const sevenDays = new Date(Date.now() + 7 * 86400000).toISOString();
-  const thirtyDays = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
-  const fifteenDays = new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0];
+  const { timeZone: tzDash, today: todayDash } = await tenantToday(c);
+  const thirtyDays = addDaysLocal(todayDash, 30);
+  const fifteenDays = addDaysLocal(todayDash, 15);
 
-  const thisMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
-  const lastMonthStart = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString();
+  const thisMonthStart = localMonthWindow(tzDash).startIso;
+  const lastMonthStart = localMonthWindow(tzDash, new Date(), -1).startIso;
 
   const [vehicleCounts, driverCounts, activeTrips, upcomingTrips, expiringDocs, maintenanceDue, recentCompleted, topDrivers, revenueThisMonth, revenueLastMonth, revenueByVehicleType, revenueByDriver] = await Promise.all([
     // Vehicle summary
@@ -1790,10 +1795,9 @@ function parseVehicle(row: Record<string, any>) {
   };
 }
 
-function parseVehicleDocument(row: Record<string, any>) {
-  const today = new Date().toISOString().split('T')[0];
+function parseVehicleDocument(row: Record<string, any>, today: string) {
   const expiryDate = row.expiry_date;
-  const daysUntil = expiryDate ? Math.ceil((new Date(expiryDate).getTime() - new Date(today).getTime()) / 86400000) : null;
+  const daysUntil = expiryDate ? daysBetweenLocal(today, expiryDate) : null;
   return {
     id: row.id,
     vehicleId: row.vehicle_id,
@@ -1834,10 +1838,9 @@ function parseDriver(row: Record<string, any>) {
   };
 }
 
-function parseDriverDocument(row: Record<string, any>) {
-  const today = new Date().toISOString().split('T')[0];
+function parseDriverDocument(row: Record<string, any>, today: string) {
   const expiryDate = row.expiry_date;
-  const daysUntil = expiryDate ? Math.ceil((new Date(expiryDate).getTime() - new Date(today).getTime()) / 86400000) : null;
+  const daysUntil = expiryDate ? daysBetweenLocal(today, expiryDate) : null;
   return {
     id: row.id,
     driverId: row.driver_id,
@@ -1947,7 +1950,8 @@ fleet.get('/vehicle-rate-cards', zValidator('query', rateCardListSchema), async 
 fleet.get('/vehicle-rate-cards/lookup', zValidator('query', rateCardLookupSchema), async (c) => {
   const db = c.get('tenantDb');
   const { vehicleType, tripType } = c.req.valid('query');
-  const now = new Date().toISOString();
+  // valid_from / valid_to are local calendar dates, inclusive on both ends
+  const { today: now } = await tenantToday(c);
 
   const row = await db.prepare(`
     SELECT * FROM vehicle_rate_cards

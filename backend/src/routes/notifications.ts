@@ -3,6 +3,7 @@ import type { AppContext } from '../types';
 import { success, notFound, error, forbidden, created } from '../utils/response';
 import { generateId } from '../utils/uuid';
 import { broadcastToTenant } from '../utils/realtime';
+import { tenantToday } from '../utils/tz';
 
 const notificationsRoutes = new Hono<AppContext>();
 
@@ -220,9 +221,9 @@ notificationsRoutes.get('/badge-counts', async (c) => {
         SELECT COUNT(*) AS count FROM invoices
         WHERE created_by = ?
         AND status NOT IN ('paid', 'cancelled')
-        AND due_date < date('now')
+        AND due_date < ?
       `)
-      .bind(userId)
+      .bind(userId, (await tenantToday(c)).today)
       .first<{ count: number }>();
 
     return success(c, {

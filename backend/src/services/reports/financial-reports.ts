@@ -89,6 +89,7 @@ const financialReports: ReportDefinition[] = [
         allowedFilters: [],
         allowedGroupBy: [],
         dateColumn: 'due_date',
+        dateColumnType: 'date',
         defaultSort: { column: 'balance_due', order: 'desc' },
         baseQuery: `
       SELECT

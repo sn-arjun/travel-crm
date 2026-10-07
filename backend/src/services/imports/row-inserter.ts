@@ -23,7 +23,8 @@ export class RowInserter {
 
             switch (importType) {
                 case 'contacts': {
-                    const contactName = [validData.firstName, validData.lastName].filter(Boolean).join(' ');
+                    // `name` (already resolved by the validator: single name column wins, else first + last)
+                    const contactName = validData.name || [validData.firstName, validData.lastName].filter(Boolean).join(' ');
                     // Normalize: lowercase email, strip phone formatting
                     const normalizedEmail = validData.email ? validData.email.toLowerCase().trim() : null;
                     const normalizedPhone = validData.phone ? validData.phone.replace(/[\s\-\(\)\.]/g, '') : null;

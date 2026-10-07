@@ -9,6 +9,7 @@ import { requirePermission } from '../middleware/rbac';
 import { logLeadActivity } from '../utils/lead-activity-logger';
 import { success, created, error, notFound } from '../utils/response';
 import { generateId } from '../utils/uuid';
+import { tenantTimeZone, localDayWindowUtc } from '../utils/tz';
 
 const followUpRoutes = new Hono<AppContext>();
 
@@ -40,13 +41,13 @@ function buildFollowUpQuery(
   role: string,
   teamView: boolean,
   now: string,
+  timeZone: string,
   contactId?: string,
   status: string = 'pending',
 ): { sql: string; params: unknown[] } {
-  const today = now.split('T')[0];
-  const todayStart = `${today}T00:00:00.000Z`;
-  const todayEnd = `${today}T23:59:59.999Z`;
-  const in7Days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  // 'today' is the tenant's local calendar day, expressed as the UTC window [todayStart, todayEnd)
+  const { startIso: todayStart, endIso: todayEnd } = localDayWindowUtc(timeZone, new Date(now));
+  const in7Days = new Date(new Date(now).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
   let whereClause = status === 'all' ? '1 = 1' : 'f.status = ?';
   const params: unknown[] = status === 'all' ? [] : [status];
@@ -65,13 +66,13 @@ function buildFollowUpQuery(
   }
 
   if (filter === 'today') {
-    whereClause += ` AND f.scheduled_at >= ? AND f.scheduled_at <= ?`;
+    whereClause += ` AND f.scheduled_at >= ? AND f.scheduled_at < ?`;
     params.push(todayStart, todayEnd);
   } else if (filter === 'overdue') {
     whereClause += ` AND f.scheduled_at < ?`;
     params.push(todayStart);
   } else if (filter === 'upcoming') {
-    whereClause += ` AND f.scheduled_at > ? AND f.scheduled_at <= ?`;
+    whereClause += ` AND f.scheduled_at >= ? AND f.scheduled_at <= ?`;
     params.push(todayEnd, in7Days);
   }
 
@@ -112,7 +113,7 @@ followUpRoutes.get('/', requirePermission('leads', 'view'), async (c) => {
     return error(c, 'status must be one of pending, completed, cancelled, missed, all', 400);
   }
 
-  const { sql, params } = buildFollowUpQuery(tenantDb, filter, userId, role, teamView, now, contactId, status);
+  const { sql, params } = buildFollowUpQuery(tenantDb, filter, userId, role, teamView, now, await tenantTimeZone(c), contactId, status);
 
   const result = await tenantDb.prepare(sql).bind(...params).all();
 

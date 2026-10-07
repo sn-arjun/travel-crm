@@ -17,6 +17,7 @@ import { drizzle } from 'drizzle-orm/d1';
 import { createVoipProvider } from '../services/voip-provider';
 import type { VoipSettingsRow } from '../services/voip-provider';
 import { logActivity } from '../utils/activity-logger';
+import { tenantToday, addDaysLocal, localDateStartUtcIso, sqlOffsetModifier } from '../utils/tz';
 
 const callRoutes = new Hono<AppContext>();
 
@@ -172,8 +173,13 @@ callRoutes.get('/analytics', rbac(['admin', 'sales_manager']), async (c) => {
   const db = c.get('tenantDb');
   const url = new URL(c.req.url);
 
-  const fromDate = url.searchParams.get('fromDate') || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-  const toDate = url.searchParams.get('toDate') || new Date().toISOString().slice(0, 10);
+  // fromDate / toDate are tenant-local calendar dates (inclusive); timestamps are UTC
+  const { timeZone: tz, today: localToday } = await tenantToday(c);
+  const fromDate = url.searchParams.get('fromDate') || addDaysLocal(localToday, -30);
+  const toDate = url.searchParams.get('toDate') || localToday;
+  const fromIso = localDateStartUtcIso(tz, fromDate);
+  const toIso = localDateStartUtcIso(tz, addDaysLocal(toDate, 1)); // exclusive
+  const tzMod = sqlOffsetModifier(tz);
 
   // Total calls
   const totals = await db.prepare(`
@@ -188,21 +194,21 @@ callRoutes.get('/analytics', rbac(['admin', 'sales_manager']), async (c) => {
       SUM(CASE WHEN outcome = 'interested' THEN 1 ELSE 0 END) as interested_count,
       SUM(CASE WHEN outcome = 'follow_up_needed' THEN 1 ELSE 0 END) as follow_up_count
     FROM call_logs
-    WHERE created_at >= ? AND created_at <= ?
-  `).bind(fromDate, toDate + 'T23:59:59Z').first<Record<string, any>>();
+    WHERE created_at >= ? AND created_at < ?
+  `).bind(fromIso, toIso).first<Record<string, any>>();
 
   // Calls per day
   const dailyCalls = await db.prepare(`
     SELECT
-      DATE(created_at) as date,
+      DATE(created_at, '${tzMod}') as date,
       COUNT(*) as total,
       SUM(CASE WHEN direction = 'inbound' THEN 1 ELSE 0 END) as inbound,
       SUM(CASE WHEN direction = 'outbound' THEN 1 ELSE 0 END) as outbound
     FROM call_logs
-    WHERE created_at >= ? AND created_at <= ?
-    GROUP BY DATE(created_at)
+    WHERE created_at >= ? AND created_at < ?
+    GROUP BY DATE(created_at, '${tzMod}')
     ORDER BY date ASC
-  `).bind(fromDate, toDate + 'T23:59:59Z').all();
+  `).bind(fromIso, toIso).all();
 
   // Top callers (agents)
   const topAgents = await db.prepare(`
@@ -212,31 +218,31 @@ callRoutes.get('/analytics', rbac(['admin', 'sales_manager']), async (c) => {
       ROUND(AVG(CASE WHEN cl.duration_seconds > 0 THEN cl.duration_seconds END), 1) as avg_duration
     FROM call_logs cl
     JOIN users u ON cl.created_by = u.id
-    WHERE cl.created_at >= ? AND cl.created_at <= ?
+    WHERE cl.created_at >= ? AND cl.created_at < ?
     GROUP BY u.id, u.name
     ORDER BY total_calls DESC
     LIMIT 10
-  `).bind(fromDate, toDate + 'T23:59:59Z').all();
+  `).bind(fromIso, toIso).all();
 
   // Outcome distribution
   const outcomes = await db.prepare(`
     SELECT outcome, COUNT(*) as count
     FROM call_logs
-    WHERE outcome IS NOT NULL AND created_at >= ? AND created_at <= ?
+    WHERE outcome IS NOT NULL AND created_at >= ? AND created_at < ?
     GROUP BY outcome
     ORDER BY count DESC
-  `).bind(fromDate, toDate + 'T23:59:59Z').all();
+  `).bind(fromIso, toIso).all();
 
   // Hourly distribution
   const hourly = await db.prepare(`
     SELECT
-      CAST(strftime('%H', created_at) AS INTEGER) as hour,
+      CAST(strftime('%H', created_at, '${tzMod}') AS INTEGER) as hour,
       COUNT(*) as count
     FROM call_logs
-    WHERE created_at >= ? AND created_at <= ?
+    WHERE created_at >= ? AND created_at < ?
     GROUP BY hour
     ORDER BY hour ASC
-  `).bind(fromDate, toDate + 'T23:59:59Z').all();
+  `).bind(fromIso, toIso).all();
 
   const totalCalls = (totals?.total_calls as number) || 0;
   const completedCalls = (totals?.completed_calls as number) || 0;
@@ -389,9 +395,9 @@ callRoutes.put('/:id', zValidator('json', updateCallSchema), async (c) => {
 
         // Auto-create follow-up if outcome is follow_up_needed
         if (data.outcome === 'follow_up_needed') {
-          const tomorrow = new Date();
-          tomorrow.setDate(tomorrow.getDate() + 1);
-          tomorrow.setHours(10, 0, 0, 0);
+          // 10:00 tomorrow in the tenant's local time
+          const { timeZone: fuTz, today: fuToday } = await tenantToday(c);
+          const tomorrow = new Date(new Date(localDateStartUtcIso(fuTz, addDaysLocal(fuToday, 1))).getTime() + 10 * 3600000);
           const scheduledAt = tomorrow.toISOString().replace(/\.\d{3}Z$/, 'Z');
 
           await db.prepare(`

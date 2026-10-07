@@ -187,13 +187,13 @@ const salesReports: ReportDefinition[] = [
         defaultSort: { column: 'month', order: 'asc' },
         baseQuery: `
       SELECT
-        strftime('%Y-%m', created_at) as month,
+        strftime('%Y-%m', created_at, '{TZ}') as month,
         COUNT(id) as won_deals,
         COALESCE(AVG(budget), 0) as avg_deal_size,
         COALESCE(SUM(budget), 0) as total_revenue
       FROM leads
       WHERE is_deleted = 0 AND status = 'won' {DATE_FILTER}
-      GROUP BY strftime('%Y-%m', created_at)
+      GROUP BY strftime('%Y-%m', created_at, '{TZ}')
       {ORDER_BY}
     `,
         columns: [
@@ -241,13 +241,13 @@ const salesReports: ReportDefinition[] = [
         defaultSort: { column: 'month', order: 'asc' },
         baseQuery: `
       SELECT
-        strftime('%Y-%m', created_at) as month,
+        strftime('%Y-%m', created_at, '{TZ}') as month,
         COUNT(id) as total_leads,
         SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END) as won_leads,
         COALESCE(SUM(CASE WHEN status = 'won' THEN 1.0 ELSE 0.0 END) / NULLIF(COUNT(id), 0) * 100, 0) as conversion_rate
       FROM leads
       WHERE is_deleted = 0 {DATE_FILTER}
-      GROUP BY strftime('%Y-%m', created_at)
+      GROUP BY strftime('%Y-%m', created_at, '{TZ}')
       {ORDER_BY}
     `,
         columns: [
@@ -268,14 +268,14 @@ const salesReports: ReportDefinition[] = [
         defaultSort: { column: 'month_num ASC, year', order: 'asc' },
         baseQuery: `
       SELECT
-        strftime('%m', created_at) as month_num,
-        strftime('%Y', created_at) as year,
+        strftime('%m', created_at, '{TZ}') as month_num,
+        strftime('%Y', created_at, '{TZ}') as year,
         COUNT(id) as total_leads,
         SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END) as won_leads,
         COALESCE(SUM(CASE WHEN status = 'won' THEN budget ELSE 0 END), 0) as total_revenue
       FROM leads
       WHERE is_deleted = 0 {DATE_FILTER}
-      GROUP BY strftime('%Y-%m', created_at)
+      GROUP BY strftime('%Y-%m', created_at, '{TZ}')
       {ORDER_BY}
     `,
         columns: [

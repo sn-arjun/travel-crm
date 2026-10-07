@@ -3,6 +3,8 @@
  * Generates auto-increment invoice numbers with financial year support
  */
 
+import { DEFAULT_TIMEZONE, getTenantTimeZone, localDateString } from '../utils/tz';
+
 type InvoiceType = 'tax_invoice' | 'proforma' | 'receipt' | 'credit_note' | 'debit_note';
 
 interface NumberingResult {
@@ -14,10 +16,10 @@ interface NumberingResult {
  * Get the current financial year (for Indian fiscal year)
  * April 1 - March 31
  */
-export function getCurrentFinancialYear(): string {
-  const now = new Date();
-  const month = now.getMonth();
-  const year = now.getFullYear();
+export function getCurrentFinancialYear(timeZone: string = DEFAULT_TIMEZONE, now: Date = new Date()): string {
+  // the financial year rolls over at local midnight on 1 April, not at UTC midnight
+  const [year, monthOneBased] = localDateString(timeZone, now).split('-').map(Number);
+  const month = monthOneBased - 1;
 
   // If before April, FY is previous year - current year
   // Otherwise FY is current year - next year
@@ -59,7 +61,7 @@ export async function generateInvoiceNumber(
   type: InvoiceType,
   tenantSettings?: Record<string, unknown>
 ): Promise<NumberingResult> {
-  const fy = getCurrentFinancialYear();
+  const fy = getCurrentFinancialYear(await getTenantTimeZone(tenantDb));
   const prefix = getPrefix(type);
   const settingKey = `last_${getSettingKeyForType(type)}_number_${fy}`;
 
@@ -113,7 +115,7 @@ export async function resetInvoiceNumber(
   tenantDb: D1Database,
   type: InvoiceType
 ): Promise<void> {
-  const fy = getCurrentFinancialYear();
+  const fy = getCurrentFinancialYear(await getTenantTimeZone(tenantDb));
   const settingKey = `last_${getSettingKeyForType(type)}_number_${fy}`;
 
   try {

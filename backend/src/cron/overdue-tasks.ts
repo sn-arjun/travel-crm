@@ -4,8 +4,9 @@
  */
 import type { Env } from '../types';
 import { generateId } from '../utils/uuid';
+import { getTenantTimeZone, localDateString } from '../utils/tz';
 
-export async function processOverdueTasks(env: Env) {
+export async function processOverdueTasks(env: Env, now: Date = new Date()) {
     try {
         // For single-tenant setup, use the main DB
         const db = (env as any).DB || (env as any).TENANT_DB;
@@ -14,7 +15,8 @@ export async function processOverdueTasks(env: Env) {
             return;
         }
 
-        const today = new Date().toISOString().split('T')[0];
+        // 'today' is the tenant's local calendar day, not the UTC date
+        const today = localDateString(await getTenantTimeZone(db), now);
 
         const overdueTasks = await db.prepare(`
       SELECT t.*, u.name as assignee_name, u.id as assignee_id

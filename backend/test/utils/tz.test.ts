@@ -8,6 +8,8 @@ import {
   localDayWindowUtc,
   getTenantTimeZone,
   DEFAULT_TIMEZONE,
+  daysBetweenLocal,
+  sqlOffsetModifier,
 } from '../../src/utils/tz';
 
 // 2026-10-06T19:00:00Z = 00:30 IST on 7 Oct; 2026-10-07T18:00:00Z = 23:30 IST on 7 Oct.
@@ -75,6 +77,20 @@ describe('localMonthWindow', () => {
   it('handles February in a leap year', () => {
     const w = localMonthWindow('Asia/Kolkata', new Date('2028-02-15T06:00:00Z'));
     expect(w.endDate).toBe('2028-02-29');
+  });
+});
+
+describe('daysBetweenLocal / sqlOffsetModifier', () => {
+  it('counts whole calendar days', () => {
+    expect(daysBetweenLocal('2026-10-07', '2026-10-07')).toBe(0);
+    expect(daysBetweenLocal('2026-10-07', '2026-10-08')).toBe(1);
+    expect(daysBetweenLocal('2026-10-07', '2026-10-06')).toBe(-1);
+    expect(daysBetweenLocal('2026-12-25', '2027-01-05')).toBe(11);
+  });
+  it('gives the SQLite offset modifier of the zone', () => {
+    expect(sqlOffsetModifier('Asia/Kolkata', new Date('2026-10-07T00:00:00Z'))).toBe('+05:30');
+    expect(sqlOffsetModifier('America/New_York', new Date('2026-07-01T00:00:00Z'))).toBe('-04:00');
+    expect(sqlOffsetModifier('UTC', new Date('2026-07-01T00:00:00Z'))).toBe('+00:00');
   });
 });
 

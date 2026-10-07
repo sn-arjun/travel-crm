@@ -20,6 +20,7 @@ import {
 import { requirePermission } from '../middleware/rbac';
 import { generateId } from '../utils/uuid';
 import { logActivity } from '../utils/activity-logger';
+import { tenantToday } from '../utils/tz';
 import { success, created, paginated, error, notFound } from '../utils/response';
 
 const contactRoutes = new Hono<AppContext>();
@@ -411,13 +412,15 @@ contactRoutes.post('/import', requirePermission('contacts', 'import'), async (c)
   }
 
   const headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
-  const nameIdx = headers.indexOf('name');
-  if (nameIdx === -1) {
-    return error(c, 'CSV must have a "name" column', 400);
+  // A single "name" column, or first name (+ optional last name); "name" wins when a row has it
+  const hasNameColumn = ['name', 'firstname', 'first_name', 'first name'].some((h) => headers.includes(h));
+  if (!hasNameColumn) {
+    return error(c, 'CSV must have a "name" column (or a "first name" column)', 400);
   }
 
   const fieldMap: Record<string, string> = {
-    name: 'name', email: 'email', phone: 'phone', company: 'company',
+    name: 'name', firstname: 'firstName', first_name: 'firstName', 'first name': 'firstName',
+    lastname: 'lastName', last_name: 'lastName', 'last name': 'lastName', email: 'email', phone: 'phone', company: 'company',
     type: 'type', address: 'address', city: 'city', state: 'state',
     country: 'country', postal_code: 'postalCode', postalcode: 'postalCode',
     tags: 'tags', notes: 'notes', source: 'source', birthday: 'birthday',
@@ -440,6 +443,7 @@ contactRoutes.post('/import', requirePermission('contacts', 'import'), async (c)
         }
       });
 
+      record.name = (record.name ?? '').trim() || [record.firstName, record.lastName].filter(Boolean).join(' ').trim();
       if (!record.name) {
         skipped++;
         errors.push({ row: i + 1, message: 'Missing name' });
@@ -534,7 +538,7 @@ contactRoutes.get('/export', requirePermission('contacts', 'export'), async (c) 
   return new Response(csvLines.join('\n'), {
     headers: {
       'Content-Type': 'text/csv',
-      'Content-Disposition': `attachment; filename="contacts-${new Date().toISOString().slice(0, 10)}.csv"`,
+      'Content-Disposition': `attachment; filename="contacts-${(await tenantToday(c)).today}.csv"`,
     },
   });
 });
@@ -546,6 +550,8 @@ contactRoutes.get('/export', requirePermission('contacts', 'export'), async (c) 
 contactRoutes.get('/upcoming-occasions', requirePermission('contacts', 'view'), async (c) => {
   const db = drizzle(c.get('tenantDb'));
   const days = Math.min(90, Math.max(1, parseInt(new URL(c.req.url).searchParams.get('days') || '30')));
+  // birthdays / anniversaries are counted from the tenant-local today
+  const { today: occToday } = await tenantToday(c);
 
   const rows = await db.all<{
     id: string;
@@ -556,11 +562,11 @@ contactRoutes.get('/upcoming-occasions', requirePermission('contacts', 'view'), 
   }>(sql`
     WITH upcoming AS (
       SELECT id, name, 'birthday' as type, birthday as date,
-        CAST(julianday(strftime('%Y', 'now') || '-' || strftime('%m-%d', birthday)) - julianday('now') AS INTEGER) as days_until
+        CAST(julianday(strftime('%Y', ${occToday}) || '-' || strftime('%m-%d', birthday)) - julianday(${occToday}) AS INTEGER) as days_until
       FROM contacts WHERE birthday IS NOT NULL AND is_deleted = 0
       UNION ALL
       SELECT id, name, 'anniversary' as type, anniversary as date,
-        CAST(julianday(strftime('%Y', 'now') || '-' || strftime('%m-%d', anniversary)) - julianday('now') AS INTEGER) as days_until
+        CAST(julianday(strftime('%Y', ${occToday}) || '-' || strftime('%m-%d', anniversary)) - julianday(${occToday}) AS INTEGER) as days_until
       FROM contacts WHERE anniversary IS NOT NULL AND is_deleted = 0
     )
     SELECT * FROM upcoming

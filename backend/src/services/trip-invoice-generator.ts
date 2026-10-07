@@ -6,6 +6,7 @@
  */
 
 import { generateId } from '../utils/uuid';
+import { getTenantTimeZone, localDateString, addDaysLocal } from '../utils/tz';
 import { calculateTripCost, haversineDistance, type RateCard } from './trip-cost-calculator';
 
 /**
@@ -171,7 +172,8 @@ export async function generateTripInvoice(
   const { invoiceNumber } = await generateInvoiceNumber(db, 'tax_invoice');
 
   const invoiceId = generateId();
-  const dueDate = new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0]; // 15 days
+  // due in 15 days, counted on the tenant's local calendar
+  const dueDate = addDaysLocal(localDateString(await getTenantTimeZone(db)), 15);
 
   await db.prepare(`
     INSERT INTO invoices (

@@ -10,6 +10,7 @@ import { DeepgramService } from '../services/deepgram';
 import { AIExtractionService } from '../services/ai-extraction';
 import { AIRouter } from '../services/ai-router';
 import { generateId } from '../utils/uuid';
+import { getTenantTimeZone, localDateString, addDaysLocal } from '../utils/tz';
 
 interface QueueMessage {
   type: 'transcribe_call' | 'transcribe_voicemail' | 'extract_lead';
@@ -348,10 +349,12 @@ async function handleExtractLead(
 
   // Auto-create follow-ups from action items (TICKET-404)
   if (result.actionItems.length > 0 && callLog?.created_by) {
+    // default due date = tomorrow in the tenant's local calendar
+    const defaultDueDate = addDaysLocal(localDateString(await getTenantTimeZone(db)), 1);
     for (const item of result.actionItems) {
       if (!item.text) continue;
       const followupId = generateId();
-      const dueDate = item.dueDate || new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+      const dueDate = item.dueDate || defaultDueDate;
       await db
         .prepare(
           `INSERT INTO follow_ups (id, lead_id, type, notes, due_date, assigned_to, created_by, status)

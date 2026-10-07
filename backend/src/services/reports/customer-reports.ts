@@ -80,21 +80,21 @@ const customerReports: ReportDefinition[] = [
         c.birthday as date_of_birth,
         CAST(
           julianday(
-            CASE WHEN strftime('%m-%d', c.birthday) >= strftime('%m-%d', 'now')
-              THEN strftime('%Y', 'now') || '-' || strftime('%m-%d', c.birthday)
-              ELSE (CAST(strftime('%Y', 'now') AS INTEGER) + 1) || '-' || strftime('%m-%d', c.birthday)
+            CASE WHEN strftime('%m-%d', c.birthday) >= strftime('%m-%d', '{TODAY}')
+              THEN strftime('%Y', '{TODAY}') || '-' || strftime('%m-%d', c.birthday)
+              ELSE (CAST(strftime('%Y', '{TODAY}') AS INTEGER) + 1) || '-' || strftime('%m-%d', c.birthday)
             END
-          ) - julianday(date('now'))
+          ) - julianday('{TODAY}')
         AS INTEGER) as days_until_birthday
       FROM contacts c
       WHERE c.is_deleted = 0 AND c.birthday IS NOT NULL AND c.birthday != ''
         AND CAST(
           julianday(
-            CASE WHEN strftime('%m-%d', c.birthday) >= strftime('%m-%d', 'now')
-              THEN strftime('%Y', 'now') || '-' || strftime('%m-%d', c.birthday)
-              ELSE (CAST(strftime('%Y', 'now') AS INTEGER) + 1) || '-' || strftime('%m-%d', c.birthday)
+            CASE WHEN strftime('%m-%d', c.birthday) >= strftime('%m-%d', '{TODAY}')
+              THEN strftime('%Y', '{TODAY}') || '-' || strftime('%m-%d', c.birthday)
+              ELSE (CAST(strftime('%Y', '{TODAY}') AS INTEGER) + 1) || '-' || strftime('%m-%d', c.birthday)
             END
-          ) - julianday(date('now'))
+          ) - julianday('{TODAY}')
         AS INTEGER) <= 30
       {DATE_FILTER}
       {ORDER_BY}

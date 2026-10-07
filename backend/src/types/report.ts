@@ -57,6 +57,7 @@ export interface ReportDefinition {
     columns: ReportColumn[];
     ignoreDateRange?: boolean; // As-of-now report: any date range is ignored
     dateColumn?: string; // Qualified column for date filtering (e.g. 's.created_at')
+    dateColumnType?: 'timestamp' | 'date'; // 'date' = local calendar date column (YYYY-MM-DD); default timestamp (UTC ISO)
     ownerColumn?: string; // Column limiting a salesperson to their own rows (default 'assigned_to')
     drillDown?: DrillDownConfig[];
 }

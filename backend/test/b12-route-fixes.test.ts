@@ -1,6 +1,7 @@
 import { env, createExecutionContext, waitOnExecutionContext, applyD1Migrations } from 'cloudflare:test';
 import { describe, it, expect, beforeAll } from 'vitest';
 import worker from '../src/index';
+import { localDateString, addDaysLocal } from '../src/utils/tz';
 import { firstIssueSentence, groupIssues, validationFailureBody } from '../src/utils/validator';
 
 const testEnv = env as any;
@@ -143,8 +144,8 @@ describe('B12 reports: every registered report executes (BUG-028)', () => {
   });
 
   it('upcoming birthdays lists a contact whose birthday is a few days away', async () => {
-    const soon = new Date(Date.now() + 5 * 86400000);
-    const birthday = `1990-${String(soon.getUTCMonth() + 1).padStart(2, '0')}-${String(soon.getUTCDate()).padStart(2, '0')}`;
+    // birthdays are counted from the tenant's local today (Asia/Kolkata by default)
+    const birthday = `1990-${addDaysLocal(localDateString('Asia/Kolkata'), 5).slice(5)}`;
     const created = await json('POST', '/contacts', token, { name: 'Birthday Person', type: 'customer', birthday });
     expect(created.status).toBe(201);
 

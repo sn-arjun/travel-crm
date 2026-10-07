@@ -7,6 +7,7 @@ import type { AppContext } from '../types';
 import { success, error } from '../utils/response';
 import { expandRecurrence } from '../services/recurrence-engine';
 import { generateId } from '../utils/uuid';
+import { tenantToday, localDateString, addDaysLocal } from '../utils/tz';
 
 const plannerRoutes = new Hono<AppContext>();
 
@@ -195,7 +196,8 @@ plannerRoutes.put('/:id', async (c) => {
         if (scope === 'this_and_future' && existing.recurrence_rule) {
             // Terminate the parent recurrence at the day before the target date
             const targetDate = body.start_at || existing.start_at;
-            const dayBefore = new Date(new Date(targetDate).getTime() - 86400000).toISOString().split('T')[0];
+            const { timeZone: plannerTz } = await tenantToday(c);
+            const dayBefore = addDaysLocal(localDateString(plannerTz, new Date(targetDate)), -1);
             const parentRule = typeof existing.recurrence_rule === 'string'
                 ? JSON.parse(existing.recurrence_rule)
                 : existing.recurrence_rule;

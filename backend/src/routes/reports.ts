@@ -5,6 +5,7 @@ import { reportEngine, ForbiddenError } from '../services/report-engine';
 import { reportRegistry } from '../services/report-registry';
 import { ReportCache, reportCacheScope } from '../services/report-cache';
 import { resolveDateRange } from '../utils/date-range';
+import { tenantToday, sqlOffsetModifier } from '../utils/tz';
 import { success, error } from '../utils/response';
 import { excelExportService } from '../services/exports/excel-export';
 import { pdfExportService } from '../services/exports/pdf-export';
@@ -19,7 +20,9 @@ reportRoutes.get('/dashboard', async (c) => {
     const tenantDb = c.get('tenantDb') as any;
     const userId = c.get('userId') as string;
 
-    const today = new Date().toISOString().split('T')[0];
+    const { timeZone: tz, today } = await tenantToday(c);
+    const tzMod = sqlOffsetModifier(tz);
+    const nowIso = new Date().toISOString();
     const monthStart = today.substring(0, 7) + '-01';
 
     // Optional date range (date_from/date_to or a date_preset). When omitted the behaviour is
@@ -30,9 +33,10 @@ reportRoutes.get('/dashboard', async (c) => {
     let rTo: string | undefined = dq.date_to || dq.endDate;
     if (dPreset && !rFrom && !rTo) {
       try {
-        const resolved = resolveDateRange(dPreset);
-        rFrom = resolved.from;
-        rTo = resolved.to;
+        // presets resolve in the tenant's calendar; use the local dates (not the UTC instants' dates)
+        const resolved = resolveDateRange(dPreset, undefined, undefined, tz);
+        rFrom = resolved.fromDate;
+        rTo = resolved.toDate;
       } catch { /* invalid preset -> no range */ }
     }
     const dayOf = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : null);
@@ -42,8 +46,9 @@ reportRoutes.get('/dashboard', async (c) => {
     const rangeClause = (col: string): { sql: string; params: string[] } => {
       const parts: string[] = [];
       const params: string[] = [];
-      if (from) { parts.push(`DATE(${col}) >= DATE(?)`); params.push(from); }
-      if (to) { parts.push(`DATE(${col}) <= DATE(?)`); params.push(to); }
+      // timestamps are UTC: shift to the tenant's local calendar day before comparing dates
+      if (from) { parts.push(`DATE(${col}, '${tzMod}') >= DATE(?)`); params.push(from); }
+      if (to) { parts.push(`DATE(${col}, '${tzMod}') <= DATE(?)`); params.push(to); }
       return { sql: parts.length ? ' AND ' + parts.join(' AND ') : '', params };
     };
     const leadRange = rangeClause('created_at');
@@ -72,10 +77,10 @@ reportRoutes.get('/dashboard', async (c) => {
       // 3. Follow-up counts
       tenantDb.prepare(
         `SELECT COUNT(*) as total,
-                SUM(CASE WHEN scheduled_at < datetime('now') AND completed_at IS NULL THEN 1 ELSE 0 END) as overdue,
+                SUM(CASE WHEN scheduled_at < ? AND completed_at IS NULL THEN 1 ELSE 0 END) as overdue,
                 SUM(CASE WHEN completed_at IS NULL THEN 1 ELSE 0 END) as pending
          FROM follow_ups WHERE created_by = ?${fuRange.sql}`
-      ).bind(userId, ...fuRange.params).all(),
+      ).bind(nowIso, userId, ...fuRange.params).all(),
       // 4. Recent activities
       tenantDb.prepare(
         `SELECT id, lead_id as leadId, type, content as description, created_at as createdAt, created_by as createdBy
@@ -86,10 +91,10 @@ reportRoutes.get('/dashboard', async (c) => {
       // 5. Financial summary
       tenantDb.prepare(
         `SELECT
-          COALESCE(SUM(CASE WHEN status = 'paid' AND DATE(updated_at) >= DATE(?) AND DATE(updated_at) <= DATE(?) THEN total ELSE 0 END), 0) as revenue_this_month,
+          COALESCE(SUM(CASE WHEN status = 'paid' AND DATE(updated_at, '${tzMod}') >= DATE(?) AND DATE(updated_at, '${tzMod}') <= DATE(?) THEN total ELSE 0 END), 0) as revenue_this_month,
           COALESCE(SUM(CASE WHEN status IN ('sent', 'partially_paid', 'overdue') THEN balance_due ELSE 0 END), 0) as outstanding,
           COALESCE(SUM(CASE WHEN status IN ('sent', 'partially_paid', 'overdue') AND due_date < ? THEN balance_due ELSE 0 END), 0) as overdue,
-          COALESCE(SUM(CASE WHEN DATE(created_at) >= DATE(?) AND DATE(created_at) <= DATE(?) THEN total ELSE 0 END), 0) as invoiced_this_month
+          COALESCE(SUM(CASE WHEN DATE(created_at, '${tzMod}') >= DATE(?) AND DATE(created_at, '${tzMod}') <= DATE(?) THEN total ELSE 0 END), 0) as invoiced_this_month
          FROM invoices
          WHERE type IN ('tax_invoice', 'proforma') AND status != 'cancelled'`
       ).bind(finFrom, finTo, today, finFrom, finTo).first(),
@@ -132,7 +137,7 @@ reportRoutes.get('/', async (c) => {
 reportRoutes.get('/outstanding', async (c) => {
   try {
     const tenantDb = c.get('tenantDb') as any;
-    const today = new Date().toISOString().split('T')[0];
+    const { today } = await tenantToday(c);
 
     const result = await tenantDb
       .prepare(`
@@ -185,7 +190,7 @@ reportRoutes.get('/outstanding', async (c) => {
 reportRoutes.get('/ageing', async (c) => {
   try {
     const tenantDb = c.get('tenantDb') as any;
-    const today = new Date().toISOString().split('T')[0];
+    const { today } = await tenantToday(c);
 
     const ageingData = await tenantDb
       .prepare(`
@@ -263,11 +268,12 @@ reportRoutes.get('/:id', async (c) => {
     const datePreset = query.date_preset || query.datePreset;
     let dateFrom = query.date_from || query.startDate;
     let dateTo = query.date_to || query.endDate;
+    const { timeZone: tz } = await tenantToday(c);
 
-    // Resolve preset to concrete date range if provided
+    // Resolve preset to concrete date range if provided (in the tenant's calendar)
     if (datePreset && !dateFrom && !dateTo) {
       try {
-        const resolved = resolveDateRange(datePreset, dateFrom, dateTo);
+        const resolved = resolveDateRange(datePreset, dateFrom, dateTo, tz);
         dateFrom = resolved.from;
         dateTo = resolved.to;
       } catch (e) { /* ignore invalid presets — engine handles no-date case */ }
@@ -339,10 +345,11 @@ reportRoutes.get('/:id/export', async (c) => {
     const exportDatePreset = query.date_preset || query.datePreset;
     let exportDateFrom = query.date_from || query.startDate;
     let exportDateTo = query.date_to || query.endDate;
+    const { timeZone: exportTz } = await tenantToday(c);
 
     if (exportDatePreset && !exportDateFrom && !exportDateTo) {
       try {
-        const resolved = resolveDateRange(exportDatePreset, exportDateFrom, exportDateTo);
+        const resolved = resolveDateRange(exportDatePreset, exportDateFrom, exportDateTo, exportTz);
         exportDateFrom = resolved.from;
         exportDateTo = resolved.to;
       } catch (e) { /* ignore */ }
@@ -373,7 +380,7 @@ reportRoutes.get('/:id/export', async (c) => {
       c.header('Content-Disposition', `attachment; filename="${fileName}.xlsx"`);
       return c.body(buffer as any);
     } else if (format === 'pdf') {
-      const buffer = await pdfExportService.generatePdf(reportDef, result.data);
+      const buffer = await pdfExportService.generatePdf(reportDef, result.data, exportTz);
       c.header('Content-Type', 'application/pdf');
       c.header('Content-Disposition', `attachment; filename="${fileName}.pdf"`);
       return c.body(buffer as any);

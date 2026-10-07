@@ -6,6 +6,7 @@ import type { AppContext } from '../types';
 import { generateId } from '../utils/uuid';
 import { success, created, paginated, error, notFound, forbidden } from '../utils/response';
 import { hasPermission, type Role } from '../constants/permissions';
+import { tenantTimeZone, localDateString } from '../utils/tz';
 
 const voucherRoutes = new Hono<AppContext>();
 
@@ -479,6 +480,7 @@ voucherRoutes.get('/:id/pdf', async (c) => {
   const tenantDb = c.get('tenantDb');
   const role = c.get('role');
   const voucherId = c.req.param('id');
+  const voucherTz = await tenantTimeZone(c);
 
   if (!checkPermission(role, 'view')) {
     return forbidden(c, 'You do not have permission to view vouchers');
@@ -632,9 +634,9 @@ voucherRoutes.get('/:id/pdf', async (c) => {
     if (voucher.lead_name) drawField('Lead:', voucher.lead_name as string);
     if (voucher.supplier_name) drawField('Supplier:', voucher.supplier_name as string);
     if (voucher.language) drawField('Language:', (voucher.language as string).toUpperCase());
-    if (voucher.created_at) drawField('Created:', new Date(voucher.created_at as string).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }));
-    if (voucher.sent_at) drawField('Sent:', new Date(voucher.sent_at as string).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }));
-    if (voucher.confirmed_at) drawField('Confirmed:', new Date(voucher.confirmed_at as string).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }));
+    if (voucher.created_at) drawField('Created:', new Date(voucher.created_at as string).toLocaleDateString('en-IN', { timeZone: voucherTz, day: 'numeric', month: 'short', year: 'numeric' }));
+    if (voucher.sent_at) drawField('Sent:', new Date(voucher.sent_at as string).toLocaleDateString('en-IN', { timeZone: voucherTz, day: 'numeric', month: 'short', year: 'numeric' }));
+    if (voucher.confirmed_at) drawField('Confirmed:', new Date(voucher.confirmed_at as string).toLocaleDateString('en-IN', { timeZone: voucherTz, day: 'numeric', month: 'short', year: 'numeric' }));
 
     y -= 8;
     drawLine(y);
@@ -806,7 +808,7 @@ voucherRoutes.get('/:id/pdf', async (c) => {
         font: boldFont,
         color: rgb(0.5, 0.5, 0.5),
       });
-      pg.drawText(`Generated ${new Date().toISOString().split('T')[0]}`, {
+      pg.drawText(`Generated ${localDateString(voucherTz)}`, {
         x: margin + 70,
         y: 22,
         size: 7,

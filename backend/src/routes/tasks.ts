@@ -7,6 +7,7 @@ import type { AppContext } from '../types';
 import { success, error, paginated } from '../utils/response';
 import { broadcastToTenant } from '../utils/realtime';
 import { generateId } from '../utils/uuid';
+import { tenantToday, localDayWindowUtc } from '../utils/tz';
 
 const taskRoutes = new Hono<AppContext>();
 
@@ -85,7 +86,7 @@ taskRoutes.get('/', async (c) => {
         if (due_date_from) { query += ' AND t.due_date >= ?'; params.push(due_date_from); }
         if (due_date_to) { query += ' AND t.due_date <= ?'; params.push(due_date_to); }
         if (overdue === 'true') {
-            const today = new Date().toISOString().split('T')[0];
+            const { today } = await tenantToday(c);
             query += " AND t.due_date < ? AND t.status != 'done'";
             params.push(today);
         }
@@ -575,7 +576,8 @@ taskRoutes.get('/dashboard/summary', async (c) => {
         const userId = c.get('userId');
         const role = c.get('role');
         const db = c.get('tenantDb');
-        const today = new Date().toISOString().split('T')[0];
+        const { timeZone: tz, today } = await tenantToday(c);
+        const dayWindow = localDayWindowUtc(tz);
 
         const isManager = role === 'admin' || role === 'manager' || role === 'sales_manager';
         const userFilter = isManager ? '' : 'AND t.assigned_to = ?';
@@ -611,10 +613,10 @@ taskRoutes.get('/dashboard/summary', async (c) => {
             : await db.prepare(statusQuery).all();
 
         // Completed today
-        const completedParams = isManager ? [`${today}%`] : [`${today}%`, userId];
+        const completedParams = isManager ? [dayWindow.startIso, dayWindow.endIso] : [dayWindow.startIso, dayWindow.endIso, userId];
         const completedResult = await db.prepare(`
       SELECT COUNT(*) as count FROM tasks t
-      WHERE t.completed_at LIKE ? AND t.is_deleted = 0
+      WHERE t.completed_at >= ? AND t.completed_at < ? AND t.is_deleted = 0
       ${userFilter}
     `).bind(...completedParams).first();
 

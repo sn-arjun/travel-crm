@@ -14,6 +14,7 @@ import type { AppContext } from '../types';
 import { success, error, forbidden } from '../utils/response';
 import { getTenantFeatures, PLAN_DEFAULTS } from '../middleware/feature-gate';
 import { AIRouter } from '../services/ai-router';
+import { tenantTimeZone, sqlOffsetModifier } from '../utils/tz';
 
 const aiSettingsRoutes = new Hono<AppContext>();
 
@@ -212,14 +213,15 @@ aiSettingsRoutes.get('/usage', async (c) => {
     ORDER BY request_count DESC
   `).all();
 
-  // Get daily trend (last 7 days)
+  // Get daily trend (last 7 days), bucketed by the tenant's local day
+  const trendMod = sqlOffsetModifier(await tenantTimeZone(c));
   const dailyTrend = await db.prepare(`
-    SELECT date(created_at) as day,
+    SELECT date(created_at, '${trendMod}') as day,
       COUNT(*) as requests,
       COALESCE(SUM(cost_estimate), 0) as cost
     FROM ai_usage_log
     WHERE created_at >= date('now', '-7 days')
-    GROUP BY date(created_at)
+    GROUP BY date(created_at, '${trendMod}')
     ORDER BY day
   `).all();
 

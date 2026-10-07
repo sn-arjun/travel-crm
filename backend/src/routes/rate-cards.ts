@@ -7,6 +7,7 @@ import type { AppContext } from '../types';
 import { rateCards, suppliers } from '../db/tenant-schema';
 import { requirePermission } from '../middleware/rbac';
 import { generateId } from '../utils/uuid';
+import { tenantToday } from '../utils/tz';
 import { logActivity } from '../utils/activity-logger';
 import { success, created, paginated, error, notFound } from '../utils/response';
 
@@ -107,7 +108,7 @@ rateCardRoutes.get('/lookup', requirePermission('rate_cards', 'view'), async (c)
   const type = url.searchParams.get('type');
   const destination = url.searchParams.get('destination');
   const season = url.searchParams.get('season');
-  const today = new Date().toISOString().split('T')[0];
+  const { today } = await tenantToday(c);
 
   const conditions: any[] = [eq(rateCards.isActive, 1)];
   if (type) conditions.push(eq(rateCards.serviceType, type));

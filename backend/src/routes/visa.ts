@@ -10,6 +10,7 @@ import {
 import { getChecklistTemplate } from '../db/seed/visa-checklist-templates';
 import { broadcastToTenant } from '../utils/realtime';
 import { generateId } from '../utils/uuid';
+import { tenantToday, addDaysLocal } from '../utils/tz';
 
 const visaRouter = new Hono<AppContext>();
 visaRouter.use('*', authMiddleware);
@@ -19,8 +20,8 @@ visaRouter.get('/dashboard', async (c) => {
     try {
         const db = c.get('tenantDb');
         const tenantId = c.get('tenantId');
-        const today = new Date().toISOString().substring(0, 10);
-        const in30Days = new Date(Date.now() + 30 * 86400000).toISOString().substring(0, 10);
+        const { today } = await tenantToday(c);
+        const in30Days = addDaysLocal(today, 30);
 
         const all = await db.prepare('SELECT status, destination_country, visa_expiry_date FROM visa_applications WHERE tenant_id = ? AND is_deleted = 0')
             .bind(tenantId).all<{ status: string; destination_country: string; visa_expiry_date?: string }>();

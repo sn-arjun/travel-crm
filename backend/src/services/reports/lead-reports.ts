@@ -78,13 +78,13 @@ const leadReports: ReportDefinition[] = [
         defaultSort: { column: 'month', order: 'desc' },
         baseQuery: `
       SELECT
-        strftime('%Y-%m', created_at) as month,
+        strftime('%Y-%m', created_at, '{TZ}') as month,
         COUNT(id) as new_leads,
         SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END) as qualified_won_leads,
         COALESCE(AVG(CASE WHEN status = 'won' THEN CAST(julianday(updated_at) - julianday(created_at) AS INTEGER) END), 0) as avg_days_to_close
       FROM leads
       WHERE is_deleted = 0 {DATE_FILTER}
-      GROUP BY strftime('%Y-%m', created_at)
+      GROUP BY strftime('%Y-%m', created_at, '{TZ}')
       {ORDER_BY}
     `,
         columns: [
@@ -169,7 +169,7 @@ const leadReports: ReportDefinition[] = [
         COUNT(l.id) as total_leads,
         COUNT(DISTINCT f.lead_id) as leads_with_followup,
         COALESCE(COUNT(DISTINCT f.lead_id) * 100.0 / NULLIF(COUNT(l.id), 0), 0) as compliance_rate,
-        COUNT(CASE WHEN f.completed_at IS NULL AND f.scheduled_at < datetime('now') THEN 1 END) as overdue_followups
+        COUNT(CASE WHEN f.completed_at IS NULL AND f.scheduled_at < '{NOW}' THEN 1 END) as overdue_followups
       FROM leads l
       LEFT JOIN follow_ups f ON f.lead_id = l.id
       WHERE l.is_deleted = 0 AND l.status NOT IN ('won', 'lost') {DATE_FILTER}
