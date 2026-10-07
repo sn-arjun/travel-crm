@@ -123,3 +123,6 @@ coverage/
 # Playwright artefacts (repo-wide; desktop/.gitignore only covers desktop/)
 **/test-results/
 **/playwright-report/
+
+# Agent worktrees and their scratch files
+.claude/worktrees/
