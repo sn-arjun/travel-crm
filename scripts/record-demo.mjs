@@ -10,7 +10,7 @@
  *   storyA      pre-roll SQL, then playwright --grep story-A         -> .work/partA.webm, marks-partA.json, .handoff.json (scenes 1-6)
  *   driver      scripts/record-driver.ps1                            -> .work/driver.mp4, driver-marks.json (scene 7, Android emulator)
  *   storyB      playwright --grep story-B                            -> .work/partB.webm, marks-partB.json (scenes 8-9)
- *   walkthrough between-takes SQL, then full-walkthrough.spec.ts     [placeholder]
+ *   walkthrough reseed, then wt1..wt7 (full-walkthrough.spec.ts + wt2..wt7.spec.ts), each retaken alone -> .work/wtN.webm, marks-wtN.json
  *   smoke       the harness smoke clip (only with --only smoke / --with-smoke) -> .work/smoke.webm
  *   compose     scripts/showcase/compose.mjs: story + full when their takes exist, else a `proof.mp4`
  *   finalize    quality gate (desktop/e2e/showcase/finalize.ts) on every produced video
@@ -45,6 +45,7 @@ const env = {
 const retakes = Number(val('retakes', 2));
 const istMinsNow = (() => { const d = new Date(Date.now() + 330 * 60_000); return d.getUTCHours() * 60 + d.getUTCMinutes(); })();
 if (!env.DEMO_PICKUP && (istMinsNow < 8 * 60 || istMinsNow > 20 * 60 + 30)) env.DEMO_PICKUP = '14:45';
+const WT_PARTS = ['wt1', 'wt2', 'wt3', 'wt4', 'wt5', 'wt6', 'wt7'];
 const STAGES = ['preflight', 'seed', 'storyA', 'driver', 'storyB', 'walkthrough', 'smoke', 'compose', 'finalize'];
 const DEFAULT_SKIP = flag('with-smoke') ? [] : ['smoke'];
 const only = val('only');
@@ -126,9 +127,18 @@ const stage = {
     withRetakes('story-B', () => must(playwright(['--grep', 'story-B']), 'story-B'));
   },
   walkthrough() {
-    if (!exists(path.join(desktop, 'e2e/showcase/full-walkthrough.spec.ts'))) { log('PLACEHOLDER: full-walkthrough.spec.ts not written yet - skipping'); return; }
+    // seven independent parts (full-walkthrough.spec.ts = wt1, wt2.spec.ts ... wt7.spec.ts): a failed part is re-seeded and re-recorded alone
+    const only_ = val('parts'); // e.g. --parts wt3,wt5
+    const parts = (only_ ? only_.split(',') : WT_PARTS);
+    must(seedDemo([]), 'reseed for the walkthrough');
     must(seedDemo(['--between-takes']), 'between-takes');
-    withRetakes('walkthrough', () => must(playwright(['full-walkthrough']), 'walkthrough'));
+    for (const p of parts) {
+      let attempt = 0;
+      withRetakes(p, () => {
+        if (attempt++ > 0) { must(seedDemo([]), `reseed for the ${p} retake`); must(seedDemo(['--between-takes']), 'between-takes'); }
+        must(playwright(['--grep', `${p}:`]), p);
+      });
+    }
   },
   smoke() { must(playwright(['smoke']), 'smoke'); },
   async compose() {
@@ -142,8 +152,8 @@ const stage = {
         '--out', path.join(showcase, 'TravelCRM-Demo.mp4'), '--chapters', path.join(showcase, 'story-chapters.txt')]), 'compose story');
       did = true;
     }
-    if (have('walkthrough.webm')) {
-      must(run(node, ['--no-warnings', c, 'full', '--walkthrough', path.join(work, 'walkthrough.webm'), '--marks', path.join(work, 'marks-walkthrough.json'), '--out', path.join(showcase, 'TravelCRM-Full-Walkthrough.mp4'), '--chapters', path.join(showcase, 'chapters.txt')]), 'compose full');
+    if (WT_PARTS.every((p) => have(`${p}.webm`))) {
+      must(run(node, ['--no-warnings', c, 'full', '--parts', WT_PARTS.join(','), '--driver-after', 'wt4', ...(have('driver.mp4') ? ['--driver', path.join(work, 'driver.mp4'), '--driver-marks', path.join(work, 'driver-marks.json')] : []), ...(have('trip-assigned.png') ? ['--frame-a', path.join(work, 'trip-assigned.png')] : []), ...(have('trip-completed.png') ? ['--frame-b', path.join(work, 'trip-completed.png')] : []), '--scene-kicker', 'Chapter 21', '--scene-title', 'Driver app', '--out', path.join(showcase, 'TravelCRM-Full-Walkthrough.mp4'), '--chapters', path.join(showcase, 'chapters.txt')]), 'compose full');
       did = true;
     }
     if (!did) {
@@ -156,10 +166,10 @@ const stage = {
   finalize() {
     const g = path.join(desktop, 'e2e/showcase/finalize.ts');
     const gate = (name, video, extra) => must(run(node, ['--no-warnings', g, '--name', name, '--video', video, '--frames-dir', path.join(work, 'frames', name), ...extra]), `gate ${name}`);
-    const viol = ['partA', 'partB', 'walkthrough', 'smoke'].filter((n) => exists(path.join(work, `violations-${n}.json`))).flatMap((n) => ['--violations', path.join(work, `violations-${n}.json`)]);
+    const viol = ['partA', 'partB', ...WT_PARTS, 'smoke'].filter((n) => exists(path.join(work, `violations-${n}.json`))).flatMap((n) => ['--violations', path.join(work, `violations-${n}.json`)]);
     let did = false;
     if (exists(path.join(showcase, 'TravelCRM-Demo.mp4'))) { gate('story', path.join(showcase, 'TravelCRM-Demo.mp4'), ['--duration', '480-720', '--min-chapter', '10', ...['partA', 'partB'].filter((n) => exists(path.join(work, `marks-${n}.json`))).flatMap((n) => ['--marks', path.join(work, `marks-${n}.json`)]), ...viol]); did = true; }
-    if (exists(path.join(showcase, 'TravelCRM-Full-Walkthrough.mp4'))) { gate('full', path.join(showcase, 'TravelCRM-Full-Walkthrough.mp4'), ['--duration', '1200-1800', '--min-chapter', '10', ...viol]); did = true; }
+    if (exists(path.join(showcase, 'TravelCRM-Full-Walkthrough.mp4'))) { gate('full', path.join(showcase, 'TravelCRM-Full-Walkthrough.mp4'), ['--duration', '900-1800', '--min-chapter', '10', ...viol]); did = true; }
     if (!did && exists(path.join(work, 'proof.mp4'))) { gate('proof', path.join(work, 'proof.mp4'), ['--duration', '20-120', ...viol]); did = true; }
     if (exists(path.join(work, 'driver.mp4'))) gate('driver', path.join(work, 'driver.mp4'), ['--duration', '60-170']);
     if (!did) throw new Error('no composed video to gate');

@@ -159,7 +159,7 @@ async function main() {
   await renderAll([
     { html: templates.intro(), out: P('intro.png') },
     { html: templates.outro(), out: P('outro.png') },
-    { html: templates.scene({ kicker: 'Scene 7 of 9', title: sceneCard, subtitle: 'TravelCRM Driver app on Android' }), out: P('scene7.png') },
+    { html: templates.scene({ kicker: o['scene-kicker'] ?? 'Scene 7 of 9', title: sceneCard, subtitle: 'TravelCRM Driver app on Android' }), out: P('scene7.png') },
   ]);
   cardClip(P('intro.png'), 5, P('intro.mp4'));
   cardClip(P('outro.png'), 6, P('outro.mp4'));
@@ -177,11 +177,12 @@ async function main() {
     seq.push({ file: dst, len });
     t += len;
   };
-  const addPhone = async (driver, dmarks, bgA, bgB, withCard) => {
+  const addPhone = async (driver, dmarks, bgA, bgB, withCard, speed = 1) => {
     if (withCard) { seq.push({ file: P('scene7.mp4'), len: 2.5 }); chapters.push({ title: sceneCard, tSec: t }); t += 2.5; }
     const out = P('phone.mp4');
     const r = await phoneComposite({ driver, marks: dmarks, bgA, bgB, out, work });
     log(`phone composite: ${r.durationSec}s, ${r.captions} captions, ${r.cards} card(s)`);
+    if (speed !== 1) { const fast = P('phone-fast.mp4'); ff(['-i', out, '-vf', `setpts=PTS/${speed},fps=30,format=yuv420p`, ...ENC, fast]); fs.copyFileSync(fast, out); }
     if (!withCard) chapters.push({ title: sceneCard, tSec: t });
     seq.push({ file: out, len: durationSec(out) });
     t += durationSec(out);
@@ -200,7 +201,15 @@ async function main() {
     await addPhone(o.driver, o['driver-marks'], bgA, bgB, true);
     if (o['part-b']) addDesktop(o['part-b'], o['marks-b'], 'partB');
   } else if (mode === 'full') {
-    addDesktop(o.walkthrough, o.marks, 'walkthrough');
+    // independent recorded parts, concatenated in order; the driver clip (chapter 21) goes after `--driver-after <part>`
+    const names = (o.parts ?? 'wt1,wt2,wt3,wt4,wt5,wt6,wt7').split(',');
+    for (const n of names) {
+      addDesktop(path.join(work, `${n}.webm`), path.join(work, `marks-${n}.json`), n);
+      if (o.driver && n === (o['driver-after'] ?? 'wt4')) {
+        const bgA = o['frame-a'] ?? still(path.join(work, `${n}.webm`), 5, P('frameA.png'));
+        await addPhone(o.driver, o['driver-marks'], bgA, o['frame-b'], true, Number(o['driver-speed'] ?? 1.25));
+      }
+    }
   } else throw new Error('mode must be proof | story | full');
 
   seq.push({ file: P('outro.mp4'), len: 6 });
