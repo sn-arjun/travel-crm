@@ -1,0 +1,42 @@
+{
+  "program": "launch-readiness",
+  "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
+  "updated": "2026-10-09T04:30+05:30",
+  "baseline": {
+    "measuredAt": "2026-10-09T04:24+05:30",
+    "note": "Measured on a tree another session was still editing; re-measure before the first commit.",
+    "backend": { "tsc": 0, "testFiles": 57, "tests": 1296 },
+    "desktop": { "tsc": 0, "testFiles": 64, "tests": 1294, "lintErrors": 0 }
+  },
+  "backup": "C:/Users/Admin/Downloads/pro/CRM-backups/2026-10-09 (bundle of all branches, patch of tracked changes, archive of untracked files)",
+  "blockers": [
+    {
+      "id": "shared-checkout",
+      "what": "Session c9726699 (assistant/automation work) was still writing to this checkout at 04:22 on 2026-10-09. No commit, branch switch, deletion or history rewrite until the owner confirms that session is finished.",
+      "blocks": ["W0.commit", "W0.branch", "W1a"]
+    },
+    {
+      "id": "github-auth",
+      "what": "Owner must revoke the old GitHub token and run gh auth login before any push.",
+      "blocks": ["W1a.push"]
+    }
+  ],
+  "waves": {
+    "W0": {
+      "status": "partial",
+      "done": ["remote URL reset to token-free", "baseline gates", "backup", "owner decisions saved to memory", "findings saved to docs/launch/findings"],
+      "todo": ["commit assistant-automation work as logical commits", "tag pre-launch-baseline", "create branch launch-readiness"]
+    },
+    "W1a": { "status": "blocked", "agent": "repo-clean" },
+    "W1b": { "status": "running", "agent": "feature-inventory", "outputs": ["docs/FEATURES.md", "docs/features.json"] },
+    "W1c": { "status": "running", "agent": "voip-cost-research", "outputs": ["docs/decisions/ADR-001-voip.md", "docs/COST-MODEL.md", "docs/CALL-AUTOMATION.md"], "ownerGate": "G1" },
+    "W1d": { "status": "running", "agent": "video-studio", "outputs": ["studio/"], "ownerGate": "G2" },
+    "W1e": { "status": "pending", "agent": "marketing-planner", "after": "W1c" },
+    "W2": { "status": "pending", "agent": "readiness-planner", "after": ["W1b", "W1c"] },
+    "W3": { "status": "pending" },
+    "W4": { "status": "pending" },
+    "W5": { "status": "pending" },
+    "W6": { "status": "pending" },
+    "W7": { "status": "pending" }
+  }
+}
