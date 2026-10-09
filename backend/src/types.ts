@@ -50,6 +50,8 @@ export interface Env {
   DEEPGRAM_API_KEY: string;
   ANTHROPIC_API_KEY: string;
   GOOGLE_MAPS_API_KEY?: string;
+  // Shared secret in the SendGrid Inbound Parse URL (/webhooks/inbound/email/:secret)
+  INBOUND_EMAIL_SECRET?: string;
   TEST_MODE?: string;
   CF_ACCOUNT_ID?: string;
   CF_API_TOKEN?: string;

@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { emitFromRequest } from '../services/automation/events';
 import { zValidator } from '../utils/validator';
 import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
@@ -175,6 +176,14 @@ paymentRoutes.post('/', zValidator('json', recordPaymentSchema), async (c) => {
         });
       }
     } catch {}
+
+    const invoiceLead = await tenantDb.prepare('SELECT lead_id FROM invoices WHERE id = ?').bind(data.invoiceId).first<{ lead_id: string | null }>();
+    await emitFromRequest(c, {
+      type: 'payment.recorded',
+      entityType: 'payment',
+      entityId: paymentId,
+      payload: { invoiceId: data.invoiceId, leadId: invoiceLead?.lead_id ?? null, contactId: invoice.contact_id, amount: data.amount },
+    });
 
     return created(c, {
       id: paymentId,

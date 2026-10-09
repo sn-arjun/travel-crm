@@ -7,6 +7,7 @@
  */
 
 import type { Env } from '../types';
+import { estimateCostUsd } from './ai-pricing';
 
 export interface ExtractionResult {
   // Lead data
@@ -130,9 +131,7 @@ export class AIExtractionService {
     const inputTokens = data.usage?.input_tokens || 0;
     const outputTokens = data.usage?.output_tokens || 0;
 
-    // Cost: Haiku 4.5 — $0.80/MTok input, $4.00/MTok output
-    const costEstimate =
-      (inputTokens * 0.0000008) + (outputTokens * 0.000004);
+    const costEstimate = estimateCostUsd('claude-haiku-4-5-20251001', inputTokens, outputTokens);
 
     let parsed: any;
     try {

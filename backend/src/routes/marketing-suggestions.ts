@@ -138,7 +138,7 @@ Generate 3-5 diverse, actionable suggestions based on the data provided.`;
 
   const userPrompt = `Business data:\n${JSON.stringify(businessContext, null, 2)}${data.context ? `\n\nAdditional context: ${data.context}` : ''}`;
 
-  const aiRouter = new AIRouter(c.env);
+  const aiRouter = new AIRouter(c.env, undefined, c.get('tenantId'));
   const startTime = Date.now();
   const aiResult = await aiRouter.route('marketing_suggestion' as any, userPrompt, systemPrompt);
   const durationMs = Date.now() - startTime;

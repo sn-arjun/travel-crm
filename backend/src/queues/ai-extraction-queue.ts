@@ -126,7 +126,7 @@ async function handleTranscribeCall(
     .run();
 
   // Log usage
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, msg.tenantId);
   await router.logUsage(
     db,
     'transcription',
@@ -335,7 +335,7 @@ async function handleExtractLead(
     .run();
 
   // Log AI usage
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, msg.tenantId);
   await router.logUsage(
     db,
     'extraction',

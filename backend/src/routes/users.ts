@@ -7,12 +7,24 @@ import type { AppContext } from '../types';
 import { tenantUsers, tenants } from '../db/master-schema';
 import { users, loginHistory } from '../db/tenant-schema';
 import { rbac } from '../middleware/rbac';
+import { permissionsForRole } from '../constants/permissions';
 import { hashPassword } from '../utils/password';
 import { generateId } from '../utils/uuid';
 import { logActivity } from '../utils/activity-logger';
 import { success, created, error } from '../utils/response';
 
 const userRoutes = new Hono<AppContext>();
+
+// ============================================================
+// GET /me/permissions — What the signed-in user's role may do
+// ============================================================
+// The matrix in constants/permissions.ts is the single source; clients read it here
+// instead of keeping their own copy.
+
+userRoutes.get('/me/permissions', (c) => {
+  const role = c.get('role');
+  return success(c, { role, permissions: permissionsForRole(role) });
+});
 
 // ============================================================
 // GET /me — Current user profile

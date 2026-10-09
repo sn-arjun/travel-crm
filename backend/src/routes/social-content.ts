@@ -144,7 +144,7 @@ For Blog: outline with headings, key points, SEO-friendly.`;
 
   const userPrompt = `Topic: ${data.topic}${data.additionalContext ? `\nAdditional context: ${data.additionalContext}` : ''}`;
 
-  const aiRouter = new AIRouter(c.env);
+  const aiRouter = new AIRouter(c.env, undefined, c.get('tenantId'));
   const startTime = Date.now();
   const aiResult = await aiRouter.route('social_content_instagram' as any, userPrompt, systemPrompt);
   const durationMs = Date.now() - startTime;
@@ -209,7 +209,7 @@ socialContentRoutes.post('/generate-batch', zValidator('json', generateBatchSche
   const data = c.req.valid('json');
 
   const results: any[] = [];
-  const aiRouter = new AIRouter(c.env);
+  const aiRouter = new AIRouter(c.env, undefined, c.get('tenantId'));
 
   for (const platform of data.platforms) {
     const contentType = `${platform}_post`;

@@ -4,6 +4,8 @@ import { sql } from 'drizzle-orm';
 import { users } from '../db/tenant-schema';
 import type { Env } from '../types';
 import bcrypt from 'bcryptjs';
+import { resolveTenantDb } from '../services/tenant-db';
+import { ingestInbound, type InboundChannel } from '../services/inbound/ingest';
 
 const testApp = new Hono<{ Bindings: Env }>();
 
@@ -93,6 +95,42 @@ testApp.post('/reset', async (c) => {
         console.error("Reset endpoint caught error:", error?.message, error?.cause);
         return c.json({ error: error?.message, cause: error?.cause?.message || String(error?.cause) }, 500);
     }
+});
+
+/**
+ * Simulate a message arriving on a channel, exactly as the provider webhooks store it.
+ * Used by tests and demos; no provider account or signature is involved.
+ */
+testApp.post('/inbound', async (c) => {
+    if (c.env.TEST_MODE !== 'true') {
+        return c.json({ error: 'Forbidden: Test mode is not active.' }, 403);
+    }
+
+    const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
+    const str = (key: string): string => (body && typeof body[key] === 'string' ? (body[key] as string).trim() : '');
+    const channel = str('channel') as InboundChannel;
+    if (!['whatsapp', 'sms', 'email'].includes(channel)) {
+        return c.json({ error: 'channel must be whatsapp, sms or email' }, 400);
+    }
+    if (!str('tenantId') || !str('from') || !str('body')) {
+        return c.json({ error: 'tenantId, from and body are required' }, 400);
+    }
+
+    const db = await resolveTenantDb(c.env, str('tenantId'));
+    if (!db) return c.json({ error: 'Tenant not found' }, 404);
+
+    const result = await ingestInbound(c.env, str('tenantId'), db, {
+        channel,
+        from: str('from'),
+        to: str('to') || undefined,
+        fromName: str('fromName') || undefined,
+        subject: str('subject') || undefined,
+        body: str('body'),
+        externalId: str('externalId') || undefined,
+        provider: 'simulator',
+    });
+
+    return c.json({ success: true, data: result });
 });
 
 export default testApp;

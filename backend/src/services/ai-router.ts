@@ -5,11 +5,14 @@
  *   1. Cloudflare Workers AI (default, free/included with Workers plan)
  *   2. Anthropic Claude API (when ANTHROPIC_API_KEY is set in env)
  *
- * Tracks token usage and costs per tenant.
+ * Tracks token usage and cost per call (price list: ai-pricing.ts) and, when built with a
+ * tenant id, meters the tenant's monthly AI credits (ai-credits.ts).
  */
 
 import type { Env } from '../types';
 import { generateId } from '../utils/uuid';
+import { creditClassFor, estimateCostUsd, priceFor } from './ai-pricing';
+import { assertCredits, chargeCredits } from './ai-credits';
 
 export type AITask = 'sentiment' | 'summary' | 'extraction' | 'coaching' | 'deal_likelihood' | 'transcription'
   | 'lead_extraction' | 'whatsapp_parse' | 'email_parse' | 'business_card_ocr' | 'bulk_lead_extraction'
@@ -27,7 +30,8 @@ export type AITask = 'sentiment' | 'summary' | 'extraction' | 'coaching' | 'deal
   | 'revenue_pulse' | 'ai_recommendation_gen'
   | 'social_content_instagram' | 'social_content_facebook' | 'social_content_linkedin'
   | 'social_content_twitter' | 'social_content_blog'
-  | 'marketing_suggestion' | 'whatsapp_campaign_template';
+  | 'marketing_suggestion' | 'whatsapp_campaign_template'
+  | 'message_triage' | 'message_understand';
 
 export type AIProvider = 'cloudflare' | 'anthropic';
 
@@ -72,43 +76,31 @@ const VISION_TASKS: Set<AITask> = new Set([
 // Cloudflare Workers AI models
 const CF_TEXT_MODEL = '@cf/meta/llama-3.1-70b-instruct';
 const CF_VISION_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
+// Small, cheap model that labels every received message (stage 1 of the assistant).
+const CF_TRIAGE_MODEL = '@cf/meta/llama-3.1-8b-instruct-fp8-fast';
+// Extraction into a fixed shape: a model that supports Workers AI JSON mode, so the reply is always valid JSON.
+const CF_JSON_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
 // Anthropic models
 const CLAUDE_HAIKU = 'claude-haiku-4-5-20251001';
 
-// Cloudflare AI is included in Workers plan — effectively $0 for bundled usage
-// Anthropic Haiku: $0.80/MTok input, $4.00/MTok output
-const CF_CONFIG: ModelConfig = {
-  provider: 'cloudflare',
-  model: CF_TEXT_MODEL,
-  maxTokens: 2048,
-  costPerInputToken: 0,
-  costPerOutputToken: 0,
-};
+function modelConfig(provider: AIProvider, model: string, maxTokens: number): ModelConfig {
+  const price = priceFor(model);
+  return {
+    provider,
+    model,
+    maxTokens,
+    costPerInputToken: price.inputPerMTok / 1_000_000,
+    costPerOutputToken: price.outputPerMTok / 1_000_000,
+  };
+}
 
-const CF_VISION_CONFIG: ModelConfig = {
-  provider: 'cloudflare',
-  model: CF_VISION_MODEL,
-  maxTokens: 1024,
-  costPerInputToken: 0,
-  costPerOutputToken: 0,
-};
-
-const CLAUDE_CONFIG: ModelConfig = {
-  provider: 'anthropic',
-  model: CLAUDE_HAIKU,
-  maxTokens: 2048,
-  costPerInputToken: 0.0000008,
-  costPerOutputToken: 0.000004,
-};
-
-const CLAUDE_VISION_CONFIG: ModelConfig = {
-  provider: 'anthropic',
-  model: CLAUDE_HAIKU,
-  maxTokens: 1024,
-  costPerInputToken: 0.0000008,
-  costPerOutputToken: 0.000004,
-};
+const CF_CONFIG = modelConfig('cloudflare', CF_TEXT_MODEL, 2048);
+const CF_VISION_CONFIG = modelConfig('cloudflare', CF_VISION_MODEL, 1024);
+const CF_TRIAGE_CONFIG = modelConfig('cloudflare', CF_TRIAGE_MODEL, 256);
+const CF_JSON_CONFIG = modelConfig('cloudflare', CF_JSON_MODEL, 1024);
+const CLAUDE_CONFIG = modelConfig('anthropic', CLAUDE_HAIKU, 2048);
+const CLAUDE_VISION_CONFIG = modelConfig('anthropic', CLAUDE_HAIKU, 1024);
 
 // Tasks that benefit from larger context / better reasoning — use Claude when available
 const PREFER_CLAUDE_TASKS: Set<AITask> = new Set([
@@ -119,18 +111,41 @@ const PREFER_CLAUDE_TASKS: Set<AITask> = new Set([
   'business_health_score', 'ai_recommendation_gen',
 ]);
 
+/** Workers AI hands back JSON output already parsed for some models; callers always get text. */
+function asText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value === null || value === undefined) return '';
+  return JSON.stringify(value);
+}
+
 export class AIRouter {
   private env: Env;
   private hasAnthropicKey: boolean;
   private tenantOverrides?: Partial<Record<AITask, Partial<ModelConfig>>>;
+  private tenantId?: string;
 
+  /**
+   * @param tenantId when given, every call checks and then charges the tenant's AI credits.
+   */
   constructor(
     env: Env,
     tenantOverrides?: Partial<Record<AITask, Partial<ModelConfig>>>,
+    tenantId?: string,
   ) {
     this.env = env;
     this.hasAnthropicKey = !!env.ANTHROPIC_API_KEY;
     this.tenantOverrides = tenantOverrides;
+    this.tenantId = tenantId;
+  }
+
+  /** Check credits, run the call, charge on success. A failed call costs the tenant nothing. */
+  private async metered(task: AITask, call: () => Promise<AIResponse>): Promise<AIResponse> {
+    if (!this.tenantId) return call();
+    const creditClass = creditClassFor(task);
+    await assertCredits(this.env.MASTER_DB, this.tenantId, creditClass);
+    const response = await call();
+    await chargeCredits(this.env.MASTER_DB, this.tenantId, creditClass);
+    return response;
   }
 
   /**
@@ -147,6 +162,10 @@ export class AIRouter {
   }
 
   private resolveBaseConfig(task: AITask): ModelConfig {
+    // Triage runs on every message, so it stays on the small model whatever else is configured.
+    if (task === 'message_triage') return CF_TRIAGE_CONFIG;
+    if (task === 'message_understand') return CF_JSON_CONFIG;
+
     const isVision = VISION_TASKS.has(task);
     const preferClaude = PREFER_CLAUDE_TASKS.has(task);
 
@@ -170,13 +189,16 @@ export class AIRouter {
     task: AITask,
     input: string,
     systemPrompt: string,
+    /** `jsonSchema`: ask the provider to return JSON matching this schema (Workers AI JSON mode). */
+    options: { jsonSchema?: Record<string, unknown> } = {},
   ): Promise<AIResponse> {
     const config = this.getModelConfig(task);
 
-    if (config.provider === 'anthropic') {
-      return this.routeAnthropic(config, input, systemPrompt);
-    }
-    return this.routeCloudflare(config, input, systemPrompt);
+    return this.metered(task, () =>
+      config.provider === 'anthropic'
+        ? this.routeAnthropic(config, input, systemPrompt)
+        : this.routeCloudflare(config, input, systemPrompt, options.jsonSchema),
+    );
   }
 
   /**
@@ -190,10 +212,11 @@ export class AIRouter {
   ): Promise<AIResponse> {
     const config = this.getModelConfig(task);
 
-    if (config.provider === 'anthropic') {
-      return this.routeAnthropicVision(config, imageBase64, mimeType, textPrompt);
-    }
-    return this.routeCloudflareVision(config, imageBase64, textPrompt);
+    return this.metered(task, () =>
+      config.provider === 'anthropic'
+        ? this.routeAnthropicVision(config, imageBase64, mimeType, textPrompt)
+        : this.routeCloudflareVision(config, imageBase64, textPrompt),
+    );
   }
 
   // ── Cloudflare Workers AI ──────────────────────────────
@@ -202,6 +225,7 @@ export class AIRouter {
     config: ModelConfig,
     input: string,
     systemPrompt: string,
+    jsonSchema?: Record<string, unknown>,
   ): Promise<AIResponse> {
     // No Workers AI binding (e.g. local dev / e2e config): there is no provider to answer.
     if (!this.env.AI) {
@@ -219,6 +243,7 @@ export class AIRouter {
         messages,
         max_tokens: config.maxTokens,
         temperature: 0.3,
+        ...(jsonSchema ? { response_format: { type: 'json_schema', json_schema: jsonSchema } } : {}),
       });
     } catch (aiErr) {
       // AI binding is present but not functional (e.g. local dev stub with --local flag)
@@ -226,10 +251,10 @@ export class AIRouter {
       throw new AiUnavailableError();
     }
 
-    const text = response?.response || response?.result || '';
-    // Cloudflare AI doesn't provide detailed token counts, estimate from text length
-    const inputTokens = Math.ceil((systemPrompt.length + input.length) / 4);
-    const outputTokens = Math.ceil(text.length / 4);
+    const text = asText(response?.response ?? response?.result);
+    // Use the reported token counts; older models omit them, so fall back to a length estimate.
+    const inputTokens = response?.usage?.prompt_tokens ?? Math.ceil((systemPrompt.length + input.length) / 4);
+    const outputTokens = response?.usage?.completion_tokens ?? Math.ceil(text.length / 4);
 
     return {
       result: text,
@@ -237,7 +262,7 @@ export class AIRouter {
       provider: 'cloudflare',
       inputTokens,
       outputTokens,
-      cost: 0, // Cloudflare AI bundled with Workers plan
+      cost: estimateCostUsd(config.model, inputTokens, outputTokens),
     };
   }
 
@@ -265,9 +290,9 @@ export class AIRouter {
       throw new AiUnavailableError();
     }
 
-    const text = response?.response || response?.description || '';
-    const inputTokens = Math.ceil(textPrompt.length / 4) + 500; // rough image token estimate
-    const outputTokens = Math.ceil(text.length / 4);
+    const text = asText(response?.response ?? response?.description);
+    const inputTokens = response?.usage?.prompt_tokens ?? Math.ceil(textPrompt.length / 4) + 500; // rough image token estimate
+    const outputTokens = response?.usage?.completion_tokens ?? Math.ceil(text.length / 4);
 
     return {
       result: text,
@@ -275,7 +300,7 @@ export class AIRouter {
       provider: 'cloudflare',
       inputTokens,
       outputTokens,
-      cost: 0,
+      cost: estimateCostUsd(config.model, inputTokens, outputTokens),
     };
   }
 
@@ -309,9 +334,7 @@ export class AIRouter {
     const data = await response.json() as any;
     const inputTokens = data.usage?.input_tokens || 0;
     const outputTokens = data.usage?.output_tokens || 0;
-    const cost =
-      inputTokens * config.costPerInputToken +
-      outputTokens * config.costPerOutputToken;
+    const cost = estimateCostUsd(config.model, inputTokens, outputTokens);
 
     const text =
       data.content?.[0]?.type === 'text' ? data.content[0].text : '';
@@ -363,9 +386,7 @@ export class AIRouter {
     const data = await response.json() as any;
     const inputTokens = data.usage?.input_tokens || 0;
     const outputTokens = data.usage?.output_tokens || 0;
-    const cost =
-      inputTokens * config.costPerInputToken +
-      outputTokens * config.costPerOutputToken;
+    const cost = estimateCostUsd(config.model, inputTokens, outputTokens);
 
     const text = data.content?.[0]?.text || '';
 

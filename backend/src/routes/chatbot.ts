@@ -181,7 +181,7 @@ app.post('/webhook/:channel', async (c) => {
 
   // AI response
   try {
-    const router = new AIRouter(c.env);
+    const router = new AIRouter(c.env, undefined, c.get('tenantId'));
     const systemPrompt = config.system_prompt || `You are a helpful travel agency chatbot. Help visitors with travel inquiries. Be concise and helpful.
 If the visitor seems interested in a specific destination or package, try to qualify them by asking about:
 - Destination preferences

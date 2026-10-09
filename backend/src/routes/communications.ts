@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { emitFromRequest } from '../services/automation/events';
 import { zValidator } from '../utils/validator';
 import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
@@ -147,6 +148,13 @@ communicationRoutes.post(
           channel: body.channel,
           ...(body.media_url && { mediaUrl: body.media_url }),
         },
+      });
+
+      await emitFromRequest(c, {
+        type: 'message.sent',
+        entityType: 'message',
+        entityId: messageId,
+        payload: { contactId: body.contact_id, leadId: body.lead_id || null, channel: body.channel },
       });
 
       return created(c, {

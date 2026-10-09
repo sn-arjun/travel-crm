@@ -10,13 +10,17 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import type { AppContext } from '../types';
+import type { AppContext, Env } from '../types';
 import { generateId } from '../utils/uuid';
 import { resolveInboundRouting } from '../services/call-routing';
 import { handleMissedCall } from '../services/missed-call-handler';
+import { emitEvent } from '../services/automation/events';
+import { normalizePhone } from '../utils/phone';
 import { checkBusinessHours, type BusinessHoursConfig } from '../utils/business-hours';
 import { createVoipProvider, escapeXml as escapeXmlUtil } from '../services/voip-provider';
 import type { VoipSettingsRow } from '../services/voip-provider';
+
+import { candidateTenantDbs, resolveTenantDb } from '../services/tenant-db';
 
 const voipCallbackRoutes = new Hono<AppContext>();
 
@@ -65,6 +69,54 @@ function safeJsonParse(val: string | null): any {
 
 // ── Status Callback — Twilio & Plivo call status updates ──────
 
+/** Which workspace a call belongs to: the owner of the called number, or the only workspace there is. */
+async function tenantForCalledNumber(masterDb: D1Database, toNumber: string | null): Promise<string | null> {
+  const number = toNumber ? normalizePhone(toNumber) : '';
+  if (number) {
+    const owner = await masterDb
+      .prepare('SELECT tenant_id FROM tenant_channel_addresses WHERE address = ? AND is_active = 1 LIMIT 1')
+      .bind(number)
+      .first<{ tenant_id: string }>();
+    if (owner) return owner.tenant_id;
+  }
+  const tenants = await masterDb.prepare("SELECT id FROM tenants WHERE status = 'active' LIMIT 2").all<{ id: string }>();
+  return tenants.results.length === 1 ? tenants.results[0].id : null;
+}
+
+/**
+ * The database of the workspace a provider webhook is about. A webhook carries no login, so the workspace is
+ * found from what it does carry: the workspace's own number, or a call that workspace has already logged.
+ */
+async function callDb(env: Env, hint: { number?: string | null; callSid?: string | null; callLogId?: string | null }): Promise<D1Database> {
+  const number = hint.number ? normalizePhone(hint.number) : '';
+  if (number) {
+    const owner = await env.MASTER_DB
+      .prepare('SELECT tenant_id FROM tenant_channel_addresses WHERE address = ? AND is_active = 1 LIMIT 1')
+      .bind(number)
+      .first<{ tenant_id: string }>();
+    const db = owner ? await resolveTenantDb(env, owner.tenant_id) : null;
+    if (db) return db;
+  }
+
+  const candidates = await candidateTenantDbs(env);
+  if (candidates.length === 1) return candidates[0];
+  const key = hint.callLogId || hint.callSid;
+  if (key) {
+    for (const db of candidates) {
+      try {
+        const hit = await db
+          .prepare('SELECT 1 AS hit FROM call_logs WHERE id = ? OR provider_call_id = ? OR twilio_call_sid = ? LIMIT 1')
+          .bind(key, key, key)
+          .first();
+        if (hit) return db;
+      } catch {
+        // a workspace whose database is not reachable; try the next
+      }
+    }
+  }
+  return env.MASTER_DB;
+}
+
 voipCallbackRoutes.post('/status-callback', async (c) => {
   const body = await c.req.parseBody();
 
@@ -96,7 +148,7 @@ voipCallbackRoutes.post('/status-callback', async (c) => {
   };
 
   const status = statusMap[callStatus] || callStatus;
-  const db = c.env.MASTER_DB;
+  const db = await callDb(c.env, { number: body.To as string, callSid });
 
   const updates: string[] = ['status = ?'];
   const values: (string | number)[] = [status];
@@ -121,12 +173,13 @@ voipCallbackRoutes.post('/status-callback', async (c) => {
     // Handle missed calls (TICKET-381)
     if (status === 'no-answer' || status === 'busy' || status === 'canceled') {
       const callLog = await db.prepare(`
-        SELECT id, direction, from_number, routed_to, contact_id, lead_id
+        SELECT id, direction, from_number, to_number, routed_to, contact_id, lead_id
         FROM call_logs WHERE provider_call_id = ? OR twilio_call_sid = ?
       `).bind(callSid, callSid).first<{
         id: string;
         direction: string;
         from_number: string;
+        to_number: string | null;
         routed_to: string | null;
         contact_id: string | null;
         lead_id: string | null;
@@ -134,13 +187,35 @@ voipCallbackRoutes.post('/status-callback', async (c) => {
 
       if (callLog?.direction === 'inbound') {
         const settings = await loadSettings(db);
-        await handleMissedCall(db, c.env as any, {
-          callLogId: callLog.id,
-          fromNumber: callLog.from_number,
-          routedTo: callLog.routed_to,
-          contactId: callLog.contact_id,
-          leadId: callLog.lead_id,
-        }, !!(settings?.autoCreateLeadMissedCall));
+        try {
+          await handleMissedCall(db, c.env as any, {
+            callLogId: callLog.id,
+            fromNumber: callLog.from_number,
+            routedTo: callLog.routed_to,
+            contactId: callLog.contact_id,
+            leadId: callLog.lead_id,
+          });
+        } catch (e) {
+          console.error('Missed call notification failed:', e);
+        }
+
+        // Let the automations react (call-back task). The workspace is the one that owns the called number.
+        const tenantId = await tenantForCalledNumber(c.env.MASTER_DB, callLog.to_number);
+        if (tenantId) {
+          await emitEvent(c.env, tenantId, db, {
+            type: 'call.missed',
+            entityType: 'call',
+            entityId: callLog.id,
+            payload: {
+              from: callLog.from_number,
+              contactId: callLog.contact_id,
+              leadId: callLog.lead_id,
+              routedTo: callLog.routed_to,
+              // The workspace's "lead from a missed call" setting; without VoIP settings it is on.
+              offerLead: settings ? !!settings.autoCreateLeadMissedCall : true,
+            },
+          });
+        }
       }
     }
   } catch (e) {
@@ -165,7 +240,7 @@ voipCallbackRoutes.post('/recording-callback', async (c) => {
     return c.text('<Response/>', 200, { 'Content-Type': 'text/xml' });
   }
 
-  const db = c.env.MASTER_DB;
+  const db = await callDb(c.env, { callSid });
   const url = recordingUrl.endsWith('.mp3') ? recordingUrl : `${recordingUrl}.mp3`;
 
   try {
@@ -195,7 +270,7 @@ voipCallbackRoutes.post('/twiml/outbound', async (c) => {
   const to = (body.To as string) || '';
   const from = (body.From as string) || (body.Caller as string) || '';
 
-  const db = c.env.MASTER_DB;
+  const db = await callDb(c.env, { number: from, callSid: (body.CallSid || body.CallUUID) as string });
   const settings = await loadSettings(db);
   if (settings) {
     const provider = createVoipProvider(c.env as any, settings);
@@ -222,7 +297,7 @@ voipCallbackRoutes.post('/twiml/inbound', async (c) => {
   const to = (body.To as string) || '';
   const callSid = (body.CallSid || body.CallUUID) as string || '';
 
-  const db = c.env.MASTER_DB;
+  const db = await callDb(c.env, { number: to, callSid });
   const settings = await loadSettings(db);
 
   if (!settings) {
@@ -308,7 +383,7 @@ voipCallbackRoutes.post('/twiml/ivr-handler', async (c) => {
   const noInput = c.req.query('noInput');
   const from = (body.From as string) || '';
 
-  const db = c.env.MASTER_DB;
+  const db = await callDb(c.env, { number: body.To as string, callLogId });
   const settings = await loadSettings(db);
   const baseUrl = c.req.url.replace(/\/api\/v1\/voip\/twiml\/ivr-handler.*$/, '').replace(/\/api\/voip\/twiml\/ivr-handler.*$/, '');
 
@@ -402,7 +477,7 @@ voipCallbackRoutes.post('/twiml/dial-status', async (c) => {
 
   // If the agent didn't answer, route to voicemail
   if (dialStatus !== 'answered' && dialStatus !== 'completed') {
-    const db = c.env.MASTER_DB;
+    const db = await callDb(c.env, { number: body.To as string, callLogId });
     const settings = await loadSettings(db);
     if (settings) {
       const provider = createVoipProvider(c.env as any, settings);
@@ -433,7 +508,7 @@ voipCallbackRoutes.post('/voicemail-callback', async (c) => {
   const recordingDuration = body.RecordingDuration ? Number(body.RecordingDuration) : 0;
 
   if (callLogId && recordingUrl) {
-    const db = c.env.MASTER_DB;
+    const db = await callDb(c.env, { number: body.To as string, callLogId });
     try {
       await db.prepare(`
         UPDATE call_logs

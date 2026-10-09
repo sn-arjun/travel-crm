@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { emitEvent } from '../services/automation/events';
 import { zValidator } from '../utils/validator';
 import { SignJWT, jwtVerify } from 'jose';
 import type { AppContext } from '../types';
@@ -594,6 +595,14 @@ driver.post('/trips/:id/status', zValidator('json', updateTripStatusSchema), asy
     } catch {
       // Invoice generation failure should not block status update
     }
+
+    const driverRow = await db.prepare('SELECT name FROM drivers WHERE id = ?').bind(driverId).first<{ name: string }>();
+    await emitEvent(c.env, c.get('tenantId'), db, {
+      type: 'trip.completed',
+      entityType: 'trip',
+      entityId: tripId,
+      payload: { passengerName: trip.passenger_name ?? null, passengerPhone: trip.passenger_phone ?? null, driverName: driverRow?.name ?? null },
+    });
   }
 
   return success(c, { message: `Status updated to ${newStatus}`, status: newStatus });

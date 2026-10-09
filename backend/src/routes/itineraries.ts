@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { emitFromRequest } from '../services/automation/events';
 import { zValidator } from '../utils/validator';
 import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
@@ -838,6 +839,8 @@ itineraryRoutes.post('/:id/send', requirePermission('itineraries', 'edit'), zVal
     details: JSON.stringify({ channel: body.channel, to: body.to }),
     ipAddress: c.get('clientIp'),
   });
+
+  await emitFromRequest(c, { type: 'itinerary.sent', entityType: 'itinerary', entityId: id, payload: { leadId: itin.leadId, channel: body.channel } });
 
   return success(c, { message: `Quotation queued for ${body.channel} delivery` });
 });

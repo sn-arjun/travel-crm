@@ -251,6 +251,22 @@ export const webhookLog = sqliteTable('webhook_log', {
   index('webhook_log_created_idx').on(table.createdAt),
 ]);
 
+// --- Tenant Channel Addresses (inbound gateway: receiving number / mailbox -> tenant) ---
+export const tenantChannelAddresses = sqliteTable('tenant_channel_addresses', {
+  id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().references(() => tenants.id),
+  channel: text('channel').notNull(), // whatsapp, sms, email, voice
+  address: text('address').notNull(), // E.164 number or lower-cased email address
+  provider: text('provider'), // twilio, plivo, sendgrid
+  label: text('label'),
+  isActive: integer('is_active').default(1),
+  createdAt: text('created_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+  updatedAt: text('updated_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+}, (table) => [
+  uniqueIndex('tenant_channel_addresses_channel_address_idx').on(table.channel, table.address),
+  index('tenant_channel_addresses_tenant_idx').on(table.tenantId),
+]);
+
 // --- Tenant Users (cross-tenant user lookup) ---
 // --- Quotation Links (cross-tenant share links for public itinerary view) ---
 export const quotationLinks = sqliteTable('quotation_links', {

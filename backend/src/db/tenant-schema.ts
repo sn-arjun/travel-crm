@@ -653,6 +653,8 @@ export const messageLog = sqliteTable('message_log', {
   metadata: text('metadata'), // JSON: extra info (batch_id, twilio_sid, etc.)
   status: text('status').default('queued'), // queued, sent, delivered, read, failed
   externalId: text('external_id'), // Twilio SID or SendGrid message ID
+  fromAddress: text('from_address'), // incoming: sender phone (E.164) or email, also when no contact matches
+  toAddress: text('to_address'), // incoming: the tenant number or mailbox that received it
   errorMessage: text('error_message'),
   sentBy: text('sent_by').references(() => users.id),
   sentAt: text('sent_at'),
@@ -660,6 +662,7 @@ export const messageLog = sqliteTable('message_log', {
   readAt: text('read_at'),
   createdAt: text('created_at').default(timestamp),
 }, (table) => [
+  index('msg_log_external_id_idx').on(table.externalId),
   index('msg_log_contact_id_idx').on(table.contactId),
   index('msg_log_lead_id_idx').on(table.leadId),
   index('msg_log_channel_idx').on(table.channel),
@@ -2402,3 +2405,105 @@ export const aiMarketingSuggestions = sqliteTable('ai_marketing_suggestions', {
   index('ai_mkt_suggestions_priority_idx').on(table.priority),
 ]);
 
+// ============================================================
+// AUTOMATION ENGINE + EMBEDDED ASSISTANT
+// ============================================================
+
+export const domainEvents = sqliteTable('domain_events', {
+  id: text('id').primaryKey(),
+  type: text('type').notNull(), // lead.created, message.received, payment.recorded, ...
+  entityType: text('entity_type').notNull(),
+  entityId: text('entity_id').notNull(),
+  payload: text('payload'), // JSON
+  actorId: text('actor_id'), // null for public channels and schedules
+  depth: integer('depth').notNull().default(0), // > 0 when caused by an automation
+  processedAt: text('processed_at'),
+  createdAt: text('created_at').default(timestamp),
+}, (table) => [
+  index('domain_events_type_idx').on(table.type),
+  index('domain_events_entity_idx').on(table.entityType, table.entityId),
+  index('domain_events_created_at_idx').on(table.createdAt),
+]);
+
+export const automationRules = sqliteTable('automation_rules', {
+  id: text('id').primaryKey(),
+  recipeKey: text('recipe_key').notNull(),
+  mode: text('mode').notNull().default('suggest'), // off, suggest, auto
+  settings: text('settings'), // JSON
+  trigger: text('trigger'), // custom rules only
+  conditions: text('conditions'), // custom rules only (JSON)
+  actions: text('actions'), // custom rules only (JSON)
+  updatedBy: text('updated_by'),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  uniqueIndex('automation_rules_recipe_key_idx').on(table.recipeKey),
+]);
+
+export const automationRuns = sqliteTable('automation_runs', {
+  id: text('id').primaryKey(),
+  ruleKey: text('rule_key').notNull(),
+  eventId: text('event_id'),
+  eventType: text('event_type'),
+  entityType: text('entity_type'),
+  entityId: text('entity_id'),
+  outcome: text('outcome').notNull(), // suggested, applied, skipped, failed
+  detail: text('detail'),
+  suggestionId: text('suggestion_id'),
+  durationMs: integer('duration_ms').default(0),
+  createdAt: text('created_at').default(timestamp),
+}, (table) => [
+  index('automation_runs_rule_key_idx').on(table.ruleKey),
+  index('automation_runs_created_at_idx').on(table.createdAt),
+]);
+
+export const assistantSuggestions = sqliteTable('assistant_suggestions', {
+  id: text('id').primaryKey(),
+  ruleKey: text('rule_key').notNull(),
+  origin: text('origin').notNull().default('rule'), // rule, ai
+  sourceType: text('source_type'),
+  sourceId: text('source_id'),
+  entityType: text('entity_type').notNull(), // where the suggestion is shown
+  entityId: text('entity_id').notNull(),
+  contactId: text('contact_id'),
+  leadId: text('lead_id'),
+  actionType: text('action_type').notNull(),
+  params: text('params').notNull(), // JSON
+  title: text('title').notNull(),
+  reason: text('reason'),
+  confidence: real('confidence'),
+  risk: text('risk').notNull().default('medium'), // low, medium, high
+  status: text('status').notNull().default('pending'), // pending, applying, applied, auto_applied, dismissed, undone, failed
+  dedupeKey: text('dedupe_key').notNull(),
+  result: text('result'), // JSON: created entities
+  undo: text('undo'), // JSON: what undo needs
+  error: text('error'),
+  assignedTo: text('assigned_to'),
+  appliedBy: text('applied_by'),
+  appliedAt: text('applied_at'),
+  modelUsed: text('model_used'),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  uniqueIndex('assistant_suggestions_dedupe_idx').on(table.dedupeKey),
+  index('assistant_suggestions_entity_idx').on(table.entityType, table.entityId),
+  index('assistant_suggestions_status_idx').on(table.status),
+  index('assistant_suggestions_lead_idx').on(table.leadId),
+  index('assistant_suggestions_contact_idx').on(table.contactId),
+  index('assistant_suggestions_created_at_idx').on(table.createdAt),
+]);
+
+export const assistantMessageAnalysis = sqliteTable('assistant_message_analysis', {
+  messageId: text('message_id').primaryKey(),
+  intent: text('intent').notNull(), // enquiry, change_request, confirmation, payment, question, complaint, other
+  urgency: text('urgency'),
+  language: text('language'),
+  needsWork: integer('needs_work').default(0),
+  entities: text('entities'), // JSON
+  draftReply: text('draft_reply'),
+  summary: text('summary'),
+  source: text('source').notNull().default('rules'), // rules, ai
+  modelUsed: text('model_used'),
+  costEstimate: real('cost_estimate').default(0),
+  createdAt: text('created_at').default(timestamp),
+});

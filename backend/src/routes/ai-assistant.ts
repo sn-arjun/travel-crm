@@ -140,7 +140,7 @@ aiRoutes.post('/extract-lead', zValidator('json', extractLeadSchema), async (c) 
   const { text, source } = c.req.valid('json');
 
   const startTime = Date.now();
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
 
   const systemPrompt = `You are a travel CRM assistant that extracts lead data from text.
 Extract the following fields from the input text and return as JSON:
@@ -208,7 +208,7 @@ aiRoutes.post('/parse-whatsapp', zValidator('json', z.object({ message: z.string
   const { message } = c.req.valid('json');
 
   const startTime = Date.now();
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
 
   const systemPrompt = `You are a travel CRM assistant. Parse this forwarded WhatsApp message and extract travel inquiry data.
 The message may contain customer name, phone, destination, dates, budget, and preferences.
@@ -250,7 +250,7 @@ aiRoutes.post('/parse-email', zValidator('json', z.object({ email: z.string().mi
   const { email, subject } = c.req.valid('json');
 
   const startTime = Date.now();
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
 
   const input = subject ? `Subject: ${subject}\n\n${email}` : email;
 
@@ -297,7 +297,7 @@ aiRoutes.post('/scan-business-card', zValidator('json', z.object({
   const { image, mimeType } = c.req.valid('json');
 
   const startTime = Date.now();
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
 
   const textPrompt = `Extract contact information from this business card. Return as JSON:
 {
@@ -346,7 +346,7 @@ aiRoutes.post('/parse-bulk-leads', zValidator('json', z.object({ text: z.string(
   const { text } = c.req.valid('json');
 
   const startTime = Date.now();
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
 
   const systemPrompt = `You are a travel CRM assistant. Parse this text block which may contain multiple travel inquiries.
 Extract each inquiry as a separate lead. Return as JSON array:
@@ -407,7 +407,7 @@ aiRoutes.post('/generate-itinerary', zValidator('json', generateItinerarySchema)
   const body = c.req.valid('json');
 
   const startTime = Date.now();
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
 
   // Build context
   let context = '';
@@ -534,7 +534,7 @@ aiRoutes.post('/enrich-itinerary', zValidator('json', z.object({
   const { itinerary, enrichments } = c.req.valid('json');
 
   const startTime = Date.now();
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
 
   const enrichTypes = enrichments || ['descriptions', 'restaurants', 'tips'];
   const systemPrompt = `You are a travel enrichment assistant. Enhance this itinerary with: ${enrichTypes.join(', ')}.
@@ -584,7 +584,7 @@ aiRoutes.post('/generate-invoice', zValidator('json', z.object({
   const body = c.req.valid('json');
 
   const startTime = Date.now();
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
 
   const systemPrompt = `You are a travel invoice generator. Convert this itinerary into structured invoice line items.
 Apply markup of ${body.markupPercent}%, GST at ${body.gstRate}%, and TCS at ${body.tcsRate}%.
@@ -654,7 +654,7 @@ aiRoutes.post('/compose-message', zValidator('json', composeMessageSchema), asyn
   const body = c.req.valid('json');
 
   const startTime = Date.now();
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
 
   let contextStr = '';
   if (body.context) {
@@ -719,7 +719,7 @@ aiRoutes.post('/suggest-replies', zValidator('json', z.object({
   const { incomingMessage, channel, customerName } = c.req.valid('json');
 
   const startTime = Date.now();
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
 
   const systemPrompt = `You are a travel agency assistant. Generate 3 quick reply suggestions for this incoming ${channel} message${customerName ? ` from ${customerName}` : ''}.
 Return as JSON array: ["reply1", "reply2", "reply3"]

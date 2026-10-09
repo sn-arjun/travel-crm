@@ -4,6 +4,7 @@ import { eq, and } from 'drizzle-orm';
 import type { AppContext } from '../types';
 import { messageLog, emailMessageLog, contacts } from '../db/tenant-schema';
 import { error, success } from '../utils/response';
+import { candidateTenantDbs } from '../services/tenant-db';
 
 const webhookRoutes = new Hono<AppContext>();
 
@@ -31,9 +32,9 @@ webhookRoutes.post('/twilio/status', async (c) => {
     // In a real implementation, you'd store tenant ID in Redis or lookup via SID
     // For now, we'll attempt to find and update across the request
 
-    const tenantDb = c.get('tenantDb');
-
-    if (tenantDb) {
+    // A public callback has no session: the receipt names the message, so the workspace is found from it
+    // (or from ?tenant=<id> when the status callback URL carries one).
+    for (const tenantDb of await candidateTenantDbs(c.env, c.req.query('tenant'))) {
       const db = drizzle(tenantDb);
 
       // Find message by external_id (Twilio SID)
@@ -68,6 +69,7 @@ webhookRoutes.post('/twilio/status', async (c) => {
           .update(messageLog)
           .set(updateData)
           .where(eq(messageLog.id, message.id));
+        break;
       }
     }
 
@@ -90,18 +92,12 @@ webhookRoutes.post('/sendgrid/events', async (c) => {
 
   try {
     const body = await c.req.json();
-    const tenantDb = c.get('tenantDb');
 
     if (!Array.isArray(body)) {
       return error(c, 'Expected array of events', 400);
     }
 
-    if (!tenantDb) {
-      // Can't process without tenantDb, but acknowledge receipt
-      return success(c, { acknowledged: true, processed: 0 });
-    }
-
-    const db = drizzle(tenantDb);
+    const tenantDbs = await candidateTenantDbs(c.env, c.req.query('tenant'));
     let processedCount = 0;
 
     for (const event of body) {
@@ -114,14 +110,23 @@ webhookRoutes.post('/sendgrid/events', async (c) => {
           continue;
         }
 
-        // Find the email message log by message ID
-        const message = await db
-          .select()
-          .from(emailMessageLog)
-          .where(eq(emailMessageLog.messageId, messageId))
-          .get();
+        // Find the email message log by message ID, in whichever workspace sent it
+        let db: ReturnType<typeof drizzle> | null = null;
+        let message: typeof emailMessageLog.$inferSelect | undefined;
+        for (const tenantDb of tenantDbs) {
+          const candidate = drizzle(tenantDb);
+          message = await candidate
+            .select()
+            .from(emailMessageLog)
+            .where(eq(emailMessageLog.messageId, messageId))
+            .get();
+          if (message) {
+            db = candidate;
+            break;
+          }
+        }
 
-        if (!message) {
+        if (!message || !db) {
           continue;
         }
 

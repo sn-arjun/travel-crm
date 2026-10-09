@@ -35,6 +35,13 @@ import messageTemplateRoutes from './routes/templates';
 import campaignRoutes from './routes/campaigns';
 import webhookRoutes from './routes/webhooks';
 import leadWebhookRoutes from './routes/webhook';
+import inboundRoutes from './routes/inbound';
+import integrationRoutes from './routes/integrations';
+import assistantRoutes from './routes/assistant';
+import automationRoutes from './routes/automations';
+import { setRootApp } from './app-ref';
+import { verifyAccessToken } from './utils/jwt';
+import { runScheduledAutomations } from './services/automation/schedule';
 import pushTokenRoutes from './routes/push-tokens';
 import preferencesRoutes from './routes/notification-preferences';
 import documentRoutes from './routes/documents';
@@ -98,6 +105,9 @@ import { processCampaignScheduler } from './cron/campaign-scheduler';
 
 const app = new Hono<AppContext>();
 
+// Automations perform their actions by calling this app's own API in-process.
+setRootApp(app);
+
 // Register reports on startup
 registerSalesReports();
 registerFinancialReports();
@@ -160,6 +170,9 @@ app.get('/api/health', healthHandler);
 
 // --- Public Webhook Routes (BEFORE auth middleware) ---
 
+// Inbound gateway: WhatsApp, SMS, email and website form (provider-signed or API-key authenticated)
+app.route('/api/v1/webhooks/inbound', inboundRoutes);
+app.route('/api/webhooks/inbound', inboundRoutes);
 app.route('/api/v1/webhooks', webhookRoutes);
 app.route('/api/webhooks', webhookRoutes);
 app.route('/api/v1', leadWebhookRoutes);
@@ -275,6 +288,9 @@ const routeMounts: Array<[string, typeof authRoutes]> = [
   ['marketing/suggestions', marketingSuggestionRoutes],
   ['marketing/festivals', festivalCampaignRoutes],
   ['hsn-codes', hsnCodeRoutes],
+  ['integrations', integrationRoutes],
+  ['assistant', assistantRoutes],
+  ['automations', automationRoutes],
   ['admin', adminRoutes],
 ];
 
@@ -308,15 +324,24 @@ app.onError((err, c) => {
 
 // --- WebSocket Upgrade Route ---
 
+// Browsers cannot set an Authorization header on a WebSocket, so the access token travels in the query string.
+// It decides both who the connection is and which workspace room it joins; the userId parameter is not trusted.
 app.get('/api/v1/ws', async (c) => {
-  const tenantId = c.get('tenantId') || 'default';
-  const userId = c.req.query('userId') || 'anonymous';
+  let payload;
+  try {
+    payload = await verifyAccessToken(c.req.query('token') ?? '', c.env.JWT_SECRET);
+  } catch {
+    return error(c, 'Invalid or expired token', 401);
+  }
+  const tenantId = payload.tenantId;
+  const userId = payload.userId;
 
   const id = c.env.REALTIME.idFromName(tenantId);
   const room = c.env.REALTIME.get(id);
 
   const url = new URL(c.req.url);
   url.pathname = '/';
+  url.searchParams.delete('token');
   url.searchParams.set('userId', userId);
 
   return room.fetch(new Request(url.toString(), c.req.raw));
@@ -359,6 +384,7 @@ export default {
           processOverdueTasks(env),
           processFleetAlerts(env),
           processCampaignScheduler(env),
+          runScheduledAutomations(env),
           // Reset usage caps
           resetUsageCaps(env.MASTER_DB, 'daily'),
           isMonthStart ? resetUsageCaps(env.MASTER_DB, 'monthly') : Promise.resolve(0),

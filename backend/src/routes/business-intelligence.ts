@@ -77,7 +77,7 @@ app.post('/briefings/generate', async (c) => {
   metrics.conversionRate = conversionRate;
 
   const taskType: AITask = type === 'daily' ? 'daily_briefing' : type === 'weekly' ? 'weekly_briefing' : 'monthly_briefing';
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
   const prompt = `Generate a ${type} business briefing for a travel agency CRM. Period: ${period}. Metrics: ${JSON.stringify(metrics)}. Output JSON with: { title, sections: [{ heading, body }], highlights: [string], actionItems: [string] }`;
   const aiResult = await router.route(taskType, prompt, 'You are a business intelligence analyst for a travel agency. Generate concise, actionable briefings. Always respond with valid JSON.');
 
@@ -177,7 +177,7 @@ app.post('/health-score/calculate', async (c) => {
     overdueInvoices: overdueInvoices?.c || 0,
   };
 
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
   const prompt = `Analyze these travel agency CRM metrics for the last 30 days and output a business health score. Metrics: ${JSON.stringify(metrics)}. Output JSON: { overallScore: 0-100, revenueScore: 0-100, pipelineScore: 0-100, customerScore: 0-100, teamScore: 0-100, operationsScore: 0-100, alerts: [string], recommendations: [string], trends: { revenue: "up"|"down"|"stable", pipeline: "up"|"down"|"stable" } }`;
   const aiResult = await router.route('business_health_score', prompt, 'You are a business health analyst. Score each dimension 0-100. Be data-driven. Always respond with valid JSON.');
 
@@ -278,7 +278,7 @@ app.get('/destination-profitability', async (c) => {
     LIMIT 20
   `).all();
 
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
   const prompt = `Analyze destination profitability for a travel agency. Data: ${JSON.stringify(destinations.results || [])}. Output JSON: { destinations: [{ name, revenue, margin, leadCount, conversionRate, recommendation }], topPerformer, underPerformer, insights: [string] }`;
   const aiResult = await routeOrNull(router, 'destination_profitability', prompt, 'You are a travel business analyst. Analyze destination data and provide actionable insights. Always respond with valid JSON.');
 
@@ -326,7 +326,7 @@ app.get('/seasonal-demand', async (c) => {
     ORDER BY destination, month_num
   `).all();
 
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
   const prompt = `Analyze seasonal demand for a travel agency. Monthly data: ${JSON.stringify(monthly.results || [])}. By destination/month: ${JSON.stringify(byDestMonth.results || [])}. Output JSON: { peakMonths: [string], slowMonths: [string], forecast: [{ month, predictedLeads }], destinationSeasonality: [{ destination, peakMonths, slowMonths }], recommendations: [string] }`;
   const aiResult = await router.route('seasonal_demand', prompt, 'You are a travel demand analyst. Identify seasonal patterns and provide forecasts. Always respond with valid JSON.');
 
@@ -355,7 +355,7 @@ app.post('/customer-ltv/:contactId', async (c) => {
   const leads = await db.prepare(`SELECT status, estimated_value, created_at FROM leads WHERE contact_id = ? ORDER BY created_at`).bind(contactId).all();
   const invoices = await db.prepare(`SELECT total, status, created_at FROM invoices WHERE contact_id = ? ORDER BY created_at`).bind(contactId).all();
 
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
   const prompt = `Calculate customer lifetime value for this travel agency customer. Contact: ${JSON.stringify({ name: contact.name, email: contact.email, created_at: contact.created_at })}. Leads: ${JSON.stringify(leads.results || [])}. Invoices: ${JSON.stringify(invoices.results || [])}. Output JSON: { lifetimeValue, predictedNextValue, frequency, recency, monetaryValue, segment, prediction: string, confidence: 0.0-1.0 }`;
   const aiResult = await router.route('customer_ltv', prompt, 'You are a customer analytics expert. Calculate RFM-based LTV. Always respond with valid JSON.');
 
@@ -396,7 +396,7 @@ app.get('/cash-flow-forecast', async (c) => {
     GROUP BY month ORDER BY month
   `).all();
 
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
   const prompt = `Forecast cash flow for next 3 months for a travel agency. Pipeline: ${JSON.stringify(pipeline.results || [])}. Pending receivables: ${JSON.stringify(pendingInvoices)}. Recent payments: ${JSON.stringify(recentPayments.results || [])}. Output JSON: { forecast: [{ month, predictedInflow, predictedOutflow, netCashFlow }], totalExpectedInflow, riskFactors: [string], recommendations: [string] }`;
   const aiResult = await router.route('cash_flow_forecast', prompt, 'You are a financial analyst for a travel agency. Provide realistic cash flow forecasts. Always respond with valid JSON.');
 
@@ -432,7 +432,7 @@ app.get('/team-performance', async (c) => {
     GROUP BY u.id
   `).bind(since).all();
 
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
   const prompt = `Score salesperson effectiveness for a travel agency team. Data: ${JSON.stringify(teamStats.results || [])}. Output JSON: { rankings: [{ userId, name, score: 0-100, strengths: [string], improvements: [string] }], topPerformer, insights: [string], coachingNeeds: [{ userId, area, suggestion }] }`;
   const aiResult = await routeOrNull(router, 'salesperson_scoring', prompt, 'You are a sales performance analyst. Be constructive and specific. Always respond with valid JSON.');
 
@@ -510,7 +510,7 @@ app.post('/customer-segments/calculate', async (c) => {
     LIMIT ?
   `).bind(limit).all();
 
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
   const prompt = `Segment these travel agency customers. Data: ${JSON.stringify(contacts.results || [])}. For each customer, assign a segment (vip, high_potential, churn_risk, seasonal, dormant, new), confidence (0-1), churn risk (0-1), and predicted next booking date. Output JSON: { segments: [{ contactId, segment, confidence, churnRisk, nextTripPrediction, lifetimeValue, preferredChannel }] }`;
   const aiResult = await router.route('customer_segmentation', prompt, 'You are a customer segmentation expert. Use RFM analysis principles. Always respond with valid JSON.');
 
@@ -624,7 +624,7 @@ app.get('/lost-deal-analysis', async (c) => {
     GROUP BY status ORDER BY count DESC
   `).all();
 
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
   const prompt = `Analyze lost deals for a travel agency. By reason: ${JSON.stringify(byReason.results || [])}. By status breakdown: ${JSON.stringify(byStatus.results || [])}. Recent lost: ${JSON.stringify((lostLeads.results || []).slice(0, 20))}. Output JSON: { patterns: [string], topReasons: [{ reason, count, lostValue, actionItem }], stageDropoffs: [{ stage, count, suggestion }], recoverable: number, recommendations: [string] }`;
   const aiResult = await routeOrNull(router, 'lost_deal_analysis', prompt, 'You are a sales strategy analyst. Identify patterns in lost deals and suggest recovery actions. Always respond with valid JSON.');
 
@@ -704,7 +704,7 @@ app.post('/recommendations/generate', async (c) => {
     overdueInvoices: overdueInvoices?.c || 0,
   };
 
-  const router = new AIRouter(env);
+  const router = new AIRouter(env, undefined, c.get('tenantId'));
   const prompt = `Generate actionable recommendations for a travel agency salesperson. Context: ${JSON.stringify(context)}. Output JSON: { recommendations: [{ title, description, reasoning, impactScore: 0.0-1.0, confidenceScore: 0.0-1.0, recommendationType: "prioritize"|"re_engage"|"upsell"|"timing"|"channel", actionUrl: "/leads?status=stale" }] }. Max 5 recommendations.`;
   const aiResult = await router.route('ai_recommendation_gen', prompt, 'You are a sales coach. Give practical, specific recommendations. Always respond with valid JSON.');
 

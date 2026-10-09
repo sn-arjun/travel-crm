@@ -21,7 +21,8 @@ import { rbac } from '../middleware/rbac';
 import { generateId } from '../utils/uuid';
 import { logActivity } from '../utils/activity-logger';
 import { logLeadActivity } from '../utils/lead-activity-logger';
-import { resolveAssignee } from '../services/lead-assignment';
+import { createLead } from '../services/domain/leads';
+import { emitFromRequest, requestDepth } from '../services/automation/events';
 import { success, created, paginated, error, notFound } from '../utils/response';
 
 const leadRoutes = new Hono<AppContext>();
@@ -575,61 +576,21 @@ leadRoutes.post(
   async (c) => {
     const body = c.req.valid('json');
     const tenantDb = c.get('tenantDb');
-    const db = drizzle(tenantDb);
-    const userId = c.get('userId');
-    const tenantId = c.get('tenantId');
 
-    // Resolve assignee. An explicit `assignedTo: null` means "leave unassigned" (no routing rule,
-    // no round-robin). Omitting the field keeps auto-assignment: explicit → source rule → round-robin.
-    const leaveUnassigned = 'assignedTo' in body && body.assignedTo === null;
-    const assignedTo = leaveUnassigned
-      ? null
-      : await resolveAssignee(tenantDb, c.env.CACHE, tenantId, body.source, body.assignedTo);
-
-    const id = generateId();
-    const now = new Date().toISOString();
-
-    await db.insert(leads).values({
-      id,
-      contactId: body.contactId,
-      title: body.title,
-      destination: JSON.stringify(body.destinations),
-      travelDate: body.travelDate,
-      returnDate: body.returnDate ?? null,
-      paxAdults: body.paxAdults,
-      paxChildren: body.paxChildren,
-      paxInfants: body.paxInfants,
-      budget: body.budget ?? null,
-      currency: body.currency,
-      tripType: body.tripType,
-      source: body.source,
-      status: 'new',
-      priority: body.priority ?? null,
-      assignedTo: assignedTo ?? null,
-      notes: body.notes ?? null,
-      passportAvailable: body.passportAvailable ? 1 : (body.passportAvailable === false ? 0 : null),
-      travelClass: body.travelClass ?? null,
-      hotelPreference: body.hotelPreference ?? null,
-      mealPreference: body.mealPreference ?? null,
-      specialRequirements: body.specialRequirements ?? null,
-      estimatedValue: body.estimatedValue ?? null,
-      probability: body.probability ?? null,
-      expectedCloseDate: body.expectedCloseDate ?? null,
-      createdBy: userId,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    await logLeadActivity(db, { leadId: id, type: 'note', content: 'Lead created', userId });
-    await logActivity(db, { userId, action: 'create', entityType: 'lead', entityId: id, ipAddress: c.get('clientIp') });
-
-    // Notify assignee if auto-assigned
-    if (assignedTo && assignedTo !== userId) {
-      await notifyUser(c, db, tenantDb, assignedTo, 'New lead assigned', body.title, 'lead', id);
+    // An explicit `assignedTo: null` means "leave unassigned" (no routing rule, no round-robin).
+    // Omitting the field keeps auto-assignment: explicit → source rule → round-robin.
+    let waiter: { waitUntil(promise: Promise<unknown>): void } | undefined;
+    try {
+      waiter = c.executionCtx;
+    } catch {
+      waiter = undefined;
     }
-
-    // Broadcast real-time event
-    await broadcastLeadEvent(c, 'lead_created', { id, title: body.title, status: 'new' });
+    const { id } = await createLead(c.env, c.get('tenantId'), tenantDb, body, {
+      userId: c.get('userId'),
+      clientIp: c.get('clientIp'),
+      depth: requestDepth(c),
+      waiter,
+    });
 
     const lead = await tenantDb.prepare('SELECT l.*, c.name as contact_name FROM leads l LEFT JOIN contacts c ON l.contact_id = c.id WHERE l.id = ?').bind(id).first<Record<string, unknown>>();
 
@@ -826,6 +787,10 @@ leadRoutes.put(
     await broadcastLeadEvent(c, 'lead_status_changed', { id, status: newStatus, updatedBy: userId });
 
     await logActivity(db, { userId, action: 'update', entityType: 'lead', entityId: id, details: JSON.stringify({ old_status: oldStatus, new_status: newStatus }), ipAddress: c.get('clientIp') });
+
+    if (oldStatus !== newStatus) {
+      await emitFromRequest(c, { type: 'lead.status_changed', entityType: 'lead', entityId: id, payload: { from: oldStatus, to: newStatus } });
+    }
 
     const updated = await tenantDb
       .prepare('SELECT l.*, c.name as contact_name FROM leads l LEFT JOIN contacts c ON l.contact_id = c.id WHERE l.id = ?')

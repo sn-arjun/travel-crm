@@ -15,6 +15,7 @@ import { success, error, forbidden } from '../utils/response';
 import { getTenantFeatures, PLAN_DEFAULTS } from '../middleware/feature-gate';
 import { AIRouter } from '../services/ai-router';
 import { tenantTimeZone, sqlOffsetModifier } from '../utils/tz';
+import { getCreditBalance } from '../services/ai-credits';
 
 const aiSettingsRoutes = new Hono<AppContext>();
 
@@ -37,6 +38,7 @@ const AI_FEATURE_KEYS = [
 
 // Usage cap keys for AI features
 const AI_USAGE_CAP_KEYS = [
+  'ai_credits_per_month',
   'ai_actions_per_day',
   'ai_tokens_per_month',
   'whatsapp_messages_per_month',
@@ -56,7 +58,8 @@ aiSettingsRoutes.get('/', async (c) => {
   // Get tenant features
   const tenantFeatures = await getTenantFeatures(masterDb, tenantId);
 
-  // Get usage caps
+  // Get usage caps (the monthly AI credit allowance is created from the plan on first read)
+  await getCreditBalance(masterDb, tenantId);
   const caps = await masterDb.prepare(
     'SELECT cap_key, cap_value, current_usage, reset_period, last_reset_at FROM tenant_usage_caps WHERE tenant_id = ?',
   ).bind(tenantId).all();
@@ -184,7 +187,8 @@ aiSettingsRoutes.get('/usage', async (c) => {
   const masterDb = c.env.MASTER_DB;
   const db = c.get('tenantDb');
 
-  // Get all usage caps
+  // Get all usage caps (the monthly AI credit allowance is created from the plan on first read)
+  await getCreditBalance(masterDb, tenantId);
   const caps = await masterDb.prepare(
     'SELECT cap_key, cap_value, current_usage, reset_period, last_reset_at FROM tenant_usage_caps WHERE tenant_id = ?',
   ).bind(tenantId).all();

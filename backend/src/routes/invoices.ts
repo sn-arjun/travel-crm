@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { emitFromRequest } from '../services/automation/events';
 import { zValidator } from '../utils/validator';
 import { z } from 'zod';
 import type { AppContext } from '../types';
@@ -353,6 +354,8 @@ invoiceRoutes.post('/', zValidator('json', createInvoiceSchema), async (c) => {
         // Non-critical
       }
     }
+
+    await emitFromRequest(c, { type: 'invoice.created', entityType: 'invoice', entityId: invoiceId, payload: { contactId: data.contactId, leadId: data.leadId ?? null } });
 
     return created(c, {
       id: invoiceId,
@@ -1033,6 +1036,8 @@ invoiceRoutes.post('/from-itinerary', zValidator('json', fromItinerarySchema), a
       userId, action: 'invoice_from_itinerary', entityType: 'invoice', entityId: invoiceId,
       details: JSON.stringify({ invoiceNumber, itineraryId }),
     });
+
+    await emitFromRequest(c, { type: 'invoice.created', entityType: 'invoice', entityId: invoiceId, payload: { itineraryId } });
 
     return created(c, {
       id: invoiceId,
