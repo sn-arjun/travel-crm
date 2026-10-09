@@ -7,3 +7,6 @@
 *.mov
 *.mkv
 .artifacts/
+
+# Raw Playwright report from early takes (large recordings)
+report/
