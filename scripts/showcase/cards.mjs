@@ -28,15 +28,15 @@ const centred = (kicker, title, sub, titleSize = 72) =>
    </div>`;
 
 export const templates = {
-  intro: () => page(`<div style="position:absolute;inset:0;background-image:${DOTS};background-size:32px 32px"></div>
+  intro: ({ tagline = 'A day at Sahyadri Holidays, Bengaluru' } = {}) => page(`<div style="position:absolute;inset:0;background-image:${DOTS};background-size:32px 32px"></div>
     <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center">
       <div style="font-size:96px;font-weight:700;letter-spacing:-.03em">TravelCRM Pro</div>
       <div style="font-size:32px;color:#E0E7FF;margin-top:22px">The all-in-one CRM for tours &amp; travels agencies</div>
-      <div style="font-size:20px;color:#C7D2FE;margin-top:34px;letter-spacing:.06em">A day at Sahyadri Holidays, Bengaluru</div>
+      <div style="font-size:20px;color:#C7D2FE;margin-top:34px;letter-spacing:.06em">${tagline}</div>
     </div>${brandFoot}`, BG),
-  outro: () => page(`<div style="position:absolute;inset:0;background-image:${DOTS};background-size:32px 32px"></div>
+  outro: ({ line = 'Leads · Itineraries · Invoicing · Fleet · Driver app — one platform' } = {}) => page(`<div style="position:absolute;inset:0;background-image:${DOTS};background-size:32px 32px"></div>
     <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center">
-      <div style="font-size:40px;font-weight:700;letter-spacing:-.01em;max-width:1500px;line-height:1.3">Leads · Itineraries · Invoicing · Fleet · Driver app — one platform</div>
+      <div style="font-size:40px;font-weight:700;letter-spacing:-.01em;max-width:1500px;line-height:1.3">${line}</div>
       <div style="font-size:28px;color:#C7D2FE;margin-top:30px">travelcrm.pro</div>
     </div>${brandFoot}`, BG),
   scene: ({ kicker, title, subtitle }) => page(centred(kicker, title, subtitle) + brandFoot, BG),

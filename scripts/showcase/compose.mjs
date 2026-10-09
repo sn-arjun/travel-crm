@@ -157,8 +157,9 @@ async function main() {
   // static cards
   const sceneCard = o['scene-title'] ?? 'On the road with Ravi';
   await renderAll([
-    { html: templates.intro(), out: P('intro.png') },
-    { html: templates.outro(), out: P('outro.png') },
+    // --intro-tagline / --outro-line replace the two lines on the opening and closing cards
+    { html: templates.intro(o['intro-tagline'] ? { tagline: o['intro-tagline'] } : {}), out: P('intro.png') },
+    { html: templates.outro(o['outro-line'] ? { line: o['outro-line'] } : {}), out: P('outro.png') },
     { html: templates.scene({ kicker: o['scene-kicker'] ?? 'Scene 7 of 9', title: sceneCard, subtitle: 'TravelCRM Driver app on Android' }), out: P('scene7.png') },
   ]);
   cardClip(P('intro.png'), 5, P('intro.mp4'));

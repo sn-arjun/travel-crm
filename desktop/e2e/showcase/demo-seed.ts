@@ -84,11 +84,19 @@ interface Ids {
   rejections: string[]; counters: Record<string, number>;
 }
 
+async function setAutomationsPaused(paused: boolean): Promise<void> {
+  const res = await fetch(`${API}/automations/pause`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ paused }) });
+  if (!res.ok) throw new Error(`could not ${paused ? 'pause' : 'resume'} automations: ${res.status} ${await res.text()}`);
+}
+
 async function seedAll(): Promise<Ids> {
   // Wipe + re-create the base tenant/admin (idempotency anchor).
   const reset = await fetch(`${API}/test/reset`, { method: 'POST' });
   if (!reset.ok) throw new Error(`/test/reset failed: ${reset.status} ${await reset.text()}`);
   await login([D.BOOTSTRAP_EMAIL]);
+  // Seeding is a bulk load of history: automations stay paused so they do not schedule follow-ups,
+  // create checklists or raise suggestions for 25 back-dated leads. main() resumes them.
+  await setAutomationsPaused(true);
 
   const ids: Ids = {
     d0: D.d0(), apiUrl: API, tenantId: D.TENANT_ID, demoEmail: D.DEMO_EMAIL, demoPassword: D.DEMO_PASSWORD,
@@ -477,6 +485,8 @@ async function main() {
     return;
   }
   const ids = await seedAll();
+  await login();
+  await setAutomationsPaused(false);
   fs.writeFileSync(SEED_JSON, JSON.stringify(ids, null, 2));
   console.log('seeded:', JSON.stringify(counters));
   if (rejections.length) {
