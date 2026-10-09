@@ -317,6 +317,7 @@ export default function LeadDetailPage() {
   return (
     <>
       <DetailPage
+        assistant={{ leadId, onChanged: refreshAll }}
         entity={lead}
         title={lead.title}
         subtitle={`${contactName} · ${leadDestination(lead)}`}

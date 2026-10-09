@@ -386,6 +386,31 @@ export const API_ENDPOINTS = {
     itineraryDefaults: '/settings/itinerary-defaults',
     numbering: '/settings/numbering',
   },
+  // Assistant (suggestions on every screen) and the automations library
+  assistant: {
+    suggestions: '/assistant/suggestions',
+    count: '/assistant/suggestions/count',
+    apply: (id: string) => `/assistant/suggestions/${id}/apply`,
+    dismiss: (id: string) => `/assistant/suggestions/${id}/dismiss`,
+    undo: (id: string) => `/assistant/suggestions/${id}/undo`,
+    analyze: '/assistant/analyze',
+    activity: '/assistant/activity',
+  },
+  automations: {
+    list: '/automations',
+    byKey: (key: string) => `/automations/${key}`,
+    runScheduled: '/automations/run-scheduled',
+    pause: '/automations/pause',
+    custom: '/automations/custom',
+    customById: (id: string) => `/automations/custom/${id}`,
+  },
+  // Integrations (receiving numbers / mailboxes, website-form API keys)
+  integrations: {
+    channels: '/integrations/channels',
+    channelById: (id: string) => `/integrations/channels/${id}`,
+    apiKeys: '/integrations/api-keys',
+    apiKeyById: (id: string) => `/integrations/api-keys/${id}`,
+  },
   // Bookmarks & Notes
   bookmarks: {
     list: '/bookmarks',

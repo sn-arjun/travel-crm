@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import {
-  Mail, MessageCircle, Phone, Send, Loader2, ChevronRight, Eye, ArrowLeft, FileText, TriangleAlert,
+  Mail, MessageCircle, Phone, Send, Loader2, ChevronRight, Eye, ArrowLeft, FileText, TriangleAlert, Sparkles,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +17,7 @@ import { Card, CardContent } from '@/components/ui/card';
 
 import { cn } from '@/lib/utils';
 import { communicationsApi } from '@/lib/api/communications';
+import { aiApi, isAiUnavailableError } from '@/lib/api/ai';
 import { templatesApi, type MessageTemplate as ApiMessageTemplate } from '@/lib/api/templates';
 import { unwrapList } from '@/lib/api/envelope';
 import { useAuthStore } from '@/stores/auth-store';
@@ -127,17 +128,28 @@ export interface SendMessageDialogProps {
   variables?: MessageVariables;
   /** Called after a message was sent, so the host page can refresh its activity. */
   onSent?: () => void;
+  /**
+   * Open straight on the compose step with this text (e.g. a reply drafted by the assistant).
+   * The person still reviews, edits and previews it before anything is sent.
+   */
+  initialBody?: string;
+  initialSubject?: string;
+  /** Log the message against this lead. */
+  leadId?: string | null;
 }
 
 type Step = 'channel' | 'template' | 'compose' | 'preview';
 
-export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel, variables, onSent }: SendMessageDialogProps) {
+export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel, variables, onSent, initialBody, initialSubject, leadId }: SendMessageDialogProps) {
   const [step, setStep] = React.useState<Step>(defaultChannel ? 'template' : 'channel');
   const [channel, setChannel] = React.useState<'email' | 'whatsapp' | 'sms'>(defaultChannel ?? 'email');
   const [selectedTemplate, setSelectedTemplate] = React.useState<MessageTemplate | null>(null);
   const [subject, setSubject] = React.useState('');
   const [body, setBody] = React.useState('');
   const [isSending, setIsSending] = React.useState(false);
+  // "Draft with AI": one line about what to say, the assistant writes the message into the editor.
+  const [aiBrief, setAiBrief] = React.useState('');
+  const [isDrafting, setIsDrafting] = React.useState(false);
 
   const tenant = useAuthStore((s) => s.tenant);
   const user = useAuthStore((s) => s.user);
@@ -147,14 +159,15 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel,
   // Reset when dialog opens/closes
   React.useEffect(() => {
     if (open) {
-      setStep(defaultChannel ? 'template' : 'channel');
+      setStep(initialBody ? 'compose' : defaultChannel ? 'template' : 'channel');
       setChannel(defaultChannel ?? 'email');
       setSelectedTemplate(null);
-      setSubject('');
-      setBody('');
+      setSubject(initialSubject ?? '');
+      setBody(initialBody ?? '');
+      setAiBrief('');
       setTemplateSearch('');
     }
-  }, [open, defaultChannel]);
+  }, [open, defaultChannel, initialBody, initialSubject]);
 
   const values = React.useMemo<MessageVariables>(() => {
     const merged: MessageVariables = {
@@ -242,6 +255,40 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel,
     setStep('compose');
   }
 
+  /** The draft only fills the editor; the person still edits, previews and sends it. */
+  async function draftWithAi() {
+    const brief = aiBrief.trim();
+    if (!brief) {
+      toast.error('Say in a few words what the message should cover');
+      return;
+    }
+    setIsDrafting(true);
+    try {
+      const res = await aiApi.composeMessage({
+        channel,
+        purpose: brief,
+        context: {
+          customerName: contact.name,
+          destination: variables?.destination,
+          additionalContext: body.trim() ? `Current draft to improve:\n${body.trim()}` : undefined,
+        },
+      });
+      const drafted = res.data?.message;
+      if (!drafted?.body) throw new Error('The assistant returned an empty draft');
+      setBody(drafted.body);
+      if (channel === 'email' && drafted.subject) setSubject(drafted.subject);
+      toast.success('Draft ready. Read it before you send.');
+    } catch (err) {
+      toast.error(
+        isAiUnavailableError(err)
+          ? 'AI drafting is not available right now. Write the message or pick a template.'
+          : (err as { message?: string })?.message || 'Could not draft the message',
+      );
+    } finally {
+      setIsDrafting(false);
+    }
+  }
+
   function goToPreview() {
     if (channel === 'email' && !subject.trim()) {
       toast.error('Subject is required for email');
@@ -267,6 +314,7 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel,
       }
       await communicationsApi.send({
         contact_id: contact.id,
+        ...(leadId ? { lead_id: leadId } : {}),
         channel,
         message: channel === 'email' && subject ? `[Subject: ${subject}]\n${body}` : body,
       });
@@ -470,6 +518,29 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel,
                   <Badge variant="secondary" className="text-xs">{selectedTemplate.name}</Badge>
                 </>
               )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="msg-ai-brief">Draft with AI</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="msg-ai-brief"
+                  value={aiBrief}
+                  onChange={(e) => setAiBrief(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void draftWithAi();
+                    }
+                  }}
+                  placeholder="What should it say? e.g. ask for passport copies by Friday"
+                  disabled={isDrafting}
+                />
+                <Button type="button" variant="outline" onClick={() => void draftWithAi()} disabled={isDrafting} className="shrink-0">
+                  {isDrafting ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Sparkles className="h-4 w-4 mr-1.5" />}
+                  Draft
+                </Button>
+              </div>
             </div>
 
             {channel === 'email' && (

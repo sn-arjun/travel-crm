@@ -44,11 +44,17 @@ test.describe('Webhooks & Integrations', () => {
     await expect(page.getByText('POST', { exact: true })).toHaveCount(3);
   });
 
-  test('shows the manual API-key setup notice (no fake key)', async ({ page }) => {
+  test('an admin creates a website-form API key, sees it once, and can revoke it', async ({ page }) => {
     await page.goto('/settings/integrations');
     await waitForLoad(page);
-    await expect(page.getByText('No API key found')).toBeVisible();
-    await expect(page.getByText('Manual setup required')).toBeVisible();
+    await page.getByRole('button', { name: 'Create API key' }).click();
+    await expect(page.getByText('API key created')).toBeVisible();
+    await expect(page.locator('#issued-api-key')).toHaveValue(/^tcrm_[0-9a-f]{48}$/);
+    await expect(page.getByText('Website form API keys')).toBeVisible();
+
+    await page.getByRole('button', { name: /^Revoke key/ }).first().click();
+    await page.getByRole('button', { name: 'Revoke', exact: true }).click();
+    await expect(page.getByText('API key revoked')).toBeVisible();
   });
 
   test('copy button writes the exact URL to the clipboard and confirms', async ({ page }) => {

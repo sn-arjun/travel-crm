@@ -57,6 +57,16 @@ export function safeTripType(raw?: string | null): string {
   return raw && TRIP_TYPE_VALUES.includes(raw) ? raw : 'one_way';
 }
 
+/** A `date` (YYYY-MM-DD) that arrived through the URL, as that calendar day; anything else is ignored. */
+export function safeTripDate(raw?: string | null): Date | undefined {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw ?? '');
+  if (!match) return undefined;
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const date = new Date(year, month - 1, day);
+  // new Date() rolls 31 February over to March; reject instead.
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : undefined;
+}
+
 type ListPayload<T> = { data?: T[]; pagination?: { total?: number } } | T[] | undefined;
 
 function toPage<T>(payload: ListPayload<T>): { items: T[]; total: number } {

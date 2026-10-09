@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { PageContainer } from '@/components/layout/page-container';
+import { AssistantPanel } from '@/components/domain/assistant/assistant-panel';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/layout/page-header';
 import { cn, formatCurrency } from '@/lib/utils';
@@ -381,6 +382,8 @@ export default function ItineraryDetailPage() {
         variables={messageVariables}
       />
       {confirmDialog}
+
+      <AssistantPanel leadId={leadId ?? undefined} entityType="itinerary" entityId={id} />
 
       <Tabs defaultValue="itinerary">
         <TabsList>

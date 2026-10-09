@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { EntityForm } from '@/components/domain';
 import { fleetApi } from '@/lib/api/fleet';
 import {
-  TripFormSections, safeTripType, toIso, tripFormSchema, type TripFormValues,
+  TripFormSections, safeTripDate, safeTripType, toIso, tripFormSchema, type TripFormValues,
 } from '@/components/domain/fleet/trip-form';
 import { toE164 } from '@/lib/phone';
 import { toast } from 'sonner';
@@ -14,12 +14,19 @@ const PREFILL = {
   leadId: 'leadId',
   passengerName: 'passengerName',
   passengerPhone: 'passengerPhone',
+  // Filled by the assistant when it has already found a free vehicle and driver for the day.
+  vehicleId: 'vehicleId',
+  driverId: 'driverId',
+  startLocation: 'startLocation',
+  endLocation: 'endLocation',
 } as const;
 
 export default function NewTripPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const urlTripType = safeTripType(searchParams?.get('tripType'));
+  // The assistant passes the arrival day; the times are still the person's to enter.
+  const urlDate = safeTripDate(searchParams?.get('date'));
 
   return (
     <EntityForm<TripFormValues>
@@ -38,9 +45,9 @@ export default function NewTripPage() {
         specialInstructions: '',
         startLocation: '',
         endLocation: '',
-        startDate: undefined,
+        startDate: urlDate,
         startClock: '',
-        endDate: undefined,
+        endDate: urlDate,
         endClock: '',
         distance: undefined,
         fare: undefined,

@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Mail, MessageSquare, Phone, Eye, Trash2 } from 'lucide-react';
+import { Mail, MessageSquare, Phone, Eye, Trash2, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { ListPage } from '@/components/domain';
@@ -13,9 +13,11 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 
-import { communicationsApi, type CommunicationLog } from '@/lib/api/communications';
+import { communicationsApi, isIncomingMessage, senderLabel, type CommunicationLog } from '@/lib/api/communications';
 import { contactsApi } from '@/lib/api/contacts';
 import { toLocalDateString } from '@/lib/dates';
+import { AssistantPanel } from '@/components/domain/assistant/assistant-panel';
+import { useSuggestions } from '@/hooks/use-suggestions';
 
 // The log endpoint returns raw contactId only — resolve display names client-side
 // for the page of rows currently shown, caching across re-fetches.
@@ -35,11 +37,13 @@ async function resolveRecipients(rows: CommunicationLog[]): Promise<Communicatio
       }
     }));
   }
-  return rows.map((r) => (
-    r.contactId && !r.recipient && contactNameCache.has(r.contactId)
-      ? { ...r, recipient: contactNameCache.get(r.contactId) }
-      : r
-  ));
+  return rows.map((r) => {
+    if (r.recipient) return r;
+    if (r.contactId && contactNameCache.has(r.contactId)) return { ...r, recipient: contactNameCache.get(r.contactId) };
+    // A received message from someone who is not a contact yet: show who wrote.
+    if (!r.contactId && senderLabel(r)) return { ...r, recipient: senderLabel(r) ?? undefined };
+    return r;
+  });
 }
 
 function getInitials(name: string) {
@@ -67,11 +71,12 @@ function channelIcon(channel: string) {
 
 function toCsv(rows: CommunicationLog[]) {
   const header = ['Contact', 'Channel', 'Message', 'Status', 'Sent At'];
+  const statusOf = (r: CommunicationLog) => (isIncomingMessage(r) ? 'received' : r.status);
   const lines = rows.map((r) => [
     r.recipient ?? '',
     r.channel ?? r.type ?? '',
     (r.message ?? r.content ?? r.subject ?? '').replace(/\n/g, ' ').replace(/"/g, '""'),
-    r.status,
+    statusOf(r),
     r.sentAt ?? r.createdAt,
   ].map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','));
   return [header.join(','), ...lines].join('\n');
@@ -99,6 +104,14 @@ const CHANNEL_OPTIONS = [
 export default function CommunicationPage() {
   const router = useRouter();
   const [channel, setChannel] = React.useState('all');
+
+  // Which rows the assistant has something waiting for: by the message itself or by its contact.
+  const { suggestions: waiting } = useSuggestions({ status: 'pending', limit: 100 });
+  const waitingFor = React.useCallback(
+    (l: CommunicationLog) =>
+      waiting.filter((s) => s.sourceId === l.id || (!!l.contactId && s.contactId === l.contactId && isIncomingMessage(l))).length,
+    [waiting],
+  );
 
   const filters = channel !== 'all'
     ? [{ id: 'channel', label: 'Channel', value: channel }]
@@ -172,8 +185,18 @@ export default function CommunicationPage() {
           key: 'preview',
           header: 'Message',
           cell: (l) => (
-            <span className="line-clamp-1 max-w-xs text-sm text-ds-foreground-muted">
-              {l.message ?? l.content ?? l.subject ?? 'No preview'}
+            <span className="flex items-center gap-ds-2">
+              {waitingFor(l) > 0 && (
+                <Tag tone="primary" size="sm" className="shrink-0">
+                  <span className="flex items-center gap-ds-1">
+                    <Sparkles className="size-3" aria-hidden="true" />
+                    {waitingFor(l) === 1 ? 'Suggestion' : `${waitingFor(l)} suggestions`}
+                  </span>
+                </Tag>
+              )}
+              <span className="line-clamp-1 max-w-xs text-sm text-ds-foreground-muted">
+                {l.message ?? l.content ?? l.subject ?? 'No preview'}
+              </span>
             </span>
           ),
         },
@@ -181,9 +204,13 @@ export default function CommunicationPage() {
           key: 'status',
           header: 'Status',
           cell: (l) => (
-            <Tag tone={l.status === 'failed' ? 'danger' : l.status === 'sent' || l.status === 'delivered' || l.status === 'read' ? 'success' : 'warning'}>
-              {l.status}
-            </Tag>
+            isIncomingMessage(l) ? (
+              <Tag tone="info">received</Tag>
+            ) : (
+              <Tag tone={l.status === 'failed' ? 'danger' : l.status === 'sent' || l.status === 'delivered' || l.status === 'read' ? 'success' : 'warning'}>
+                {l.status}
+              </Tag>
+            )
           ),
         },
         {
@@ -237,6 +264,9 @@ export default function CommunicationPage() {
           </div>
           {l.subject && <p className="text-sm font-medium">{l.subject}</p>}
           <p className="whitespace-pre-wrap text-sm text-ds-foreground-muted">{l.message ?? l.content ?? 'No content'}</p>
+          {isIncomingMessage(l) && (
+            <AssistantPanel entityType="message" entityId={l.id} contactId={l.contactId ?? undefined} className="[&>div:last-child]:grid-cols-1" />
+          )}
           {l.contactId && (
             <Button size="sm" variant="outline" onClick={() => router.push(`/communication/${l.contactId}`)}>
               Open full conversation

@@ -23,7 +23,6 @@ import {
   ClipboardList,
   Upload,
   Bookmark,
-  Bot,
   Sparkles,
   UserCheck,
   Tag,
@@ -31,11 +30,6 @@ import {
   CalendarClock,
   UserRound,
   Send,
-  ScanSearch,
-  Lightbulb,
-  Target,
-  ScanLine,
-  BellRing,
   LayoutTemplate,
   ShieldCheck,
   MessageCircle,
@@ -46,7 +40,8 @@ export type NavBadgeKey =
   | 'unread_notifications'
   | 'pending_tasks'
   | 'overdue_followups'
-  | 'overdue_invoices';
+  | 'overdue_invoices'
+  | 'assistant_suggestions';
 
 export interface NavItem {
   title: string;
@@ -114,14 +109,9 @@ export const navigation: NavGroup[] = [
     label: 'Intelligence',
     items: [
       { title: 'Reports', href: '/reports', icon: BarChart3 },
-      { title: 'AI Assistant', href: '/ai', icon: Sparkles },
-      { title: 'AI Extractions', href: '/ai/extractions', icon: ScanSearch },
-      { title: 'AI Insights', href: '/ai/insights', icon: Lightbulb },
-      { title: 'AI Lead Scoring', href: '/ai/lead-score', icon: Target },
-      { title: 'AI Document Scans', href: '/ai/document-scans', icon: ScanLine },
-      { title: 'AI OCR', href: '/ai/ocr', icon: ScanSearch },
-      { title: 'AI Smart Follow-ups', href: '/ai/smart-followups', icon: BellRing },
-      { title: 'Chatbot', href: '/chatbot', icon: Bot },
+      // One entry for everything the assistant does. Its suggestions appear on the records themselves;
+      // the individual AI tools and the chatbot are reached from the Tools tab of this page.
+      { title: 'Assistant', href: '/assistant', icon: Sparkles, badgeKey: 'assistant_suggestions' },
       { title: 'Notifications', href: '/notifications', icon: Bell, badgeKey: 'unread_notifications' },
       { title: 'Documents', href: '/documents', icon: FileText },
     ],
@@ -175,6 +165,8 @@ const ACTIVE_ALIASES: ReadonlyArray<readonly [string, string]> = [
   ['/onboarding', '/dashboard'],
   ['/contacts/import', '/contacts'],
   ['/contacts/merge', '/contacts'],
+  ['/ai', '/assistant'],
+  ['/chatbot', '/assistant'],
 ];
 
 function matchesPrefix(pathname: string, prefix: string): boolean {
@@ -250,6 +242,9 @@ const STATIC_TITLES: Record<string, string> = {
   '/settings': 'Settings',
   '/campaigns': 'Campaigns',
   '/marketing': 'Marketing',
+  '/assistant': 'Assistant',
+  '/ai': 'AI tools',
+  '/chatbot': 'Chatbot',
 };
 
 /** Singular noun used to build "New x", "Edit x" and "x details" titles. */

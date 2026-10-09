@@ -19,6 +19,7 @@ import { Timeline, type TimelineItem } from '@/components/ui/timeline';
 import { PageContainer } from '@/components/layout/page-container';
 
 import { SendMessageDialog } from '../communication/send-message-dialog';
+import { AssistantPanel } from './assistant/assistant-panel';
 
 export interface DetailAction {
   label: string;
@@ -75,6 +76,19 @@ export interface DetailPageProps<T> {
     onSent?: () => void;
   };
 
+  /**
+   * Shows the assistant's suggestions for this record above the tabs.
+   * Pass the ids the page already has; nothing renders when there is nothing to suggest.
+   */
+  assistant?: {
+    leadId?: string;
+    contactId?: string;
+    entityType?: string;
+    entityId?: string;
+    /** Called after a suggestion was applied or undone, to refetch the page's data. */
+    onChanged?: () => void;
+  };
+
   className?: string;
 }
 
@@ -95,6 +109,7 @@ export function DetailPage<T>({
   related,
   documents,
   messaging,
+  assistant,
   className,
 }: DetailPageProps<T>) {
   const [messageOpen, setMessageOpen] = React.useState(false);
@@ -153,6 +168,8 @@ export function DetailPage<T>({
           </>
         }
       />
+
+      {assistant && <AssistantPanel {...assistant} />}
 
       <Tabs defaultValue="overview">
         <TabsList>

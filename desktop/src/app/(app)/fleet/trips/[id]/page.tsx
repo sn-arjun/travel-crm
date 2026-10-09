@@ -329,6 +329,7 @@ export default function TripDetailPage() {
     <>
       {dialog}
       <DetailPage
+        assistant={{ entityType: 'trip', entityId: tripId }}
         entity={trip}
         title={`${trip.startLocation} → ${trip.endLocation}`}
         subtitle={`${trip.passengerName || 'No passenger'} · ${tripTypeText} · ${formatTripDay(trip.startTime)}`}

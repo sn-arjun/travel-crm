@@ -22,6 +22,7 @@ import { useApiQuery } from '@/hooks/use-api';
 import { followUpsApi } from '@/lib/api/follow-ups';
 import { unwrapList } from '@/lib/api/envelope';
 import { useAuthStore } from '@/stores/auth-store';
+import { AttentionWidget } from '@/components/domain/assistant/attention-widget';
 import {
   PERIOD_OPTIONS, formatCurrency, loadDashboardSummary, loadPeriodMetrics, loadRevenueTrend,
   percentChange, type DashboardPeriod, type FollowUpRow,
@@ -210,6 +211,7 @@ export default function DashboardPage() {
             <RecentActivity />
           </div>
           <div className="space-y-ds-6">
+            <AttentionWidget />
             <UpcomingEventsWidget />
             <StickyNotesWidget />
             <FollowUpsToday followUps={dueToday} summary={summary} loading={followUpsLoading || summaryLoading} />

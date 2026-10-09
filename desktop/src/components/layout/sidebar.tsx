@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { notificationsApi } from '@/lib/api/notifications';
+import { assistantApi } from '@/lib/api/assistant';
 import { useRealtimeEvent, useRealtimeConnected } from '@/hooks/use-realtime-event';
 import { useIsSuperAdmin } from '@/hooks/use-is-super-admin';
 import { useElectron } from '@/hooks/use-electron';
@@ -49,6 +50,7 @@ interface BadgeCounts {
   pending_tasks: number;
   overdue_followups: number;
   overdue_invoices: number;
+  assistant_suggestions: number;
 }
 
 type RawCounts = Record<string, number | undefined>;
@@ -61,11 +63,25 @@ function toBadgeCounts(data: RawCounts, loose: boolean): BadgeCounts {
     overdue_followups:
       data.overdueFollowups ?? data.overdue_followups ?? (loose ? data.followUps : undefined) ?? 0,
     overdue_invoices: data.overdueInvoices ?? data.overdue_invoices ?? 0,
+    assistant_suggestions: 0,
   };
 }
 
 function useBadgeCounts() {
   const [counts, setCounts] = React.useState<BadgeCounts | null>(null);
+  const [assistantPending, setAssistantPending] = React.useState(0);
+
+  // Suggestions waiting for this user; kept apart from the notification counts, which arrive over their own channel.
+  const fetchAssistant = React.useCallback(async () => {
+    try {
+      const res = await assistantApi.pendingCount();
+      setAssistantPending(res.data?.pending ?? 0);
+    } catch {
+      // Non-critical
+    }
+  }, []);
+  React.useEffect(() => { fetchAssistant(); }, [fetchAssistant]);
+  useRealtimeEvent('assistant:suggestion', () => { fetchAssistant(); });
 
   const fetchCounts = React.useCallback(async () => {
     try {
@@ -103,11 +119,11 @@ function useBadgeCounts() {
   const wsConnected = useRealtimeConnected();
   React.useEffect(() => {
     if (wsConnected) return;
-    const interval = setInterval(fetchCounts, 90_000);
+    const interval = setInterval(() => { fetchCounts(); fetchAssistant(); }, 90_000);
     return () => clearInterval(interval);
-  }, [wsConnected, fetchCounts]);
+  }, [wsConnected, fetchCounts, fetchAssistant]);
 
-  return counts;
+  return counts ? { ...counts, assistant_suggestions: assistantPending } : counts;
 }
 
 function NavItemLink({

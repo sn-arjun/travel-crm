@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/select';
 
 import { useApiQuery } from '@/hooks/use-api';
-import { communicationsApi, type CommunicationLog } from '@/lib/api/communications';
+import { communicationsApi, isIncomingMessage, type CommunicationLog } from '@/lib/api/communications';
 import { contactsApi } from '@/lib/api/contacts';
 
 function getInitials(name: string) {
@@ -60,7 +60,7 @@ export default function ContactCommunicationHubPage() {
   );
   const contact = contactResponse?.data;
 
-  const { data: logResponse, loading, error } = useApiQuery(
+  const { data: logResponse, loading, error, refetch: refetchLog } = useApiQuery(
     () => communicationsApi.getHistory({
       contact_id: contactId,
       channel: channelFilter !== 'all' ? channelFilter : undefined,
@@ -75,6 +75,7 @@ export default function ContactCommunicationHubPage() {
 
   return (
     <DetailPage
+      assistant={{ contactId, onChanged: () => void refetchLog({ silent: true }) }}
       entity={contact}
       title={loadingContact ? 'Loading…' : contactName}
       subtitle={contact ? [contact.email, contact.phone].filter(Boolean).join(' · ') : undefined}
@@ -120,7 +121,7 @@ export default function ContactCommunicationHubPage() {
           ) : (
             <div className="mx-auto flex w-full max-w-3xl flex-col gap-ds-4">
               {logs.map((log) => {
-                const isOutbound = log.direction !== 'inbound';
+                const isOutbound = !isIncomingMessage(log);
                 const channel = log.channel ?? log.type ?? 'email';
                 const sentAt = log.sentAt ?? log.createdAt;
                 const sentDate = sentAt ? new Date(sentAt) : null;

@@ -211,6 +211,7 @@ export default function InvoiceDetailPage() {
   return (
     <>
       <DetailPage
+        assistant={{ entityType: 'invoice', entityId: invoiceId, onChanged: () => void refetch() }}
         entity={invoice}
         title={invoice.invoiceNumber}
         subtitle="Invoice details and payment status"

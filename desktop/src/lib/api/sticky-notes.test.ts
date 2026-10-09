@@ -98,19 +98,19 @@ describe('stickyNotesApi', () => {
     it('should call PUT /sticky-notes/:id', async () => {
       vi.mocked(client.put).mockResolvedValue({ data: { id: 'sn1' } });
       await stickyNotesApi.update('sn1', { content: 'Updated content' });
-      expect(client.put).toHaveBeenCalledWith('/sticky-notes/sn1', { content: 'Updated content' });
+      expect(client.put).toHaveBeenCalledWith('/sticky-notes/sn1', { content: 'Updated content' }, { keepalive: true });
     });
 
     it('should pass partial fields', async () => {
       vi.mocked(client.put).mockResolvedValue({ data: {} });
       await stickyNotesApi.update('sn1', { color: 'red', pinned: false });
-      expect(client.put).toHaveBeenCalledWith('/sticky-notes/sn1', { color: 'red', pinned: false });
+      expect(client.put).toHaveBeenCalledWith('/sticky-notes/sn1', { color: 'red', pinned: false }, { keepalive: true });
     });
 
     it('should pass position update', async () => {
       vi.mocked(client.put).mockResolvedValue({ data: {} });
       await stickyNotesApi.update('sn1', { position: { x: 300, y: 400 } });
-      expect(client.put).toHaveBeenCalledWith('/sticky-notes/sn1', { position: { x: 300, y: 400 } });
+      expect(client.put).toHaveBeenCalledWith('/sticky-notes/sn1', { position: { x: 300, y: 400 } }, { keepalive: true });
     });
 
     it('should return updated sticky note', async () => {
@@ -124,13 +124,13 @@ describe('stickyNotesApi', () => {
     it('should call DELETE /sticky-notes/:id', async () => {
       vi.mocked(client.delete).mockResolvedValue({ data: undefined });
       await stickyNotesApi.delete('sn1');
-      expect(client.delete).toHaveBeenCalledWith('/sticky-notes/sn1');
+      expect(client.delete).toHaveBeenCalledWith('/sticky-notes/sn1', { keepalive: true });
     });
 
     it('should use correct id', async () => {
       vi.mocked(client.delete).mockResolvedValue({ data: undefined });
       await stickyNotesApi.delete('sn-abc');
-      expect(client.delete).toHaveBeenCalledWith('/sticky-notes/sn-abc');
+      expect(client.delete).toHaveBeenCalledWith('/sticky-notes/sn-abc', { keepalive: true });
     });
 
     it('should return void', async () => {

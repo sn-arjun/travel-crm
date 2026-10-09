@@ -275,6 +275,7 @@ export default function ContactDetailPage() {
   return (
     <>
       <DetailPage<ContactRecord>
+        assistant={{ contactId }}
         entity={contact}
         title={contact.name}
         subtitle={[contact.company, location].filter(Boolean).join(' - ') || undefined}

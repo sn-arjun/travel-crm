@@ -53,8 +53,10 @@ export const stickyNotesApi = {
     client.post<ApiResponse<StickyNote>>(API_ENDPOINTS.stickyNotes.create, data),
 
   update: (id: string, data: UpdateStickyNoteRequest) =>
-    client.put<ApiResponse<StickyNote>>(API_ENDPOINTS.stickyNotes.byId(id), data),
+    // keepalive: the note is saved on blur and shown at once, so a reload straight after must not cancel the save
+    client.put<ApiResponse<StickyNote>>(API_ENDPOINTS.stickyNotes.byId(id), data, { keepalive: true }),
 
   delete: (id: string) =>
-    client.delete<ApiResponse<void>>(API_ENDPOINTS.stickyNotes.byId(id)),
+    // keepalive for the same reason as update: the note disappears from the board before the request lands
+    client.delete<ApiResponse<void>>(API_ENDPOINTS.stickyNotes.byId(id), { keepalive: true }),
 };

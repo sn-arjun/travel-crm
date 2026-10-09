@@ -37,6 +37,11 @@ interface RequestConfig {
   body?: unknown;
   responseType?: 'json' | 'blob' | 'text';
   timeout?: number;
+  /**
+   * Let the request finish even if the page is reloaded or closed right after it is sent.
+   * For small saves made on blur, where the screen already shows the new value.
+   */
+  keepalive?: boolean;
 }
 
 interface InternalRequestConfig extends RequestConfig {
@@ -158,6 +163,7 @@ class HttpClient {
         headers: finalHeaders,
         body: isFormData ? (body as FormData) : body ? JSON.stringify(body) : undefined,
         signal: controller.signal,
+        ...(config.keepalive ? { keepalive: true } : {}),
       });
 
       clearTimeout(timeoutId);
