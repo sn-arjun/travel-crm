@@ -1,7 +1,7 @@
 /// TravelCRM Pro — Shared Package
 ///
 /// Models, API client, constants, and utilities shared
-/// between crm_app and driver_app.
+/// by driver_app (and formerly the Flutter CRM app).
 library;
 
 // Storage

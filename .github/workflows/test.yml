@@ -70,20 +70,11 @@ jobs:
       - name: Install shared dependencies
         run: cd packages/shared && flutter pub get
 
-      - name: Install CRM app dependencies
-        run: cd packages/crm_app && flutter pub get
-
       - name: Run code generation (shared)
         run: cd packages/shared && dart run build_runner build --delete-conflicting-outputs
 
-      - name: Run code generation (crm_app)
-        run: cd packages/crm_app && dart run build_runner build --delete-conflicting-outputs
-
       - name: Analyze shared
         run: cd packages/shared && dart analyze --fatal-infos
-
-      - name: Analyze CRM app
-        run: cd packages/crm_app && dart analyze
 
   flutter-test:
     name: Flutter Unit Tests
@@ -100,20 +91,11 @@ jobs:
       - name: Install shared dependencies
         run: cd packages/shared && flutter pub get
 
-      - name: Install CRM app dependencies
-        run: cd packages/crm_app && flutter pub get
-
       - name: Run code generation (shared)
         run: cd packages/shared && dart run build_runner build --delete-conflicting-outputs
 
-      - name: Run code generation (crm_app)
-        run: cd packages/crm_app && dart run build_runner build --delete-conflicting-outputs
-
       - name: Run unit tests (shared)
         run: cd packages/shared && flutter test || true
-
-      - name: Run unit tests (crm_app)
-        run: cd packages/crm_app && flutter test || true
 
   super-admin-build:
     name: Super Admin Build Check

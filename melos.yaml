@@ -1,5 +1,5 @@
 name: travel_crm
-repository: https://github.com/your-org/travel-crm
+repository: https://github.com/sn-arjun/travel-crm
 
 packages:
   - packages/*
@@ -19,25 +19,10 @@ scripts:
     packageFilters:
       dirExists: test
 
-  build:web:
-    run: |
-      cd packages/crm_app && flutter build web --release --web-renderer canvaskit
-    description: Build CRM web app
-
-  build:android:crm:
-    run: |
-      cd packages/crm_app && flutter build apk --release
-    description: Build CRM Android APK
-
   build:android:driver:
     run: |
       cd packages/driver_app && flutter build apk --release
     description: Build Driver Android APK
-
-  build:windows:
-    run: |
-      cd packages/crm_app && flutter build windows --release
-    description: Build CRM Windows app
 
   generate:
     run: melos exec -- "dart run build_runner build --delete-conflicting-outputs"
