@@ -9,27 +9,18 @@ product-requirment/
 **/.packages
 **/.pub-cache/
 **/.pub/
-**/pubspec.lock
 *.dart.js
+*.dart.js.deps
+*.dart.js.map
 *.info.json
-*.js
-*.js.deps
-*.js.map
 *.freezed.dart
 *.g.dart
 *.gr.dart
 *.mocks.dart
 
-# The `*.js` rule above targets compiled Dart output, but it over-matches every
-# JavaScript file in the repo — including the agent orchestrators, which are
-# source, not build artifacts.
-!scripts/*.js
-
 # Android
 **/android/.gradle/
 **/android/captures/
-**/android/gradlew
-**/android/gradlew.bat
 **/android/local.properties
 **/android/**/GeneratedPluginRegistrant.*
 **/android/key.properties
@@ -81,7 +72,8 @@ dist/
 *.tfstate.*
 *.tfvars
 !*.tfvars.example
-!environments/*.tfvars
+# Per-environment files hold names and regions only, never secrets
+!terraform/environments/*.tfvars
 crash.log
 override.tf
 override.tf.json
@@ -118,7 +110,7 @@ desktop.ini
 # Coverage
 coverage/
 *.lcov
-.log
+*.log
 
 # Playwright artefacts (repo-wide; desktop/.gitignore only covers desktop/)
 **/test-results/
