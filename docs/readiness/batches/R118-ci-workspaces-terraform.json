@@ -78,7 +78,8 @@
     "deploy-backend.yml (dispatch): gen-wrangler from secrets-provided ids, migrate-tenants --remote --env production (canary), deploy, then a health check that fails the job (`curl -fsS ${{ vars.API_URL }}/api/v1/health`).",
     "landing.yml (dispatch): wrangler pages deploy landing --project-name travelcrm-landing after check-links.",
     "Terraform: replace cloudflare_pages_project.crm_web with travelcrm-landing (production branch master, no build command, output landing); attach the root domain and www to it with cloudflare_pages_domain; remove the 192.0.2.1 root/api/admin A records in favour of Pages domains and a Workers custom domain resource for api (cloudflare_workers_domain or the provider's current resource; check the provider version pinned in terraform/providers.tf); admin points at the OpenNext Worker. Add R2 bucket travelcrm-backups and travelcrm-desktop-updates. environments/*.tfvars get every required variable with non-secret placeholders. `terraform fmt -check` and `terraform validate` must pass (init with -backend=false).",
-    "melos.yaml: repository URL to github.com/sn-arjun/travel-crm, remove build:web and --web-renderer; scripts/push-secrets.sh and sync-config.sh: names updated for the new secrets (CREDENTIALS_KEYS, SUPER_ADMIN_JWT_SECRET, UNSUB_SECRET, PROVISIONER_SECRET, TURNSTILE_SECRET) and the removed ones."
+    "melos.yaml: repository URL to github.com/sn-arjun/travel-crm, remove build:web and --web-renderer; scripts/push-secrets.sh and sync-config.sh: names updated for the new secrets (CREDENTIALS_KEYS, SUPER_ADMIN_JWT_SECRET, UNSUB_SECRET, PROVISIONER_SECRET, TURNSTILE_SECRET) and the removed ones.",
+    "From R112 merge (2026-10-15): `npx opennextjs-cloudflare build` in super-admin/ fails because super-admin/node_modules is a half-separate install from super-admin/package-lock.json and its `.bin/next` shim points at super-admin/node_modules/next, which does not exist (next is hoisted to the root). After moving to the single root workspace install (delete super-admin/package-lock.json and super-admin/node_modules, root npm install), the OpenNext build must produce .open-next/worker.js; add it to the CI build job. `next build` alone already passes."
   ],
   "migrations": [],
   "tests": [
@@ -89,7 +90,8 @@
   "acceptance": [
     "No nested package-lock.json under backend/ or super-admin/.",
     "No workflow mentions main, develop, crm_app, next-on-pages, 3.24 or `|| true` (grep).",
-    "fresh-clone-check passes."
+    "fresh-clone-check passes.",
+    "cd super-admin && npx opennextjs-cloudflare build produces .open-next/worker.js on a fresh clone after a single root npm ci."
   ],
   "gate": [
     "node scripts/fresh-clone-check.mjs",

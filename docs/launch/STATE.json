@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-16T03:00+05:30",
+  "updated": "2026-10-15T03:10+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -103,8 +103,10 @@
         "R119": "merged: backend 71 files / 1453 tests; desktop 65 / 1314; lint 0; tenant 0046 (call_logs.created_by nullable, unique provider_call_id). Follow-ups for Tier 3: Dial action no-answer to voicemail, per-agent analytics on inbound rows.",
         "R111": "merged: backend 72 files / 1487 tests; master 0017_impersonation_audit (0016 free). Super admin has its own login/token; tenant-email super admin path removed.",
         "R113": "merged + adapted to R111 (9f07619): backend 73 files / 1499; desktop 66 / 1323; lint 0; first-login + auth-shell + settings-company e2e 29 passed on a multi-agency stack (slot 3).",
-        "R112": "running (slot 1)",
-        "R108": "merged: backend 75 files / 1519 tests; master 0014_api_key_hashing; AES-256-GCM per value with key ids; API keys SHA-256 + prefix"
+        "R112": "merged: desktop tsc 0 (after clearing stale .next/types caches), vitest 66/1323, lint 0; super-admin tsc 0, next build OK; OpenNext build deferred to R118 (half-separate super-admin install). Manual run by the agent: console create agency -> desktop login with temp password -> support session banner.",
+        "R108": "merged: backend 75 files / 1519 tests; master 0014_api_key_hashing; AES-256-GCM per value with key ids; API keys SHA-256 + prefix",
+        "R110": "running (slot 1), resumed after session limit",
+        "R117": "running (slots 2,3), resumed after session limit"
       },
       "merged": [
         "R101",
@@ -121,7 +123,8 @@
         "R119",
         "R111",
         "R113",
-        "R108"
+        "R108",
+        "R112"
       ]
     },
     "W4": {
@@ -147,7 +150,8 @@
     "Since R101 the local API refuses to start unless backend/.dev.vars has TENANCY_MODE=single (added to the main checkout on 2026-10-14; untracked). R103 makes the local stack multi-agency.",
     "Worktree teardown that worked: PowerShell [System.IO.Directory]::Delete(<junction>, $false) for each node_modules junction, then git worktree remove; main checkout packages verified intact afterwards.",
     "Desktop standalone builds inside a worktree create symlinks into the main node_modules under desktop/.next/standalone; unlink every reparse point before removing a worktree.",
-    ".gitattributes forces LF for backend/drizzle/**/*.sql: the D1 migration reader splits CRLF and LF files differently; after adding a tenant migration run node backend/scripts/bundle-tenant-migrations.mjs."
+    ".gitattributes forces LF for backend/drizzle/**/*.sql: the D1 migration reader splits CRLF and LF files differently; after adding a tenant migration run node backend/scripts/bundle-tenant-migrations.mjs.",
+    "Stale generated .next/types and .next/dev/types in desktop/ and super-admin/ reference deleted routes and break tsc locally after pages are removed; delete those gitignored folders (not a code problem)."
   ],
   "ownerDecisions": {
     "2026-10-14": [
@@ -164,7 +168,8 @@
     "R107: API_PUBLIC_URL must equal the public URL Twilio calls; TWILIO_AUTH_TOKEN; Twilio console callback URLs (voice/status under /api/v1/voip/..., message status /api/v1/webhooks/twilio/status, WhatsApp /api/v1/webhooks/chatbot/whatsapp); register each agency WhatsApp number in tenant_channel_addresses; SendGrid Signed Event Webhook + SENDGRID_WEBHOOK_PUBLIC_KEY; per-agency widget snippet and allowed website origins; apply tenant migration 0043 to every agency DB.",
     "R104: verify on a real Cloudflare account that D1 create (location hint/jurisdiction), query and delete work and whether the Workers settings PATCH adds a binding without redeploy; otherwise run the generated deploy after each new agency.",
     "R111: SUPER_ADMIN_JWT_SECRET (32+ chars, different from JWT_SECRET); apply master 0017; create first super admin with backend/scripts/create-super-admin.mjs --remote (try --local first); rotate/delete super_admins rows from the old console seed route; review backend/scripts/seed-demo.mjs demo super admin before any shared environment.",
-    "R108: Worker secret CREDENTIALS_KEYS={\"k1\":\"<base64 32 bytes>\"} and var CREDENTIALS_ACTIVE_KEY_ID=k1 (keep a copy in the owner password manager; losing it makes stored provider credentials unrecoverable); after deploy run POST /admin/maintenance/reencrypt and /admin/maintenance/hash-api-keys as super admin until nextCursor is null."
+    "R108: Worker secret CREDENTIALS_KEYS={\"k1\":\"<base64 32 bytes>\"} and var CREDENTIALS_ACTIVE_KEY_ID=k1 (keep a copy in the owner password manager; losing it makes stored provider credentials unrecoverable); after deploy run POST /admin/maintenance/reencrypt and /admin/maintenance/hash-api-keys as super admin until nextCursor is null.",
+    "R112: console secret SUPER_ADMIN_JWT_SECRET (same as backend), BACKEND_API_URL in super-admin/wrangler.toml, optional NEXT_PUBLIC_DESKTOP_URL; deploy with cd super-admin && npm run deploy after R118 fixes the OpenNext build."
   ],
   "todo": [
     "Leftover folder .claude/worktrees/R114/packages/shared is locked by another program (editor/Dart analyzer); delete by hand later. Not tracked by git.",
