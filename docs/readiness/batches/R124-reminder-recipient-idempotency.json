@@ -10,12 +10,14 @@
   ],
   "blockedOnOwner": null,
   "parallelSafeWith": [],
-  "size": "S",
+  "size": "M",
   "files": {
     "edit": [
       "backend/src/cron/auto-reminders.ts",
       "backend/src/services/follow-up-reminders.ts",
-      "backend/src/cron/dispatch.ts"
+      "backend/src/cron/dispatch.ts",
+      "backend/src/queues/sms-queue.ts",
+      "backend/src/queues/email-queue.ts"
     ],
     "create": [
       "backend/test/cron-recipient-idempotency.test.ts"
@@ -27,6 +29,7 @@
     ]
   },
   "steps": [
+    "From R110 (2026-10-15): the reminder jobs built in backend/src/cron/auto-reminders.ts (birthday, invoice, visa/passport, missing documents, trip reminders) enqueue SMS/email jobs with field names the sms-queue and email-queue consumers do not read and without tenantId, so they are neither metered nor able to reach a provider. Fix the job shape to match the consumers (read backend/src/queues/sms-queue.ts and email-queue.ts), add tenantId, and route them through the R110 metering (meterUsage before send, skipped_allowance at the cap). Add a test that each reminder type produces a job the consumer actually sends.",
     "Add a per-recipient claim keyed by (tenant_id, job, period_key, recipient key) — reuse cron_job_runs with a recipient-scoped key or add a small tenant table (next free tenant migration; regenerate the bundle) — written before each send with INSERT OR IGNORE and checked so a retried job skips recipients already claimed.",
     "A send that fails for a per-recipient reason keeps its claim marked failed (not retried automatically); an infrastructure error before the send releases only that recipient's claim.",
     "Prune recipient claims older than 14 days in the daily platform pruning job."
@@ -40,6 +43,7 @@
     "pruning removes old claims"
   ],
   "acceptance": [
+    "Every reminder type produces a queue job the consumer sends (through the metering), with the tenant id (test).",
     "A daily job that fails on recipient 3 of 5 and is retried sends one message to each of the 5 recipients in total (test)."
   ],
   "gate": [

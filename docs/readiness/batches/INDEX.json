@@ -229,7 +229,7 @@
     "id": "R124",
     "tier": 1,
     "title": "Scheduled reminders never re-send to a recipient on retry",
-    "size": "S",
+    "size": "M",
     "dependsOn": [
       "R117",
       "R110"
