@@ -36,6 +36,23 @@ function writeTestWranglerConfig(): string {
     return './.wrangler-test.toml';
 }
 
+/**
+ * Values the suite needs from the environment. Without these the tests only pass
+ * on a machine that happens to have a local `.dev.vars` (gitignored), so a fresh
+ * clone and CI fail at login. They are fakes, used nowhere outside the test runtime.
+ */
+const TEST_ONLY_SECRETS = {
+    JWT_SECRET: 'test-only-jwt-secret-never-used-outside-vitest',
+    JWT_REFRESH_SECRET: 'test-only-jwt-refresh-secret-never-used-outside-vitest',
+    TWILIO_ACCOUNT_SID: 'ACtest00000000000000000000000000',
+    TWILIO_AUTH_TOKEN: 'test-only-twilio-auth-token',
+    TWILIO_VERIFY_SERVICE_SID: 'VAtest00000000000000000000000000',
+    SENDGRID_API_KEY: 'test-only-sendgrid-key',
+    SENDGRID_FROM_EMAIL: 'noreply@travelcrm.test',
+    FCM_SERVER_KEY: 'test-only-fcm-key',
+    APP_URL: 'http://localhost:3000',
+};
+
 // Filter out comment-only queries that D1 rejects as empty statements
 function stripEmptyQueries(migrations: { name: string; queries: string[] }[]) {
     return migrations.map(m => ({
@@ -64,6 +81,7 @@ export default async () => {
                     wrangler: { configPath: writeTestWranglerConfig() },
                     miniflare: {
                         bindings: {
+                            ...TEST_ONLY_SECRETS,
                             TEST_MODE: 'true',
                             TEST_MIGRATIONS: mergedMigrations as any,
                         },
