@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-15T09:00+05:30",
+  "updated": "2026-10-15T10:00+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -110,7 +110,7 @@
         "R121": "merged: isolation spec 9/9 passed three runs in a row on the branch; re-run on merged line (with R110): 9 passed (18.7s)",
         "R124": "merged: backend 81 files / 1576 tests; reminders reach the queues in the consumer shape with tenantId, metered, claimed per recipient (cron_job_runs, no migration)",
         "R116": "merged: backend 82 files / 1586 tests; landing link check OK; no unverifiable claims; master 0018_platform_enquiries; enquiries visible to the operator at GET /admin/enquiries",
-        "R115": "starting"
+        "R115": "merged (gate on merged line running): agency-code sign-in (slug), stored tenant, full country picker, release signing from key.properties with debug fallback, icons, iOS strings. Branch: backend 82/1582, flutter analyze clean, flutter test 106, release APK 53.5 MB built with throwaway key, agency_login_test passed on emulator-5554."
       },
       "merged": [
         "R101",
@@ -133,7 +133,8 @@
         "R110",
         "R121",
         "R124",
-        "R116"
+        "R116",
+        "R115"
       ]
     },
     "W4": {
@@ -180,12 +181,14 @@
     "R108: Worker secret CREDENTIALS_KEYS={\"k1\":\"<base64 32 bytes>\"} and var CREDENTIALS_ACTIVE_KEY_ID=k1 (keep a copy in the owner password manager; losing it makes stored provider credentials unrecoverable); after deploy run POST /admin/maintenance/reencrypt and /admin/maintenance/hash-api-keys as super admin until nextCursor is null.",
     "R112: console secret SUPER_ADMIN_JWT_SECRET (same as backend), BACKEND_API_URL in super-admin/wrangler.toml, optional NEXT_PUBLIC_DESKTOP_URL; deploy with cd super-admin && npm run deploy after R118 fixes the OpenNext build.",
     "R117: secrets ERROR_REPORTER_DSN and HEALTH_TOKEN; uptime monitor on /api/v1/health/deep with X-Health-Token; rate-limit bindings API_RATE_LIMITER (1001, 600/60s) and UPLOAD_RATE_LIMITER (1002, 20/60s) in wrangler.base.toml; R2 bucket travelcrm-backups + lifecycle rule; weekly backup-tenants.mjs --remote from CI with CLOUDFLARE_API_TOKEN (D1 read, R2 write); Time Travel restore rehearsal on staging; 5xx alert. See docs/ops/BACKUPS.md.",
-    "R116: fill landing/config.js (apiBase, siteUrl, contactEmail, whatsappNumber, demoVideoUrl, appDownloadUrl, turnstileSiteKey, city, legalEntity, senderEmail) and replace https://travelcrm.pro in index.html canonical/og tags, sitemap.xml, robots.txt; add the landing origin to CORS_ORIGINS; optional TURNSTILE_SECRET; landing host must publish landing/public/ at the site root; legal pages are drafts needing legal review."
+    "R116: fill landing/config.js (apiBase, siteUrl, contactEmail, whatsappNumber, demoVideoUrl, appDownloadUrl, turnstileSiteKey, city, legalEntity, senderEmail) and replace https://travelcrm.pro in index.html canonical/og tags, sitemap.xml, robots.txt; add the landing origin to CORS_ORIGINS; optional TURNSTILE_SECRET; landing host must publish landing/public/ at the site root; legal pages are drafts needing legal review.",
+    "R115: create the real Android upload keystore outside the repo and android/key.properties on the build machine; Play Console app com.travelcrm.driver_app (internal track first, never upload debug/throwaway builds); iOS signing on a Mac with an Apple Developer account for com.travelcrm.driverApp; give each agency its slug as the drivers' agency code. Throwaway test key lives in CRM-backups/throwaway-keystore (not for release)."
   ],
   "todo": [
     "Leftover folder .claude/worktrees/R114/packages/shared is locked by another program (editor/Dart analyzer); delete by hand later. Not tracked by git.",
     "Refresh docs/FEATURES.md and features.json after Tier 1 (chatbot routes are now public; many statuses changed).",
-    "Follow-up batch needed (R124): per-recipient idempotency for scheduled reminders, so a retried daily job never re-sends to recipients already handled (found by R117)."
+    "Follow-up batch needed (R124): per-recipient idempotency for scheduled reminders, so a retried daily job never re-sends to recipients already handled (found by R117).",
+    "W6: packages/driver_app/integration_test/demo_flow_test.dart (driver recording for the films) must call chooseAgency(tester) from integration_test/helpers/agency_login.dart before entering the phone number; remove its TENANT_ID comment."
   ],
   "e2eBaseline": {
     "date": "2026-10-15",
