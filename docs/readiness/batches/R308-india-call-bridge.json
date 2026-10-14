@@ -1,11 +1,11 @@
 {
   "id": "R308",
   "tier": 3,
-  "title": "India call-bridge: the agent's own phone rings first, then the customer (G1)",
+  "title": "India call-bridge: the agent's own phone rings first, then the customer (provider per G1 addendum)",
   "lane": "backend",
   "backend": true,
   "goal": "Let Indian agencies call customers through the platform by ringing the agent's mobile and then the customer, which fits India's rules.",
-  "why": "ADR-001 decision: India launches with call-bridge only (both legs on the Indian phone network) pending legal confirmation; nothing implements it.",
+  "why": "ADR-001: India launches with call-bridge only (both legs on the Indian phone network) pending legal confirmation; the owner could not sign up with Plivo (2026-10-14) and the ADR addendum will name the India provider; nothing implements the bridge.",
   "featuresToWorks": [
     "calls.dial",
     "calls.inbound-routing"
@@ -15,7 +15,7 @@
     "R304",
     "R305"
   ],
-  "blockedOnOwner": "G1 (ADR-001 Addendum A: Twilio outside India, agency-owned Exotel in India)",
+  "blockedOnOwner": "G1 (ADR-001 addendum)",
   "parallelSafeWith": [],
   "size": "M",
   "newDependencies": [],
@@ -23,7 +23,7 @@
     "edit": [
       "backend/src/routes/calls.ts",
       "backend/src/routes/voip-callbacks.ts",
-      "backend/src/services/plivo-voice.ts",
+      "backend/src/services/voip-provider.ts",
       "backend/src/routes/users.ts",
       "desktop/src/app/(app)/settings/profile/page.tsx",
       "desktop/src/components/domain/click-to-call-button.tsx"
@@ -76,13 +76,12 @@
     "specs": []
   },
   "goLiveVerify": [
-    "Plivo India account with KYC, written confirmation on sub-accounts, telecom lawyer opinion (ADR 9a items 2, 3, 10)."
+    "An Indian provider account per the ADR-001 addendum (Twilio has no domestic Indian calling), KYC, written confirmation on sub-accounts, telecom lawyer opinion (ADR 9a items 2, 3, 10)."
   ],
   "notes": [
     "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
     "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
-    "Read docs/decisions/ADR-001-voip.md (sections 4, 6, 7) and docs/CALL-AUTOMATION.md (sections 2, 3, 4) before editing; they are the specification. G1 (provider choice and India shape) is not signed: everything here stays behind the VoipProvider interface.",
-    "Blocked on G1."
-  ],
-  "ownerDecisionNote": "Plivo dropped on 2026-10-14 (owner could not sign up). Target Twilio; this batch becomes an ExotelProvider call-bridge adapter using the agency's own Exotel credentials, no platform resale or metering."
+    "Read docs/decisions/ADR-001-voip.md (sections 4, 6, 7), its addendum when it exists (the owner could not sign up with Plivo; the addendum settles the default provider, likely Twilio where it can serve, with India handled separately), and docs/CALL-AUTOMATION.md (sections 2, 3, 4). Everything here stays behind the VoipProvider interface; do not design around Plivo. Calls are included in plans with a monthly minute cap (owner decision 2026-10-14).",
+    "Blocked on G1: the ADR-001 addendum (provider) must be signed first."
+  ]
 }

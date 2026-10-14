@@ -14,11 +14,11 @@
     "R303",
     "R304"
   ],
-  "blockedOnOwner": "G1 (ADR-001 Addendum A: Twilio outside India, agency-owned Exotel in India)",
+  "blockedOnOwner": "G1 (ADR-001 addendum)",
   "parallelSafeWith": [],
   "size": "L",
   "newDependencies": [
-    "the G1 provider's browser SDK (Plivo Browser SDK or @twilio/voice-sdk), exact version pinned"
+    "the browser SDK of the provider named in the ADR-001 addendum (likely @twilio/voice-sdk), exact version pinned"
   ],
   "files": {
     "edit": [
@@ -93,9 +93,8 @@
   ],
   "notes": [
     "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
-    "Read docs/decisions/ADR-001-voip.md (sections 4, 6, 7) and docs/CALL-AUTOMATION.md (sections 2, 3, 4) before editing; they are the specification. G1 (provider choice and India shape) is not signed: everything here stays behind the VoipProvider interface.",
+    "Read docs/decisions/ADR-001-voip.md (sections 4, 6, 7), its addendum when it exists (the owner could not sign up with Plivo; the addendum settles the default provider, likely Twilio where it can serve, with India handled separately), and docs/CALL-AUTOMATION.md (sections 2, 3, 4). Everything here stays behind the VoipProvider interface; do not design around Plivo. Calls are included in plans with a monthly minute cap (owner decision 2026-10-14).",
     "Desktop UI follows desktop/audit/remake/CONTRACT.md (ds-* tokens, archetypes, graceful degradation when VoIP is not configured). lint-gate must not rise for any touched file.",
-    "Blocked on G1 (provider decides the SDK)."
-  ],
-  "ownerDecisionNote": "Plivo dropped on 2026-10-14 (owner could not sign up). Target Twilio."
+    "Blocked on G1: the ADR-001 addendum decides the provider and therefore the SDK."
+  ]
 }

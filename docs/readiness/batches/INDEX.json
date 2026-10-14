@@ -138,7 +138,7 @@
   {
     "id": "R109",
     "tier": 1,
-    "title": "One plan catalogue in the master database: features, prices, seats, allowances, trial expiry",
+    "title": "One plan catalogue in the master database: yearly agency prices, included users, extra-user price, AI credits, communication caps, add-ons, trial expiry",
     "size": "L",
     "dependsOn": [
       "R101",
@@ -149,7 +149,7 @@
   {
     "id": "R110",
     "tier": 1,
-    "title": "Cost caps: SMS, WhatsApp, email and login-code allowances enforced; cheaper, abuse-proof login codes",
+    "title": "Communication caps: SMS, WhatsApp, login codes and call minutes metered per plan, alerts at 80% and 100%, upgrade or top-up, OTP abuse limits",
     "size": "L",
     "dependsOn": [
       "R109",
@@ -170,7 +170,7 @@
   {
     "id": "R111",
     "tier": 1,
-    "title": "Super admin backend API: its own login, tenant lifecycle writes, AI credit top-up, impersonation, full audit",
+    "title": "Super admin backend API: its own login, tenant lifecycle writes, usage view, impersonation, full audit",
     "size": "L",
     "dependsOn": [
       "R104",
@@ -312,7 +312,7 @@
   {
     "id": "R206",
     "tier": 2,
-    "title": "Prepaid balance: one wallet per agency for messages, numbers, calls and AI top-ups",
+    "title": "Self-serve add-ons: buy extra users, AI credit packs and communication packs online",
     "size": "M",
     "dependsOn": [
       "R205",
@@ -337,7 +337,7 @@
     "size": "M",
     "dependsOn": [
       "R201",
-      "R206",
+      "R205",
       "R108"
     ],
     "blockedOnOwner": null
@@ -448,17 +448,17 @@
       "R206",
       "R111"
     ],
-    "blockedOnOwner": "G1 (ADR-001 Addendum A)"
+    "blockedOnOwner": "G1 (ADR-001 addendum)"
   },
   {
     "id": "R305",
     "tier": 3,
-    "title": "Minute metering from provider records, prepaid debits with markup, fraud limits (G1)",
+    "title": "Call minutes metered from provider records against the plan cap and minute packs, fraud limits (G1 addendum)",
     "size": "L",
     "dependsOn": [
       "R304"
     ],
-    "blockedOnOwner": "G1 (ADR-001 Addendum A)"
+    "blockedOnOwner": "G1 (ADR-001 addendum)"
   },
   {
     "id": "R307",
@@ -469,18 +469,18 @@
       "R303",
       "R304"
     ],
-    "blockedOnOwner": "G1 (ADR-001 Addendum A)"
+    "blockedOnOwner": "G1 (ADR-001 addendum)"
   },
   {
     "id": "R308",
     "tier": 3,
-    "title": "India call-bridge: the agent's own phone rings first, then the customer (G1)",
+    "title": "India call-bridge: the agent's own phone rings first, then the customer (provider per G1 addendum)",
     "size": "M",
     "dependsOn": [
       "R303",
       "R304",
       "R305"
     ],
-    "blockedOnOwner": "G1 (ADR-001 Addendum A)"
+    "blockedOnOwner": "G1 (ADR-001 addendum)"
   }
 ]

@@ -50,10 +50,10 @@
     ]
   },
   "steps": [
-    "Tenant 0050 provider_events (provider, provider_call_id, event, sequence, received_at, PRIMARY KEY(provider, provider_call_id, event, sequence)). First statement of every callback: INSERT OR IGNORE; if no row inserted, return the empty provider response and stop. Confirm the sequence field name per provider (Twilio SequenceNumber on status callbacks; Plivo has none: use event + CallStatus + timestamp).",
+    "Tenant 0050 provider_events (provider, provider_call_id, event, sequence, received_at, PRIMARY KEY(provider, provider_call_id, event, sequence)). First statement of every callback: INSERT OR IGNORE; if no row inserted, return the empty provider response and stop. Confirm the sequence field name for the provider (Twilio SequenceNumber on status callbacks; for a provider without one use event + CallStatus + timestamp).",
     "Notifications for missed calls deduped by call id (missed-call-handler.ts).",
     "Inbound: <Dial action=\"/voip/twiml/dial-status\" timeout=maxRingDuration> so no-answer/busy reaches voicemail and emits call.missed from the dial result (CALL-AUTOMATION 4.2 note).",
-    "Outbound: POST /calls/outbound uses provider.placeCall; mode from tenant call settings (softphone default outside India; bridge when R308 configures it); the call log keeps lead_id/contact_id from R119; Plivo /voip/xml/outbound route added."
+    "Outbound: POST /calls/outbound uses provider.placeCall; mode from tenant call settings (softphone default outside India; bridge when R308 configures it); the call log keeps lead_id/contact_id from R119. No Plivo-specific routes (owner decision 2026-10-14)."
   ],
   "migrations": [
     "backend/drizzle/tenant/0050_provider_events.sql"
@@ -88,7 +88,7 @@
   "notes": [
     "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
     "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
-    "Read docs/decisions/ADR-001-voip.md (sections 4, 6, 7) and docs/CALL-AUTOMATION.md (sections 2, 3, 4) before editing; they are the specification. G1 (provider choice and India shape) is not signed: everything here stays behind the VoipProvider interface.",
+    "Read docs/decisions/ADR-001-voip.md (sections 4, 6, 7), its addendum when it exists (the owner could not sign up with Plivo; the addendum settles the default provider, likely Twilio where it can serve, with India handled separately), and docs/CALL-AUTOMATION.md (sections 2, 3, 4). Everything here stays behind the VoipProvider interface; do not design around Plivo. Calls are included in plans with a monthly minute cap (owner decision 2026-10-14).",
     "Bulk seeding in tests or e2e (many leads, messages or payments) triggers automation recipes; set settings.automations_paused = true for that tenant first (PUT /api/v1/automations/pause or the setting row), then restore it."
   ]
 }

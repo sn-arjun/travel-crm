@@ -12,7 +12,7 @@
   ],
   "dependsOn": [
     "R201",
-    "R206",
+    "R205",
     "R108"
   ],
   "blockedOnOwner": null,
@@ -39,7 +39,7 @@
       "backend/test/payment-links.test.ts"
     ],
     "mustNotTouch": [
-      "backend/src/services/billing/wallet.ts",
+      "backend/src/services/billing/addons.ts",
       "desktop/src/messages/**",
       "desktop/src/lib/i18n.ts",
       "backend/.dev.vars",

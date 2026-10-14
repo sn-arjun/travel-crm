@@ -15,7 +15,7 @@
     "R206",
     "R111"
   ],
-  "blockedOnOwner": "G1 (ADR-001 Addendum A: Twilio outside India, agency-owned Exotel in India)",
+  "blockedOnOwner": "G1 (ADR-001 addendum)",
   "parallelSafeWith": [],
   "size": "L",
   "newDependencies": [],
@@ -50,16 +50,16 @@
     ]
   },
   "steps": [
-    "Master 0023: voip_accounts (tenant_id PK, provider, sub_account_id, credentials_enc, status, created_at), call_country_policy (country PK, position resell|bridge|own_account|not_offered, provider, notes) seeded from ADR-001 section 4 (IN bridge plivo; GB/US/AU resell plivo; DE/MY resell twilio second wave; AE/SA/QA/TH/LK/NP/BD not_offered), number_documents (tenant_id, country, status, files JSON) for KYC uploads.",
+    "Master 0023: voip_accounts (tenant_id PK, provider, sub_account_id, credentials_enc, status, created_at), call_country_policy (country PK, position resell|bridge|own_account|not_offered, provider, notes) seeded from the per-country table in the ADR-001 addendum (provider column from the addendum, not Plivo; the Gulf, Thailand, Sri Lanka, Nepal and Bangladesh not_offered as in ADR-001 section 4 unless the addendum changes it), number_documents (tenant_id, country, status, files JSON) for KYC uploads.",
     "Enable calling for an agency (admin endpoint + super admin action): checks the country policy and plan (no calling on trial), creates the sub-account via the provider (G1 provider), stores credentials encrypted.",
-    "Numbers: search shows the monthly price from usage_rates (R206) before purchase; purchase only when KYC documents for that country are approved (status set by the super admin), debits the first month from the wallet, sets callbacks, inserts tenant_channel_addresses; release calls provider.releaseNumber then removes the row (and refunds nothing); cancellation of an agency schedules release after a grace period with notice email.",
+    "Numbers: number rental is an add-on priced at provider monthly cost + margin (comm_unit_costs channel phone_number, R109 pricing.ts), shown before purchase; purchase only when KYC documents for that country are approved (status set by the super admin) and the agency holds a number add-on (granted by the super admin or bought through R206); sets callbacks, inserts tenant_channel_addresses; release calls provider.releaseNumber then removes the row (and refunds nothing); cancellation of an agency schedules release after a grace period with notice email.",
     "Desktop: phone numbers page shows price, KYC status and upload, release with useConfirm; VoIP settings hide calling when the policy is not_offered and show the reason."
   ],
   "migrations": [
     "backend/drizzle/master/0023_voip_subaccounts.sql"
   ],
   "tests": [
-    "backend/test/voip-numbers.test.ts (mock provider + mocked fetch for the G1 provider): trial cannot enable calling; AE agency gets not_offered; purchase without approved KYC -> 409; purchase debits the wallet and registers the address; release calls the provider before deleting; inbound to the new number resolves the agency."
+    "backend/test/voip-numbers.test.ts (mock provider + mocked fetch for the G1 provider): trial cannot enable calling; AE agency gets not_offered; purchase without approved KYC -> 409; purchase consumes the number add-on and registers the address; release calls the provider before deleting; inbound to the new number resolves the agency."
   ],
   "acceptance": [
     "No path deletes a number row without releasing it at the provider (test)."
@@ -86,14 +86,13 @@
     ]
   },
   "goLiveVerify": [
-    "G1 provider account, KYC process per country, India legal opinion, written confirmation from the provider about sub-accounts for resale."
+    "Provider account per the ADR-001 addendum, KYC process per country, India legal opinion, written confirmation from the provider about sub-accounts for resale."
   ],
   "notes": [
     "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
     "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
-    "Read docs/decisions/ADR-001-voip.md (sections 4, 6, 7) and docs/CALL-AUTOMATION.md (sections 2, 3, 4) before editing; they are the specification. G1 (provider choice and India shape) is not signed: everything here stays behind the VoipProvider interface.",
+    "Read docs/decisions/ADR-001-voip.md (sections 4, 6, 7), its addendum when it exists (the owner could not sign up with Plivo; the addendum settles the default provider, likely Twilio where it can serve, with India handled separately), and docs/CALL-AUTOMATION.md (sections 2, 3, 4). Everything here stays behind the VoipProvider interface; do not design around Plivo. Calls are included in plans with a monthly minute cap (owner decision 2026-10-14).",
     "Desktop UI follows desktop/audit/remake/CONTRACT.md (ds-* tokens, archetypes, graceful degradation when VoIP is not configured). lint-gate must not rise for any touched file.",
     "Blocked on G1: start only when the owner has chosen the provider and the India shape (ADR 9a items 1-4, 7)."
-  ],
-  "ownerDecisionNote": "Plivo dropped on 2026-10-14 (owner could not sign up). Target Twilio."
+  ]
 }

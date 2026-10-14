@@ -55,7 +55,7 @@
     ]
   },
   "steps": [
-    "middleware/provider-signature.ts: verifyTwilio(req, url, params, authToken) (HMAC-SHA1 of URL + sorted params, base64, X-Twilio-Signature, constant-time compare), verifyPlivo (X-Plivo-Signature-V3 with nonce, HMAC-SHA256), verifySendgrid (Signed Event Webhook: ECDSA P-256 over timestamp + raw body with X-Twilio-Email-Event-Webhook-Signature/Timestamp and the public key in SENDGRID_WEBHOOK_PUBLIC_KEY, WebCrypto importKey spki). Reuse the provider classes' validateWebhookSignature where they already implement it (services/voip-provider.ts).",
+    "middleware/provider-signature.ts: verifyTwilio(req, url, params, authToken) (HMAC-SHA1 of URL + sorted params, base64, X-Twilio-Signature, constant-time compare) (Plivo callbacks: owner decision 2026-10-14, do not build Plivo-specific verification; a tenant whose provider is plivo is rejected at the signature step unless plivo-voice.ts validateWebhookSignature already works, and no test covers it), verifySendgrid (Signed Event Webhook: ECDSA P-256 over timestamp + raw body with X-Twilio-Email-Event-Webhook-Signature/Timestamp and the public key in SENDGRID_WEBHOOK_PUBLIC_KEY, WebCrypto importKey spki). Reuse the provider classes' validateWebhookSignature where they already implement it (services/voip-provider.ts).",
     "voip-callbacks.ts: a middleware on every route resolves the tenant (callDb, R101) and verifies the signature with that tenant's provider credentials (decrypted by R108 when it lands; plaintext today) falling back to platform TWILIO_AUTH_TOKEN; unsigned or invalid -> 403 and no DB write. The URL used for Twilio validation is the public URL: env.API_PUBLIC_URL + path (Workers see the real URL, but behind proxies use the configured one).",
     "webhooks.ts: twilio/status uses verifyTwilio with the platform token; sendgrid/events uses verifySendgrid; when the key/secret env var is unset: reject in production, allow with a warning when isTestMode (R106 helper; if R106 has not merged yet use env.TEST_MODE === \"true\" && env.ENVIRONMENT !== \"production\").",
     "Chatbot public mount: routes/public-chatbot.ts mounted before authMiddleware at /api/v1/public/chatbot: GET /:widgetKey/widget.js, GET /:widgetKey/config, POST /:widgetKey/messages. widgetKey resolves to a tenant through master tenant_channel_addresses (channel 'widget', address = widget key; add rows when an agency enables the widget: find where chatbot settings generate a widget key, else generate one in GET /chatbot/config and upsert the address). Plan feature ai_chatbot checked inside (requireFeature logic called as a function with the resolved tenantId). Limits per READINESS-PLAN 4.4 (30 messages / 10 min / IP / widget, 2 KB message, origin allow-list from chatbot settings, unknown key -> 404). Move the handler bodies from chatbot.ts into shared functions so the staff routes and the public routes call the same code.",
@@ -64,7 +64,7 @@
   ],
   "migrations": [],
   "tests": [
-    "backend/test/webhook-signatures.test.ts: valid Twilio signature -> 200 and row updated; missing or wrong signature -> 403 and nothing written; Plivo V3 valid/invalid; SendGrid ECDSA valid (generate a key pair in the test with crypto.subtle.generateKey and pass the public key as env) / invalid.",
+    "backend/test/webhook-signatures.test.ts: valid Twilio signature -> 200 and row updated; missing or wrong signature -> 403 and nothing written; SendGrid ECDSA valid (generate a key pair in the test with crypto.subtle.generateKey and pass the public key as env) / invalid.",
     "backend/test/public-chatbot.test.ts: widget.js served without auth for a known key, 404 for unknown; POST message creates a chatbot conversation in the right tenant DB (multi mode); 31st message in 10 minutes from one IP -> 429; disallowed Origin -> 403; tenant without ai_chatbot -> 403 with upgrade flag."
   ],
   "acceptance": [
@@ -92,7 +92,7 @@
     ]
   },
   "goLiveVerify": [
-    "Twilio/Plivo signatures against real callbacks (proxy URL must match API_PUBLIC_URL); SendGrid signed event webhook enabled with its public key."
+    "Twilio (or the ADR-001 addendum provider) signatures against real callbacks (proxy URL must match API_PUBLIC_URL); SendGrid signed event webhook enabled with its public key."
   ],
   "notes": [
     "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",

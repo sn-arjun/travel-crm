@@ -1,18 +1,18 @@
 {
   "id": "R305",
   "tier": 3,
-  "title": "Minute metering from provider records, prepaid debits with markup, fraud limits (G1)",
+  "title": "Call minutes metered from provider records against the plan cap and minute packs, fraud limits (G1 addendum)",
   "lane": "backend",
   "backend": true,
-  "goal": "Charge agencies for calls from what the provider actually billed, stop calls when the balance is empty, and block the usual telephone fraud patterns.",
-  "why": "ADR-001 section 7: minutes are counted only when an agent saves an outcome (routes/calls.ts ~411-423) and the cap is never checked; no prepaid check, country allow-list, premium-prefix block, rate limits, maximum call length or spend alerts.",
+  "goal": "Count each agency's call minutes from what the provider actually billed, stop new calls at the plan cap unless the agency upgrades or buys a minute pack, and block the usual telephone fraud patterns.",
+  "why": "ADR-001 section 7: minutes are counted only when an agent saves an outcome (routes/calls.ts ~411-423) and never checked; R110 added a provisional per-callback count. Owner decision 2026-10-14: calls are included in plans with a monthly cap; beyond it the agency upgrades or buys minute packs priced at provider cost + 20%. No country allow-list, premium-prefix block, rate limits, maximum call length or spend alerts exist.",
   "featuresToWorks": [
     "calls.dial"
   ],
   "dependsOn": [
     "R304"
   ],
-  "blockedOnOwner": "G1 (ADR-001 Addendum A: Twilio outside India, agency-owned Exotel in India)",
+  "blockedOnOwner": "G1 (ADR-001 addendum)",
   "parallelSafeWith": [],
   "size": "L",
   "newDependencies": [],
@@ -20,19 +20,20 @@
     "edit": [
       "backend/src/routes/calls.ts",
       "backend/src/cron/dispatch.ts",
-      "backend/src/services/billing/wallet.ts",
+      "backend/src/services/metering/meter.ts",
       "backend/src/db/master-schema.ts",
-      "backend/src/routes/admin.ts"
+      "backend/src/routes/admin.ts",
+      "backend/src/routes/voip-callbacks.ts"
     ],
     "create": [
-      "backend/drizzle/master/0024_call_rates_usage.sql",
+      "backend/drizzle/master/0024_call_usage.sql",
       "backend/src/services/voip/metering.ts",
       "backend/src/services/voip/fraud.ts",
       "backend/test/voip-metering.test.ts"
     ],
     "mustNotTouch": [
-      "backend/src/routes/voip-callbacks.ts",
       "desktop/src/app/(app)/settings/billing/**",
+      "backend/src/services/billing/**",
       "backend/.dev.vars",
       "product-requirment/**",
       "desktop/e2e/showcase/**",
@@ -46,19 +47,19 @@
     ]
   },
   "steps": [
-    "Master 0024: call_rates (country, destination_type mobile|landline|inbound|number, retail_per_min REAL, currency, active) seeded from COST-MODEL 6.2 as inactive until the owner approves; call_usage (tenant_id, provider_call_id UNIQUE, direction, destination_country, billed_seconds, provider_cost REAL, retail_amount REAL, wallet_entry_id, recorded_at).",
-    "metering.ts: every 5 minutes per tenant (tenant jobs queue) fetchUsage since the last cursor, price each record at retail (per started minute), debit the wallet with idempotency key `call:<providerCallId>`, store call_usage; an inbound overdraft limit per agency (setting, default ₹100 / $2).",
-    "fraud.ts preflight on POST /calls/outbound: balance > 0 (inbound exempt within overdraft), destination country in the agency allow-list (default own country; platform toggles others), premium/satellite prefixes blocked (static prefix list), per-agent 10 calls/min and 3 concurrent, per-agency daily spend cap (setting) and max call length (2 h via provider time limit); refuse with clear codes; never cut a live call.",
-    "Spend alerts: daily spend > 3x the 14-day average or > platform daily ceiling -> email to the platform owner and a super admin dashboard flag."
+    "Master 0024 call_usage (tenant_id, provider_call_id UNIQUE, direction, destination_country, destination_type, billed_seconds, provider_cost REAL, currency, minutes_counted INTEGER, recorded_at). Per-destination provider costs live in comm_unit_costs (channel call_minute, market = destination country, provider, unit_cost, margin_pct) and are entered from the ADR-001 addendum.",
+    "services/voip/metering.ts: every 5 minutes per tenant (tenant jobs queue) fetchUsage since the last cursor, insert call_usage idempotently, count ceil(billed_seconds/60) minutes against the call_minute allowance through meterUsage (R110), weighting expensive destinations by unit cost relative to the market base minute (documented rule; weight 1 disables it); remove R110's provisional per-callback count; 80%/100% alerts come from R110.",
+    "services/voip/fraud.ts preflight on POST /calls/outbound: minutes remaining > 0 (inbound always rings; inbound minutes over the cap are counted but never block a caller), destination in the agency allow-list (default own country; the platform toggles others), premium/satellite prefixes blocked (static list), per-agent 10 calls/min and 3 concurrent, per-agency daily minute ceiling, max call length 2 h via the provider time limit; never cut a live call.",
+    "Spend alerts to the platform owner: daily provider cost for an agency > 3x its 14-day average, or above a platform ceiling -> email and a super admin dashboard flag."
   ],
   "migrations": [
-    "backend/drizzle/master/0024_call_rates_usage.sql"
+    "backend/drizzle/master/0024_call_usage.sql"
   ],
   "tests": [
-    "backend/test/voip-metering.test.ts: fixture usage records debit once each (replay safe); zero balance blocks outbound with BALANCE_EMPTY; premium prefix blocked; country outside allow-list blocked; 11th call in a minute blocked; spend spike raises an alert."
+    "backend/test/voip-metering.test.ts: fixture usage records counted once (replay safe); at the cap outbound is refused with ALLOWANCE_EXHAUSTED and a minute-pack grant re-enables it; inbound over the cap still rings and is counted; premium prefix and non-allowed country blocked; 11th call in a minute blocked; a spike raises an alert."
   ],
   "acceptance": [
-    "Billing uses provider records only (code review + tests)."
+    "Minutes come from provider records only (code review + tests)."
   ],
   "gate": [
     "cd backend && npx tsc --noEmit",
@@ -74,13 +75,12 @@
     "specs": []
   },
   "goLiveVerify": [
-    "Owner-approved retail rates (G1 item 6); provider-side geo permissions configured to match; spend triggers at the provider if available."
+    "Provider unit costs per destination from the ADR-001 addendum entered in comm_unit_costs; provider-side geo permissions matching the allow-list; provider spend triggers if available."
   ],
   "notes": [
     "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
     "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
-    "Read docs/decisions/ADR-001-voip.md (sections 4, 6, 7) and docs/CALL-AUTOMATION.md (sections 2, 3, 4) before editing; they are the specification. G1 (provider choice and India shape) is not signed: everything here stays behind the VoipProvider interface.",
-    "Blocked on G1."
-  ],
-  "ownerDecisionNote": "Plivo dropped on 2026-10-14 (owner could not sign up). Target Twilio."
+    "Read docs/decisions/ADR-001-voip.md (sections 4, 6, 7), its addendum when it exists (the owner could not sign up with Plivo; the addendum settles the default provider, likely Twilio where it can serve, with India handled separately), and docs/CALL-AUTOMATION.md (sections 2, 3, 4). Everything here stays behind the VoipProvider interface; do not design around Plivo. Calls are included in plans with a monthly minute cap (owner decision 2026-10-14).",
+    "Blocked on G1: the ADR-001 addendum (provider and its usage API) must be signed first."
+  ]
 }

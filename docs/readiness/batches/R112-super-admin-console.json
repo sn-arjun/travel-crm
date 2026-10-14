@@ -46,7 +46,9 @@
       "super-admin/open-next.config.ts",
       "super-admin/src/lib/backend.ts",
       "super-admin/.dev.vars.example",
-      "super-admin/src/components/impersonation-dialog.tsx"
+      "super-admin/src/components/impersonation-dialog.tsx",
+      "super-admin/src/app/(authenticated)/catalogue/page.tsx",
+      "super-admin/src/components/grant-addon-dialog.tsx"
     ],
     "mustNotTouch": [
       "backend/**",
@@ -70,7 +72,8 @@
     "src/lib/backend.ts: backendFetch(path, init) server-side helper that forwards the sa_token cookie value as Authorization: Bearer to `${BACKEND_API_URL}/admin/...` and maps the backend envelope { success, data, error }.",
     "Login: src/app/api/auth/route.ts posts to backend /admin/auth/login and stores the returned JWT in the httpOnly, Secure (except localhost), SameSite=Strict sa_token cookie; middleware.ts verifies it with SUPER_ADMIN_JWT_SECRET and aud super-admin; static asset bypass only for /_next/ and an explicit list of files in public/ (no `pathname.includes(\".\")`).",
     "Replace every remaining src/app/api/** route that touches MASTER_DB with a call to the backend admin endpoint R111 ported (tenants list/detail/status/plan/features/caps, dashboard, reports, subscriptions, audit-log, system-health). Tenant creation wizard posts to backend POST /admin/tenants (R104) and shows the temporary password once with a copy button and the provisioning status (polling GET /admin/tenants/:id/provisioning; \"Deploy needed\" banner for pending_deploy; Retry on failed). The wizard steps read plans from GET /admin/plans (R109); delete PLANS from src/lib/constants.ts. Remove the MASTER_DB and R2_BUCKET bindings from wrangler.toml once nothing uses them.",
-    "Hide announcements, support and SEO pages from the sidebar and redirect their routes to the dashboard (owner question Q8; leave the files in place with a comment). Add AI credit top-up and impersonation (reason required) actions to the tenant detail page.",
+    "Hide announcements, support and SEO pages from the sidebar and redirect their routes to the dashboard (owner question Q8; leave the files in place with a comment).",
+    "Catalogue page (new, super-admin/src/app/(authenticated)/catalogue/page.tsx): edit plans and features, yearly price per market and currency, included users, extra-user price, monthly AI credits and communication caps, provider unit costs and margin (default 20%) with the computed top-up prices shown live, and add-on products, through R109's /admin/catalogue endpoints. Tenant detail page: usage per channel (GET /admin/tenants/:id/usage), Grant add-on (extra users, AI credit pack, SMS/WhatsApp/OTP/call-minute pack; note required) through POST /admin/tenants/:id/addons, the pending upgrade/top-up requests from R110, and impersonation (reason required).",
     "OpenNext: add open-next.config.ts (defineCloudflareConfig defaults), package.json scripts \"preview\": \"opennextjs-cloudflare build && opennextjs-cloudflare preview\", \"deploy\": \"opennextjs-cloudflare build && opennextjs-cloudflare deploy\", \"cf-typegen\"; wrangler.toml becomes the OpenNext Workers shape (main = \".open-next/worker.js\", [assets] directory = \".open-next/assets\", compatibility_flags nodejs_compat) instead of pages_build_output_dir. Remove next-on-pages references from super-admin. (CI and terraform are R118.)",
     "Desktop: delete desktop/src/app/(app)/super-admin/** and the superAdminNav entry plus its titles in nav-config.ts (and its test); delete or rewrite desktop/e2e/super-admin.spec.ts to assert /super-admin redirects to /dashboard (skip count in FINAL-E2E included one super-admin skip). Remove desktop API helpers used only by those pages (grep \"/admin/\" in desktop/src/lib/api).",
     "README.md for super-admin: how to run locally against fix-stack (BACKEND_API_URL=http://localhost:8797/api/v1, create the first super admin with backend/scripts/create-super-admin.mjs --local)."

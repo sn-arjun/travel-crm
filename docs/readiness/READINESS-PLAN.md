@@ -3,6 +3,7 @@
 - Written by the readiness planner, 2026-10-09 to 2026-10-14. Read-only planning; nothing in this plan has been built or run.
 - Scorecard: `docs/readiness/SCORECARD.md`. Batches: `docs/readiness/batches/R*.json`. Run order: `docs/readiness/batches/INDEX.json`.
 - Inputs: the approved program plan (`~/.claude/plans/magical-tumbling-swan.md`, section W2, whose design choices this plan follows rather than re-decides), the three audits in `docs/launch/findings/`, `docs/features.json`, `docs/decisions/ADR-001-voip.md`, `docs/COST-MODEL.md`, `docs/CALL-AUTOMATION.md`, and my own reading of the code on 2026-10-14.
+- **Owner decisions of 2026-10-14 are applied throughout:** (1) a flat price per agency per year with included users and a monthly AI credit allowance, plus paid add-ons (extra users, AI credit packs); (2) SMS, WhatsApp, login codes and calls stay included in every plan up to a monthly cap, with upgrade or communication top-ups priced at provider cost + 20% (cost and margin stored as configuration); this replaces the cost model's advice to take SMS out of plans and move login codes off SMS; (3) no design around Plivo: VoIP stays provider-agnostic until the ADR-001 addendum (gate G1) names the default provider; (4) gate G2 (video voice) is approved and does not affect these batches.
 - Scope: **local builds only.** Every batch is proved on this Windows machine with unit tests, the local stack (`desktop/scripts/fix-stack.mjs`), Playwright, dry runs and mocks. Anything that needs a real Cloudflare account, payment gateway or telephony provider is written behind an interface with a local implementation, tested with mocked `fetch`, and listed under "Verify at go-live".
 
 ## 0. How to run a batch (orchestrator)
@@ -39,7 +40,7 @@ Standard gate commands referenced by the batches:
 5. `node scripts/gen-wrangler.mjs --env production --registry scripts/fixtures/registry.sample.json` then `cd backend && npx wrangler deploy --dry-run -c .wrangler.production.toml --outdir .dryrun` exits 0; `node scripts/migrate-tenants.mjs --local --dry-run` lists master then canary then the rest.
 6. `node scripts/fresh-clone-check.mjs` (R118) passes: clone to a temp folder, root `npm ci`, build `@travelcrm/shared`, backend tsc + vitest, desktop tsc + vitest + lint gate.
 7. Full desktop e2e (`fix-stack up --slot 0 --reset-db`, single-tenant mode) still green: at least 766 passed, 0 failed.
-8. Cost guard tests (R105, R110): usage caps reset exactly once per day and month; a tenant over its SMS, WhatsApp, email or OTP allowance is refused with HTTP 402 `ALLOWANCE_EXHAUSTED`; OTP per-number and per-IP limits hold.
+8. Cost guard tests (R105, R109, R110): usage caps reset exactly once per period; a tenant at its monthly SMS, WhatsApp, login-code or call-minute cap gets HTTP 402 `ALLOWANCE_EXHAUSTED` with upgrade and top-up options and the provider is not called; a super admin add-on grant lifts the cap for the current period; 80% and 100% alerts fire once each; OTP per-number and per-IP limits hold; every top-up price equals provider unit cost x (1 + margin) from the catalogue.
 
 **Batches, in run order:** R100 (owner action, any time), R101, R114, R102, R120, R103, R116, R104, R115, R105, R119, R106, R108, R107, R109, R110, R117, R111, R113, R112, R118, R121, R122.
 
@@ -100,7 +101,7 @@ R201 tax engine ─► R207 customer payment links
 R210 i18n wiring (desktop) ─► R211 Arabic + RTL
 R202 locale core ─► R203 desktop locale sweep ─► R211
 R202 ─► R204 phones + driver locale
-R109 ─► R205 billing gateways ─► R206 prepaid balance ─► R207
+R109 ─► R205 billing gateways ─► R206 self-serve add-ons;  R205 ─► R207
 R208 GDPR + legal + unsubscribe
 R209 2FA + password policy
 R104 ─► R212 data residency
@@ -136,7 +137,7 @@ R309 WordPress provisioning (after R104, R111) ; R310 WordPress infra sizing (in
 | 15 | R202 | locale core touches backend utils and desktop `lib/utils.ts` |
 | 16 | R203 + R205 | desktop page sweep vs backend billing (new files + master migration) |
 | 17 | R204 + R208 | phones (backend `utils/phone.ts`, desktop phone input, driver) vs GDPR (contacts routes, public unsubscribe, landing legal pages) |
-| 18 | R206 + R209 | wallet (master, new routes) vs 2FA (auth, users, desktop security settings) |
+| 18 | R206 + R209 | add-on purchases (billing routes, usage page) vs 2FA (auth, users, desktop security settings) |
 | 19 | R207 + R211 | payment links (invoices/payments backend + invoice page) vs Arabic/RTL (desktop i18n + CSS); R211 must not edit invoice pages |
 | 20 | R212 + R213 | data residency (provisioner, gen-wrangler) vs WhatsApp Meta provider |
 | — | Tier 3 | |
@@ -205,20 +206,40 @@ interface TenantProvisioner {
 - Vitest: `backend/vitest.config.ts` keeps `TENANCY_MODE: 'single'` as a binding and adds `d1Databases: ['TENANT_DB_POOL_1', 'TENANT_DB_POOL_2', 'TENANT_DB_POOL_3']` to the miniflare options; isolation tests pass `{ ...env, TENANCY_MODE: 'multi' }` to `worker.fetch`.
 - Cron fan-out (R105): the `*/5` tick only enqueues one `TENANT_JOBS_QUEUE` message per active tenant (`sendBatch`, 100 per call) plus platform jobs; the consumer (`max_batch_size = 5`) resolves the tenant DB and runs that tenant's jobs; hourly and daily jobs get their own cron expressions instead of running every 5 minutes. Usage caps reset by period key (`2026-10-14` for daily, `2026-10` for monthly) compared with `tenant_usage_caps.period_key`, so a reset runs once per period whatever the tick count.
 
-### 4.2 One plan catalogue (R109)
+### 4.2 One plan catalogue (R109), communication caps (R110) and add-ons (R206)
 
-Master migration 0015 adds four tables; the owner's final numbers become rows, not code:
+Owner decision 2026-10-14: **a flat price per agency per year** (Basic, Pro, Enterprise) that includes a set number of users, a monthly AI credit allowance and monthly caps for SMS, WhatsApp, login codes (OTP) and call minutes; **paid add-ons** for extra users, AI credit packs and communication packs; **communication top-ups priced at provider cost + 20%**. Everything below is data in the master DB, edited from the super admin console (R112), read by backend gating, desktop, super admin and the landing page.
 
-| Table | Columns (D1 conventions) |
+| Table (master migration 0015) | Columns (D1 conventions) |
 |---|---|
-| `plans` | `key` TEXT PK (`trial`, `basic`, `pro`, `enterprise`), `name`, `description`, `sort_order` INTEGER, `is_public` INTEGER, `trial_days` INTEGER (trial only), `is_active` INTEGER |
-| `plan_prices` | `id` TEXT PK (UUIDv7), `plan_key`, `market` TEXT (`IN`, `WEST`, `GULF`, `SG`, `MY_TH`, `LK_NP_BD`), `currency` TEXT (ISO 4217), `pricing_model` TEXT (`per_agency` / `per_user`), `amount` REAL, `billing_period` TEXT (`year` / `month`), `min_seats` INTEGER, `included_seats` INTEGER, `max_seats` INTEGER NULL, `is_active` INTEGER, `valid_from` TEXT |
-| `plan_features` | `plan_key`, `feature_key`, PK both |
-| `plan_allowances` | `plan_key`, `allowance_key` (`ai_credits_per_month`, `sms_per_month`, `whatsapp_marketing_per_month`, `whatsapp_utility_per_month`, `email_per_month`, `otp_per_day`, `voip_minutes_per_month`, `extra_ai_credits_per_seat`), `amount` INTEGER, `period` (`day`/`month`), PK both |
+| `plans` | `key` TEXT PK (`trial`, `basic`, `pro`, `enterprise`), `name`, `description`, `sort_order`, `is_public`, `trial_days`, `is_active` |
+| `plan_prices` | `id` (UUIDv7), `plan_key`, `market` (`IN`, `WEST`, `GULF`, `SG`, `MY_TH`, `LK_NP_BD`), `currency`, `yearly_price` REAL, `included_users` INTEGER, `extra_user_yearly_price` REAL, `is_active`, `valid_from` |
+| `plan_features` | `plan_key`, `feature_key` |
+| `plan_allowances` | `plan_key`, `allowance_key` (`ai_credits`, `sms`, `whatsapp`, `otp`, `call_minutes`, `email`), `monthly_amount` INTEGER |
+| `comm_unit_costs` | `channel` (`sms`, `whatsapp`, `otp`, `call_minute`, `phone_number`), `market`, `provider`, `unit_cost` REAL, `currency`, `margin_pct` REAL default 20, `effective_from`, `is_active` |
+| `addon_products` | `key`, `kind` (`extra_user`, `ai_credit_pack`, `comm_pack`), `channel`, `units`, `fixed_price` REAL NULL (NULL means computed), `currency`, `market`, `is_active` |
+| `tenant_addons` | `tenant_id`, `product_key`, `quantity`, `units_granted`, `period_key` (month for packs, NULL for extra users), `source` (`super_admin_grant`, `purchase`), `granted_by`, `reference` |
 
-Seed rows: today's decided India prices as `per_agency`, ₹12,000 / ₹18,000 / ₹24,000 per year, 5 / 15 / 100 seats (from `routes/admin.ts`), and the cost model's proposal (`per_user` ₹200 / ₹300 / ₹400 per user per month billed yearly, minimum 5; $12 / $29 / $49 West and Gulf, etc.) inserted with `is_active = 0` so the owner switches by flipping rows. Features seeded from today's `PLAN_DEFAULTS`, except that `voip_calling` is removed from `trial` (ADR fraud rule) and `starter`/`free` disappear (data migration maps `starter` → `basic`, `free` → `trial`). Allowances seeded from `ai-pricing.ts` and the cost model (SMS 0 in India plans, WhatsApp utility 300 / 1,000 / 3,000).
+Rules: allowance for a period = plan monthly amount + add-on units for that period (packs do not carry over); seat limit = included users + extra-user add-ons; communication pack price = units x `unit_cost` x (1 + `margin_pct`/100), rounded up to the currency's minor unit and computed on read, so a cost change updates every price with no code change; AI credit packs and extra users have fixed catalogue prices. At a cap: graceful HTTP 402 with "Upgrade plan" and "Top up" options, never a silent drop; customer-facing replies inside WhatsApp's free 24-hour window are not metered. Alerts at 80% and 100% for every channel and for AI credits through one mechanism (R110; no AI-credit alert exists in the code today, verified 2026-10-14). Top-ups are granted by the super admin first (R109 endpoint, R112 console) and bought self-serve once billing exists (R206). Card fees of about 2% reduce the 20% margin to roughly 18%: the owner can raise `margin_pct`.
 
-Readers: `feature-gate.ts` (cached in KV for 5 minutes, key `plans:v<n>`), `ai-pricing.ts`, the seat check in `routes/users.ts` invite and reactivate (seats = active users vs `max_seats`/purchased seats), trial expiry (cron sets `expired` after `trial_ends_at`; login returns 402 `TRIAL_EXPIRED` with an upgrade message; read-only grace of 7 days is a setting), `GET /api/v1/public/plans?market=IN` (landing, signup), `GET /api/v1/admin/plans` and `PUT` (super admin edits rows, audited). `super-admin/src/lib/constants.ts` and `tenants/[id]/plan/route.ts` stop defining plans.
+**Draft numbers seeded for the owner to confirm (Q2, Q2b).** India prices are decided; everything else is a placeholder. Unit costs are the cost model's list prices (Twilio SMS ₹8.06, WhatsApp via Twilio about ₹0.595 including Meta's utility fee, Twilio Verify login code ₹12.90; call minutes wait for the ADR-001 addendum).
+
+| | Basic | Pro | Enterprise | Trial |
+|---|---|---|---|---|
+| Yearly price (IN, decided) | ₹12,000 | ₹18,000 | ₹24,000 | free, 14 days |
+| Included users | 5 | 15 | 100 | 3 |
+| Extra user per year (draft) | ₹2,400 | ₹1,800 | ₹1,200 | n/a |
+| AI credits per month | 1,000 | 15,000 | 25,000 | 2,000 |
+| SMS per month (draft) | 10 | 15 | 20 | 0 |
+| WhatsApp paid messages per month (draft) | 250 | 400 | 600 | 50 |
+| Login codes per month (draft) | 9 | 12 | 14 | 5 |
+| Call minutes per month (draft) | 0 until the addendum prices them | | | 0 (no calling on trial) |
+| Provider cost if every cap is used (my arithmetic) | ₹345 (35% of ₹1,000 monthly revenue) | ₹514 (34% of ₹1,500) | ₹699 (35% of ₹2,000) | |
+| Top-up price per unit at +20% (my arithmetic) | SMS ₹9.68, WhatsApp ₹0.72, login code ₹15.48 (rounded up to the paisa) | same | same | |
+
+The arithmetic shows why the caps are small at Twilio list prices: a login code costs ₹12.90, so a generous login-code cap alone would consume a Basic plan's revenue. The owner either accepts small caps (password login stays the default; codes for drivers and for staff who choose them), raises plan prices, or lowers unit costs with a cheaper route (domestic Indian SMS with DLT registration, section 8). The catalogue makes any of those a data change.
+
+Readers: `feature-gate.ts` (KV cache, version bumped by every admin write), `ai-pricing.ts`/`ai-credits.ts`, seat checks in `routes/users.ts`, the metering service (R110), trial expiry (daily job), `GET /api/v1/public/plans` (landing, signup), `/admin/catalogue` (super admin). `super-admin/src/lib/constants.ts` and `tenants/[id]/plan/route.ts` stop defining plans (R112).
 
 ### 4.3 Credential encryption at rest (R108)
 
@@ -290,7 +311,7 @@ Order: (1) wire the existing context in `desktop/src/lib/i18n.ts` into the app s
 - `BillingGateway` interface in `backend/src/services/billing/gateway.ts`: `createCheckout({ tenantId, priceId, seats, successUrl, cancelUrl })`, `verifyWebhook(request, rawBody)`, `parseEvent(rawBody) → BillingEvent`, `cancelSubscription(id)`. Implementations: `RazorpayGateway` (India, INR; Subscriptions or Payment Links), `StripeGateway` (everything else; Checkout Sessions in subscription mode), `MockGateway` (local: checkout returns a local URL that posts a signed mock webhook back). Gateway chosen by the tenant's market (`IN` → Razorpay).
 - Webhooks: `POST /api/v1/billing/webhooks/:gateway`, public, signature checked (Stripe `Stripe-Signature` HMAC-SHA256 with timestamp tolerance 5 min; Razorpay `X-Razorpay-Signature` HMAC-SHA256 of the raw body), then `INSERT OR IGNORE INTO billing_events (gateway, event_id, ...)` as the first write; a duplicate returns 200 and does nothing. The super admin app's Razorpay webhook route is deleted (R112).
 - Subscription state in master `subscriptions` (exists): `trialing → active → past_due (grace 7 days) → expired`, `cancelled`; tenant status follows. Platform invoices to agencies are numbered and stored in master with the platform's own tax (GST 18% in India; export of services abroad: accountant to confirm).
-- Prepaid balance (R206): master `wallet_accounts` and `wallet_entries` (append-only ledger, amounts REAL in the account currency, `idempotency_key` UNIQUE); top-ups through the gateway checkout; debits for SMS, marketing WhatsApp, calls, numbers and AI credit packs; balance check before a paid send; 80% and zero alerts.
+- Add-ons (R206): no prepaid wallet (owner decision 2026-10-14). Agencies buy extra users, AI credit packs and communication packs through a one-time checkout on the same gateway; the paid webhook (idempotent through `billing_events`) inserts `tenant_addons` rows that raise the period allowance or the seat limit. Prices come from the catalogue (section 4.2).
 - Customer payments (R207): agencies paste their own Razorpay or Stripe keys (encrypted with R108's helper); `POST /invoices/:id/payment-link` creates a link; the gateway webhook to `/api/v1/webhooks/payments/:tenantKey/:gateway` records the payment idempotently and emits `payment.recorded`.
 
 ### 4.11 GDPR and DPDP tooling (R208, R209)
@@ -303,7 +324,7 @@ Region chosen at agency creation: `in` (D1 location hint `apac`), `eu` (D1 juris
 
 ### 4.13 VoIP reseller pieces (R301 to R308)
 
-Provider-agnostic until G1: `VoipProvider` gains `createSubAccount`, `closeSubAccount`, `searchNumbers`, `buyNumber`, `releaseNumber`, `placeCall({ mode: 'softphone' | 'bridge' })`, `clientToken`, `fetchUsage(since)`, `validateSignature`; `MockVoipProvider` plus a local call simulator (`POST /test/voip/simulate` under TEST_MODE) drive every flow in tests. Callbacks: signature checked on every route, `provider_events` table with `INSERT OR IGNORE` on provider + call id + status + sequence, `call_logs` unique on provider call id. Lifecycle events and recipes exactly as `docs/CALL-AUTOMATION.md` section 4.2/4.3 (screen pop over the existing realtime Durable Object; timeline entries; `leads.contacted_on_call`; next-step suggestion; suggestion-only for anything customer-facing). Recordings: consent announcement on by default, copy to R2 then delete at the provider, retention job, signed short-lived playback links, role matrix from CALL-AUTOMATION 3.7. Transcription: queue producer added, Workers AI Whisper as the standard engine, Deepgram optional, summary through the metered AI router (never direct Anthropic), new per-minute credit class. Metering: usage pulled per sub-account every 5 minutes into `call_usage`, priced from `call_rates` (owner-editable retail table), debited from the wallet (R206); refuse outbound at zero, never cut a live call, small inbound overdraft; country allow-list, premium/satellite prefix block, per-agent and per-agency rate limits, max call length, daily spend alert; no calling on trial. Country switch: calling features shown only where the ADR says RESELL or CALL-BRIDGE (`call_country_policy` rows).
+The owner could not sign up with Plivo (2026-10-14); the default provider will be set in an ADR-001 addendum (likely Twilio where it can serve, with India handled separately). Nothing here is designed around Plivo; the Plivo adapter stays only as an optional, untested path that compiles against the interface. Provider-agnostic until the addendum: `VoipProvider` gains `createSubAccount`, `closeSubAccount`, `searchNumbers`, `buyNumber`, `releaseNumber`, `placeCall({ mode: 'softphone' | 'bridge' })`, `clientToken`, `fetchUsage(since)`, `validateSignature`; `MockVoipProvider` plus a local call simulator (`POST /test/voip/simulate` under TEST_MODE) drive every flow in tests. Callbacks: signature checked on every route, `provider_events` table with `INSERT OR IGNORE` on provider + call id + status + sequence, `call_logs` unique on provider call id. Lifecycle events and recipes exactly as `docs/CALL-AUTOMATION.md` section 4.2/4.3 (screen pop over the existing realtime Durable Object; timeline entries; `leads.contacted_on_call`; next-step suggestion; suggestion-only for anything customer-facing). Recordings: consent announcement on by default, copy to R2 then delete at the provider, retention job, signed short-lived playback links, role matrix from CALL-AUTOMATION 3.7. Transcription: queue producer added, Workers AI Whisper as the standard engine, Deepgram optional, summary through the metered AI router (never direct Anthropic), new per-minute credit class. Metering: usage pulled per sub-account every 5 minutes into `call_usage` and counted against the plan's monthly call-minute cap plus minute packs (packs priced at provider cost + 20% from `comm_unit_costs`); refuse new outbound calls at the cap, never cut a live call, inbound always rings and is counted; country allow-list, premium/satellite prefix block, per-agent and per-agency rate limits, max call length, daily spend alert; no calling on trial. Country switch: calling features shown only where the ADR says RESELL or CALL-BRIDGE (`call_country_policy` rows).
 
 ### 4.14 WordPress provisioning (R309, R310)
 
@@ -313,11 +334,11 @@ Backend `wp-provision-queue.ts` stops being a stub: it calls `POST ${OCI_PROVISI
 
 | # | Cost-model item | Code change? | Batch |
 |---|---|---|---|
-| 1 | Stop paying for SMS out of the plan; domestic route; charge balance | yes | R110 (allowance 0 in India plans, hard cap, metering), R206 (balance), domestic SMS provider (MSG91) **not included in v1**: needs DLT registration by the owner; listed in section 8 |
+| 1 | Stop paying for SMS out of the plan; domestic route; charge balance | **replaced by owner decision**: SMS stays included up to a monthly cap | R109 (caps and unit costs as data), R110 (metering, graceful stop, alerts), R206 (packs at cost + 20%); a domestic SMS route (MSG91) is **not in v1** (needs DLT registration), section 8 |
 | 2 | WhatsApp direct through Meta Cloud API; marketing to balance; utility category | yes | R213 (Meta provider behind `MessagingProvider`), R110 (separate utility/marketing allowances), R206 (balance) |
-| 3 | Replace Twilio Verify by SMS for login codes; per-number/IP limits; longer driver sessions | yes | R110 (codes generated in the Worker, delivered by email for staff and by WhatsApp authentication template when configured, Twilio Verify kept only as a fallback the owner can switch off; limits per phone, IP and tenant; driver refresh token 30 days) |
+| 3 | Replace Twilio Verify by SMS for login codes; per-number/IP limits; longer driver sessions | **replaced by owner decision**: login codes stay on SMS, included up to a cap | R110 (per-plan cap, per-phone/IP/tenant abuse limits, driver refresh token 30 days) |
 | 4 | Fix the usage-cap reset | yes | R105 |
-| 5 | Calls on a prepaid balance through Plivo; release numbers | yes | R206, R304, R305 (G1) |
+| 5 | Calls on a prepaid balance through Plivo; release numbers | **changed by owner decision**: calls included up to a monthly cap, minute packs at cost + 20%, provider per the ADR-001 addendum (not Plivo) | R304 (number release, number rental as an add-on), R305 (metering against the cap) (G1) |
 | 6 | One shared website installation; correct machine size | yes | R310 (shared MariaDB, free-tier sizing); a full multisite switch is an owner question (Q9) |
 | 7 | Make the live-updates Durable Object hibernate | yes | R117 (hibernation handlers only, `setWebSocketAutoResponse` for pings) |
 | 8 | Cheaper AI models and no unmetered AI | partly | R306 routes call summaries through the metered router; model choice is a live-quality test (needs paid calls) and is **not in this plan**: go-live item with a capped 20-call test |
@@ -336,7 +357,7 @@ Backend `wp-provision-queue.ts` stops being a stub: it calls `POST ${OCI_PROVISI
 | Stripe, Razorpay checkout and webhooks | `MockGateway`, recorded signed fixtures | test-mode checkout end to end with the owner's test keys, then live keys |
 | Meta WhatsApp Cloud API | mocked `fetch`, signed fixtures | business verification, template approval, webhook verify token |
 | Twilio Verify / WhatsApp OTP template | mocked | delivery in India, template approval |
-| Plivo/Twilio sub-accounts, numbers, softphone, bridge | `MockVoipProvider`, simulator | G1 provider, KYC, India legal opinion, one real call per country |
+| Telephony sub-accounts, numbers, softphone, bridge | `MockVoipProvider`, simulator, Twilio adapter with mocked fetch | the provider named in the ADR-001 addendum, KYC, India legal opinion, one real call per country |
 | Workers AI Whisper and summary quality | not called (cost rule) | the 20-call quality test, capped |
 | Turnstile on public forms | skipped when the secret is unset | site key and secret on the landing domain |
 | Electron code signing and SmartScreen | unsigned local build | OV/EV certificate, signed installer, update from the real feed |
@@ -354,13 +375,13 @@ Backend `wp-provision-queue.ts` stops being a stub: it calls `POST ${OCI_PROVISI
 |---|---|---|---|
 | 1 | Nothing. Owner action only: make `sn-arjun/travel-crm` private and revoke the old token (R100). | SendGrid test key with a verified sender (real welcome mail); Cloudflare account with the Workers Paid plan and an API token scoped to a **staging** account (real D1 create via the provisioner) | Cloudflare Workers Paid + API token; domain; fresh `JWT_SECRET`, `CREDENTIALS_KEYS`, `UNSUB_SECRET`, `PROVISIONER_SECRET`, super admin password; SendGrid with domain authentication; Windows OV/EV code-signing certificate; Google Play account and the owner's upload keystore; Apple Developer account (iOS driver app) |
 | 2 | Nothing | Stripe test keys, Razorpay test keys (free), Meta WhatsApp test number | Stripe and Razorpay live keys and webhook secrets; Meta WhatsApp Business verification and templates; Turnstile keys; a lawyer's review of the privacy policy, terms and DPA; a native Arabic reviewer |
-| 3 | Nothing (provider-agnostic work) | Plivo and Twilio trial accounts (one real call per mode) | G1 decisions; Plivo India + international accounts (India-registered entity with GST, KYC per agency); Twilio for Germany/Malaysia if chosen; Deepgram key if the premium engine is offered; Oracle Cloud keys; telecom lawyer opinion for India |
+| 3 | Nothing (provider-agnostic work) | A trial account with the addendum provider (likely Twilio) for one real call per mode | G1 decisions and the ADR-001 addendum; the telephony account(s) it names (KYC per agency; an Indian provider for India, since Twilio has no domestic Indian calling); Deepgram key if the premium engine is offered; Oracle Cloud keys; telecom lawyer opinion for India |
 
 Secrets to rotate at go-live because they were in public `master` history or tracked files (R100 lists them): every value ever in `backend/.dev.vars` (committed in `c668ebd` and `6d75a0b`), the super admin defaults in `super-admin/wrangler.toml` and its code fallbacks, any token in old remote URLs. Production must use fresh values for all secrets regardless.
 
 ## 8. Not included in v1, and why
 
-- **Domestic Indian SMS route (MSG91 or similar).** Needs DLT entity and template registration by the owner; until then SMS allowance is 0 in India plans and WhatsApp or email carries the message.
+- **Domestic Indian SMS route (MSG91 or similar).** Needs DLT entity and template registration by the owner. SMS and login codes stay included through the current provider, with caps sized on its list price (section 4.2); a cheaper route later is a data change in `comm_unit_costs` plus a provider adapter.
 - **Push notifications.** The code uses the retired FCM legacy key; the driver app has no push package. Moving to FCM HTTP v1 with a service account and adding `firebase_messaging` is a separate piece of work; drivers refresh trips every 60 s today. Recommend after launch.
 - **AI model switch (Haiku 5.5 vs Llama 70B).** Needs paid quality tests; out of the no-paid-AI rule. Go-live test, capped at 20 requests.
 - **Automatic self-serve signup with instant provisioning.** v1 uses request + operator approval (fraud and cost control). Revisit when billing is live.
@@ -372,6 +393,8 @@ Secrets to rotate at go-live because they were in public `master` history or tra
 - **macOS and iOS builds.** Need a Mac; runbook item.
 - **Queues, ring groups, warm transfer, presence for calls.** ADR scope is click-to-call, inbound routing, voicemail and recording.
 - **Telnyx adapter and self-hosted PBX.** Rejected in ADR-001.
+- **Fixing the Plivo adapter.** Owner decision 2026-10-14; it stays compiling against the interface, untested.
+- **A prepaid wallet.** Replaced by plan caps plus add-on packs (owner decision 2026-10-14).
 
 ## 9. Risks and the mitigation built into the plan
 
@@ -384,6 +407,7 @@ Secrets to rotate at go-live because they were in public `master` history or tra
 | Encryption key loss | Keys held as Worker secrets and in the owner's password manager; re-encrypt endpoint supports rotation; missing key is a 503, never silent plaintext |
 | Parallel batches collide on migrations | Numbers pre-assigned per batch (section 10) |
 | Owner changes prices | Catalogue tables; no code change (R109) |
+| Communication caps sized too generously lose money; too tight annoy agencies | Caps, unit costs and margin are data; the super admin sees usage per agency (R111/R112) and can grant packs; draft caps keep full-use provider cost near 35% of plan revenue (section 4.2) |
 | G1 delayed | Provider-agnostic VoIP batches (R301–R303, R306) proceed; G1 batches wait |
 | Driver app edited while the owner builds it | Batch notes require checking for a running Gradle/Flutter process first |
 | A batch grows beyond one sitting | Each batch is sized S/M/L; executor stops and reports after two failed fix attempts (FIX-PLAN rule 10) |
@@ -406,14 +430,14 @@ Secrets to rotate at go-live because they were in public `master` history or tra
 | R201 | — | 0045_invoice_tax_regime.sql |
 | R202 | 0019_exchange_rates.sql | 0046_user_locale_timezone.sql |
 | R205 | 0020_billing.sql | — |
-| R206 | 0021_wallet.sql | — |
+| R206 | 0021_addon_purchases.sql | — |
 | R207 | — | 0047_payment_links.sql |
 | R208 | — | 0048_contact_consents.sql |
 | R209 | — | 0049_user_two_factor.sql |
 | R212 | 0022_tenant_region.sql | — |
 | R302 | — | 0050_provider_events.sql |
 | R304 | 0023_voip_subaccounts.sql | — |
-| R305 | 0024_call_rates_usage.sql | — |
+| R305 | 0024_call_usage.sql | — |
 | R309 | 0025_wordpress_status.sql (only the columns that do not exist yet) | — |
 
 ## 11. Questions the owner must answer
@@ -421,17 +445,19 @@ Secrets to rotate at go-live because they were in public `master` history or tra
 | # | Question | Blocks |
 |---|---|---|
 | Q1 | Make the GitHub repository private and revoke the old token (action, not a question). | pushing anything; R118's CI can only run after this |
-| Q2 | Pricing structure: keep per-agency yearly (₹12k/18k/24k with 5/15/100 seats) or switch to per-user (₹200/300/400 per user per month, minimum 5)? International prices from the cost model? | only which catalogue rows are active (R109 is data-driven either way) |
+| Q2 | **Decided 2026-10-14:** flat yearly price per agency with included users and AI credits, plus add-ons. Still open: included users per plan (draft 5/15/100), extra-user price (draft ₹2,400/1,800/1,200 per year), AI credit pack price (draft ₹250 per 5,000), and international yearly prices per market. | R109 seed values only |
+| Q2b | Communication caps per plan and pack sizes (drafts in section 4.2), and whether to keep 20% margin after card fees (about 18% net). | R109 seed values only |
 | Q3 | Trial length (14 days as on the landing page?) and what a trial includes (cost model: no SMS, no calls, 200 AI credits). | R109 seed values |
 | Q4 | Signup: request + approval by you (planned), or instant self-serve trial? | R116 behaviour |
-| Q5 | Login codes: OK to send staff login codes by email and drivers' by WhatsApp authentication template, keeping Twilio Verify only as a fallback? | R110 defaults |
-| Q6 | G1 items in ADR-001 section 9a (provider, India shape, legal opinion, countries, prepaid, retail prices, trials, recording default, call AI, signing entity). | R304, R305, R307, R308 |
+| Q5 | **Decided 2026-10-14:** login codes stay on SMS, included up to a cap. Still open: should staff login default to password with codes optional (planned), given ₹12.90 per code? | R110 defaults |
+| Q6 | G1: the ADR-001 addendum (default provider, likely Twilio; India provider and shape), plus the remaining ADR-001 9a items (legal opinion, countries, trials, recording default, call AI, signing entity). Prepaid balance (9a item 5) is superseded by plan caps and packs. | R304, R305, R307, R308 |
 | Q7 | Data regions to offer at launch (India + EU only, or all six)? | R212 scope |
 | Q8 | Announcements and support tickets: build the agency-side reader, or hide them from the console for v1 (planned: hide)? | R112 |
 | Q9 | WordPress: per-agency containers with a shared database (planned), or one WordPress multisite for all agencies (cheaper, less isolated)? | R309/R310 |
 | Q10 | Which legal entity holds provider and gateway accounts and invoices foreign agencies? | R205 platform invoice header, go-live |
 | Q11 | Domain names to use (`travelcrm.pro` appears in code; is it owned?). | R102 defaults, R116, go-live |
 | Q12 | Remove unverified landing claims (500+ agencies, $2.4M, 99.9% uptime, named agencies, testimonials, 4.9 rating)? Planned: remove until evidenced. | R116 |
+
 
 ## 12. Batch catalogue (run order; generated from batches/INDEX.json)
 
@@ -451,10 +477,10 @@ Secrets to rotate at go-live because they were in public `master` history or tra
 | 12 | R106 | 1 | M | Security: tenant-scoped files, real login limits, CORS and URLs from config, rate limits applied, TEST_MODE fenced | R101 | — |
 | 13 | R108 | 1 | M | Credentials encrypted at rest, API keys hashed | R101 | — |
 | 14 | R107 | 1 | M | Provider webhooks signed, chatbot widget on a public mount keyed by widget key | R101 | — |
-| 15 | R109 | 1 | L | One plan catalogue in the master database: features, prices, seats, allowances, trial expiry | R101, R105 | — |
-| 16 | R110 | 1 | L | Cost caps: SMS, WhatsApp, email and login-code allowances enforced; cheaper, abuse-proof login codes | R109, R105 | — |
+| 15 | R109 | 1 | L | One plan catalogue in the master database: yearly agency prices, included users, extra-user price, AI credits, communication caps, add-ons, trial expiry | R101, R105 | — |
+| 16 | R110 | 1 | L | Communication caps: SMS, WhatsApp, login codes and call minutes metered per plan, alerts at 80% and 100%, upgrade or top-up, OTP abuse limits | R109, R105 | — |
 | 17 | R117 | 1 | M | Operations: real health check, structured logs with an error-reporting hook, backups, hibernating realtime | R105 | — |
-| 18 | R111 | 1 | L | Super admin backend API: its own login, tenant lifecycle writes, AI credit top-up, impersonation, full audit | R104, R109 | — |
+| 18 | R111 | 1 | L | Super admin backend API: its own login, tenant lifecycle writes, usage view, impersonation, full audit | R104, R109 | — |
 | 19 | R113 | 1 | M | First login: forced password change, onboarding wizard reachable, change password in settings | R104 | — |
 | 20 | R112 | 1 | L | Super admin console uses the backend, OpenNext build, no tracked credentials; desktop super-admin pages removed | R111 | — |
 | 21 | R118 | 1 | L | CI on the right branch with one npm workspace model, fresh-clone job, driver and desktop jobs; terraform serves the landing page | R103, R112, R114, R115, R116, R117 | — |
@@ -467,9 +493,9 @@ Secrets to rotate at go-live because they were in public `master` history or tra
 | 28 | R205 | 2 | L | Subscription billing: Razorpay for India, Stripe elsewhere, behind one gateway interface with idempotent webhooks | R109, R111 | — |
 | 29 | R204 | 2 | M | Phones by tenant country everywhere; full country list in desktop and driver app; Flutter currency formatting | R202 | — |
 | 30 | R208 | 2 | L | GDPR and DPDP tooling: consent records, contact export and erasure, public unsubscribe, cookie notice, legal links | R121 | — |
-| 31 | R206 | 2 | M | Prepaid balance: one wallet per agency for messages, numbers, calls and AI top-ups | R205, R110 | — |
+| 31 | R206 | 2 | M | Self-serve add-ons: buy extra users, AI credit packs and communication packs online | R205, R110 | — |
 | 32 | R209 | 2 | M | Two-factor sign-in (TOTP) and a stronger password policy | R113 | — |
-| 33 | R207 | 2 | M | Agencies collect from their customers: payment links on invoices through the agency's own Razorpay or Stripe | R201, R206, R108 | — |
+| 33 | R207 | 2 | M | Agencies collect from their customers: payment links on invoices through the agency's own Razorpay or Stripe | R201, R205, R108 | — |
 | 34 | R211 | 2 | L | Arabic with right-to-left layout for the core screens | R210, R203 | — |
 | 35 | R212 | 2 | M | Data residency: choose the agency's data region at creation | R104, R103 | owner decision Q7 (which regions at launch) |
 | 36 | R213 | 2 | L | WhatsApp direct through Meta's Cloud API behind the existing messaging interface | R110, R107, R108 | — |
@@ -479,10 +505,10 @@ Secrets to rotate at go-live because they were in public `master` history or tra
 | 40 | R310 | 3 | M | WordPress hosting sized to Oracle's free allowance with a shared database container | R118 | owner decision Q9 (shared database per VM vs multisite) |
 | 41 | R303 | 3 | L | Call lifecycle events, call recipes, timeline entries and the screen pop | R302 | — |
 | 42 | R306 | 3 | L | Recordings in our storage with consent and retention; transcription and call summary through metered AI | R303 | — |
-| 43 | R304 | 3 | L | Sub-account per agency, number purchase and release, number registration, country switch (G1) | R303, R206, R111 | G1 |
-| 44 | R305 | 3 | L | Minute metering from provider records, prepaid debits with markup, fraud limits (G1) | R304 | G1 |
-| 45 | R307 | 3 | L | Softphone in the desktop app for resell countries (G1) | R303, R304 | G1 |
-| 46 | R308 | 3 | M | India call-bridge: the agent's own phone rings first, then the customer (G1) | R303, R304, R305 | G1 |
+| 43 | R304 | 3 | L | Sub-account per agency, number purchase and release, number registration, country switch (G1) | R303, R206, R111 | G1 (ADR-001 addendum) |
+| 44 | R305 | 3 | L | Call minutes metered from provider records against the plan cap and minute packs, fraud limits (G1 addendum) | R304 | G1 (ADR-001 addendum) |
+| 45 | R307 | 3 | L | Softphone in the desktop app for resell countries (G1) | R303, R304 | G1 (ADR-001 addendum) |
+| 46 | R308 | 3 | M | India call-bridge: the agent's own phone rings first, then the customer (provider per G1 addendum) | R303, R304, R305 | G1 (ADR-001 addendum) |
 
 Counts: Tier 1 23 (S 1, M 12, L 10; R100 is the owner action), Tier 2 13 (M 5, L 8), Tier 3 10 (M 5, L 5).
 
