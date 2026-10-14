@@ -81,6 +81,21 @@ describe('cron fan-out through TENANT_JOBS_QUEUE', () => {
 
   afterAll(async () => {
     await testEnv.MASTER_DB.prepare("DELETE FROM tenants WHERE id LIKE '0196a105-0000-7000-8000-0000000000a%'").run();
+    // the pool databases are shared with other test files: leave nothing behind
+    for (const pool of Object.values(POOL)) {
+      const db: D1Database = testEnv[pool];
+      for (const sql of [
+        "DELETE FROM campaign_recipients WHERE campaign_id LIKE '0196a105-%'",
+        "DELETE FROM marketing_campaigns WHERE id LIKE '0196a105-%'",
+        "DELETE FROM follow_ups WHERE id LIKE '0196a105-%'",
+        "DELETE FROM notifications WHERE user_id LIKE '0196a105-%'",
+        "DELETE FROM leads WHERE id LIKE '0196a105-%'",
+        "DELETE FROM contacts WHERE id LIKE '0196a105-%'",
+        "DELETE FROM users WHERE id LIKE '0196a105-%'",
+        "DELETE FROM cron_job_runs WHERE tenant_id LIKE '0196a105-%'",
+      ]) await db.prepare(sql).run();
+    }
+    await testEnv.MASTER_DB.prepare("DELETE FROM cron_job_runs").run();
   });
 
   it('maps each cron expression to a job set', () => {
