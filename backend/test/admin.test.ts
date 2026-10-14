@@ -641,10 +641,15 @@ describe('Super Admin Platform Routes', () => {
 
   describe('Read-only surface', () => {
     it('does not expose mutations on the admin mount', async () => {
-      for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+      for (const method of ['PUT', 'PATCH', 'DELETE']) {
         const res = await request(method, '/admin/tenants', superAdminToken);
         expect(res.status, `${method} /admin/tenants should not succeed`).toBe(404);
       }
+    });
+
+    it('only provisioning (R104) writes: POST /admin/tenants validates its body and creates nothing from an empty one', async () => {
+      const res = await request('POST', '/admin/tenants', superAdminToken);
+      expect(res.status).toBe(400);
     });
   });
 });
