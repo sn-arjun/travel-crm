@@ -1800,7 +1800,7 @@ export const callLogs = sqliteTable('call_logs', {
   ivrPath: text('ivr_path'), // JSON array of IVR digits pressed
   routedTo: text('routed_to').references(() => users.id, { onDelete: 'set null' }),
   answeredBy: text('answered_by').references(() => users.id, { onDelete: 'set null' }),
-  createdBy: text('created_by').references(() => users.id).notNull(),
+  createdBy: text('created_by').references(() => users.id), // NULL for inbound calls (no user made them)
   createdAt: text('created_at').default(timestamp),
   updatedAt: text('updated_at').default(timestamp),
 }, (table) => [
@@ -1811,6 +1811,8 @@ export const callLogs = sqliteTable('call_logs', {
   index('call_logs_status_idx').on(table.status),
   uniqueIndex('call_logs_twilio_sid_idx').on(table.twilioCallSid),
   index('call_logs_provider_call_id_idx').on(table.providerCallId),
+  uniqueIndex('call_logs_provider_call_id_uniq').on(table.providerCallId).where(sql`provider_call_id IS NOT NULL`),
+  index('call_logs_routed_to_idx').on(table.routedTo),
 ]);
 
 // ============================================================

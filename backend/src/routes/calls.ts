@@ -17,6 +17,7 @@ import { drizzle } from 'drizzle-orm/d1';
 import { createVoipProvider } from '../services/voip-provider';
 import type { VoipSettingsRow } from '../services/voip-provider';
 import { logActivity } from '../utils/activity-logger';
+import { emitFromRequest } from '../services/automation/events';
 import { tenantToday, addDaysLocal, localDateStartUtcIso, sqlOffsetModifier } from '../utils/tz';
 
 const callRoutes = new Hono<AppContext>();
@@ -330,11 +331,13 @@ callRoutes.put('/:id', zValidator('json', updateCallSchema), async (c) => {
   const id = c.req.param('id');
   const data = c.req.valid('json');
 
-  const existing = await db.prepare('SELECT id, created_by FROM call_logs WHERE id = ?').bind(id).first<{ id: string; created_by: string }>();
+  const existing = await db.prepare('SELECT id, created_by, routed_to, answered_by FROM call_logs WHERE id = ?')
+    .bind(id).first<{ id: string; created_by: string | null; routed_to: string | null; answered_by: string | null }>();
   if (!existing) return notFound(c, 'Call log');
 
-  // Only creator or admin can update
-  if (existing.created_by !== userId && role !== 'admin') {
+  // Only the person who made the call, the agent an inbound call was routed to or answered by, or an admin
+  // can update (an inbound call has no creator).
+  if (existing.created_by !== userId && existing.routed_to !== userId && existing.answered_by !== userId && role !== 'admin') {
     return error(c, 'Insufficient permissions', 403);
   }
 
@@ -391,6 +394,14 @@ callRoutes.put('/:id', zValidator('json', updateCallSchema), async (c) => {
             JSON.stringify({ old_status: lead.status, new_status: newLeadStatus, trigger: 'call_outcome', call_id: id }),
             userId,
           ).run();
+
+          // Let the automations see the change like any other status change
+          await emitFromRequest(c, {
+            type: 'lead.status_changed',
+            entityType: 'lead',
+            entityId: leadId,
+            payload: { from: lead.status, to: newLeadStatus },
+          });
         }
 
         // Auto-create follow-up if outcome is follow_up_needed
@@ -460,6 +471,15 @@ callRoutes.post('/outbound', zValidator('json', outboundCallSchema), async (c) =
     if (!contact) return error(c, 'Contact not found', 404);
   }
 
+  // A call started from a lead stays linked to it (and to the lead's contact when none was given)
+  let contactId = data.contactId || null;
+  if (data.leadId) {
+    const lead = await db.prepare('SELECT id, contact_id FROM leads WHERE id = ? AND is_deleted = 0')
+      .bind(data.leadId).first<{ id: string; contact_id: string }>();
+    if (!lead) return error(c, 'Lead not found', 404);
+    contactId = contactId ?? lead.contact_id;
+  }
+
   const shouldRecord = settings.recordingPolicy === 'all' || settings.recordingPolicy === 'outbound';
   const callerId = settings.defaultCallerId;
 
@@ -471,7 +491,7 @@ callRoutes.post('/outbound', zValidator('json', outboundCallSchema), async (c) =
     callLogId,
     callerId,
     data.toNumber,
-    data.contactId || null,
+    contactId,
     data.leadId || null,
     userId,
   ).run();

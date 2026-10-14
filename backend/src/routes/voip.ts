@@ -15,6 +15,7 @@ import type { AppContext } from '../types';
 import { generateId } from '../utils/uuid';
 import { success, error } from '../utils/response';
 import { rbac } from '../middleware/rbac';
+import { findContactByPhone, findOpenLeadForContact } from '../services/call-routing';
 import { createVoipProvider } from '../services/voip-provider';
 import type { VoipSettingsRow, VoipProviderName } from '../services/voip-provider';
 
@@ -273,30 +274,8 @@ voipRoutes.get('/caller-info', async (c) => {
 
   if (!phone) return error(c, 'Phone number required', 400);
 
-  const phoneSuffix = phone.replace(/[\s\-\(\)\+]/g, '').slice(-10);
-
-  // Look up contact
-  const contact = await db.prepare(`
-    SELECT id, name, company, type, phone, email, assigned_to
-    FROM contacts
-    WHERE is_deleted = 0
-      AND (phone LIKE ? OR mobile LIKE ? OR work_phone LIKE ?)
-    ORDER BY updated_at DESC
-    LIMIT 1
-  `).bind(`%${phoneSuffix}`, `%${phoneSuffix}`, `%${phoneSuffix}`).first<Record<string, any>>();
-
-  // Look up active lead if contact found
-  let lead: Record<string, any> | null = null;
-  if (contact) {
-    lead = await db.prepare(`
-      SELECT id, title, status, value
-      FROM leads
-      WHERE contact_id = ? AND is_deleted = 0
-        AND status NOT IN ('won', 'lost')
-      ORDER BY updated_at DESC
-      LIMIT 1
-    `).bind(contact.id).first<Record<string, any>>();
-  }
+  const contact = await findContactByPhone(db, phone);
+  const lead = contact ? await findOpenLeadForContact(db, contact.id) : null;
 
   // Get last interaction
   let lastInteraction: string | null = null;
@@ -322,7 +301,7 @@ voipRoutes.get('/caller-info', async (c) => {
       id: lead.id,
       title: lead.title,
       status: lead.status,
-      value: lead.value,
+      value: lead.estimated_value,
     } : null,
   });
 });

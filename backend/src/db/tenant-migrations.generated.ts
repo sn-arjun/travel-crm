@@ -910,5 +910,33 @@ export const TENANT_MIGRATIONS: BundledMigration[] = [
       "-- R105: one row per (agency, job, period) that already ran. The queue consumer claims a row with\n-- INSERT OR IGNORE before running a job, so a retried or duplicated message cannot repeat the work.\n-- tenant_id is part of the key because single-tenant setups keep every agency in one database.\nCREATE TABLE IF NOT EXISTS cron_job_runs (\n  tenant_id TEXT NOT NULL,\n  job TEXT NOT NULL,\n  period_key TEXT NOT NULL,\n  claimed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\n  PRIMARY KEY (tenant_id, job, period_key)\n)",
       "--> statement-breakpoint\nCREATE INDEX IF NOT EXISTS cron_job_runs_claimed_idx ON cron_job_runs (claimed_at)"
     ]
+  },
+  {
+    "name": "0046_call_logs_nullable_creator.sql",
+    "queries": [
+      "-- R119: an inbound call is not created by any user, so call_logs.created_by must be nullable\n-- (the inbound webhook used to insert the fake id 'system', which the foreign key to users rejects).\n-- SQLite cannot drop NOT NULL in place, so the table is rebuilt with the same columns and ids.\n-- Dropping call_logs would cascade-delete/null its children (call_transcripts, ai_call_extractions,\n-- ai_usage_log), so those rows are copied aside first and put back afterwards.\n-- Also adds the unique index on provider_call_id (one row per provider call; NULLs allowed).\nPRAGMA defer_foreign_keys = true",
+      "CREATE TABLE r119_call_transcripts_bak AS SELECT * FROM call_transcripts",
+      "CREATE TABLE r119_ai_call_extractions_bak AS SELECT * FROM ai_call_extractions",
+      "CREATE TABLE r119_ai_usage_log_bak AS SELECT * FROM ai_usage_log",
+      "CREATE TABLE call_logs_new (\n  id TEXT PRIMARY KEY,\n  contact_id TEXT REFERENCES contacts(id) ON DELETE SET NULL,\n  lead_id TEXT REFERENCES leads(id) ON DELETE SET NULL,\n  direction TEXT NOT NULL,\n  from_number TEXT NOT NULL,\n  to_number TEXT NOT NULL,\n  duration_seconds INTEGER DEFAULT 0,\n  status TEXT NOT NULL DEFAULT 'initiated',\n  outcome TEXT,\n  twilio_call_sid TEXT,\n  recording_url TEXT,\n  recording_r2_key TEXT,\n  recording_duration INTEGER,\n  notes TEXT,\n  ivr_path TEXT,\n  routed_to TEXT REFERENCES users(id) ON DELETE SET NULL,\n  answered_by TEXT REFERENCES users(id) ON DELETE SET NULL,\n  created_by TEXT REFERENCES users(id),\n  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\n  updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\n  provider_call_id TEXT\n)",
+      "INSERT INTO call_logs_new (id, contact_id, lead_id, direction, from_number, to_number, duration_seconds, status, outcome,\n  twilio_call_sid, recording_url, recording_r2_key, recording_duration, notes, ivr_path, routed_to, answered_by,\n  created_by, created_at, updated_at, provider_call_id)\nSELECT id, contact_id, lead_id, direction, from_number, to_number, duration_seconds, status, outcome,\n  twilio_call_sid, recording_url, recording_r2_key, recording_duration, notes, ivr_path, routed_to, answered_by,\n  created_by, created_at, updated_at, provider_call_id\nFROM call_logs",
+      "DROP TABLE call_logs",
+      "ALTER TABLE call_logs_new RENAME TO call_logs",
+      "CREATE INDEX IF NOT EXISTS call_logs_contact_id_idx ON call_logs(contact_id)",
+      "CREATE INDEX IF NOT EXISTS call_logs_lead_id_idx ON call_logs(lead_id)",
+      "CREATE INDEX IF NOT EXISTS call_logs_created_by_idx ON call_logs(created_by)",
+      "CREATE INDEX IF NOT EXISTS call_logs_created_at_idx ON call_logs(created_at)",
+      "CREATE INDEX IF NOT EXISTS call_logs_status_idx ON call_logs(status)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS call_logs_twilio_sid_idx ON call_logs(twilio_call_sid)",
+      "CREATE INDEX IF NOT EXISTS call_logs_provider_call_id_idx ON call_logs(provider_call_id)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS call_logs_provider_call_id_uniq ON call_logs(provider_call_id) WHERE provider_call_id IS NOT NULL",
+      "CREATE INDEX IF NOT EXISTS call_logs_routed_to_idx ON call_logs(routed_to)",
+      "INSERT OR REPLACE INTO call_transcripts SELECT * FROM r119_call_transcripts_bak",
+      "INSERT OR REPLACE INTO ai_call_extractions SELECT * FROM r119_ai_call_extractions_bak",
+      "INSERT OR REPLACE INTO ai_usage_log SELECT * FROM r119_ai_usage_log_bak",
+      "DROP TABLE r119_call_transcripts_bak",
+      "DROP TABLE r119_ai_call_extractions_bak",
+      "DROP TABLE r119_ai_usage_log_bak"
+    ]
   }
 ];

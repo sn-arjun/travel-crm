@@ -9,7 +9,7 @@ import type {
   VoipProvider, VoipCallOptions, VoipCallResult, VoipAvailableNumber,
   VoipPurchasedNumber, VoipClientToken, IvrOption, VoipSettingsRow,
 } from './voip-provider';
-import { VoipProviderError, escapeXml } from './voip-provider';
+import { VoipProviderError, escapeXml } from './voip-base';
 
 // ── Legacy types (re-exported for backward compat) ──────────
 

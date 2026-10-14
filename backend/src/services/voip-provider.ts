@@ -6,6 +6,12 @@
  */
 
 import type { Env } from '../types';
+import { TwilioVoipProvider } from './twilio-voice';
+import { PlivoVoipProvider } from './plivo-voice';
+import { TwilioMessagingProvider } from './twilio-messaging';
+import { PlivoMessagingProvider } from './plivo-messaging';
+
+export { VoipProviderError, escapeXml } from './voip-base';
 
 // ── Shared Types ────────────────────────────────────────────
 
@@ -151,17 +157,6 @@ export interface MessagingProvider {
 
 // ── Provider Error ──────────────────────────────────────────
 
-export class VoipProviderError extends Error {
-  constructor(
-    public readonly provider: VoipProviderName,
-    public readonly code: number | string,
-    message: string,
-  ) {
-    super(`[${provider}] ${message}`);
-    this.name = 'VoipProviderError';
-  }
-}
-
 // ── Factory ─────────────────────────────────────────────────
 
 /**
@@ -187,13 +182,11 @@ export function createVoipProvider(env: Env, settings: VoipSettingsRow): VoipPro
   const creds = resolveCredentials(settings);
 
   if (provider === 'plivo') {
-    // Lazy import to avoid loading Plivo code when using Twilio
-    const { PlivoVoipProvider } = require('./plivo-voice');
-    return new PlivoVoipProvider(creds, settings);
+    // Plivo is dropped (owner decision 2026-10-14); kept compiling only.
+        return new PlivoVoipProvider(creds, settings);
   }
 
   // Default: Twilio (with env fallback)
-  const { TwilioVoipProvider } = require('./twilio-voice');
   const twilioEnv = {
     TWILIO_ACCOUNT_SID: env.TWILIO_ACCOUNT_SID,
     TWILIO_AUTH_TOKEN: env.TWILIO_AUTH_TOKEN,
@@ -206,21 +199,9 @@ export function createVoipProvider(env: Env, settings: VoipSettingsRow): VoipPro
  */
 export function createMessagingProvider(env: Env, provider: VoipProviderName = 'twilio'): MessagingProvider {
   if (provider === 'plivo') {
-    const { PlivoMessagingProvider } = require('./plivo-messaging');
     return new PlivoMessagingProvider(env);
   }
 
-  const { TwilioMessagingProvider } = require('./twilio-messaging');
   return new TwilioMessagingProvider(env);
 }
 
-// ── Helper: Escape XML ──────────────────────────────────────
-
-export function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}

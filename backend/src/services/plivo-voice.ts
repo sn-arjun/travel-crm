@@ -16,7 +16,7 @@ import type {
   VoipPurchasedNumber, VoipClientToken, IvrOption, VoipSettingsRow,
   VoipProviderCredentials,
 } from './voip-provider';
-import { VoipProviderError, escapeXml } from './voip-provider';
+import { VoipProviderError, escapeXml } from './voip-base';
 
 export class PlivoVoipProvider implements VoipProvider {
   readonly providerName = 'plivo' as const;

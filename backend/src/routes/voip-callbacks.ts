@@ -357,14 +357,28 @@ voipCallbackRoutes.post('/twiml/inbound', async (c) => {
 
   const provider = createVoipProvider(c.env as any, settings);
 
-  // Create inbound call log
-  const callLogId = generateId();
-  await db.prepare(`
-    INSERT INTO call_logs (id, direction, from_number, to_number, status, twilio_call_sid, provider_call_id, created_by)
-    VALUES (?, 'inbound', ?, ?, 'ringing', ?, ?, 'system')
-  `).bind(callLogId, from, to, callSid, callSid).run();
+  // Create the inbound call log. Nobody created it, so created_by stays NULL. A provider that
+  // repeats the webhook for the same call gets the row it already has.
+  const existingLog = callSid
+    ? await db.prepare('SELECT id FROM call_logs WHERE provider_call_id = ?').bind(callSid).first<{ id: string }>()
+    : null;
+  const callLogId = existingLog?.id ?? generateId();
+  if (!existingLog) {
+    await db.prepare(`
+      INSERT INTO call_logs (id, direction, from_number, to_number, status, twilio_call_sid, provider_call_id, created_by)
+      VALUES (?, 'inbound', ?, ?, 'ringing', ?, ?, NULL)
+    `).bind(callLogId, from, to, callSid || null, callSid || null).run();
+  }
 
   const baseUrl = c.req.url.replace(/\/api\/v1\/voip\/twiml\/inbound.*$/, '').replace(/\/api\/voip\/twiml\/inbound.*$/, '');
+
+  // Who is calling: link the call to the contact and their open lead before anything else, so the
+  // call is attached to them even when it ends up at the IVR or voicemail.
+  const routing = await resolveInboundRouting(db, from, settings);
+  if (routing.contactId || routing.leadId) {
+    await db.prepare('UPDATE call_logs SET contact_id = COALESCE(?, contact_id), lead_id = COALESCE(?, lead_id) WHERE id = ?')
+      .bind(routing.contactId ?? null, routing.leadId ?? null, callLogId).run();
+  }
 
   // 1. Check business hours
   const businessHours = safeJsonParse(settings.businessHours);
@@ -387,21 +401,9 @@ voipCallbackRoutes.post('/twiml/inbound', async (c) => {
     ), 200, { 'Content-Type': 'text/xml' });
   }
 
-  // 3. Smart routing
-  const routing = await resolveInboundRouting(db, from, settings);
-
-  // Update call log with routing info
-  if (routing.contactId || routing.leadId || routing.targetUserId) {
-    const routeUpdates: string[] = [];
-    const routeValues: (string | null)[] = [];
-    if (routing.contactId) { routeUpdates.push('contact_id = ?'); routeValues.push(routing.contactId); }
-    if (routing.leadId) { routeUpdates.push('lead_id = ?'); routeValues.push(routing.leadId); }
-    if (routing.targetUserId) { routeUpdates.push('routed_to = ?'); routeValues.push(routing.targetUserId); }
-    if (routeUpdates.length > 0) {
-      routeValues.push(callLogId);
-      await db.prepare(`UPDATE call_logs SET ${routeUpdates.join(', ')} WHERE id = ?`)
-        .bind(...routeValues).run();
-    }
+  // 3. Smart routing: record the agent the call rings
+  if (routing.targetUserId) {
+    await db.prepare('UPDATE call_logs SET routed_to = ? WHERE id = ?').bind(routing.targetUserId, callLogId).run();
   }
 
   // 4. Route to agent or voicemail
