@@ -4,10 +4,25 @@ import { eq, and } from 'drizzle-orm';
 import type { Env } from '../types';
 import { resolveTenantDb } from '../services/tenant-db';
 import { getTenantTimeZone, localDateString } from '../utils/tz';
+import { rateLimit } from '../middleware/rate-limit';
 import { itineraries, itineraryDays, itineraryItems } from '../db/tenant-schema';
 
 // Minimal context — no auth, just Env bindings
 const publicRoutes = new Hono<{ Bindings: Env }>();
+
+// Shared quotation links are unauthenticated: never indexed, and limited to 60 requests per minute per IP.
+publicRoutes.use('*', async (c, next) => {
+  c.header('X-Robots-Tag', 'noindex, nofollow');
+  await next();
+});
+publicRoutes.use(
+  '*',
+  rateLimit({
+    limit: 60,
+    windowMs: 60 * 1000,
+    keyFn: (c) => `rl:public:${c.req.header('cf-connecting-ip') || 'unknown'}`,
+  }) as any
+);
 
 // GET /quotation/:token - Public view (no auth)
 publicRoutes.get('/quotation/:token', async (c) => {
@@ -19,8 +34,13 @@ publicRoutes.get('/quotation/:token', async (c) => {
     'SELECT tenant_id, itinerary_id, is_active FROM quotation_links WHERE token = ?'
   ).bind(token).first<{ tenant_id: string; itinerary_id: string; is_active: number }>();
 
-  if (!mapping || !mapping.is_active) {
-    return c.json({ error: 'Quotation not found or link has been revoked' }, 404);
+  if (!mapping) {
+    return c.json({ error: 'Quotation not found' }, 404);
+  }
+  // Revoked links stay known (so the client sees "gone", not "never existed").
+  // Expiry is the itinerary's validity date, checked below (quotation_links has no expiry column).
+  if (!mapping.is_active) {
+    return c.json({ error: 'This quotation link has been revoked' }, 410);
   }
 
   // Get tenant DB

@@ -1,5 +1,19 @@
 import type { Context, Next } from 'hono';
 import type { AppContext } from '../types';
+import { isTestMode } from '../utils/test-mode';
+
+/**
+ * Test runs (isTestMode only; never production) raise every limit so the suites, which share one
+ * IP and one KV, do not trip them. RATE_LIMIT_MULTIPLIER overrides the default of 1000; set it to '1'
+ * to exercise the real limits.
+ */
+export function limitMultiplier(env: AppContext['Bindings']): number {
+  if (!isTestMode(env)) return 1;
+  if (env.RATE_LIMIT_MULTIPLIER === undefined || env.RATE_LIMIT_MULTIPLIER === '') return 1000;
+  const n = Number(env.RATE_LIMIT_MULTIPLIER);
+  return Number.isFinite(n) && n >= 1 ? n : 1;
+}
+
 
 /**
  * Rate limiting middleware using KV for distributed counting.
@@ -11,9 +25,10 @@ export function rateLimit(options: {
   keyPrefix?: string;
   keyFn?: (c: Context<AppContext>) => string;
 }) {
-  const { limit, windowMs, keyPrefix = 'rl', keyFn } = options;
+  const { limit: baseLimit, windowMs, keyPrefix = 'rl', keyFn } = options;
 
   return async (c: Context<AppContext>, next: Next) => {
+    const limit = Math.ceil(baseLimit * limitMultiplier(c.env));
     const key = keyFn
       ? keyFn(c)
       : `${keyPrefix}:${c.get('userId' as never) || c.req.header('cf-connecting-ip') || 'unknown'}`;
@@ -53,13 +68,13 @@ export const authRateLimit = rateLimit({
 });
 
 export const apiRateLimit = rateLimit({
-  limit: 100,
-  windowMs: 60 * 1000, // 100 per minute per user
+  limit: 600,
+  windowMs: 60 * 1000, // 600 per minute per user (keyed by userId; falls back to IP)
   keyPrefix: 'rl:api',
 });
 
 export const uploadRateLimit = rateLimit({
   limit: 20,
-  windowMs: 60 * 1000, // 20 per minute
+  windowMs: 60 * 1000, // 20 uploads per minute per user
   keyPrefix: 'rl:upload',
 });

@@ -1,4 +1,5 @@
 import type { Env } from '../../types';
+import { isTestMode } from '../../utils/test-mode';
 import { sendEmail } from '../sendgrid';
 import { appUrl, emailFrom } from '../../utils/app-urls';
 import { generateId } from '../../utils/uuid';
@@ -41,7 +42,7 @@ export interface TransactionalResult {
 export async function sendTransactional(env: Env, params: TransactionalParams): Promise<TransactionalResult> {
   try {
     const rendered = renderTemplate(params.template, { ...(params.data ?? {}), appUrl: appUrl(env) });
-    const useOutbox = !env.SENDGRID_API_KEY || env.TEST_MODE === 'true';
+    const useOutbox = !env.SENDGRID_API_KEY || isTestMode(env);
 
     if (!useOutbox) {
       const from = emailFrom(env);

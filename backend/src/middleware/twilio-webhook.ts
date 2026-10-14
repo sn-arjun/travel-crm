@@ -10,10 +10,11 @@
 
 import type { MiddlewareHandler } from 'hono';
 import type { AppContext } from '../types';
+import { isTestMode } from '../utils/test-mode';
 
 export const twilioWebhookMiddleware: MiddlewareHandler<AppContext> = async (c, next) => {
   // Allow in test mode
-  if (c.env.TEST_MODE === 'true') return next();
+  if (isTestMode(c.env)) return next();
 
   const twilioSig = c.req.header('X-Twilio-Signature');
   const plivoSig = c.req.header('X-Plivo-Signature-V3');

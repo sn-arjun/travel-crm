@@ -3,6 +3,7 @@ import { drizzle } from 'drizzle-orm/d1';
 import { sql } from 'drizzle-orm';
 import { users } from '../db/tenant-schema';
 import type { Env } from '../types';
+import { isTestMode } from '../utils/test-mode';
 import bcrypt from 'bcryptjs';
 import { resolveTenantDb } from '../services/tenant-db';
 import { listOutbox, clearOutbox } from '../services/mail/transactional';
@@ -16,7 +17,7 @@ const testApp = new Hono<{ Bindings: Env }>();
  */
 testApp.post('/reset', async (c) => {
     // Add an extra layer of security: Ensure the custom TEST_MODE binding is true
-    if (c.env.TEST_MODE !== 'true') {
+    if (!isTestMode(c.env)) {
         return c.json({ error: 'Forbidden: Test mode is not active.' }, 403);
     }
 
@@ -103,7 +104,7 @@ testApp.post('/reset', async (c) => {
  * Used by tests and demos; no provider account or signature is involved.
  */
 testApp.post('/inbound', async (c) => {
-    if (c.env.TEST_MODE !== 'true') {
+    if (!isTestMode(c.env)) {
         return c.json({ error: 'Forbidden: Test mode is not active.' }, 403);
     }
 
@@ -136,14 +137,14 @@ testApp.post('/inbound', async (c) => {
 
 /** Local outbox: system emails captured instead of sent (TEST_MODE only). */
 testApp.get('/outbox', async (c) => {
-    if (c.env.TEST_MODE !== 'true') return c.json({ error: 'Not found' }, 404);
+    if (!isTestMode(c.env)) return c.json({ error: 'Not found' }, 404);
     const to = c.req.query('to') || undefined;
     const emails = await listOutbox(c.env, to);
     return c.json({ success: true, data: emails });
 });
 
 testApp.delete('/outbox', async (c) => {
-    if (c.env.TEST_MODE !== 'true') return c.json({ error: 'Not found' }, 404);
+    if (!isTestMode(c.env)) return c.json({ error: 'Not found' }, 404);
     const cleared = await clearOutbox(c.env);
     return c.json({ success: true, data: { cleared } });
 });

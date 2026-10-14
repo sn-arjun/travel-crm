@@ -12,6 +12,7 @@ import { generateId } from '../utils/uuid';
 import { parseUserAgent } from '../utils/user-agent-parser';
 import { logActivity } from '../utils/activity-logger';
 import { rateLimit } from '../middleware/rate-limiter';
+import { limitMultiplier } from '../middleware/rate-limit';
 import { sendVerifyOtp, checkVerifyOtp } from '../services/twilio';
 import { sendEmail } from '../services/email';
 import { accountLockedEmailHtml } from '../templates/reset-email';
@@ -118,19 +119,25 @@ auth.post(
     const { email, password, tenantId } = c.req.valid('json');
     const ip = c.get('clientIp');
 
-    // Rate limit: 1000 attempts per 15 minutes per IP+email (relaxed for local dev/testing)
-    const rl = await rateLimit(c.env.CACHE, `rate:login:${ip}:${email}`, 1000, 900);
+    // Rate limits: 10 attempts per 15 minutes per IP+email, and 50 per hour per IP.
+    const mult = limitMultiplier(c.env);
+    const rl = await rateLimit(c.env.CACHE, `rate:login:${ip}:${email.toLowerCase()}`, 10 * mult, 900);
     c.header('X-RateLimit-Remaining', String(rl.remaining));
     if (!rl.allowed) {
       c.header('X-RateLimit-Reset', String(Math.ceil(Date.now() / 1000) + (rl.retryAfterSecs ?? 0)));
       return error(c, `Too many login attempts. Retry in ${rl.retryAfterSecs}s`, 429);
     }
+    const rlIp = await rateLimit(c.env.CACHE, `rate:login-ip:${ip}`, 50 * mult, 3600);
+    if (!rlIp.allowed) {
+      c.header('X-RateLimit-Reset', String(Math.ceil(Date.now() / 1000) + (rlIp.retryAfterSecs ?? 0)));
+      return error(c, `Too many login attempts. Retry in ${rlIp.retryAfterSecs}s`, 429);
+    }
 
-    // Check brute force lockout
+    // Brute force lockout: 10 consecutive failures lock the account for 15 minutes
     const lockKey = `failed_login:${tenantId}:${email.toLowerCase()}`;
     const lockEntry = await c.env.CACHE.get(lockKey, 'json') as { count: number; lastAt?: number } | null;
-    if (lockEntry && lockEntry.count >= 50) {
-      return error(c, 'Account temporarily locked due to too many failed attempts. Try again in 30 minutes.', 423);
+    if (lockEntry && lockEntry.count >= 10 * mult) {
+      return error(c, 'Account temporarily locked due to too many failed attempts. Try again in 15 minutes.', 423);
     }
 
     // Resolve tenant DB
@@ -992,7 +999,7 @@ async function recordFailedLogin(
   await env.CACHE.put(
     lockKey,
     JSON.stringify({ count: newCount, lastAt: Date.now() }),
-    { expirationTtl: 1800 } // 30 minutes
+    { expirationTtl: 900 } // 15 minutes
   );
 
   // Record login history if user exists

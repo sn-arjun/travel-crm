@@ -6,6 +6,8 @@ import { prettyJSON } from 'hono/pretty-json';
 import { secureHeaders } from 'hono/secure-headers';
 import type { AppContext, Env } from './types';
 import { error } from './utils/response';
+import { resolveCorsOrigin } from './utils/cors';
+import { apiRateLimit } from './middleware/rate-limit';
 import { handleQueue, type QueueMessage } from './queues/index';
 import { RealtimeRoom } from './durable-objects/realtime';
 import { authMiddleware } from './middleware/auth';
@@ -124,7 +126,7 @@ registerMarketingReports();
 // Production guards: a deployment must never run with test shortcuts or a shared database by accident.
 app.use('*', async (c, next) => {
   const isProduction = c.env.ENVIRONMENT === 'production';
-  if (isProduction && c.env.TEST_MODE === 'true') {
+  if (isProduction && c.env.TEST_MODE === 'true') { // raw check on purpose: refuse to serve at all
     return c.json({ success: false, error: { code: 'MISCONFIGURED', message: 'Service unavailable: test mode is enabled in production' } }, 503);
   }
   if (isProduction && c.env.TENANCY_MODE === 'single' && c.env.ALLOW_SINGLE_TENANT_PRODUCTION !== 'true') {
@@ -140,23 +142,7 @@ app.use('*', secureHeaders());
 app.use(
   '*',
   cors({
-    origin: (origin, c) => {
-      if (!origin) return origin;
-      const fixed = [
-        'http://localhost:3000',
-        'http://localhost:3100',
-        'http://localhost:8080',
-      ];
-      if (fixed.includes(origin)) return origin;
-      if (/^https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*\.pages\.dev$/i.test(origin)) return origin;
-      // Parallel dev / e2e stacks run the web app on arbitrary localhost ports
-      // (3100, 3110, 3120, ...). Only allowed outside production.
-      const bindings = (c.env ?? {}) as { TEST_MODE?: string; ENVIRONMENT?: string };
-      const devLike = bindings.TEST_MODE === 'true'
-        || ['development', 'dev', 'local', 'test'].includes(bindings.ENVIRONMENT ?? '');
-      if (devLike && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) return origin;
-      return null;
-    },
+    origin: (origin, c) => resolveCorsOrigin(origin, c.env as any),
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization', 'X-Refresh-Token', 'X-Tenant-Id'],
     exposeHeaders: ['Content-Length', 'X-Request-Id', 'X-RateLimit-Remaining', 'X-RateLimit-Reset'],
@@ -212,6 +198,9 @@ app.use('/api/v1/*', authMiddleware);
 app.use('/api/v1/*', tenantMiddleware);
 app.use('/api/*', authMiddleware);
 app.use('/api/*', tenantMiddleware);
+
+// Per-user API limit (600/min) after auth; /api/* also covers /api/v1/*, so it is counted once.
+app.use('/api/*', apiRateLimit);
 
 // --- Feature Gates & Usage Caps ---
 

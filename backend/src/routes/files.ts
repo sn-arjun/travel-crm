@@ -2,15 +2,49 @@ import { Hono } from 'hono';
 import type { AppContext } from '../types';
 import { generateId } from '../utils/uuid';
 import { success, error } from '../utils/response';
+import { uploadRateLimit } from '../middleware/rate-limit';
 
 const fileRoutes = new Hono<AppContext>();
+
+/** Roles that may delete any file of their agency. Anyone else may delete only what they uploaded. */
+const FILE_ADMIN_ROLES = ['admin', 'sales_manager'];
+
+/**
+ * Decode and validate a client-supplied object key. Returns the key, or a status describing why not.
+ * A key must start with the caller's `${tenantId}/`; keys of other tenants answer 403 (the batch spec
+ * asks for 403; a missing object under the own prefix is 404 only after this check).
+ */
+export function resolveTenantKey(
+  rawPath: string,
+  tenantId: string
+): { key: string } | { status: 400 | 403; message: string } {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(rawPath);
+  } catch {
+    return { status: 400, message: 'Invalid file key' };
+  }
+  if (!decoded || decoded.startsWith('/') || decoded.includes('..') || decoded.includes('\\') || decoded.includes('\0')) {
+    return { status: 400, message: 'Invalid file key' };
+  }
+  if (!tenantId || !decoded.startsWith(`${tenantId}/`)) {
+    return { status: 403, message: 'Access denied' };
+  }
+  return { key: decoded };
+}
+
+function keyFromPath(path: string): string {
+  const idx = path.indexOf('/files/');
+  return idx >= 0 ? path.slice(idx + '/files/'.length) : '';
+}
 
 // ============================================================
 // POST /upload — Upload file to R2 (TICKET-088)
 // ============================================================
 
-fileRoutes.post('/upload', async (c) => {
+fileRoutes.post('/upload', uploadRateLimit, async (c) => {
   const tenantId = c.get('tenantId');
+  const userId = c.get('userId');
   const formData = await c.req.formData();
   const file = formData.get('file') as File | null;
 
@@ -32,6 +66,7 @@ fileRoutes.post('/upload', async (c) => {
 
   await c.env.FILE_STORAGE.put(key, file.stream(), {
     httpMetadata: { contentType: file.type },
+    customMetadata: { uploaderId: userId ?? '' },
   });
 
   return success(c, {
@@ -44,14 +79,14 @@ fileRoutes.post('/upload', async (c) => {
 });
 
 // ============================================================
-// GET /:key — Serve file from R2
+// GET /:key — Serve file from R2 (own tenant's keys only)
 // ============================================================
 
 fileRoutes.get('/*', async (c) => {
-  const key = c.req.path.replace('/api/v1/files/', '');
-  const decodedKey = decodeURIComponent(key);
+  const resolved = resolveTenantKey(keyFromPath(c.req.path), c.get('tenantId'));
+  if ('status' in resolved) return error(c, resolved.message, resolved.status);
 
-  const object = await c.env.FILE_STORAGE.get(decodedKey);
+  const object = await c.env.FILE_STORAGE.get(resolved.key);
   if (!object) {
     return error(c, 'File not found', 404);
   }
@@ -59,20 +94,29 @@ fileRoutes.get('/*', async (c) => {
   return new Response(object.body as ReadableStream, {
     headers: {
       'Content-Type': object.httpMetadata?.contentType || 'application/octet-stream',
-      'Cache-Control': 'public, max-age=31536000',
+      'Cache-Control': 'private, max-age=300',
     },
   });
 });
 
 // ============================================================
-// DELETE /:key — Delete file from R2
+// DELETE /:key — Delete file from R2 (admin, sales manager, or the uploader)
 // ============================================================
 
 fileRoutes.delete('/*', async (c) => {
-  const key = c.req.path.replace('/api/v1/files/', '');
-  const decodedKey = decodeURIComponent(key);
+  const resolved = resolveTenantKey(keyFromPath(c.req.path), c.get('tenantId'));
+  if ('status' in resolved) return error(c, resolved.message, resolved.status);
 
-  await c.env.FILE_STORAGE.delete(decodedKey);
+  const head = await c.env.FILE_STORAGE.head(resolved.key);
+  if (!head) return error(c, 'File not found', 404);
+
+  const role = c.get('role') as string;
+  const isUploader = !!head.customMetadata?.uploaderId && head.customMetadata.uploaderId === c.get('userId');
+  if (!FILE_ADMIN_ROLES.includes(role) && !isUploader) {
+    return error(c, 'Insufficient permissions to delete this file', 403);
+  }
+
+  await c.env.FILE_STORAGE.delete(resolved.key);
 
   return success(c, { message: 'File deleted' });
 });

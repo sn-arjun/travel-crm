@@ -5,6 +5,7 @@ import { SignJWT, jwtVerify } from 'jose';
 import type { AppContext } from '../types';
 import { generateId } from '../utils/uuid';
 import { success, created, paginated, error, notFound, forbidden } from '../utils/response';
+import { isTestMode as isTestModeEnv } from '../utils/test-mode';
 import { driverAuth } from '../middleware/driver-auth';
 import { resolveTenantDb } from '../services/tenant-db';
 import { phoneLookupVariants, inPlaceholders } from '../utils/phone';
@@ -64,7 +65,7 @@ async function hashToken(token: string): Promise<string> {
 const TEST_OTP = '123456';
 
 function isTestMode(c: any): boolean {
-  return c.env.TEST_MODE === 'true';
+  return isTestModeEnv(c.env);
 }
 
 function twilioConfigured(c: any): boolean {

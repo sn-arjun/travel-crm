@@ -14,6 +14,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { Context } from 'hono';
 import type { AppContext, Env } from '../types';
+import { isTestMode } from '../utils/test-mode';
 import { generateId } from '../utils/uuid';
 import { twilioWebhookMiddleware } from '../middleware/twilio-webhook';
 import { resolveTenantDb } from '../services/tenant-db';
@@ -194,7 +195,7 @@ function htmlToText(html: string): string {
 
 inboundRoutes.post('/email/:secret', async (c) => {
   // Inbound Parse is unsigned; the secret in the URL is what proves the caller.
-  if (c.env.TEST_MODE !== 'true') {
+  if (!isTestMode(c.env)) {
     const expected = c.env.INBOUND_EMAIL_SECRET;
     if (!expected) return c.json({ error: 'Inbound email is not configured' }, 503);
     if (c.req.param('secret') !== expected) return c.json({ error: 'Forbidden' }, 403);

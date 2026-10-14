@@ -6,8 +6,14 @@ import * as schema from '../db/tenant-schema';
 import { success, error } from '../utils/response';
 import * as XLSX from 'xlsx';
 import { generateId } from '../utils/uuid';
+import { requirePermission } from '../middleware/rbac';
 
 const exportRoutes = new Hono<AppContext>();
+
+// Exports move whole datasets out of the system: salesperson, operations and view_only roles may not run them.
+// The full tenant export (GDPR) is an owner-level action and needs the settings export permission.
+exportRoutes.use('/full', requirePermission('settings', 'export'));
+exportRoutes.use('*', requirePermission('reports', 'export'));
 
 // GET /api/v1/exports/contacts - Export contacts
 exportRoutes.get('/contacts', async (c) => {
