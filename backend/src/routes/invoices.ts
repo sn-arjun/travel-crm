@@ -93,9 +93,12 @@ invoiceRoutes.get('/', async (c) => {
     whereClause += ' AND i.status = ?';
     params.push(status);
   }
-  if (type) {
+  if (type && type !== 'all') {
     whereClause += ' AND i.type = ?';
     params.push(type);
+  } else if (!type) {
+    // credit notes share the invoices table but have their own page: keep them out of the default list
+    whereClause += " AND i.type != 'credit_note'";
   }
   if (contactId) {
     whereClause += ' AND i.contact_id = ?';
