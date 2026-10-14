@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-14T22:10+05:30",
+  "updated": "2026-10-14T23:00+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -97,7 +97,8 @@
         "R107": "merged (5d41780, 2900f53): backend tsc 0, 63 files / 1368 tests; tenant migration 0043_chatbot_allowed_origins. Desktop install tab and chatbot.spec seeding follow-ups moved into R120.",
         "R120": "merged: backend 64/1374, desktop 65/1313, lint 0; palette search, calendar 0, credit notes, numbering reset, chatbot install tab",
         "R123": "running (slot 3)",
-        "R104": "running"
+        "R104": "merged + line-ending fix (e5e1baa): backend 67 files / 1402 tests; master 0012, tenant 0044. Cloudflare provisioner only tested with mocked fetch; binding registration may need the generated deploy (pending_deploy).",
+        "R105": "starting"
       },
       "merged": [
         "R101",
@@ -106,7 +107,8 @@
         "R106",
         "R107",
         "R120",
-        "R103"
+        "R103",
+        "R104"
       ]
     },
     "W4": {
@@ -131,7 +133,8 @@
     "Running npm ci inside backend/ wipes the root workspace install (backend is a workspace). Install only at the root. Fix scheduled in R118.",
     "Since R101 the local API refuses to start unless backend/.dev.vars has TENANCY_MODE=single (added to the main checkout on 2026-10-14; untracked). R103 makes the local stack multi-agency.",
     "Worktree teardown that worked: PowerShell [System.IO.Directory]::Delete(<junction>, $false) for each node_modules junction, then git worktree remove; main checkout packages verified intact afterwards.",
-    "Desktop standalone builds inside a worktree create symlinks into the main node_modules under desktop/.next/standalone; unlink every reparse point before removing a worktree."
+    "Desktop standalone builds inside a worktree create symlinks into the main node_modules under desktop/.next/standalone; unlink every reparse point before removing a worktree.",
+    ".gitattributes forces LF for backend/drizzle/**/*.sql: the D1 migration reader splits CRLF and LF files differently; after adding a tenant migration run node backend/scripts/bundle-tenant-migrations.mjs."
   ],
   "ownerDecisions": {
     "2026-10-14": [
@@ -145,11 +148,11 @@
     "R102: APP_URL, QUOTES_URL, EMAIL_FROM, EMAIL_FROM_NAME, PLATFORM_SUPPORT_EMAIL; SENDGRID_API_KEY secret; SendGrid domain authentication (SPF/DKIM); TEST_MODE off in production",
     "R114: Windows code-signing certificate (CSC_LINK, CSC_KEY_PASSWORD); update feed host set as TRAVELCRM_UPDATE_URL at build and runtime; macOS/Linux builds need their own runners.",
     "R106: ENVIRONMENT=production, TEST_MODE unset, CORS_ORIGINS (exact web origins), ALLOW_LOOPBACK_ORIGINS=true for the desktop app; add Cloudflare WAF rate-limit rules at the edge.",
-    "R107: API_PUBLIC_URL must equal the public URL Twilio calls; TWILIO_AUTH_TOKEN; Twilio console callback URLs (voice/status under /api/v1/voip/..., message status /api/v1/webhooks/twilio/status, WhatsApp /api/v1/webhooks/chatbot/whatsapp); register each agency WhatsApp number in tenant_channel_addresses; SendGrid Signed Event Webhook + SENDGRID_WEBHOOK_PUBLIC_KEY; per-agency widget snippet and allowed website origins; apply tenant migration 0043 to every agency DB."
+    "R107: API_PUBLIC_URL must equal the public URL Twilio calls; TWILIO_AUTH_TOKEN; Twilio console callback URLs (voice/status under /api/v1/voip/..., message status /api/v1/webhooks/twilio/status, WhatsApp /api/v1/webhooks/chatbot/whatsapp); register each agency WhatsApp number in tenant_channel_addresses; SendGrid Signed Event Webhook + SENDGRID_WEBHOOK_PUBLIC_KEY; per-agency widget snippet and allowed website origins; apply tenant migration 0043 to every agency DB.",
+    "R104: verify on a real Cloudflare account that D1 create (location hint/jurisdiction), query and delete work and whether the Workers settings PATCH adds a binding without redeploy; otherwise run the generated deploy after each new agency."
   ],
   "todo": [
     "Leftover folder .claude/worktrees/R114/packages/shared is locked by another program (editor/Dart analyzer); delete by hand later. Not tracked by git.",
-    "Refresh docs/FEATURES.md and features.json after Tier 1 (chatbot routes are now public; many statuses changed).",
-    "Line-ending sensitivity: migration bundle statement count for 0019 differed between worktree and main checkout (14 vs 6); R118 fresh-clone CI job must prove the bundle test passes on a clean checkout."
+    "Refresh docs/FEATURES.md and features.json after Tier 1 (chatbot routes are now public; many statuses changed)."
   ]
 }
