@@ -426,13 +426,20 @@ describe('CORS', () => {
     expect(evil.headers.get('access-control-allow-origin')).toBeNull();
   });
 
-  it('still allows the fixed origins and *.pages.dev', async () => {
-    for (const origin of ['http://localhost:3100', 'https://travelcrm.pages.dev']) {
+  // R106: the hard-coded localhost list and the *.pages.dev wildcard are gone; origins come from CORS_ORIGINS.
+  it('allows exactly the origins listed in CORS_ORIGINS and no *.pages.dev wildcard', async () => {
+    const bindings = { TEST_MODE: 'false', CORS_ORIGINS: 'https://app.example.com,https://travelcrm.pages.dev' };
+    for (const origin of ['https://app.example.com', 'https://travelcrm.pages.dev']) {
       const res = await call('OPTIONS', '/api/v1/driver/login', {
         headers: { Origin: origin, 'Access-Control-Request-Method': 'POST' },
-        bindings: { TEST_MODE: 'false' },
+        bindings,
       });
       expect(res.headers.get('access-control-allow-origin')).toBe(origin);
     }
+    const other = await call('OPTIONS', '/api/v1/driver/login', {
+      headers: { Origin: 'https://other.pages.dev', 'Access-Control-Request-Method': 'POST' },
+      bindings,
+    });
+    expect(other.headers.get('access-control-allow-origin')).toBeNull();
   });
 });
