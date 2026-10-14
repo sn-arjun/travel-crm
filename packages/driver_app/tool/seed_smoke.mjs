@@ -10,7 +10,9 @@
 const API_URL = (process.env.API_URL ?? 'http://localhost:8787/api/v1').replace(/\/$/, '');
 const EMAIL = process.env.ADMIN_EMAIL ?? 'admin@demo.com';
 const PASSWORD = process.env.ADMIN_PASSWORD ?? 'Admin@123';
-const TENANT_ID = process.env.TENANT_ID ?? '01960000-0000-7000-8000-000000000001';
+// The agency is found the way the app finds it: by its agency code (the agency slug).
+const AGENCY_CODE = process.env.AGENCY_CODE ?? 'demo';
+let tenantId = '';
 
 const VEHICLE = {
   registrationNumber: 'KA 05 MN 4521',
@@ -61,11 +63,17 @@ function rows(data) {
 
 const digits = (s) => String(s ?? '').replace(/\D/g, '');
 
+async function resolveAgency() {
+  const res = await call('GET', `/driver/agency/${encodeURIComponent(AGENCY_CODE)}`);
+  tenantId = must(res, `agency code ${AGENCY_CODE}`).tenantId;
+}
+
 async function login() {
+  await resolveAgency();
   const res = await call('POST', '/auth/login', {
     email: EMAIL,
     password: PASSWORD,
-    tenantId: TENANT_ID,
+    tenantId,
   });
   token = must(res, 'admin login').accessToken;
   if (!token) throw new Error('admin login returned no accessToken');
@@ -111,9 +119,9 @@ async function listedToday(tripId) {
   const saved = token;
   try {
     const phone = '+91' + DRIVER.phone;
-    await call('POST', '/driver/login', { tenantId: TENANT_ID, phone });
+    await call('POST', '/driver/login', { tenantId, phone });
     token = '';
-    const res = await call('POST', '/driver/login/verify', { tenantId: TENANT_ID, phone, otp: '123456' });
+    const res = await call('POST', '/driver/login/verify', { tenantId, phone, otp: '123456' });
     const driverToken = res.json?.data?.accessToken;
     if (!driverToken) return true; // cannot check (not TEST_MODE); assume fine
     token = driverToken;

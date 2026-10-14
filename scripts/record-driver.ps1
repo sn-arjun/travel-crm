@@ -56,7 +56,6 @@ $h = Get-Content $Handoff -Raw | ConvertFrom-Json
 $tripId = $h.tripId
 $phone = if ($h.driverPhone) { $h.driverPhone } elseif ($h.driverPhoneLocal) { $h.driverPhoneLocal } else { '9876543210' }
 $otp = if ($h.otp) { $h.otp } else { '123456' }
-$tenant = if ($h.tenantId) { $h.tenantId } else { '01960000-0000-7000-8000-000000000001' }
 Log "trip $tripId, driver $phone, API tcp:$ApiPort"
 
 # ── 2. emulator ─────────────────────────────────────────────
@@ -118,7 +117,7 @@ Adb shell rm -f /sdcard/driver.mp4 | Out-Null
 # ── 4. run the flow, react to its marks ─────────────────────
 $driverDir = Join-Path $repo 'packages/driver_app'
 $flutterCmd = "cd '$driverDir'; flutter test integration_test/demo_flow_test.dart -d $Serial " +
-  "--dart-define=API_BASE_URL=http://localhost:8787 --dart-define=TENANT_ID=$tenant --dart-define=ENVIRONMENT=dev " +
+  "--dart-define=API_BASE_URL=http://localhost:8787 --dart-define=ENVIRONMENT=dev " +
   "--dart-define=TRIP_ID=$tripId --dart-define=DRIVER_PHONE=$phone --dart-define=OTP=$otp --dart-define=PACE_PERCENT=$Pace 2>&1; exit `$LASTEXITCODE"
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = $x86ps
