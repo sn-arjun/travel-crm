@@ -2,42 +2,124 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-09T19:30+05:30",
+  "updated": "2026-10-14T12:35+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
-    "backend": { "tsc": 0, "testFiles": 57, "tests": 1296 },
-    "desktop": { "tsc": 0, "testFiles": 64, "tests": 1294, "lintErrors": 0 }
+    "backend": {
+      "tsc": 0,
+      "testFiles": 57,
+      "tests": 1296
+    },
+    "desktop": {
+      "tsc": 0,
+      "testFiles": 64,
+      "tests": 1294,
+      "lintErrors": 0
+    }
   },
   "backup": "C:/Users/Admin/Downloads/pro/CRM-backups/2026-10-09 (travelcrm-before-history-strip.bundle holds every branch before the rewrite)",
   "ownerGates": {
-    "push": "open: owner must revoke the old GitHub token; first push signs in through Git Credential Manager",
-    "G1": "open: owner signs off docs/decisions/ADR-001-voip.md and prices in docs/COST-MODEL.md (blocks VoIP batches only)",
-    "G2": "open: owner approves voice and visual style from studio/out/pilot-assistant.mp4 and studio/out/auditions (blocks mass recording only)"
+    "push": "BLOCKED: repo sn-arjun/travel-crm is PUBLIC (re-checked 2026-10-14). Owner must make it private and revoke the old token (batch R100). Nothing new pushed.",
+    "G1": "PARTLY OPEN: owner could not sign up with Plivo; ADR-001 Addendum A proposes Twilio outside India and agency-owned Exotel call bridge in India. Awaiting confirmation; blocks R304, R305, R307, R308 only.",
+    "G2": "DONE 2026-10-14: style approved, voice changed to American female (kokoro af_heart). Pilot re-rendered: studio/out/pilot-assistant.mp4 (75.3 s)."
   },
   "waves": {
-    "W0": { "status": "done", "commits": ["feat(backend): inbound gateway, automation engine and AI credits", "feat(desktop): assistant embedded in every screen, permissions hook", "feat(showcase): assistant and automations part"] },
+    "W0": {
+      "status": "done",
+      "commits": [
+        "feat(backend): inbound gateway, automation engine and AI credits",
+        "feat(desktop): assistant embedded in every screen, permissions hook",
+        "feat(showcase): assistant and automations part"
+      ]
+    },
     "W1a": {
       "status": "done-except-push",
-      "by": "orchestrator (inline)",
       "output": "docs/launch/CLEANUP-MANIFEST.md",
-      "todo": ["fresh-clone gate result", "push ui-remake, assistant-automation, launch-readiness, archive branches"]
+      "freshClone": "PASS 2026-10-14 with a single root npm ci: backend tsc 0, 57/1296; desktop tsc 0, 64/1294, lint 0"
     },
-    "W1b": { "status": "done", "outputs": ["docs/FEATURES.md", "docs/features.json"], "result": "312 features: 157 works, 124 partial, 20 stub, 11 broken", "refreshAfter": "W3" },
-    "W1c": { "status": "running", "agent": "voip-cost-research", "outputs": ["docs/decisions/ADR-001-voip.md", "docs/COST-MODEL.md", "docs/CALL-AUTOMATION.md"], "ownerGate": "G1" },
-    "W1d": { "status": "pilot-rendered", "outputs": ["studio/", "studio/out/pilot-assistant.mp4", "studio/out/auditions/"], "ownerGate": "G2", "rerender": "cd studio && node src/build.mjs pilot-assistant" },
-    "W1e": { "status": "pending", "agent": "marketing-planner", "after": "W1c" },
-    "W2": { "status": "pending", "agent": "readiness-planner", "after": ["W1c"], "inputs": ["docs/launch/findings", "docs/features.json", "plan appendix"] },
-    "W3": { "status": "pending" },
-    "W4": { "status": "pending" },
-    "W5": { "status": "pending" },
-    "W6": { "status": "pending" },
-    "W7": { "status": "pending" }
+    "W1b": {
+      "status": "done",
+      "outputs": [
+        "docs/FEATURES.md",
+        "docs/features.json"
+      ],
+      "result": "312 features: 157 works, 124 partial, 20 stub, 11 broken",
+      "refreshAfter": "W3"
+    },
+    "W1c": {
+      "status": "done",
+      "outputs": [
+        "docs/decisions/ADR-001-voip.md (with Addendum A)",
+        "docs/COST-MODEL.md",
+        "docs/CALL-AUTOMATION.md"
+      ]
+    },
+    "W1d": {
+      "status": "done",
+      "output": "studio/out/pilot-assistant.mp4"
+    },
+    "W1e": {
+      "status": "done",
+      "outputs": [
+        "docs/marketing/MARKETING-PLAN.md",
+        "LANDING-COPY.md",
+        "EMAIL-SEQUENCES.md",
+        "DEMO-SCRIPT.md"
+      ]
+    },
+    "W2": {
+      "status": "done",
+      "outputs": [
+        "docs/readiness/SCORECARD.md",
+        "docs/readiness/READINESS-PLAN.md",
+        "docs/readiness/batches/ (46 + INDEX.json)"
+      ],
+      "patchedByOrchestrator": [
+        "R109",
+        "R110",
+        "R304",
+        "R305",
+        "R307",
+        "R308"
+      ]
+    },
+    "W3": {
+      "status": "running",
+      "howItRuns": "one Sonnet agent per batch in .claude/worktrees/<id> on branch batch/<id>; node_modules are PowerShell junctions into the main checkout (remove junctions before git worktree remove); orchestrator gates and merges into launch-readiness",
+      "batches": {
+        "R100": "owner action pending",
+        "R101": "running",
+        "R114": "running"
+      },
+      "merged": []
+    },
+    "W4": {
+      "status": "pending"
+    },
+    "W5": {
+      "status": "pending"
+    },
+    "W6": {
+      "status": "pending"
+    },
+    "W7": {
+      "status": "pending"
+    }
   },
   "notes": [
     "The other session (assistant/automation) finished; owner confirmed on 2026-10-09. Its work is committed.",
     "Sub-agents hit the account session limit twice on 2026-10-09; resume with SendMessage, do not restart.",
     "gh CLI and git filter-repo are not installed; history was stripped with git filter-branch. Docker 28 is installed.",
-    "Audit correction: backend/package-lock.json was in sync."
-  ]
+    "Audit correction: backend/package-lock.json was in sync.",
+    "Running npm ci inside backend/ wipes the root workspace install (backend is a workspace). Install only at the root. Fix scheduled in R118."
+  ],
+  "ownerDecisions": {
+    "2026-10-14": [
+      "Pricing: flat yearly price per agency + paid extra users + AI credit packs (not per user).",
+      "Communication (SMS, WhatsApp, login codes, calls) stays included with per-plan caps; at the cap upgrade or buy credits; communication add-ons priced at provider cost + 20%.",
+      "VoIP: something easier than Plivo (sign-up failed).",
+      "Video voice: American female (af_heart)."
+    ]
+  }
 }
