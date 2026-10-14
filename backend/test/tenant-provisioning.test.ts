@@ -165,7 +165,11 @@ describe('tenant provisioning (POST /admin/tenants)', () => {
 
   it('the admin sees an empty database that is isolated from the other agency and from MASTER_DB', async () => {
     const loginA = await call(multiEnv, 'POST', '/auth/login', null, { email: a.adminEmail, password: a.temporaryPassword, tenantId: a.tenantId });
-    const tokenA = ((await loginA.json()) as any).data.accessToken;
+    const dataA = ((await loginA.json()) as any).data;
+    // R113: the temporary-password token cannot read data. This test is about isolation, so it uses a session
+    // of the same admin without the restriction (the forced change itself is covered by first-login.test.ts).
+    expect((await call(multiEnv, 'GET', '/contacts', dataA.accessToken)).status).toBe(403);
+    const tokenA = await signAccessToken({ userId: dataA.user.id, tenantId: a.tenantId, role: 'admin', email: a.adminEmail, db: 'TENANT_DB_POOL_1' }, testEnv.JWT_SECRET);
     const loginB = await call(multiEnv, 'POST', '/auth/login', null, { email: b.adminEmail, password: b.temporaryPassword, tenantId: b.tenantId });
     expect(loginB.status).toBe(200);
 
