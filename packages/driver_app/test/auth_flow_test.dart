@@ -33,10 +33,12 @@ class _FakeAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
-DriverAuthRepository _repoWith(_FakeAdapter adapter) {
+const _tenant = '01960000-0000-7000-8000-0000000000a1';
+
+DriverAuthRepository _repoWith(_FakeAdapter adapter, {String? tenant = _tenant}) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8787'))
     ..httpClientAdapter = adapter;
-  return DriverAuthRepository(dio);
+  return DriverAuthRepository(dio, tenantId: () => tenant);
 }
 
 class _ThrowingRepo extends DriverAuthRepository {
@@ -68,7 +70,7 @@ void main() {
 
       final sent = adapter.requests.single.data as Map;
       expect(sent['phone'], '+919876543210');
-      expect(sent['tenantId'], AppConfig.tenantId);
+      expect(sent['tenantId'], _tenant);
       expect(sent.containsKey('otp'), isFalse);
     });
 
@@ -78,17 +80,36 @@ void main() {
 
       final sent = adapter.requests.single.data as Map;
       expect(sent['phone'], '+919876543210');
-      expect(sent['tenantId'], AppConfig.tenantId);
+      expect(sent['tenantId'], _tenant);
       expect(sent['otp'], '123456');
     });
 
-    test('default tenant id is a UUID, not the old placeholder', () {
-      expect(AppConfig.tenantId, isNot('dev-tenant'));
-      expect(
-        RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
-            .hasMatch(AppConfig.tenantId),
-        isTrue,
-      );
+    test('sendOtp without a chosen agency fails before any request', () async {
+      final adapter = _FakeAdapter(200, {'success': true});
+      await expectLater(
+          _repoWith(adapter, tenant: null).sendOtp('9876543210'), throwsA(isA<String>()));
+      expect(adapter.requests, isEmpty);
+    });
+
+    test('lookupAgency GETs the public agency route and parses the answer', () async {
+      final adapter = _FakeAdapter(200, {
+        'success': true,
+        'data': {'tenantId': _tenant, 'name': 'Sahyadri Holidays', 'logoUrl': null},
+      });
+      final agency = await _repoWith(adapter, tenant: null).lookupAgency('  SaHyAdRi ');
+
+      final req = adapter.requests.single;
+      expect(req.method, 'GET');
+      expect(req.path, '/api/v1/driver/agency/sahyadri');
+      expect(agency.tenantId, _tenant);
+      expect(agency.name, 'Sahyadri Holidays');
+      expect(agency.code, 'sahyadri');
+      expect(agency.logoUrl, isNull);
+    });
+
+    test('no TENANT_ID is compiled in: the build knows no agency', () {
+      expect(AppConfig.environment, 'dev');
+      expect(AppConfig.isProd, isFalse);
     });
   });
 

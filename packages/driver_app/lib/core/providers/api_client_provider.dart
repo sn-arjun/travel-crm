@@ -9,15 +9,17 @@ final dioProvider = Provider<Dio>((ref) {
     baseUrl: AppConfig.apiBaseUrl,
     connectTimeout: const Duration(seconds: 15),
     receiveTimeout: const Duration(seconds: 15),
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Tenant-Id': AppConfig.tenantId,
-    },
+    headers: {'Content-Type': 'application/json'},
   ));
 
   // Auth interceptor
   dio.interceptors.add(InterceptorsWrapper(
     onRequest: (options, handler) {
+      // The agency is chosen at run time (agency-code screen), so the header is set per request.
+      final tenantId = HiveStorage.tenantId;
+      if (tenantId != null && tenantId.isNotEmpty) {
+        options.headers['X-Tenant-Id'] = tenantId;
+      }
       final token = HiveStorage.accessToken;
       if (token != null) {
         options.headers['Authorization'] = 'Bearer $token';
@@ -57,7 +59,7 @@ Future<bool> _refreshToken(Dio dio) async {
       baseUrl: AppConfig.apiBaseUrl,
       headers: {
         'Content-Type': 'application/json',
-        'X-Tenant-Id': AppConfig.tenantId,
+        if (HiveStorage.tenantId != null) 'X-Tenant-Id': HiveStorage.tenantId!,
       },
     )).post(
       ApiEndpoints.driverRefreshToken,

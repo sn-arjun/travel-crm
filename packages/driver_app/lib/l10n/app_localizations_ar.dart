@@ -416,4 +416,51 @@ class AppLocalizationsAr extends AppLocalizations {
   String expiresOn(String date) {
     return 'Expires $date';
   }
+
+  @override
+  String get agencyTitle => 'ابحث عن وكالتك';
+
+  @override
+  String get agencySubtitle => 'أدخل رمز الوكالة الذي أعطته لك شركتك';
+
+  @override
+  String get agencyCodeHint => 'رمز الوكالة';
+
+  @override
+  String get agencyCodeRequired => 'أدخل رمز الوكالة';
+
+  @override
+  String get agencyContinue => 'متابعة';
+
+  @override
+  String get agencyConfirmPrompt => 'هل هذه وكالتك؟';
+
+  @override
+  String get agencyConfirm => 'نعم، متابعة';
+
+  @override
+  String get agencyNotYours => 'ليست وكالتك؟';
+
+  @override
+  String get agencyInvalid =>
+      'لم نتمكن من العثور على رمز الوكالة هذا. تحقق منه مع شركتك.';
+
+  @override
+  String get changeAgency => 'تغيير الوكالة';
+
+  @override
+  String get changeAgencyConfirm =>
+      'سيتم تسجيل خروجك وإزالة الوكالة من هذا الهاتف. ستحتاج إلى رمز الوكالة مرة أخرى.';
+
+  @override
+  String get agencyLabel => 'الوكالة';
+
+  @override
+  String get selectCountry => 'اختر الدولة';
+
+  @override
+  String get countrySearchHint => 'ابحث عن دولة أو رمز';
+
+  @override
+  String get noCountryFound => 'لم يتم العثور على دولة';
 }

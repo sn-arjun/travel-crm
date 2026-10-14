@@ -418,4 +418,52 @@ class AppLocalizationsHi extends AppLocalizations {
   String expiresOn(String date) {
     return 'Expires $date';
   }
+
+  @override
+  String get agencyTitle => 'अपनी एजेंसी खोजें';
+
+  @override
+  String get agencySubtitle =>
+      'अपनी कंपनी द्वारा दिया गया एजेंसी कोड दर्ज करें';
+
+  @override
+  String get agencyCodeHint => 'एजेंसी कोड';
+
+  @override
+  String get agencyCodeRequired => 'अपना एजेंसी कोड दर्ज करें';
+
+  @override
+  String get agencyContinue => 'आगे बढ़ें';
+
+  @override
+  String get agencyConfirmPrompt => 'क्या यह आपकी एजेंसी है?';
+
+  @override
+  String get agencyConfirm => 'हाँ, आगे बढ़ें';
+
+  @override
+  String get agencyNotYours => 'यह आपकी एजेंसी नहीं है?';
+
+  @override
+  String get agencyInvalid =>
+      'यह एजेंसी कोड नहीं मिला। अपनी कंपनी से जाँच लें।';
+
+  @override
+  String get changeAgency => 'एजेंसी बदलें';
+
+  @override
+  String get changeAgencyConfirm =>
+      'इससे आप साइन आउट हो जाएँगे और एजेंसी इस फ़ोन से हट जाएगी। आपको एजेंसी कोड फिर से चाहिए होगा।';
+
+  @override
+  String get agencyLabel => 'एजेंसी';
+
+  @override
+  String get selectCountry => 'देश चुनें';
+
+  @override
+  String get countrySearchHint => 'देश या कोड खोजें';
+
+  @override
+  String get noCountryFound => 'कोई देश नहीं मिला';
 }

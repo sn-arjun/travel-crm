@@ -47,8 +47,40 @@ class HiveStorage {
     await _auth.clear();
   }
 
-  // ── Settings ────────────────────────────────────────────
+  // ── Agency (survives logout; cleared only by "Change agency") ──────
   static Box get _settings => Hive.box(_settingsBox);
+
+  static String? get tenantId => _settings.get('tenantId');
+  static String? get agencyName => _settings.get('agencyName');
+  static String? get agencyCode => _settings.get('agencyCode');
+  static String? get agencyLogoUrl => _settings.get('agencyLogoUrl');
+  static bool get hasAgency => (tenantId ?? '').isNotEmpty;
+
+  static Future<void> saveAgency({
+    required String tenantId,
+    required String name,
+    required String code,
+    String? logoUrl,
+  }) async {
+    await _settings.put('tenantId', tenantId);
+    await _settings.put('agencyName', name);
+    await _settings.put('agencyCode', code);
+    await _settings.put('agencyLogoUrl', logoUrl);
+  }
+
+  /// Signs out AND forgets the agency, cached trips and queued actions, so the
+  /// next driver on this phone starts from the agency-code screen.
+  static Future<void> clearAgency() async {
+    await _auth.clear();
+    for (final k in ['tenantId', 'agencyName', 'agencyCode', 'agencyLogoUrl']) {
+      await _settings.delete(k);
+    }
+    await _tripsCache.clear();
+    await Hive.box(_profileCacheBox).clear();
+    await _offlineQueue.clear();
+  }
+
+  // ── Settings ────────────────────────────────────────────
 
   static String get preferredNavApp =>
       _settings.get('preferredNavApp', defaultValue: 'google_maps');

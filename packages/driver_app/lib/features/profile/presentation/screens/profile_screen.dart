@@ -180,13 +180,26 @@ class ProfileScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 12),
 
-            // Logout
+            // Change agency / logout
             Card(
               clipBehavior: Clip.antiAlias,
-              child: ListTile(
-                leading: Icon(Icons.logout, color: scheme.error),
-                title: Text(l10n.logout, style: TextStyle(color: scheme.error)),
-                onTap: () => _confirmLogout(context, ref, l10n),
+              child: Column(
+                children: [
+                  ListTile(
+                    key: const Key('change-agency'),
+                    leading: const Icon(Icons.business_rounded),
+                    title: Text(l10n.changeAgency),
+                    subtitle: Text(_agencyName(l10n)),
+                    onTap: () => _confirmChangeAgency(context, ref, l10n),
+                  ),
+                  const Divider(),
+                  ListTile(
+                    leading: Icon(Icons.logout, color: scheme.error),
+                    title: Text(l10n.logout,
+                        style: TextStyle(color: scheme.error)),
+                    onTap: () => _confirmLogout(context, ref, l10n),
+                  ),
+                ],
               ),
             ),
           ],
@@ -243,6 +256,41 @@ class ProfileScreen extends ConsumerWidget {
             const SizedBox(height: 16),
           ],
         ),
+      ),
+    );
+  }
+
+  String _agencyName(AppLocalizations l10n) {
+    try {
+      return HiveStorage.agencyName ?? l10n.agencyLabel;
+    } catch (_) {
+      return l10n.agencyLabel;
+    }
+  }
+
+  void _confirmChangeAgency(
+      BuildContext context, WidgetRef ref, AppLocalizations l10n) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.changeAgency),
+        content: Text(l10n.changeAgencyConfirm),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(l10n.cancel),
+          ),
+          FilledButton(
+            key: const Key('change-agency-confirm'),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await ref.read(driverAuthProvider.notifier).changeAgency();
+              if (context.mounted) context.go('/agency');
+            },
+            style: FilledButton.styleFrom(minimumSize: const Size(96, 44)),
+            child: Text(l10n.changeAgency),
+          ),
+        ],
       ),
     );
   }

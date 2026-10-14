@@ -7,11 +7,23 @@
   "sendOtp": "OTP भेजें",
   "enterOtp": "OTP दर्ज करें",
   "otpSentTo": "{phone} पर OTP भेजा गया",
-  "@otpSentTo": { "placeholders": { "phone": { "type": "String" } } },
+  "@otpSentTo": {
+    "placeholders": {
+      "phone": {
+        "type": "String"
+      }
+    }
+  },
   "verify": "सत्यापित करें",
   "resendOtp": "OTP पुनः भेजें",
   "resendIn": "{seconds} सेकंड में पुनः भेजें",
-  "@resendIn": { "placeholders": { "seconds": { "type": "int" } } },
+  "@resendIn": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
   "invalidPhone": "कृपया एक मान्य फ़ोन नंबर दर्ज करें",
   "invalidOtp": "अमान्य OTP। कृपया पुनः प्रयास करें।",
   "accountInactive": "आपका खाता निष्क्रिय है। अपनी कंपनी से संपर्क करें।",
@@ -76,7 +88,13 @@
   "customRange": "कस्टम रेंज",
   "searchTrips": "यात्राएँ खोजें...",
   "tripCount": "{count} यात्राएँ",
-  "@tripCount": { "placeholders": { "count": { "type": "int" } } },
+  "@tripCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "profile": "मेरी प्रोफ़ाइल",
   "editProfile": "प्रोफ़ाइल संपादित करें",
   "documents": "दस्तावेज़",
@@ -100,7 +118,13 @@
   "syncComplete": "सिंक पूर्ण",
   "noInternet": "इंटरनेट कनेक्शन नहीं है",
   "licenseExpiring": "लाइसेंस {days} दिनों में समाप्त हो रहा है",
-  "@licenseExpiring": { "placeholders": { "days": { "type": "int" } } },
+  "@licenseExpiring": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
   "uploadDocument": "दस्तावेज़ अपलोड करें",
   "license": "लाइसेंस",
   "idProof": "पहचान पत्र",
@@ -136,5 +160,26 @@
   "docExpired": "Expired",
   "docNoExpiry": "No expiry",
   "expiresOn": "Expires {date}",
-  "@expiresOn": { "placeholders": { "date": { "type": "String" } } }
+  "@expiresOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "agencyTitle": "अपनी एजेंसी खोजें",
+  "agencySubtitle": "अपनी कंपनी द्वारा दिया गया एजेंसी कोड दर्ज करें",
+  "agencyCodeHint": "एजेंसी कोड",
+  "agencyCodeRequired": "अपना एजेंसी कोड दर्ज करें",
+  "agencyContinue": "आगे बढ़ें",
+  "agencyConfirmPrompt": "क्या यह आपकी एजेंसी है?",
+  "agencyConfirm": "हाँ, आगे बढ़ें",
+  "agencyNotYours": "यह आपकी एजेंसी नहीं है?",
+  "agencyInvalid": "यह एजेंसी कोड नहीं मिला। अपनी कंपनी से जाँच लें।",
+  "changeAgency": "एजेंसी बदलें",
+  "changeAgencyConfirm": "इससे आप साइन आउट हो जाएँगे और एजेंसी इस फ़ोन से हट जाएगी। आपको एजेंसी कोड फिर से चाहिए होगा।",
+  "agencyLabel": "एजेंसी",
+  "selectCountry": "देश चुनें",
+  "countrySearchHint": "देश या कोड खोजें",
+  "noCountryFound": "कोई देश नहीं मिला"
 }

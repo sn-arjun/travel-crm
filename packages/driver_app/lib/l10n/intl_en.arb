@@ -7,11 +7,23 @@
   "sendOtp": "Send OTP",
   "enterOtp": "Enter OTP",
   "otpSentTo": "OTP sent to {phone}",
-  "@otpSentTo": { "placeholders": { "phone": { "type": "String" } } },
+  "@otpSentTo": {
+    "placeholders": {
+      "phone": {
+        "type": "String"
+      }
+    }
+  },
   "verify": "Verify",
   "resendOtp": "Resend OTP",
   "resendIn": "Resend in {seconds}s",
-  "@resendIn": { "placeholders": { "seconds": { "type": "int" } } },
+  "@resendIn": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
   "invalidPhone": "Please enter a valid phone number",
   "invalidOtp": "Invalid OTP. Please try again.",
   "accountInactive": "Your account is inactive. Contact your company.",
@@ -76,7 +88,13 @@
   "customRange": "Custom range",
   "searchTrips": "Search trips...",
   "tripCount": "{count} trips",
-  "@tripCount": { "placeholders": { "count": { "type": "int" } } },
+  "@tripCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "profile": "My Profile",
   "editProfile": "Edit Profile",
   "documents": "Documents",
@@ -100,7 +118,13 @@
   "syncComplete": "Sync complete",
   "noInternet": "No internet connection",
   "licenseExpiring": "License expires in {days} days",
-  "@licenseExpiring": { "placeholders": { "days": { "type": "int" } } },
+  "@licenseExpiring": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
   "uploadDocument": "Upload Document",
   "license": "License",
   "idProof": "ID Proof",
@@ -136,5 +160,26 @@
   "docExpired": "Expired",
   "docNoExpiry": "No expiry",
   "expiresOn": "Expires {date}",
-  "@expiresOn": { "placeholders": { "date": { "type": "String" } } }
+  "@expiresOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "agencyTitle": "Find your agency",
+  "agencySubtitle": "Enter the agency code your company gave you",
+  "agencyCodeHint": "Agency code",
+  "agencyCodeRequired": "Enter your agency code",
+  "agencyContinue": "Continue",
+  "agencyConfirmPrompt": "Is this your agency?",
+  "agencyConfirm": "Yes, continue",
+  "agencyNotYours": "Not your agency?",
+  "agencyInvalid": "We could not find that agency code. Check it with your company.",
+  "changeAgency": "Change agency",
+  "changeAgencyConfirm": "This signs you out and removes the agency from this phone. You will need the agency code again.",
+  "agencyLabel": "Agency",
+  "selectCountry": "Select country",
+  "countrySearchHint": "Search country or code",
+  "noCountryFound": "No country found"
 }

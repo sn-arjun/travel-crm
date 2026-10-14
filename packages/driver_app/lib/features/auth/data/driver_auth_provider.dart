@@ -58,6 +58,28 @@ class DriverAuthNotifier extends StateNotifier<DriverAuthState> {
     }
   }
 
+  /// Remembers the confirmed agency; phone and OTP calls use it from now on.
+  Future<void> selectAgency(AgencyInfo agency) async {
+    await HiveStorage.saveAgency(
+      tenantId: agency.tenantId,
+      name: agency.name,
+      code: agency.code,
+      logoUrl: agency.logoUrl,
+    );
+    state = const DriverAuthState();
+  }
+
+  /// "Change agency": signs out and forgets the agency and its cached data.
+  Future<void> changeAgency() async {
+    try {
+      await _repo.logout();
+    } catch (_) {}
+    try {
+      await HiveStorage.clearAgency();
+    } catch (_) {}
+    state = const DriverAuthState();
+  }
+
   Future<void> logout() async {
     try {
       await _repo.logout();

@@ -480,6 +480,9 @@ class ApiEndpoints {
   static String marketingSuggestionDismiss(String id) => '$_base/marketing/suggestions/$id/dismiss';
 
   // ── Driver App ──────────────────────────────────────────────
+  /// Public agency-code lookup used before sign-in (returns tenantId, name, logoUrl).
+  static String driverAgency(String code) =>
+      '$_base/driver/agency/${Uri.encodeComponent(code)}';
   static const String driverLogin = '$_base/driver/login';
   static const String driverLoginVerify = '$_base/driver/login/verify';
   static const String driverRefreshToken = '$_base/driver/refresh';

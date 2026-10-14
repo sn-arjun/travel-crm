@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../core/storage/hive_storage.dart';
 import '../core/widgets/bottom_nav_shell.dart';
+import '../features/auth/presentation/screens/agency_code_screen.dart';
 import '../features/auth/presentation/screens/phone_input_screen.dart';
 import '../features/auth/presentation/screens/otp_verification_screen.dart';
 import '../features/trips/presentation/screens/my_trips_screen.dart';
@@ -22,8 +23,14 @@ final _profileNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'profile');
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
-    initialLocation: HiveStorage.isAuthenticated ? '/trips' : '/login',
+    initialLocation: HiveStorage.isAuthenticated
+        ? '/trips'
+        : (HiveStorage.hasAgency ? '/login' : '/agency'),
     routes: [
+      GoRoute(
+        path: '/agency',
+        builder: (context, state) => const AgencyCodeScreen(),
+      ),
       GoRoute(
         path: '/login',
         builder: (context, state) => const PhoneInputScreen(),

@@ -891,6 +891,96 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Expires {date}'**
   String expiresOn(String date);
+
+  /// No description provided for @agencyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Find your agency'**
+  String get agencyTitle;
+
+  /// No description provided for @agencySubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the agency code your company gave you'**
+  String get agencySubtitle;
+
+  /// No description provided for @agencyCodeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Agency code'**
+  String get agencyCodeHint;
+
+  /// No description provided for @agencyCodeRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your agency code'**
+  String get agencyCodeRequired;
+
+  /// No description provided for @agencyContinue.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get agencyContinue;
+
+  /// No description provided for @agencyConfirmPrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Is this your agency?'**
+  String get agencyConfirmPrompt;
+
+  /// No description provided for @agencyConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Yes, continue'**
+  String get agencyConfirm;
+
+  /// No description provided for @agencyNotYours.
+  ///
+  /// In en, this message translates to:
+  /// **'Not your agency?'**
+  String get agencyNotYours;
+
+  /// No description provided for @agencyInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'We could not find that agency code. Check it with your company.'**
+  String get agencyInvalid;
+
+  /// No description provided for @changeAgency.
+  ///
+  /// In en, this message translates to:
+  /// **'Change agency'**
+  String get changeAgency;
+
+  /// No description provided for @changeAgencyConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'This signs you out and removes the agency from this phone. You will need the agency code again.'**
+  String get changeAgencyConfirm;
+
+  /// No description provided for @agencyLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Agency'**
+  String get agencyLabel;
+
+  /// No description provided for @selectCountry.
+  ///
+  /// In en, this message translates to:
+  /// **'Select country'**
+  String get selectCountry;
+
+  /// No description provided for @countrySearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search country or code'**
+  String get countrySearchHint;
+
+  /// No description provided for @noCountryFound.
+  ///
+  /// In en, this message translates to:
+  /// **'No country found'**
+  String get noCountryFound;
 }
 
 class _AppLocalizationsDelegate

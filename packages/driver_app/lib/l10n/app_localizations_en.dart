@@ -417,4 +417,51 @@ class AppLocalizationsEn extends AppLocalizations {
   String expiresOn(String date) {
     return 'Expires $date';
   }
+
+  @override
+  String get agencyTitle => 'Find your agency';
+
+  @override
+  String get agencySubtitle => 'Enter the agency code your company gave you';
+
+  @override
+  String get agencyCodeHint => 'Agency code';
+
+  @override
+  String get agencyCodeRequired => 'Enter your agency code';
+
+  @override
+  String get agencyContinue => 'Continue';
+
+  @override
+  String get agencyConfirmPrompt => 'Is this your agency?';
+
+  @override
+  String get agencyConfirm => 'Yes, continue';
+
+  @override
+  String get agencyNotYours => 'Not your agency?';
+
+  @override
+  String get agencyInvalid =>
+      'We could not find that agency code. Check it with your company.';
+
+  @override
+  String get changeAgency => 'Change agency';
+
+  @override
+  String get changeAgencyConfirm =>
+      'This signs you out and removes the agency from this phone. You will need the agency code again.';
+
+  @override
+  String get agencyLabel => 'Agency';
+
+  @override
+  String get selectCountry => 'Select country';
+
+  @override
+  String get countrySearchHint => 'Search country or code';
+
+  @override
+  String get noCountryFound => 'No country found';
 }
