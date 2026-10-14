@@ -17,6 +17,8 @@ export interface NumberingConfig {
   fyStartMonth: number;
   padding: number;
   includeFy: boolean;
+  /** true (default): the sequence restarts at 1 every financial year; false: one running sequence */
+  resetYearly: boolean;
 }
 
 const DEFAULT_PREFIXES: Record<InvoiceType, string> = {
@@ -76,7 +78,7 @@ function cleanPrefix(raw: unknown, fallback: string): string {
 
 /** Read the tenant's numbering settings (settings.numbering_config); anything missing falls back to the defaults. */
 export async function getNumberingConfig(tenantDb: D1Database): Promise<NumberingConfig> {
-  const config: NumberingConfig = { prefixes: { ...DEFAULT_PREFIXES }, fyStartMonth: 4, padding: 4, includeFy: true };
+  const config: NumberingConfig = { prefixes: { ...DEFAULT_PREFIXES }, fyStartMonth: 4, padding: 4, includeFy: true, resetYearly: true };
   try {
     const row = await tenantDb
       .prepare(`SELECT value FROM settings WHERE key = 'numbering_config'`)
@@ -91,10 +93,16 @@ export async function getNumberingConfig(tenantDb: D1Database): Promise<Numberin
     const padding = Number(raw.padding);
     if (Number.isInteger(padding) && padding >= 1 && padding <= 10) config.padding = padding;
     if (raw.include_fy === false || raw.include_fy === 'false') config.includeFy = false;
+    if (raw.reset_yearly === false || raw.reset_yearly === 'false' || raw.reset_yearly === 0) config.resetYearly = false;
   } catch {
     // missing / malformed config -> defaults
   }
   return config;
+}
+
+/** Settings key of the counter: per financial year when the sequence resets yearly, else one running counter. */
+function counterKey(type: InvoiceType, fy: string, resetYearly: boolean): string {
+  return resetYearly ? `last_${getSettingKeyForType(type)}_number_${fy}` : `last_${getSettingKeyForType(type)}_number`;
 }
 
 /**
@@ -112,7 +120,18 @@ export async function generateInvoiceNumber(
   const config = await getNumberingConfig(tenantDb);
   const fy = getCurrentFinancialYear(await getTenantTimeZone(tenantDb), new Date(), config.fyStartMonth);
   const prefix = config.prefixes[type] || getPrefix(type);
-  const settingKey = `last_${getSettingKeyForType(type)}_number_${fy}`;
+  const settingKey = counterKey(type, fy, config.resetYearly);
+
+  if (!config.resetYearly) {
+    // first number under a running sequence: carry on from the current financial year's counter, so nothing is reused
+    await tenantDb
+      .prepare(
+        `INSERT OR IGNORE INTO settings (key, value, updated_at)
+         SELECT ?1, COALESCE((SELECT value FROM settings WHERE key = ?2), '0'), datetime('now')`
+      )
+      .bind(settingKey, counterKey(type, fy, true))
+      .run();
+  }
 
   // another document type configured with the same prefix could already own a number - skip past it
   for (let attempt = 0; attempt < 100; attempt++) {
@@ -156,7 +175,7 @@ export async function resetInvoiceNumber(
 ): Promise<void> {
   const config = await getNumberingConfig(tenantDb);
   const fy = getCurrentFinancialYear(await getTenantTimeZone(tenantDb), new Date(), config.fyStartMonth);
-  const settingKey = `last_${getSettingKeyForType(type)}_number_${fy}`;
+  const settingKey = counterKey(type, fy, config.resetYearly);
 
   try {
     await tenantDb
