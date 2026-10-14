@@ -161,7 +161,10 @@ export const superAdminLoginLog = sqliteTable('super_admin_login_log', {
   userAgent: text('user_agent'),
   success: integer('success').notNull(), // 0 or 1
   createdAt: text('created_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+  email: text('email'), // R111 (0017): the email that was tried, for lockout counting
+  event: text('event').notNull().default('login'), // login, logout
 }, (table) => [
+  index('sa_login_log_email_idx').on(table.email, table.createdAt),
   index('sa_login_log_ip_idx').on(table.ipAddress),
   index('sa_login_log_admin_idx').on(table.adminId),
   index('sa_login_log_created_idx').on(table.createdAt),
@@ -386,3 +389,20 @@ export const catalogueNotes = sqliteTable('catalogue_notes', {
   key: text('key').primaryKey(),
   value: text('value').notNull(),
 });
+
+// --- Impersonation sessions (R111, migration 0017) ---
+export const impersonationSessions = sqliteTable('impersonation_sessions', {
+  id: text('id').primaryKey(), // UUIDv7, also the sid claim of the impersonation token
+  superAdminId: text('super_admin_id').notNull().references(() => superAdmins.id),
+  tenantId: text('tenant_id').notNull().references(() => tenants.id),
+  userId: text('user_id').notNull(),
+  userEmail: text('user_email'),
+  reason: text('reason').notNull(),
+  startedAt: text('started_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+  expiresAt: text('expires_at').notNull(),
+  endedAt: text('ended_at'),
+  endedBy: text('ended_by'),
+}, (table) => [
+  index('impersonation_sessions_tenant_idx').on(table.tenantId),
+  index('impersonation_sessions_admin_idx').on(table.superAdminId),
+]);

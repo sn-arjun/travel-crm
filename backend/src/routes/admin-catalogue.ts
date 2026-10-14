@@ -5,7 +5,7 @@ import { zValidator } from '../utils/validator';
 import type { AppContext, Env } from '../types';
 import { success, error, notFound } from '../utils/response';
 import { generateId } from '../utils/uuid';
-import { superAdminIdFor } from '../middleware/require-super-admin';
+import { actorFrom, logAdminAction } from '../services/admin/audit';
 import {
   ALLOWANCE_KEYS,
   bumpCatalogueVersion,
@@ -26,25 +26,7 @@ import { catalogueView } from '../services/plans/view';
 export const catalogueAdminRoutes = new Hono<AppContext>();
 
 async function audit(c: Context<AppContext>, action: string, entityType: string, entityId: string, details: Record<string, unknown>): Promise<void> {
-  const env = c.env as Env;
-  const email = c.get('jwtPayload')?.email;
-  const adminId = await superAdminIdFor(env, email);
-  await env.MASTER_DB
-    .prepare(
-      `INSERT INTO super_admin_audit_log (id, admin_id, action, entity_type, entity_id, details, ip_address, user_agent)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(
-      generateId(),
-      adminId,
-      action,
-      entityType,
-      entityId,
-      JSON.stringify({ actor: email ?? null, ...details }),
-      c.get('clientIp') ?? null,
-      c.req.header('User-Agent') ?? null,
-    )
-    .run();
+  await logAdminAction(c.env, actorFrom(c), action, entityType === 'tenant' ? entityId : null, null, null, { entityType, entityId, extra: details });
 }
 
 /** Build "col = ?" assignments from the defined keys of a patch. Column names come from the code, never the client. */
@@ -252,7 +234,7 @@ export async function grantAddon(c: Context<AppContext>): Promise<Response> {
   const id = generateId();
   const periodKey = product.kind === 'extra_user' ? null : currentPeriodKey();
   const unitsGranted = product.kind === 'extra_user' ? body.quantity : product.units * body.quantity;
-  const email = c.get('jwtPayload')?.email ?? null;
+  const email = c.get('superAdmin')?.email ?? null;
   await db
     .prepare(
       `INSERT INTO tenant_addons (id, tenant_id, product_key, quantity, units_granted, period_key, source, granted_by, reference)

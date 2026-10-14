@@ -1,7 +1,7 @@
 import { env, createExecutionContext, waitOnExecutionContext, applyD1Migrations } from 'cloudflare:test';
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import worker from '../src/index';
-import { signAccessToken } from '../src/utils/jwt';
+import { superAdminToken } from './utils/super-admin';
 import { LocalTenantProvisioner } from '../src/services/tenancy/local-provisioner';
 import { generateTemporaryPassword } from '../src/services/tenancy/seed-tenant';
 import { TENANT_MIGRATIONS } from '../src/db/tenant-migrations.generated';
@@ -95,7 +95,7 @@ describe('tenant provisioning (POST /admin/tenants)', () => {
       .prepare(`INSERT OR REPLACE INTO super_admins (id, email, name, password_hash, role, is_active) VALUES (?, ?, 'R104 Super', 'unused', 'super_admin', 1)`)
       .bind('0196a104-0000-7000-8000-0000000000ab', SUPER_EMAIL)
       .run();
-    superToken = await signAccessToken({ userId: 'r104-super', tenantId: PLATFORM_TENANT, role: 'admin', email: SUPER_EMAIL }, testEnv.JWT_SECRET);
+    superToken = await superAdminToken(testEnv, { id: '0196a104-0000-7000-8000-0000000000ab', email: SUPER_EMAIL, name: 'R104 Super' });
   });
 
   afterAll(async () => {

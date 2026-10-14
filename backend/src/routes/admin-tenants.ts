@@ -3,7 +3,8 @@ import type { Context } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '../utils/validator';
 import type { AppContext, Env } from '../types';
-import { requireSuperAdmin, superAdminIdFor } from '../middleware/require-super-admin';
+import { requireSuperAdmin } from '../middleware/require-super-admin';
+import { actorFrom, logAdminAction } from '../services/admin/audit';
 import { generateId } from '../utils/uuid';
 import { sendTransactional } from '../services/mail/transactional';
 import { appUrl } from '../utils/app-urls';
@@ -42,24 +43,7 @@ async function audit(
   entityId: string,
   details: Record<string, unknown>,
 ): Promise<void> {
-  const env = c.env as Env;
-  const email = c.get('jwtPayload')?.email;
-  const adminId = await superAdminIdFor(env, email);
-  await env.MASTER_DB
-    .prepare(
-      `INSERT INTO super_admin_audit_log (id, admin_id, action, entity_type, entity_id, details, ip_address, user_agent)
-       VALUES (?, ?, ?, 'tenant', ?, ?, ?, ?)`,
-    )
-    .bind(
-      generateId(),
-      adminId,
-      action,
-      entityId,
-      JSON.stringify({ actor: email ?? null, ...details }),
-      c.get('clientIp') ?? null,
-      c.req.header('User-Agent') ?? null,
-    )
-    .run();
+  await logAdminAction(c.env, actorFrom(c), action, entityId, null, null, { extra: details });
 }
 
 async function loadTenant(env: Env, id: string): Promise<TenantRow | null> {
@@ -145,7 +129,7 @@ app.post('/', zValidator('json', createSchema), async (c) => {
           body.ownerEmail.toLowerCase(),
           body.ownerName,
           body.country,
-          c.get('jwtPayload')?.email ?? null,
+          c.get('superAdmin')?.email ?? null,
           body.region,
         ),
       env.MASTER_DB

@@ -1,41 +1,43 @@
 import { Hono } from 'hono';
 import type { AppContext } from '../types';
 import { success, error, notFound, paginated } from '../utils/response';
-import { requireSuperAdmin, isSuperAdminEmail } from '../middleware/require-super-admin';
+import { requireSuperAdmin } from '../middleware/require-super-admin';
+import { getTenantInfo, tenantDbFor } from '../services/tenant-db';
+import tenantOpsRoutes from './admin-tenant-ops';
+import reportRoutes from './admin-reports';
 import { appUrl, emailFrom, supportEmail } from '../utils/app-urls';
 import { getCatalogue, activePriceFrom, type Catalogue, type CataloguePlan } from '../services/plans/catalogue';
 import { catalogueAdminRoutes, grantAddon } from './admin-catalogue';
 
 /**
- * Platform administration routes — read-only, cross-tenant.
+ * Platform administration routes, cross-tenant. This file holds the read-only platform views; the writes live in
+ * admin-tenant-ops.ts (lifecycle, plan, features, caps, usage, impersonation, audit log), admin-reports.ts (console
+ * dashboard, reports, subscriptions), admin-catalogue.ts (plan catalogue, add-ons) and admin-tenants.ts (provisioning).
  *
- * Every handler reads MASTER_DB (the platform registry). A tenant DB is
- * never touched here: this surface is about the platform, not one customer.
- * The whole mount sits behind `requireSuperAdmin`.
+ * Handlers read MASTER_DB (the platform registry); per-agency counts go through that agency's own database
+ * (see tenantCounts). The whole mount sits behind `requireSuperAdmin` (a super admin token, R111).
  */
 const app = new Hono<AppContext>();
 
 /**
- * GET /whoami — "am I a platform super admin?" for ANY authenticated user.
+ * GET /whoami — kept for the desktop shell, which asks it for every signed-in tenant user.
  *
- * The desktop shell calls this for every signed-in user to decide whether to
- * show the Super Admin link, so it must answer 200 for tenant users too and
- * must NOT sit behind `requireSuperAdmin`. Hono runs handlers in registration
- * order and this one answers without calling next(), so registering it above
- * the guard below keeps it out of the guarded chain. Authentication itself is
- * the global authMiddleware applied to /api/v1/*.
+ * Since R111 a tenant session is never a super admin (operators sign in with POST /admin/auth/login and a
+ * separate token), so the answer for any tenant token is false. It stays outside `requireSuperAdmin` and on
+ * tenant authentication (see authMiddleware) so the desktop keeps getting 200 instead of 401/403. Operators
+ * use GET /admin/auth/me.
  */
-app.get('/whoami', async (c) => {
-  const email = c.get('jwtPayload')?.email;
-  const env = c.env as unknown as { MASTER_DB: D1Database; SUPER_ADMIN_EMAIL?: string };
-  return success(c, { isSuperAdmin: await isSuperAdminEmail(env, email) });
-});
+app.get('/whoami', async (c) => success(c, { isSuperAdmin: false }));
 
 app.use('*', requireSuperAdmin);
 
 // Plan catalogue administration (R109) and add-on grants live in routes/admin-catalogue.ts
 app.route('/catalogue', catalogueAdminRoutes);
 app.post('/tenants/:id/addons', grantAddon);
+
+// Lifecycle, plan, features, caps, usage, impersonation, audit log (R111) and console dashboard/reports/subscriptions
+app.route('/', tenantOpsRoutes);
+app.route('/', reportRoutes);
 
 // --- Helpers ---
 
@@ -82,6 +84,41 @@ async function safeCount(db: D1Database, sql: string, ...binds: unknown[]): Prom
   } catch {
     return 0;
   }
+}
+
+interface TenantCounts {
+  contactCount: number;
+  leadCount: number;
+  invoiceCount: number;
+}
+
+const COUNTS_TTL_SECONDS = 600;
+
+/**
+ * Contacts, leads and invoices of ONE agency, counted in that agency's own database and cached in KV for 10 minutes
+ * (callers loop over at most 50 agencies). Suspended agencies are counted too; an unreachable database gives zeros.
+ */
+async function tenantCounts(env: AppContext['Bindings'], tenantId: string): Promise<TenantCounts> {
+  const cacheKey = `sa:counts:${tenantId}`;
+  const cached = (await env.CACHE.get(cacheKey, 'json').catch(() => null)) as TenantCounts | null;
+  if (cached) return cached;
+
+  let counts: TenantCounts = { contactCount: 0, leadCount: 0, invoiceCount: 0 };
+  try {
+    const info = await getTenantInfo(env, tenantId);
+    if (info) {
+      const db = tenantDbFor(env, info);
+      counts = {
+        contactCount: await safeCount(db, 'SELECT COUNT(*) AS c FROM contacts WHERE is_deleted = 0'),
+        leadCount: await safeCount(db, 'SELECT COUNT(*) AS c FROM leads WHERE is_deleted = 0'),
+        invoiceCount: await safeCount(db, 'SELECT COUNT(*) AS c FROM invoices WHERE is_deleted = 0'),
+      };
+    }
+  } catch {
+    // binding missing: zeros
+  }
+  await env.CACHE.put(cacheKey, JSON.stringify(counts), { expirationTtl: COUNTS_TTL_SECONDS }).catch(() => undefined);
+  return counts;
 }
 
 /** The last `months` calendar months as YYYY-MM, oldest first. */
@@ -869,7 +906,12 @@ app.get('/users/:id', async (c) => {
 // --- Tenants ------------------------------------------------------
 
 app.get('/tenants', async (c) => {
-  const { page, limit, offset } = readPaging(c);
+  const paging = readPaging(c);
+  // ?counts=1 adds per-agency record counts, read from each agency's own database: at most 50 agencies per request.
+  const withCounts = param(c, 'counts') === '1';
+  const page = paging.page;
+  const limit = withCounts ? Math.min(paging.limit, 50) : paging.limit;
+  const offset = (page - 1) * limit;
   const search = param(c, 'search');
   const status = param(c, 'status');
 
@@ -919,9 +961,16 @@ app.get('/tenants', async (c) => {
       .bind(...binds, limit, offset)
       .all<any>();
 
+    const countsById = new Map<string, TenantCounts>();
+    if (withCounts) {
+      await Promise.all((rows.results ?? []).map(async (r) => countsById.set(r.id, await tenantCounts(c.env, r.id))));
+    }
+
     const data = (rows.results ?? []).map((r) => ({
       id: r.id,
       name: r.company_name,
+      slug: r.subdomain,
+      ...(withCounts && { stats: countsById.get(r.id) }),
       email: r.contact_email ?? `${r.subdomain ?? 'tenant'}@example.com`,
       status: uiTenantStatus(r.status),
       createdAt: r.created_at ?? '',
@@ -982,28 +1031,13 @@ app.get('/tenants/:id', async (c) => {
       .first<any>()
       .catch(() => null);
 
-    // Per-tenant counts. In production these tables live in the tenant's own
-    // D1, so a miss here degrades to 0 rather than failing the page.
+    // Per-agency counts come from the agency's own database (the tenant tables have no tenant_id column).
     const userCount = await safeCount(
       db,
       'SELECT COUNT(*) AS c FROM tenant_users WHERE tenant_id = ?',
       id
     );
-    const contactCount = await safeCount(
-      db,
-      'SELECT COUNT(*) AS c FROM contacts WHERE tenant_id = ?',
-      id
-    );
-    const leadCount = await safeCount(
-      db,
-      'SELECT COUNT(*) AS c FROM leads WHERE tenant_id = ?',
-      id
-    );
-    const invoiceCount = await safeCount(
-      db,
-      'SELECT COUNT(*) AS c FROM invoices WHERE tenant_id = ?',
-      id
-    );
+    const { contactCount, leadCount, invoiceCount } = await tenantCounts(c.env, id);
 
     let website: string | undefined;
     try {

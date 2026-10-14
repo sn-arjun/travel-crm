@@ -1,6 +1,7 @@
 import { env, createExecutionContext, waitOnExecutionContext, applyD1Migrations } from 'cloudflare:test';
 import { describe, it, expect, beforeAll } from 'vitest';
 import worker from '../src/index';
+import { superAdminToken as makeSuperAdminToken } from './utils/super-admin';
 
 const testEnv = env as any;
 
@@ -92,29 +93,12 @@ describe('Super Admin Platform Routes', () => {
     expect(tenantLogin.status).toBe(200);
     tenantAdminToken = ((await tenantLogin.json()) as any).data.accessToken;
 
-    // Promote a second tenant user into the platform super-admin registry.
-    // The password hash is irrelevant here — the backend keys off the email
-    // present in the verified JWT, not off super_admins.password_hash.
-    await testEnv.MASTER_DB.prepare(
-      `INSERT OR REPLACE INTO super_admins (id, email, name, password_hash, role, is_active)
-       VALUES (?, ?, ?, ?, ?, 1)`,
-    )
-      .bind(
-        '01960000-0000-7000-8000-0000000000f1',
-        'sales@e2e.test',
-        'E2E Super Admin',
-        'unused',
-        'super_admin',
-      )
-      .run();
-
-    const superLogin = await publicRequest('POST', '/api/v1/auth/login', {
+    // A registered super admin with its own super admin token (R111: not a tenant login).
+    superAdminToken = await makeSuperAdminToken(testEnv, {
+      id: '01960000-0000-7000-8000-0000000000f1',
       email: 'sales@e2e.test',
-      password: 'password123',
-      tenantId: TENANT_ID,
+      name: 'E2E Super Admin',
     });
-    expect(superLogin.status).toBe(200);
-    superAdminToken = ((await superLogin.json()) as any).data.accessToken;
   });
 
   // ── Authorization ────────────────────────────────────────────────
@@ -157,7 +141,7 @@ describe('Super Admin Platform Routes', () => {
         .run();
 
       const res = await request('GET', '/admin/dashboard', superAdminToken);
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(401);
 
       await testEnv.MASTER_DB.prepare(
         `UPDATE super_admins SET is_active = 1 WHERE email = ?`,

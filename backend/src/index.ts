@@ -93,6 +93,8 @@ import publicRoutes from './routes/public';
 import hsnCodeRoutes from './routes/hsn-codes';
 import adminRoutes from './routes/admin';
 import adminTenantsRoutes from './routes/admin-tenants';
+import adminAuthRoutes from './routes/admin-auth';
+import { impersonationActivityLog } from './services/admin/impersonation';
 import { dispatchScheduled } from './cron/dispatch';
 
 const app = new Hono<AppContext>();
@@ -196,6 +198,8 @@ app.use('/api/v1/*', authMiddleware);
 app.use('/api/v1/*', tenantMiddleware);
 app.use('/api/*', authMiddleware);
 app.use('/api/*', tenantMiddleware);
+// Requests made with a support (impersonation) token are recorded in the agency's activity log (R111).
+app.use('/api/*', impersonationActivityLog);
 
 // Per-user API limit (600/min) after auth; /api/* also covers /api/v1/*, so it is counted once.
 app.use('/api/*', apiRateLimit);
@@ -290,6 +294,7 @@ const routeMounts: Array<[string, typeof authRoutes]> = [
   ['integrations', integrationRoutes],
   ['assistant', assistantRoutes],
   ['automations', automationRoutes],
+  ['admin/auth', adminAuthRoutes],
   ['admin/tenants', adminTenantsRoutes],
   ['admin', adminRoutes],
 ];

@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import worker from '../src/index';
 import { hashPassword } from '../src/utils/password';
 import { signAccessToken } from '../src/utils/jwt';
+import { superAdminToken } from './utils/super-admin';
 import { getAllowance, getCatalogue, seatLimit, bumpCatalogueVersion, currentPeriodKey } from '../src/services/plans/catalogue';
 import { commPackPrice, addonPrice } from '../src/services/plans/pricing';
 import { getCreditBalance } from '../src/services/ai-credits';
@@ -113,7 +114,7 @@ describe('plan catalogue (R109)', () => {
 
     await insertTenant(PLATFORM, 'platform', 'enterprise', 'active', 'TENANT_DB_PLATFORM');
     await master(`INSERT OR REPLACE INTO super_admins (id, email, name, password_hash, role, is_active) VALUES (?, ?, 'R109 Super', 'unused', 'super_admin', 1)`, '0196a109-0000-7000-8000-0000000000ab', SUPER_EMAIL).run();
-    superToken = await signAccessToken({ userId: 'r109-super', tenantId: PLATFORM, role: 'admin', email: SUPER_EMAIL }, testEnv.JWT_SECRET);
+    superToken = await superAdminToken(testEnv, { id: '0196a109-0000-7000-8000-0000000000ab', email: SUPER_EMAIL, name: 'R109 Super' });
 
     // A Basic agency (5 users included) already holding its 5 seats: the admin and four others.
     const hash = await hashPassword(PASSWORD);

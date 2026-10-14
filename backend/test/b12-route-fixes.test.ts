@@ -346,7 +346,7 @@ describe('B12 GET /admin/whoami', () => {
     expect(res.body.data.isSuperAdmin).toBe(false);
   });
 
-  it('answers 200 {isSuperAdmin:true} for an email in the super admin registry', async () => {
+  it('answers false even for a tenant session whose email is in the super admin registry (R111: operators use their own token)', async () => {
     const email = 'sales@e2e.test';
     await testEnv.MASTER_DB.prepare('DELETE FROM super_admins WHERE lower(email) = ?').bind(email).run();
     const salesToken = await login(email, 'password123', TENANT_ID);
@@ -358,7 +358,7 @@ describe('B12 GET /admin/whoami', () => {
     try {
       const res = await json('GET', '/admin/whoami', salesToken);
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ success: true, data: { isSuperAdmin: true } });
+      expect(res.body).toEqual({ success: true, data: { isSuperAdmin: false } });
     } finally {
       await testEnv.MASTER_DB.prepare('DELETE FROM super_admins WHERE id = ?').bind('01960000-0000-7000-8000-0000000000f9').run();
     }

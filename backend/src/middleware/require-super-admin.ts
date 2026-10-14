@@ -1,60 +1,61 @@
-import type { MiddlewareHandler } from 'hono';
+import type { Context, MiddlewareHandler } from 'hono';
 import type { AppContext } from '../types';
 import { error } from '../utils/response';
+import { verifyAccessToken } from '../utils/jwt';
+import { authenticateSuperAdminToken } from '../services/admin/session';
 
 /**
- * Super-admin registry check shared by the platform administration gate and
- * `GET /admin/whoami`.
- *
- * The signal is an email matched against the `super_admins` table in
- * MASTER_DB — the same registry the standalone super-admin app seeds and
- * authenticates against. A tenant `role` claim is deliberately NOT accepted:
- * tenant admins carry role='admin' and must never reach platform-wide data.
- *
- * `SUPER_ADMIN_EMAIL` is honoured as a bootstrap fallback so a freshly
- * provisioned environment is reachable before the registry is seeded.
+ * Super admin gate (R111). The only credential accepted is a super admin token (audience "super-admin",
+ * signed with SUPER_ADMIN_JWT_SECRET, issued by POST /admin/auth/login). A tenant access token is recognised
+ * only to answer 403 instead of 401; it never grants anything, and neither does an impersonation token
+ * (a tenant token with an `imp` claim).
  */
-export async function isSuperAdminEmail(
-  env: { MASTER_DB: D1Database; SUPER_ADMIN_EMAIL?: string },
-  email: string | undefined | null,
-): Promise<boolean> {
-  if (!email) return false;
 
-  const bootstrapEmail = env.SUPER_ADMIN_EMAIL;
-  if (bootstrapEmail && bootstrapEmail.toLowerCase() === email.toLowerCase()) {
-    return true;
-  }
-
-  const admin = await env.MASTER_DB.prepare(
-    `SELECT id FROM super_admins WHERE lower(email) = lower(?) AND is_active = 1 LIMIT 1`
-  )
-    .bind(email)
-    .first<{ id: string }>();
-
-  return !!admin;
+/** /api/v1/admin/... and /api/admin/... */
+export function isAdminPath(path: string): boolean {
+  return /^\/api(\/v1)?\/admin(\/|$)/.test(path);
 }
 
-/**
- * Super-admin gate for the platform administration routes.
- */
-export const requireSuperAdmin: MiddlewareHandler<AppContext> = async (c, next) => {
-  const email = c.get('jwtPayload')?.email;
+/** Roles in super_admins.role: super_admin may do everything, support may only read and start impersonation, viewer only reads. */
+export function roleMayWrite(role: string, method: string, path: string): boolean {
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return true;
+  if (role === 'super_admin') return true;
+  if (role === 'support' && /\/impersonat(e|ion)(\/|$)/.test(path)) return true;
+  if (/\/admin\/auth\/logout$/.test(path)) return true;
+  return false;
+}
 
-  if (!email) {
-    return error(c, 'Missing or invalid authorization header', 401);
+/** Authenticate the Authorization header as a super admin. Returns a failing Response, or null with c.var.superAdmin set. */
+export async function authenticateSuperAdmin(c: Context<AppContext>): Promise<Response | null> {
+  if (c.get('superAdmin')) return null;
+
+  const header = c.req.header('Authorization');
+  if (!header?.startsWith('Bearer ')) return error(c, 'Missing or invalid authorization header', 401);
+  const token = header.slice(7);
+
+  const admin = await authenticateSuperAdminToken(c.env, token);
+  if (admin) {
+    c.set('superAdmin', admin);
+    return null;
   }
 
-  const env = c.env as unknown as { MASTER_DB: D1Database; SUPER_ADMIN_EMAIL?: string };
-  if (!(await isSuperAdminEmail(env, email))) {
+  // A valid tenant token is an authenticated user without platform access: 403. Anything else: 401.
+  try {
+    await verifyAccessToken(token, c.env.JWT_SECRET);
     return error(c, 'Insufficient permissions', 403);
+  } catch {
+    return error(c, 'Invalid or expired token', 401);
   }
+}
 
+export const requireSuperAdmin: MiddlewareHandler<AppContext> = async (c, next) => {
+  const failure = await authenticateSuperAdmin(c);
+  if (failure) return failure;
+
+  const admin = c.get('superAdmin');
+  const path = new URL(c.req.url).pathname;
+  if (!roleMayWrite(admin.role, c.req.method, path)) {
+    return error(c, 'Your role is read-only for this action', 403);
+  }
   return next();
 };
-
-/** The super_admins row id for an email, or null (bootstrap SUPER_ADMIN_EMAIL has no row). Used for audit rows. */
-export async function superAdminIdFor(env: { MASTER_DB: D1Database }, email: string | undefined | null): Promise<string | null> {
-  if (!email) return null;
-  const row = await env.MASTER_DB.prepare(`SELECT id FROM super_admins WHERE lower(email) = lower(?) LIMIT 1`).bind(email).first<{ id: string }>();
-  return row?.id ?? null;
-}

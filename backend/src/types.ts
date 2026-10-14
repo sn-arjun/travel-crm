@@ -94,5 +94,9 @@ export interface AppContext {
     userName: string;
     jwtPayload: TokenPayload;
     clientIp: string;
+    /** Set on /admin/* requests by the super admin auth (R111). */
+    superAdmin: { id: string; email: string; name: string; role: string; tokenId: string };
+    /** Set when a tenant request carries an impersonation token (R111): the super admin behind it. */
+    impersonatedBy: { superAdminId: string; name: string; sessionId: string };
   };
 }
