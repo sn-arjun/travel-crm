@@ -1,0 +1,37 @@
+{
+  "id": "R123",
+  "tier": 1,
+  "title": "Full e2e green again; website chatbot settings reach the widget",
+  "goal": "Make the whole desktop end-to-end suite pass in one run again and make the website chat widget use the greeting and colours the agency saves.",
+  "why": "Found while merging R103 and R120 (2026-10-14): on launch-readiness the full suite ran 760 passed / 3 failed / 8 did not run; two failures are test defects that also fail without R103 (a date that equals today's date; a duplicated follow-up row), and R120 found that the Website bot tab saves to config channel 'web' while the public widget reads 'website'.",
+  "dependsOn": ["R103", "R107", "R120"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [],
+  "size": "M",
+  "files": {
+    "edit": ["desktop/e2e/vouchers.spec.ts", "desktop/e2e/follow-ups.spec.ts", "backend/src/routes/public-chatbot.ts", "backend/src/routes/chatbot.ts", "desktop/src/app/(app)/settings/chatbot/page.tsx", "desktop/src/lib/api/chatbot.ts"],
+    "create": [],
+    "mustNotTouch": ["backend/wrangler.toml", "desktop/scripts/fix-stack.mjs", "desktop/audit/fix/lint-baseline.json", "desktop/audit/fix/gate-baseline.json", "desktop/e2e/showcase/**", "studio/**", "docs/readiness/**"]
+  },
+  "steps": [
+    "vouchers.spec.ts:241 ('edit, save and the change persists'): getByText('14 Oct 2026', { exact: true }) matches two elements when the run date equals the seeded date. Scope the assertion to the field or section that shows the edited date (or seed a date that can never equal today, e.g. today + 400 days formatted the same way the page does). Fix the test, not the page, unless the page really shows the same date twice by mistake; check which element is which first.",
+    "follow-ups.spec.ts:290: a uniquely named follow-up row appeared twice in one run (strict-mode violation) and passed on re-run. Find out whether the list can render a row twice (infinite-scroll page overlap, a second fetch appending instead of replacing, or an automation creating a second follow-up with the same title). If it is an app bug, fix the list or the automation and add a unit test; if it is only test timing, make the wait deterministic. Do not just add .first().",
+    "Chatbot config channel: decide one channel name for the website widget. Make the public widget (public-chatbot.ts config/messages) read the same config the Website bot tab saves, migrating the existing value: read 'website' first and fall back to 'web', and make the tab save to 'website'. Update the existing test that expects /chatbot/config/web accordingly and say so.",
+    "Run the FULL desktop e2e suite once against a fresh single-mode stack and report the summary; then re-run only failures at most twice."
+  ],
+  "migrations": [],
+  "tests": ["backend: public widget returns the greeting saved through the staff Website bot tab (new test in backend/test/public-chatbot.test.ts)", "desktop e2e: vouchers and follow-ups specs pass three runs in a row"],
+  "acceptance": ["Full desktop e2e: 0 failed, 0 did not run (skips only for plan-gated tests).", "A greeting saved in the Website bot tab is what the public widget config returns."],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # >= 1377 passed",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # >= 1313 passed",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot <assigned> --reset-db",
+    "cd desktop && E2E_BASE_URL=<web> E2E_API_URL=<api> npx playwright test   # full suite, log to a file outside desktop/test-results",
+    "node desktop/scripts/fix-stack.mjs down --slot <assigned>"
+  ],
+  "goLiveVerify": [],
+  "notes": ["Playwright wipes desktop/test-results at start; write logs elsewhere.", "Use MSYS_NO_PATHCONV=1 for commands that take URL paths as arguments in Git Bash."]
+}

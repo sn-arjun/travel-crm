@@ -214,6 +214,18 @@
     "blockedOnOwner": null
   },
   {
+    "id": "R123",
+    "tier": 1,
+    "title": "Full e2e green again; website chatbot settings reach the widget",
+    "size": "M",
+    "dependsOn": [
+      "R103",
+      "R107",
+      "R120"
+    ],
+    "blockedOnOwner": null
+  },
+  {
     "id": "R121",
     "tier": 1,
     "title": "Three-agency isolation end-to-end test (Tier 1 exit)",

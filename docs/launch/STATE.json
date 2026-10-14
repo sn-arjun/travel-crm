@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-14T19:00+05:30",
+  "updated": "2026-10-14T21:30+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -92,16 +92,20 @@
         "R101": "merged (8a08cf5, b9762b8): backend tsc 0, 59 files / 1317 tests",
         "R114": "merged (e543b39..5d33400): desktop tsc 0, 64 files / 1297 tests, lint 0; installer built and smoke-tested in the worktree (install, login, server stops on close). Open: electron-updater not installed yet (install after R103 finishes, then rebuild and run the update-available smoke test).",
         "R102": "merged (0e62374): backend tsc 0, 60 files / 1325 tests",
-        "R103": "running: finishing its gate (full e2e on slot 3)",
+        "R103": "merged + migration bundle regenerated (0043): backend 65 files / 1377 tests; gen-wrangler self-test passed; e2e 760/3 failed/8 not run, failures shown pre-existing (also fail without R103); fixes in R123",
         "R106": "merged (a0b5c4d..a43bc23): backend tsc 0, 61 files / 1341 tests. e2e: auth-shell reset-password test failed once, passed alone (possible cold-start flake; watch in R121).",
-        "R107": "merged (5d41780, 2900f53): backend tsc 0, 63 files / 1368 tests; tenant migration 0043_chatbot_allowed_origins. Desktop install tab and chatbot.spec seeding follow-ups moved into R120."
+        "R107": "merged (5d41780, 2900f53): backend tsc 0, 63 files / 1368 tests; tenant migration 0043_chatbot_allowed_origins. Desktop install tab and chatbot.spec seeding follow-ups moved into R120.",
+        "R120": "merged: backend 64/1374, desktop 65/1313, lint 0; palette search, calendar 0, credit notes, numbering reset, chatbot install tab",
+        "R123": "new (orchestrator): e2e green + chatbot web/website config channel"
       },
       "merged": [
         "R101",
         "R102",
         "R114",
         "R106",
-        "R107"
+        "R107",
+        "R120",
+        "R103"
       ]
     },
     "W4": {
@@ -142,8 +146,9 @@
     "R107: API_PUBLIC_URL must equal the public URL Twilio calls; TWILIO_AUTH_TOKEN; Twilio console callback URLs (voice/status under /api/v1/voip/..., message status /api/v1/webhooks/twilio/status, WhatsApp /api/v1/webhooks/chatbot/whatsapp); register each agency WhatsApp number in tenant_channel_addresses; SendGrid Signed Event Webhook + SENDGRID_WEBHOOK_PUBLIC_KEY; per-agency widget snippet and allowed website origins; apply tenant migration 0043 to every agency DB."
   ],
   "todo": [
-    "After R103: npm install electron-updater@6.3.9 -w travelcrm-desktop --save-exact at the root (lockfile currently lacks it, so npm ci would fail), commit the lockfile, rebuild the installer, run the Electron smoke spec including the update test.",
     "Leftover folder .claude/worktrees/R114/packages/shared is locked by another program (editor/Dart analyzer); delete by hand later. Not tracked by git.",
-    "Refresh docs/FEATURES.md and features.json after Tier 1 (chatbot routes are now public; many statuses changed)."
+    "Refresh docs/FEATURES.md and features.json after Tier 1 (chatbot routes are now public; many statuses changed).",
+    "electron-updater installed (b6eb16e); installer rebuild + Electron smoke incl. update test running (logs in CRM-backups/2026-10-09/w4-*).",
+    "Line-ending sensitivity: migration bundle statement count for 0019 differed between worktree and main checkout (14 vs 6); R118 fresh-clone CI job must prove the bundle test passes on a clean checkout."
   ]
 }
