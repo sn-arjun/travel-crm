@@ -21,7 +21,7 @@ async function call(method: string, path: string, token: string | null, body?: u
 }
 
 /** A provider webhook: form-encoded, no login. */
-async function webhook(path: string, fields: Record<string, string>): Promise<Response> {
+async function webhook(path: string, fields: Record<string, string>, e: any = testEnv): Promise<Response> {
   const ctx = createExecutionContext();
   const res = await worker.fetch(
     new Request(`http://localhost/api/v1/voip${path}`, {
@@ -29,7 +29,7 @@ async function webhook(path: string, fields: Record<string, string>): Promise<Re
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams(fields).toString(),
     }),
-    testEnv,
+    e,
     ctx,
   );
   await waitOnExecutionContext(ctx);
@@ -155,5 +155,24 @@ describe('VoIP provider webhooks', () => {
     expect(res.status).toBe(200);
     expect((await rows('SELECT COUNT(*) AS n FROM tasks'))[0].n).toBe(before);
     expect((await webhook('/status-callback', {})).status).toBe(200);
+  });
+
+  it('in multi-tenant mode a callback for an unknown number and unknown call writes nothing to MASTER_DB and answers <Response/>', async () => {
+    const multi = { ...testEnv, TENANCY_MODE: 'multi' };
+    const calls = (await rows('SELECT COUNT(*) AS n FROM call_logs'))[0].n;
+    const tasks = (await rows('SELECT COUNT(*) AS n FROM tasks'))[0].n;
+
+    const unknown = await webhook('/status-callback', { CallSid: 'CA-multi-unknown', CallStatus: 'no-answer', To: '+15550002222', From: '+15550003333' }, multi);
+    expect(unknown.status).toBe(200);
+    expect(await unknown.text()).toBe('<Response/>');
+
+    // A call that exists in the shared database is not touched either: in multi mode it is not any workspace's data.
+    const known = await webhook('/status-callback', { CallSid: 'CA-missed-1', CallStatus: 'completed', To: AGENCY_NUMBER, From: '+919000004001' }, multi);
+    expect(known.status).toBe(200);
+    expect(await known.text()).toBe('<Response/>');
+
+    expect((await rows('SELECT COUNT(*) AS n FROM call_logs'))[0].n).toBe(calls);
+    expect((await rows('SELECT COUNT(*) AS n FROM tasks'))[0].n).toBe(tasks);
+    expect((await rows('SELECT status FROM call_logs WHERE id = ?', 'call-missed-1'))[0].status).toBe('no-answer');
   });
 });
