@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-15T23:30+05:30",
+  "updated": "2026-10-16T00:40+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -100,7 +100,8 @@
         "R104": "merged + line-ending fix (e5e1baa): backend 67 files / 1402 tests; master 0012, tenant 0044. Cloudflare provisioner only tested with mocked fetch; binding registration may need the generated deploy (pending_deploy).",
         "R105": "merged: backend 69 files / 1422 tests; master 0013, tenant 0045; crons */5, hourly, daily 00:30 UTC fan out via TENANT_JOBS_QUEUE (inline when unbound)",
         "R109": "merged: backend 70 files / 1444 tests; master 0015_plan_catalogue (0014 reserved for R108). Catalogue values are placeholders except yearly prices and included users; see owner table.",
-        "R119": "merged: backend 71 files / 1453 tests; desktop 65 / 1314; lint 0; tenant 0046 (call_logs.created_by nullable, unique provider_call_id). Follow-ups for Tier 3: Dial action no-answer to voicemail, per-agent analytics on inbound rows."
+        "R119": "merged: backend 71 files / 1453 tests; desktop 65 / 1314; lint 0; tenant 0046 (call_logs.created_by nullable, unique provider_call_id). Follow-ups for Tier 3: Dial action no-answer to voicemail, per-agent analytics on inbound rows.",
+        "R111": "merged: backend 72 files / 1487 tests; master 0017_impersonation_audit (0016 free). Super admin has its own login/token; tenant-email super admin path removed."
       },
       "merged": [
         "R101",
@@ -114,7 +115,8 @@
         "R105",
         "R123",
         "R109",
-        "R119"
+        "R119",
+        "R111"
       ]
     },
     "W4": {
@@ -155,7 +157,8 @@
     "R114: Windows code-signing certificate (CSC_LINK, CSC_KEY_PASSWORD); update feed host set as TRAVELCRM_UPDATE_URL at build and runtime; macOS/Linux builds need their own runners.",
     "R106: ENVIRONMENT=production, TEST_MODE unset, CORS_ORIGINS (exact web origins), ALLOW_LOOPBACK_ORIGINS=true for the desktop app; add Cloudflare WAF rate-limit rules at the edge.",
     "R107: API_PUBLIC_URL must equal the public URL Twilio calls; TWILIO_AUTH_TOKEN; Twilio console callback URLs (voice/status under /api/v1/voip/..., message status /api/v1/webhooks/twilio/status, WhatsApp /api/v1/webhooks/chatbot/whatsapp); register each agency WhatsApp number in tenant_channel_addresses; SendGrid Signed Event Webhook + SENDGRID_WEBHOOK_PUBLIC_KEY; per-agency widget snippet and allowed website origins; apply tenant migration 0043 to every agency DB.",
-    "R104: verify on a real Cloudflare account that D1 create (location hint/jurisdiction), query and delete work and whether the Workers settings PATCH adds a binding without redeploy; otherwise run the generated deploy after each new agency."
+    "R104: verify on a real Cloudflare account that D1 create (location hint/jurisdiction), query and delete work and whether the Workers settings PATCH adds a binding without redeploy; otherwise run the generated deploy after each new agency.",
+    "R111: SUPER_ADMIN_JWT_SECRET (32+ chars, different from JWT_SECRET); apply master 0017; create first super admin with backend/scripts/create-super-admin.mjs --remote (try --local first); rotate/delete super_admins rows from the old console seed route; review backend/scripts/seed-demo.mjs demo super admin before any shared environment."
   ],
   "todo": [
     "Leftover folder .claude/worktrees/R114/packages/shared is locked by another program (editor/Dart analyzer); delete by hand later. Not tracked by git.",
