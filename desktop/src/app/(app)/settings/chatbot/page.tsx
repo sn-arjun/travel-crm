@@ -12,7 +12,7 @@ import {
 } from '@/components/ui';
 import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { useFeatureGate } from '@/hooks/use-feature-gate';
-import { chatbotApi, type ChatbotConfig, type UpdateChatbotConfigRequest } from '@/lib/api/chatbot';
+import { chatbotApi, parseAllowedOrigins, type ChatbotConfig, type UpdateChatbotConfigRequest } from '@/lib/api/chatbot';
 import { toast } from 'sonner';
 import { color } from '@/design-system/tokens';
 
@@ -74,9 +74,42 @@ function ChatbotSettingsContent() {
     else toast.error('Failed to save chatbot settings');
   };
 
-  const embedSnippet = `<script>\n  (function (w, d) {\n    var s = d.createElement('script');\n    s.src = '${chatbotApi.widgetUrl()}';\n    s.async = true;\n    d.head.appendChild(s);\n  })(window, document);\n</script>`;
+  // The embed snippet and the websites allowed to load the widget come from the backend (GET /chatbot/widget).
+  const { data: widgetResponse, loading: widgetLoading, error: widgetError, refetch: refetchWidget } = useApiQuery(
+    () => chatbotApi.widget.get(),
+    [],
+  );
+  const widget = widgetResponse?.data ?? null;
+  const embedSnippet = widget?.snippet ?? '';
+  const [originsText, setOriginsText] = React.useState('');
+  const [originsError, setOriginsError] = React.useState<string | null>(null);
+  const [savingOrigins, setSavingOrigins] = React.useState(false);
+  React.useEffect(() => {
+    if (widget) setOriginsText(widget.allowedOrigins.join('\n'));
+  }, [widget]);
+
+  async function saveAllowedWebsites() {
+    const { origins, invalid } = parseAllowedOrigins(originsText);
+    if (invalid.length > 0) {
+      setOriginsError(`These are not website addresses: ${invalid.join(', ')}`);
+      return;
+    }
+    setOriginsError(null);
+    setSavingOrigins(true);
+    try {
+      await chatbotApi.widget.saveAllowedOrigins(origins);
+      setOriginsText(origins.join('\n'));
+      toast.success(origins.length === 0 ? 'Saved. No website can use the widget until you add one.' : 'Allowed websites saved');
+      void refetchWidget();
+    } catch {
+      toast.error('Could not save the allowed websites');
+    } finally {
+      setSavingOrigins(false);
+    }
+  }
 
   async function copySnippet() {
+    if (!embedSnippet) return;
     try {
       await navigator.clipboard.writeText(embedSnippet);
       setCopied(true);
@@ -226,23 +259,65 @@ function ChatbotSettingsContent() {
               <CardDescription>Paste this snippet before the closing <code>&lt;/body&gt;</code> tag on your website to show the chatbot widget.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-ds-4">
-              <div className="relative">
-                <pre className="overflow-auto rounded-ds-md border border-ds-border bg-ds-surface-sunken p-ds-4 text-xs">
-                  <code>{embedSnippet}</code>
-                </pre>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="absolute right-ds-2 top-ds-2 gap-ds-2"
-                  onClick={copySnippet}
-                >
-                  {copied ? <Check className="size-3.5" aria-hidden="true" /> : <Copy className="size-3.5" aria-hidden="true" />}
-                  {copied ? 'Copied' : 'Copy'}
-                </Button>
-              </div>
+              {widgetLoading ? (
+                <Skeleton className="h-16 w-full" />
+              ) : widgetError || !embedSnippet ? (
+                <div role="alert" className="flex items-center justify-between gap-ds-3 rounded-ds-md border border-ds-border p-ds-4 text-sm text-ds-foreground-muted">
+                  <span>The embed snippet could not be loaded.</span>
+                  <Button size="sm" variant="outline" onClick={() => void refetchWidget()}>Try again</Button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <pre data-testid="chatbot-embed-snippet" className="overflow-auto rounded-ds-md border border-ds-border bg-ds-surface-sunken p-ds-4 pr-ds-9 text-xs">
+                    <code>{embedSnippet}</code>
+                  </pre>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="absolute right-ds-2 top-ds-2 gap-ds-2"
+                    onClick={copySnippet}
+                  >
+                    {copied ? <Check className="size-3.5" aria-hidden="true" /> : <Copy className="size-3.5" aria-hidden="true" />}
+                    {copied ? 'Copied' : 'Copy'}
+                  </Button>
+                </div>
+              )}
               <div className="flex items-center gap-ds-2 text-xs text-ds-foreground-muted">
                 <Clock className="size-3.5" aria-hidden="true" />
                 Changes to website bot settings above apply the next time the widget loads.
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Allowed websites</CardTitle>
+              <CardDescription>
+                Only these websites can show your chat widget. One address per line, for example <code>https://www.youragency.com</code>.
+                An empty list blocks every website, so add your site before you install the snippet.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-ds-3">
+              <Label htmlFor="allowed-websites" className="text-base font-medium">Websites</Label>
+              <Textarea
+                id="allowed-websites"
+                value={originsText}
+                onChange={(e) => { setOriginsText(e.currentTarget.value); setOriginsError(null); }}
+                placeholder="https://www.youragency.com"
+                className="min-h-24 font-mono text-sm"
+                disabled={widgetLoading || !widget}
+                aria-invalid={originsError ? true : undefined}
+                aria-describedby={originsError ? 'allowed-websites-error' : undefined}
+              />
+              {originsError && <p id="allowed-websites-error" role="alert" className="text-xs text-ds-danger">{originsError}</p>}
+              {widget && !originsError && parseAllowedOrigins(originsText).origins.length === 0 && (
+                <p className="text-xs text-ds-foreground-muted">No websites listed: the widget is blocked everywhere.</p>
+              )}
+              <div className="flex justify-end">
+                <Button onClick={saveAllowedWebsites} disabled={savingOrigins || widgetLoading || !widget} className="gap-ds-2">
+                  {savingOrigins ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Save className="size-4" aria-hidden="true" />}
+                  Save allowed websites
+                </Button>
               </div>
             </CardContent>
           </Card>

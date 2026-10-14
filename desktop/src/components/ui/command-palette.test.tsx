@@ -59,7 +59,7 @@ describe('CommandPalette', () => {
   it('has an accessible dialog title', async () => {
     render(<CommandPalette />);
     await act(async () => { fireEvent.keyDown(window, { key: 'k', ctrlKey: true }); });
-    expect(screen.getByRole('dialog')).toHaveAccessibleName('Command palette');
+    expect(screen.getByRole('dialog', { name: 'Command palette' })).toBeTruthy();
   });
 
   it('waits 250 ms before searching and then shows records that navigate to their detail page', async () => {

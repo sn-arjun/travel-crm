@@ -11,7 +11,7 @@ vi.mock('./client', () => ({
 }));
 
 import { client } from './client';
-import { chatbotApi } from './chatbot';
+import { chatbotApi, parseAllowedOrigins } from './chatbot';
 
 describe('chatbotApi', () => {
   beforeEach(() => {
@@ -231,5 +231,61 @@ describe('chatbotApi', () => {
         expect(result.data.totalConversations).toBe(50);
       });
     });
+  });
+});
+
+describe('chatbotApi.widget (public widget mount, R107)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('reads the key, script URL, snippet and allowed websites from GET /chatbot/widget', async () => {
+    vi.mocked(client.get).mockResolvedValue({
+      success: true,
+      data: {
+        widgetKey: 'wk_abc',
+        scriptUrl: 'https://api.example.com/api/v1/public/chatbot/wk_abc/widget.js',
+        snippet: '<script async src="https://api.example.com/api/v1/public/chatbot/wk_abc/widget.js"></script>',
+        allowedOrigins: ['https://www.agency.test'],
+      },
+    });
+    const res = await chatbotApi.widget.get();
+    expect(client.get).toHaveBeenCalledWith('/chatbot/widget');
+    expect(res.data.snippet).toContain('/public/chatbot/wk_abc/widget.js');
+    expect(res.data.snippet).not.toContain('/chatbot/widget.js');
+    expect(res.data.allowedOrigins).toEqual(['https://www.agency.test']);
+  });
+
+  it('treats a missing allowedOrigins as an empty list', async () => {
+    vi.mocked(client.get).mockResolvedValue({ success: true, data: { widgetKey: 'k', scriptUrl: 'u', snippet: 's' } });
+    expect((await chatbotApi.widget.get()).data.allowedOrigins).toEqual([]);
+  });
+
+  it('saves allowed websites with PUT /chatbot/config/website { allowedOrigins }', async () => {
+    vi.mocked(client.put).mockResolvedValue({ success: true, data: {} });
+    await chatbotApi.widget.saveAllowedOrigins(['https://a.test']);
+    expect(client.put).toHaveBeenCalledWith('/chatbot/config/website', { allowedOrigins: ['https://a.test'] });
+  });
+
+  it('no longer exposes the removed authenticated widget.js URL', () => {
+    expect((chatbotApi as Record<string, unknown>).widgetUrl).toBeUndefined();
+  });
+});
+
+describe('parseAllowedOrigins', () => {
+  it('reduces addresses to scheme + host + port, one per line or comma separated, without duplicates', () => {
+    const { origins, invalid } = parseAllowedOrigins('https://Www.Agency.test/contact\nagency.test, http://localhost:3100/\nhttps://www.agency.test');
+    expect(origins).toEqual(['https://www.agency.test', 'https://agency.test', 'http://localhost:3100']);
+    expect(invalid).toEqual([]);
+  });
+
+  it('an empty text is an empty list (which blocks every website)', () => {
+    expect(parseAllowedOrigins('  \n ')).toEqual({ origins: [], invalid: [] });
+  });
+
+  it('reports entries that are not website addresses', () => {
+    const { origins, invalid } = parseAllowedOrigins('ftp://files.test\nhttps://ok.test\nnot a site');
+    expect(origins).toEqual(['https://ok.test']);
+    expect(invalid).toEqual(['ftp://files.test', 'not a site']);
   });
 });

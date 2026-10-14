@@ -1,5 +1,5 @@
 import { client, type ApiResponse, type PaginatedResponse } from './client';
-import { API_ENDPOINTS, getApiBaseUrl } from './config';
+import { API_ENDPOINTS } from './config';
 
 export interface ChatbotConfig {
   id: string;
@@ -222,6 +222,37 @@ function normalizeConfig(rows: RawChannelConfig[]): ChatbotConfig {
   };
 }
 
+/** GET /chatbot/widget */
+export interface ChatbotWidgetInfo {
+  widgetKey: string;
+  scriptUrl: string;
+  snippet: string;
+  allowedOrigins: string[];
+}
+
+/**
+ * Turn what an agent typed (one website per line, or comma separated) into origins the widget
+ * check compares against: scheme + host + port, no path, no trailing slash. Entries that are not
+ * a website address are returned in `invalid`.
+ */
+export function parseAllowedOrigins(text: string): { origins: string[]; invalid: string[] } {
+  const origins: string[] = [];
+  const invalid: string[] = [];
+  for (const part of text.split(/[\n,]+/)) {
+    const entry = part.trim();
+    if (!entry) continue;
+    try {
+      const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(entry) ? entry : `https://${entry}`);
+      if ((url.protocol !== 'https:' && url.protocol !== 'http:') || !url.hostname) throw new Error('not a website');
+      const origin = url.origin.toLowerCase();
+      if (!origins.includes(origin)) origins.push(origin);
+    } catch {
+      invalid.push(entry);
+    }
+  }
+  return { origins, invalid };
+}
+
 export const chatbotApi = {
   config: {
     get: async (): Promise<ApiResponse<ChatbotConfig>> => {
@@ -343,5 +374,27 @@ export const chatbotApi = {
     },
   },
 
-  widgetUrl: () => `${getApiBaseUrl()}/chatbot/widget.js`,
+  /**
+   * The website widget. The public script lives at /api/v1/public/chatbot/:widgetKey/widget.js; the
+   * backend tells us the key, the ready-made snippet and which websites may use it.
+   */
+  widget: {
+    get: async (): Promise<ApiResponse<ChatbotWidgetInfo>> => {
+      const res = await client.get<ApiResponse<Partial<ChatbotWidgetInfo>>>('/chatbot/widget');
+      const raw = (res.data ?? {}) as Partial<ChatbotWidgetInfo>;
+      return {
+        ...res,
+        data: {
+          widgetKey: raw.widgetKey ?? '',
+          scriptUrl: raw.scriptUrl ?? '',
+          snippet: raw.snippet ?? '',
+          allowedOrigins: Array.isArray(raw.allowedOrigins) ? raw.allowedOrigins : [],
+        },
+      };
+    },
+
+    /** Replace the list of websites allowed to load the widget. An empty list blocks every website. */
+    saveAllowedOrigins: (allowedOrigins: string[]) =>
+      client.put<ApiResponse<Record<string, unknown>>>(API_ENDPOINTS.chatbot.configChannel('website'), { allowedOrigins }),
+  },
 };
