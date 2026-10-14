@@ -24,7 +24,9 @@
       "desktop/src/lib/api/invoices.ts",
       "backend/src/routes/invoices.ts",
       "backend/src/services/numbering.ts",
-      "backend/test/services/numbering.test.ts"
+      "backend/test/services/numbering.test.ts",
+      "desktop/e2e/chatbot.spec.ts",
+      "desktop/src/lib/api/chatbot.ts"
     ],
     "create": [
       "backend/test/invoices-list-type.test.ts"
@@ -54,7 +56,9 @@
     "Calendar: render is_all_day as a boolean (`{event.isAllDay ? <Badge>All day</Badge> : null}`), never the number; check other `{x && ...}` patterns on numeric fields in that file.",
     "Invoices list: backend GET /invoices excludes credit notes by default (filter on the column that marks them: read routes/invoices.ts and the credit-notes route to see whether credit notes share the invoices table with a type/document_type column or live in credit_notes; if they share, add `type` query param default 'invoice'); desktop invoices page passes nothing new; the credit-notes page keeps working.",
     "Numbering: services/numbering.ts honours reset_yearly (settings key written by routes/settings.ts ~502): the sequence restarts at 1 when the financial year (start month from settings, default April) changes; the counter key includes the financial-year label; existing numbers unaffected.",
-    "Optional if time remains, in this order, each a small change in its own file: segments list criteria rendered as readable text; inbox preview strips the leading [Subject: …]. Leave chatbot last message for later (needs an endpoint change)."
+    "Optional if time remains, in this order, each a small change in its own file: segments list criteria rendered as readable text; inbox preview strips the leading [Subject: …]. Leave chatbot last message for later (needs an endpoint change).",
+    "Chatbot install tab (broken by R107, 2026-10-14): the desktop chatbot settings Install tab builds a /chatbot/widget.js URL that no longer exists. Use GET /chatbot/widget (returns widgetKey, scriptUrl, snippet, allowedOrigins) to show the snippet, and add an \"Allowed websites\" field saved with PUT /chatbot/config/website { allowedOrigins: [...] }. Explain in the UI that an empty list blocks every website.",
+    "desktop/e2e/chatbot.spec.ts seeds conversations through the removed authenticated /chatbot/webhook/:channel; switch its seeding to the public mount /api/v1/public/chatbot/:widgetKey/messages (get the key from GET /chatbot/widget and add the test origin to allowedOrigins), so the spec works on an enterprise-plan stack."
   ],
   "migrations": [],
   "tests": [
@@ -65,7 +69,8 @@
   "acceptance": [
     "No Radix DialogTitle warning in the browser console when opening Ctrl+K (layout probe console check).",
     "Calendar shows no stray 0.",
-    "Invoices list shows no credit notes."
+    "Invoices list shows no credit notes.",
+    "The Install tab shows a working snippet from GET /chatbot/widget and saves allowed websites; chatbot.spec.ts seeding uses the public mount."
   ],
   "gate": [
     "cd backend && npx tsc --noEmit",
