@@ -13,6 +13,7 @@ import { getUsageOverview } from '../services/metering/meter';
 import { sendTransactional } from '../services/mail/transactional';
 import { supportEmail } from '../utils/app-urls';
 import { rateLimit } from '../middleware/rate-limiter';
+import { DEFAULT_VAT_RATES, loadTaxSettings, normalizeCountry } from '../services/tax-calculator';
 
 const settingsRoutes = new Hono<AppContext>();
 
@@ -413,6 +414,8 @@ settingsRoutes.get('/invoice-defaults', async (c) => {
     'default_tax_type', 'default_tax_rate', 'gstin', 'company_state',
     'company_name', 'company_address', 'company_phone', 'company_email',
     'tax_system', 'upi_id',
+    // Tax engine (R201)
+    'country', 'company_country', 'vat_rate', 'sales_tax_rate', 'seller_tax_id', 'tax_label',
   ];
 
   const rows = await db.select().from(settings);
@@ -451,7 +454,17 @@ const invoiceDefaultsSchema = z.object({
   company_state: z.string().optional(),
   tax_system: z.enum(['gst', 'vat', 'sales_tax', 'none']).optional(),
   upi_id: z.string().optional(),
+  // Tax engine (R201): the agency's own country and rates. Defaults for VAT by country are in
+  // services/tax-calculator.ts (DEFAULT_VAT_RATES) and apply only while vat_rate is unset.
+  country: z.string().trim().max(100).optional(),
+  vat_rate: z.number().min(0).max(100).optional(),
+  sales_tax_rate: z.number().min(0).max(100).optional(),
+  seller_tax_id: z.string().trim().max(50).optional(),
+  tax_label: z.string().trim().max(30).optional(),
 });
+
+/** GSTIN: 2-digit state code, 10-character PAN, entity number, 'Z', checksum character. */
+const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 
 settingsRoutes.put(
   '/invoice-defaults',
@@ -462,6 +475,24 @@ settingsRoutes.put(
     const userId = c.get('userId');
     const body = c.req.valid('json');
     const now = new Date().toISOString();
+
+    // Validation per tax regime, against the values this save leaves in place
+    const stored = await loadTaxSettings(c.get('tenantDb'));
+    const regime = body.tax_system ?? stored.regime;
+    if (regime === 'gst' && body.gstin && !GSTIN_PATTERN.test(body.gstin.trim().toUpperCase())) {
+      return error(c, 'GSTIN must be 15 characters, for example 22AAAAA0000A1Z5', 400);
+    }
+    if (regime === 'vat') {
+      const country = normalizeCountry(body.country ?? stored.seller.country);
+      const rate = body.vat_rate ?? stored.seller.vatRate ?? (country ? DEFAULT_VAT_RATES[country] : undefined);
+      if (rate === undefined) {
+        return error(c, 'Enter the VAT rate: there is no default for this country', 400);
+      }
+    }
+    if (regime === 'sales_tax' && (body.sales_tax_rate ?? stored.seller.salesTaxRate) == null) {
+      return error(c, 'Enter the sales tax rate', 400);
+    }
+    if (body.gstin) body.gstin = body.gstin.trim().toUpperCase();
 
     for (const [key, value] of Object.entries(body)) {
       if (value === undefined) continue;

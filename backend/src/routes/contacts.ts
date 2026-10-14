@@ -40,6 +40,9 @@ const createContactSchema = z.object({
   state: z.string().optional().nullable(),
   country: z.string().optional().nullable(),
   postalCode: z.string().optional().nullable(),
+  // Tax registration of a business customer (GSTIN / VAT number); drives reverse charge on invoices
+  taxId: z.string().trim().max(50).optional().nullable(),
+  isBusiness: z.union([z.boolean(), z.number()]).optional().transform((v) => (v === undefined ? undefined : v ? 1 : 0)),
   tags: z.array(z.string()).optional().default([]),
   notes: z.string().optional().nullable(),
   source: z.enum([
@@ -180,6 +183,8 @@ contactRoutes.get('/', requirePermission('contacts', 'view'), async (c) => {
       state: contacts.state,
       country: contacts.country,
       postalCode: contacts.postalCode,
+      taxId: contacts.taxId,
+      isBusiness: contacts.isBusiness,
       tags: contacts.tags,
       notes: contacts.notes,
       source: contacts.source,
@@ -908,6 +913,8 @@ contactRoutes.get('/:id', requirePermission('contacts', 'view'), async (c) => {
       state: contacts.state,
       country: contacts.country,
       postalCode: contacts.postalCode,
+      taxId: contacts.taxId,
+      isBusiness: contacts.isBusiness,
       tags: contacts.tags,
       notes: contacts.notes,
       source: contacts.source,
