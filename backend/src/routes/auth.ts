@@ -14,6 +14,9 @@ import { logActivity } from '../utils/activity-logger';
 import { rateLimit } from '../middleware/rate-limiter';
 import { limitMultiplier } from '../middleware/rate-limit';
 import { sendVerifyOtp, checkVerifyOtp } from '../services/twilio';
+import { isTestMode } from '../utils/test-mode';
+import { AllowanceExhausted, assertAllowance, meterUsage, refundUsage } from '../services/metering/meter';
+import { OTP_CAP_MESSAGE, checkAndRecordOtpRequest, checkMobileNumber } from '../services/metering/otp-limits';
 import { sendEmail } from '../services/email';
 import { accountLockedEmailHtml } from '../templates/reset-email';
 import { appUrl } from '../utils/app-urls';
@@ -279,6 +282,39 @@ auth.post(
       return error(c, `Too many OTP requests. Retry in ${rl.retryAfterSecs}s`, 429);
     }
 
+    // Only mobile numbers (no landlines, no premium-rate numbers); the same answer whatever the reason.
+    const mobile = checkMobileNumber(phone);
+    if (!mobile.ok) return error(c, mobile.message, 400);
+
+    // Abuse limits per number and per IP, identical whether or not the account exists (R110).
+    const hit = await checkAndRecordOtpRequest(c.env, { tenantId, e164: mobile.e164, ip, purpose: 'login' });
+    if (hit) {
+      c.header('Retry-After', String(hit.retryAfterSecs));
+      return error(c, hit.message, 429);
+    }
+
+    const capRefusal = () =>
+      c.json(
+        {
+          success: false,
+          code: 'ALLOWANCE_EXHAUSTED',
+          message: OTP_CAP_MESSAGE,
+          channel: 'otp',
+          passwordLogin: true,
+          error: { code: 'ALLOWANCE_EXHAUSTED', message: OTP_CAP_MESSAGE },
+        },
+        402,
+      );
+
+    // The agency's monthly login-code allowance. At the cap the person is told to use the password and the
+    // agency admins are alerted (usage-alerts). The check comes before the account lookup so both answers match.
+    try {
+      await assertAllowance(c.env, tenantId, 'otp');
+    } catch (err) {
+      if (err instanceof AllowanceExhausted) return capRefusal();
+      throw err;
+    }
+
     // Verify user exists with this phone in tenant
     const masterDb = drizzle(c.env.MASTER_DB);
     const [tenantUser] = await masterDb
@@ -287,16 +323,28 @@ auth.post(
       .where(and(eq(tenantUsers.phone, phone), eq(tenantUsers.tenantId, tenantId)))
       .limit(1);
 
-    if (!tenantUser) {
-      return error(c, 'No account found with this phone number', 404);
+    // Never reveal whether a phone exists: an unknown number gets the same answer and no code is sent.
+    const generic = { message: 'If this number belongs to an account, a login code has been sent.' };
+    if (!tenantUser) return success(c, generic);
+
+    try {
+      await meterUsage(c.env, tenantId, 'otp');
+    } catch (err) {
+      if (err instanceof AllowanceExhausted) return capRefusal();
+      throw err;
     }
+
+    // Local / e2e: the provider is never called under TEST_MODE.
+    if (isTestMode(c.env)) return success(c, generic);
 
     const result = await sendVerifyOtp(c.env, phone);
     if (!result.success) {
-      return error(c, result.error || 'Failed to send OTP', 500);
+      await refundUsage(c.env, tenantId, 'otp'); // a code that was not sent does not use the allowance
+      console.error('[auth] login code could not be sent');
+      return error(c, 'Failed to send OTP', 500);
     }
 
-    return success(c, { message: 'OTP sent successfully' });
+    return success(c, generic);
   }
 );
 

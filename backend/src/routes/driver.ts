@@ -7,6 +7,8 @@ import { generateId } from '../utils/uuid';
 import { success, created, paginated, error, notFound, forbidden } from '../utils/response';
 import { isTestMode as isTestModeEnv } from '../utils/test-mode';
 import { driverAuth } from '../middleware/driver-auth';
+import { AllowanceExhausted, assertAllowance, meterUsage, refundUsage } from '../services/metering/meter';
+import { OTP_CAP_MESSAGE, checkAndRecordOtpRequest, checkMobileNumber } from '../services/metering/otp-limits';
 import { resolveTenantDb } from '../services/tenant-db';
 import { phoneLookupVariants, inPlaceholders } from '../utils/phone';
 import { localDayWindowUtc, getTenantTimeZone } from '../utils/tz';
@@ -93,9 +95,37 @@ driver.post('/login', zValidator('json', loginSchema), async (c) => {
     `SELECT id, name, phone, status FROM drivers WHERE phone IN (${inList}) AND is_deleted = 0`
   ).bind(...variants).first() as { id: string; name: string; phone: string; status: string } | null;
 
-  if (!driverRecord) return notFound(c, 'Driver');
-  if (driverRecord.status !== 'active' && driverRecord.status !== 'on_trip') {
-    return forbidden(c, 'Account is inactive. Contact your company.');
+  // R110: only mobile numbers, abuse limits per number and per IP, and the agency's monthly login-code allowance.
+  // All three come before the driver lookup and answer the same for known and unknown numbers.
+  const mobile = checkMobileNumber(phone);
+  if (!mobile.ok) return error(c, mobile.message, 400);
+  const requestIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For')?.split(',')[0]?.trim() || null;
+  const abuse = await checkAndRecordOtpRequest(c.env, { tenantId, e164, ip: requestIp, purpose: 'driver_login' });
+  if (abuse) {
+    c.header('Retry-After', String(abuse.retryAfterSecs));
+    return error(c, abuse.message, 429);
+  }
+  const capRefusal = () =>
+    c.json(
+      {
+        success: false,
+        code: 'ALLOWANCE_EXHAUSTED',
+        message: OTP_CAP_MESSAGE,
+        channel: 'otp',
+        error: { code: 'ALLOWANCE_EXHAUSTED', message: OTP_CAP_MESSAGE },
+      },
+      402,
+    );
+  try {
+    await assertAllowance(c.env, tenantId, 'otp');
+  } catch (err) {
+    if (err instanceof AllowanceExhausted) return capRefusal();
+    throw err;
+  }
+
+  // Never reveal whether a phone belongs to a driver: unknown and inactive accounts get the normal answer, no code.
+  if (!driverRecord || (driverRecord.status !== 'active' && driverRecord.status !== 'on_trip')) {
+    return success(c, { message: 'OTP sent', ...(isTestMode(c) ? { testMode: true } : {}) });
   }
 
   // Rate limit: max 3 OTP requests per phone per 10 minutes (20 under TEST_MODE).
@@ -111,9 +141,17 @@ driver.post('/login', zValidator('json', loginSchema), async (c) => {
     return error(c, 'Too many OTP requests. Please wait 10 minutes.', 429);
   }
 
-  if (!testMode) {
-    if (!twilioConfigured(c)) return error(c, 'SMS provider not configured', 503);
+  if (!testMode && !twilioConfigured(c)) return error(c, 'SMS provider not configured', 503);
 
+  // The code takes one unit of the agency's login-code allowance before the provider is called.
+  try {
+    await meterUsage(c.env, tenantId, 'otp');
+  } catch (err) {
+    if (err instanceof AllowanceExhausted) return capRefusal();
+    throw err;
+  }
+
+  if (!testMode) {
     // Send OTP via Twilio Verify
     try {
       const resp = await fetch(
@@ -131,10 +169,12 @@ driver.post('/login', zValidator('json', loginSchema), async (c) => {
       if (!resp.ok) {
         const err = await resp.text();
         console.error('Twilio Verify error:', err);
+        await refundUsage(c.env, tenantId, 'otp');
         return error(c, 'Failed to send OTP', 500);
       }
     } catch (e) {
       console.error('Twilio Verify error:', e);
+      await refundUsage(c.env, tenantId, 'otp');
       return error(c, 'Failed to send OTP', 500);
     }
   }

@@ -22,6 +22,7 @@ import type { VoipSettingsRow } from '../services/voip-provider';
 
 import { candidateTenantDbs, resolveTenantDb, tenancyMode } from '../services/tenant-db';
 import { formParams, publicRequestUrl, unsignedAllowed, verifyTwilioAny } from '../middleware/provider-signature';
+import { recordUsage } from '../services/metering/meter';
 
 const voipCallbackRoutes = new Hono<AppContext>();
 
@@ -188,6 +189,21 @@ voipCallbackRoutes.post('/status-callback', async (c) => {
     if (!result.meta.changes) {
       await db.prepare(`UPDATE call_logs SET ${updates.join(', ')} WHERE twilio_call_sid = ?`)
         .bind(...values).run();
+    }
+
+    // R110 (provisional until R305 meters from provider records): a completed call adds ceil(duration / 60) minutes to
+    // the agency's monthly call-minute usage, once per call (callbacks repeat). A live call is never cut at the cap.
+    if (status === 'completed' && duration && duration > 0) {
+      try {
+        const done = await db
+          .prepare('SELECT direction, from_number, to_number FROM call_logs WHERE provider_call_id = ? OR twilio_call_sid = ?')
+          .bind(callSid, callSid)
+          .first<{ direction: string; from_number: string | null; to_number: string | null }>();
+        const tenantId = done ? await tenantForCalledNumber(c.env, done.direction === 'outbound' ? done.from_number : done.to_number) : null;
+        if (tenantId) await recordUsage(c.env, tenantId, 'call_minute', Math.ceil(duration / 60), `call:${callSid}`);
+      } catch (e) {
+        console.error('Call minute metering failed:', e instanceof Error ? e.message : 'error');
+      }
     }
 
     // Handle missed calls (TICKET-381)

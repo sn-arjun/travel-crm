@@ -19,6 +19,7 @@ import type { VoipSettingsRow } from '../services/voip-provider';
 import { logActivity } from '../utils/activity-logger';
 import { emitFromRequest } from '../services/automation/events';
 import { tenantToday, addDaysLocal, localDateStartUtcIso, sqlOffsetModifier } from '../utils/tz';
+import { AllowanceExhausted, allowanceExhaustedResponse, assertAllowance } from '../services/metering/meter';
 
 const callRoutes = new Hono<AppContext>();
 callRoutes.onError(credentialsAwareErrorHandler);
@@ -388,20 +389,7 @@ callRoutes.put('/:id', zValidator('json', updateCallSchema), async (c) => {
         }
       }
     }
-
-    // Increment VoIP usage cap (minutes)
-    if (callLog?.duration_seconds && callLog.duration_seconds > 0) {
-      try {
-        const tenantId = c.get('tenantId');
-        const masterDb = c.env.MASTER_DB;
-        const minutes = Math.ceil(callLog.duration_seconds / 60);
-        await masterDb.prepare(`
-          UPDATE tenant_usage_caps SET current_usage = current_usage + ?,
-            updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-          WHERE tenant_id = ? AND cap_key = 'voip_minutes_per_month'
-        `).bind(minutes, tenantId).run();
-      } catch (_e) { /* non-critical */ }
-    }
+    // Call minutes are metered from the provider status callback (voip-callbacks.ts), once per call.
   }
 
   return success(c, { message: 'Call log updated' });
@@ -432,6 +420,14 @@ callRoutes.post('/outbound', zValidator('json', outboundCallSchema), async (c) =
   const settings = await loadVoipSettings(c.env, db);
   if (!settings?.defaultCallerId) {
     return error(c, 'VoIP not configured. Please set up VoIP credentials in Settings.', 422);
+  }
+
+  // R110: no new call once the month's call minutes are used up (a call in progress is never cut).
+  try {
+    await assertAllowance(c.env, c.get('tenantId'), 'call_minute');
+  } catch (err) {
+    if (err instanceof AllowanceExhausted) return allowanceExhaustedResponse(c, err);
+    throw err;
   }
 
   // Validate contact exists if provided
