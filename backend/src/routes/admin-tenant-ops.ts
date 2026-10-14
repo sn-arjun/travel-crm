@@ -430,9 +430,25 @@ app.post('/tenants/:id/impersonate', zValidator('json', impersonateSchema), asyn
   }
   if (!db) return error(c, 'The agency database is not available', 503);
 
-  const user = await db
-    .prepare(`SELECT id, email, role FROM users WHERE role = 'admin' AND is_active = 1 ORDER BY created_at ASC, rowid ASC LIMIT 1`)
-    .first<{ id: string; email: string; role: string }>();
+  // The agency's first active admin: candidates come from the registry (tenant_users), each confirmed in the agency database
+  // (in a shared single-database setup the users table holds every agency, so the registry is what scopes it).
+  const registered = await env.MASTER_DB
+    .prepare(`SELECT user_id FROM tenant_users WHERE tenant_id = ? AND role = 'admin' AND is_active = 1 ORDER BY created_at ASC, rowid ASC LIMIT 10`)
+    .bind(tenant.id)
+    .all<{ user_id: string }>();
+  let user: { id: string; email: string; role: string } | null = null;
+  for (const candidate of registered.results ?? []) {
+    user = await db
+      .prepare(`SELECT id, email, role FROM users WHERE id = ? AND role = 'admin' AND is_active = 1`)
+      .bind(candidate.user_id)
+      .first<{ id: string; email: string; role: string }>();
+    if (user) break;
+  }
+  if (!user && (registered.results ?? []).length === 0) {
+    user = await db
+      .prepare(`SELECT id, email, role FROM users WHERE role = 'admin' AND is_active = 1 ORDER BY created_at ASC, rowid ASC LIMIT 1`)
+      .first<{ id: string; email: string; role: string }>();
+  }
   if (!user) return error(c, 'The agency has no active admin to impersonate', 409);
 
   const sessionId = generateId();
