@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-14T12:35+05:30",
+  "updated": "2026-10-14T13:20+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -89,10 +89,13 @@
       "howItRuns": "one Sonnet agent per batch in .claude/worktrees/<id> on branch batch/<id>; node_modules are PowerShell junctions into the main checkout (remove junctions before git worktree remove); orchestrator gates and merges into launch-readiness",
       "batches": {
         "R100": "owner action pending",
-        "R101": "running",
-        "R114": "running"
+        "R101": "merged (8a08cf5, b9762b8): backend tsc 0, 59 files / 1317 tests",
+        "R114": "running",
+        "R102": "running"
       },
-      "merged": []
+      "merged": [
+        "R101"
+      ]
     },
     "W4": {
       "status": "pending"
@@ -112,7 +115,9 @@
     "Sub-agents hit the account session limit twice on 2026-10-09; resume with SendMessage, do not restart.",
     "gh CLI and git filter-repo are not installed; history was stripped with git filter-branch. Docker 28 is installed.",
     "Audit correction: backend/package-lock.json was in sync.",
-    "Running npm ci inside backend/ wipes the root workspace install (backend is a workspace). Install only at the root. Fix scheduled in R118."
+    "Running npm ci inside backend/ wipes the root workspace install (backend is a workspace). Install only at the root. Fix scheduled in R118.",
+    "Since R101 the local API refuses to start unless backend/.dev.vars has TENANCY_MODE=single (added to the main checkout on 2026-10-14; untracked). R103 makes the local stack multi-agency.",
+    "Worktree teardown that worked: PowerShell [System.IO.Directory]::Delete(<junction>, $false) for each node_modules junction, then git worktree remove; main checkout packages verified intact afterwards."
   ],
   "ownerDecisions": {
     "2026-10-14": [
