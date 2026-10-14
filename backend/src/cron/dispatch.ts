@@ -96,16 +96,16 @@ export function tickKey(firedAt: string): string {
 }
 
 /** True when this run owns (job, period); false when an earlier delivery already did. */
-export async function claimJob(db: D1Database, job: string, periodKey: string): Promise<boolean> {
+export async function claimJob(db: D1Database, tenantId: string, job: string, periodKey: string): Promise<boolean> {
   const res = await db
-    .prepare('INSERT OR IGNORE INTO cron_job_runs (job, period_key) VALUES (?, ?)')
-    .bind(job, periodKey)
+    .prepare('INSERT OR IGNORE INTO cron_job_runs (tenant_id, job, period_key) VALUES (?, ?, ?)')
+    .bind(tenantId, job, periodKey)
     .run();
   return (res.meta.changes ?? 0) > 0;
 }
 
-export async function releaseJob(db: D1Database, job: string, periodKey: string): Promise<void> {
-  await db.prepare('DELETE FROM cron_job_runs WHERE job = ? AND period_key = ?').bind(job, periodKey).run();
+export async function releaseJob(db: D1Database, tenantId: string, job: string, periodKey: string): Promise<void> {
+  await db.prepare('DELETE FROM cron_job_runs WHERE tenant_id = ? AND job = ? AND period_key = ?').bind(tenantId, job, periodKey).run();
 }
 
 /** Errors worth a queue retry: the database, network or queue was unavailable, not a bug in the job. */
@@ -142,7 +142,7 @@ export async function runTenantJobSet(
         localDay ??= localDateString(await getTenantTimeZone(db), new Date(firedIso));
         periodKey = `day:${localDay}`;
       }
-      claimed = await claimJob(db, job.name, periodKey);
+      claimed = await claimJob(db, tenantId, job.name, periodKey);
       if (!claimed) {
         result.skipped.push(job.name);
         continue;
@@ -153,7 +153,7 @@ export async function runTenantJobSet(
     } catch (err) {
       console.error(`[cron] ${job.name} failed for tenant ${tenantId}:`, err);
       if (claimed) {
-        try { await releaseJob(db, job.name, periodKey); } catch { /* the next claim attempt will see the row */ }
+        try { await releaseJob(db, tenantId, job.name, periodKey); } catch { /* the next claim attempt will see the row */ }
       }
       result.failed.push({
         job: job.name,

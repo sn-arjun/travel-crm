@@ -1718,11 +1718,12 @@ export const vehicleRateCards = sqliteTable('vehicle_rate_cards', {
 // ============================================================
 
 export const cronJobRuns = sqliteTable('cron_job_runs', {
+  tenantId: text('tenant_id').notNull(),
   job: text('job').notNull(),
   periodKey: text('period_key').notNull(),
   claimedAt: text('claimed_at').notNull().default(timestamp),
 }, (table) => [
-  primaryKey({ columns: [table.job, table.periodKey] }),
+  primaryKey({ columns: [table.tenantId, table.job, table.periodKey] }),
   index('cron_job_runs_claimed_idx').on(table.claimedAt),
 ]);
 

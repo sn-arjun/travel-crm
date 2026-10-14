@@ -907,7 +907,7 @@ export const TENANT_MIGRATIONS: BundledMigration[] = [
   {
     "name": "0045_cron_job_runs.sql",
     "queries": [
-      "-- R105: one row per (job, period) that already ran for this agency. The queue consumer claims a row with\n-- INSERT OR IGNORE before running a job, so a retried or duplicated message cannot repeat the work.\nCREATE TABLE IF NOT EXISTS cron_job_runs (\n  job TEXT NOT NULL,\n  period_key TEXT NOT NULL,\n  claimed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\n  PRIMARY KEY (job, period_key)\n)",
+      "-- R105: one row per (agency, job, period) that already ran. The queue consumer claims a row with\n-- INSERT OR IGNORE before running a job, so a retried or duplicated message cannot repeat the work.\n-- tenant_id is part of the key because single-tenant setups keep every agency in one database.\nCREATE TABLE IF NOT EXISTS cron_job_runs (\n  tenant_id TEXT NOT NULL,\n  job TEXT NOT NULL,\n  period_key TEXT NOT NULL,\n  claimed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\n  PRIMARY KEY (tenant_id, job, period_key)\n)",
       "--> statement-breakpoint\nCREATE INDEX IF NOT EXISTS cron_job_runs_claimed_idx ON cron_job_runs (claimed_at)"
     ]
   }
