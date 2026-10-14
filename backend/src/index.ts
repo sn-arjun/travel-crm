@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { HTTPException } from 'hono/http-exception';
-import { logger } from 'hono/logger';
 import { prettyJSON } from 'hono/pretty-json';
 import { secureHeaders } from 'hono/secure-headers';
 import type { AppContext, Env } from './types';
@@ -9,6 +8,11 @@ import { error } from './utils/response';
 import { resolveCorsOrigin } from './utils/cors';
 import { apiRateLimit } from './middleware/rate-limit';
 import { handleQueue, type QueueMessage } from './queues/index';
+import { requestLogger, log } from './utils/logger';
+import { reportError } from './services/error-reporter';
+import { checkMasterDb, runDeepHealth } from './services/health';
+import { authenticateSuperAdmin } from './middleware/require-super-admin';
+import { timingSafeEqual } from './middleware/provider-signature';
 import { RealtimeRoom } from './durable-objects/realtime';
 import { authMiddleware } from './middleware/auth';
 import { tenantMiddleware } from './middleware/tenant';
@@ -127,7 +131,7 @@ app.use('*', async (c, next) => {
   return next();
 });
 
-app.use('*', logger());
+app.use('*', requestLogger);
 app.use('*', prettyJSON());
 app.use('*', secureHeaders());
 
@@ -147,18 +151,39 @@ app.use(
 
 // --- Health Check (available at both /api/health and /api/v1/health) ---
 
-const healthHandler = (c: any) => {
-  return c.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    version: '1.0.0',
-    database: 'connected',
-    uptime: Math.floor(Date.now() / 1000),
-  });
+// Public and cheap: one SELECT 1 on the registry database, so a dead database is visible to uptime monitors.
+const healthHandler = async (c: any) => {
+  const db = await checkMasterDb(c.env);
+  return c.json(
+    {
+      status: db.ok ? 'ok' : 'degraded',
+      timestamp: new Date().toISOString(),
+      version: c.env.APP_VERSION || '1.0.0',
+      database: db.ok ? 'connected' : 'unreachable',
+      uptime: Math.floor(Date.now() / 1000),
+    },
+    db.ok ? 200 : 503,
+  );
+};
+
+// Deep check (MASTER_DB, KV, R2 with latencies): a super admin token or the HEALTH_TOKEN secret
+// (X-Health-Token header or Bearer). 503 when any dependency fails. Results never include error text.
+const deepHealthHandler = async (c: any) => {
+  const configured = c.env.HEALTH_TOKEN as string | undefined;
+  const presented = c.req.header('X-Health-Token') || c.req.header('Authorization')?.replace(/^Bearer /, '') || '';
+  const tokenOk = !!configured && presented !== '' && timingSafeEqual(presented, configured);
+  if (!tokenOk) {
+    const denied = await authenticateSuperAdmin(c);
+    if (denied) return denied;
+  }
+  const result = await runDeepHealth(c.env);
+  return c.json(result, result.status === 'ok' ? 200 : 503);
 };
 
 app.get('/api/v1/health', healthHandler);
 app.get('/api/health', healthHandler);
+app.get('/api/v1/health/deep', deepHealthHandler);
+app.get('/api/health/deep', deepHealthHandler);
 
 // --- Public Webhook Routes (BEFORE auth middleware) ---
 
@@ -316,14 +341,19 @@ app.notFound((c) => {
 // JSON body -> 400). Those keep their own status and the standard error envelope; only unknown errors are 500.
 // The message of a 5xx HTTPException is never echoed back, and no stack is ever returned.
 app.onError((err, c) => {
+  const report = (e: unknown) => {
+    let waitUntil: ((p: Promise<unknown>) => void) | undefined;
+    try { waitUntil = (p) => c.executionCtx.waitUntil(p); } catch { /* no execution context (tests) */ }
+    reportError(c.env, e, { source: 'http', requestId: c.get('requestId'), tenantId: c.get('tenantId') }, waitUntil);
+  };
   if (err instanceof HTTPException) {
     if (err.status >= 500) {
-      console.error('Unhandled HTTP error:', err);
+      report(err);
       return error(c, 'Internal server error', err.status);
     }
     return error(c, err.message || 'Bad request', err.status);
   }
-  console.error('Unhandled error:', err);
+  report(err);
   return error(c, 'Internal server error', 500);
 });
 
@@ -360,10 +390,22 @@ export default {
     // Three crons (wrangler.base.toml): every 5 minutes, hourly, daily at 00:30 UTC. scheduled() only
     // enqueues one TENANT_JOBS_QUEUE message per active agency (and resets usage caps on the daily
     // cron); the queue consumer runs the agency's jobs. See cron/dispatch.ts.
-    ctx.waitUntil(dispatchScheduled(event, env));
+    ctx.waitUntil(
+      dispatchScheduled(event, env).catch((err) => {
+        reportError(env, err, { source: 'scheduled' });
+        log('error', 'scheduled.failed', { cron: event.cron });
+        throw err;
+      }),
+    );
   },
   async queue(batch: MessageBatch<QueueMessage>, env: Env) {
-    await handleQueue(batch, env);
+    try {
+      await handleQueue(batch, env);
+    } catch (err) {
+      reportError(env, err, { source: 'queue' });
+      log('error', 'queue.failed', { queue: batch.queue });
+      throw err;
+    }
   },
 };
 

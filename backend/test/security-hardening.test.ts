@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import worker from '../src/index';
 import { isTestMode } from '../src/utils/test-mode';
 import { resolveCorsOrigin } from '../src/utils/cors';
+import { seedMemoryRateLimit } from '../src/middleware/rate-limit';
 
 const testEnv = env as any;
 const TENANT_A = '00000000-0000-0000-0000-000000000000';
@@ -211,11 +212,10 @@ describe('R106 security hardening', () => {
   describe('per-user API limit', () => {
     it('answers 429 once a user has used 600 requests this minute, other users unaffected', async () => {
       const e = realLimits();
-      const windowKey = `rl:api:${ADMIN_ID}:${Math.floor(Date.now() / 60000)}`;
-      await testEnv.CACHE.put(windowKey, '600', { expirationTtl: 120 });
+      seedMemoryRateLimit(`rl:api:${ADMIN_ID}`, 600); // in-memory fallback: the test env has no rate limit binding
       expect((await call('GET', '/contacts', admin, { e })).status).toBe(429);
       expect((await call('GET', '/contacts', viewer, { e })).status).toBe(200);
-      await testEnv.CACHE.delete(windowKey);
+      seedMemoryRateLimit(`rl:api:${ADMIN_ID}`, null);
       expect((await call('GET', '/contacts', admin, { e })).status).toBe(200);
     });
   });

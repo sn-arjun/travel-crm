@@ -30,6 +30,20 @@ id = "a0000000-0000-0000-0000-000000000003"
 binding = "REPORT_CACHE"
 id = "a0000000-0000-0000-0000-000000000004"
 
+# --- Rate limiting (Workers Rate Limiting binding; needs wrangler >= 4.36) ---
+# Counted at the edge, no KV traffic. period must be 10 or 60 seconds. Limits are per Cloudflare location and
+# eventually consistent. namespace_id is a positive integer string, unique in the account.
+# https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/
+[[ratelimits]]
+name = "API_RATE_LIMITER"
+namespace_id = "1001"
+simple = { limit = 600, period = 60 }
+
+[[ratelimits]]
+name = "UPLOAD_RATE_LIMITER"
+namespace_id = "1002"
+simple = { limit = 20, period = 60 }
+
 # --- Queues (Producers) ---
 [[queues.producers]]
 binding = "EMAIL_QUEUE"
@@ -161,3 +175,4 @@ new_classes = ["RealtimeRoom"]
 # --- Observability ---
 [observability]
 enabled = true
+head_sampling_rate = 1

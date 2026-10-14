@@ -56,6 +56,8 @@ try {
   }
   check(/\[env\.production\.vars\][^[]*TENANCY_MODE = "multi"/.test(envText), '[env.production.vars] TENANCY_MODE = "multi"');
   check(/\[env\.production\.observability\][^[]*enabled = true/.test(envText), 'observability enabled in env section');
+  check(/\[\[env\.production\.ratelimits\]\][^[]*API_RATE_LIMITER/.test(envText) && /UPLOAD_RATE_LIMITER/.test(envText) && /\[\[ratelimits\]\]/.test(topText), 'rate limiting bindings generated at top level and in env section');
+  check(/head_sampling_rate = 1/.test(envText), 'observability head_sampling_rate = 1');
   check(/\[env\.production\.triggers\]/.test(envText), 'cron triggers repeated in env section');
   check(/migrations_dir = "drizzle\/master"/.test(envText), 'MASTER_DB uses drizzle/master');
   check(!/a0000000-/.test(text), 'no a0000000- placeholder when CF_* ids are set');

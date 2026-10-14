@@ -79,6 +79,15 @@ export interface Env {
   OTP_DELIVERY?: string;
   SUPER_ADMIN_JWT_SECRET?: string;
   ERROR_REPORTER_DSN?: string;
+  /** Shared secret for GET /api/v1/health/deep when no super admin token is used. */
+  HEALTH_TOKEN?: string;
+  /** Hour (0-23, agency-local) at which daily agency jobs fire; default 9. */
+  DAILY_JOB_HOUR?: string;
+  APP_VERSION?: string;
+
+  // Workers Rate Limiting bindings (generated wrangler config; absent in tests and plain wrangler dev)
+  API_RATE_LIMITER?: { limit(options: { key: string }): Promise<{ success: boolean }> };
+  UPLOAD_RATE_LIMITER?: { limit(options: { key: string }): Promise<{ success: boolean }> };
 
   // Dynamic tenant D1 bindings — resolved at runtime
   [key: `TENANT_DB_${string}`]: D1Database;
@@ -89,6 +98,7 @@ export interface AppContext {
   Variables: {
     userId: string;
     tenantId: string;
+    requestId: string;
     tenantDb: D1Database;
     role: string;
     userName: string;

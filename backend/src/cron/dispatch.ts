@@ -1,10 +1,15 @@
 /**
  * Scheduled work, fanned out per agency.
  *
- * Three cron expressions drive three job sets. The scheduled() handler only lists the active agencies and
+ * Three cron expressions drive the job sets. The scheduled() handler only lists the active agencies and
  * puts one TENANT_JOBS_QUEUE message per agency on the queue ({ tenantId, jobSet, firedAt }); the queue
  * consumer (queues/tenant-jobs-queue.ts) resolves that agency's database and runs the job set there.
- * Platform-wide work (usage-cap resets) runs once in scheduled() itself.
+ * Platform-wide work (usage-cap resets, trial expiry) runs once in scheduled() itself, on the 00:30 UTC cron.
+ *
+ * Daily agency jobs (birthdays, visa/passport expiry, missing documents, trip reminders, housekeeping) are
+ * part of the HOURLY set but gated: each fires on the first hourly run at or after the agency-local send hour
+ * (settings key daily_job_hour, else env DAILY_JOB_HOUR, else 09:00) and is claimed once per local day. The
+ * 'daily' set still exists for manual runs; the 00:30 UTC cron no longer fans it out.
  *
  * Every job is idempotent per agency per period: before running, the runner claims a row in the agency's
  * cron_job_runs table (INSERT OR IGNORE on job + period key). A retried or duplicated message finds the
@@ -12,7 +17,10 @@
  */
 import type { Env } from '../types';
 import { resolveTenantDb } from '../services/tenant-db';
-import { getTenantTimeZone, localDateString } from '../utils/tz';
+import { getTenantTimeZone, localClock } from '../utils/tz';
+import { isInfrastructureError } from './errors';
+import { reportError } from '../services/error-reporter';
+import { log } from '../utils/logger';
 import { resetUsageCaps } from '../middleware/usage-cap';
 import { expireTrials } from '../services/plans/trial';
 import { checkFollowUpReminders } from '../services/follow-up-reminders';
@@ -52,8 +60,14 @@ export function jobSetForCron(cron: string | undefined | null): JobSet | null {
   }
 }
 
+export { isInfrastructureError };
+
+export const DEFAULT_DAILY_JOB_HOUR = 9;
+
 interface TenantJob {
   name: string;
+  /** Only run once the agency-local clock has reached the send hour. */
+  atSendHour?: boolean;
   /** 'tick' = once per firing (5-minute bucket); 'local-day' = once per agency-local calendar day. */
   period: 'tick' | 'local-day';
   run(env: Env, tenantId: string, db: D1Database, now: Date): Promise<unknown>;
@@ -81,9 +95,26 @@ const DAILY_JOBS: TenantJob[] = [
 
 export const JOB_SETS: Record<JobSet, TenantJob[]> = {
   every5: EVERY5_JOBS,
-  hourly: HOURLY_JOBS,
+  hourly: [...HOURLY_JOBS, ...DAILY_JOBS.map((j) => ({ ...j, atSendHour: true }))],
   daily: DAILY_JOBS,
 };
+
+/** Agency-local hour (0-23) from which daily jobs may run. */
+export async function getDailyJobHour(env: Env, db: D1Database): Promise<number> {
+  const valid = (v: unknown): number | null => {
+    if (v === undefined || v === null || v === '') return null;
+    const n = Number(v);
+    return Number.isInteger(n) && n >= 0 && n <= 23 ? n : null;
+  };
+  try {
+    const row = await db.prepare(`SELECT value FROM settings WHERE key = 'daily_job_hour'`).first<{ value: string }>();
+    const fromSettings = valid(row?.value);
+    if (fromSettings !== null) return fromSettings;
+  } catch {
+    /* settings unavailable: fall through to env/default */
+  }
+  return valid(env.DAILY_JOB_HOUR) ?? DEFAULT_DAILY_JOB_HOUR;
+}
 
 async function pruneJobRuns(db: D1Database, now: Date): Promise<void> {
   const cutoff = new Date(now.getTime() - 45 * 86400000).toISOString();
@@ -109,15 +140,11 @@ export async function releaseJob(db: D1Database, tenantId: string, job: string, 
   await db.prepare('DELETE FROM cron_job_runs WHERE tenant_id = ? AND job = ? AND period_key = ?').bind(tenantId, job, periodKey).run();
 }
 
-/** Errors worth a queue retry: the database, network or queue was unavailable, not a bug in the job. */
-export function isInfrastructureError(err: unknown): boolean {
-  const text = err instanceof Error ? `${err.name} ${err.message}` : String(err);
-  return /D1_|SQLITE_BUSY|network|timed? ?out|temporar|unavailable|overloaded|Durable Object|reset because/i.test(text);
-}
-
 export interface JobSetResult {
   ran: string[];
   skipped: string[];
+  /** Daily jobs whose agency-local send hour has not been reached yet. */
+  notDue: string[];
   failed: Array<{ job: string; error: string; infrastructure: boolean }>;
 }
 
@@ -129,9 +156,10 @@ export async function runTenantJobSet(
   jobSet: JobSet,
   firedAt: string,
 ): Promise<JobSetResult> {
-  const result: JobSetResult = { ran: [], skipped: [], failed: [] };
+  const result: JobSetResult = { ran: [], skipped: [], notDue: [], failed: [] };
   const firedIso = Number.isNaN(new Date(firedAt).getTime()) ? new Date().toISOString() : firedAt;
-  let localDay: string | null = null;
+  let clock: ReturnType<typeof localClock> | null = null;
+  let sendHour: number | null = null;
 
   for (const job of JOB_SETS[jobSet]) {
     let periodKey = '';
@@ -140,8 +168,15 @@ export async function runTenantJobSet(
       if (job.period === 'tick') {
         periodKey = `tick:${tickKey(firedIso)}`;
       } else {
-        localDay ??= localDateString(await getTenantTimeZone(db), new Date(firedIso));
-        periodKey = `day:${localDay}`;
+        clock ??= localClock(await getTenantTimeZone(db), new Date(firedIso));
+        if (job.atSendHour) {
+          sendHour ??= await getDailyJobHour(env, db);
+          if (clock.hour < sendHour) {
+            result.notDue.push(job.name);
+            continue;
+          }
+        }
+        periodKey = `day:${clock.date}`;
       }
       claimed = await claimJob(db, tenantId, job.name, periodKey);
       if (!claimed) {
@@ -152,14 +187,16 @@ export async function runTenantJobSet(
       await job.run(env, tenantId, db, job.period === 'tick' ? new Date() : new Date(firedIso));
       result.ran.push(job.name);
     } catch (err) {
-      console.error(`[cron] ${job.name} failed for tenant ${tenantId}:`, err);
+      const infrastructure = isInfrastructureError(err);
+      log('error', 'cron.job_failed', { job: job.name, tenantId, infrastructure, error: err instanceof Error ? err.message : String(err) });
+      reportError(env, err, { source: 'cron-job', tenantId });
       if (claimed) {
         try { await releaseJob(db, tenantId, job.name, periodKey); } catch { /* the next claim attempt will see the row */ }
       }
       result.failed.push({
         job: job.name,
         error: err instanceof Error ? err.message : String(err),
-        infrastructure: isInfrastructureError(err),
+        infrastructure,
       });
     }
   }
@@ -221,9 +258,14 @@ export async function dispatchScheduled(event: { cron?: string; scheduledTime?: 
     try {
       await runPlatformDailyJobs(env, fired);
     } catch (err) {
-      console.error('[cron] platform daily jobs failed:', err);
+      log('error', 'cron.platform_daily_failed', { error: err instanceof Error ? err.message : String(err) });
+      reportError(env, err, { source: 'scheduled' });
     }
   }
+
+  // The 00:30 UTC cron only does the platform work above. Agency daily jobs run from the hourly set at
+  // each agency's local send hour.
+  if (jobSet === 'daily') return;
 
   const tenantIds = await listScheduledTenantIds(env);
   const queue = env.TENANT_JOBS_QUEUE;
