@@ -48,6 +48,30 @@ async function pendingFollowUps(): Promise<any[]> {
   return Array.isArray(res?.data) ? res.data : [];
 }
 
+/**
+ * Creating a lead makes the "first follow-up on every new lead" automation add its own follow-up
+ * (notes "...scheduled automatically") a moment later, in the background. Left alone it lands at a
+ * random point of the run and gives the lead a second row. Wait for it, then remove it, so every
+ * follow-up the tests look at is one the tests made.
+ */
+async function settleAutoFollowUps(leadIds: string[]) {
+  const isAuto = (f: any) => leadIds.includes(f.leadId) && /scheduled automatically/.test(f.notes ?? '');
+  const deadline = Date.now() + 15_000;
+  const seen = new Set<string>();
+  while (Date.now() < deadline) {
+    const auto = (await pendingFollowUps()).filter(isAuto);
+    for (const f of auto) {
+      seen.add(f.leadId);
+      await api('DELETE', `/follow-ups/${f.id}`);
+    }
+    // Both leads have no follow-up yet, so the automation adds one to each.
+    if (leadIds.every((id) => seen.has(id))) break;
+    await new Promise((res) => setTimeout(res, 250));
+  }
+  // One last sweep in case a second one arrived while the first was being removed.
+  for (const f of (await pendingFollowUps()).filter(isAuto)) await api('DELETE', `/follow-ups/${f.id}`);
+}
+
 /* ─── ui helpers ─── */
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -130,6 +154,7 @@ test.describe('Follow-ups', () => {
     beta = await seedLead(contact.id, { title: BETA_TITLE });
     expect(alpha?.id).toBeTruthy();
     expect(beta?.id).toBeTruthy();
+    await settleAutoFollowUps([alpha.id, beta.id]);
 
     const overdue = await seedFollowUp(beta.id, {
       type: 'call',
