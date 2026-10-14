@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-15T05:30+05:30",
+  "updated": "2026-10-15T07:00+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -106,7 +106,10 @@
         "R112": "merged: desktop tsc 0 (after clearing stale .next/types caches), vitest 66/1323, lint 0; super-admin tsc 0, next build OK; OpenNext build deferred to R118 (half-separate super-admin install). Manual run by the agent: console create agency -> desktop login with temp password -> support session banner.",
         "R108": "merged: backend 75 files / 1519 tests; master 0014_api_key_hashing; AES-256-GCM per value with key ids; API keys SHA-256 + prefix",
         "R110": "merged: backend 80 files / 1569 tests; desktop 67 / 1328; lint 0; master 0016_otp_requests (otp_requests, usage_alerts, metered_events, email unit cost, email_1000 and call_minutes_100 packs). Unknown phones now get a generic 200 on OTP (no account disclosure).",
-        "R117": "merged: backend 78 files / 1543 tests; gen-wrangler self-test passed; backup --verify restored copy matches; notifications + inbox e2e 54 passed. No migrations."
+        "R117": "merged: backend 78 files / 1543 tests; gen-wrangler self-test passed; backup --verify restored copy matches; notifications + inbox e2e 54 passed. No migrations.",
+        "R121": "merged: isolation spec 9/9 passed three runs in a row on the branch; re-run on merged line (with R110): 9 passed (18.7s)",
+        "R124": "running",
+        "R116": "running"
       },
       "merged": [
         "R101",
@@ -126,7 +129,8 @@
         "R108",
         "R112",
         "R117",
-        "R110"
+        "R110",
+        "R121"
       ]
     },
     "W4": {
