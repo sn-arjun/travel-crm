@@ -19,6 +19,7 @@ import type { Env } from '../types';
 import { resolveTenantDb } from '../services/tenant-db';
 import { getTenantTimeZone, localClock } from '../utils/tz';
 import { isInfrastructureError } from './errors';
+import { pruneRecipientClaims } from './recipient-claims';
 import { reportError } from '../services/error-reporter';
 import { log } from '../utils/logger';
 import { resetUsageCaps } from '../middleware/usage-cap';
@@ -80,16 +81,16 @@ const EVERY5_JOBS: TenantJob[] = [
 ];
 
 const HOURLY_JOBS: TenantJob[] = [
-  { name: 'invoices.reminders', period: 'local-day', run: (env, _id, db, now) => processInvoiceRemindersForTenant(env, db, now) },
+  { name: 'invoices.reminders', period: 'local-day', run: (env, id, db, now) => processInvoiceRemindersForTenant(env, db, id, now) },
   { name: 'tasks.overdue', period: 'local-day', run: (env, id, db, now) => processOverdueTasks(env, id, db, now) },
   { name: 'fleet.alerts', period: 'local-day', run: (env, id, db, now) => processFleetAlerts(env, id, db, now) },
 ];
 
 const DAILY_JOBS: TenantJob[] = [
   { name: 'contacts.birthdays', period: 'local-day', run: (env, id, db, now) => processBirthdaysForTenant(env, db, id, now) },
-  { name: 'visa.passport-expiry', period: 'local-day', run: (env, _id, db, now) => processVisaPassportForTenant(env, db, now) },
-  { name: 'visa.missing-documents', period: 'local-day', run: (env, _id, db, now) => processMissingVisaDocsForTenant(env, db, now) },
-  { name: 'trips.reminders', period: 'local-day', run: (env, _id, db, now) => processTripRemindersForTenant(env, db, now) },
+  { name: 'visa.passport-expiry', period: 'local-day', run: (env, id, db, now) => processVisaPassportForTenant(env, db, id, now) },
+  { name: 'visa.missing-documents', period: 'local-day', run: (env, id, db, now) => processMissingVisaDocsForTenant(env, db, id, now) },
+  { name: 'trips.reminders', period: 'local-day', run: (env, id, db, now) => processTripRemindersForTenant(env, db, id, now) },
   { name: 'housekeeping.prune-job-runs', period: 'local-day', run: (_env, _id, db, now) => pruneJobRuns(db, now) },
 ];
 
@@ -119,6 +120,7 @@ export async function getDailyJobHour(env: Env, db: D1Database): Promise<number>
 async function pruneJobRuns(db: D1Database, now: Date): Promise<void> {
   const cutoff = new Date(now.getTime() - 45 * 86400000).toISOString();
   await db.prepare('DELETE FROM cron_job_runs WHERE claimed_at < ?').bind(cutoff).run();
+  await pruneRecipientClaims(db, now); // per-recipient send claims keep 14 days
 }
 
 /** Floors the firing time to its 5-minute bucket: 2026-10-14T12:35Z. */

@@ -1,5 +1,5 @@
 import { env, createExecutionContext, waitOnExecutionContext, applyD1Migrations } from 'cloudflare:test';
-import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import worker from '../src/index';
 import { generateId } from '../src/utils/uuid';
 import {
@@ -306,6 +306,8 @@ describe('B37 fleet: document expiry flags and alerts use the local day', () => 
 });
 
 describe('B37 reminder crons (auto-reminders)', () => {
+  // each case replays the same local day; recipient claims from an earlier case would suppress the send
+  beforeEach(async () => { await run('DELETE FROM cron_job_runs'); });
   beforeAll(async () => {
     await run("DELETE FROM invoices WHERE invoice_number LIKE 'B37R-%'");
     const mk = (n: string, due: string) =>
@@ -320,7 +322,7 @@ describe('B37 reminder crons (auto-reminders)', () => {
   for (const [label, iso] of [['00:30 IST', IST_0030], ['23:30 IST', IST_2330]] as const) {
     it(`invoice reminders at ${label}: due-in-3-days and overdue-1-day match the local calendar`, async () => {
       const q = fakeQueues();
-      await processInvoiceRemindersForTenant(q.env, db, new Date(iso));
+      await processInvoiceRemindersForTenant(q.env, db, TENANT_ID, new Date(iso));
       const text = JSON.stringify(q.sent);
       expect(text).toContain('B37R-IN3');
       expect(text).toContain('B37R-YEST');
@@ -331,14 +333,14 @@ describe('B37 reminder crons (auto-reminders)', () => {
     it(`birthday wishes at ${label} go to contacts whose birthday is the local day`, async () => {
       const q = fakeQueues();
       await processBirthdaysForTenant(q.env, db, TENANT_ID, new Date(iso));
-      expect(q.sent.filter((m) => m.data?.templateId === 'birthday_wish' && m.data.message.includes('B37 Traveller'))).toHaveLength(1);
+      expect(q.sent.filter((m) => m.data?.templateId === 'birthday_wish' && m.data.body.includes('B37 Traveller'))).toHaveLength(1);
     });
   }
 
   it('birthday wishes are NOT sent the local day before', async () => {
     const q = fakeQueues();
     await processBirthdaysForTenant(q.env, db, TENANT_ID, new Date('2026-10-06T17:00:00Z')); // 22:30 IST on 6 Oct
-    expect(q.sent.filter((m) => m.data?.message?.includes('B37 Traveller'))).toHaveLength(0);
+    expect(q.sent.filter((m) => m.data?.body?.includes('B37 Traveller'))).toHaveLength(0);
   });
 
   it('missing-visa-documents reminder counts the 7 days on the local calendar', async () => {
@@ -354,7 +356,7 @@ describe('B37 reminder crons (auto-reminders)', () => {
     // created 00:30 IST on 1 Oct = 2026-09-30T19:00Z: local 1 Oct (6 days before 7 Oct): not due yet at 00:30 IST on 7 Oct
     await mk('2026-09-30T19:00:00Z');
     const q = fakeQueues();
-    await processMissingVisaDocsForTenant(q.env, db, new Date(IST_0030));
+    await processMissingVisaDocsForTenant(q.env, db, TENANT_ID, new Date(IST_0030));
     expect(q.sent.filter((m) => m.data?.templateId === 'visa_missing_docs_reminder')).toHaveLength(1);
   });
 });

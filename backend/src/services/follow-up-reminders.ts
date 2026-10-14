@@ -1,5 +1,6 @@
 import type { Env } from '../types';
 import { createInAppNotification } from './notification-service';
+import { sendOnce, type RecipientClaims } from '../cron/recipient-claims';
 
 /**
  * One agency's follow-up reminders, run from the per-agency tick (every 5 minutes).
@@ -22,6 +23,9 @@ export async function processFollowUpsForTenant(
   in15MinIso: string
 ): Promise<void> {
   {
+    // Per-recipient claims: a retried tick never repeats a push or notification already delivered (R124).
+    const claims: RecipientClaims = { db: tenantDb, tenantId, job: 'followups.reminders', period: 'followup' };
+
     // 1. Auto-mark missed follow-ups
     await tenantDb
       .prepare("UPDATE follow_ups SET status = 'missed' WHERE status = 'pending' AND scheduled_at < ?")
@@ -61,16 +65,18 @@ export async function processFollowUpsForTenant(
       const title = `Follow-up in 15 min: ${fu.type}`;
       const body = `${fu.contact_name} — ${fu.lead_title}`;
 
-      // Send push via queue
-      await env.PUSH_NOTIFICATION_QUEUE.send({
-        type: 'push',
-        data: {
-          tenantId,
-          userId: fu.created_by,
-          title,
-          body,
-          data: { type: 'follow_up_reminder', leadId: fu.lead_id, followUpId: fu.id },
-        },
+      // Send push via queue (tenantId scopes the token lookup to this agency)
+      await sendOnce(claims, `${fu.id}:15min:push`, async () => {
+        await env.PUSH_NOTIFICATION_QUEUE.send({
+          type: 'push',
+          data: {
+            tenantId,
+            userId: fu.created_by,
+            title,
+            body,
+            data: { type: 'follow_up_reminder', leadId: fu.lead_id, followUpId: fu.id },
+          },
+        });
       });
 
       // Mark as sent; expires in 1 hour
@@ -107,27 +113,31 @@ export async function processFollowUpsForTenant(
       if (alreadyNotified) continue;
 
       // Notify the person who created the follow-up
-      await createInAppNotification(
-        tenantDb,
-        fu.created_by,
-        `Missed Follow-up: ${fu.type}`,
-        `You missed a follow-up with ${fu.contact_name} on "${fu.lead_title}" scheduled for ${fu.scheduled_at}`,
-        'follow_up_reminder',
-        'follow_up',
-        fu.id
-      );
-
-      // Notify the assigned salesperson if different
-      if (fu.assigned_to && fu.assigned_to !== fu.created_by) {
+      await sendOnce(claims, `${fu.id}:missed:creator`, async () => {
         await createInAppNotification(
           tenantDb,
-          fu.assigned_to,
-          `Missed Follow-up Alert`,
-          `A follow-up was missed for "${fu.lead_title}" with ${fu.contact_name}`,
+          fu.created_by,
+          `Missed Follow-up: ${fu.type}`,
+          `You missed a follow-up with ${fu.contact_name} on "${fu.lead_title}" scheduled for ${fu.scheduled_at}`,
           'follow_up_reminder',
           'follow_up',
           fu.id
         );
+      });
+
+      // Notify the assigned salesperson if different
+      if (fu.assigned_to && fu.assigned_to !== fu.created_by) {
+        await sendOnce(claims, `${fu.id}:missed:assignee`, async () => {
+          await createInAppNotification(
+            tenantDb,
+            fu.assigned_to!,
+            `Missed Follow-up Alert`,
+            `A follow-up was missed for "${fu.lead_title}" with ${fu.contact_name}`,
+            'follow_up_reminder',
+            'follow_up',
+            fu.id
+          );
+        });
       }
 
       // Mark as notified; expires in 24 hours
