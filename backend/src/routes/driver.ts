@@ -10,6 +10,8 @@ import { driverAuth } from '../middleware/driver-auth';
 import { AllowanceExhausted, assertAllowance, meterUsage, refundUsage } from '../services/metering/meter';
 import { OTP_CAP_MESSAGE, checkAndRecordOtpRequest, checkMobileNumber } from '../services/metering/otp-limits';
 import { resolveTenantDb } from '../services/tenant-db';
+import { rateLimit } from '../middleware/rate-limiter';
+import { limitMultiplier } from '../middleware/rate-limit';
 import { phoneLookupVariants, inPlaceholders } from '../utils/phone';
 import { localDayWindowUtc, getTenantTimeZone } from '../utils/tz';
 import {
@@ -337,6 +339,53 @@ driver.post('/refresh', zValidator('json', refreshTokenSchema), async (c) => {
   ).bind(generateId(), storedToken.did, newRefreshHash, new Date().toISOString()).run();
 
   return success(c, { accessToken: newAccessToken, refreshToken: newRefreshToken });
+});
+
+// ============================================================================
+// AGENCY CODE LOOKUP (PUBLIC) -- R115. The driver app asks for the agency code once, then sends the
+// resolved tenantId with every login call. The code is the agency's slug (tenants.subdomain).
+// Reveals only: a tenant id, the display name and an optional logo. Unknown, malformed, suspended,
+// expired and still-provisioning agencies all answer the same 404.
+// ============================================================================
+
+const AGENCY_CODE_PATTERN = /^[a-z0-9][a-z0-9-]{0,62}$/;
+const AGENCY_NOT_FOUND = 'Agency code not recognised';
+
+driver.get('/agency/:code', async (c) => {
+  const ip = c.get('clientIp') || c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For')?.split(',')[0]?.trim() || 'unknown';
+  const rl = await rateLimit(c.env.CACHE, `rate:driver-agency:${ip}`, 10 * limitMultiplier(c.env), 60);
+  if (!rl.allowed) {
+    c.header('Retry-After', String(rl.retryAfterSecs ?? 60));
+    return error(c, 'Too many attempts. Try again in a minute.', 429);
+  }
+
+  let code = '';
+  try {
+    code = decodeURIComponent(c.req.param('code') ?? '').trim().toLowerCase();
+  } catch {
+    return error(c, AGENCY_NOT_FOUND, 404);
+  }
+  if (!AGENCY_CODE_PATTERN.test(code)) return error(c, AGENCY_NOT_FOUND, 404);
+
+  const tenant = await c.env.MASTER_DB.prepare(
+    `SELECT id, company_name, logo_url FROM tenants
+     WHERE subdomain = ? AND status IN ('active', 'trial') AND provisioning_status = 'active'`
+  ).bind(code).first() as { id: string; company_name: string; logo_url: string | null } | null;
+  if (!tenant) return error(c, AGENCY_NOT_FOUND, 404);
+
+  let logoUrl = tenant.logo_url;
+  if (!logoUrl) {
+    // The logo uploaded in Settings lives in the agency's own database. It is optional: any failure means no logo.
+    try {
+      const db = await resolveTenantDb(c.env, tenant.id);
+      const row = db ? await db.prepare(`SELECT value FROM settings WHERE key = 'company_logo'`).first() as { value: string } | null : null;
+      logoUrl = row?.value || null;
+    } catch {
+      logoUrl = null;
+    }
+  }
+
+  return success(c, { tenantId: tenant.id, name: tenant.company_name, logoUrl: logoUrl ?? null });
 });
 
 // ============================================================================
