@@ -14,6 +14,7 @@
 import type { Env } from '../../types';
 import { generateId } from '../../utils/uuid';
 import { isTestMode } from '../../utils/test-mode';
+import { normalizePhone } from '../../utils/phone';
 
 export type OtpPurpose = 'login' | 'driver_login';
 
@@ -42,7 +43,7 @@ export function checkMobileNumber(raw: string): MobileCheck {
   const trimmed = (raw ?? '').trim();
   const digits = trimmed.replace(/\D/g, '');
   if (!digits) return bad;
-  const e164 = trimmed.startsWith('+') ? `+${digits}` : digits.length === 10 ? `+91${digits}` : `+${digits}`;
+  const e164 = normalizePhone(trimmed);
   if (!/^\+[1-9]\d{7,14}$/.test(e164)) return bad;
   if (PREMIUM_PREFIXES.some((re) => re.test(e164))) return bad;
   // India: mobile numbers are ten digits starting 6 to 9 (anything else is a landline or a service number).

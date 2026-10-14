@@ -136,6 +136,11 @@ describe('Inbound calls are logged and routed on the real schema', () => {
 
   it('a call started from a lead keeps the lead link and the lead contact', async () => {
     await testEnv.MASTER_DB.prepare(`UPDATE voip_settings SET default_caller_id = '+918047182291' WHERE id = 'voip-inbound'`).run();
+    // R110: call minutes are metered; this agency needs a call-minute pack for the month before it can place a call.
+    await testEnv.MASTER_DB
+      .prepare(`INSERT OR IGNORE INTO tenant_addons (id, tenant_id, product_key, quantity, units_granted, period_key, source) VALUES ('0196a110-0000-7000-8000-0000000000c1', ?, 'call_minutes_100', 1, 100, ?, 'super_admin_grant')`)
+      .bind(TENANT_ID, new Date().toISOString().slice(0, 7))
+      .run();
     // Never reach the real provider
     vi.spyOn(TwilioVoipProvider.prototype, 'initiateCall').mockResolvedValue({ providerCallId: 'CA-out-lead', status: 'queued', direction: 'outbound', from: '+918047182291', to: '+919000005001' } as any);
     const res = await call('POST', '/calls/outbound', admin, { toNumber: '+919000005001', leadId });

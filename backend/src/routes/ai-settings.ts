@@ -42,10 +42,11 @@ const AI_USAGE_CAP_KEYS = [
   'ai_credits_per_month',
   'ai_actions_per_day',
   'ai_tokens_per_month',
-  'whatsapp_messages_per_month',
-  'email_sends_per_month',
+  'whatsapp_per_month',
+  'email_per_month',
+  'otp_per_month',
   'sms_per_month',
-  'voip_minutes_per_month',
+  'call_minutes_per_month',
 ] as const;
 
 // ── GET /ai/settings ─────────────────────────────────────

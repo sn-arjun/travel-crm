@@ -44,8 +44,8 @@ export async function getCreditBalance(ref: MasterRef, tenantId: string): Promis
     // The unique (tenant_id, cap_key) index makes a concurrent first use harmless.
     await masterDb
       .prepare(
-        `INSERT OR IGNORE INTO tenant_usage_caps (id, tenant_id, cap_key, cap_value, current_usage, reset_period, last_reset_at)
-         VALUES (?, ?, ?, ?, 0, 'monthly', strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`,
+        `INSERT OR IGNORE INTO tenant_usage_caps (id, tenant_id, cap_key, cap_value, current_usage, reset_period, last_reset_at, period_key)
+         VALUES (?, ?, ?, ?, 0, 'monthly', strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), ?)`,
       )
       .bind(generateId(), tenantId, AI_CREDITS_CAP_KEY, allowance, currentPeriodKey())
       .run();
@@ -83,6 +83,16 @@ export async function chargeCredits(ref: MasterRef, tenantId: string, creditClas
       )
       .bind(CREDIT_WEIGHTS[creditClass], tenantId, AI_CREDITS_CAP_KEY)
       .run();
+    // 80% / 100% alerts go through the same mechanism as the communication channels (needs the full Env).
+    if (typeof (ref as D1Database).prepare !== 'function') {
+      const balance = await getCreditBalance(ref, tenantId);
+      await checkUsageAlerts(ref as unknown as Env, tenantId, {
+        capKey: AI_CREDITS_CAP_KEY,
+        label: 'AI credits',
+        used: balance.used,
+        allowance: balance.limit,
+      });
+    }
   } catch (err) {
     console.error('[ai-credits] charge failed:', err);
   }

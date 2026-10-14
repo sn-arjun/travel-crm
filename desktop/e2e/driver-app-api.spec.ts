@@ -12,7 +12,7 @@ import { API_URL, TENANT_ID } from './helpers/auth';
  * The local/CI backend runs with placeholder Twilio credentials
  * (backend/.dev.vars), so a real OTP round-trip cannot complete here — that
  * is infra, not product logic. We still assert the real, observable behavior
- * of /login (driver lookup, inactive-account rejection, unknown-phone 404)
+ * of /login (driver lookup, inactive-account rejection, unknown-phone generic answer)
  * without faking a success we can't produce. For the protected trip/profile
  * routes we mint a driver JWT with the same HS256 dev secret the backend
  * itself uses (JWT_SECRET in backend/.dev.vars) — this exercises the real
@@ -82,18 +82,28 @@ test.describe('driver-app-api', () => {
     token = await signDriverToken(driverId, driverPhone);
   });
 
-  test('login rejects an unknown phone number with 404', async () => {
+  test('login answers an unknown phone number like a known one and never reveals the account', async () => {
+    const res = await fetch(`${API_URL}/driver/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: '+919000000001', tenantId: TENANT_ID }),
+    });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.data.driverId).toBeUndefined();
+  });
+
+  test('login rejects a landline-range number before anything is sent', async () => {
     const res = await fetch(`${API_URL}/driver/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ phone: '+910000000001', tenantId: TENANT_ID }),
     });
-    expect(res.status).toBe(404);
-    const json = await res.json();
-    expect(json.success).toBe(false);
+    expect(res.status).toBe(400);
   });
 
-  test('login rejects an inactive driver account with 403', async () => {
+  test('login answers an inactive driver account like an unknown one (no 403, no code)', async () => {
     // seedDriver's createDriverSchema has no `status` field — new drivers
     // always land as 'active', so status must be flipped via the dedicated
     // status endpoint to actually exercise the inactive-account branch.
@@ -104,7 +114,8 @@ test.describe('driver-app-api', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ phone: inactive.phone, tenantId: TENANT_ID }),
     });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.driverId).toBeUndefined();
   });
 
   test('login validates phone length before ever reaching Twilio', async () => {

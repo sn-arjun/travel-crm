@@ -9,6 +9,10 @@ import { rbac } from '../middleware/rbac';
 import { logActivity } from '../utils/activity-logger';
 import { success, created, error, notFound } from '../utils/response';
 import { generateId } from '../utils/uuid';
+import { getUsageOverview } from '../services/metering/meter';
+import { sendTransactional } from '../services/mail/transactional';
+import { supportEmail } from '../utils/app-urls';
+import { rateLimit } from '../middleware/rate-limiter';
 
 const settingsRoutes = new Hono<AppContext>();
 
@@ -527,6 +531,53 @@ settingsRoutes.put('/numbering', async (c) => {
   } catch (err: any) {
     return error(c, err.message || 'Failed to update numbering config', 500);
   }
+});
+
+// ── GET /settings/usage — plan allowances, usage and the packs on sale (R110) ──
+
+settingsRoutes.get('/usage', rbac(['admin', 'sales_manager', 'accountant']), async (c) => {
+  const overview = await getUsageOverview(c.env, c.get('tenantId'));
+  return success(c, overview);
+});
+
+// ── POST /settings/usage/request-upgrade — ask the platform for a plan upgrade or extra credits ──
+// Until self-serve purchase lands (R206) the super admin grants the pack or changes the plan
+// (POST /admin/tenants/:id/addons); this sends them the request.
+
+const requestUpgradeSchema = z.object({
+  kind: z.enum(['plan', 'top_up']),
+  channel: z.enum(['ai', 'sms', 'whatsapp', 'otp', 'call_minute', 'email']).optional(),
+  note: z.string().trim().max(500).optional(),
+});
+
+settingsRoutes.post('/usage/request-upgrade', rbac(['admin']), zValidator('json', requestUpgradeSchema), async (c) => {
+  const body = c.req.valid('json');
+  const tenantId = c.get('tenantId');
+  const limited = await rateLimit(c.env.CACHE, `rate:usage-request:${tenantId}`, 5, 3600);
+  if (!limited.allowed) return error(c, 'You have already sent several requests. We will be in touch.', 429);
+
+  const tenant = await c.env.MASTER_DB
+    .prepare('SELECT company_name, plan FROM tenants WHERE id = ?')
+    .bind(tenantId)
+    .first<{ company_name: string | null; plan: string | null }>();
+  const user = await c.get('tenantDb')
+    .prepare('SELECT name, email FROM users WHERE id = ?')
+    .bind(c.get('userId'))
+    .first<{ name: string | null; email: string | null }>();
+
+  const what = body.kind === 'plan' ? 'a plan upgrade' : `extra credits${body.channel ? ` for ${body.channel}` : ''}`;
+  const result = await sendTransactional(c.env, {
+    to: supportEmail(c.env),
+    template: 'platform_enquiry',
+    tenantId,
+    data: {
+      name: user?.name ?? 'Agency admin',
+      email: user?.email ?? '',
+      company: `${tenant?.company_name ?? tenantId} (plan: ${tenant?.plan ?? 'unknown'})`,
+      message: `Requests ${what}.${body.note ? ` Note: ${body.note}` : ''}`,
+    },
+  });
+  return success(c, { requested: true, delivered: result.delivered }, 201);
 });
 
 export default settingsRoutes;

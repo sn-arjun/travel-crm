@@ -271,6 +271,10 @@ const CAP_KEYS = [
   'whatsapp_messages_per_month',
   'email_sends_per_month',
   'sms_per_month',
+  'whatsapp_per_month',
+  'email_per_month',
+  'otp_per_month',
+  'call_minutes_per_month',
   'voip_minutes_per_month',
   'storage_gb',
 ] as const;
@@ -347,10 +351,10 @@ app.put('/tenants/:id/caps', zValidator('json', capsSchema), async (c) => {
 const USED_BY_ALLOWANCE: Record<string, string | null> = {
   ai_credits: 'ai_credits_per_month',
   sms: 'sms_per_month',
-  whatsapp: 'whatsapp_messages_per_month',
-  email: 'email_sends_per_month',
-  call_minutes: 'voip_minutes_per_month',
-  otp: null, // metered by R110; no counter exists yet
+  whatsapp: 'whatsapp_per_month',
+  email: 'email_per_month',
+  call_minutes: 'call_minutes_per_month',
+  otp: 'otp_per_month',
 };
 
 /** GET /admin/tenants/:id/usage — plan, seats, every monthly allowance with what was used, caps and a 30 day trend. */
