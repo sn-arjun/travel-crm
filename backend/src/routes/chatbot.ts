@@ -119,25 +119,30 @@ app.put('/config/:channel', async (c) => {
     return c.json({ success: true, data: row });
   } else {
     const id = generateId();
+    // First save of the Website bot: carry over what the agency saved under the legacy 'web' channel.
+    const legacy: any = channel === 'website'
+      ? await db.prepare(`SELECT * FROM chatbot_config WHERE channel = 'web'`).first()
+      : null;
+    const prior = (key: string) => legacy?.[key] ?? null;
     await db.prepare(`
       INSERT INTO chatbot_config (id, channel, enabled, greeting, business_hours_start, business_hours_end, business_days, after_hours_message, qualification_questions, faq_entries, branding_color, branding_logo, max_auto_replies, handoff_threshold, system_prompt, allowed_origins)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       id, channel,
-      body.enabled ?? 1,
-      body.greeting || null,
-      body.businessHoursStart || null,
-      body.businessHoursEnd || null,
-      body.businessDays ? JSON.stringify(body.businessDays) : null,
-      body.afterHoursMessage || null,
-      body.qualificationQuestions ? JSON.stringify(body.qualificationQuestions) : null,
-      body.faqEntries ? JSON.stringify(body.faqEntries) : null,
-      body.brandingColor || null,
-      body.brandingLogo || null,
-      body.maxAutoReplies || 10,
-      body.handoffThreshold || 5,
-      body.systemPrompt || null,
-      body.allowedOrigins ? JSON.stringify(body.allowedOrigins) : null,
+      body.enabled ?? prior('enabled') ?? 1,
+      body.greeting || prior('greeting'),
+      body.businessHoursStart || prior('business_hours_start'),
+      body.businessHoursEnd || prior('business_hours_end'),
+      body.businessDays ? JSON.stringify(body.businessDays) : prior('business_days'),
+      body.afterHoursMessage || prior('after_hours_message'),
+      body.qualificationQuestions ? JSON.stringify(body.qualificationQuestions) : prior('qualification_questions'),
+      body.faqEntries ? JSON.stringify(body.faqEntries) : prior('faq_entries'),
+      body.brandingColor || prior('branding_color'),
+      body.brandingLogo || prior('branding_logo'),
+      body.maxAutoReplies || prior('max_auto_replies') || 10,
+      body.handoffThreshold || prior('handoff_threshold') || 5,
+      body.systemPrompt || prior('system_prompt'),
+      body.allowedOrigins ? JSON.stringify(body.allowedOrigins) : prior('allowed_origins'),
     ).run();
     const row = await db.prepare(`SELECT * FROM chatbot_config WHERE id = ?`).bind(id).first();
     return c.json({ success: true, data: row }, 201);
@@ -170,7 +175,11 @@ export async function handleChatbotMessage(c: Context<AppContext>, channel: stri
   const now = new Date().toISOString();
 
   // Load config
-  const config = await db.prepare(`SELECT * FROM chatbot_config WHERE channel = ? AND enabled = 1`).bind(channel).first() as any;
+  let config = await db.prepare(`SELECT * FROM chatbot_config WHERE channel = ? AND enabled = 1`).bind(channel).first() as any;
+  // Agencies that saved the Website bot under the legacy 'web' channel keep working.
+  if (!config && channel === 'website') {
+    config = await db.prepare(`SELECT * FROM chatbot_config WHERE channel = 'web' AND enabled = 1`).first() as any;
+  }
   if (!config) return error(c, 'Chatbot not configured', 404);
 
   // Check business hours

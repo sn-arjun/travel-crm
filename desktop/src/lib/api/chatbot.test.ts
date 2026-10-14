@@ -69,7 +69,7 @@ describe('chatbotApi', () => {
           welcomeMessage: 'Hi there!',
           channels: [{ platform: 'web', enabled: true, config: { primaryColor: '#0f766e' } }],
         });
-        expect(client.put).toHaveBeenCalledWith('/chatbot/config/web', {
+        expect(client.put).toHaveBeenCalledWith('/chatbot/config/website', {
           enabled: false,
           greeting: 'Hi there!',
           brandingColor: '#0f766e',

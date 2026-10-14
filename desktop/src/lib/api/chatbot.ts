@@ -200,9 +200,15 @@ function normalizeConversation(raw: RawConversation): ChatbotConversation {
   };
 }
 
-function normalizeConfig(rows: RawChannelConfig[]): ChatbotConfig {
-  const web = rows.find((r) => r.channel === 'web');
-  const source = web ?? rows[0];
+function normalizeConfig(allRows: RawChannelConfig[]): ChatbotConfig {
+  // The widget reads channel 'website'; 'web' is the legacy name older agencies saved under. A
+  // 'website' row that only holds the allowed websites does not hide the legacy greeting/colours.
+  const site = allRows.find((r) => r.channel === 'website');
+  const legacy = allRows.find((r) => r.channel === 'web');
+  const siteConfigured = !!(site && (site.greeting || site.branding_color));
+  const chosen = siteConfigured ? site : legacy ?? site;
+  const rows = allRows.filter((r) => (r.channel !== 'web' && r.channel !== 'website') || r === chosen);
+  const source = chosen ?? rows[0];
   return {
     id: source?.id ?? '',
     enabled: !!(source?.enabled ?? 0),
@@ -211,7 +217,7 @@ function normalizeConfig(rows: RawChannelConfig[]): ChatbotConfig {
     avatar: source?.branding_logo ?? undefined,
     welcomeMessage: source?.greeting ?? source?.welcomeMessage ?? '',
     channels: rows.map((r) => ({
-      platform: r.channel as ChatbotConfig['channels'][number]['platform'],
+      platform: (r.channel === 'website' ? 'web' : r.channel) as ChatbotConfig['channels'][number]['platform'],
       enabled: !!r.enabled,
       config: {
         position: r.widget_position,
@@ -267,7 +273,7 @@ export const chatbotApi = {
       const whatsapp = channels.find((ch) => ch.platform === 'whatsapp');
       const requests: Promise<unknown>[] = [];
       if (web) {
-        requests.push(client.put(API_ENDPOINTS.chatbot.configChannel('web'), {
+        requests.push(client.put(API_ENDPOINTS.chatbot.configChannel('website'), {
           enabled: data.enabled ?? web.enabled,
           greeting: data.welcomeMessage,
           brandingColor: web.config?.primaryColor,

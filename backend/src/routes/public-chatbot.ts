@@ -91,6 +91,33 @@ function originAllowed(origin: string | undefined, allowedJson: string | null | 
   return list.some((o) => typeof o === 'string' && normalizeOrigin(o) === wanted);
 }
 
+type WidgetConfig = { enabled: number; greeting: string | null; branding_color: string | null; branding_logo: string | null; allowed_origins: string | null };
+
+/**
+ * The Website bot tab saves to channel 'website'. Older agencies saved the same settings to
+ * 'web' (a name the widget never read), so 'web' is the fallback: per field, 'website' wins and
+ * 'web' fills what 'website' leaves empty. A 'website' row that only holds the allowed websites
+ * (no greeting or colours yet) does not decide `enabled`; the legacy 'web' row does.
+ */
+export async function readWidgetConfig(db: D1Database): Promise<WidgetConfig | null> {
+  const { results } = await db
+    .prepare("SELECT channel, enabled, greeting, branding_color, branding_logo, allowed_origins FROM chatbot_config WHERE channel IN (?, 'web')")
+    .bind(WIDGET_CHANNEL)
+    .all<WidgetConfig & { channel: string }>();
+  const site = results.find((r) => r.channel === WIDGET_CHANNEL);
+  const legacy = results.find((r) => r.channel === 'web');
+  if (!site) return legacy ?? null;
+  if (!legacy) return site;
+  const siteConfigured = !!(site.greeting || site.branding_color || site.branding_logo);
+  return {
+    enabled: siteConfigured ? site.enabled : legacy.enabled,
+    greeting: site.greeting ?? legacy.greeting,
+    branding_color: site.branding_color ?? legacy.branding_color,
+    branding_logo: site.branding_logo ?? legacy.branding_logo,
+    allowed_origins: site.allowed_origins ?? legacy.allowed_origins,
+  };
+}
+
 interface Resolved {
   tenantId: string;
   db: D1Database;
@@ -104,10 +131,7 @@ async function resolveWidget(c: Context<AppContext>): Promise<Resolved | Respons
   const db = await resolveTenantDb(c.env, tenantId);
   if (!db) return notFound(c);
 
-  const config = await db
-    .prepare('SELECT enabled, greeting, branding_color, branding_logo, allowed_origins FROM chatbot_config WHERE channel = ?')
-    .bind(WIDGET_CHANNEL)
-    .first<Resolved['config'] & object>();
+  const config = await readWidgetConfig(db);
   if (!originAllowed(c.req.header('Origin'), config?.allowed_origins)) {
     return c.json({ success: false, error: 'This website is not allowed to use this chat widget' }, 403);
   }

@@ -204,6 +204,33 @@ describe('public chatbot widget', () => {
       expect(rows.some((r) => r.visitor_id === 'visitor-single')).toBe(true);
     });
 
+    it('the widget config returns the greeting and colour saved through the staff Website bot tab (and a legacy "web" row)', async () => {
+      const publicConfig = async () =>
+        ((await (await req(testEnv, 'GET', `/api/v1/public/chatbot/${widgetKey}/config`, { headers: { Origin: SITE } })).json()) as any).data;
+
+      // What the tab sends on save.
+      const save = await req(testEnv, 'PUT', '/api/v1/chatbot/config/website', {
+        token: admin,
+        json: { enabled: true, greeting: 'Namaste from the Website bot tab', brandingColor: '#0f766e' },
+      });
+      expect(save.status).toBeLessThan(300);
+      expect(await publicConfig()).toEqual({ enabled: true, greeting: 'Namaste from the Website bot tab', brandingColor: '#0f766e', brandingLogo: null });
+
+      // An agency that saved under the old 'web' channel is still served, and its first save under 'website' keeps its values.
+      const db = testEnv.MASTER_DB as D1Database;
+      await db.prepare("DELETE FROM chatbot_config WHERE channel IN ('website', 'web')").run();
+      await db
+        .prepare("INSERT INTO chatbot_config (id, channel, enabled, greeting, branding_color, faq_entries) VALUES ('r123-legacy', 'web', 1, 'Legacy greeting', '#112233', ?)")
+        .bind(FAQ)
+        .run();
+      // Only the allowed websites are set on 'website': the legacy row still supplies the greeting.
+      await req(testEnv, 'PUT', '/api/v1/chatbot/config/website', { token: admin, json: { allowedOrigins: [SITE] } });
+      expect(await publicConfig()).toEqual({ enabled: true, greeting: 'Legacy greeting', brandingColor: '#112233', brandingLogo: null });
+      const site = (await db.prepare("SELECT greeting, branding_color, faq_entries FROM chatbot_config WHERE channel = 'website'").first()) as any;
+      expect(site.greeting).toBe('Legacy greeting');
+      expect(site.faq_entries).toBe(FAQ);
+    });
+
     it('the old authenticated webhook, WhatsApp and widget.js mounts are gone', async () => {
       expect((await req(testEnv, 'POST', '/api/v1/chatbot/webhook/website', { token: admin, json: { visitorId: 'a', message: 'hi' } })).status).toBe(404);
       expect((await req(testEnv, 'POST', '/api/v1/chatbot/whatsapp/incoming', { token: admin, json: {} })).status).toBe(404);
