@@ -112,3 +112,8 @@ export async function resolveTenantDb(env: Env, tenantId: string): Promise<D1Dat
     throw e;
   }
 }
+
+/** Drop the KV-cached registry entry; call after any tenant status, binding or provisioning change. */
+export async function invalidateTenantCache(env: Env, tenantId: string): Promise<void> {
+  await env.CACHE.delete(`tenant:v2:${tenantId}`);
+}

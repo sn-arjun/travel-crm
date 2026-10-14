@@ -20,6 +20,7 @@ export const users = sqliteTable('users', {
   inviteStatus: text('invite_status').default('active'), // pending, active
   invitedAt: text('invited_at'),
   emailSignature: text('email_signature'), // HTML or plain text email signature
+  mustChangePassword: integer('must_change_password').notNull().default(0),
   isActive: integer('is_active').default(1),
   lastLoginAt: text('last_login_at'),
   createdAt: text('created_at').default(timestamp),

@@ -51,3 +51,10 @@ export const requireSuperAdmin: MiddlewareHandler<AppContext> = async (c, next) 
 
   return next();
 };
+
+/** The super_admins row id for an email, or null (bootstrap SUPER_ADMIN_EMAIL has no row). Used for audit rows. */
+export async function superAdminIdFor(env: { MASTER_DB: D1Database }, email: string | undefined | null): Promise<string | null> {
+  if (!email) return null;
+  const row = await env.MASTER_DB.prepare(`SELECT id FROM super_admins WHERE lower(email) = lower(?) LIMIT 1`).bind(email).first<{ id: string }>();
+  return row?.id ?? null;
+}

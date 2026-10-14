@@ -94,6 +94,7 @@ import driverRoutes from './routes/driver';
 import publicRoutes from './routes/public';
 import hsnCodeRoutes from './routes/hsn-codes';
 import adminRoutes from './routes/admin';
+import adminTenantsRoutes from './routes/admin-tenants';
 import { checkFollowUpReminders } from './services/follow-up-reminders';
 import {
   checkBirthdayAnniversary,
@@ -301,6 +302,7 @@ const routeMounts: Array<[string, typeof authRoutes]> = [
   ['integrations', integrationRoutes],
   ['assistant', assistantRoutes],
   ['automations', automationRoutes],
+  ['admin/tenants', adminTenantsRoutes],
   ['admin', adminRoutes],
 ];
 

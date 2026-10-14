@@ -248,6 +248,7 @@ auth.post(
         language: user.language,
       },
       tenant: await getTenantSummary(tenantDb, tenantId, tenant.companyName),
+      mustChangePassword: user.mustChangePassword === 1,
     });
   }
 );

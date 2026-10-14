@@ -14,6 +14,13 @@ export const tenants = sqliteTable('tenants', {
   status: text('status').notNull().default('trial'), // trial, active, suspended, expired
   settings: text('settings'), // JSON text
   maxUsers: integer('max_users').default(5),
+  provisioningStatus: text('provisioning_status').notNull().default('active'), // creating_db, migrating, seeding, binding, active, pending_deploy, failed
+  provisioningError: text('provisioning_error'),
+  ownerEmail: text('owner_email'),
+  ownerName: text('owner_name'),
+  country: text('country'),
+  createdByAdmin: text('created_by_admin'),
+  region: text('region').notNull().default('in'), // in, eu, uk, us, au, gulf
   createdAt: text('created_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
   updatedAt: text('updated_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
 }, (table) => [
