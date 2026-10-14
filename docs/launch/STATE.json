@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-16T02:00+05:30",
+  "updated": "2026-10-16T03:00+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -104,7 +104,7 @@
         "R111": "merged: backend 72 files / 1487 tests; master 0017_impersonation_audit (0016 free). Super admin has its own login/token; tenant-email super admin path removed.",
         "R113": "merged + adapted to R111 (9f07619): backend 73 files / 1499; desktop 66 / 1323; lint 0; first-login + auth-shell + settings-company e2e 29 passed on a multi-agency stack (slot 3).",
         "R112": "running (slot 1)",
-        "R108": "running (slot 2)"
+        "R108": "merged: backend 75 files / 1519 tests; master 0014_api_key_hashing; AES-256-GCM per value with key ids; API keys SHA-256 + prefix"
       },
       "merged": [
         "R101",
@@ -120,7 +120,8 @@
         "R109",
         "R119",
         "R111",
-        "R113"
+        "R113",
+        "R108"
       ]
     },
     "W4": {
@@ -162,7 +163,8 @@
     "R106: ENVIRONMENT=production, TEST_MODE unset, CORS_ORIGINS (exact web origins), ALLOW_LOOPBACK_ORIGINS=true for the desktop app; add Cloudflare WAF rate-limit rules at the edge.",
     "R107: API_PUBLIC_URL must equal the public URL Twilio calls; TWILIO_AUTH_TOKEN; Twilio console callback URLs (voice/status under /api/v1/voip/..., message status /api/v1/webhooks/twilio/status, WhatsApp /api/v1/webhooks/chatbot/whatsapp); register each agency WhatsApp number in tenant_channel_addresses; SendGrid Signed Event Webhook + SENDGRID_WEBHOOK_PUBLIC_KEY; per-agency widget snippet and allowed website origins; apply tenant migration 0043 to every agency DB.",
     "R104: verify on a real Cloudflare account that D1 create (location hint/jurisdiction), query and delete work and whether the Workers settings PATCH adds a binding without redeploy; otherwise run the generated deploy after each new agency.",
-    "R111: SUPER_ADMIN_JWT_SECRET (32+ chars, different from JWT_SECRET); apply master 0017; create first super admin with backend/scripts/create-super-admin.mjs --remote (try --local first); rotate/delete super_admins rows from the old console seed route; review backend/scripts/seed-demo.mjs demo super admin before any shared environment."
+    "R111: SUPER_ADMIN_JWT_SECRET (32+ chars, different from JWT_SECRET); apply master 0017; create first super admin with backend/scripts/create-super-admin.mjs --remote (try --local first); rotate/delete super_admins rows from the old console seed route; review backend/scripts/seed-demo.mjs demo super admin before any shared environment.",
+    "R108: Worker secret CREDENTIALS_KEYS={\"k1\":\"<base64 32 bytes>\"} and var CREDENTIALS_ACTIVE_KEY_ID=k1 (keep a copy in the owner password manager; losing it makes stored provider credentials unrecoverable); after deploy run POST /admin/maintenance/reencrypt and /admin/maintenance/hash-api-keys as super admin until nextCursor is null."
   ],
   "todo": [
     "Leftover folder .claude/worktrees/R114/packages/shared is locked by another program (editor/Dart analyzer); delete by hand later. Not tracked by git.",
