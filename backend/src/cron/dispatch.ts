@@ -14,6 +14,7 @@ import type { Env } from '../types';
 import { resolveTenantDb } from '../services/tenant-db';
 import { getTenantTimeZone, localDateString } from '../utils/tz';
 import { resetUsageCaps } from '../middleware/usage-cap';
+import { expireTrials } from '../services/plans/trial';
 import { checkFollowUpReminders } from '../services/follow-up-reminders';
 import { runScheduledAutomationsForTenant } from '../services/automation/schedule';
 import { processCampaignScheduler } from './campaign-scheduler';
@@ -188,9 +189,9 @@ export async function runTenantJobSetInline(
   return runTenantJobSet(env, tenantId, db, jobSet, firedAt);
 }
 
-/** Trial expiry belongs to R109; the daily cron calls this hook so the wiring is in place. */
-export async function checkTrialExpiry(_env: Env, _now: Date): Promise<void> {
-  // intentionally empty until R109 adds the plan catalogue and trial end dates
+/** Trial agencies past their end date become 'expired' (R109); their cached registry entry is dropped. Returns the agency ids. */
+export async function checkTrialExpiry(env: Env, now: Date): Promise<string[]> {
+  return expireTrials(env, now);
 }
 
 /** Platform-wide daily work: allowance resets (each is a no-op after the first call in a period) and trial expiry. */

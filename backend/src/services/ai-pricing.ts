@@ -77,13 +77,4 @@ export function creditClassFor(task: AITask): AiCreditClass {
 
 export const AI_CREDITS_CAP_KEY = 'ai_credits_per_month';
 
-/** Monthly credit allowance included in each plan. */
-export const PLAN_AI_CREDITS: Record<string, number> = {
-  trial: 2000,
-  starter: 1000,
-  basic: 1000,
-  pro: 15000,
-  enterprise: 25000,
-};
-
-export const DEFAULT_PLAN_AI_CREDITS = 1000;
+// The monthly allowance per plan lives in the plan catalogue (plan_allowances, key ai_credits); see services/plans/catalogue.ts.

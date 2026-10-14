@@ -8,6 +8,7 @@ import { generateId } from '../utils/uuid';
 import { sendTransactional } from '../services/mail/transactional';
 import { appUrl } from '../utils/app-urls';
 import { REGIONS } from '../services/tenancy/provisioner';
+import { getCatalogue, activePriceFrom } from '../services/plans/catalogue';
 import { runProvisioning, type ProvisionOutcome, type TenantRow } from '../services/tenancy/run-provisioning';
 
 /**
@@ -17,8 +18,6 @@ import { runProvisioning, type ProvisionOutcome, type TenantRow } from '../servi
  */
 const app = new Hono<AppContext>();
 app.use('*', requireSuperAdmin);
-
-const PLAN_MAX_USERS: Record<string, number> = { trial: 5, basic: 5, pro: 15, enterprise: 50 };
 
 const createSchema = z.object({
   companyName: z.string().trim().min(2).max(120),
@@ -121,9 +120,13 @@ app.post('/', zValidator('json', createSchema), async (c) => {
 
   const tenantId = generateId();
   const now = new Date().toISOString();
+  // Price, included users and trial length come from the plan catalogue (R109).
+  const catalogue = await getCatalogue(env);
+  const catalogPlan = catalogue.plans.find((p) => p.key === body.plan);
+  const planPrice = activePriceFrom(catalogue, body.plan);
   const next = new Date();
-  if (body.plan === 'trial') next.setDate(next.getDate() + 14);
-  else next.setMonth(next.getMonth() + 1);
+  if (body.plan === 'trial') next.setDate(next.getDate() + (catalogPlan?.trialDays || 14));
+  else next.setFullYear(next.getFullYear() + 1);
 
   try {
     await env.MASTER_DB.batch([
@@ -137,7 +140,7 @@ app.post('/', zValidator('json', createSchema), async (c) => {
           body.companyName,
           body.slug,
           body.plan,
-          PLAN_MAX_USERS[body.plan],
+          planPrice?.includedUsers ?? 5,
           JSON.stringify({ currency: body.currency.toUpperCase(), timezone: body.timezone, taxSystem: body.taxSystem }),
           body.ownerEmail.toLowerCase(),
           body.ownerName,
@@ -147,10 +150,19 @@ app.post('/', zValidator('json', createSchema), async (c) => {
         ),
       env.MASTER_DB
         .prepare(
-          `INSERT INTO subscriptions (id, tenant_id, plan, amount, billing_cycle, start_date, next_billing_date, status)
-           VALUES (?, ?, ?, 0, 'monthly', ?, ?, ?)`,
+          `INSERT INTO subscriptions (id, tenant_id, plan, amount, billing_cycle, start_date, next_billing_date, status, trial_ends_at)
+           VALUES (?, ?, ?, ?, 'yearly', ?, ?, ?, ?)`,
         )
-        .bind(generateId(), tenantId, body.plan, now, next.toISOString(), body.plan === 'trial' ? 'trial' : 'active'),
+        .bind(
+          generateId(),
+          tenantId,
+          body.plan,
+          body.plan === 'trial' ? 0 : planPrice?.yearlyPrice ?? 0,
+          now,
+          next.toISOString(),
+          body.plan === 'trial' ? 'trial' : 'active',
+          body.plan === 'trial' ? next.toISOString() : null,
+        ),
     ]);
   } catch (err) {
     if (/UNIQUE|constraint/i.test(err instanceof Error ? err.message : '')) return fail(c, 409, 'SLUG_TAKEN', `The slug "${body.slug}" is already in use`);

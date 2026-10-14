@@ -142,9 +142,9 @@ export class AIRouter {
   private async metered(task: AITask, call: () => Promise<AIResponse>): Promise<AIResponse> {
     if (!this.tenantId) return call();
     const creditClass = creditClassFor(task);
-    await assertCredits(this.env.MASTER_DB, this.tenantId, creditClass);
+    await assertCredits(this.env, this.tenantId, creditClass);
     const response = await call();
-    await chargeCredits(this.env.MASTER_DB, this.tenantId, creditClass);
+    await chargeCredits(this.env, this.tenantId, creditClass);
     return response;
   }
 

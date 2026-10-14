@@ -1,19 +1,15 @@
 /**
  * AI credit metering (MASTER_DB.tenant_usage_caps, cap_key = ai_credits_per_month).
  *
- * Every tenant has a monthly allowance from its plan. The row is created on first use,
- * so a tenant can never be unmetered just because nobody seeded a cap for it.
+ * Every tenant has a monthly allowance from the plan catalogue (plan_allowances 'ai_credits') plus any AI credit
+ * packs granted for the current month. The usage row is created on first use, so a tenant can never be unmetered
+ * just because nobody seeded a cap for it; its cap_value is kept equal to the current allowance.
  */
 
 import { HTTPException } from 'hono/http-exception';
 import { generateId } from '../utils/uuid';
-import {
-  AI_CREDITS_CAP_KEY,
-  CREDIT_WEIGHTS,
-  DEFAULT_PLAN_AI_CREDITS,
-  PLAN_AI_CREDITS,
-  type AiCreditClass,
-} from './ai-pricing';
+import { AI_CREDITS_CAP_KEY, CREDIT_WEIGHTS, type AiCreditClass } from './ai-pricing';
+import { asCatalogueEnv, getAllowance, type MasterRef } from './plans/catalogue';
 
 export const AI_QUOTA_EXCEEDED_MESSAGE =
   'This month\'s AI credits are used up. Automations that do not use AI keep running; ask your administrator to add credits.';
@@ -33,16 +29,16 @@ export interface CreditBalance {
   remaining: number;
 }
 
-/** Read the tenant's credit cap, creating it from the plan allowance when missing. */
-export async function getCreditBalance(masterDb: D1Database, tenantId: string): Promise<CreditBalance> {
+/** Read the tenant's credit balance. The limit is the catalogue allowance for this month, packs included. */
+export async function getCreditBalance(ref: MasterRef, tenantId: string): Promise<CreditBalance> {
+  const masterDb = asCatalogueEnv(ref).MASTER_DB;
+  const allowance = await getAllowance(ref, tenantId, 'ai_credits');
   let cap = await masterDb
     .prepare('SELECT cap_value, current_usage FROM tenant_usage_caps WHERE tenant_id = ? AND cap_key = ?')
     .bind(tenantId, AI_CREDITS_CAP_KEY)
     .first<{ cap_value: number; current_usage: number }>();
 
   if (!cap) {
-    const tenant = await masterDb.prepare('SELECT plan FROM tenants WHERE id = ?').bind(tenantId).first<{ plan: string }>();
-    const allowance = PLAN_AI_CREDITS[tenant?.plan ?? ''] ?? DEFAULT_PLAN_AI_CREDITS;
     // The unique (tenant_id, cap_key) index makes a concurrent first use harmless.
     await masterDb
       .prepare(
@@ -52,6 +48,13 @@ export async function getCreditBalance(masterDb: D1Database, tenantId: string): 
       .bind(generateId(), tenantId, AI_CREDITS_CAP_KEY, allowance)
       .run();
     cap = { cap_value: allowance, current_usage: 0 };
+  } else if (cap.cap_value !== allowance) {
+    // A plan change, catalogue edit or pack grant moved the allowance: keep the stored value in step.
+    await masterDb
+      .prepare('UPDATE tenant_usage_caps SET cap_value = ? WHERE tenant_id = ? AND cap_key = ?')
+      .bind(allowance, tenantId, AI_CREDITS_CAP_KEY)
+      .run();
+    cap = { cap_value: allowance, current_usage: cap.current_usage };
   }
 
   return {
@@ -62,15 +65,15 @@ export async function getCreditBalance(masterDb: D1Database, tenantId: string): 
 }
 
 /** Throws AiQuotaExceededError when the tenant cannot afford one call of this class. */
-export async function assertCredits(masterDb: D1Database, tenantId: string, creditClass: AiCreditClass): Promise<void> {
-  const balance = await getCreditBalance(masterDb, tenantId);
+export async function assertCredits(ref: MasterRef, tenantId: string, creditClass: AiCreditClass): Promise<void> {
+  const balance = await getCreditBalance(ref, tenantId);
   if (balance.remaining < CREDIT_WEIGHTS[creditClass]) throw new AiQuotaExceededError();
 }
 
 /** Charge one successful call. Never throws: a metering failure must not fail the request it follows. */
-export async function chargeCredits(masterDb: D1Database, tenantId: string, creditClass: AiCreditClass): Promise<void> {
+export async function chargeCredits(ref: MasterRef, tenantId: string, creditClass: AiCreditClass): Promise<void> {
   try {
-    await masterDb
+    await asCatalogueEnv(ref).MASTER_DB
       .prepare(
         `UPDATE tenant_usage_caps
          SET current_usage = current_usage + ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')

@@ -3,7 +3,8 @@ import type { AppContext } from '../types';
 import { success, error, notFound, paginated } from '../utils/response';
 import { requireSuperAdmin, isSuperAdminEmail } from '../middleware/require-super-admin';
 import { appUrl, emailFrom, supportEmail } from '../utils/app-urls';
-import { PLAN_DEFAULTS } from '../middleware/feature-gate';
+import { getCatalogue, activePriceFrom, type Catalogue, type CataloguePlan } from '../services/plans/catalogue';
+import { catalogueAdminRoutes, grantAddon } from './admin-catalogue';
 
 /**
  * Platform administration routes — read-only, cross-tenant.
@@ -31,6 +32,10 @@ app.get('/whoami', async (c) => {
 });
 
 app.use('*', requireSuperAdmin);
+
+// Plan catalogue administration (R109) and add-on grants live in routes/admin-catalogue.ts
+app.route('/catalogue', catalogueAdminRoutes);
+app.post('/tenants/:id/addons', grantAddon);
 
 // --- Helpers ---
 
@@ -90,48 +95,25 @@ function recentMonths(months: number): string[] {
   return out;
 }
 
-// --- Plan catalog -------------------------------------------------
-// Plans are a code-level catalog (PLAN_DEFAULTS drives feature gating);
-// there is no `plans` table in MASTER_DB. Prices are annual INR list prices.
+// --- Plan catalogue ------------------------------------------------
+// Plans, prices, included users and features come from the plan catalogue tables in MASTER_DB (R109).
 
-const PLAN_CATALOG = [
-  {
-    id: 'basic',
-    name: 'Basic',
-    description: 'Core CRM for a small agency getting started.',
-    price: 12000,
-    billingCycle: 'yearly' as const,
-    maxUsers: 5,
-    maxContacts: 5000,
-    maxTeam: 5,
-  },
-  {
-    id: 'pro',
-    name: 'Pro',
-    description: 'Adds advanced reporting and the Pro AI feature set.',
-    price: 18000,
-    billingCycle: 'yearly' as const,
-    maxUsers: 15,
-    maxContacts: 25000,
-    maxTeam: 15,
-  },
-  {
-    id: 'enterprise',
-    name: 'Enterprise',
-    description: 'Every feature, all 22 AI capabilities, priority support.',
-    price: 24000,
-    billingCycle: 'yearly' as const,
-    maxUsers: 100,
-    maxContacts: 250000,
-    maxTeam: 100,
-  },
-];
-
-function buildPlan(entry: (typeof PLAN_CATALOG)[number]) {
+function buildPlan(plan: CataloguePlan, catalogue: Catalogue) {
+  const price = activePriceFrom(catalogue, plan.key);
   return {
-    ...entry,
-    features: PLAN_DEFAULTS[entry.id] ?? [],
-    isActive: true,
+    id: plan.key,
+    name: plan.name,
+    description: plan.description ?? '',
+    price: price?.yearlyPrice ?? 0,
+    currency: price?.currency ?? 'INR',
+    billingCycle: 'yearly' as const,
+    maxUsers: price?.includedUsers ?? 0,
+    maxTeam: price?.includedUsers ?? 0,
+    extraUserYearlyPrice: price?.extraUserYearlyPrice ?? null,
+    allowances: plan.allowances,
+    features: plan.features,
+    isActive: plan.isActive,
+    isPublic: plan.isPublic,
     createdAt: new Date(0).toISOString(),
   };
 }
@@ -195,7 +177,7 @@ async function platformStats(db: D1Database) {
   // renders an axis instead of an empty frame.
   const revenueByPlan = revenueByPlanRows.results?.length
     ? revenueByPlanRows.results.map((r) => ({ plan: r.plan, revenue: money(r.revenue) }))
-    : PLAN_CATALOG.map((p) => ({ plan: p.id, revenue: 0 }));
+    : (await getCatalogue(db)).plans.filter((p) => p.isPublic).map((p) => ({ plan: p.key, revenue: 0 }));
 
   const suspended = await safeCount(
     db,
@@ -639,13 +621,15 @@ app.get('/billing/revenue', async (c) => {
 // --- Plans --------------------------------------------------------
 
 app.get('/plans', async (c) => {
-  return success(c, PLAN_CATALOG.map(buildPlan));
+  const catalogue = await getCatalogue(c.env);
+  return success(c, catalogue.plans.filter((p) => p.isPublic).map((p) => buildPlan(p, catalogue)));
 });
 
 app.get('/plans/:id', async (c) => {
-  const entry = PLAN_CATALOG.find((p) => p.id === c.req.param('id'));
+  const catalogue = await getCatalogue(c.env);
+  const entry = catalogue.plans.find((p) => p.key === c.req.param('id'));
   if (!entry) return notFound(c, 'Plan');
-  return success(c, buildPlan(entry));
+  return success(c, buildPlan(entry, catalogue));
 });
 
 // --- Config -------------------------------------------------------
@@ -656,11 +640,11 @@ app.get('/config', async (c) => {
   const db = c.env.MASTER_DB;
 
   const maxTenantsPerPlan: Record<string, number> = {};
-  for (const plan of PLAN_CATALOG) {
-    maxTenantsPerPlan[plan.id] = await safeCount(
+  for (const plan of (await getCatalogue(c.env)).plans) {
+    maxTenantsPerPlan[plan.key] = await safeCount(
       db,
       'SELECT COUNT(*) AS c FROM tenants WHERE plan = ?',
-      plan.id
+      plan.key
     );
   }
 

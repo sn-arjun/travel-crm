@@ -45,7 +45,7 @@ automationRoutes.get('/', requirePermission('automations', 'view'), async (c) =>
   const db = c.get('tenantDb');
   const [states, tenant, paused, customRules] = await Promise.all([
     loadRuleStates(db),
-    getTenantFeatures(c.env.MASTER_DB, c.get('tenantId')),
+    getTenantFeatures(c.env, c.get('tenantId')),
     automationsPaused(db),
     listCustomRules(db),
   ]);

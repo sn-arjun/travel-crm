@@ -3,7 +3,7 @@
  *
  * Reads from tenant_feature_flags in MASTER_DB.
  * If a flag is explicitly disabled -> 403.
- * If no flag row exists, falls back to plan-based defaults.
+ * If no flag row exists, falls back to the plan's features in the plan catalogue (plan_features, R109).
  *
  * 22 AI Feature Keys (from PRD v2):
  *   Pro:        ai_copilot, ai_call_summary, ai_lead_scoring, ai_message_compose,
@@ -17,60 +17,7 @@
 
 import type { MiddlewareHandler } from 'hono';
 import type { AppContext } from '../types';
-
-const PLAN_DEFAULTS: Record<string, string[]> = {
-  trial: [
-    // Core CRM features
-    'fleet_management', 'driver_app', 'bulk_sms', 'bulk_whatsapp', 'bulk_email',
-    'marketing_flyers', 'visa_management', 'supplier_management',
-    'voip_calling',
-    // Trial gets basic AI (same as Pro, time-limited)
-    'ai_assistant', 'ai_extraction',
-    'ai_copilot', 'ai_call_summary', 'ai_lead_scoring', 'ai_message_compose',
-    'ai_itinerary_generate', 'ai_cost_estimation', 'ai_ocr', 'ai_search',
-  ],
-  starter: [
-    // Minimal plan — no AI features
-    'visa_management', 'supplier_management', 'bulk_sms', 'bulk_email',
-  ],
-  basic: [
-    // Base plan (12K/yr) — no AI features
-    'visa_management', 'supplier_management', 'bulk_sms', 'bulk_email',
-    'fleet_management', 'driver_app', 'marketing_flyers',
-    'voip_calling',
-  ],
-  pro: [
-    // Pro plan (18K/yr) — 8 AI features
-    'fleet_management', 'driver_app', 'bulk_sms', 'bulk_whatsapp', 'bulk_email',
-    'marketing_flyers', 'visa_management', 'supplier_management', 'advanced_reports',
-    'voip_calling',
-    'ai_assistant', 'ai_extraction',
-    // Pro AI features (8)
-    'ai_copilot', 'ai_call_summary', 'ai_lead_scoring', 'ai_message_compose',
-    'ai_itinerary_generate', 'ai_cost_estimation', 'ai_ocr', 'ai_search',
-  ],
-  enterprise: [
-    // Enterprise plan (24K/yr) — all 22 AI features
-    'fleet_management', 'driver_app', 'bulk_sms', 'bulk_whatsapp', 'bulk_email',
-    'marketing_flyers', 'visa_management', 'supplier_management', 'advanced_reports',
-    'api_access', 'custom_domain', 'white_label', 'priority_support',
-    'voip_calling',
-    'ai_assistant', 'ai_extraction', 'ai_chatbot', 'ai_intelligence',
-    'whatsapp_campaigns',
-    // All 22 AI features
-    // Pro tier (8)
-    'ai_copilot', 'ai_call_summary', 'ai_lead_scoring', 'ai_message_compose',
-    'ai_itinerary_generate', 'ai_cost_estimation', 'ai_ocr', 'ai_search',
-    // Enterprise-only (14)
-    'ai_dialer_cards', 'ai_vehicle_recommend', 'ai_driver_recommend',
-    'ai_expense_analysis', 'ai_margin_insights', 'ai_payment_prediction',
-    'ai_visa_intelligence', 'ai_campaign_content', 'ai_campaign_optimize',
-    'ai_follow_up_suggest', 'ai_churn_prediction', 'ai_daily_briefing',
-    'ai_supplier_negotiate', 'ai_coaching',
-  ],
-};
-
-export { PLAN_DEFAULTS };
+import { asCatalogueEnv, getCatalogue, planFeaturesFrom, type MasterRef } from '../services/plans/catalogue';
 
 export function requireFeature(featureKey: string): MiddlewareHandler<AppContext> {
   return async (c, next) => {
@@ -101,7 +48,7 @@ export function requireFeature(featureKey: string): MiddlewareHandler<AppContext
     ).bind(tenantId).first<{ plan: string }>();
 
     const plan = tenant?.plan || 'trial';
-    const defaults = PLAN_DEFAULTS[plan] || PLAN_DEFAULTS.trial;
+    const defaults = planFeaturesFrom(await getCatalogue(c.env), plan);
 
     if (!defaults.includes(featureKey)) {
       return c.json({
@@ -130,7 +77,7 @@ export function requireFeatures(...featureKeys: string[]): MiddlewareHandler<App
     ).bind(tenantId).first<{ plan: string }>();
 
     const plan = tenant?.plan || 'trial';
-    const defaults = PLAN_DEFAULTS[plan] || PLAN_DEFAULTS.trial;
+    const defaults = planFeaturesFrom(await getCatalogue(c.env), plan);
 
     for (const featureKey of featureKeys) {
       // Check explicit override
@@ -167,15 +114,16 @@ export function requireFeatures(...featureKeys: string[]): MiddlewareHandler<App
  * Get all enabled features for a tenant (used by frontend to show/hide UI).
  */
 export async function getTenantFeatures(
-  masterDb: D1Database,
+  ref: MasterRef,
   tenantId: string,
 ): Promise<{ plan: string; features: string[]; overrides: Record<string, boolean> }> {
+  const masterDb = asCatalogueEnv(ref).MASTER_DB;
   const tenant = await masterDb.prepare(
     'SELECT plan FROM tenants WHERE id = ?',
   ).bind(tenantId).first<{ plan: string }>();
 
   const plan = tenant?.plan || 'trial';
-  const defaults = PLAN_DEFAULTS[plan] || PLAN_DEFAULTS.trial;
+  const defaults = planFeaturesFrom(await getCatalogue(ref), plan);
 
   // Get all explicit overrides
   const overrideRows = await masterDb.prepare(

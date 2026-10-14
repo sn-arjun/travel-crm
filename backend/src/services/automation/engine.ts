@@ -161,7 +161,7 @@ export async function processEvent(env: Env, tenantId: string, db: D1Database, e
   const states = await loadRuleStates(db);
   let features: string[] | null = null;
   const hasFeature = async (key: string): Promise<boolean> => {
-    if (!features) features = (await getTenantFeatures(env.MASTER_DB, tenantId)).features;
+    if (!features) features = (await getTenantFeatures(env, tenantId)).features;
     return features.includes(key);
   };
 

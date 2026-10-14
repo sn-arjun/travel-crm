@@ -158,7 +158,7 @@ describe('Message understanding with AI', () => {
 
   it('uses only the rules once the month\'s credits are gone', async () => {
     await testEnv.MASTER_DB.prepare(
-      `INSERT OR REPLACE INTO tenant_usage_caps (id, tenant_id, cap_key, cap_value, current_usage, reset_period) VALUES ('analysis-cap', ?, 'ai_credits_per_month', 10, 10, 'monthly')`,
+      `INSERT OR REPLACE INTO tenant_usage_caps (id, tenant_id, cap_key, cap_value, current_usage, reset_period) VALUES ('analysis-cap', ?, 'ai_credits_per_month', 10, 1000000, 'monthly')`,
     ).bind(TENANT).run();
     const ai = fakeAi({ triage: { intent: 'enquiry', urgency: 'normal', language: 'en', needsWork: true }, understand: UNDERSTOOD });
     const a = await analyzeMessage(envWith(ai), TENANT, INPUT, { aiAllowed: true });

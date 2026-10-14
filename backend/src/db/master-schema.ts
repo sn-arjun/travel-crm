@@ -1,4 +1,4 @@
-import { sqliteTable, text, real, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, real, integer, uniqueIndex, index, primaryKey } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 
 // --- Tenants ---
@@ -306,3 +306,83 @@ export const tenantUsers = sqliteTable('tenant_users', {
   index('tenant_users_tenant_id_idx').on(table.tenantId),
   index('tenant_users_user_id_idx').on(table.userId),
 ]);
+
+// --- Plan catalogue (R109, migration 0015) ---
+export const plans = sqliteTable('plans', {
+  key: text('key').primaryKey(), // trial, basic, pro, enterprise
+  name: text('name').notNull(),
+  description: text('description'),
+  sortOrder: integer('sort_order').notNull().default(0),
+  isPublic: integer('is_public').notNull().default(1),
+  trialDays: integer('trial_days').notNull().default(0),
+  isActive: integer('is_active').notNull().default(1),
+  createdAt: text('created_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+  updatedAt: text('updated_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+});
+
+export const planPrices = sqliteTable('plan_prices', {
+  id: text('id').primaryKey(), // UUIDv7
+  planKey: text('plan_key').notNull().references(() => plans.key),
+  market: text('market').notNull(), // IN, WEST, GULF, SG, MY_TH, LK_NP_BD
+  currency: text('currency').notNull(),
+  yearlyPrice: real('yearly_price').notNull(),
+  includedUsers: integer('included_users').notNull(),
+  extraUserYearlyPrice: real('extra_user_yearly_price'),
+  isActive: integer('is_active').notNull().default(1),
+  validFrom: text('valid_from').notNull(),
+}, (table) => [
+  index('plan_prices_plan_market_idx').on(table.planKey, table.market, table.isActive),
+]);
+
+export const planFeatures = sqliteTable('plan_features', {
+  planKey: text('plan_key').notNull().references(() => plans.key),
+  featureKey: text('feature_key').notNull(),
+}, (table) => [primaryKey({ columns: [table.planKey, table.featureKey] })]);
+
+export const planAllowances = sqliteTable('plan_allowances', {
+  planKey: text('plan_key').notNull().references(() => plans.key),
+  allowanceKey: text('allowance_key').notNull(), // ai_credits, sms, whatsapp, otp, call_minutes, email
+  monthlyAmount: integer('monthly_amount').notNull().default(0),
+}, (table) => [primaryKey({ columns: [table.planKey, table.allowanceKey] })]);
+
+export const commUnitCosts = sqliteTable('comm_unit_costs', {
+  id: text('id').primaryKey(), // UUIDv7
+  channel: text('channel').notNull(), // sms, whatsapp, otp, call_minute, phone_number
+  market: text('market').notNull(),
+  provider: text('provider').notNull(),
+  unitCost: real('unit_cost').notNull(),
+  currency: text('currency').notNull(),
+  marginPct: real('margin_pct').notNull().default(20),
+  effectiveFrom: text('effective_from').notNull(),
+  isActive: integer('is_active').notNull().default(1),
+});
+
+export const addonProducts = sqliteTable('addon_products', {
+  key: text('key').primaryKey(),
+  name: text('name').notNull(),
+  kind: text('kind').notNull(), // extra_user, ai_credit_pack, comm_pack
+  channel: text('channel'), // sms, whatsapp, otp, call_minute for comm packs
+  units: integer('units').notNull().default(1),
+  fixedPrice: real('fixed_price'), // NULL = computed from comm_unit_costs
+  currency: text('currency').notNull(),
+  market: text('market').notNull(),
+  isActive: integer('is_active').notNull().default(1),
+});
+
+export const tenantAddons = sqliteTable('tenant_addons', {
+  id: text('id').primaryKey(), // UUIDv7
+  tenantId: text('tenant_id').notNull(),
+  productKey: text('product_key').notNull(),
+  quantity: integer('quantity').notNull().default(1),
+  unitsGranted: integer('units_granted').notNull().default(0),
+  periodKey: text('period_key'), // NULL = recurring (extra users); yyyy-mm for packs
+  source: text('source').notNull().default('super_admin_grant'), // super_admin_grant, purchase
+  grantedBy: text('granted_by'),
+  reference: text('reference'),
+  createdAt: text('created_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+}, (table) => [index('tenant_addons_tenant_period_idx').on(table.tenantId, table.periodKey)]);
+
+export const catalogueNotes = sqliteTable('catalogue_notes', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+});

@@ -15,6 +15,10 @@ const testApp = new Hono<{ Bindings: Env }>();
  * CAUTION: This endpoint COMPLETELY DESTROYS the current database and seeds it.
  * It is aggressively protected and only accessible when running in specific test environments.
  */
+// Plan catalogue tables (R109) are reference data seeded by migration 0015: a reset keeps them,
+// otherwise every plan, price and allowance would vanish and nothing could be gated or priced.
+const CATALOGUE_TABLES = new Set(['plans', 'plan_prices', 'plan_features', 'plan_allowances', 'comm_unit_costs', 'addon_products', 'catalogue_notes']);
+
 testApp.post('/reset', async (c) => {
     // Add an extra layer of security: Ensure the custom TEST_MODE binding is true
     if (!isTestMode(c.env)) {
@@ -32,7 +36,7 @@ testApp.post('/reset', async (c) => {
             sql`SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name NOT LIKE 'd1_%'`,
         );
         let pending = found
-            .filter((r) => !/^CREATE VIRTUAL/i.test(r.sql ?? '') && !r.name.includes('_fts'))
+            .filter((r) => !/^CREATE VIRTUAL/i.test(r.sql ?? '') && !r.name.includes('_fts') && !CATALOGUE_TABLES.has(r.name))
             .map((r) => r.name);
 
         // PRAGMA foreign_keys does not persist across D1 statements, so delete in

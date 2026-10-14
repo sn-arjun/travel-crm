@@ -6,6 +6,8 @@ import { resolveTenantDb } from '../services/tenant-db';
 import { getTenantTimeZone, localDateString } from '../utils/tz';
 import { rateLimit } from '../middleware/rate-limit';
 import { itineraries, itineraryDays, itineraryItems } from '../db/tenant-schema';
+import { getCatalogue } from '../services/plans/catalogue';
+import { publicPlansView } from '../services/plans/view';
 
 // Minimal context — no auth, just Env bindings
 const publicRoutes = new Hono<{ Bindings: Env }>();
@@ -23,6 +25,14 @@ publicRoutes.use(
     keyFn: (c) => `rl:public:${c.req.header('cf-connecting-ip') || 'unknown'}`,
   }) as any
 );
+
+// GET /plans?market=IN - the public price list, built from the plan catalogue (cached 5 minutes, 60/min/IP above)
+publicRoutes.get('/plans', async (c) => {
+  const market = (new URL(c.req.url).searchParams.get('market') || 'IN').trim().toUpperCase().slice(0, 16);
+  const view = publicPlansView(await getCatalogue(c.env), market);
+  c.header('Cache-Control', 'public, max-age=300');
+  return c.json({ success: true, data: view });
+});
 
 // GET /quotation/:token - Public view (no auth)
 publicRoutes.get('/quotation/:token', async (c) => {

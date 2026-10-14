@@ -43,12 +43,15 @@ const NAME     = 'Admin User';
 const COMPANY  = 'Demo Travel Agency';
 const SUBDOMAIN = 'demo';
 
+const PERIOD = new Date().toISOString().slice(0, 7); // yyyy-mm, the month the pack grants count for
+
 // ── Hash password and seed data ────────────────────────────────────────────
 console.log('Hashing password ...');
 const hash = bcrypt.hashSync(PASSWORD, 10);
 
 const masterSql = `
 -- Clean up any old rows (delete children before parents for FK compliance)
+DELETE FROM tenant_addons WHERE tenant_id = '${TENANT_ID}';
 DELETE FROM tenant_users WHERE email     = '${EMAIL}';
 DELETE FROM tenants      WHERE subdomain = '${SUBDOMAIN}';
 
@@ -61,6 +64,17 @@ INSERT INTO tenant_users
   (id, tenant_id, email, user_id, role, is_active)
 VALUES
   ('${TU_ID}', '${TENANT_ID}', '${EMAIL}', '${USER_ID}', 'admin', 1);
+
+-- Plan catalogue grants (R109) so the e2e suite is never blocked by seat or allowance limits:
+-- Pro includes 15 users; 35 extra users keep the old 50-seat demo size.
+INSERT INTO tenant_addons
+  (id, tenant_id, product_key, quantity, units_granted, period_key, source, granted_by, reference)
+VALUES
+  ('01960000-0000-7000-8000-0000000000a1', '${TENANT_ID}', 'extra_user', 35, 35, NULL, 'super_admin_grant', 'seed-local', 'demo tenant seats'),
+  ('01960000-0000-7000-8000-0000000000a2', '${TENANT_ID}', 'ai_credit_pack_5000', 10, 50000, '${PERIOD}', 'super_admin_grant', 'seed-local', 'demo tenant AI credits'),
+  ('01960000-0000-7000-8000-0000000000a3', '${TENANT_ID}', 'sms_100', 10, 1000, '${PERIOD}', 'super_admin_grant', 'seed-local', 'demo tenant SMS'),
+  ('01960000-0000-7000-8000-0000000000a4', '${TENANT_ID}', 'whatsapp_1000', 10, 10000, '${PERIOD}', 'super_admin_grant', 'seed-local', 'demo tenant WhatsApp'),
+  ('01960000-0000-7000-8000-0000000000a5', '${TENANT_ID}', 'otp_100', 10, 1000, '${PERIOD}', 'super_admin_grant', 'seed-local', 'demo tenant login codes');
 `;
 
 const tenantSql = `

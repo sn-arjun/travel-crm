@@ -12,7 +12,8 @@ import { z } from 'zod';
 import { zValidator } from '../utils/validator';
 import type { AppContext } from '../types';
 import { success, error, forbidden } from '../utils/response';
-import { getTenantFeatures, PLAN_DEFAULTS } from '../middleware/feature-gate';
+import { getTenantFeatures } from '../middleware/feature-gate';
+import { getCatalogue, planFeaturesFrom } from '../services/plans/catalogue';
 import { AIRouter } from '../services/ai-router';
 import { tenantTimeZone, sqlOffsetModifier } from '../utils/tz';
 import { getCreditBalance } from '../services/ai-credits';
@@ -56,10 +57,10 @@ aiSettingsRoutes.get('/', async (c) => {
   const env = c.env;
 
   // Get tenant features
-  const tenantFeatures = await getTenantFeatures(masterDb, tenantId);
+  const tenantFeatures = await getTenantFeatures(c.env, tenantId);
 
   // Get usage caps (the monthly AI credit allowance is created from the plan on first read)
-  await getCreditBalance(masterDb, tenantId);
+  await getCreditBalance(c.env, tenantId);
   const caps = await masterDb.prepare(
     'SELECT cap_key, cap_value, current_usage, reset_period, last_reset_at FROM tenant_usage_caps WHERE tenant_id = ?',
   ).bind(tenantId).all();
@@ -92,11 +93,11 @@ aiSettingsRoutes.get('/', async (c) => {
   const router = new AIRouter(env);
   const providerStatus = router.getProviderStatus();
 
-  // Build AI feature map with enabled/disabled + tier info
+  // Build AI feature map with enabled/disabled + tier info (tier = the Pro plan's features in the catalogue)
+  const proFeatures = planFeaturesFrom(await getCatalogue(c.env), 'pro');
   const aiFeatures = AI_FEATURE_KEYS.map((key) => {
     const isEnabled = tenantFeatures.features.includes(key);
     const isOverridden = key in tenantFeatures.overrides;
-    const proFeatures = PLAN_DEFAULTS.pro || [];
     const tier = proFeatures.includes(key) ? 'pro' : 'enterprise';
 
     return {
@@ -143,7 +144,7 @@ aiSettingsRoutes.put('/features', zValidator('json', updateFeaturesSchema), asyn
     'SELECT plan FROM tenants WHERE id = ?',
   ).bind(tenantId).first<{ plan: string }>();
   const plan = tenant?.plan || 'trial';
-  const planDefaults = PLAN_DEFAULTS[plan] || PLAN_DEFAULTS.trial;
+  const planDefaults = planFeaturesFrom(await getCatalogue(c.env), plan);
 
   const updated: Record<string, boolean> = {};
   const denied: string[] = [];
@@ -188,7 +189,7 @@ aiSettingsRoutes.get('/usage', async (c) => {
   const db = c.get('tenantDb');
 
   // Get all usage caps (the monthly AI credit allowance is created from the plan on first read)
-  await getCreditBalance(masterDb, tenantId);
+  await getCreditBalance(c.env, tenantId);
   const caps = await masterDb.prepare(
     'SELECT cap_key, cap_value, current_usage, reset_period, last_reset_at FROM tenant_usage_caps WHERE tenant_id = ?',
   ).bind(tenantId).all();
@@ -278,7 +279,7 @@ aiSettingsRoutes.get('/features/check/:featureKey', async (c) => {
   const masterDb = c.env.MASTER_DB;
   const featureKey = c.req.param('featureKey');
 
-  const tenantFeatures = await getTenantFeatures(masterDb, tenantId);
+  const tenantFeatures = await getTenantFeatures(c.env, tenantId);
   const isEnabled = tenantFeatures.features.includes(featureKey);
 
   return success(c, {

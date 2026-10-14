@@ -2,10 +2,12 @@ import { env, applyD1Migrations } from 'cloudflare:test';
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { AIRouter, AiUnavailableError } from '../src/services/ai-router';
 import { AiQuotaExceededError, getCreditBalance } from '../src/services/ai-credits';
-import { creditClassFor, estimateCostUsd, CREDIT_WEIGHTS, PLAN_AI_CREDITS } from '../src/services/ai-pricing';
+import { creditClassFor, estimateCostUsd, CREDIT_WEIGHTS } from '../src/services/ai-pricing';
 
 const testEnv = env as any;
 const TENANT = 'credits-tenant';
+// Seeded catalogue allowances (migration 0015, plan_allowances.ai_credits)
+const PLAN_AI_CREDITS = { trial: 2000, basic: 1000, pro: 15000, enterprise: 25000 };
 
 /** A Workers AI binding that answers without spending anything. */
 function fakeAi(reply: Record<string, unknown>) {
@@ -102,7 +104,7 @@ describe('AI credits', () => {
   });
 
   it('refuses a call the tenant cannot afford, without reaching the provider', async () => {
-    await setCap(100, 100 - CREDIT_WEIGHTS.understand + 1); // 4 left: not enough for an "understand" call
+    await setCap(PLAN_AI_CREDITS.pro, PLAN_AI_CREDITS.pro - CREDIT_WEIGHTS.understand + 1); // 4 left: not enough for an "understand" call
     const ai = fakeAi({ response: 'never' });
     const router = routerWith(ai);
 

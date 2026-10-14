@@ -20,6 +20,7 @@ import { appUrl } from '../utils/app-urls';
 import { sendTransactional } from '../services/mail/transactional';
 import { success, created, error } from '../utils/response';
 import { getTenantSummary } from '../utils/tenant-summary';
+import { isTrialExpired, trialExpiredResponse } from '../services/plans/trial';
 import { tenantDbFor, TenantDbUnavailableError } from '../services/tenant-db';
 
 const auth = new Hono<AppContext>();
@@ -143,11 +144,12 @@ auth.post(
     // Resolve tenant DB
     const masterDb = drizzle(c.env.MASTER_DB);
     const [tenant] = await masterDb
-      .select({ dbBinding: tenants.dbBinding, status: tenants.status, companyName: tenants.companyName })
+      .select({ dbBinding: tenants.dbBinding, status: tenants.status, plan: tenants.plan, companyName: tenants.companyName })
       .from(tenants)
       .where(eq(tenants.id, tenantId))
       .limit(1);
 
+    if (tenant && (await isTrialExpired(c.env.MASTER_DB, tenantId, tenant))) return trialExpiredResponse(c);
     if (!tenant || (tenant.status !== 'active' && tenant.status !== 'trial')) {
       return error(c, 'Invalid tenant', 400);
     }
@@ -247,7 +249,7 @@ auth.post(
         department: user.department,
         language: user.language,
       },
-      tenant: await getTenantSummary(tenantDb, tenantId, tenant.companyName),
+      tenant: await getTenantSummary(tenantDb, tenantId, tenant.companyName, c.env),
       mustChangePassword: user.mustChangePassword === 1,
     });
   }
@@ -342,12 +344,13 @@ auth.post(
 
     // Resolve tenant DB
     const [tenant] = await masterDb
-      .select({ dbBinding: tenants.dbBinding, status: tenants.status })
+      .select({ dbBinding: tenants.dbBinding, status: tenants.status, plan: tenants.plan })
       .from(tenants)
       .where(eq(tenants.id, tenantId))
       .limit(1);
 
     if (!tenant) return error(c, 'Invalid tenant', 400);
+    if (await isTrialExpired(c.env.MASTER_DB, tenantId, tenant)) return trialExpiredResponse(c);
     const tenantDb = authTenantDb(c.env, tenant);
     if (!tenantDb) return tenantDbUnavailable(c);
 
@@ -426,7 +429,7 @@ auth.post(
         department: user.department,
         language: user.language,
       },
-      tenant: await getTenantSummary(tenantDb, tenantId),
+      tenant: await getTenantSummary(tenantDb, tenantId, undefined, c.env),
     });
   }
 );
@@ -472,12 +475,13 @@ auth.post(
     // Resolve tenant DB and get user
     const masterDb = drizzle(c.env.MASTER_DB);
     const [tenant] = await masterDb
-      .select({ dbBinding: tenants.dbBinding, status: tenants.status })
+      .select({ dbBinding: tenants.dbBinding, status: tenants.status, plan: tenants.plan })
       .from(tenants)
       .where(eq(tenants.id, tokenData.tenantId))
       .limit(1);
 
     if (!tenant) return error(c, 'Invalid tenant', 400);
+    if (await isTrialExpired(c.env.MASTER_DB, tokenData.tenantId, tenant)) return trialExpiredResponse(c);
     if (tenant.status !== 'active' && tenant.status !== 'trial') {
       return c.json({ success: false, error: { code: 'TENANT_INACTIVE', message: 'Tenant account is not active' } }, 403);
     }
@@ -536,7 +540,7 @@ auth.post(
         department: user.department,
         language: user.language,
       },
-      tenant: await getTenantSummary(tenantDb, tokenData.tenantId),
+      tenant: await getTenantSummary(tenantDb, tokenData.tenantId, undefined, c.env),
     });
   }
 );
@@ -626,7 +630,7 @@ auth.post(
     // Resolve tenant DB
     const masterDb = drizzle(c.env.MASTER_DB);
     const [tenant] = await masterDb
-      .select({ dbBinding: tenants.dbBinding, status: tenants.status })
+      .select({ dbBinding: tenants.dbBinding, status: tenants.status, plan: tenants.plan })
       .from(tenants)
       .where(eq(tenants.id, tokenData.tenantId))
       .limit(1);
@@ -708,7 +712,7 @@ auth.post(
     // Resolve tenant DB
     const masterDb = drizzle(c.env.MASTER_DB);
     const [tenant] = await masterDb
-      .select({ dbBinding: tenants.dbBinding, status: tenants.status })
+      .select({ dbBinding: tenants.dbBinding, status: tenants.status, plan: tenants.plan })
       .from(tenants)
       .where(eq(tenants.id, inviteData.tenantId))
       .limit(1);
@@ -808,7 +812,7 @@ auth.post(
         department: null,
         language: 'en',
       },
-      tenant: await getTenantSummary(tenantDb, inviteData.tenantId),
+      tenant: await getTenantSummary(tenantDb, inviteData.tenantId, undefined, c.env),
     });
   }
 );

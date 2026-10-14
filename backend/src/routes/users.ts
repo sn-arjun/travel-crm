@@ -14,6 +14,7 @@ import { logActivity } from '../utils/activity-logger';
 import { success, created, error } from '../utils/response';
 import { appUrl } from '../utils/app-urls';
 import { sendTransactional } from '../services/mail/transactional';
+import { seatLimitResponse } from '../services/plans/seats';
 
 const userRoutes = new Hono<AppContext>();
 
@@ -262,6 +263,10 @@ userRoutes.post(
       return error(c, 'A user with this email already exists', 409);
     }
 
+    // Seats: active users and pending invites count against the plan's limit (plan catalogue)
+    const noSeat = await seatLimitResponse(c);
+    if (noSeat) return noSeat;
+
     // Create invite token
     const inviteToken = generateId();
     await c.env.SESSIONS.put(
@@ -447,6 +452,13 @@ userRoutes.put('/:id/activate', rbac(['admin']), async (c) => {
   const userId = c.req.param('id');
   const db = drizzle(c.get('tenantDb'));
   const masterDb = drizzle(c.env.MASTER_DB);
+
+  // Reactivating a deactivated user takes a seat; an already-active user needs none.
+  const [target] = await db.select({ isActive: users.isActive }).from(users).where(eq(users.id, userId)).limit(1);
+  if (target && !target.isActive) {
+    const noSeat = await seatLimitResponse(c);
+    if (noSeat) return noSeat;
+  }
 
   await db.update(users).set({ isActive: 1, updatedAt: new Date().toISOString() }).where(eq(users.id, userId));
   await masterDb
