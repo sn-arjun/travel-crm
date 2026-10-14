@@ -1,67 +1,38 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Check } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-
-interface PlanData {
-  name: string;
-  monthlyAmount: number;
-}
+import type { CatalogueData } from '@/lib/catalogue';
+import { formatMoney } from '@/lib/catalogue';
 
 interface Props {
-  data: PlanData;
-  onNext: (data: PlanData) => void;
+  selected: string;
+  onNext: (plan: string) => void;
   onBack: () => void;
 }
 
-const PLANS = [
-  {
-    name: 'free',
-    label: 'Free Trial',
-    price: 0,
-    period: '14 days',
-    features: ['2 users', '50 leads', '10 invoices', 'Basic reports'],
-    popular: false,
-  },
-  {
-    name: 'starter',
-    label: 'Starter',
-    price: 999,
-    period: '/month',
-    features: ['5 users', '500 leads', '100 invoices', 'Standard reports', 'Email support'],
-    popular: false,
-  },
-  {
-    name: 'pro',
-    label: 'Professional',
-    price: 2499,
-    period: '/month',
-    features: ['15 users', 'Unlimited leads', 'Unlimited invoices', 'Advanced reports', 'Priority support', 'API access'],
-    popular: true,
-  },
-  {
-    name: 'enterprise',
-    label: 'Enterprise',
-    price: 4999,
-    period: '/month',
-    features: ['50 users', 'Unlimited everything', 'Custom reports', 'Dedicated support', 'API access', 'White-label', 'SLA guarantee'],
-    popular: false,
-  },
-];
+// A new agency can start on these plans (the backend's POST /admin/tenants accepts exactly these keys).
+const CREATABLE = ['trial', 'basic', 'pro', 'enterprise'];
 
-export function PlanSelectionStep({ data, onNext, onBack }: Props) {
-  const [selected, setSelected] = useState(data.name || 'pro');
+export function PlanSelectionStep({ selected: initial, onNext, onBack }: Props) {
+  const [catalogue, setCatalogue] = useState<CatalogueData | null>(null);
+  const [error, setError] = useState('');
+  const [selected, setSelected] = useState(initial || 'trial');
 
-  const handleNext = () => {
-    const plan = PLANS.find((p) => p.name === selected);
-    if (plan) {
-      onNext({ name: plan.name, monthlyAmount: plan.price });
-    }
-  };
+  useEffect(() => {
+    fetch('/api/catalogue')
+      .then(async (res) => {
+        const json = (await res.json()) as CatalogueData & { error?: string };
+        if (!res.ok) throw new Error(json.error || 'Could not load the plans');
+        setCatalogue(json);
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : 'Could not load the plans'));
+  }, []);
+
+  const plans = (catalogue?.plans ?? []).filter((p) => p.isActive && CREATABLE.includes(p.key));
 
   return (
     <Card>
@@ -69,44 +40,50 @@ export function PlanSelectionStep({ data, onNext, onBack }: Props) {
         <CardTitle>Select Plan</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {PLANS.map((plan) => (
-            <div
-              key={plan.name}
-              onClick={() => setSelected(plan.name)}
-              className={cn(
-                'relative cursor-pointer rounded-lg border-2 p-4 transition-colors',
-                selected === plan.name
-                  ? 'border-primary bg-primary/5'
-                  : 'border-border hover:border-primary/50'
-              )}
-            >
-              {plan.popular && (
-                <Badge className="absolute -top-2.5 left-1/2 -translate-x-1/2">Popular</Badge>
-              )}
-              <div className="text-center mb-3">
-                <h3 className="font-semibold">{plan.label}</h3>
-                <div className="mt-2">
-                  <span className="text-2xl font-bold">
-                    {plan.price === 0 ? 'Free' : `₹${plan.price.toLocaleString('en-IN')}`}
-                  </span>
-                  <span className="text-sm text-muted-foreground">{plan.period}</span>
+        {error && <div className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
+        {!catalogue && !error ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-40" />)}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            {plans.map((plan) => {
+              const price = plan.prices.find((p) => p.isActive && p.market === 'IN') ?? plan.prices.find((p) => p.isActive);
+              return (
+                <div
+                  key={plan.key}
+                  onClick={() => setSelected(plan.key)}
+                  className={cn(
+                    'cursor-pointer rounded-lg border-2 p-4 transition-colors',
+                    selected === plan.key ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50',
+                  )}
+                >
+                  <div className="text-center mb-3">
+                    <h3 className="font-semibold">{plan.name}</h3>
+                    <div className="mt-2">
+                      <span className="text-2xl font-bold">
+                        {plan.key === 'trial' ? 'Free' : price ? formatMoney(price.yearlyPrice, price.currency) : '-'}
+                      </span>
+                      <span className="text-sm text-muted-foreground">
+                        {plan.key === 'trial' ? ` ${plan.trialDays} days` : ' /year'}
+                      </span>
+                    </div>
+                  </div>
+                  <ul className="space-y-1 text-sm text-muted-foreground text-center">
+                    {price && <li>{price.includedUsers} users included</li>}
+                    <li>{plan.features.length} features</li>
+                    {plan.description && <li className="text-xs">{plan.description}</li>}
+                  </ul>
                 </div>
-              </div>
-              <ul className="space-y-1.5">
-                {plan.features.map((f) => (
-                  <li key={f} className="flex items-center gap-2 text-sm">
-                    <Check className="h-3.5 w-3.5 text-green-600 shrink-0" />
-                    {f}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
+              );
+            })}
+          </div>
+        )}
         <div className="flex justify-between pt-4">
           <Button variant="outline" onClick={onBack}>Back</Button>
-          <Button onClick={handleNext}>Next: Admin User</Button>
+          <Button onClick={() => onNext(selected)} disabled={!catalogue || !plans.some((p) => p.key === selected)}>
+            Next: Review
+          </Button>
         </div>
       </CardContent>
     </Card>

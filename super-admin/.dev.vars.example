@@ -1,0 +1,4 @@
+# Copy to .dev.vars (git-ignored) for `npm run preview`, or to .env.local for `npm run dev`.
+# Names only: never commit real values.
+SUPER_ADMIN_JWT_SECRET=
+BACKEND_API_URL=

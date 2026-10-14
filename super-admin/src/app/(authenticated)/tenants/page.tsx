@@ -13,19 +13,19 @@ import { Plus } from 'lucide-react';
 
 interface TenantRow {
   id: string;
-  company_name: string;
-  subdomain: string;
-  plan: string;
+  name: string;
+  slug: string;
+  email: string;
   status: string;
-  owner_email: string;
-  user_count: number;
-  created_at: string;
+  createdAt: string;
+  userCount: number;
+  subscription: { plan: string; status: string };
 }
 
 const statusColors: Record<string, string> = {
   active: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
   trial: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
-  expired: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+  inactive: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
   suspended: 'bg-gray-100 text-gray-800 dark:bg-gray-700/30 dark:text-gray-400',
   cancelled: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
 };
@@ -37,6 +37,7 @@ export default function TenantsPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const fetchTenants = useCallback(async () => {
     setLoading(true);
@@ -45,9 +46,10 @@ export default function TenantsPage() {
     if (statusFilter) params.set('status', statusFilter);
 
     const res = await fetch(`/api/tenants?${params}`);
-    const data = (await res.json()) as { tenants: TenantRow[]; totalPages: number };
-    setTenants(data.tenants || []);
-    setTotalPages(data.totalPages || 1);
+    const data = (await res.json()) as { data?: TenantRow[]; pagination?: { totalPages: number }; error?: string };
+    setError(res.ok ? '' : data.error || 'Could not load tenants');
+    setTenants(data.data || []);
+    setTotalPages(data.pagination?.totalPages || 1);
     setLoading(false);
   }, [page, search, statusFilter]);
 
@@ -81,11 +83,13 @@ export default function TenantsPage() {
           <TabsList>
             <TabsTrigger value="">All</TabsTrigger>
             <TabsTrigger value="active">Active</TabsTrigger>
-            <TabsTrigger value="trial">Trial</TabsTrigger>
             <TabsTrigger value="suspended">Suspended</TabsTrigger>
+            <TabsTrigger value="inactive">Inactive</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
+
+      {error && <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
 
       <div className="rounded-lg border bg-card">
         <table className="w-full text-sm">
@@ -121,20 +125,20 @@ export default function TenantsPage() {
                 <tr key={t.id} className="border-b hover:bg-muted/50 transition-colors">
                   <td className="py-3 px-4">
                     <Link href={`/tenants/${t.id}`} className="font-medium hover:underline">
-                      {t.company_name}
+                      {t.name}
                     </Link>
                   </td>
-                  <td className="py-3 px-4 text-muted-foreground">{t.subdomain}</td>
-                  <td className="py-3 px-4 text-muted-foreground">{t.owner_email || '—'}</td>
-                  <td className="py-3 px-4 capitalize">{t.plan || '—'}</td>
+                  <td className="py-3 px-4 text-muted-foreground">{t.slug}</td>
+                  <td className="py-3 px-4 text-muted-foreground">{t.email || '—'}</td>
+                  <td className="py-3 px-4 capitalize">{t.subscription?.plan || '—'}</td>
                   <td className="py-3 px-4">
                     <Badge variant="outline" className={statusColors[t.status] || ''}>
                       {t.status}
                     </Badge>
                   </td>
-                  <td className="py-3 px-4 text-right">{t.user_count}</td>
+                  <td className="py-3 px-4 text-right">{t.userCount}</td>
                   <td className="py-3 px-4 text-muted-foreground">
-                    {t.created_at ? new Date(t.created_at).toLocaleDateString() : '—'}
+                    {t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '—'}
                   </td>
                   <td className="py-3 px-4 text-right">
                     <TenantActions tenant={t} onRefresh={fetchTenants} />

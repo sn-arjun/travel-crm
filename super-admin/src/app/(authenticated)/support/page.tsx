@@ -1,3 +1,4 @@
+// HIDDEN (R112, owner question Q8): this page has no backend API behind it. It is not in the sidebar and next.config.ts redirects its route to /dashboard. Kept for the day the backend gets the feature.
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';

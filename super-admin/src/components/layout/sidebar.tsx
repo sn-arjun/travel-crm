@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Building2, CreditCard, Globe,
-  Megaphone, LifeBuoy, ScrollText, Activity, BarChart3,
+  ScrollText, Activity, BarChart3, Tags,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -12,10 +12,9 @@ const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/tenants', label: 'Tenants', icon: Building2 },
   { href: '/subscriptions', label: 'Subscriptions', icon: CreditCard },
+  { href: '/catalogue', label: 'Plans & Pricing', icon: Tags },
   { href: '/reports', label: 'Platform Reports', icon: BarChart3 },
-  { href: '/wordpress', label: 'WordPress Sites', icon: Globe },
-  { href: '/announcements', label: 'Announcements', icon: Megaphone },
-  { href: '/support', label: 'Support', icon: LifeBuoy },
+  { href: '/wordpress', label: 'WordPress (soon)', icon: Globe },
   { href: '/audit-log', label: 'Audit Log', icon: ScrollText },
   { href: '/system-health', label: 'System Health', icon: Activity },
 ];
