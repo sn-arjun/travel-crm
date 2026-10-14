@@ -6,7 +6,9 @@ import type { AppContext } from '../types';
 import { generateId } from '../utils/uuid';
 import { success, created, paginated, error, notFound, forbidden } from '../utils/response';
 import { generateInvoiceNumber } from '../services/numbering';
-import { calculateInvoiceTotals, detectTaxType } from '../services/tax-calculator';
+import {
+  computeDocumentTotals, frozenRulesFromInvoice, loadTaxBuyer, loadTaxSettings, taxColumns, TaxConfigError,
+} from '../services/tax-calculator';
 import { logActivity } from '../utils/activity-logger';
 import { drizzle } from 'drizzle-orm/d1';
 import { notifications } from '../db/tenant-schema';
@@ -30,7 +32,8 @@ const createInvoiceSchema = z.object({
       quantity: z.number().int().min(1).default(1),
       rate: z.number().positive(),
       discountPercent: z.number().min(0).max(100).default(0),
-      taxRate: z.number().min(0).max(100).default(0),
+      // Omitted: GST lines default to 0, VAT / sales tax lines to the agency's rate.
+      taxRate: z.number().min(0).max(100).optional(),
     })
   ).min(1),
   discountType: z.enum(['percentage', 'fixed']).optional(),
@@ -142,6 +145,7 @@ invoiceRoutes.get('/', async (c) => {
         i.id, i.invoice_number, i.type, i.contact_id, i.lead_id,
         i.subtotal, i.discount_type, i.discount_value, i.discount_amount,
         i.taxable_amount, i.tax_type, i.cgst, i.sgst, i.igst, i.vat_amount,
+        i.tax_regime, i.tax_breakdown, i.seller_tax_id, i.buyer_tax_id, i.place_of_supply, i.tax_notes,
         i.total_tax, i.total, i.currency, i.status, i.due_date,
         i.issue_date, i.terms,
         i.paid_amount, i.balance_due, i.notes, i.created_by, i.created_at, i.updated_at,
@@ -219,24 +223,32 @@ invoiceRoutes.post('/', zValidator('json', createInvoiceSchema), async (c) => {
 
   try {
     // Verify contact exists
-    const contact = await tenantDb
-      .prepare('SELECT id, name, state FROM contacts WHERE id = ?1')
-      .bind(data.contactId)
-      .first<{ id: string; name: string; state: string | null }>();
-
-    if (!contact) {
+    const buyer = await loadTaxBuyer(tenantDb, data.contactId);
+    if (!buyer) {
       return notFound(c, 'Contact');
     }
 
-    // Get company state from settings (or use contact's state)
-    const companyStateResult = await tenantDb
-      .prepare("SELECT value FROM settings WHERE key = 'company_state'")
-      .first<{ value: string }>();
-    const companyState = companyStateResult?.value;
-
-    // Calculate totals
-    const taxType = detectTaxType(companyState, contact.state);
-    const totals = calculateInvoiceTotals(data.items, data.discountType, data.discountValue, taxType);
+    // Tax follows the agency's own tax system (settings) and the buyer, and is stored on the invoice
+    const { regime, seller } = await loadTaxSettings(tenantDb);
+    let doc;
+    try {
+      doc = computeDocumentTotals(data.items, data.discountType, data.discountValue, { regime, seller, buyer });
+    } catch (e) {
+      if (e instanceof TaxConfigError) return error(c, e.message, 400);
+      throw e;
+    }
+    const taxCols = taxColumns(doc.tax);
+    const totals = {
+      subtotal: doc.subtotal,
+      discountAmount: doc.discountAmount,
+      taxableAmount: doc.taxableAmount,
+      cgst: doc.tax.cgst,
+      sgst: doc.tax.sgst,
+      igst: doc.tax.igst,
+      vatAmount: doc.tax.vatAmount,
+      totalTax: doc.tax.totalTax,
+      total: doc.total,
+    };
 
     // Generate invoice number
     const { invoiceNumber } = await generateInvoiceNumber(tenantDb, data.type);
@@ -252,11 +264,13 @@ invoiceRoutes.post('/', zValidator('json', createInvoiceSchema), async (c) => {
           discount_type, discount_value, discount_amount, taxable_amount,
           tax_type, cgst, sgst, igst, vat_amount, total_tax, total,
           currency, status, due_date, paid_amount, balance_due, notes,
-          bank_details, created_by, created_at, updated_at, issue_date, terms
+          bank_details, created_by, created_at, updated_at, issue_date, terms,
+          tax_regime, tax_breakdown, seller_tax_id, buyer_tax_id, place_of_supply, tax_notes
         ) VALUES (
           ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
           ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20,
-          ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29
+          ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29,
+          ?30, ?31, ?32, ?33, ?34, ?35
         )`
       )
       .bind(
@@ -270,7 +284,7 @@ invoiceRoutes.post('/', zValidator('json', createInvoiceSchema), async (c) => {
         data.discountValue || null,
         totals.discountAmount,
         totals.taxableAmount,
-        'gst', // tax_type
+        taxCols.tax_type,
         totals.cgst,
         totals.sgst,
         totals.igst,
@@ -288,18 +302,20 @@ invoiceRoutes.post('/', zValidator('json', createInvoiceSchema), async (c) => {
         now,
         now,
         data.issueDate || (await tenantToday(c)).today,
-        data.terms || null
+        data.terms || null,
+        taxCols.tax_regime,
+        taxCols.tax_breakdown,
+        taxCols.seller_tax_id,
+        taxCols.buyer_tax_id,
+        taxCols.place_of_supply,
+        taxCols.tax_notes
       )
       .run();
 
     // Create line items
     for (let i = 0; i < data.items.length; i++) {
       const item = data.items[i];
-      const itemSubtotal = item.rate * item.quantity;
-      const itemDiscount = (itemSubtotal * item.discountPercent) / 100;
-      const itemTaxable = itemSubtotal - itemDiscount;
-      const itemTax = (itemTaxable * item.taxRate) / 100;
-      const itemTotal = itemTaxable + itemTax;
+      const calc = doc.items[i];
 
       await tenantDb
         .prepare(
@@ -318,10 +334,10 @@ invoiceRoutes.post('/', zValidator('json', createInvoiceSchema), async (c) => {
           item.quantity,
           item.rate,
           item.discountPercent,
-          itemTaxable,
-          item.taxRate,
-          itemTax,
-          itemTotal,
+          calc.taxable,
+          calc.taxRate,
+          calc.tax,
+          calc.amount,
           i
         )
         .run();
@@ -365,6 +381,13 @@ invoiceRoutes.post('/', zValidator('json', createInvoiceSchema), async (c) => {
       invoiceNumber,
       ...data,
       ...totals,
+      taxRegime: doc.tax.regime,
+      taxType: doc.tax.treatment,
+      taxBreakdown: doc.tax.taxLines,
+      sellerTaxId: doc.tax.sellerTaxId,
+      buyerTaxId: doc.tax.buyerTaxId,
+      placeOfSupply: doc.tax.placeOfSupply,
+      taxNotes: doc.tax.notes,
       status: 'draft',
       paidAmount: 0,
       balanceDue: totals.total,
@@ -390,6 +413,7 @@ invoiceRoutes.get('/:id', async (c) => {
           i.id, i.invoice_number, i.type, i.contact_id, i.lead_id,
           i.subtotal, i.discount_type, i.discount_value, i.discount_amount,
           i.taxable_amount, i.tax_type, i.cgst, i.sgst, i.igst, i.vat_amount,
+          i.tax_regime, i.tax_breakdown, i.seller_tax_id, i.buyer_tax_id, i.place_of_supply, i.tax_notes,
           i.total_tax, i.total, i.currency, i.status, i.due_date,
           i.issue_date, i.terms,
           i.paid_amount, i.balance_due, i.notes, i.bank_details, i.created_by,
@@ -488,9 +512,9 @@ invoiceRoutes.put('/:id', zValidator('json', updateInvoiceSchema), async (c) => 
   try {
     // Verify invoice exists and is draft
     const invoice = await tenantDb
-      .prepare('SELECT id, status, invoice_number, tax_type, paid_amount FROM invoices WHERE id = ?1')
+      .prepare('SELECT id, status, invoice_number, tax_regime, tax_type, tax_breakdown, tax_notes, place_of_supply, seller_tax_id, buyer_tax_id, cgst, paid_amount FROM invoices WHERE id = ?1')
       .bind(invoiceId)
-      .first<{ id: string; status: string; invoice_number: string; tax_type: string; paid_amount: number }>();
+      .first<{ id: string; status: string; invoice_number: string; tax_regime: string; tax_type: string; tax_breakdown: string | null; tax_notes: string | null; place_of_supply: string | null; seller_tax_id: string | null; buyer_tax_id: string | null; cgst: number | null; paid_amount: number }>();
 
     if (!invoice) {
       return notFound(c, 'Invoice');
@@ -511,12 +535,18 @@ invoiceRoutes.put('/:id', zValidator('json', updateInvoiceSchema), async (c) => 
 
     // If items provided, recalculate totals
     if (data.items && data.items.length > 0) {
-      const totals = calculateInvoiceTotals(
-        data.items,
-        data.discountType,
-        data.discountValue,
-        (invoice.tax_type as any) || 'igst'
-      );
+      // The invoice keeps the regime and rules it was issued under (settings may have changed since).
+      const buyer = await loadTaxBuyer(tenantDb, (await tenantDb.prepare('SELECT contact_id FROM invoices WHERE id = ?1').bind(invoiceId).first<{ contact_id: string }>())!.contact_id);
+      const { seller } = await loadTaxSettings(tenantDb);
+      const frozen = frozenRulesFromInvoice(invoice);
+      const doc = computeDocumentTotals(data.items, data.discountType, data.discountValue ?? 0, {
+        regime: frozen.regime, seller, buyer: buyer ?? {}, frozen,
+      });
+      const totals = {
+        subtotal: doc.subtotal, discountAmount: doc.discountAmount, taxableAmount: doc.taxableAmount,
+        cgst: doc.tax.cgst, sgst: doc.tax.sgst, igst: doc.tax.igst, vatAmount: doc.tax.vatAmount,
+        totalTax: doc.tax.totalTax, total: doc.total,
+      };
 
       updateData.subtotal = totals.subtotal;
       updateData.discount_amount = totals.discountAmount;
@@ -528,6 +558,8 @@ invoiceRoutes.put('/:id', zValidator('json', updateInvoiceSchema), async (c) => 
       updateData.total_tax = totals.totalTax;
       updateData.total = totals.total;
       updateData.balance_due = totals.total - (invoice.paid_amount || 0);
+      updateData.tax_type = doc.tax.treatment;
+      updateData.tax_breakdown = JSON.stringify(doc.tax.taxLines);
 
       // Delete existing items and create new ones
       await tenantDb
@@ -537,11 +569,7 @@ invoiceRoutes.put('/:id', zValidator('json', updateInvoiceSchema), async (c) => 
 
       for (let i = 0; i < data.items.length; i++) {
         const item = data.items[i];
-        const itemSubtotal = item.rate * item.quantity;
-        const itemDiscount = (itemSubtotal * item.discountPercent) / 100;
-        const itemTaxable = itemSubtotal - itemDiscount;
-        const itemTax = (itemTaxable * item.taxRate) / 100;
-        const itemTotal = itemTaxable + itemTax;
+        const calc = doc.items[i];
 
         await tenantDb
           .prepare(
@@ -560,10 +588,10 @@ invoiceRoutes.put('/:id', zValidator('json', updateInvoiceSchema), async (c) => 
             item.quantity,
             item.rate,
             item.discountPercent,
-            itemTaxable,
-            item.taxRate,
-            itemTax,
-            itemTotal,
+            calc.taxable,
+            calc.taxRate,
+            calc.tax,
+            calc.amount,
             i
           )
           .run();
@@ -701,7 +729,8 @@ invoiceRoutes.post('/:id/duplicate', async (c) => {
         `SELECT
           contact_id, lead_id, type, subtotal, discount_type, discount_value,
           taxable_amount, tax_type, cgst, sgst, igst, vat_amount, total_tax,
-          total, currency, notes, bank_details
+          total, currency, notes, bank_details,
+          tax_regime, tax_breakdown, seller_tax_id, buyer_tax_id, place_of_supply, tax_notes
         FROM invoices WHERE id = ?1`
       )
       .bind(invoiceId)
@@ -736,10 +765,12 @@ invoiceRoutes.post('/:id/duplicate', async (c) => {
           discount_type, discount_value, discount_amount, taxable_amount,
           tax_type, cgst, sgst, igst, vat_amount, total_tax, total,
           currency, status, paid_amount, balance_due, notes, bank_details,
-          created_by, created_at, updated_at
+          created_by, created_at, updated_at,
+          tax_regime, tax_breakdown, seller_tax_id, buyer_tax_id, place_of_supply, tax_notes
         ) VALUES (
           ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
-          ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26
+          ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26,
+          ?27, ?28, ?29, ?30, ?31, ?32
         )`
       )
       .bind(
@@ -768,7 +799,13 @@ invoiceRoutes.post('/:id/duplicate', async (c) => {
         invoice.bank_details,
         userId,
         now,
-        now
+        now,
+        invoice.tax_regime ?? 'gst',
+        invoice.tax_breakdown ?? null,
+        invoice.seller_tax_id ?? null,
+        invoice.buyer_tax_id ?? null,
+        invoice.place_of_supply ?? null,
+        invoice.tax_notes ?? null
       )
       .run();
 
@@ -945,7 +982,11 @@ invoiceRoutes.post('/from-itinerary', zValidator('json', fromItinerarySchema), a
       visa: '997121',
     };
 
-    const invoiceItems: Array<{ description: string; hsnCode: string; quantity: number; rate: number; discountPercent: number; taxRate: number }> = [];
+    const invoiceItems: Array<{ description: string; hsnCode: string; quantity: number; rate: number; discountPercent: number; taxRate?: number }> = [];
+
+    // Tax follows the agency's own tax system. 18% is the GST default for travel services (India);
+    // VAT and sales tax lines take the agency's configured rate, and a no-tax agency gets none.
+    const { regime, seller } = await loadTaxSettings(tenantDb);
 
     for (const day of (days.results || [])) {
       const items = await tenantDb
@@ -961,7 +1002,7 @@ invoiceRoutes.post('/from-itinerary', zValidator('json', fromItinerarySchema), a
           quantity: (item.quantity as number) || 1,
           rate: (item.selling_price as number) || (item.cost as number) || 0,
           discountPercent: 0,
-          taxRate: 18,
+          taxRate: regime === 'gst' ? 18 : undefined,
         });
       }
     }
@@ -970,23 +1011,23 @@ invoiceRoutes.post('/from-itinerary', zValidator('json', fromItinerarySchema), a
       return error(c, 'No items found in itinerary to generate invoice', 400);
     }
 
-    // Get company state for GST calculation
-    const companyStateResult = await tenantDb
-      .prepare("SELECT value FROM settings WHERE key = 'company_state'")
-      .first<{ value: string }>();
-    const companyState = companyStateResult?.value;
-
-    const contact = await tenantDb
-      .prepare('SELECT id, name, state FROM contacts WHERE id = ?1')
-      .bind(itinerary.contact_id)
-      .first<{ id: string; name: string; state: string | null }>();
-
-    if (!contact) {
+    const buyer = await loadTaxBuyer(tenantDb, itinerary.contact_id as string);
+    if (!buyer) {
       return notFound(c, 'Contact');
     }
 
-    const taxType = detectTaxType(companyState, contact.state);
-    const totals = calculateInvoiceTotals(invoiceItems, undefined, 0, taxType);
+    let doc;
+    try {
+      doc = computeDocumentTotals(invoiceItems.map((i) => ({ ...i, discountPercent: 0 })), undefined, 0, { regime, seller, buyer });
+    } catch (e) {
+      if (e instanceof TaxConfigError) return error(c, e.message, 400);
+      throw e;
+    }
+    const taxCols = taxColumns(doc.tax);
+    const totals = {
+      subtotal: doc.subtotal, taxableAmount: doc.taxableAmount, cgst: doc.tax.cgst, sgst: doc.tax.sgst,
+      igst: doc.tax.igst, vatAmount: doc.tax.vatAmount, totalTax: doc.tax.totalTax, total: doc.total,
+    };
     const { invoiceNumber } = await generateInvoiceNumber(tenantDb, 'tax_invoice');
 
     const invoiceId = generateId();
@@ -998,28 +1039,30 @@ invoiceRoutes.post('/from-itinerary', zValidator('json', fromItinerarySchema), a
           id, contact_id, lead_id, invoice_number, type, subtotal,
           taxable_amount, tax_type, cgst, sgst, igst, vat_amount, total_tax, total,
           currency, status, paid_amount, balance_due, notes,
-          created_by, created_at, updated_at
+          created_by, created_at, updated_at,
+          tax_regime, tax_breakdown, seller_tax_id, buyer_tax_id, place_of_supply, tax_notes
         ) VALUES (
           ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
-          ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22
+          ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22,
+          ?23, ?24, ?25, ?26, ?27, ?28
         )`
       )
       .bind(
         invoiceId, itinerary.contact_id, itinerary.lead_id, invoiceNumber, 'tax_invoice',
-        totals.subtotal, totals.taxableAmount, 'gst', totals.cgst, totals.sgst,
+        totals.subtotal, totals.taxableAmount, taxCols.tax_type, totals.cgst, totals.sgst,
         totals.igst, totals.vatAmount, totals.totalTax, totals.total,
         'INR', 'draft', 0, totals.total,
         JSON.stringify({ generatedFromItinerary: itineraryId }),
-        userId, now, now
+        userId, now, now,
+        taxCols.tax_regime, taxCols.tax_breakdown, taxCols.seller_tax_id, taxCols.buyer_tax_id,
+        taxCols.place_of_supply, taxCols.tax_notes
       )
       .run();
 
     // Create line items
     for (let i = 0; i < invoiceItems.length; i++) {
       const item = invoiceItems[i];
-      const itemSubtotal = item.rate * item.quantity;
-      const itemTax = (itemSubtotal * item.taxRate) / 100;
-      const itemTotal = itemSubtotal + itemTax;
+      const calc = doc.items[i];
 
       await tenantDb
         .prepare(
@@ -1030,7 +1073,7 @@ invoiceRoutes.post('/from-itinerary', zValidator('json', fromItinerarySchema), a
         )
         .bind(
           generateId(), invoiceId, item.description, item.hsnCode,
-          item.quantity, item.rate, 0, itemSubtotal, item.taxRate, itemTax, itemTotal, i
+          item.quantity, item.rate, 0, calc.taxable, calc.taxRate, calc.tax, calc.amount, i
         )
         .run();
     }

@@ -7,6 +7,7 @@ import { generateId } from '../utils/uuid';
 import { success, created, paginated, error, notFound, forbidden } from '../utils/response';
 import { generateInvoiceNumber } from '../services/numbering';
 import { logActivity } from '../utils/activity-logger';
+import { computeDocumentTotals, frozenRulesFromInvoice, taxColumns } from '../services/tax-calculator';
 
 const creditNoteRoutes = new Hono<AppContext>();
 const debitNoteRoutes = new Hono<AppContext>();
@@ -24,7 +25,8 @@ const createCreditNoteSchema = z.object({
       description: z.string().min(1),
       quantity: z.number().int().min(1),
       rate: z.number().positive(),
-      taxRate: z.number().min(0).max(100).default(0),
+      // Omitted: the rate of the original invoice (VAT / sales tax) or 0 (GST).
+      taxRate: z.number().min(0).max(100).optional(),
     })
   ).min(1),
 });
@@ -38,7 +40,8 @@ const createDebitNoteSchema = z.object({
       description: z.string().min(1),
       quantity: z.number().int().min(1),
       rate: z.number().positive(),
-      taxRate: z.number().min(0).max(100).default(0),
+      // Omitted: the rate of the original invoice (VAT / sales tax) or 0 (GST).
+      taxRate: z.number().min(0).max(100).optional(),
     })
   ).min(1),
 });
@@ -75,27 +78,25 @@ creditNoteRoutes.post('/', zValidator('json', createCreditNoteSchema), async (c)
     // Verify invoice exists
     const invoice = await tenantDb
       .prepare(
-        `SELECT id, contact_id, invoice_number, total FROM invoices WHERE id = ?1`
+        `SELECT id, contact_id, invoice_number, total, tax_regime, tax_type, tax_breakdown, tax_notes,
+                place_of_supply, seller_tax_id, buyer_tax_id, cgst FROM invoices WHERE id = ?1`
       )
       .bind(data.invoiceId)
-      .first<{ id: string; contact_id: string; invoice_number: string; total: number }>();
+      .first<Record<string, any> & { id: string; contact_id: string; invoice_number: string; total: number }>();
 
     if (!invoice) {
       return notFound(c, 'Invoice');
     }
 
     // Calculate credit note total
-    let subtotal = 0;
-    let totalTax = 0;
-
-    for (const item of data.items) {
-      const itemSubtotal = item.rate * item.quantity;
-      const itemTax = (itemSubtotal * item.taxRate) / 100;
-      subtotal += itemSubtotal;
-      totalTax += itemTax;
-    }
-
-    const total = subtotal + totalTax;
+    // Same regime and rules as the invoice it adjusts (stored on that invoice), not today's settings
+    const frozen = frozenRulesFromInvoice(invoice as Parameters<typeof frozenRulesFromInvoice>[0]);
+    const buyer = { taxId: frozen.buyerTaxId };
+    const doc = computeDocumentTotals(data.items, undefined, 0, { regime: frozen.regime, seller: {}, buyer, frozen });
+    const taxCols = taxColumns(doc.tax);
+    const subtotal = doc.subtotal;
+    const totalTax = doc.tax.totalTax;
+    const total = doc.total;
 
     // Generate credit note number
     const { invoiceNumber: creditNoteNumber } = await generateInvoiceNumber(tenantDb, 'credit_note');
@@ -109,9 +110,12 @@ creditNoteRoutes.post('/', zValidator('json', createCreditNoteSchema), async (c)
         `INSERT INTO invoices (
           id, contact_id, lead_id, invoice_number, type, subtotal,
           taxable_amount, total_tax, total, currency, status, notes,
-          created_by, created_at, updated_at
+          created_by, created_at, updated_at,
+          tax_regime, tax_type, tax_breakdown, seller_tax_id, buyer_tax_id, place_of_supply, tax_notes,
+          cgst, sgst, igst, vat_amount
         ) VALUES (
-          ?1, ?2, NULL, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14
+          ?1, ?2, NULL, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
+          ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25
         )`
       )
       .bind(
@@ -128,16 +132,25 @@ creditNoteRoutes.post('/', zValidator('json', createCreditNoteSchema), async (c)
         JSON.stringify({ reason: data.reason, appliedTo: data.invoiceId, notes: data.notes }),
         userId,
         now,
-        now
+        now,
+        taxCols.tax_regime,
+        taxCols.tax_type,
+        taxCols.tax_breakdown,
+        taxCols.seller_tax_id,
+        taxCols.buyer_tax_id,
+        taxCols.place_of_supply,
+        taxCols.tax_notes,
+        doc.tax.cgst,
+        doc.tax.sgst,
+        doc.tax.igst,
+        doc.tax.vatAmount
       )
       .run();
 
     // Create line items
     for (let i = 0; i < data.items.length; i++) {
       const item = data.items[i];
-      const itemSubtotal = item.rate * item.quantity;
-      const itemTax = (itemSubtotal * item.taxRate) / 100;
-      const itemTotal = itemSubtotal + itemTax;
+      const calc = doc.items[i];
 
       await tenantDb
         .prepare(
@@ -154,9 +167,9 @@ creditNoteRoutes.post('/', zValidator('json', createCreditNoteSchema), async (c)
           item.description,
           item.quantity,
           item.rate,
-          item.taxRate,
-          itemTax,
-          itemTotal,
+          calc.taxRate,
+          calc.tax,
+          calc.amount,
           i
         )
         .run();
@@ -362,27 +375,25 @@ debitNoteRoutes.post('/', zValidator('json', createDebitNoteSchema), async (c) =
     // Verify invoice exists
     const invoice = await tenantDb
       .prepare(
-        `SELECT id, contact_id, invoice_number, total FROM invoices WHERE id = ?1`
+        `SELECT id, contact_id, invoice_number, total, tax_regime, tax_type, tax_breakdown, tax_notes,
+                place_of_supply, seller_tax_id, buyer_tax_id, cgst FROM invoices WHERE id = ?1`
       )
       .bind(data.invoiceId)
-      .first<{ id: string; contact_id: string; invoice_number: string; total: number }>();
+      .first<Record<string, any> & { id: string; contact_id: string; invoice_number: string; total: number }>();
 
     if (!invoice) {
       return notFound(c, 'Invoice');
     }
 
     // Calculate debit note total
-    let subtotal = 0;
-    let totalTax = 0;
-
-    for (const item of data.items) {
-      const itemSubtotal = item.rate * item.quantity;
-      const itemTax = (itemSubtotal * item.taxRate) / 100;
-      subtotal += itemSubtotal;
-      totalTax += itemTax;
-    }
-
-    const total = subtotal + totalTax;
+    // Same regime and rules as the invoice it adjusts (stored on that invoice), not today's settings
+    const frozen = frozenRulesFromInvoice(invoice as Parameters<typeof frozenRulesFromInvoice>[0]);
+    const buyer = { taxId: frozen.buyerTaxId };
+    const doc = computeDocumentTotals(data.items, undefined, 0, { regime: frozen.regime, seller: {}, buyer, frozen });
+    const taxCols = taxColumns(doc.tax);
+    const subtotal = doc.subtotal;
+    const totalTax = doc.tax.totalTax;
+    const total = doc.total;
 
     // Generate debit note number
     const { invoiceNumber: debitNoteNumber } = await generateInvoiceNumber(tenantDb, 'debit_note');
@@ -396,9 +407,12 @@ debitNoteRoutes.post('/', zValidator('json', createDebitNoteSchema), async (c) =
         `INSERT INTO invoices (
           id, contact_id, lead_id, invoice_number, type, subtotal,
           taxable_amount, total_tax, total, currency, status, notes,
-          created_by, created_at, updated_at
+          created_by, created_at, updated_at,
+          tax_regime, tax_type, tax_breakdown, seller_tax_id, buyer_tax_id, place_of_supply, tax_notes,
+          cgst, sgst, igst, vat_amount
         ) VALUES (
-          ?1, ?2, NULL, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14
+          ?1, ?2, NULL, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
+          ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25
         )`
       )
       .bind(
@@ -415,16 +429,25 @@ debitNoteRoutes.post('/', zValidator('json', createDebitNoteSchema), async (c) =
         JSON.stringify({ reason: data.reason, appliedTo: data.invoiceId, notes: data.notes }),
         userId,
         now,
-        now
+        now,
+        taxCols.tax_regime,
+        taxCols.tax_type,
+        taxCols.tax_breakdown,
+        taxCols.seller_tax_id,
+        taxCols.buyer_tax_id,
+        taxCols.place_of_supply,
+        taxCols.tax_notes,
+        doc.tax.cgst,
+        doc.tax.sgst,
+        doc.tax.igst,
+        doc.tax.vatAmount
       )
       .run();
 
     // Create line items
     for (let i = 0; i < data.items.length; i++) {
       const item = data.items[i];
-      const itemSubtotal = item.rate * item.quantity;
-      const itemTax = (itemSubtotal * item.taxRate) / 100;
-      const itemTotal = itemSubtotal + itemTax;
+      const calc = doc.items[i];
 
       await tenantDb
         .prepare(
@@ -441,9 +464,9 @@ debitNoteRoutes.post('/', zValidator('json', createDebitNoteSchema), async (c) =
           item.description,
           item.quantity,
           item.rate,
-          item.taxRate,
-          itemTax,
-          itemTotal,
+          calc.taxRate,
+          calc.tax,
+          calc.amount,
           i
         )
         .run();

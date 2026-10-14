@@ -47,6 +47,8 @@ export const contacts = sqliteTable('contacts', {
   state: text('state'),
   country: text('country'),
   postalCode: text('postal_code'),
+  taxId: text('tax_id'), // GSTIN / VAT number of a business customer (R201)
+  isBusiness: integer('is_business').default(0),
   tags: text('tags'), // JSON array as text
   notes: text('notes'),
   source: text('source'), // manual, website, referral, ad, facebook, google
@@ -361,7 +363,13 @@ export const invoices = sqliteTable('invoices', {
   discountValue: real('discount_value'),
   discountAmount: real('discount_amount').default(0),
   taxableAmount: real('taxable_amount').default(0),
-  taxType: text('tax_type'), // gst, vat, none
+  taxType: text('tax_type'), // treatment: cgst_sgst, igst, export_zero, vat, reverse_charge, sales_tax, none
+  taxRegime: text('tax_regime').notNull().default('gst'), // gst, vat, sales_tax, none (R201)
+  taxBreakdown: text('tax_breakdown'), // JSON [{code, rate, base, amount, label}]
+  sellerTaxId: text('seller_tax_id'),
+  buyerTaxId: text('buyer_tax_id'),
+  placeOfSupply: text('place_of_supply'),
+  taxNotes: text('tax_notes'),
   cgst: real('cgst').default(0),
   sgst: real('sgst').default(0),
   igst: real('igst').default(0),

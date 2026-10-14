@@ -7,6 +7,7 @@
 
 import { generateId } from '../utils/uuid';
 import { getTenantTimeZone, localDateString, addDaysLocal } from '../utils/tz';
+import { computeDocumentTotals, loadTaxBuyer, loadTaxSettings, taxColumns } from './tax-calculator';
 import { calculateTripCost, haversineDistance, type RateCard } from './trip-cost-calculator';
 
 /**
@@ -105,18 +106,15 @@ export async function generateTripInvoice(
   // Use cost override if set
   const finalCost = (trip.cost_override as number | null) ?? actualCost ?? (trip.estimated_cost as number ?? 0);
 
-  // Get contact state for tax calculation
-  const contact = await db.prepare('SELECT name, state FROM contacts WHERE id = ?').bind(contactId).first();
-  const companyStateResult = await db.prepare("SELECT value FROM settings WHERE key = 'company_state'").first() as { value: string } | null;
-  const companyState = companyStateResult?.value;
-  const contactState = contact?.state;
-
-  // Determine tax type (same state = CGST+SGST, different = IGST)
-  const isSameState = companyState && contactState && companyState.toLowerCase() === contactState.toLowerCase();
-  const taxRate = 5; // Travel & transport services are typically 5% GST in India (SAC 996411)
+  // Tax follows the agency's own tax system (settings) and the contact, like every other invoice
+  const { regime, seller } = await loadTaxSettings(db);
+  const buyer = (await loadTaxBuyer(db, contactId)) ?? {};
+  // GST: travel and transport services are typically 5% in India (SAC 996411). Other regimes use the
+  // agency's configured rate (undefined here).
+  const taxRate: number | undefined = regime === 'gst' ? 5 : undefined;
 
   // Build invoice line items from cost breakdown
-  const items: Array<{ description: string; rate: number; taxRate: number; hsnCode: string }> = [];
+  const items: Array<{ description: string; rate: number; taxRate: number | undefined; hsnCode: string }> = [];
 
   if (actualBreakdown && !actualBreakdown.isFlat) {
     if (actualBreakdown.baseFare > 0) {
@@ -154,18 +152,16 @@ export async function generateTripInvoice(
   }
 
   // Calculate totals
-  let subtotal = 0;
-  let totalTax = 0;
-
-  for (const item of items) {
-    subtotal += item.rate;
-    totalTax += (item.rate * item.taxRate) / 100;
-  }
-
-  const cgst = isSameState ? totalTax / 2 : 0;
-  const sgst = isSameState ? totalTax / 2 : 0;
-  const igst = isSameState ? 0 : totalTax;
-  const total = subtotal + totalTax;
+  const doc = computeDocumentTotals(
+    items.map((i) => ({ rate: i.rate, quantity: 1, taxRate: i.taxRate })),
+    undefined,
+    0,
+    { regime, seller, buyer },
+  );
+  const taxCols = taxColumns(doc.tax);
+  const { subtotal, total } = doc;
+  const totalTax = doc.tax.totalTax;
+  const { cgst, sgst, igst, vatAmount } = doc.tax;
 
   // Generate invoice number
   const { generateInvoiceNumber } = await import('./numbering');
@@ -178,28 +174,31 @@ export async function generateTripInvoice(
   await db.prepare(`
     INSERT INTO invoices (
       id, contact_id, lead_id, invoice_number, type, subtotal,
-      taxable_amount, tax_type, cgst, sgst, igst, total_tax, total,
+      taxable_amount, tax_type, cgst, sgst, igst, vat_amount, total_tax, total,
       currency, status, due_date, paid_amount, balance_due, notes,
-      created_by, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, 'tax_invoice', ?, ?, 'gst', ?, ?, ?, ?, ?, 'INR', 'draft', ?, 0, ?, ?, ?, ?, ?)
+      created_by, created_at, updated_at,
+      tax_regime, tax_breakdown, seller_tax_id, buyer_tax_id, place_of_supply, tax_notes
+    ) VALUES (?, ?, ?, ?, 'tax_invoice', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'INR', 'draft', ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     invoiceId, contactId, trip.lead_id ?? null, invoiceNumber,
-    subtotal, subtotal, cgst, sgst, igst, totalTax, total,
+    subtotal, subtotal, taxCols.tax_type, cgst, sgst, igst, vatAmount, totalTax, total,
     dueDate, total,
     `Auto-generated from trip ${trip.id}`,
     userId, now, now,
+    taxCols.tax_regime, taxCols.tax_breakdown, taxCols.seller_tax_id, taxCols.buyer_tax_id,
+    taxCols.place_of_supply, taxCols.tax_notes,
   ).run();
 
   // Create line items
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
-    const itemTax = (item.rate * item.taxRate) / 100;
+    const calc = doc.items[i];
     await db.prepare(`
       INSERT INTO invoice_items (id, invoice_id, description, hsn_code, quantity, rate, discount_percent, taxable_amount, tax_rate, tax_amount, amount, sort_order)
       VALUES (?, ?, ?, ?, 1, ?, 0, ?, ?, ?, ?, ?)
     `).bind(
       generateId(), invoiceId, item.description, item.hsnCode || null,
-      item.rate, item.rate, item.taxRate, itemTax, item.rate + itemTax, i,
+      item.rate, calc.taxable, calc.taxRate, calc.tax, calc.amount, i,
     ).run();
   }
 
