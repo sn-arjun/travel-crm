@@ -224,7 +224,9 @@ describe('B39 tenant summary on auth responses', () => {
     await db.prepare("DELETE FROM settings WHERE key IN ('timezone', 'company_timezone', 'currency')").run();
     const res = await raw('POST', '/auth/login', null, { email: 'admin@e2e.test', password: 'password123', tenantId: TENANT_ID });
     const body: any = await res.json();
-    expect(body.data.tenant).toEqual({ id: TENANT_ID, name: 'Sahyadri Holidays', timezone: 'Asia/Kolkata', currency: 'INR' });
+    expect(body.data.tenant).toMatchObject({ id: TENANT_ID, name: 'Sahyadri Holidays', timezone: 'Asia/Kolkata', currency: 'INR' });
+    expect(body.data.tenant.plan).toMatchObject({ key: expect.any(String) });
+    expect(body.data.tenant.seats).toMatchObject({ limit: expect.any(Number), used: expect.any(Number) });
     expect(body.data.user.email).toBe('admin@e2e.test'); // existing shape intact
     expect(JSON.stringify(body.data.tenant)).not.toMatch(/plan|secret|d1|subscription/i);
 

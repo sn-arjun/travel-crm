@@ -151,7 +151,11 @@ catalogueAdminRoutes.post('/prices', zValidator('json', newPriceSchema), async (
   return success(c, { id }, 201);
 });
 
-const allowancesSchema = z.record(z.enum(ALLOWANCE_KEYS), z.number().int().min(0));
+const allowancesSchema = z
+  .record(z.string(), z.number().int().min(0))
+  .refine((v) => Object.keys(v).every((k) => (ALLOWANCE_KEYS as readonly string[]).includes(k)), {
+    message: `Allowance keys must be among ${ALLOWANCE_KEYS.join(', ')}`,
+  });
 
 catalogueAdminRoutes.put('/allowances/:plan', zValidator('json', allowancesSchema), async (c) => {
   const planKey = c.req.param('plan');
