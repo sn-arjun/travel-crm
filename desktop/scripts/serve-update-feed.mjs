@@ -3,6 +3,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 export function serveUpdateFeed(folder, port = 0) {
   const server = http.createServer((req, res) => {
@@ -19,7 +20,7 @@ export function serveUpdateFeed(folder, port = 0) {
   return new Promise((resolve) => server.listen(port, '127.0.0.1', () => resolve(server)));
 }
 
-if (import.meta.url === `file:///${process.argv[1].replace(/\/g, '/')}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const folder = process.argv[2];
   if (!folder) {
     console.error('usage: node scripts/serve-update-feed.mjs <folder> [port]');
