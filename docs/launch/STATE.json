@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-15T00:10+05:30",
+  "updated": "2026-10-15T01:00+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -96,9 +96,10 @@
         "R106": "merged (a0b5c4d..a43bc23): backend tsc 0, 61 files / 1341 tests. e2e: auth-shell reset-password test failed once, passed alone (possible cold-start flake; watch in R121).",
         "R107": "merged (5d41780, 2900f53): backend tsc 0, 63 files / 1368 tests; tenant migration 0043_chatbot_allowed_origins. Desktop install tab and chatbot.spec seeding follow-ups moved into R120.",
         "R120": "merged: backend 64/1374, desktop 65/1313, lint 0; palette search, calendar 0, credit notes, numbering reset, chatbot install tab",
-        "R123": "running (slot 3)",
+        "R123": "merged: full desktop e2e 771 passed / 0 failed / 0 did not run (38 skipped, plan-gated); backend 69/1423; desktop 65/1313; lint 0. Chatbot website channel is canonical with legacy web fallback.",
         "R104": "merged + line-ending fix (e5e1baa): backend 67 files / 1402 tests; master 0012, tenant 0044. Cloudflare provisioner only tested with mocked fetch; binding registration may need the generated deploy (pending_deploy).",
-        "R105": "merged: backend 69 files / 1422 tests; master 0013, tenant 0045; crons */5, hourly, daily 00:30 UTC fan out via TENANT_JOBS_QUEUE (inline when unbound)"
+        "R105": "merged: backend 69 files / 1422 tests; master 0013, tenant 0045; crons */5, hourly, daily 00:30 UTC fan out via TENANT_JOBS_QUEUE (inline when unbound)",
+        "R109": "running (slot 1)"
       },
       "merged": [
         "R101",
@@ -109,7 +110,8 @@
         "R120",
         "R103",
         "R104",
-        "R105"
+        "R105",
+        "R123"
       ]
     },
     "W4": {
@@ -155,5 +157,13 @@
   "todo": [
     "Leftover folder .claude/worktrees/R114/packages/shared is locked by another program (editor/Dart analyzer); delete by hand later. Not tracked by git.",
     "Refresh docs/FEATURES.md and features.json after Tier 1 (chatbot routes are now public; many statuses changed)."
-  ]
+  ],
+  "e2eBaseline": {
+    "date": "2026-10-15",
+    "passed": 771,
+    "failed": 0,
+    "skipped": 38,
+    "didNotRun": 0,
+    "source": "R123 full run on slot 3"
+  }
 }
