@@ -18,11 +18,23 @@ interface ElectronAPI {
   // Event listeners (return cleanup function)
   onShortcut: (callback: (shortcut: string) => void) => () => void;
   onQuickAction: (callback: (action: string) => void) => () => void;
+
+  // Runtime server address (writes userData/config.json and relaunches the app)
+  setApiUrl: (url: string) => Promise<{ ok: boolean; error?: string }>;
+
+  // Auto-update
+  onUpdateReady: (callback: (version: string) => void) => () => void;
+  installUpdate: () => Promise<void>;
+}
+
+interface TravelcrmRuntimeConfig {
+  apiUrl?: string;
 }
 
 declare global {
   interface Window {
     electronAPI?: ElectronAPI;
+    travelcrmConfig?: TravelcrmRuntimeConfig;
   }
 }
 

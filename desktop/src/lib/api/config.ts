@@ -1,4 +1,17 @@
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787/api/v1';
+const DEFAULT_API_URL = 'http://localhost:8787/api/v1';
+
+/**
+ * API base URL, resolved at call time (never at module load):
+ * packaged desktop runtime config, then the build-time NEXT_PUBLIC_API_URL, then localhost.
+ * Do not render this during SSR; use it in effects and handlers.
+ */
+export function getApiBaseUrl(): string {
+  const runtime = typeof window !== 'undefined' ? window.travelcrmConfig?.apiUrl : undefined;
+  return runtime || process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_URL;
+}
+
+/** @deprecated Use getApiBaseUrl(); this value is frozen at module load. */
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_URL;
 
 export const API_ENDPOINTS = {
   // Auth

@@ -9,7 +9,7 @@ import {
 } from '@/components/ui';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { toast } from 'sonner';
-import { API_BASE_URL } from '@/lib/api/config';
+import { useApiBaseUrl } from '@/lib/api/use-api-base-url';
 import { PageContainer } from '@/components/layout/page-container';
 import { useApiQuery } from '@/hooks/use-api';
 import {
@@ -112,6 +112,7 @@ function CopyableUrl({ id, url, copyLabel = 'Copy webhook URL', copiedMessage = 
 // ── Receiving numbers and mailboxes ──────────────────────────
 
 function ReceivingAddresses() {
+  const apiBaseUrl = useApiBaseUrl();
   const { data, loading, error, refetch } = useApiQuery(() => integrationsApi.listChannels(), []);
   const addresses: ChannelAddress[] = data?.data ?? [];
   const { confirm, dialog } = useConfirm();
@@ -251,7 +252,7 @@ function ReceivingAddresses() {
                 <Label htmlFor={`${item.key}-url`}>{item.label}</Label>
                 <CopyableUrl
                   id={`${item.key}-url`}
-                  url={`${API_BASE_URL}${item.path}`}
+                  url={`${apiBaseUrl}${item.path}`}
                   copyLabel="Copy inbound URL"
                   copiedMessage="Inbound URL copied"
                 />
@@ -364,6 +365,7 @@ function ApiKeys() {
 }
 
 function IntegrationsSettingsPageContent() {
+  const apiBaseUrl = useApiBaseUrl();
   const router = useRouter();
 
   const backButton = (
@@ -396,7 +398,7 @@ function IntegrationsSettingsPageContent() {
               </div>
               <div className="flex flex-col gap-ds-2">
                 <Label htmlFor={`${wh.key}-url`}>Endpoint URL</Label>
-                <CopyableUrl id={`${wh.key}-url`} url={`${API_BASE_URL}${wh.path}`} />
+                <CopyableUrl id={`${wh.key}-url`} url={`${apiBaseUrl}${wh.path}`} />
               </div>
               <p className="text-xs text-ds-foreground-muted">{wh.authNote}</p>
             </div>

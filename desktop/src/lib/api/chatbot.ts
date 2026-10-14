@@ -1,5 +1,5 @@
 import { client, type ApiResponse, type PaginatedResponse } from './client';
-import { API_ENDPOINTS, API_BASE_URL } from './config';
+import { API_ENDPOINTS, getApiBaseUrl } from './config';
 
 export interface ChatbotConfig {
   id: string;
@@ -343,5 +343,5 @@ export const chatbotApi = {
     },
   },
 
-  widgetUrl: () => `${API_BASE_URL}/chatbot/widget.js`,
+  widgetUrl: () => `${getApiBaseUrl()}/chatbot/widget.js`,
 };

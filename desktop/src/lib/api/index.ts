@@ -1,6 +1,6 @@
 // Client & Config
 export { client, type ApiError, type ApiResponse, type PaginatedResponse } from './client';
-export { API_BASE_URL, API_ENDPOINTS } from './config';
+export { API_BASE_URL, getApiBaseUrl, API_ENDPOINTS } from './config';
 
 // API Modules
 export * from './auth';

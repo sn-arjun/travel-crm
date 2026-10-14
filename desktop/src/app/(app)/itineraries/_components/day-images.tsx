@@ -5,7 +5,7 @@ import { ImagePlus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { client } from '@/lib/api/client';
-import { API_BASE_URL, API_ENDPOINTS } from '@/lib/api/config';
+import { getApiBaseUrl, API_ENDPOINTS } from '@/lib/api/config';
 import { unwrapEntity } from '@/lib/api/envelope';
 
 export interface DayImage {
@@ -22,7 +22,7 @@ interface UploadedFile {
 
 /** Image already stored on the server, addressed by its storage key. */
 export function imageFromKey(key: string): DayImage {
-  const url = /^https?:\/\//.test(key) ? key : `${API_BASE_URL}${API_ENDPOINTS.files.get(key)}`;
+  const url = /^https?:\/\//.test(key) ? key : `${getApiBaseUrl()}${API_ENDPOINTS.files.get(key)}`;
   return { key, url, name: key.split('/').pop() ?? key };
 }
 

@@ -12,6 +12,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
 import { authApi, type ResolvedTenant } from '@/lib/api/auth';
+import { ServerAddress } from './_components/server-address';
 
 type Step = 'email' | 'password';
 
@@ -352,6 +353,8 @@ export default function LoginPage() {
           </Tabs>
         </>
       )}
+
+      <ServerAddress />
 
       <div className="text-center text-sm text-muted-foreground">
         {"Don't have an account? "}

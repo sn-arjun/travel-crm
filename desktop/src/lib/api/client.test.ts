@@ -14,6 +14,7 @@ vi.mock('@/stores/auth-store', () => ({
 // Mock the config
 vi.mock('./config', () => ({
   API_BASE_URL: 'http://localhost:8787/api/v1',
+  getApiBaseUrl: () => 'http://localhost:8787/api/v1',
 }));
 
 // Now import after mocks

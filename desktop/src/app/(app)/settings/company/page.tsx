@@ -24,7 +24,7 @@ import {
 import { toast } from 'sonner';
 import { settingsApi, type UpdateCompanySettingsRequest } from '@/lib/api/settings';
 import { useApiQuery } from '@/hooks/use-api';
-import { API_BASE_URL } from '@/lib/api/config';
+import { getApiBaseUrl } from '@/lib/api/config';
 import { PageContainer } from '@/components/layout/page-container';
 
 const schema = z.object({
@@ -156,7 +156,7 @@ export default function CompanySettingsPage() {
                 <Avatar className="h-16 w-16">
                   {companySettings?.logoUrl && (
                     <AvatarImage
-                      src={`${API_BASE_URL}${companySettings.logoUrl}`}
+                      src={`${getApiBaseUrl()}${companySettings.logoUrl}`}
                       alt="Company logo"
                     />
                   )}

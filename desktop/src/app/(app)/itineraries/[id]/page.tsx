@@ -34,7 +34,7 @@ import {
   SendMessageDialog, type MessageVariables,
 } from '@/components/communication/send-message-dialog';
 import { useAuthStore } from '@/stores/auth-store';
-import { API_BASE_URL } from '@/lib/api/config';
+import { getApiBaseUrl } from '@/lib/api/config';
 
 /** Trip facts the itinerary borrows from its lead. */
 interface LeadTrip {
@@ -237,7 +237,7 @@ export default function ItineraryDetailPage() {
 
   const handlePdfDownload = () => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : '';
-    window.open(`${API_BASE_URL}/itineraries/${id}/pdf${token ? `?token=${token}` : ''}`, '_blank');
+    window.open(`${getApiBaseUrl()}/itineraries/${id}/pdf${token ? `?token=${token}` : ''}`, '_blank');
     toast.success('PDF download started');
   };
 

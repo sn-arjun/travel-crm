@@ -12,7 +12,7 @@ import { PageHeader } from '@/components/layout/page-header';
 import { useApiQuery } from '@/hooks/use-api';
 import { itinerariesApi, toItineraryDetail, formatDestination } from '@/lib/api/itineraries';
 import { unwrapEntity } from '@/lib/api/envelope';
-import { API_BASE_URL } from '@/lib/api/config';
+import { getApiBaseUrl } from '@/lib/api/config';
 import { formatCurrency } from '@/lib/utils';
 import { formatDisplayDate } from '@/lib/dates';
 import { toast } from 'sonner';
@@ -33,7 +33,7 @@ export default function ItineraryPdfPage() {
 
   function handleDownload() {
     const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : '';
-    const url = `${API_BASE_URL}/itineraries/${id}/pdf${token ? `?token=${token}` : ''}`;
+    const url = `${getApiBaseUrl()}/itineraries/${id}/pdf${token ? `?token=${token}` : ''}`;
     window.open(url, '_blank');
     toast.success('PDF download started');
   }

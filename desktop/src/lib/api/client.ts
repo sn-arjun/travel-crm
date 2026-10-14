@@ -1,6 +1,6 @@
 'use client';
 
-import { API_BASE_URL } from './config';
+import { getApiBaseUrl } from './config';
 import { useAuthStore } from '@/stores/auth-store';
 
 // ============================================================================
@@ -54,16 +54,17 @@ interface InternalRequestConfig extends RequestConfig {
 // ============================================================================
 
 class HttpClient {
-  private baseUrl: string;
+  private baseUrl: string | (() => string);
   private defaultTimeout: number = 30000; // 30 seconds
 
-  constructor(baseUrl: string) {
+  constructor(baseUrl: string | (() => string)) {
     this.baseUrl = baseUrl;
   }
 
   private buildUrl(endpoint: string, params?: Record<string, string | number | boolean | undefined>): string {
     // Ensure baseUrl ends with / and endpoint has no leading / so URL concatenation works correctly
-    const base = this.baseUrl.endsWith('/') ? this.baseUrl : `${this.baseUrl}/`;
+    const resolved = typeof this.baseUrl === 'function' ? this.baseUrl() : this.baseUrl;
+    const base = resolved.endsWith('/') ? resolved : `${resolved}/`;
     const path = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
     const url = new URL(path, base);
 
@@ -294,7 +295,7 @@ async function runRefresh(usedToken: string): Promise<boolean> {
   const timeoutId = setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
+    response = await fetch(`${getApiBaseUrl()}/auth/refresh-token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken: usedToken }),
@@ -430,4 +431,4 @@ if (typeof window !== 'undefined') {
 // Singleton instance
 // ============================================================================
 
-export const client = new HttpClient(API_BASE_URL);
+export const client = new HttpClient(getApiBaseUrl);
