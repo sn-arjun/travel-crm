@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-15T08:00+05:30",
+  "updated": "2026-10-15T09:00+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -109,7 +109,7 @@
         "R117": "merged: backend 78 files / 1543 tests; gen-wrangler self-test passed; backup --verify restored copy matches; notifications + inbox e2e 54 passed. No migrations.",
         "R121": "merged: isolation spec 9/9 passed three runs in a row on the branch; re-run on merged line (with R110): 9 passed (18.7s)",
         "R124": "merged: backend 81 files / 1576 tests; reminders reach the queues in the consumer shape with tenantId, metered, claimed per recipient (cron_job_runs, no migration)",
-        "R116": "running",
+        "R116": "merged: backend 82 files / 1586 tests; landing link check OK; no unverifiable claims; master 0018_platform_enquiries; enquiries visible to the operator at GET /admin/enquiries",
         "R115": "starting"
       },
       "merged": [
@@ -132,7 +132,8 @@
         "R117",
         "R110",
         "R121",
-        "R124"
+        "R124",
+        "R116"
       ]
     },
     "W4": {
@@ -178,7 +179,8 @@
     "R111: SUPER_ADMIN_JWT_SECRET (32+ chars, different from JWT_SECRET); apply master 0017; create first super admin with backend/scripts/create-super-admin.mjs --remote (try --local first); rotate/delete super_admins rows from the old console seed route; review backend/scripts/seed-demo.mjs demo super admin before any shared environment.",
     "R108: Worker secret CREDENTIALS_KEYS={\"k1\":\"<base64 32 bytes>\"} and var CREDENTIALS_ACTIVE_KEY_ID=k1 (keep a copy in the owner password manager; losing it makes stored provider credentials unrecoverable); after deploy run POST /admin/maintenance/reencrypt and /admin/maintenance/hash-api-keys as super admin until nextCursor is null.",
     "R112: console secret SUPER_ADMIN_JWT_SECRET (same as backend), BACKEND_API_URL in super-admin/wrangler.toml, optional NEXT_PUBLIC_DESKTOP_URL; deploy with cd super-admin && npm run deploy after R118 fixes the OpenNext build.",
-    "R117: secrets ERROR_REPORTER_DSN and HEALTH_TOKEN; uptime monitor on /api/v1/health/deep with X-Health-Token; rate-limit bindings API_RATE_LIMITER (1001, 600/60s) and UPLOAD_RATE_LIMITER (1002, 20/60s) in wrangler.base.toml; R2 bucket travelcrm-backups + lifecycle rule; weekly backup-tenants.mjs --remote from CI with CLOUDFLARE_API_TOKEN (D1 read, R2 write); Time Travel restore rehearsal on staging; 5xx alert. See docs/ops/BACKUPS.md."
+    "R117: secrets ERROR_REPORTER_DSN and HEALTH_TOKEN; uptime monitor on /api/v1/health/deep with X-Health-Token; rate-limit bindings API_RATE_LIMITER (1001, 600/60s) and UPLOAD_RATE_LIMITER (1002, 20/60s) in wrangler.base.toml; R2 bucket travelcrm-backups + lifecycle rule; weekly backup-tenants.mjs --remote from CI with CLOUDFLARE_API_TOKEN (D1 read, R2 write); Time Travel restore rehearsal on staging; 5xx alert. See docs/ops/BACKUPS.md.",
+    "R116: fill landing/config.js (apiBase, siteUrl, contactEmail, whatsappNumber, demoVideoUrl, appDownloadUrl, turnstileSiteKey, city, legalEntity, senderEmail) and replace https://travelcrm.pro in index.html canonical/og tags, sitemap.xml, robots.txt; add the landing origin to CORS_ORIGINS; optional TURNSTILE_SECRET; landing host must publish landing/public/ at the site root; legal pages are drafts needing legal review."
   ],
   "todo": [
     "Leftover folder .claude/worktrees/R114/packages/shared is locked by another program (editor/Dart analyzer); delete by hand later. Not tracked by git.",
