@@ -192,17 +192,15 @@ export default function InvoiceDetailPage() {
 
   const money = (amount: number) => formatCurrency(amount, invoice.currency);
   const isEditable = invoice.status === 'draft';
-  const firstTaxRate = invoice.items[0]?.taxRate;
-  const taxRate = firstTaxRate !== undefined && invoice.items.every((i) => i.taxRate === firstTaxRate)
-    ? firstTaxRate
-    : null;
-  const halfRate = taxRate === null ? null : taxRate / 2;
+  // Tax lines are the ones stored on the invoice when it was issued (regime, rates, labels)
+  const taxLines = invoice.taxBreakdown;
   const addressLine = contact
     ? [contact.address, contact.city, contact.state, contact.country].filter(Boolean).join(', ')
     : '';
-  const gstin = contact?.customFields
-    ? Object.entries(contact.customFields).find(([key]) => /gst/i.test(key))?.[1]
-    : undefined;
+  const gstin = invoice.buyerTaxId
+    ?? (contact?.customFields
+      ? Object.entries(contact.customFields).find(([key]) => /gst/i.test(key))?.[1]
+      : undefined);
   const billEmail = contact?.email ?? invoice.contactEmail ?? undefined;
   const billPhone = contact?.phone
     ? `${contact.countryCode ?? ''} ${contact.phone}`.trim()
@@ -286,7 +284,7 @@ export default function InvoiceDetailPage() {
                 </div>
                 {gstin && (
                   <div>
-                    <p className="text-sm text-ds-foreground-muted">GSTIN</p>
+                    <p className="text-sm text-ds-foreground-muted">{invoice.taxRegime === 'gst' ? 'GSTIN' : 'Tax ID'}</p>
                     <p className="text-sm font-medium font-mono">{gstin}</p>
                   </div>
                 )}
@@ -357,30 +355,21 @@ export default function InvoiceDetailPage() {
                     <span className="font-medium">-{money(invoice.discountAmount)}</span>
                   </div>
                 )}
-                {invoice.cgst > 0 && (
-                  <div className="flex justify-between text-sm text-ds-foreground-muted">
-                    <span>CGST{halfRate !== null ? ` (${halfRate}%)` : ''}</span>
-                    <span>{money(invoice.cgst)}</span>
+                {taxLines.map((line) => (
+                  <div key={line.code + line.rate} className="flex justify-between text-sm text-ds-foreground-muted" data-testid="invoice-tax-line">
+                    <span>{line.label} ({line.rate}%)</span>
+                    <span>{money(line.amount)}</span>
                   </div>
-                )}
-                {invoice.sgst > 0 && (
-                  <div className="flex justify-between text-sm text-ds-foreground-muted">
-                    <span>SGST{halfRate !== null ? ` (${halfRate}%)` : ''}</span>
-                    <span>{money(invoice.sgst)}</span>
-                  </div>
-                )}
-                {invoice.igst > 0 && (
-                  <div className="flex justify-between text-sm text-ds-foreground-muted">
-                    <span>IGST{taxRate !== null ? ` (${taxRate}%)` : ''}</span>
-                    <span>{money(invoice.igst)}</span>
-                  </div>
-                )}
-                {invoice.totalTax > 0 && invoice.cgst === 0 && invoice.sgst === 0 && invoice.igst === 0 && (
+                ))}
+                {taxLines.length === 0 && invoice.totalTax > 0 && (
                   <div className="flex justify-between text-sm text-ds-foreground-muted">
                     <span>Tax</span>
                     <span>{money(invoice.totalTax)}</span>
                   </div>
                 )}
+                {invoice.taxNotes.map((note) => (
+                  <p key={note} className="text-xs text-ds-foreground-muted" data-testid="invoice-tax-note">{note}</p>
+                ))}
                 <Separator className="my-ds-1" />
                 <div className="flex justify-between">
                   <span className="text-base font-bold">Total Amount</span>

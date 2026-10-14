@@ -9,6 +9,7 @@ export interface InvoiceLineItem {
   quantity: number;
   rate: number;
   discountPercent?: number;
+  /** Omit for VAT / sales tax so the agency's rate applies; GST lines carry the chosen rate. */
   taxRate?: number;
 }
 
@@ -25,6 +26,8 @@ export interface CreateInvoiceRequest {
   notes?: string;
   bankDetails?: Record<string, unknown>;
   currency?: string;
+  /** GST only: the rate for items without their own taxRate; VAT and sales tax use the agency's rate. */
+  gstRate?: number;
 }
 
 export interface UpdateInvoiceRequest {
@@ -37,6 +40,45 @@ export interface UpdateInvoiceRequest {
   terms?: string;
   notes?: string;
   customFields?: Record<string, unknown>;
+  gstRate?: number;
+}
+
+export type TaxRegime = 'gst' | 'vat' | 'sales_tax' | 'none';
+
+export interface TaxBreakdownLine {
+  code: string;
+  rate: number;
+  base: number;
+  amount: number;
+  label: string;
+}
+
+/** POST /invoices/tax-preview: the tax the form shows, computed by the API. */
+export interface TaxPreview {
+  regime: TaxRegime;
+  treatment: string;
+  taxLines: TaxBreakdownLine[];
+  notes: string[];
+  placeOfSupply: string | null;
+  sellerTaxId: string | null;
+  buyerTaxId: string | null;
+  subtotal: number;
+  discountAmount: number;
+  taxableAmount: number;
+  totalTax: number;
+  total: number;
+  /** Rate a line gets without its own (VAT / sales tax); null under GST, where the user picks one. */
+  defaultRate: number | null;
+}
+
+export interface TaxPreviewRequest {
+  contactId?: string | null;
+  invoiceId?: string | null;
+  items: Array<{ rate: number; quantity: number; discountPercent?: number; taxRate?: number }>;
+  discountType?: 'percentage' | 'fixed';
+  discountValue?: number;
+  /** GST only: the rate for lines that carry none. */
+  gstRate?: number;
 }
 
 /** A line on an invoice, as shown on the detail page. */
@@ -83,6 +125,13 @@ export interface InvoiceDetail {
   sgst: number;
   igst: number;
   totalTax: number;
+  /** Tax regime the invoice was issued under, with the rules applied (stored on the invoice). */
+  taxRegime: TaxRegime;
+  taxBreakdown: TaxBreakdownLine[];
+  taxNotes: string[];
+  sellerTaxId: string | null;
+  buyerTaxId: string | null;
+  placeOfSupply: string | null;
   totalAmount: number;
   paidAmount: number;
   balanceDue: number;
@@ -109,6 +158,27 @@ function strOrNull(v: unknown): string | null {
 
 function asRows(v: unknown): RawRow[] {
   return Array.isArray(v) ? (v as RawRow[]) : [];
+}
+
+function parseRegime(v: unknown): TaxRegime {
+  return v === 'vat' || v === 'sales_tax' || v === 'none' ? v : 'gst';
+}
+
+/** The API stores JSON text; accept text or an already parsed array. */
+function parseJsonArray(v: unknown): unknown[] {
+  if (Array.isArray(v)) return v;
+  if (typeof v !== 'string' || v === '') return [];
+  try {
+    const parsed: unknown = JSON.parse(v);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return v.trim() ? [v] : [];
+  }
+}
+
+function normalizeTaxLine(raw: unknown): TaxBreakdownLine {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as RawRow;
+  return { code: String(r.code ?? ''), rate: numOf(r.rate), base: numOf(r.base), amount: numOf(r.amount), label: String(r.label ?? r.code ?? 'Tax') };
 }
 
 export function normalizeInvoiceItem(raw: RawRow): InvoiceItemRow {
@@ -162,6 +232,12 @@ export function normalizeInvoiceDetail(input: unknown): InvoiceDetail | null {
     sgst: numOf(raw.sgst),
     igst: numOf(raw.igst),
     totalTax: numOf(pick(raw, 'totalTax', 'total_tax')),
+    taxRegime: parseRegime(pick(raw, 'taxRegime', 'tax_regime')),
+    taxBreakdown: parseJsonArray(pick(raw, 'taxBreakdown', 'tax_breakdown')).map(normalizeTaxLine),
+    taxNotes: parseJsonArray(pick(raw, 'taxNotes', 'tax_notes')).map(String),
+    sellerTaxId: strOrNull(pick(raw, 'sellerTaxId', 'seller_tax_id')),
+    buyerTaxId: strOrNull(pick(raw, 'buyerTaxId', 'buyer_tax_id')),
+    placeOfSupply: strOrNull(pick(raw, 'placeOfSupply', 'place_of_supply')),
     totalAmount: total,
     paidAmount: paid,
     balanceDue: balance === undefined || balance === null ? total - paid : numOf(balance),
@@ -205,6 +281,12 @@ export const invoicesApi = {
   /** Invoice detail with camelCase fields, numeric money, line items and payments. */
   getDetail: async (id: string): Promise<InvoiceDetail | null> =>
     normalizeInvoiceDetail(unwrapEntity<unknown>(await client.get<unknown>(API_ENDPOINTS.invoices.byId(id)))),
+
+  /** Tax for a contact and lines under the agency's regime (or the invoice's own, when editing). */
+  taxPreview: async (data: TaxPreviewRequest): Promise<TaxPreview | null> => {
+    const raw = unwrapEntity<TaxPreview>(await client.post<unknown>(API_ENDPOINTS.invoices.create + '/tax-preview', data));
+    return raw && typeof raw === 'object' && 'taxLines' in raw ? raw : null;
+  },
 
   create: (data: CreateInvoiceRequest) =>
     client.post<ApiResponse<Invoice>>(API_ENDPOINTS.invoices.create, data),

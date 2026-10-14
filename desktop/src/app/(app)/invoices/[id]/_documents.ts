@@ -34,6 +34,10 @@ export async function buildInvoicePdf(inv: InvoiceDetail) {
   doc.setFont('helvetica', 'normal');
   doc.text(inv.contactName || 'N/A', 14, y + 6);
   if (inv.contactEmail) doc.text(inv.contactEmail, 14, y + 12);
+  const idLabel = inv.taxRegime === 'gst' ? 'GSTIN' : inv.taxRegime === 'vat' ? 'VAT no.' : 'Tax ID';
+  if (inv.buyerTaxId) doc.text(`${idLabel}: ${inv.buyerTaxId}`, 14, y + 18);
+  if (inv.sellerTaxId) doc.text(`Our ${idLabel}: ${inv.sellerTaxId}`, pageW - 14, y + 6, { align: 'right' });
+  if (inv.placeOfSupply) doc.text(`Place of supply: ${inv.placeOfSupply}`, pageW - 14, y + 12, { align: 'right' });
 
   y = 70;
   if (inv.items.length > 0) {
@@ -57,6 +61,27 @@ export async function buildInvoicePdf(inv: InvoiceDetail) {
 
   y += 5;
   doc.line(110, y, pageW - 14, y);
+  y += 7;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text('Subtotal:', 130, y);
+  doc.text(pdfMoney(inv.subtotal, inv.currency), pageW - 14, y, { align: 'right' });
+  if (inv.discountAmount > 0) {
+    y += 6;
+    doc.text('Discount:', 130, y);
+    doc.text(`-${pdfMoney(inv.discountAmount, inv.currency)}`, pageW - 14, y, { align: 'right' });
+  }
+  // Tax lines come from the breakdown stored on the invoice, so every regime prints its own labels
+  for (const line of inv.taxBreakdown) {
+    y += 6;
+    doc.text(`${line.label} (${line.rate}%):`, 130, y);
+    doc.text(pdfMoney(line.amount, inv.currency), pageW - 14, y, { align: 'right' });
+  }
+  if (inv.taxBreakdown.length === 0 && inv.totalTax > 0) {
+    y += 6;
+    doc.text('Tax:', 130, y);
+    doc.text(pdfMoney(inv.totalTax, inv.currency), pageW - 14, y, { align: 'right' });
+  }
   y += 8;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
@@ -73,6 +98,14 @@ export async function buildInvoicePdf(inv: InvoiceDetail) {
     doc.setFont('helvetica', 'bold');
     doc.text('Balance Due:', 130, y);
     doc.text(pdfMoney(inv.balanceDue, inv.currency), pageW - 14, y, { align: 'right' });
+  }
+
+  // Regime wording stored on the invoice, such as the export (LUT) or reverse charge statement
+  for (const note of inv.taxNotes) {
+    y += 10;
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(9);
+    doc.text(note, 14, y, { maxWidth: pageW - 28 });
   }
 
   if (inv.notes) {
@@ -93,6 +126,7 @@ export function downloadInvoiceCsv(inv: InvoiceDetail) {
     rows.push([item.description, String(item.quantity), String(item.rate), String(item.amount)]);
   }
   rows.push([]);
+  for (const line of inv.taxBreakdown) rows.push(['', '', `${line.label} (${line.rate}%)`, String(line.amount)]);
   rows.push(['', '', 'Total', String(inv.totalAmount)]);
   rows.push(['', '', 'Paid', String(inv.paidAmount)]);
   rows.push(['', '', 'Balance', String(inv.balanceDue)]);

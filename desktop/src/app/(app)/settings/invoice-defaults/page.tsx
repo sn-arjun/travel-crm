@@ -29,6 +29,11 @@ const schema = z.object({
   upiId: z.string().optional(),
   gstin: z.string().optional(),
   companyState: z.string().optional(),
+  country: z.string().optional(),
+  vatRate: z.string().refine((v) => v === '' || (Number(v) >= 0 && Number(v) <= 100), 'Enter a rate between 0 and 100'),
+  salesTaxRate: z.string().refine((v) => v === '' || (Number(v) >= 0 && Number(v) <= 100), 'Enter a rate between 0 and 100'),
+  sellerTaxId: z.string().max(50).optional(),
+  taxLabel: z.string().max(30).optional(),
   taxSystem: z.enum(['gst', 'vat', 'sales_tax', 'none']),
   defaultTaxRate: z.string().refine((v) => v !== '' && Number(v) >= 0 && Number(v) <= 100, 'Enter a rate between 0 and 100'),
   defaultDueDays: z.string().refine((v) => /^\d+$/.test(v) && Number(v) >= 1 && Number(v) <= 365, 'Enter 1–365 days'),
@@ -69,6 +74,11 @@ export default function InvoiceDefaultsPage() {
         upiId: d?.upiId ?? '',
         gstin: d?.gstin ?? '',
         companyState: d?.companyState ?? '',
+        country: d?.country ?? '',
+        vatRate: d?.vatRate != null ? String(d.vatRate) : '',
+        salesTaxRate: d?.salesTaxRate != null ? String(d.salesTaxRate) : '',
+        sellerTaxId: d?.sellerTaxId ?? '',
+        taxLabel: d?.taxLabel ?? '',
         taxSystem: d?.taxSystem ?? 'gst',
         defaultTaxRate: String(d?.defaultTaxRate ?? 18),
         defaultDueDays: String(d?.defaultDueDays ?? 30),
@@ -86,19 +96,26 @@ export default function InvoiceDefaultsPage() {
             upiId: v.upiId ?? '',
             gstin: v.gstin ?? '',
             companyState: v.companyState ?? '',
+            country: v.country ?? '',
+            vatRate: v.vatRate !== '' ? Number(v.vatRate) : null,
+            salesTaxRate: v.salesTaxRate !== '' ? Number(v.salesTaxRate) : null,
+            sellerTaxId: v.sellerTaxId ?? '',
+            taxLabel: v.taxLabel ?? '',
             taxSystem: v.taxSystem as TaxSystem,
             defaultTaxRate: Number(v.defaultTaxRate),
             defaultDueDays: Number(v.defaultDueDays),
             defaultPaymentTerms: v.defaultPaymentTerms ?? '',
           });
-        } catch {
-          toast.error('Failed to save invoice defaults');
+        } catch (e) {
+          toast.error(e instanceof Error && e.message && !e.message.startsWith('HTTP') ? e.message : (e as { message?: string } | null)?.message || 'Failed to save invoice defaults');
           return;
         }
         toast.success('Invoice defaults saved successfully');
         router.push('/settings');
       }}
-      renderSections={(form) => (
+      renderSections={(form) => {
+        const taxSystem = form.watch('taxSystem');
+        return (
         <>
           <SectionCard title="Bank Details" description="Your bank account details for invoices">
             <div className="grid gap-ds-4 sm:grid-cols-2">
@@ -136,15 +153,48 @@ export default function InvoiceDefaultsPage() {
                   </SelectContent>
                 </Select>
               </FormRow>
+              <FormRow name="country" label="Country" hint="Your business country. A buyer in another country gets an export (GST) or reverse-charge (VAT) invoice.">
+                <Input {...form.register('country')} id="country" placeholder="e.g., India, United Kingdom, AE" />
+              </FormRow>
               <FormRow name="defaultTaxRate" label="Default Tax Rate (%)" required>
                 <Input {...form.register('defaultTaxRate')} id="defaultTaxRate" type="number" min="0" max="100" step="0.01" placeholder="18" />
               </FormRow>
-              <FormRow name="gstin" label="GSTIN">
-                <Input {...form.register('gstin')} id="gstin" placeholder="22AAAAA0000A1Z5" />
-              </FormRow>
-              <FormRow name="companyState" label="Company State" hint="Used to decide between CGST/SGST and IGST.">
-                <Input {...form.register('companyState')} id="companyState" placeholder="e.g., Karnataka" />
-              </FormRow>
+              {taxSystem === 'gst' && (
+                <>
+                  <FormRow name="gstin" label="GSTIN">
+                    <Input {...form.register('gstin')} id="gstin" placeholder="22AAAAA0000A1Z5" />
+                  </FormRow>
+                  <FormRow name="companyState" label="Company State" hint="Used to decide between CGST/SGST and IGST.">
+                    <Input {...form.register('companyState')} id="companyState" placeholder="e.g., Karnataka" />
+                  </FormRow>
+                </>
+              )}
+              {taxSystem === 'vat' && (
+                <>
+                  <FormRow name="vatRate" label="VAT Rate (%)" hint="Leave blank to use the standard rate for UK (20), UAE (5), Saudi Arabia (15) or Germany (19). Confirm it with your accountant.">
+                    <Input {...form.register('vatRate')} id="vatRate" type="number" min="0" max="100" step="0.01" placeholder="e.g., 20" />
+                  </FormRow>
+                  <FormRow name="sellerTaxId" label="VAT Number">
+                    <Input {...form.register('sellerTaxId')} id="sellerTaxId" placeholder="e.g., GB123456789" />
+                  </FormRow>
+                  <FormRow name="taxLabel" label="Tax Name on Invoices" hint="Optional, for example GST instead of VAT.">
+                    <Input {...form.register('taxLabel')} id="taxLabel" placeholder="VAT" />
+                  </FormRow>
+                </>
+              )}
+              {taxSystem === 'sales_tax' && (
+                <>
+                  <FormRow name="salesTaxRate" label="Sales Tax Rate (%)" required hint="One combined state and local rate, for example 8.875.">
+                    <Input {...form.register('salesTaxRate')} id="salesTaxRate" type="number" min="0" max="100" step="0.001" placeholder="e.g., 8.875" />
+                  </FormRow>
+                  <FormRow name="sellerTaxId" label="Tax ID">
+                    <Input {...form.register('sellerTaxId')} id="sellerTaxId" placeholder="e.g., seller permit number" />
+                  </FormRow>
+                  <FormRow name="companyState" label="Company State">
+                    <Input {...form.register('companyState')} id="companyState" placeholder="e.g., New York" />
+                  </FormRow>
+                </>
+              )}
             </div>
           </SectionCard>
 
@@ -159,7 +209,8 @@ export default function InvoiceDefaultsPage() {
             </div>
           </SectionCard>
         </>
-      )}
+        );
+      }}
     />
   );
 }

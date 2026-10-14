@@ -193,6 +193,26 @@ describe('Settings API Module', () => {
     });
   });
 
+  describe('invoice defaults, tax engine fields (R201)', () => {
+    it('reads country, rates and the seller tax id', async () => {
+      fetchMock.mockResolvedValue(ok({ tax_system: 'vat', country: 'GB', vat_rate: 20, seller_tax_id: 'GB123', tax_label: 'VAT' }));
+      const result = await settingsApi.invoiceDefaults.get();
+      expect('data' in result && result.data).toMatchObject({ taxSystem: 'vat', country: 'GB', vatRate: 20, salesTaxRate: null, sellerTaxId: 'GB123', taxLabel: 'VAT' });
+    });
+
+    it('sends the new fields only when they are set', async () => {
+      fetchMock.mockResolvedValue(ok({ message: 'ok' }));
+      await settingsApi.invoiceDefaults.update({
+        bankName: '', accountNumber: '', ifsc: '', branch: '', accountHolderName: '', upiId: '',
+        gstin: '', companyState: '', taxSystem: 'sales_tax', defaultTaxRate: 0, defaultDueDays: 30, defaultPaymentTerms: '',
+        country: 'US', salesTaxRate: 8.875, vatRate: null,
+      });
+      const body = lastCall().body as Record<string, unknown>;
+      expect(body).toMatchObject({ tax_system: 'sales_tax', country: 'US', sales_tax_rate: 8.875 });
+      expect(body).not.toHaveProperty('vat_rate');
+    });
+  });
+
   describe('numbering', () => {
     it('round-trips prefixes through snake_case keys', async () => {
       fetchMock.mockResolvedValue(ok({ invoice_prefix: 'BILL', fy_start_month: 1, reset_yearly: false }));

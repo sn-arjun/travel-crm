@@ -222,6 +222,7 @@ export default function ContactDetailPage() {
           <InfoRow label="State">{contact.state}</InfoRow>
           <InfoRow label="Country">{contact.country}</InfoRow>
           <InfoRow label="Postal code">{contact.postalCode}</InfoRow>
+          <InfoRow label="Tax ID">{contact.taxId}</InfoRow>
           <InfoRow label="Source">{humanize(contact.source)}</InfoRow>
           <InfoRow label="Preferred language">{contact.preferredLanguage?.toUpperCase()}</InfoRow>
           <InfoRow label="Birthday">

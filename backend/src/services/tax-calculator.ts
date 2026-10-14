@@ -259,6 +259,8 @@ export interface ComputeInvoiceTaxInput {
   buyer: TaxBuyerInput;
   lines: TaxInputLine[];
   frozen?: FrozenTaxRules | null;
+  /** GST only: rate for lines that carry none (the form's single GST rate). */
+  gstDefaultRate?: number | null;
 }
 
 export interface ComputedTaxLine {
@@ -281,6 +283,8 @@ export interface ComputeInvoiceTaxResult {
   placeOfSupply: string | null;
   sellerTaxId: string | null;
   buyerTaxId: string | null;
+  /** Percent a line gets when it carries none (VAT / sales tax); 0 for GST and none. */
+  defaultRate: number;
 }
 
 export class TaxConfigError extends Error {
@@ -419,6 +423,7 @@ export function computeInvoiceTax(input: ComputeInvoiceTaxInput): ComputeInvoice
     let rate: number;
     if (zeroRated || line.exempt) rate = 0;
     else if (line.taxRate !== undefined && line.taxRate !== null) rate = line.taxRate;
+    else if (treatment === 'cgst_sgst' || treatment === 'igst') rate = input.gstDefaultRate ?? 0;
     else rate = treatment === 'vat' || treatment === 'sales_tax' ? defaultRate : 0;
 
     let lineTaxMinor = 0;
@@ -473,6 +478,7 @@ export function computeInvoiceTax(input: ComputeInvoiceTaxInput): ComputeInvoice
     placeOfSupply,
     sellerTaxId,
     buyerTaxId,
+    defaultRate: treatment === 'vat' || treatment === 'sales_tax' ? defaultRate : 0,
   };
 }
 

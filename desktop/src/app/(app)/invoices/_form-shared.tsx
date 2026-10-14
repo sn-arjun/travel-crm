@@ -2,7 +2,11 @@
 
 import * as React from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import { Button, Combobox, CurrencyInput, Input } from '@/components/ui';
+import {
+  Button, Combobox, CurrencyInput, Input, Select, Separator, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui';
+import { formatCurrency } from '@/lib/utils';
+import { invoicesApi, type TaxPreview } from '@/lib/api/invoices';
 import type { RelationPage } from '@/components/domain/relation-combobox';
 import { contactsApi } from '@/lib/api/contacts';
 import { leadsApi } from '@/lib/api/leads';
@@ -40,6 +44,137 @@ export async function resolveContact(id: string): Promise<Contact | null> {
 
 export async function resolveLead(id: string): Promise<Lead | null> {
   return (await leadsApi.getById(id)).data ?? null;
+}
+
+interface TaxPreviewArgs {
+  contactId: string;
+  /** Editing: show the rules the invoice was issued under. */
+  invoiceId?: string;
+  items: LineItem[];
+  discountType: 'percentage' | 'fixed';
+  discountValue: number;
+  gstRate: string;
+}
+
+/**
+ * Tax for the lines on screen, computed by the API (regime, tax lines, notes, total) a moment after
+ * the user stops typing. The form holds no tax rules of its own.
+ */
+export function useTaxPreview({ contactId, invoiceId, items, discountType, discountValue, gstRate }: TaxPreviewArgs) {
+  const [preview, setPreview] = React.useState<TaxPreview | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const key = JSON.stringify([
+    contactId, invoiceId, discountType, discountValue, gstRate,
+    items.map((i) => [i.quantity, i.unitPrice]),
+  ]);
+
+  React.useEffect(() => {
+    if (!contactId && !invoiceId) {
+      setPreview(null);
+      setError(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      invoicesApi
+        .taxPreview({
+          contactId: contactId || undefined,
+          invoiceId,
+          items: items.map((i) => ({ rate: i.unitPrice, quantity: i.quantity })),
+          discountType,
+          discountValue,
+          gstRate: parseFloat(gstRate) || 0,
+        })
+        .then((p) => {
+          if (cancelled) return;
+          setPreview(p);
+          setError(null);
+        })
+        .catch((e: unknown) => {
+          if (cancelled) return;
+          setPreview(null);
+          setError(e instanceof Error ? e.message : ((e as { message?: string } | null)?.message ?? 'Could not work out the tax'));
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  return { preview, error };
+}
+
+interface TaxRowsProps {
+  preview: TaxPreview | null;
+  error: string | null;
+  currency: string;
+  gstRate: string;
+  onGstRateChange: (rate: string) => void;
+}
+
+/** The tax part of the totals block: the GST rate picker (GST only), the lines the API returned and any notes. */
+export function TaxRows({ preview, error, currency, gstRate, onGstRateChange }: TaxRowsProps) {
+  const regime = preview?.regime;
+  const zeroRated = preview?.treatment === 'export_zero' || preview?.treatment === 'reverse_charge';
+  return (
+    <>
+      {(regime === 'gst' || !preview) && !error && !zeroRated && (
+        <div className="flex items-center justify-between gap-ds-2">
+          <span className="text-sm text-ds-foreground-muted shrink-0">GST rate</span>
+          <Select value={gstRate} onValueChange={onGstRateChange}>
+            <SelectTrigger className="w-20 h-8 text-xs" aria-label="GST rate"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {GST_RATES.map((rate) => (
+                <SelectItem key={rate} value={rate}>{rate}%</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      {error && (
+        <p role="alert" className="text-xs text-ds-danger">{error}</p>
+      )}
+      {preview && preview.taxLines.length === 0 && (
+        <div className="flex items-center justify-between gap-ds-2">
+          <span className="text-sm text-ds-foreground-muted">{regime === 'none' ? 'No tax' : 'Tax'}</span>
+          <span className="text-sm font-medium w-24 text-right">{formatCurrency(0, currency)}</span>
+        </div>
+      )}
+      {preview?.taxLines.map((line) => (
+        <div key={line.code + line.rate} className="flex items-center justify-between gap-ds-2" data-testid="tax-line">
+          <span className="text-sm text-ds-foreground-muted">{line.label} ({line.rate}%)</span>
+          <span className="text-sm font-medium w-24 text-right">+{formatCurrency(line.amount, currency)}</span>
+        </div>
+      ))}
+      {preview?.notes.map((note) => (
+        <p key={note} className="text-xs text-ds-foreground-muted">{note}</p>
+      ))}
+    </>
+  );
+}
+
+interface TaxAndTotalProps extends TaxPreviewArgs {
+  currency: string;
+  /** Subtotal less discount: shown as the total until the API answers. */
+  baseTotal: number;
+  onGstRateChange: (rate: string) => void;
+}
+
+/** Tax lines and the grand total of the totals block, both worked out by the API. */
+export function TaxAndTotal({ currency, baseTotal, onGstRateChange, ...args }: TaxAndTotalProps) {
+  const { preview, error } = useTaxPreview(args);
+  return (
+    <>
+      <TaxRows preview={preview} error={error} currency={currency} gstRate={args.gstRate} onGstRateChange={onGstRateChange} />
+      <Separator />
+      <div className="flex justify-between text-base">
+        <span className="font-semibold">Total</span>
+        <span className="font-bold text-lg">{formatCurrency(preview?.total ?? baseTotal, currency)}</span>
+      </div>
+    </>
+  );
 }
 
 interface LineItemsEditorProps {

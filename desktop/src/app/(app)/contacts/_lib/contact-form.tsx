@@ -6,6 +6,7 @@ import type { UseFormReturn } from 'react-hook-form';
 
 import { FormRow } from '@/components/domain';
 import { AddressAutocomplete } from '@/components/ui/address-autocomplete';
+import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { PhoneInput } from '@/components/ui/phone-input';
@@ -76,6 +77,8 @@ export const contactSchema = z.object({
   state: z.string().optional(),
   country: z.string().optional(),
   postalCode: z.string().optional(),
+  taxId: z.string().max(50, 'Tax ID is too long').optional(),
+  isBusiness: z.boolean(),
   birthday: z.date().optional(),
   anniversary: z.date().optional(),
   preferredLanguage: z.string(),
@@ -99,6 +102,8 @@ export const EMPTY_CONTACT: ContactFormValues = {
   state: '',
   country: '',
   postalCode: '',
+  taxId: '',
+  isBusiness: false,
   birthday: undefined,
   anniversary: undefined,
   preferredLanguage: 'en',
@@ -123,6 +128,8 @@ export function contactToFormValues(c: ContactRecord): ContactFormValues {
     state: c.state ?? '',
     country: c.country ?? '',
     postalCode: c.postalCode ?? '',
+    taxId: c.taxId ?? '',
+    isBusiness: c.isBusiness === true || c.isBusiness === 1,
     birthday: c.birthday ? parseLocalDate(c.birthday) : undefined,
     anniversary: c.anniversary ? parseLocalDate(c.anniversary) : undefined,
     preferredLanguage: c.preferredLanguage || 'en',
@@ -152,6 +159,8 @@ export function formValuesToPayload(v: ContactFormValues): CreateContactRequest 
     state: orNull(v.state) ?? undefined,
     country: orNull(v.country) ?? undefined,
     postalCode: orNull(v.postalCode) ?? undefined,
+    taxId: orNull(v.taxId) ?? undefined,
+    isBusiness: v.isBusiness,
     birthday: v.birthday ? toLocalDateString(v.birthday) : undefined,
     anniversary: v.anniversary ? toLocalDateString(v.anniversary) : undefined,
     preferredLanguage: v.preferredLanguage,
@@ -173,6 +182,7 @@ export function formValuesToUpdate(v: ContactFormValues) {
     state: p.state ?? null,
     country: p.country ?? null,
     postalCode: p.postalCode ?? null,
+    taxId: p.taxId ?? null,
     birthday: p.birthday ?? null,
     anniversary: p.anniversary ?? null,
     notes: p.notes ?? null,
@@ -324,6 +334,16 @@ export function ContactFormFields({ form, currentId }: ContactFormFieldsProps) {
           </FormRow>
           <FormRow name="postalCode" label="Postal code">
             <Input {...form.register('postalCode')} id="postalCode" placeholder="e.g., 400001" />
+          </FormRow>
+          <FormRow name="taxId" label="Tax ID" hint="GSTIN or VAT number of a business customer. Printed on invoices.">
+            <Input {...form.register('taxId')} id="taxId" placeholder="e.g., 27AAPFU0939F1ZV or DE123456789" />
+          </FormRow>
+          <FormRow name="isBusiness" label="Business customer" hint="Lets a VAT invoice to another country use reverse charge.">
+            <Checkbox
+              id="isBusiness"
+              checked={form.watch('isBusiness')}
+              onCheckedChange={(v) => form.setValue('isBusiness', v === true, { shouldDirty: true })}
+            />
           </FormRow>
         </div>
       </SectionCard>

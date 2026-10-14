@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 import { formatCurrency } from '@/lib/utils';
 import { toLocalDateString } from '@/lib/dates';
 import {
-  GST_RATES, LineItemsEditor, fetchContactOptions, fetchLeadOptions, newLineItem, resolveContact, resolveLead,
+  LineItemsEditor, TaxAndTotal, fetchContactOptions, fetchLeadOptions, newLineItem, resolveContact, resolveLead,
   type LineItem,
 } from '../_form-shared';
 
@@ -97,7 +97,6 @@ export default function NewInvoicePage() {
             hsnCode: item.hsnCode || undefined,
             quantity: item.quantity,
             rate: item.unitPrice,
-            taxRate: parseFloat(v.gstRate) || 0,
           }));
 
         const request: CreateInvoiceRequest = {
@@ -112,6 +111,7 @@ export default function NewInvoicePage() {
           terms: v.termsAndConditions?.trim() || undefined,
           notes: v.notes || undefined,
           currency: v.currency,
+          gstRate: parseFloat(v.gstRate) || 0,
         };
 
         const result = await invoicesApi.create(request);
@@ -128,9 +128,6 @@ export default function NewInvoicePage() {
         const discountValue = form.watch('discountValue') ?? 0;
         const gstRate = form.watch('gstRate');
         const discountAmount = discountType === 'percentage' ? subtotal * discountValue / 100 : discountValue;
-        const taxableAmount = subtotal - discountAmount;
-        const gstAmount = taxableAmount * (parseFloat(gstRate) || 0) / 100;
-        const totalAmount = taxableAmount + gstAmount;
 
         return (
           <>
@@ -242,23 +239,16 @@ export default function NewInvoicePage() {
                     </div>
                     <span className="text-sm font-medium w-24 text-right">-{formatCurrency(discountAmount, currency)}</span>
                   </div>
-                  <div className="flex items-center justify-between gap-ds-2">
-                    <span className="text-sm text-ds-foreground-muted shrink-0">GST</span>
-                    <Select value={gstRate} onValueChange={(v) => form.setValue('gstRate', v, { shouldDirty: true })}>
-                      <SelectTrigger className="w-20 h-8 text-xs" aria-label="GST rate"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {GST_RATES.map((rate) => (
-                          <SelectItem key={rate} value={rate}>{rate}%</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <span className="text-sm font-medium w-24 text-right">+{formatCurrency(gstAmount, currency)}</span>
-                  </div>
-                  <Separator />
-                  <div className="flex justify-between text-base">
-                    <span className="font-semibold">Total</span>
-                    <span className="font-bold text-lg">{formatCurrency(totalAmount, currency)}</span>
-                  </div>
+                  <TaxAndTotal
+                    contactId={form.watch('contactId')}
+                    items={lineItems}
+                    discountType={discountType}
+                    discountValue={discountValue}
+                    gstRate={gstRate}
+                    currency={currency}
+                    baseTotal={subtotal - discountAmount}
+                    onGstRateChange={(r) => form.setValue('gstRate', r, { shouldDirty: true })}
+                  />
                 </div>
               </div>
             </SectionCard>

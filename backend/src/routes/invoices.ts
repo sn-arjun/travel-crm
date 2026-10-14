@@ -44,6 +44,9 @@ const createInvoiceSchema = z.object({
   notes: z.string().optional(),
   bankDetails: z.record(z.string(), z.any()).optional(),
   currency: z.string().default('INR'),
+  // GST only: rate for items that carry no taxRate (the form sends one rate for the whole invoice).
+  // VAT and sales tax invoices use the agency's rate; 'none' charges no tax.
+  gstRate: z.number().min(0).max(100).optional(),
 });
 
 const updateInvoiceSchema = createInvoiceSchema.partial();
@@ -232,7 +235,7 @@ invoiceRoutes.post('/', zValidator('json', createInvoiceSchema), async (c) => {
     const { regime, seller } = await loadTaxSettings(tenantDb);
     let doc;
     try {
-      doc = computeDocumentTotals(data.items, data.discountType, data.discountValue, { regime, seller, buyer });
+      doc = computeDocumentTotals(data.items, data.discountType, data.discountValue, { regime, seller, buyer, gstDefaultRate: data.gstRate });
     } catch (e) {
       if (e instanceof TaxConfigError) return error(c, e.message, 400);
       throw e;
@@ -399,6 +402,67 @@ invoiceRoutes.post('/', zValidator('json', createInvoiceSchema), async (c) => {
 });
 
 // ============================================================
+// POST /tax-preview — Tax the form should show for a contact and lines (nothing is saved)
+// ============================================================
+
+const taxPreviewSchema = z.object({
+  contactId: z.string().min(1).optional().nullable(),
+  items: z.array(z.object({
+    rate: z.number().min(0),
+    quantity: z.number().int().min(1).default(1),
+    discountPercent: z.number().min(0).max(100).default(0),
+    taxRate: z.number().min(0).max(100).optional(),
+  })).default([]),
+  discountType: z.enum(['percentage', 'fixed']).optional(),
+  discountValue: z.number().min(0).default(0),
+  gstRate: z.number().min(0).max(100).optional(),
+  // Edit form: show the rules the invoice was issued under, not today's settings
+  invoiceId: z.string().optional().nullable(),
+});
+
+invoiceRoutes.post('/tax-preview', zValidator('json', taxPreviewSchema), async (c) => {
+  const tenantDb = c.get('tenantDb');
+  const data = c.req.valid('json');
+  try {
+    const { regime, seller } = await loadTaxSettings(tenantDb);
+    let frozen = null;
+    let contactId = data.contactId ?? null;
+    if (data.invoiceId) {
+      const inv = await tenantDb
+        .prepare('SELECT contact_id, tax_regime, tax_type, tax_breakdown, tax_notes, place_of_supply, seller_tax_id, buyer_tax_id, cgst FROM invoices WHERE id = ?1')
+        .bind(data.invoiceId)
+        .first<Record<string, any>>();
+      if (inv) {
+        frozen = frozenRulesFromInvoice(inv);
+        contactId = inv.contact_id;
+      }
+    }
+    const buyer = (contactId ? await loadTaxBuyer(tenantDb, contactId) : null) ?? {};
+    const doc = computeDocumentTotals(data.items, data.discountType, data.discountValue, { regime, seller, buyer, frozen, gstDefaultRate: data.gstRate });
+    return success(c, {
+      regime: doc.tax.regime,
+      treatment: doc.tax.treatment,
+      taxLines: doc.tax.taxLines,
+      notes: doc.tax.notes,
+      placeOfSupply: doc.tax.placeOfSupply,
+      sellerTaxId: doc.tax.sellerTaxId,
+      buyerTaxId: doc.tax.buyerTaxId,
+      subtotal: doc.subtotal,
+      discountAmount: doc.discountAmount,
+      taxableAmount: doc.taxableAmount,
+      totalTax: doc.tax.totalTax,
+      total: doc.total,
+      // Rate a line gets when it carries none (VAT / sales tax); null for GST where the user picks it
+      defaultRate: doc.tax.regime === 'vat' || doc.tax.regime === 'sales_tax' ? doc.tax.defaultRate : null,
+    });
+  } catch (e) {
+    if (e instanceof TaxConfigError) return error(c, e.message, 400);
+    console.error('Error previewing invoice tax:', e);
+    return error(c, 'Failed to preview tax', 500);
+  }
+});
+
+// ============================================================
 // GET /:id — Get invoice detail with items and payments
 // ============================================================
 
@@ -540,7 +604,7 @@ invoiceRoutes.put('/:id', zValidator('json', updateInvoiceSchema), async (c) => 
       const { seller } = await loadTaxSettings(tenantDb);
       const frozen = frozenRulesFromInvoice(invoice);
       const doc = computeDocumentTotals(data.items, data.discountType, data.discountValue ?? 0, {
-        regime: frozen.regime, seller, buyer: buyer ?? {}, frozen,
+        regime: frozen.regime, seller, buyer: buyer ?? {}, frozen, gstDefaultRate: data.gstRate,
       });
       const totals = {
         subtotal: doc.subtotal, discountAmount: doc.discountAmount, taxableAmount: doc.taxableAmount,

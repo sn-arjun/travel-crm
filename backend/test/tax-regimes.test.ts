@@ -208,6 +208,24 @@ describe('R201 tax regimes on stored invoices', () => {
     expect([got.vat_rate, got.seller_tax_id, got.country]).toEqual([12.5, 'NA-1', 'Narnia']);
   });
 
+  it('the tax preview shows what the form should print and gstRate fills lines without a rate', async () => {
+    await setTax({ tax_system: 'gst', country: 'IN', company_state: 'Kerala' });
+    const cid = await contact({ state: 'Kerala', country: 'India' });
+    const prev = await call('POST', '/invoices/tax-preview', admin, { contactId: cid, items: [{ rate: 1000, quantity: 1 }], gstRate: 12 });
+    const body = ((await prev.json()) as any).data;
+    expect(body.taxLines.map((l: any) => [l.label, l.rate, l.amount])).toEqual([['CGST', 6, 60], ['SGST', 6, 60]]);
+    expect(body.total).toBe(1120);
+    const inv = await invoice(cid, {});
+    expect(inv.total_tax).toBe(0); // no rate anywhere under GST: unchanged behaviour
+    const res = await call('POST', '/invoices', admin, { contactId: cid, gstRate: 12, items: [{ description: 'Tour', quantity: 1, rate: 1000 }] });
+    expect(res.status).toBe(201);
+    expect((await row(((await res.json()) as any).data.id)).total).toBe(1120);
+
+    await setTax({ tax_system: 'vat', country: 'AE', vat_rate: '5' });
+    const vat = ((await (await call('POST', '/invoices/tax-preview', admin, { contactId: cid, items: [{ rate: 200, quantity: 1 }], gstRate: 12 })).json()) as any).data;
+    expect([vat.regime, vat.totalTax, vat.defaultRate]).toEqual(['vat', 10, 5]); // gstRate ignored outside GST
+  });
+
   it('the migration backfilled legacy columns shape: contacts take a tax id and business flag', async () => {
     const cid = await contact({ taxId: ' GB777 ', isBusiness: true });
     const c = (await testEnv.MASTER_DB.prepare('SELECT tax_id, is_business FROM contacts WHERE id = ?').bind(cid).first()) as any;

@@ -127,6 +127,15 @@ export interface InvoiceDefaults {
   defaultTaxRate: number;
   defaultDueDays: number;
   defaultPaymentTerms: string;
+  /** Tax engine (R201): the agency's country and its own rates and registration number. */
+  country?: string;
+  /** VAT standard rate in percent; blank means the country default (GB 20, AE 5, SA 15, DE 19). */
+  vatRate?: number | null;
+  salesTaxRate?: number | null;
+  /** VAT number or other tax registration (GSTIN is kept in `gstin`). */
+  sellerTaxId?: string;
+  /** Optional name printed for the VAT / sales tax line, for example GST. */
+  taxLabel?: string;
 }
 
 export interface NumberingConfig {
@@ -180,6 +189,11 @@ function fromInvoiceDefaults(r: Raw): InvoiceDefaults {
     defaultTaxRate: num(r.default_tax_rate, 18),
     defaultDueDays: num(r.default_due_days, 30),
     defaultPaymentTerms: str(r.default_payment_terms),
+    country: str(r.country ?? r.company_country),
+    vatRate: r.vat_rate === undefined || r.vat_rate === null || r.vat_rate === '' ? null : num(r.vat_rate, 0),
+    salesTaxRate: r.sales_tax_rate === undefined || r.sales_tax_rate === null || r.sales_tax_rate === '' ? null : num(r.sales_tax_rate, 0),
+    sellerTaxId: str(r.seller_tax_id),
+    taxLabel: str(r.tax_label),
   };
 }
 
@@ -200,6 +214,11 @@ function toInvoiceDefaults(d: InvoiceDefaults): Raw {
     default_tax_rate: d.defaultTaxRate,
     default_due_days: d.defaultDueDays,
     default_payment_terms: d.defaultPaymentTerms,
+    ...(d.country !== undefined && { country: d.country }),
+    ...(d.vatRate != null && { vat_rate: d.vatRate }),
+    ...(d.salesTaxRate != null && { sales_tax_rate: d.salesTaxRate }),
+    ...(d.sellerTaxId !== undefined && { seller_tax_id: d.sellerTaxId }),
+    ...(d.taxLabel !== undefined && { tax_label: d.taxLabel }),
   };
 }
 

@@ -14,6 +14,9 @@ export interface CreateContactRequest {
   state?: string;
   country?: string;
   postalCode?: string;
+  /** GSTIN / VAT number of a business customer. */
+  taxId?: string;
+  isBusiness?: boolean;
   tags?: string[];
   notes?: string;
   source?: string;
@@ -34,6 +37,8 @@ export interface UpdateContactRequest {
   state?: string | null;
   country?: string | null;
   postalCode?: string | null;
+  taxId?: string | null;
+  isBusiness?: boolean;
   tags?: string[];
   notes?: string | null;
   source?: string | null;
@@ -83,6 +88,9 @@ export interface ContactTimeline {
 /** A contact as returned by GET /contacts/:id (shared Contact plus detail-only fields). */
 export interface ContactRecord extends Contact {
   postalCode?: string | null;
+  taxId?: string | null;
+  /** 1 / 0 from the API (or a boolean). */
+  isBusiness?: number | boolean | null;
   createdByName?: string | null;
   leadsCount?: number;
   invoicesCount?: number;
