@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sub-processors (draft) | TravelCRM Pro</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<nav class="legal__nav" aria-label="Legal pages"><a href="../index.html">Home</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="dpa.html">DPA</a><a href="subprocessors.html">Sub-processors</a></nav>
+<main class="legal">
+  <div class="legal__banner" role="note">Draft — needs legal review. Not in force.</div>
+  <h1>Sub-processors</h1>
+  <p>Draft of 2026-10-15. Highlighted text is a placeholder or an open question for the owner and the lawyer.</p>
+<p>These are the companies that may process agency data or website enquiries for us. This list describes the intended set-up and is a draft: it must be checked against what is actually switched on at launch.</p>
+<table>
+  <thead><tr><th>Provider</th><th>What it does</th><th>Data involved</th></tr></thead>
+  <tbody>
+    <tr><td>Cloudflare</td><td>Hosting, databases, file storage and network protection; bot check on the website form (Turnstile)</td><td>All service data; website enquiries</td></tr>
+    <tr><td>SendGrid (Twilio)</td><td>Sending system and agency emails</td><td>Recipient email addresses and message content</td></tr>
+    <tr><td>Twilio</td><td>Texts, WhatsApp messages and login codes. Telephony providers for calling may differ by country and are named when calling is offered (see ADR-001 addendum: Twilio outside India; an agency's own Exotel account in India).</td><td>Phone numbers and message content</td></tr>
+    <tr><td>Anthropic or Cloudflare Workers AI</td><td>Reading messages and preparing suggestions, only when AI features are on for an agency</td><td>Message text sent for analysis</td></tr>
+    <tr><td>Google (Maps / Places)</td><td>Address suggestions while typing</td><td>Address text typed in the address field</td></tr>
+    <tr><td>Oracle Cloud</td><td>Supporting infrastructure <span class="todo">owner to confirm what runs there at launch</span></td><td><span class="todo">to be confirmed</span></td></tr>
+  </tbody>
+</table>
+<p>Questions or objections: <span class="todo" data-config="contactEmail">[contact email: owner to fill in landing/config.js]</span></p>
+</main>
+<script src="../config.js"></script>
+<script src="../main.js"></script>
+</body>
+</html>

@@ -3,18 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TravelCRM Pro — AI-Powered CRM for Travel Agencies</title>
-  <meta name="description" content="The CRM built for travel agencies. Manage leads, create itineraries in 5 minutes, AI-powered calling, WhatsApp campaigns, fleet management — all in one platform.">
-  <meta name="keywords" content="travel CRM, travel agency software, tour operator CRM, itinerary builder, AI travel CRM, WhatsApp CRM">
-  <meta name="theme-color" content="#b8860b">
-  <link rel="canonical" href="https://travelcrm.pro">
+  <title>TravelCRM Pro: CRM for travel agencies and tour operators</title>
+  <meta name="description" content="Read every enquiry from WhatsApp, email and your website, get the next step ready to approve, and go from quote to invoice to hotel voucher in one place.">
+  <meta name="theme-color" content="#8b6914">
+  <link rel="canonical" href="https://travelcrm.pro/">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 
   <!-- Open Graph -->
   <meta property="og:type" content="website">
-  <meta property="og:title" content="TravelCRM Pro — AI-Powered CRM for Travel Agencies">
-  <meta property="og:description" content="Manage leads, itineraries, invoices, VoIP calling, AI assistant, fleet — everything a modern travel company needs.">
-  <meta property="og:url" content="https://travelcrm.pro">
+  <meta property="og:title" content="TravelCRM Pro: CRM for travel agencies and tour operators">
+  <meta property="og:description" content="Every enquiry read. The next step ready to approve. From quote to invoice to hotel voucher.">
+  <meta property="og:url" content="https://travelcrm.pro/">
   <meta property="og:image" content="https://travelcrm.pro/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary_large_image">
 
   <!-- Fonts -->
@@ -25,35 +27,38 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to content</a>
 
 <!-- ========== NAVBAR ========== -->
-<nav class="navbar" id="navbar">
+<nav class="navbar" id="navbar" aria-label="Main">
   <div class="container">
-    <a href="#" class="navbar__logo">
+    <a href="#hero" class="navbar__logo" aria-label="TravelCRM Pro, back to top">
       <div class="navbar__logo-icon"><i data-lucide="globe"></i></div>
       <div class="navbar__logo-text">Travel<span class="gradient-text">CRM</span><span>Pro</span></div>
     </a>
     <div class="navbar__links">
+      <a href="#how">How it works</a>
       <a href="#features">Features</a>
       <a href="#pricing">Pricing</a>
-      <a href="#testimonials">Reviews</a>
       <a href="#faq">FAQ</a>
     </div>
-    <a href="#" class="navbar__cta">Start Free Trial</a>
+    <a href="#enquire" class="navbar__cta" data-enquire="signup">Request a free trial</a>
     <div class="navbar__mobile">
-      <button class="navbar__mobile-btn" id="menu-toggle" aria-label="Toggle menu">
+      <button class="navbar__mobile-btn" id="menu-toggle" type="button" aria-label="Toggle menu" aria-expanded="false" aria-controls="mobile-menu">
         <i data-lucide="menu"></i>
       </button>
     </div>
   </div>
 </nav>
 <div class="mobile-menu" id="mobile-menu">
+  <a href="#how">How it works</a>
   <a href="#features">Features</a>
   <a href="#pricing">Pricing</a>
-  <a href="#testimonials">Reviews</a>
   <a href="#faq">FAQ</a>
-  <a href="#" class="btn btn--primary">Start Free Trial</a>
+  <a href="#enquire" class="btn btn--primary" data-enquire="signup">Request a free trial</a>
 </div>
+
+<main id="main">
 
 <!-- ========== HERO ========== -->
 <section class="hero" id="hero">
@@ -66,15 +71,16 @@
       <div class="hero__grid">
         <div class="hero__text">
           <div class="reveal">
-            <span class="pill pill--gold"><i data-lucide="sparkles"></i> AI-Powered CRM</span>
+            <span class="pill pill--gold"><i data-lucide="sparkles"></i> Built for travel agencies and tour operators</span>
           </div>
-          <h1 class="heading-xl reveal delay-1">The CRM Built<br>For <span class="gradient-text">Travel.</span></h1>
-          <p class="reveal delay-2">Leads, itineraries, invoices, VoIP, AI assistant, fleet — everything a modern travel company needs.</p>
+          <h1 class="heading-xl reveal delay-1">Every enquiry read. <span class="gradient-text">The next step ready to approve.</span></h1>
+          <p class="reveal delay-2">TravelCRM Pro reads the WhatsApp messages, emails and website forms that reach your agency, and prepares the next step: a new lead, a drafted reply, a payment to record. You click Apply. Then it carries you from the quote to the invoice to the hotel voucher.</p>
           <div class="hero__buttons reveal delay-3">
-            <a href="#" class="btn btn--primary">Start 14-Day Free Trial <i data-lucide="arrow-right"></i></a>
-            <a href="#" class="btn btn--ghost"><i data-lucide="play"></i> Watch Demo</a>
+            <a href="#enquire" class="btn btn--primary" data-enquire="demo">Book a 20-minute demo <i data-lucide="arrow-right"></i></a>
+            <a href="#how" class="btn btn--ghost" data-config-show="demoVideoUrl" hidden><i data-lucide="play"></i> Watch the film</a>
+            <a href="#enquire" class="btn btn--ghost" data-enquire="signup">Request a free trial</a>
           </div>
-          <p class="hero__trust reveal delay-4">No credit card · 14-day free trial · 30s setup</p>
+          <p class="hero__trust reveal delay-4">Demo shown on sample data. You review and send every message to a customer.</p>
         </div>
 
         <!-- Dashboard Mockup -->
@@ -85,7 +91,7 @@
                 <div class="mockup__dot mockup__dot--r"></div>
                 <div class="mockup__dot mockup__dot--y"></div>
                 <div class="mockup__dot mockup__dot--g"></div>
-                <div class="mockup__title">TravelCRM Pro</div>
+                <div class="mockup__title">TravelCRM Pro · Sample data</div>
               </div>
               <div class="mockup__body">
                 <div class="mockup__sidebar">
@@ -93,35 +99,35 @@
                   <div class="mockup__sidebar-icon"><i data-lucide="users"></i></div>
                   <div class="mockup__sidebar-icon"><i data-lucide="map"></i></div>
                   <div class="mockup__sidebar-icon"><i data-lucide="file-text"></i></div>
-                  <div class="mockup__sidebar-icon"><i data-lucide="phone"></i></div>
+                  <div class="mockup__sidebar-icon"><i data-lucide="inbox"></i></div>
                   <div class="mockup__sidebar-icon"><i data-lucide="bar-chart-3"></i></div>
                 </div>
                 <div class="mockup__main">
                   <div class="mock-stats">
                     <div class="mock-stat">
                       <div class="mock-stat__icon" style="background:rgba(184,134,11,0.1)"><i data-lucide="users" style="color:var(--primary)"></i></div>
-                      <div class="mock-stat__value">147</div>
+                      <div class="mock-stat__value">12</div>
                       <div class="mock-stat__label">New Leads</div>
                     </div>
                     <div class="mock-stat">
                       <div class="mock-stat__icon" style="background:rgba(34,197,94,0.1)"><i data-lucide="trending-up" style="color:#16a34a"></i></div>
-                      <div class="mock-stat__value">$124K</div>
-                      <div class="mock-stat__label">Revenue</div>
+                      <div class="mock-stat__value">9</div>
+                      <div class="mock-stat__label">Quotes sent</div>
                     </div>
                     <div class="mock-stat">
                       <div class="mock-stat__icon" style="background:rgba(184,134,11,0.1)"><i data-lucide="target" style="color:var(--primary)"></i></div>
-                      <div class="mock-stat__value">85%</div>
-                      <div class="mock-stat__label">Conversion</div>
+                      <div class="mock-stat__value">4</div>
+                      <div class="mock-stat__label">Follow-ups due</div>
                     </div>
                     <div class="mock-stat">
                       <div class="mock-stat__icon" style="background:rgba(30,96,145,0.1)"><i data-lucide="map-pin" style="color:var(--accent)"></i></div>
-                      <div class="mock-stat__value">24</div>
+                      <div class="mock-stat__value">6</div>
                       <div class="mock-stat__label">Active Trips</div>
                     </div>
                   </div>
                   <div class="mock-row">
                     <div class="mock-panel">
-                      <div class="mock-panel__title">Weekly Leads</div>
+                      <div class="mock-panel__title">Weekly leads (sample)</div>
                       <div class="mock-chart">
                         <div><div class="mock-bar" style="height:60%"></div><div class="mock-bar-label">M</div></div>
                         <div><div class="mock-bar" style="height:45%"></div><div class="mock-bar-label">T</div></div>
@@ -134,7 +140,7 @@
                     </div>
                     <div class="mock-panel">
                       <div class="mock-panel__title">Recent Leads</div>
-                      <div class="mock-lead"><div class="mock-avatar">RK</div><div class="mock-lead__info"><div class="mock-lead__name">Rajesh Kumar</div><div class="mock-lead__dest">Bali</div></div><div class="mock-lead__dot" style="background:#22c55e"></div></div>
+                      <div class="mock-lead"><div class="mock-avatar">RD</div><div class="mock-lead__info"><div class="mock-lead__name">Rohan Desai</div><div class="mock-lead__dest">Bali</div></div><div class="mock-lead__dot" style="background:#22c55e"></div></div>
                       <div class="mock-lead"><div class="mock-avatar">PS</div><div class="mock-lead__info"><div class="mock-lead__name">Priya Sharma</div><div class="mock-lead__dest">Switzerland</div></div><div class="mock-lead__dot" style="background:#3b82f6"></div></div>
                       <div class="mock-lead"><div class="mock-avatar">AH</div><div class="mock-lead__info"><div class="mock-lead__name">Ahmed Hassan</div><div class="mock-lead__dest">Dubai</div></div><div class="mock-lead__dot" style="background:#fb923c"></div></div>
                     </div>
@@ -148,7 +154,7 @@
           <div class="float-card float-card--1">
             <div class="float-card__row">
               <div class="float-card__icon" style="background:rgba(34,197,94,0.1)"><i data-lucide="trending-up" style="color:#16a34a;width:14px;height:14px"></i></div>
-              <div><div class="float-card__value">+32%</div><div class="float-card__label">Conversion rate</div></div>
+              <div><div class="float-card__value">Quote sent</div><div class="float-card__label">Sample data</div></div>
             </div>
           </div>
           <div class="float-card float-card--2">
@@ -164,32 +170,48 @@
 
   <div class="hero__stats">
     <div class="hero__stats-inner container">
-      <div class="hero__stat"><div class="hero__stat-value">5 min</div><div class="hero__stat-label">Itinerary creation</div></div>
-      <div class="hero__stat"><div class="hero__stat-value">10+</div><div class="hero__stat-label">Languages</div></div>
-      <div class="hero__stat"><div class="hero__stat-value">99.9%</div><div class="hero__stat-label">Uptime SLA</div></div>
-      <div class="hero__stat"><div class="hero__stat-value">50+</div><div class="hero__stat-label">Reports</div></div>
+      <div class="hero__stat"><div class="hero__stat-label">WhatsApp, SMS and email in one inbox</div></div>
+      <div class="hero__stat"><div class="hero__stat-label">Quote, invoice and voucher in one flow</div></div>
+      <div class="hero__stat"><div class="hero__stat-label">Driver app for trips and pickups</div></div>
+      <div class="hero__stat"><div class="hero__stat-label">Six roles, so each person sees what they should</div></div>
     </div>
   </div>
 </section>
 
-<!-- ========== SOCIAL PROOF ========== -->
+<!-- ========== PRODUCT FACTS + PILOT ========== -->
+<!-- Facts below come from docs/FEATURES.md (checked 2026-10-09): 145 working features across the 16 customer-facing areas. -->
 <section class="section section--subtle" id="proof">
   <div class="container" style="text-align:center">
-    <p class="reveal" style="font-size:14px;font-weight:500;letter-spacing:0.05em;text-transform:uppercase;color:var(--text-muted)">Trusted by travel agencies worldwide</p>
-    <div class="proof__stats">
-      <div class="reveal delay-1"><div class="proof__stat-value">500+</div><div class="proof__stat-label">Travel Agencies</div></div>
-      <div class="reveal delay-2"><div class="proof__stat-value">$2.4M+</div><div class="proof__stat-label">Revenue Managed</div></div>
-      <div class="reveal delay-3"><div class="proof__stat-value">12+</div><div class="proof__stat-label">Countries</div></div>
-      <div class="reveal delay-4"><div class="proof__stat-value">99.9%</div><div class="proof__stat-label">Uptime</div></div>
+    <p class="reveal eyebrow">Built for Indian tour operators</p>
+    <div class="facts">
+      <div class="reveal delay-1"><div class="facts__value">140+</div><div class="facts__label">working features across 16 areas, from inbox to hotel vouchers</div></div>
+      <div class="reveal delay-2"><div class="facts__value">GST</div><div class="facts__label">invoices with CGST/SGST or IGST and HSN/SAC codes</div></div>
+      <div class="reveal delay-3"><div class="facts__value">About 50</div><div class="facts__label">built-in reports, and export for any list</div></div>
+      <div class="reveal delay-4"><div class="facts__value">Desktop</div><div class="facts__label">app for Windows, Mac and Linux, plus a driver app</div></div>
     </div>
-    <div class="proof__agencies reveal delay-4">
-      <span>Wanderlust Travels</span>
-      <span>Desert Rose Tourism</span>
-      <span>Pacific Tours</span>
-      <span>Alpine Adventures</span>
-      <span>Coral Bay Travel</span>
-      <span>Siam Journeys</span>
+    <div class="pilot reveal delay-4">
+      <h2 class="pilot__title">Be one of our first agencies</h2>
+      <p>We are a new product and we are choosing a small group of agencies to set up by hand. You get our attention, and you tell us what to fix first. We do not show customer names or ratings here because we have not earned them yet.</p>
+      <a href="#enquire" class="btn btn--primary" data-enquire="signup">Ask to join the pilot</a>
     </div>
+  </div>
+</section>
+
+<!-- ========== HOW IT WORKS ========== -->
+<section class="section" id="how">
+  <div class="container">
+    <div style="max-width:720px;margin:0 auto;text-align:center">
+      <div class="reveal"><span class="pill pill--gold">How it works</span></div>
+      <h2 class="heading-lg reveal delay-1" style="margin-top:16px">From the first message to <span class="gradient-text">the hotel voucher</span></h2>
+    </div>
+    <ol class="steps">
+      <li class="reveal delay-1"><h3>A message arrives</h3><p>WhatsApp, SMS, email or your website form. It lands in one inbox, filed under the right customer.</p></li>
+      <li class="reveal delay-2"><h3>The assistant reads it</h3><p>Destination, dates, number of travellers and budget are picked out of the message, and it suggests creating the contact and lead.</p></li>
+      <li class="reveal delay-3"><h3>You build the quote</h3><p>Start from the closest itinerary template, with prices from your rate cards, and get a day-by-day plan with a branded PDF.</p></li>
+      <li class="reveal delay-4"><h3>You send it and follow up</h3><p>The reply is drafted for you to read and send. Once sent, the lead moves to Proposal Sent and a follow-up is scheduled.</p></li>
+      <li class="reveal delay-4"><h3>The customer says yes</h3><p>The invoice and the hotel vouchers are drafted for you. You approve each step.</p></li>
+    </ol>
+    <p class="sample-note">Mock-ups on this page use sample data.</p>
   </div>
 </section>
 
@@ -202,12 +224,12 @@
       <div class="feature-block__content">
         <div class="reveal"><span class="pill pill--gold"><i data-lucide="users"></i> Lead Management</span></div>
         <h2 class="heading-lg reveal delay-1">Every Lead, <span class="gradient-text">One Pipeline.</span></h2>
-        <p class="reveal delay-2">8-stage Kanban board with smart scoring, auto-assignment, and AI follow-up sequences. Never lose a lead again.</p>
+        <p class="reveal delay-2">A lead list and a pipeline board. Leads can be assigned by weight or by source, and follow-up steps are set per status.</p>
         <div class="feature-block__bullets reveal delay-3">
-          <div class="feature-block__bullet"><div class="feature-block__bullet-icon"><i data-lucide="check"></i></div><span>Auto lead capture from WhatsApp, web & calls</span></div>
-          <div class="feature-block__bullet"><div class="feature-block__bullet-icon"><i data-lucide="check"></i></div><span>AI-powered lead scoring & priority ranking</span></div>
-          <div class="feature-block__bullet"><div class="feature-block__bullet-icon"><i data-lucide="check"></i></div><span>Automated follow-up sequences</span></div>
-          <div class="feature-block__bullet"><div class="feature-block__bullet-icon"><i data-lucide="check"></i></div><span>Drag-and-drop Kanban pipeline</span></div>
+          <div class="feature-block__bullet"><div class="feature-block__bullet-icon"><i data-lucide="check"></i></div><span>Website enquiry form creates the contact and lead</span></div>
+          <div class="feature-block__bullet"><div class="feature-block__bullet-icon"><i data-lucide="check"></i></div><span>Duplicate warning and contact merge</span></div>
+          <div class="feature-block__bullet"><div class="feature-block__bullet-icon"><i data-lucide="check"></i></div><span>Follow-up sequences you define per status</span></div>
+          <div class="feature-block__bullet"><div class="feature-block__bullet-icon"><i data-lucide="check"></i></div><span>Pipeline board across your stages</span></div>
         </div>
       </div>
       <div class="reveal--right reveal delay-2" style="perspective:1200px">
@@ -216,7 +238,7 @@
           <div class="mockup">
             <div class="mockup__chrome">
               <div class="mockup__dot mockup__dot--r"></div><div class="mockup__dot mockup__dot--y"></div><div class="mockup__dot mockup__dot--g"></div>
-              <div class="mockup__title">Pipeline View</div>
+              <div class="mockup__title">Pipeline view · Sample data</div>
             </div>
             <div class="mock-pipeline">
               <div>
@@ -236,7 +258,7 @@
               <div>
                 <div class="mock-col-header"><div class="mock-col-dot" style="background:#b8860b"></div><div class="mock-col-title">Proposal</div><div class="mock-col-count">2</div></div>
                 <div class="mock-col-cards">
-                  <div class="mock-pipe-card" style="border-top-color:#b8860b"><div class="mock-pipe-card__row"><div class="mock-avatar">RK</div><div class="mock-lead__name">Rajesh K.</div></div><div class="mock-pipe-card__meta"><div class="mock-pipe-card__dest">Bali</div><div class="mock-pipe-card__amount">$4,200</div></div></div>
+                  <div class="mock-pipe-card" style="border-top-color:#b8860b"><div class="mock-pipe-card__row"><div class="mock-avatar">RD</div><div class="mock-lead__name">Rohan D.</div></div><div class="mock-pipe-card__meta"><div class="mock-pipe-card__dest">Bali</div><div class="mock-pipe-card__amount">₹1,20,000</div></div></div>
                 </div>
               </div>
               <div>
@@ -260,13 +282,13 @@
     <div class="grid-2 reversed">
       <div class="feature-block__content">
         <div class="reveal"><span class="pill pill--gold"><i data-lucide="map"></i> Itinerary Builder</span></div>
-        <h2 class="heading-lg reveal delay-1">Proposals in <span class="gradient-text">5 Minutes.</span></h2>
-        <p class="reveal delay-2">Stunning day-wise itineraries with templates, pricing, PDF export, and version control. AI can generate the whole thing.</p>
+        <h2 class="heading-lg reveal delay-1">Quotes from <span class="gradient-text">your own rate cards.</span></h2>
+        <p class="reveal delay-2">Day-by-day itineraries from templates, priced from your supplier rate cards, with versions and a branded PDF.</p>
         <div class="feature-block__bullets reveal delay-3">
-          <div class="feature-block__bullet"><div class="feature-block__bullet-icon"><i data-lucide="check"></i></div><span>Day-wise builder with drag-and-drop</span></div>
-          <div class="feature-block__bullet"><div class="feature-block__bullet-icon"><i data-lucide="check"></i></div><span>One-click PDF & WhatsApp sharing</span></div>
-          <div class="feature-block__bullet"><div class="feature-block__bullet-icon"><i data-lucide="check"></i></div><span>AI-powered itinerary generation</span></div>
-          <div class="feature-block__bullet"><div class="feature-block__bullet-icon"><i data-lucide="check"></i></div><span>Version history & client approval tracking</span></div>
+          <div class="feature-block__bullet"><div class="feature-block__bullet-icon"><i data-lucide="check"></i></div><span>Day-by-day builder with templates and clone</span></div>
+          <div class="feature-block__bullet"><div class="feature-block__bullet-icon"><i data-lucide="check"></i></div><span>Send by WhatsApp or email from one send dialog</span></div>
+          <div class="feature-block__bullet"><div class="feature-block__bullet-icon"><i data-lucide="check"></i></div><span>Cost and margin visible only to roles that may see them</span></div>
+          <div class="feature-block__bullet"><div class="feature-block__bullet-icon"><i data-lucide="check"></i></div><span>Quote versions and a branded PDF</span></div>
         </div>
       </div>
       <div class="reveal--left reveal delay-2" style="perspective:1200px">
@@ -275,12 +297,12 @@
           <div class="mockup">
             <div class="mockup__chrome">
               <div class="mockup__dot mockup__dot--r"></div><div class="mockup__dot mockup__dot--y"></div><div class="mockup__dot mockup__dot--g"></div>
-              <div class="mockup__title">Itinerary Builder</div>
+              <div class="mockup__title">Itinerary builder · Sample data</div>
             </div>
             <div class="mock-itin">
               <div class="mock-itin__header">
                 <div><div class="mock-itin__title">Bali Honeymoon Package</div><div class="mock-itin__sub">7 Days / 6 Nights · 2 Guests</div></div>
-                <div style="text-align:right"><div class="mock-itin__price">$4,200</div><div class="mock-itin__price-sub">per couple</div></div>
+                <div style="text-align:right"><div class="mock-itin__price">₹1,20,000</div><div class="mock-itin__price-sub">per couple</div></div>
               </div>
               <div class="mock-timeline">
                 <div class="mock-day">
@@ -334,14 +356,14 @@
   <div class="container">
     <div class="grid-2">
       <div class="feature-block__content">
-        <div class="reveal"><span class="pill pill--gold"><i data-lucide="phone"></i> WhatsApp & VoIP</span></div>
-        <h2 class="heading-lg reveal delay-1">Call. Message. <span class="gradient-text">Close.</span></h2>
-        <p class="reveal delay-2">Built-in VoIP calling with AI transcription. WhatsApp templates and bulk campaigns. Multi-channel from one screen.</p>
+        <div class="reveal"><span class="pill pill--gold"><i data-lucide="inbox"></i> Inbox</span></div>
+        <h2 class="heading-lg reveal delay-1">One inbox. <span class="gradient-text">One thread per customer.</span></h2>
+        <p class="reveal delay-2">WhatsApp, SMS and email conversations in one place, with templates and a preview before anything is sent.</p>
         <div class="feature-block__bullets reveal delay-3">
-          <div class="feature-block__bullet"><div class="feature-block__bullet-icon"><i data-lucide="check"></i></div><span>Click-to-call VoIP from the CRM</span></div>
-          <div class="feature-block__bullet"><div class="feature-block__bullet-icon"><i data-lucide="check"></i></div><span>AI call transcription & summaries</span></div>
-          <div class="feature-block__bullet"><div class="feature-block__bullet-icon"><i data-lucide="check"></i></div><span>WhatsApp template campaigns</span></div>
-          <div class="feature-block__bullet"><div class="feature-block__bullet-icon"><i data-lucide="check"></i></div><span>Unified multi-channel inbox</span></div>
+          <div class="feature-block__bullet"><div class="feature-block__bullet-icon"><i data-lucide="check"></i></div><span>WhatsApp, SMS and email in one inbox</span></div>
+          <div class="feature-block__bullet"><div class="feature-block__bullet-icon"><i data-lucide="check"></i></div><span>Reply from the send dialog with templates and a preview</span></div>
+          <div class="feature-block__bullet"><div class="feature-block__bullet-icon"><i data-lucide="check"></i></div><span>Customers who opted out are never drafted a message</span></div>
+          <div class="feature-block__bullet"><div class="feature-block__bullet-icon"><i data-lucide="check"></i></div><span>A conversation thread for each customer</span></div>
         </div>
       </div>
       <div class="reveal--right reveal delay-2" style="perspective:1200px">
@@ -350,14 +372,14 @@
           <div class="mockup">
             <div class="mockup__chrome">
               <div class="mockup__dot mockup__dot--r"></div><div class="mockup__dot mockup__dot--y"></div><div class="mockup__dot mockup__dot--g"></div>
-              <div class="mockup__title">Communications</div>
+              <div class="mockup__title">Inbox · Sample data</div>
             </div>
             <div class="mock-comms">
               <div class="mock-channels">
                 <div class="mock-channels__title">Channels</div>
                 <div class="mock-channel active"><i data-lucide="message-square"></i><span>WhatsApp</span><span class="mock-channel__count">12</span></div>
-                <div class="mock-channel"><i data-lucide="phone"></i><span>Calls</span><span class="mock-channel__count">3</span></div>
-                <div class="mock-channel"><i data-lucide="bot"></i><span>Chatbot</span><span class="mock-channel__count">5</span></div>
+                <div class="mock-channel"><i data-lucide="smartphone"></i><span>SMS</span><span class="mock-channel__count">3</span></div>
+                <div class="mock-channel"><i data-lucide="mail"></i><span>Email</span><span class="mock-channel__count">5</span></div>
               </div>
               <div class="mock-chat">
                 <div class="mock-chat__header">
@@ -367,7 +389,7 @@
                 <div class="mock-messages">
                   <div class="mock-msg mock-msg--in">Hi, I'm interested in the Bali package for 2 people<div class="mock-msg__time">10:23 AM</div></div>
                   <div class="mock-msg mock-msg--out">Great choice! Here's our Bali Honeymoon package:<div class="mock-msg__time">10:24 AM</div></div>
-                  <div class="mock-msg mock-msg--file"><div class="mock-msg__file-name">📎 Bali-Honeymoon-Itinerary.pdf</div><div class="mock-msg__file-meta">7 Days / 6 Nights · $4,200</div></div>
+                  <div class="mock-msg mock-msg--file"><div class="mock-msg__file-name">📎 Bali-Honeymoon-Itinerary.pdf</div><div class="mock-msg__file-meta">7 Days / 6 Nights · ₹1,20,000</div></div>
                 </div>
                 <div class="mock-chat__input"><span>Type a message...</span><div class="mock-chat__send"><i data-lucide="zap"></i></div></div>
               </div>
@@ -384,261 +406,249 @@
   <div class="orb cta__orb-1" style="top:-80px;left:20%;width:400px;height:400px;background:#8b5cf6;opacity:0.08"></div>
   <div class="container" style="position:relative;z-index:2">
     <div style="max-width:720px;margin:0 auto;text-align:center">
-      <div class="reveal"><span class="pill pill--purple"><i data-lucide="wand-2"></i> AI-Powered</span></div>
-      <h2 class="heading-lg reveal delay-1" style="color:#fff;margin-top:16px">Your Sales Team's <span style="background:linear-gradient(135deg,#c4b5fd,#93c5fd);-webkit-background-clip:text;-webkit-text-fill-color:transparent">AI Co-Pilot</span></h2>
-      <p class="reveal delay-2" style="margin-top:20px;font-size:18px;color:rgba(255,255,255,0.6)">AI handles the drudge work so your team can focus on closing deals and building relationships.</p>
+      <div class="reveal"><span class="pill pill--purple"><i data-lucide="wand-2"></i> The assistant</span></div>
+      <h2 class="heading-lg reveal delay-1" style="color:#fff;margin-top:16px">An assistant that <span style="background:linear-gradient(135deg,#c4b5fd,#93c5fd);-webkit-background-clip:text;-webkit-text-fill-color:transparent">suggests. You decide.</span></h2>
+      <p class="reveal delay-2" style="margin-top:20px;font-size:18px;color:rgba(255,255,255,0.8)">The assistant works in the background on your enquiries. It never sends a message to a customer on its own, and it never records money without asking.</p>
     </div>
     <div class="ai__cards">
       <div class="ai__card reveal delay-2">
-        <div class="ai__card-icon"><i data-lucide="phone"></i></div>
-        <div class="ai__card-stat">Zero data entry</div>
-        <h3>Call Intelligence</h3>
-        <p>Every call auto-transcribed, summarized, and turned into actionable CRM data. Sentiment analysis flags at-risk deals.</p>
+        <div class="ai__card-icon"><i data-lucide="inbox"></i></div>
+        <h3>Reads every message</h3>
+        <p>Sorts new enquiries from payment news and questions, and prepares the right step.</p>
       </div>
       <div class="ai__card reveal delay-3">
-        <div class="ai__card-icon"><i data-lucide="wand-2"></i></div>
-        <div class="ai__card-stat">5 min to proposal</div>
-        <h3>Itinerary Generation</h3>
-        <p>Describe a trip in plain language. AI generates a complete day-wise itinerary with hotels, activities, and pricing.</p>
+        <div class="ai__card-icon"><i data-lucide="hand"></i></div>
+        <h3>Asks before it acts</h3>
+        <p>Each automation is off, ask-first or automatic. Only an admin can switch one to automatic, and only low-risk steps that do not message a customer can be automatic. Customers who opted out are never drafted a message.</p>
       </div>
       <div class="ai__card reveal delay-4">
-        <div class="ai__card-icon"><i data-lucide="bot"></i></div>
-        <div class="ai__card-stat">Never miss a lead</div>
-        <h3>24/7 AI Chatbot</h3>
-        <p>Answers queries on WhatsApp and web 24/7. Qualifies leads, books appointments, and hands off to your sales team.</p>
+        <div class="ai__card-icon"><i data-lucide="list-checks"></i></div>
+        <h3>Everything is on record</h3>
+        <p>Every step is logged, and most can be undone with one click. One switch pauses all automations.</p>
       </div>
     </div>
+    <p class="ai__small reveal delay-4">AI reading is metered in monthly credits that come with your plan. When credits run out, the assistant keeps working on plain rules.</p>
   </div>
 </section>
 
 <!-- ========== PRICING ========== -->
+<!-- The cards inside #pricing-cards are the static fallback. main.js replaces them with GET /api/v1/public/plans?market=IN
+     when the API answers. The numbers are the owner's decided India prices (2026-10-14); allowances and extra-user
+     prices are drafts and only ever come from the live price list. -->
 <section class="section section--subtle" id="pricing">
   <div class="container">
     <div style="max-width:720px;margin:0 auto;text-align:center">
       <div class="reveal"><span class="pill pill--gold">Pricing</span></div>
-      <h2 class="heading-lg reveal delay-1" style="margin-top:16px">Simple, <span class="gradient-text">Transparent</span> Pricing</h2>
-      <p class="reveal delay-2" style="margin-top:16px;font-size:18px;color:var(--text-secondary)">Start free, upgrade when you're ready. No hidden fees.</p>
+      <h2 class="heading-lg reveal delay-1" style="margin-top:16px">One price per agency, <span class="gradient-text">billed yearly</span></h2>
+      <p class="reveal delay-2" style="margin-top:16px;font-size:18px;color:var(--text-secondary)">A flat yearly price for your agency, with a number of users included. More users and credit packs are paid extras. Prices for India, plus GST.</p>
     </div>
-    <div class="pricing__cards">
-      <!-- Starter -->
-      <div class="pricing__card reveal delay-2">
-        <div class="pricing__name">Starter</div>
-        <div class="pricing__price"><span class="pricing__amount">$12</span><span class="pricing__period">/user/mo</span></div>
-        <div class="pricing__inr">₹999/user/mo</div>
-        <div class="pricing__desc">For small agencies getting started</div>
-        <a href="#" class="pricing__cta pricing__cta--ghost">Start Free Trial</a>
+    <div class="pricing__cards" id="pricing-cards" data-source="static">
+      <div class="pricing__card">
+        <div class="pricing__name">Basic</div>
+        <div class="pricing__price"><span class="pricing__amount">₹12,000</span><span class="pricing__period">/agency/year</span></div>
+        <div class="pricing__desc">Core CRM for a small agency getting started.</div>
+        <a href="#enquire" class="pricing__cta pricing__cta--ghost" data-enquire="signup">Request a free trial</a>
         <div class="pricing__features">
-          <div class="pricing__feature"><i data-lucide="check"></i><span>Up to 500 leads</span></div>
-          <div class="pricing__feature"><i data-lucide="check"></i><span>Itinerary builder</span></div>
-          <div class="pricing__feature"><i data-lucide="check"></i><span>Invoice generation</span></div>
-          <div class="pricing__feature"><i data-lucide="check"></i><span>WhatsApp messaging</span></div>
-          <div class="pricing__feature"><i data-lucide="check"></i><span>5 GB storage</span></div>
-          <div class="pricing__feature"><i data-lucide="check"></i><span>Email support</span></div>
+          <div class="pricing__feature"><i data-lucide="check"></i><span>Up to 5 users included</span></div>
+          <div class="pricing__feature"><i data-lucide="check"></i><span>Inbox, leads, quotes, invoices, vouchers</span></div>
         </div>
       </div>
-      <!-- Professional -->
-      <div class="pricing__card pricing__card--popular reveal delay-3">
-        <div class="pricing__badge"><i data-lucide="crown"></i> Most Popular</div>
-        <div class="pricing__name">Professional</div>
-        <div class="pricing__price"><span class="pricing__amount">$29</span><span class="pricing__period">/user/mo</span></div>
-        <div class="pricing__inr">₹2,399/user/mo</div>
-        <div class="pricing__desc">For growing agencies that need more</div>
-        <a href="#" class="pricing__cta pricing__cta--primary">Start Free Trial</a>
+      <div class="pricing__card pricing__card--popular">
+        <div class="pricing__badge"><i data-lucide="crown"></i> Most chosen</div>
+        <div class="pricing__name">Pro</div>
+        <div class="pricing__price"><span class="pricing__amount">₹18,000</span><span class="pricing__period">/agency/year</span></div>
+        <div class="pricing__desc">Adds advanced reporting and the Pro assistant features.</div>
+        <a href="#enquire" class="pricing__cta pricing__cta--primary" data-enquire="signup">Request a free trial</a>
         <div class="pricing__features">
-          <div class="pricing__feature"><i data-lucide="check"></i><span>Unlimited leads</span></div>
-          <div class="pricing__feature"><i data-lucide="check"></i><span>AI itinerary generation</span></div>
-          <div class="pricing__feature"><i data-lucide="check"></i><span>VoIP calling + transcription</span></div>
-          <div class="pricing__feature"><i data-lucide="check"></i><span>WhatsApp campaigns</span></div>
-          <div class="pricing__feature"><i data-lucide="check"></i><span>AI chatbot</span></div>
-          <div class="pricing__feature"><i data-lucide="check"></i><span>50 GB storage</span></div>
-          <div class="pricing__feature"><i data-lucide="check"></i><span>Fleet management</span></div>
-          <div class="pricing__feature"><i data-lucide="check"></i><span>Priority support</span></div>
+          <div class="pricing__feature"><i data-lucide="check"></i><span>Up to 15 users included</span></div>
+          <div class="pricing__feature"><i data-lucide="check"></i><span>Everything in Basic</span></div>
         </div>
       </div>
-      <!-- Enterprise -->
-      <div class="pricing__card reveal delay-4">
+      <div class="pricing__card">
         <div class="pricing__name">Enterprise</div>
-        <div class="pricing__price"><span class="pricing__amount">$49</span><span class="pricing__period">/user/mo</span></div>
-        <div class="pricing__inr">₹3,999/user/mo</div>
-        <div class="pricing__desc">For large agencies and tour operators</div>
-        <a href="#" class="pricing__cta pricing__cta--ghost">Start Free Trial</a>
+        <div class="pricing__price"><span class="pricing__amount">₹24,000</span><span class="pricing__period">/agency/year</span></div>
+        <div class="pricing__desc">Every feature, for large agencies and tour operators.</div>
+        <a href="#enquire" class="pricing__cta pricing__cta--ghost" data-enquire="signup">Request a free trial</a>
         <div class="pricing__features">
-          <div class="pricing__feature"><i data-lucide="check"></i><span>Everything in Professional</span></div>
-          <div class="pricing__feature"><i data-lucide="check"></i><span>AI business intelligence</span></div>
-          <div class="pricing__feature"><i data-lucide="check"></i><span>Custom workflows</span></div>
-          <div class="pricing__feature"><i data-lucide="check"></i><span>API access</span></div>
-          <div class="pricing__feature"><i data-lucide="check"></i><span>Dedicated account manager</span></div>
-          <div class="pricing__feature"><i data-lucide="check"></i><span>Unlimited storage</span></div>
-          <div class="pricing__feature"><i data-lucide="check"></i><span>SSO & advanced security</span></div>
-          <div class="pricing__feature"><i data-lucide="check"></i><span>White-label options</span></div>
+          <div class="pricing__feature"><i data-lucide="check"></i><span>Up to 100 users included</span></div>
+          <div class="pricing__feature"><i data-lucide="check"></i><span>Everything in Pro</span></div>
         </div>
       </div>
     </div>
-    <div class="pricing__trust reveal delay-4">14-day free trial · No credit card required · Cancel anytime</div>
-  </div>
-</section>
-
-<!-- ========== TESTIMONIALS ========== -->
-<section class="section" id="testimonials">
-  <div class="container">
-    <div style="max-width:720px;margin:0 auto;text-align:center">
-      <div class="reveal"><span class="pill pill--gold">Testimonials</span></div>
-      <h2 class="heading-lg reveal delay-1" style="margin-top:16px">Loved by Agencies <span class="gradient-text">Worldwide</span></h2>
+    <div class="pricing__more" id="pricing-more">
+      <p><strong>Need more?</strong> Upgrade or add credit packs. Extra users, AI credits, texts and WhatsApp messages are paid extras, never hidden in the plan.</p>
+      <ul class="pricing__packs" id="pricing-packs" hidden></ul>
     </div>
-    <div class="testimonials__cards">
-      <div class="testimonial reveal delay-2">
-        <div class="testimonial__quote"><i data-lucide="quote"></i></div>
-        <div class="testimonial__stars"><i data-lucide="star"></i><i data-lucide="star"></i><i data-lucide="star"></i><i data-lucide="star"></i><i data-lucide="star"></i></div>
-        <p class="testimonial__text">"We switched from Zoho CRM and saved 70% on costs. The itinerary builder alone paid for itself — we create proposals in 5 minutes instead of 30. Our conversion rate jumped from 18% to 32%."</p>
-        <div class="testimonial__highlight">32% conversion rate</div>
-        <div class="testimonial__author">
-          <div class="testimonial__avatar">RK</div>
-          <div><div class="testimonial__name">Rajesh Kumar</div><div class="testimonial__role">Founder, Wanderlust Travels · Mumbai</div></div>
-        </div>
-      </div>
-      <div class="testimonial reveal delay-3">
-        <div class="testimonial__quote"><i data-lucide="quote"></i></div>
-        <div class="testimonial__stars"><i data-lucide="star"></i><i data-lucide="star"></i><i data-lucide="star"></i><i data-lucide="star"></i><i data-lucide="star"></i></div>
-        <p class="testimonial__text">"The VoIP integration is incredible. My team makes calls from the CRM, AI transcribes everything, and leads are auto-created. We eliminated 3 hours of daily data entry per salesperson."</p>
-        <div class="testimonial__highlight">3 hrs saved daily</div>
-        <div class="testimonial__author">
-          <div class="testimonial__avatar">AR</div>
-          <div><div class="testimonial__name">Ahmed Al-Rashid</div><div class="testimonial__role">CEO, Desert Rose Tourism · Dubai</div></div>
-        </div>
-      </div>
-      <div class="testimonial reveal delay-4">
-        <div class="testimonial__quote"><i data-lucide="quote"></i></div>
-        <div class="testimonial__stars"><i data-lucide="star"></i><i data-lucide="star"></i><i data-lucide="star"></i><i data-lucide="star"></i><i data-lucide="star"></i></div>
-        <p class="testimonial__text">"AI business intelligence gives me a daily briefing every morning. I know exactly which destinations are trending, which salespeople need coaching, and where our revenue is heading."</p>
-        <div class="testimonial__highlight">AI-powered insights</div>
-        <div class="testimonial__author">
-          <div class="testimonial__avatar">JT</div>
-          <div><div class="testimonial__name">James Thompson</div><div class="testimonial__role">MD, UK Holidays · London</div></div>
-        </div>
-      </div>
-    </div>
+    <div class="pricing__trust">Prices are shown in rupees for India, exclude GST and may change before launch. Tell us about your agency and we will confirm the current price list. Other countries: <a href="#enquire" data-enquire="contact">talk to us</a>.</div>
   </div>
 </section>
 
 <!-- ========== FAQ ========== -->
-<section class="section section--subtle" id="faq">
+<section class="section" id="faq">
   <div class="container">
     <div class="faq__grid">
       <div class="faq__left">
         <div class="reveal"><span class="pill pill--gold">FAQ</span></div>
         <h2 class="heading-lg reveal delay-1">Got <span class="gradient-text">Questions?</span></h2>
-        <p class="reveal delay-2">Everything you need to know about TravelCRM Pro. Can't find what you're looking for?</p>
-        <a href="mailto:hello@travelcrm.pro" class="faq__contact reveal delay-3">Contact us →</a>
+        <p class="reveal delay-2">Straight answers about what works today. Something missing?</p>
+        <a href="#enquire" class="faq__contact reveal delay-3" data-enquire="contact">Ask us →</a>
       </div>
       <div class="faq__items reveal delay-2">
         <div class="faq-item">
-          <button class="faq-item__q">How long does it take to set up?<i data-lucide="chevron-down"></i></button>
-          <div class="faq-item__a"><p>30 seconds. Enter your name, email, and phone — you get instant access with pre-loaded demo data. Import your existing contacts from Excel in under 5 minutes.</p></div>
+          <button class="faq-item__q" type="button" aria-expanded="false">How long does it take to start?<i data-lucide="chevron-down"></i></button>
+          <div class="faq-item__a"><p>We set you up together in a 30-minute call. We import your contacts from a spreadsheet, set your company details and invoice numbering, and invite your first team members.</p></div>
         </div>
         <div class="faq-item">
-          <button class="faq-item__q">Is my data secure with DB-per-tenant?<i data-lucide="chevron-down"></i></button>
-          <div class="faq-item__a"><p>Absolutely. Each company gets its own isolated database — your data is physically separated from other tenants. This is enterprise-grade security at SMB pricing.</p></div>
+          <button class="faq-item__q" type="button" aria-expanded="false">Can I bring my existing customers?<i data-lucide="chevron-down"></i></button>
+          <div class="faq-item__a"><p>Yes. Upload a spreadsheet of contacts or leads, match the columns, preview, and choose whether to skip or update duplicates. We will help with the first file.</p></div>
         </div>
         <div class="faq-item">
-          <button class="faq-item__q">What languages are supported?<i data-lucide="chevron-down"></i></button>
-          <div class="faq-item__a"><p>Currently: English, Hindi, Arabic, Spanish, French, Thai, and Bahasa Indonesia. The AI assistant can communicate in 100+ languages.</p></div>
+          <button class="faq-item__q" type="button" aria-expanded="false">Does the assistant send messages to my customers?<i data-lucide="chevron-down"></i></button>
+          <div class="faq-item__a"><p>No. It prepares a reply and opens it in the send dialog; you read it and send it. Only an admin can set a low-risk step to run automatically, and none of those messages a customer.</p></div>
         </div>
         <div class="faq-item">
-          <button class="faq-item__q">Can I try before I buy?<i data-lucide="chevron-down"></i></button>
-          <div class="faq-item__a"><p>Yes — 14-day free trial on all plans with full features. No credit card required. We also offer free data migration for your first 500 contacts.</p></div>
+          <button class="faq-item__q" type="button" aria-expanded="false">Does it work with WhatsApp?<i data-lucide="chevron-down"></i></button>
+          <div class="faq-item__a"><p>Yes. Customer WhatsApp messages arrive in the inbox and you reply from the same screen using templates. Setting up your number is done with us at the start.</p></div>
         </div>
         <div class="faq-item">
-          <button class="faq-item__q">Do you support WhatsApp Business API?<i data-lucide="chevron-down"></i></button>
-          <div class="faq-item__a"><p>Yes. We support both WhatsApp Business API for bulk campaigns and regular WhatsApp for 1-on-1 conversations. Templates, auto-replies, and chatbot included.</p></div>
+          <button class="faq-item__q" type="button" aria-expanded="false">What happens if AI is switched off or credits run out?<i data-lucide="chevron-down"></i></button>
+          <div class="faq-item__a"><p>The assistant keeps working on fixed rules: it still files messages, creates leads and schedules follow-ups. AI reading is an extra layer.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__q" type="button" aria-expanded="false">Is my data safe?<i data-lucide="chevron-down"></i></button>
+          <div class="faq-item__a"><p>Roles control who sees what, an admin can see an activity log, and you can export your data at any time. We are a new company, so we say plainly: ask us how your data is stored before you upload real customers. Our legal pages are drafts and are being reviewed.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__q" type="button" aria-expanded="false">Which languages does it support?<i data-lucide="chevron-down"></i></button>
+          <div class="faq-item__a"><p>The app is in English today. Messages to and from your customers can be in any language. Hindi and Arabic screens are planned, with no date yet.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__q" type="button" aria-expanded="false">Does it make phone calls?<i data-lucide="chevron-down"></i></button>
+          <div class="faq-item__a"><p>Not yet. You can log calls and see call history. We will say here when calling is available and in which countries.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__q" type="button" aria-expanded="false">Can I try before I buy?<i data-lucide="chevron-down"></i></button>
+          <div class="faq-item__a"><p>Ask for a free trial and we will set it up with you. We review each request personally, so it is not instant self sign-up yet.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__q" type="button" aria-expanded="false">What does it cost?<i data-lucide="chevron-down"></i></button>
+          <div class="faq-item__a"><p>A flat yearly price per agency with some users included. See the pricing section. Texts, WhatsApp messages and AI credits come with monthly allowances, and you can add packs when you need more.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__q" type="button" aria-expanded="false">Is there a driver app?<i data-lucide="chevron-down"></i></button>
+          <div class="faq-item__a"><p>Yes. Drivers see their trips, accept or reject, update status and check in with a photo and location. Ask us for the install link.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-item__q" type="button" aria-expanded="false">Can customers pay online?<i data-lucide="chevron-down"></i></button>
+          <div class="faq-item__a"><p>Not yet. You record payments and send invoices as PDF. Online payment links are planned.</p></div>
         </div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ========== CTA ========== -->
-<section class="section section--dark cta">
+<!-- ========== ENQUIRY FORM + FINAL CTA ========== -->
+<section class="section section--dark cta" id="enquire">
   <div class="orb cta__orb-1"></div>
   <div class="orb cta__orb-2"></div>
   <div class="container">
     <div class="cta__content">
-      <h2 class="heading-lg reveal" style="color:#fff">Ready to Transform <span style="background:linear-gradient(135deg,var(--primary-light),var(--sunset));-webkit-background-clip:text;-webkit-text-fill-color:transparent">Your Agency?</span></h2>
-      <p class="reveal delay-1">Join 500+ travel agencies already closing more deals, faster. Start free — no credit card needed.</p>
-      <div class="cta__buttons reveal delay-2">
-        <a href="#" class="btn btn--white">Start Free Trial <i data-lucide="arrow-right"></i></a>
-        <a href="#" class="btn btn--ghost-white"><i data-lucide="message-square"></i> WhatsApp Us</a>
+      <h2 class="heading-lg reveal" style="color:#fff">See your own enquiry go from <span style="background:linear-gradient(135deg,var(--primary-light),var(--sunset));-webkit-background-clip:text;-webkit-text-fill-color:transparent">WhatsApp to voucher.</span></h2>
+      <p class="reveal delay-1">Book a 20-minute demo and bring one real enquiry (with the name removed). We will walk it through the product. Or ask for a free trial and we will set it up with you.</p>
+    </div>
+
+    <form class="enquiry reveal delay-2" id="enquiry-form" novalidate aria-labelledby="enquiry-title">
+      <h3 id="enquiry-title" class="enquiry__title">Tell us about your agency</h3>
+      <fieldset class="enquiry__kinds">
+        <legend>I would like to</legend>
+        <label><input type="radio" name="kind" value="demo" checked> Book a demo</label>
+        <label><input type="radio" name="kind" value="signup"> Request a free trial</label>
+        <label><input type="radio" name="kind" value="contact"> Ask a question</label>
+      </fieldset>
+      <div class="enquiry__grid">
+        <div class="field"><label for="f-name">Your name</label><input id="f-name" name="name" type="text" autocomplete="name" maxlength="120" required aria-describedby="e-name"></div>
+        <div class="field"><label for="f-email">Work email <span class="req" aria-hidden="true">*</span></label><input id="f-email" name="email" type="email" autocomplete="email" maxlength="200" required aria-describedby="e-email"></div>
+        <div class="field"><label for="f-phone">Phone or WhatsApp (with country code)</label><input id="f-phone" name="phone" type="tel" autocomplete="tel" maxlength="32" placeholder="+91 ..." aria-describedby="e-phone"></div>
+        <div class="field"><label for="f-company">Agency name</label><input id="f-company" name="company" type="text" autocomplete="organization" maxlength="160"></div>
+        <div class="field"><label for="f-country">City or country</label><input id="f-country" name="country" type="text" autocomplete="country-name" maxlength="80"></div>
+        <div class="field"><label for="f-agentsCount">Team size</label><input id="f-agentsCount" name="agentsCount" type="number" inputmode="numeric" min="1" max="100000"></div>
       </div>
-      <div class="cta__trust reveal delay-3">No credit card · 14-day free trial · Free data migration</div>
+      <div class="field"><label for="f-message">Anything we should know? (optional)</label><textarea id="f-message" name="message" rows="3" maxlength="2000"></textarea></div>
+      <!-- Honeypot: people never see or fill this. -->
+      <div class="hp" aria-hidden="true"><label for="f-website">Leave this field empty</label><input id="f-website" name="website" type="text" tabindex="-1" autocomplete="off"></div>
+      <div id="turnstile-slot" class="turnstile" hidden></div>
+      <p class="enquiry__error" id="enquiry-error" role="alert" hidden></p>
+      <button class="btn btn--white enquiry__submit" type="submit">Send <i data-lucide="arrow-right"></i></button>
+      <p class="enquiry__note">We use your details only to reply to this request. See the <a href="legal/privacy.html">privacy policy</a> (draft). We review every request personally and set up agencies by hand.</p>
+      <noscript><p class="enquiry__error">This form needs JavaScript. Please email us at the address in the footer.</p></noscript>
+    </form>
+
+    <div class="enquiry__success" id="enquiry-success" role="status" tabindex="-1" hidden>
+      <h3>Thank you. We have your request.</h3>
+      <p>We will reply to the email address you gave. If you want to talk sooner, use the WhatsApp button when it is shown below.</p>
+    </div>
+
+    <div class="cta__buttons">
+      <a href="#enquire" class="btn btn--ghost-white" id="whatsapp-btn" target="_blank" rel="noopener" hidden><i data-lucide="message-square"></i> WhatsApp us</a>
     </div>
   </div>
 </section>
+</main>
 
 <!-- ========== FOOTER ========== -->
 <footer class="footer">
   <div class="container">
     <div class="footer__grid">
       <div>
-        <a href="#" class="footer__brand-logo">
+        <a href="#hero" class="footer__brand-logo">
           <div class="footer__brand-icon"><i data-lucide="globe"></i></div>
           <div class="footer__brand-text">Travel<span class="gradient-text">CRM</span><span>Pro</span></div>
         </a>
-        <p class="footer__brand-desc">The only CRM purpose-built for tours & travels. AI-powered, WhatsApp-native, international-ready.</p>
+        <p class="footer__brand-desc">Software for travel agencies and tour operators.</p>
         <div class="footer__contact">
-          <a href="mailto:hello@travelcrm.pro"><i data-lucide="mail"></i> hello@travelcrm.pro</a>
-          <a href="tel:+919876543210"><i data-lucide="phone"></i> +91 98765 43210</a>
-          <span><i data-lucide="map-pin"></i> Mumbai, India · Dubai, UAE</span>
+          <a href="mailto:hello@travelcrm.pro" data-config-mailto="contactEmail"><i data-lucide="mail"></i> <span data-config="contactEmail">hello@travelcrm.pro</span></a>
+          <span data-config-show="city" hidden><i data-lucide="map-pin"></i> <span data-config="city"></span></span>
         </div>
       </div>
       <div class="footer__col">
         <div class="footer__col-title">Product</div>
         <ul>
+          <li><a href="#how">How it works</a></li>
           <li><a href="#features">Features</a></li>
           <li><a href="#pricing">Pricing</a></li>
-          <li><a href="#ai">AI Power</a></li>
-          <li><a href="#">Integrations</a></li>
-          <li><a href="#">API Docs</a></li>
-          <li><a href="#">Changelog</a></li>
+          <li><a href="#enquire" data-enquire="demo">Demo</a></li>
         </ul>
       </div>
       <div class="footer__col">
         <div class="footer__col-title">Company</div>
         <ul>
-          <li><a href="#">About Us</a></li>
-          <li><a href="#">Blog</a></li>
-          <li><a href="#">Careers</a></li>
-          <li><a href="#">Contact</a></li>
-          <li><a href="#">Partner Program</a></li>
+          <li><a href="#enquire" data-enquire="contact">Contact</a></li>
         </ul>
       </div>
       <div class="footer__col">
-        <div class="footer__col-title">Legal</div>
+        <div class="footer__col-title">Legal (drafts)</div>
         <ul>
-          <li><a href="#">Privacy Policy</a></li>
-          <li><a href="#">Terms of Service</a></li>
-          <li><a href="#">GDPR</a></li>
-          <li><a href="#">Security</a></li>
+          <li><a href="legal/privacy.html">Privacy Policy</a></li>
+          <li><a href="legal/terms.html">Terms of Service</a></li>
+          <li><a href="legal/dpa.html">Data Processing Addendum</a></li>
+          <li><a href="legal/subprocessors.html">Sub-processors</a></li>
         </ul>
       </div>
     </div>
     <div class="footer__bottom">
-      <div class="footer__copy">© 2026 TravelCRM Pro. All rights reserved.</div>
-      <div class="footer__socials">
-        <a href="#">Twitter</a>
-        <a href="#">LinkedIn</a>
-        <a href="#">YouTube</a>
-        <a href="#">Instagram</a>
-      </div>
+      <div class="footer__copy">© 2026 <span data-config="legalEntity">TravelCRM Pro</span>. All rights reserved.</div>
     </div>
   </div>
 </footer>
 
-<!-- Structured Data -->
+<!-- Structured data: no ratings, no review counts. Prices are left out because they are still drafts. -->
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"SoftwareApplication","name":"TravelCRM Pro","applicationCategory":"BusinessApplication","operatingSystem":"Web, Windows, Android, iOS","description":"AI-powered CRM for travel agencies.","url":"https://travelcrm.pro","offers":[{"@type":"Offer","name":"Starter","price":"12","priceCurrency":"USD"},{"@type":"Offer","name":"Professional","price":"29","priceCurrency":"USD"},{"@type":"Offer","name":"Enterprise","price":"49","priceCurrency":"USD"}],"aggregateRating":{"@type":"AggregateRating","ratingValue":"4.9","ratingCount":"127"}}
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"TravelCRM Pro","applicationCategory":"BusinessApplication","operatingSystem":"Windows, macOS, Linux","description":"CRM for travel agencies and tour operators: inbox, leads, quotes, invoices and hotel vouchers.","url":"https://travelcrm.pro/"}
 </script>
 
-<!-- Lucide Icons -->
-<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<!-- Icons: pinned version. If it fails to load the page still works (icon boxes keep their size). -->
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js" integrity="sha384-ieG+IKD0d/ZPXyCBTMVAbqsQdns8QGJR/e26WMw7M4fkaI/rHcS/YIoi+ah9WGge" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="config.js"></script>
 <script src="main.js"></script>
 </body>
 </html>

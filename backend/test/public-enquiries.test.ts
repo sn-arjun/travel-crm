@@ -126,6 +126,14 @@ describe('public enquiries', () => {
     expect(seen[0]).toContain('secret=turnstile-test-secret');
   });
 
+  it("accepts exactly what the landing form sends (empty optional fields, team size as text)", async () => {
+    const res = await post({ kind: "signup", name: "Landing Visitor", email: "landing@r116.test", phone: "", company: "", country: "", agentsCount: "4", message: "", sourceUrl: "http://localhost:8080/index.html", website: "", turnstileToken: "" }, "198.51.100.70");
+    expect(res.status).toBe(202);
+    const stored = await rows("landing@r116.test");
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({ kind: "signup", agents_count: 4, phone: null, company: null });
+  });
+
   it('an oversized body is refused with 413', async () => {
     const res = await call('POST', '/api/v1/public/enquiries', { raw: JSON.stringify(demo('big@r116.test', { message: 'x'.repeat(11 * 1024) })), ip: '198.51.100.50' });
     expect(res.status).toBe(413);

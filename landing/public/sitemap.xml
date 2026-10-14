@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Domain is a placeholder (see landing/config.js siteUrl): replace https://travelcrm.pro when the real domain is set. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://travelcrm.pro/</loc><lastmod>2026-10-15</lastmod><priority>1.0</priority></url>
+  <url><loc>https://travelcrm.pro/legal/privacy.html</loc><lastmod>2026-10-15</lastmod><priority>0.3</priority></url>
+  <url><loc>https://travelcrm.pro/legal/terms.html</loc><lastmod>2026-10-15</lastmod><priority>0.3</priority></url>
+  <url><loc>https://travelcrm.pro/legal/dpa.html</loc><lastmod>2026-10-15</lastmod><priority>0.3</priority></url>
+  <url><loc>https://travelcrm.pro/legal/subprocessors.html</loc><lastmod>2026-10-15</lastmod><priority>0.3</priority></url>
+</urlset>
