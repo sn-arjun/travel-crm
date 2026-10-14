@@ -226,6 +226,17 @@
     "blockedOnOwner": null
   },
   {
+    "id": "R124",
+    "tier": 1,
+    "title": "Scheduled reminders never re-send to a recipient on retry",
+    "size": "S",
+    "dependsOn": [
+      "R117",
+      "R110"
+    ],
+    "blockedOnOwner": null
+  },
+  {
     "id": "R121",
     "tier": 1,
     "title": "Three-agency isolation end-to-end test (Tier 1 exit)",

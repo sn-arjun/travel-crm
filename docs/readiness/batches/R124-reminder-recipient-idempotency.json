@@ -1,0 +1,53 @@
+{
+  "id": "R124",
+  "tier": 1,
+  "title": "Scheduled reminders never re-send to a recipient on retry",
+  "goal": "A daily reminder job that is retried after an infrastructure error sends only to the recipients it had not reached yet.",
+  "why": "Found by R117 (2026-10-15): process*ForTenant now lets infrastructure errors reach the runner, which releases the job claim and retries the whole job, so recipients already messaged earlier in the loop would get a second SMS/WhatsApp/email (cost and annoyance).",
+  "dependsOn": [
+    "R117",
+    "R110"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [],
+  "size": "S",
+  "files": {
+    "edit": [
+      "backend/src/cron/auto-reminders.ts",
+      "backend/src/services/follow-up-reminders.ts",
+      "backend/src/cron/dispatch.ts"
+    ],
+    "create": [
+      "backend/test/cron-recipient-idempotency.test.ts"
+    ],
+    "mustNotTouch": [
+      "backend/wrangler.toml",
+      "desktop/**",
+      "super-admin/**"
+    ]
+  },
+  "steps": [
+    "Add a per-recipient claim keyed by (tenant_id, job, period_key, recipient key) — reuse cron_job_runs with a recipient-scoped key or add a small tenant table (next free tenant migration; regenerate the bundle) — written before each send with INSERT OR IGNORE and checked so a retried job skips recipients already claimed.",
+    "A send that fails for a per-recipient reason keeps its claim marked failed (not retried automatically); an infrastructure error before the send releases only that recipient's claim.",
+    "Prune recipient claims older than 14 days in the daily platform pruning job."
+  ],
+  "migrations": [
+    "tenant: next free number, only if cron_job_runs cannot carry the recipient key"
+  ],
+  "tests": [
+    "retry after an infrastructure error mid-loop sends exactly once to every recipient",
+    "a per-recipient failure is not retried",
+    "pruning removes old claims"
+  ],
+  "acceptance": [
+    "A daily job that fails on recipient 3 of 5 and is retried sends one message to each of the 5 recipients in total (test)."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # >= merged count"
+  ],
+  "goLiveVerify": [],
+  "notes": [
+    "Metering from R110 must count each recipient once; do not consume allowance for skipped recipients."
+  ]
+}
