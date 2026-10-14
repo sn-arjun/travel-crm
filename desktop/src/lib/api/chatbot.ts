@@ -189,7 +189,8 @@ function normalizeConversation(raw: RawConversation): ChatbotConversation {
     visitorName: raw.visitorName ?? raw.visitor_name ?? undefined,
     visitorEmail: raw.visitorEmail ?? raw.visitor_email ?? undefined,
     contactId: raw.contactId ?? raw.contact_id ?? undefined,
-    channel: raw.channel,
+    // the public widget stores its conversations under the channel "website"; the app calls that channel "web"
+    channel: (raw.channel === ('website' as string) ? 'web' : raw.channel) as ChatbotConversation['channel'],
     status: raw.status,
     messages,
     startedAt: raw.startedAt ?? raw.created_at ?? '',

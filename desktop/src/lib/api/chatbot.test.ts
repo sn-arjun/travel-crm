@@ -289,3 +289,13 @@ describe('parseAllowedOrigins', () => {
     expect(invalid).toEqual(['ftp://files.test', 'not a site']);
   });
 });
+
+describe('chatbotApi.conversations: the widget channel', () => {
+  it('shows conversations the public widget stored under "website" as the web channel', async () => {
+    vi.mocked(client.get).mockResolvedValue({
+      data: { data: [{ id: 'c1', visitor_id: 'v1', channel: 'website', status: 'active', messages: '[]' }], pagination: {} },
+    });
+    const res = await chatbotApi.conversations.list();
+    expect(res.data.data[0]?.channel).toBe('web');
+  });
+});

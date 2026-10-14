@@ -117,7 +117,6 @@ export type { BaseChartProps, PieChartProps, ChartSeries } from './chart';
 // Pre-existing primitives previously missing from this barrel
 export { Combobox } from './combobox';
 export type { ComboboxOption } from './combobox';
-export { CommandPalette } from './command-palette';
 export { DatePicker, DateTimePicker } from './date-picker';
 export { CurrencyInput } from './currency-input';
 export { PhoneInput } from './phone-input';

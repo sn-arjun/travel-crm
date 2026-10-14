@@ -133,7 +133,7 @@ function ChatbotConversationsContent() {
             <SelectTrigger className="h-9 w-32"><SelectValue placeholder="All channels" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All channels</SelectItem>
-              <SelectItem value="web">Web</SelectItem>
+              <SelectItem value="website">Web</SelectItem>
               <SelectItem value="whatsapp">WhatsApp</SelectItem>
               <SelectItem value="facebook">Facebook</SelectItem>
               <SelectItem value="telegram">Telegram</SelectItem>

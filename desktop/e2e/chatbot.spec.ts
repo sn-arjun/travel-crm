@@ -2,23 +2,18 @@ import { type Page } from '@playwright/test';
 import { test, expect } from './fixtures';
 import { waitForLoad } from './helpers/auth';
 import { api } from './helpers/api-seed';
+import { API_URL } from './helpers/auth';
 
 /**
  * Chatbot slice — Conversations list, conversation detail, Analytics, Settings.
  *
- * There are no existingSpecs for this slice (first spec written) and no
- * seedHelper in api-seed.ts for chatbot conversations. Conversations are not
- * created through any form in this app — they are only created by the public
- * `/chatbot/webhook/:channel` endpoint, meant to be hit by an anonymous website
- * visitor or a Twilio WhatsApp callback with no CRM session at all. That route
- * (and `/chatbot/widget.js`) sit behind the global `app.use('/api/v1/*',
- * authMiddleware)` in backend/src/index.ts, so in the current backend an
- * unauthenticated visitor can never actually reach them — a real pre-existing
- * bug, but in backend/src/index.ts, which is outside this slice's
- * fileAllowlist (desktop/** + chatbot.ts only). We work around it in the test
- * harness by calling the webhook with the admin's own bearer token, which is
- * enough to seed a conversation row for the UI to display; production traffic
- * has no such workaround.
+ * Conversations are not created through any form in this app. A website visitor creates them
+ * through the agency's public widget mount, `POST /api/v1/public/chatbot/:widgetKey/messages`
+ * (no CRM login; the calling website's Origin must be on the agency's allow-list). This spec
+ * seeds the same way: it reads the widget key from `GET /chatbot/widget`, adds a test origin to
+ * the allowed websites with `PUT /chatbot/config/website`, and posts as an anonymous visitor
+ * sending that Origin. The plan feature `ai_chatbot` is still checked, so on a plan without it
+ * (the pro-plan seed) the plan-gated tests skip and only the gated-state check runs.
  *
  * Because there is no create UI, this spec cannot do a full
  * create-via-form -> edit -> delete round trip the way a normal CRUD entity
@@ -29,8 +24,8 @@ import { api } from './helpers/api-seed';
  *  - Conversation detail: transcript, visitor info, stats, reply, hand off,
  *    close, create-lead (a real, previously-orphaned endpoint), Send message
  *    (Communication Hub, not mailto:/wa.me).
- *  - Settings: config load/edit/save round trip, and the widget-install tab's
- *    copyable embed snippet built from the real GET /chatbot/widget.js URL.
+ *  - Settings: config load/edit/save round trip, the Install tab's copyable snippet from
+ *    GET /chatbot/widget, and the Allowed websites field.
  *  - Analytics: gate resolution and that the page never leaks a raw 403.
  *
  * No relation fields, phone inputs, address autocomplete, currency inputs, or
@@ -44,27 +39,46 @@ async function waitForGateResolved(page: Page) {
     .toBe(0);
 }
 
+/** The website the seeded visitors "chat from"; added to the allowed websites in beforeAll. */
+const TEST_ORIGIN = 'https://e2e-chatbot.example.test';
+let widgetKey = '';
+
+/** Reads the widget key and makes sure TEST_ORIGIN is on the allow-list (keeping what is already there). */
+async function prepareWidget() {
+  const info = await api('GET', '/chatbot/widget');
+  widgetKey = info?.data?.widgetKey;
+  if (!widgetKey) throw new Error(`No widget key from GET /chatbot/widget: ${JSON.stringify(info)}`);
+  const allowed: string[] = info?.data?.allowedOrigins ?? [];
+  // The website config row (greeting, enabled) must exist and be on, or the public mount answers 404.
+  await api('PUT', '/chatbot/config/website', {
+    enabled: true,
+    greeting: 'Hi! How can we help?',
+    allowedOrigins: allowed.includes(TEST_ORIGIN) ? allowed : [...allowed, TEST_ORIGIN],
+  });
+}
+
 async function seedConversation(overrides: {
   visitorId: string;
   message: string;
   visitorName?: string;
   visitorEmail?: string;
-  channel?: string;
 }) {
-  const channel = overrides.channel ?? 'web';
-  // Ensure a chatbot_config row exists and is enabled for the channel —
-  // the webhook 404s with "Chatbot not configured" otherwise.
-  await api('PUT', `/chatbot/config/${channel}`, { enabled: true, greeting: 'Hi! How can we help?' });
-  const res = await api('POST', `/chatbot/webhook/${channel}`, {
-    visitorId: overrides.visitorId,
-    message: overrides.message,
-    visitorName: overrides.visitorName,
-    visitorEmail: overrides.visitorEmail,
+  // An anonymous website visitor: no Authorization header, only the page's Origin.
+  const res = await fetch(`${API_URL}/public/chatbot/${widgetKey}/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: TEST_ORIGIN },
+    body: JSON.stringify({
+      visitorId: overrides.visitorId,
+      message: overrides.message,
+      visitorName: overrides.visitorName,
+      visitorEmail: overrides.visitorEmail,
+    }),
   });
-  if (!res?.data?.conversationId) {
-    throw new Error(`Failed to seed chatbot conversation: ${JSON.stringify(res)}`);
+  const body = await res.json().catch(() => null);
+  if (!body?.data?.conversationId) {
+    throw new Error(`Failed to seed chatbot conversation (${res.status}): ${JSON.stringify(body)}`);
   }
-  return res.data.conversationId as string;
+  return body.data.conversationId as string;
 }
 
 test.describe.serial('Chatbot', () => {
@@ -88,6 +102,7 @@ test.describe.serial('Chatbot', () => {
     const res = await api('PUT', '/ai/settings/features', { features: { ai_chatbot: true } });
     gated = (res?.data?.denied ?? []).includes('ai_chatbot');
     if (gated) return;
+    await prepareWidget();
     conversationId = await seedConversation({
       visitorId,
       visitorName,
@@ -186,7 +201,7 @@ test.describe.serial('Chatbot', () => {
     // Detail shows the visitor's filled-in name/email and channel.
     await expect(page.getByRole('heading', { name: visitorName })).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('text=' + visitorEmail)).toBeVisible();
-    await expect(page.locator('text=/^web$/i')).toBeVisible();
+    await expect(page.locator('text=/^web$/i').first()).toBeVisible();
 
     // Transcript shows the seeded visitor message.
     await expect(page.locator(`text=Hi, I want to book a trip to Bali ${ts}`)).toBeVisible();
@@ -286,7 +301,6 @@ test.describe.serial('Chatbot', () => {
       await seedConversation({
         visitorId: `e2e-scroll-${ts}-${i}`,
         message: `Scroll test message ${i}`,
-        channel: 'web',
       });
     }
 
@@ -376,14 +390,37 @@ test.describe.serial('Chatbot', () => {
     await page.getByRole('tab', { name: /WhatsApp/i }).click();
     await expect(page.getByLabel('Greeting message')).toBeVisible();
 
-    // Install widget tab: copyable embed snippet built from the real widget.js URL.
+    // Install widget tab: the snippet comes from GET /chatbot/widget and points at the public mount.
     await page.getByRole('tab', { name: /Install widget/i }).click();
-    const snippetBlock = page.locator('pre code');
+    const snippetBlock = page.getByTestId('chatbot-embed-snippet');
     await expect(snippetBlock).toBeVisible();
-    await expect(snippetBlock).toContainText('/chatbot/widget.js');
+    await expect(snippetBlock).toContainText(`/api/v1/public/chatbot/${widgetKey}/widget.js`);
 
     await page.getByRole('button', { name: /Copy/i }).click();
     await expect(page.getByRole('button', { name: /Copied/i })).toBeVisible({ timeout: 5_000 });
+
+    // Allowed websites: saved with PUT /chatbot/config/website and read back by GET /chatbot/widget.
+    const sites = page.getByLabel('Websites');
+    await expect(sites).toBeVisible();
+    expect(await sites.inputValue()).toContain(TEST_ORIGIN);
+    const extra = `https://e2e-${ts}.example.test`;
+    await sites.fill([TEST_ORIGIN, extra].join('\n'));
+    const sitesSave = page.waitForResponse(
+      (res) => res.url().includes('/chatbot/config/website') && res.request().method() === 'PUT',
+    );
+    await page.getByRole('button', { name: /Save allowed websites/i }).click();
+    expect((await sitesSave).ok()).toBe(true);
+    const widgetInfo = await api('GET', '/chatbot/widget');
+    expect(widgetInfo?.data?.allowedOrigins).toEqual([TEST_ORIGIN, extra]);
+
+    // A bad entry is refused in the form, nothing is sent.
+    await sites.fill('not a site, ftp://files.test');
+    await page.getByRole('button', { name: /Save allowed websites/i }).click();
+    await expect(page.getByRole('alert').filter({ hasText: /not website addresses/i })).toBeVisible();
+
+    // An empty list is explained as blocking every website.
+    await sites.fill('');
+    await expect(page.getByText(/blocked everywhere/i)).toBeVisible();
 
     // No raw ID inputs anywhere on the settings page.
     await expect(page.locator('input[name*="id" i]')).toHaveCount(0);

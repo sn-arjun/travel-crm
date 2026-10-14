@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { AppShell } from '@/components/layout/app-shell';
-import { CommandPalette } from '@/components/ui/command-palette';
+import { CommandPalette } from '@/components/domain/command-palette';
 import { KeyboardShortcutsProvider } from '@/components/domain/keyboard-shortcuts-provider';
 import { useAuthStore } from '@/stores/auth-store';
 import { RealtimeProvider } from '@/components/providers/realtime-provider';
