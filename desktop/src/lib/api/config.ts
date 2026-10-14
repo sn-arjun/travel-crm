@@ -21,6 +21,7 @@ export const API_ENDPOINTS = {
     refreshToken: '/auth/refresh-token',
     forgotPassword: '/auth/forgot-password',
     resetPassword: '/auth/reset-password',
+    changePassword: '/auth/change-password',
     resolveTenant: '/auth/resolve-tenant',
     sendOtp: '/auth/send-otp',
     verifyOtp: '/auth/verify-otp',

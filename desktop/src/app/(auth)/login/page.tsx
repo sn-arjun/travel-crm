@@ -91,10 +91,11 @@ export default function LoginPage() {
       const response = await authApi.login({ email, password, tenantId: selectedTenantId });
 
       if (response.data) {
-        const { accessToken, refreshToken, user, tenant } = response.data;
-        setAuth({ accessToken, refreshToken, user, tenant });
+        const { accessToken, refreshToken, user, tenant, mustChangePassword } = response.data;
+        setAuth({ accessToken, refreshToken, user, tenant, mustChangePassword });
         toast.success('Logged in successfully');
-        router.push('/dashboard');
+        // A temporary password must be replaced before anything else is reachable.
+        router.push(mustChangePassword ? '/change-password' : '/dashboard');
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Invalid email or password';
@@ -145,10 +146,11 @@ export default function LoginPage() {
       const response = await authApi.verifyOtp({ phone: fullPhone, otp, tenantId: selectedTenantId });
 
       if (response.data) {
-        const { accessToken, refreshToken, user, tenant } = response.data;
-        setAuth({ accessToken, refreshToken, user, tenant });
+        const { accessToken, refreshToken, user, tenant, mustChangePassword } = response.data;
+        setAuth({ accessToken, refreshToken, user, tenant, mustChangePassword });
         toast.success('Logged in successfully');
-        router.push('/dashboard');
+        // A temporary password must be replaced before anything else is reachable.
+        router.push(mustChangePassword ? '/change-password' : '/dashboard');
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Invalid OTP';

@@ -24,6 +24,8 @@ export interface LoginResponse {
   refreshToken: string;
   user: User;
   tenant: Tenant;
+  /** True for a first login with a temporary password: the user must set their own before anything else. */
+  mustChangePassword?: boolean;
 }
 
 export interface RefreshTokenRequest {
@@ -33,6 +35,27 @@ export interface RefreshTokenRequest {
 export interface RefreshTokenResponse {
   accessToken: string;
   refreshToken: string;
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface ChangePasswordResponse {
+  message: string;
+  /** A fresh access token without the must-change restriction. */
+  accessToken: string;
+  mustChangePassword: false;
+}
+
+/** Same rule as the API until the stronger policy lands: 10+ characters with a letter and a digit. */
+export const PASSWORD_MIN_LENGTH = 10;
+export function passwordPolicyError(password: string): string | null {
+  if (password.length < PASSWORD_MIN_LENGTH) return `Use at least ${PASSWORD_MIN_LENGTH} characters`;
+  if (!/[A-Za-z]/.test(password)) return 'Include at least one letter';
+  if (!/[0-9]/.test(password)) return 'Include at least one digit';
+  return null;
 }
 
 export interface ForgotPasswordRequest {
@@ -95,6 +118,9 @@ export const authApi = {
 
   resetPassword: (data: ResetPasswordRequest) =>
     client.post<ApiResponse<{ message: string }>>(API_ENDPOINTS.auth.resetPassword, data),
+
+  changePassword: (data: ChangePasswordRequest) =>
+    client.post<ApiResponse<ChangePasswordResponse>>(API_ENDPOINTS.auth.changePassword, data),
 
   getSessions: () =>
     client.get<ApiResponse<SessionData[]>>(API_ENDPOINTS.auth.sessions),

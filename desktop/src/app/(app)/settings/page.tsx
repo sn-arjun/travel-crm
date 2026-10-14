@@ -90,6 +90,7 @@ const groups: SettingsGroup[] = [
     links: [
       { label: 'Team', description: 'Manage team members and roles', href: '/settings/team', icon: <Users className="h-5 w-5" aria-hidden="true" /> },
       { label: 'Profile', description: 'Your personal information', href: '/settings/profile', icon: <Users className="h-5 w-5" aria-hidden="true" /> },
+      { label: 'Security', description: 'Change your password', href: '/settings/security', icon: <Shield className="h-5 w-5" aria-hidden="true" /> },
       { label: 'Active Sessions', description: 'View and revoke sessions', href: '/settings/sessions', icon: <Shield className="h-5 w-5" aria-hidden="true" /> },
       { label: 'Login History', description: 'Recent login activity', href: '/settings/login-history', icon: <Globe className="h-5 w-5" aria-hidden="true" /> },
       { label: 'Activity Log', description: 'System audit trail', href: '/settings/activity-log', icon: <Zap className="h-5 w-5" aria-hidden="true" /> },

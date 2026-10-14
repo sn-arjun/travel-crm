@@ -13,6 +13,10 @@ interface AuthState {
   tenant: Tenant | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  /** First login with a temporary password: the app only offers the change-password screen (enforced by the API too). */
+  mustChangePassword: boolean;
+  /** Admin onboarding wizard not finished yet. null = not checked this session (never persisted). */
+  onboardingPending: boolean | null;
 
   // Actions
   setAuth: (data: {
@@ -20,7 +24,10 @@ interface AuthState {
     refreshToken: string;
     user: User;
     tenant: Tenant;
+    mustChangePassword?: boolean;
   }) => void;
+  setMustChangePassword: (value: boolean) => void;
+  setOnboardingPending: (value: boolean | null) => void;
   setTokens: (accessToken: string, refreshToken: string) => void;
   setUser: (user: User | null) => void;
   setTenant: (tenant: Tenant | null) => void;
@@ -38,8 +45,10 @@ export const useAuthStore = create<AuthState>()(
       tenant: null,
       isAuthenticated: false,
       isLoading: true, // Start true until hydration completes
+      mustChangePassword: false,
+      onboardingPending: null,
 
-      setAuth: ({ accessToken, refreshToken, user, tenant }) =>
+      setAuth: ({ accessToken, refreshToken, user, tenant, mustChangePassword }) =>
         set({
           accessToken,
           refreshToken,
@@ -47,7 +56,13 @@ export const useAuthStore = create<AuthState>()(
           tenant,
           isAuthenticated: true,
           isLoading: false,
+          mustChangePassword: mustChangePassword === true,
+          onboardingPending: null,
         }),
+
+      setMustChangePassword: (mustChangePassword) => set({ mustChangePassword }),
+
+      setOnboardingPending: (onboardingPending) => set({ onboardingPending }),
 
       setTokens: (accessToken, refreshToken) =>
         set({ accessToken, refreshToken }),
@@ -69,6 +84,8 @@ export const useAuthStore = create<AuthState>()(
           tenant: null,
           isAuthenticated: false,
           isLoading: false,
+          mustChangePassword: false,
+          onboardingPending: null,
         }),
 
       clearAuth: () =>
@@ -79,6 +96,8 @@ export const useAuthStore = create<AuthState>()(
           tenant: null,
           isAuthenticated: false,
           isLoading: false,
+          mustChangePassword: false,
+          onboardingPending: null,
         }),
     }),
     {
@@ -89,6 +108,7 @@ export const useAuthStore = create<AuthState>()(
         user: state.user,
         tenant: state.tenant,
         isAuthenticated: state.isAuthenticated,
+        mustChangePassword: state.mustChangePassword,
       }),
       onRehydrateStorage: () => (state) => {
         // After hydration completes, set isLoading to false

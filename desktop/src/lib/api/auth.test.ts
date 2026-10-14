@@ -24,12 +24,13 @@ vi.mock('./config', () => ({
       refreshToken: '/auth/refresh-token',
       forgotPassword: '/auth/forgot-password',
       resetPassword: '/auth/reset-password',
+      changePassword: '/auth/change-password',
       sessions: '/auth/sessions',
     },
   },
 }));
 
-const { authApi } = await import('./auth');
+const { authApi, passwordPolicyError } = await import('./auth');
 
 describe('Auth API Module', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
@@ -240,6 +241,33 @@ describe('Auth API Module', () => {
       expect(calledUrl).toContain('/auth/sessions');
       expect(fetchMock.mock.calls[0]![1].method).toBe('GET');
       expect(result.data).toHaveLength(1);
+    });
+  });
+
+  // ─── Change password (R113) ───────────────────────────────────
+  describe('changePassword', () => {
+    it('should call POST /auth/change-password with both passwords', async () => {
+      fetchMock.mockResolvedValue(new Response(
+        JSON.stringify({ success: true, data: { message: 'Password changed', accessToken: 'fresh', mustChangePassword: false } }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ));
+
+      const result = await authApi.changePassword({ currentPassword: 'Temp0rary1234', newPassword: 'Chosen2026pw' });
+
+      const [url, init] = fetchMock.mock.calls[0]!;
+      expect(url as string).toContain('/auth/change-password');
+      expect(init.method).toBe('POST');
+      expect(JSON.parse(init.body)).toEqual({ currentPassword: 'Temp0rary1234', newPassword: 'Chosen2026pw' });
+      expect(result.data.accessToken).toBe('fresh');
+    });
+  });
+
+  describe('passwordPolicyError', () => {
+    it('mirrors the API rule: 10+ characters with a letter and a digit', () => {
+      expect(passwordPolicyError('short1A')).toMatch(/at least 10/);
+      expect(passwordPolicyError('onlyletterspassword')).toMatch(/digit/);
+      expect(passwordPolicyError('12345678901234')).toMatch(/letter/);
+      expect(passwordPolicyError('Chosen2026pw')).toBeNull();
     });
   });
 });

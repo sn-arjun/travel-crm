@@ -85,6 +85,7 @@ function finite(n: number | null | undefined): number | undefined {
 export default function DashboardPage() {
   const [period, setPeriod] = React.useState<DashboardPeriod>('month');
   const firstName = useAuthStore((s) => s.user?.name?.trim().split(' ')[0]) ?? 'there';
+  const companyName = useAuthStore((s) => s.tenant?.name?.trim());
   const periodMeta = PERIOD_OPTIONS.find((p) => p.value === period) ?? { value: 'month', label: 'This Month', short: 'Month' };
 
   const { data: metrics, loading: metricsLoading } = useApiQuery(() => loadPeriodMetrics(period), [period]);
@@ -115,7 +116,7 @@ export default function DashboardPage() {
     <PageContainer>
       <PageHeader
         title="Dashboard"
-        description={`Welcome back, ${firstName}. Here's your overview.`}
+        description={`Welcome back, ${firstName}. Here's the overview${companyName ? ` for ${companyName}` : ''}.`}
         className="px-0"
         actions={
           <>
