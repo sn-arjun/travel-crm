@@ -77,7 +77,7 @@ export const contactSchema = z.object({
   state: z.string().optional(),
   country: z.string().optional(),
   postalCode: z.string().optional(),
-  taxId: z.string().max(50, 'Tax ID is too long').optional(),
+  taxNumber: z.string().max(50, 'Tax ID is too long').optional(),
   isBusiness: z.boolean(),
   birthday: z.date().optional(),
   anniversary: z.date().optional(),
@@ -102,7 +102,7 @@ export const EMPTY_CONTACT: ContactFormValues = {
   state: '',
   country: '',
   postalCode: '',
-  taxId: '',
+  taxNumber: '',
   isBusiness: false,
   birthday: undefined,
   anniversary: undefined,
@@ -128,7 +128,7 @@ export function contactToFormValues(c: ContactRecord): ContactFormValues {
     state: c.state ?? '',
     country: c.country ?? '',
     postalCode: c.postalCode ?? '',
-    taxId: c.taxId ?? '',
+    taxNumber: c.taxId ?? '',
     isBusiness: c.isBusiness === true || c.isBusiness === 1,
     birthday: c.birthday ? parseLocalDate(c.birthday) : undefined,
     anniversary: c.anniversary ? parseLocalDate(c.anniversary) : undefined,
@@ -159,7 +159,7 @@ export function formValuesToPayload(v: ContactFormValues): CreateContactRequest 
     state: orNull(v.state) ?? undefined,
     country: orNull(v.country) ?? undefined,
     postalCode: orNull(v.postalCode) ?? undefined,
-    taxId: orNull(v.taxId) ?? undefined,
+    taxId: orNull(v.taxNumber) ?? undefined,
     isBusiness: v.isBusiness,
     birthday: v.birthday ? toLocalDateString(v.birthday) : undefined,
     anniversary: v.anniversary ? toLocalDateString(v.anniversary) : undefined,
@@ -335,8 +335,8 @@ export function ContactFormFields({ form, currentId }: ContactFormFieldsProps) {
           <FormRow name="postalCode" label="Postal code">
             <Input {...form.register('postalCode')} id="postalCode" placeholder="e.g., 400001" />
           </FormRow>
-          <FormRow name="taxId" label="Tax ID" hint="GSTIN or VAT number of a business customer. Printed on invoices.">
-            <Input {...form.register('taxId')} id="taxId" placeholder="e.g., 27AAPFU0939F1ZV or DE123456789" />
+          <FormRow name="taxNumber" label="Tax ID" hint="GSTIN or VAT number of a business customer. Printed on invoices.">
+            <Input {...form.register('taxNumber')} id="taxNumber" placeholder="e.g., 27AAPFU0939F1ZV or DE123456789" />
           </FormRow>
           <FormRow name="isBusiness" label="Business customer" hint="Lets a VAT invoice to another country use reverse charge.">
             <Checkbox
