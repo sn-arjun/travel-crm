@@ -6,8 +6,66 @@ import {
   Plus, Search, Users, Briefcase, Truck, MapPin, CreditCard,
   Settings, LayoutDashboard, Plane, User, Receipt, AlertTriangle,
 } from 'lucide-react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { contactsApi } from '@/lib/api/contacts';
+import { leadsApi } from '@/lib/api/leads';
+import { invoicesApi } from '@/lib/api/invoices';
+import { unwrapList } from '@/lib/api/envelope';
+
+/** Records are looked up once the query has this many characters. */
+export const ENTITY_SEARCH_MIN_CHARS = 2;
+export const ENTITY_SEARCH_LIMIT = 5;
+const ENTITY_SEARCH_DEBOUNCE_MS = 250;
+
+export interface EntityHit {
+  id: string;
+  kind: 'contact' | 'lead' | 'invoice';
+  label: string;
+  description?: string;
+  href: string;
+}
+
+type Row = Record<string, unknown>;
+const str = (v: unknown): string => (typeof v === 'string' ? v : '');
+
+/**
+ * Search contacts, leads and invoices through their existing list endpoints (no dedicated
+ * search endpoint). A failing endpoint only drops its own section.
+ */
+export async function searchEntities(query: string): Promise<EntityHit[]> {
+  const q = query.trim();
+  if (q.length < ENTITY_SEARCH_MIN_CHARS) return [];
+  const params = { search: q, limit: ENTITY_SEARCH_LIMIT };
+  const [contacts, leads, invoices] = await Promise.allSettled([
+    contactsApi.list(params),
+    leadsApi.list(params),
+    invoicesApi.list(params),
+  ]);
+  const rowsOf = (r: PromiseSettledResult<unknown>): Row[] =>
+    r.status === 'fulfilled' ? (unwrapList<Row>(r.value).data ?? []).slice(0, ENTITY_SEARCH_LIMIT) : [];
+
+  const hits: EntityHit[] = [];
+  for (const r of rowsOf(contacts)) {
+    const id = str(r.id);
+    if (id) hits.push({ id, kind: 'contact', label: str(r.name) || 'Unnamed contact', description: str(r.email) || str(r.phone) || undefined, href: `/contacts/${id}` });
+  }
+  for (const r of rowsOf(leads)) {
+    const id = str(r.id);
+    if (id) hits.push({ id, kind: 'lead', label: str(r.title) || 'Untitled lead', description: str(r.contactName) || str(r.status) || undefined, href: `/leads/${id}` });
+  }
+  for (const r of rowsOf(invoices)) {
+    const id = str(r.id);
+    if (id) hits.push({ id, kind: 'invoice', label: str(r.invoiceNumber) || str(r.invoice_number) || 'Invoice', description: str(r.contactName) || str(r.contact_name) || undefined, href: `/invoices/${id}` });
+  }
+  return hits;
+}
+
+const ENTITY_SECTION: Record<EntityHit['kind'], { section: string; icon: React.ElementType }> = {
+  contact: { section: 'Contacts', icon: Users },
+  lead: { section: 'Leads', icon: Briefcase },
+  invoice: { section: 'Invoices', icon: Receipt },
+};
 
 interface CommandItem {
   id: string;
@@ -50,7 +108,23 @@ export function CommandPalette() {
     { id: 'nav-settings', label: 'Settings', description: 'App settings', icon: Settings, action: () => router.push('/settings'), section: 'Navigate', keywords: ['preferences', 'config'] },
   ], [router]);
 
-  const filtered = React.useMemo(() => {
+  // Records matching the query; each new query drops the previous request's answer (stale responses are ignored).
+  const [hits, setHits] = React.useState<EntityHit[]>([]);
+  React.useEffect(() => {
+    if (!open || query.trim().length < ENTITY_SEARCH_MIN_CHARS) {
+      setHits([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      searchEntities(query)
+        .then((found) => { if (!cancelled) setHits(found); })
+        .catch(() => { if (!cancelled) setHits([]); });
+    }, ENTITY_SEARCH_DEBOUNCE_MS);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [open, query]);
+
+  const filteredCommands = React.useMemo(() => {
     if (!query) return commands;
     const q = query.toLowerCase();
     return commands.filter((cmd) =>
@@ -59,6 +133,18 @@ export function CommandPalette() {
       cmd.keywords?.some((k: string) => k.includes(q))
     );
   }, [query, commands]);
+
+  const filtered = React.useMemo<CommandItem[]>(() => [
+    ...filteredCommands,
+    ...hits.map((h) => ({
+      id: `${h.kind}-${h.id}`,
+      label: h.label,
+      description: h.description,
+      icon: ENTITY_SECTION[h.kind].icon,
+      action: () => router.push(h.href),
+      section: ENTITY_SECTION[h.kind].section,
+    })),
+  ], [filteredCommands, hits, router]);
 
   // Group by section
   const sections = React.useMemo(() => {
@@ -112,11 +198,13 @@ export function CommandPalette() {
   return (
     <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQuery(''); }}>
       <DialogContent className="max-w-lg p-0 gap-0 overflow-hidden">
+        <DialogTitle className="sr-only">Command palette</DialogTitle>
+        <DialogDescription className="sr-only">Search commands, contacts, leads and invoices</DialogDescription>
         <div className="flex items-center border-b px-3">
           <Search className="h-4 w-4 text-muted-foreground shrink-0" />
           <input
             className="flex h-11 w-full bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground"
-            placeholder="Type a command or search..."
+            placeholder="Type a command, or search contacts, leads and invoices..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
