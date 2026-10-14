@@ -64,7 +64,7 @@ test.describe('Support session banner', () => {
 
   test('an expired link is refused', async ({ page }) => {
     await page.goto(`/support-session#token=${supportToken(-60)}&tenant=Demo`);
-    await expect(page.getByRole('alert')).toContainText('already ended');
+    await expect(page.getByText('This support session has already ended.')).toBeVisible();
   });
 
   test('a normal session has no banner', async ({ page }) => {
