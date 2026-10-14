@@ -89,7 +89,7 @@ test('installed app logs in against the configured API and stops its server on c
   await page.waitForSelector('text=Welcome back', { timeout: 60_000 });
 
   // The runtime config reached the renderer, and the desktop-only Advanced section is present.
-  expect(await page.evaluate(() => (window as any).travelcrmConfig?.apiUrl)).toBe(API_URL);
+  expect(await page.evaluate(() => (window as unknown as { travelcrmConfig?: { apiUrl?: string } }).travelcrmConfig?.apiUrl)).toBe(API_URL);
   await expect(page.getByRole('button', { name: 'Advanced' })).toBeVisible();
 
   // The login form is server-rendered: retry the email step until hydration has attached the handler.

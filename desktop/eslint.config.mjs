@@ -176,6 +176,7 @@ const eslintConfig = [
       'out/**',
       'node_modules/**',
       'electron/**',
+      'release/**',
       'playwright-report/**',
       'test-results/**',
       'audit/**',
