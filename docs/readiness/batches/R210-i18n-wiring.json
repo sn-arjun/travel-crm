@@ -1,0 +1,104 @@
+{
+  "id": "R210",
+  "tier": 2,
+  "title": "i18n wiring: English catalogue complete for the shell, navigation, auth and shared components; language switch",
+  "lane": "desktop",
+  "backend": false,
+  "goal": "Make the app's interface text come from translation files, starting with the parts every user sees, so other languages can be added.",
+  "why": "A custom i18n context exists (desktop/src/lib/i18n.ts, components/providers/i18n-provider.tsx, messages/en.json 343 keys, hi, ar 53 keys) but 0 of 193 pages use it; settings.language is a stub.",
+  "featuresToWorks": [
+    "settings.language"
+  ],
+  "dependsOn": [
+    "R121"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R201"
+  ],
+  "size": "L",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "desktop/src/lib/i18n.ts",
+      "desktop/src/components/providers/i18n-provider.tsx",
+      "desktop/src/messages/en.json",
+      "desktop/src/messages/hi.json",
+      "desktop/src/messages/ar.json",
+      "desktop/src/components/layout/sidebar.tsx",
+      "desktop/src/components/layout/top-navbar.tsx",
+      "desktop/src/components/layout/nav-config.ts",
+      "desktop/src/components/layout/page-header.tsx",
+      "desktop/src/app/(auth)/login/page.tsx",
+      "desktop/src/app/(auth)/forgot-password/page.tsx",
+      "desktop/src/app/(auth)/reset-password/page.tsx",
+      "desktop/src/app/(auth)/setup-account/page.tsx",
+      "desktop/src/app/(app)/settings/profile/page.tsx",
+      "desktop/eslint.config.mjs"
+    ],
+    "create": [
+      "desktop/scripts/i18n-check.mjs",
+      "desktop/src/lib/i18n.test.ts"
+    ],
+    "mustNotTouch": [
+      "desktop/src/lib/utils.ts",
+      "desktop/src/lib/dates.ts",
+      "desktop/src/app/(app)/invoices/**",
+      "backend/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "i18n.ts: t(key, vars) with interpolation and plural (one/other) support, fallback to English then to the key; locale from the user setting (users.locale from R202 if merged, else localStorage) with a switch in Settings > Profile (en, hi, ar).",
+    "Move all literals in the shell (sidebar, top bar, nav titles in nav-config.ts, page header defaults), the four auth pages and shared components under components/ui that show text (empty states, confirm dialogs, pagination, filter bar labels) to en.json with namespaced keys (nav.leads, auth.login.title, ...).",
+    "scripts/i18n-check.mjs: fails when a key used in code is missing from en.json, and reports hi/ar coverage percentage.",
+    "ESLint: add a warn-level rule against JSX string literals in the files converted (eslint-plugin-react has jsx-no-literals; use it only if already installed, else a no-restricted-syntax selector for JSXText with letters) scoped to the converted folders, so lint-gate does not rise elsewhere."
+  ],
+  "migrations": [],
+  "tests": [
+    "desktop/src/lib/i18n.test.ts: interpolation, plural, fallback.",
+    "i18n-check passes.",
+    "auth-shell and dashboard specs still pass (English text unchanged)."
+  ],
+  "acceptance": [
+    "Shell, auth and shared components have no hardcoded English (grep in those files).",
+    "Switching to Hindi changes the shell text."
+  ],
+  "gate": [
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # pass: 0 failing files, passed >= last merged count (1294 on 2026-10-14)",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && node scripts/i18n-check.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 0 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3100 E2E_API_URL=http://localhost:8787/api/v1 npx playwright test e2e/auth-shell.spec.ts e2e/dashboard.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 0"
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "build": false,
+    "backendTests": false,
+    "flutter": false,
+    "specs": [
+      "e2e/auth-shell.spec.ts",
+      "e2e/dashboard.spec.ts"
+    ]
+  },
+  "goLiveVerify": [],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Desktop UI follows desktop/audit/remake/CONTRACT.md (ds-* tokens, archetypes, FilterBar + infinite scroll, RelationCombobox, PhoneInput, useConfirm, graceful degradation). lint-gate must not rise for any touched file.",
+    "English strings must stay byte-identical so existing e2e selectors by text keep working.",
+    "No machine translation calls (cost rule). Hindi keys you add may be left untranslated (fallback to English)."
+  ]
+}

@@ -5,6 +5,8 @@
 - All prices are public list prices retrieved on 2026-10-09. Sources are numbered in the last section. Nothing was purchased and no vendor was contacted.
 - Companion documents: `docs/COST-MODEL.md`, `docs/CALL-AUTOMATION.md`
 
+> **Superseded in part on 2026-10-14 — see "Addendum A" at the end.** The owner could not sign up with Plivo and asked for an easier provider. The Plivo-first decision below is kept for the record; Addendum A replaces it.
+
 ## 1. Decision
 
 **Use Plivo as the main telephony provider, with one sub-account per agency, and keep Twilio as the second provider for the countries Plivo cannot serve (Germany and Malaysia today). Do not self-host a phone system.** In India, launch with call-bridge (the provider rings the agent's own phone, then the customer, and joins them) through Plivo's India service, and add the in-app softphone only after Plivo confirms in writing that it is allowed for domestic Indian calls. In the UK, US, Australia and Singapore, resell numbers and minutes with an in-app softphone. Do not offer calling in the UAE, Saudi Arabia, Qatar, Thailand, Sri Lanka, Nepal or Bangladesh at launch. This overturns the working hypothesis (Twilio first): Twilio cannot provide Indian numbers or domestic Indian calls at all, and where both providers work Plivo's list prices are 39% to 51% lower for a typical agency in the US and UK.
@@ -392,3 +394,33 @@ All retrieved 2026-10-09.
 - [S46] Twilio WhatsApp pricing (calling section): https://www.twilio.com/en-us/whatsapp/pricing
 - [S38] Oracle Always Free resources: https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm
 - [S40] Exchange rates dated 2026-10-08: https://open.er-api.com/v6/latest/USD
+
+## Addendum A (2026-10-14): easier sign-up, Plivo dropped
+
+**What changed.** The owner tried to sign up with Plivo and could not complete it, and asked for "anything better and easy". Ease of opening and running the account now outranks the 39–51% per-minute saving from section 2.2.
+
+**Revised decision (proposed, awaiting owner confirmation):**
+
+| Market | Position at launch | Provider | Why |
+|---|---|---|---|
+| UK, US, Australia, Singapore | RESELL, in-app softphone | **Twilio**, one sub-account per agency | Self-serve sign-up with a card; the adapter, TwiML endpoints and token code already exist; sub-account usage records give per-agency metering; the Voice JS SDK runs in Electron |
+| Germany (EU), Malaysia | RESELL, second wave | Twilio | Unchanged from section 4 |
+| India | Agency's **own Exotel account** (OWN ACCOUNT ONLY) in call-bridge mode; platform does not resell | **Exotel** | Twilio does not support domestic Indian numbers or calls (third-party summaries of Twilio's India guidelines; confirm against Twilio's help centre). Exotel is an Indian provider whose `Calls/connect` API rings the agent's phone first and then the customer, showing the agency's virtual number (ExoPhone). Sign-up needs a business email and Indian KYC; a trial starts without a card. Leaving the account with the agency also sidesteps the unresolved question in section 4.1 of whether a platform may hold Indian numbers for others without a telecom licence |
+| UAE, Saudi Arabia, Qatar, Thailand, Sri Lanka, Nepal, Bangladesh | NOT OFFERED AT LAUNCH | none | Unchanged from section 4 |
+
+**What this costs.** Twilio's list prices are higher than Plivo's (section 3: a 120-minute agency costs about $7.02 a month in the UK and $3.48 in the US on Twilio). The owner's rule is that communication is resold at provider cost + 20%, so retail call prices are recomputed from Twilio's rates and the margin is unchanged; agencies pay somewhat more per minute than under the Plivo plan. Indian agencies pay Exotel directly, so India calling carries no telephony cost or margin for the platform.
+
+**Later option for cost.** Telnyx (self-serve; international numbers and calling need Level 2 verification, which needs a company name, contact number and a payment method and can take up to 48 hours) can be added behind the same `VoipProvider` interface if call volume makes the saving worth a second provider. Plivo's adapter stays in the code, unused and untested.
+
+**What changes in the build (Tier 3 batches).** R301 keeps the provider-agnostic contract. R304 (sub-accounts and numbers), R305 (metering) and R307 (softphone) target Twilio. R308 (India call bridge) becomes an `ExotelProvider` adapter for call-bridge only, configured with the agency's own Exotel credentials (encrypted per R108), with no platform metering or resale. All provider-specific batches stay blocked on the owner confirming this addendum.
+
+**Owner to confirm (G1, revised):** (1) Twilio for resale outside India; (2) India as the agency's own Exotel account rather than resale; (3) the remaining items from section 9a (prepaid balance, recording default, call AI default, trials without calling).
+
+**Sources (retrieved 2026-10-14):**
+- Exotel connect-two-numbers quickstart: https://developer.exotel.com/docs/voice-v1/quickstart
+- Exotel sign-up and KYC: https://developer.exotel.com/docs/call-support/basics/getting-started
+- Exotel billing model (per-leg pulses): https://developer.exotel.com/docs/billing/pricing-model
+- Telnyx account verification levels: https://support.telnyx.com/en/articles/1130595-account-verification and https://developers.telnyx.com/docs/account-setup/levels-and-capabilities
+- Telnyx WebRTC JS SDK: https://developers.telnyx.com/docs/voice/webrtc/js-sdk/
+- Twilio India restrictions (third-party summary of Twilio's guidelines; Twilio's own page was not reachable): https://support.revenue.io/ringdna/telephony-101/voice-guidelines/india/ ; Twilio India toll-free note: https://support.twilio.com/hc/en-us/articles/40728263317915-India-Toll-Free-Voice-Number-Not-Working-and-Not-Receiving-Calls
+

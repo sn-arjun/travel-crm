@@ -1,0 +1,110 @@
+{
+  "id": "R201",
+  "tier": 2,
+  "title": "Tax engine: GST, VAT with reverse charge, sales tax or none, stored on every invoice",
+  "lane": "backend",
+  "backend": true,
+  "goal": "Issue invoices under the agency's own tax system and keep a record on each invoice of the rules that were applied.",
+  "why": "routes/invoices.ts calls detectTaxType(companyState, contact.state) without the tenant tax_system (~235, ~985), so every invoice is CGST/SGST or IGST although settings accept gst, vat, sales_tax and none (routes/settings.ts ~448); services/tax-calculator.ts does not handle sales_tax; no VAT number, reverse charge or place of supply is stored.",
+  "featuresToWorks": [
+    "invoices.gst",
+    "platform.international"
+  ],
+  "dependsOn": [
+    "R121"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R210"
+  ],
+  "size": "L",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "backend/src/services/tax-calculator.ts",
+      "backend/src/routes/invoices.ts",
+      "backend/src/routes/settings.ts",
+      "backend/src/routes/contacts.ts",
+      "backend/src/db/tenant-schema.ts",
+      "backend/src/services/trip-invoice-generator.ts",
+      "backend/test/services/tax-calculator.test.ts",
+      "desktop/src/app/(app)/invoices/[id]/_documents.ts",
+      "desktop/src/app/(app)/invoices/_form-shared.tsx",
+      "desktop/src/app/(app)/settings/invoice-defaults/page.tsx",
+      "desktop/src/lib/api/invoices.ts",
+      "desktop/src/lib/api/settings.ts"
+    ],
+    "create": [
+      "backend/drizzle/tenant/0045_invoice_tax_regime.sql",
+      "backend/test/tax-regimes.test.ts"
+    ],
+    "mustNotTouch": [
+      "desktop/src/lib/i18n.ts",
+      "desktop/src/messages/**",
+      "desktop/src/components/layout/**",
+      "super-admin/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "Implement computeInvoiceTax exactly as READINESS-PLAN 4.7 in services/tax-calculator.ts, keeping detectTaxType/calculateInvoiceTotals as thin wrappers so existing callers and tests keep working until switched.",
+    "Tenant 0045: invoices ADD tax_regime TEXT NOT NULL DEFAULT 'gst', tax_breakdown TEXT (JSON), seller_tax_id TEXT, buyer_tax_id TEXT, place_of_supply TEXT, tax_notes TEXT; contacts ADD tax_id TEXT and is_business INTEGER DEFAULT 0 (only if absent: check tenant-schema contacts first); same on credit notes if they have their own table. Backfill existing invoices tax_regime gst and tax_breakdown from their cgst/sgst/igst columns. Mirror schema; run npm run db:bundle-tenant.",
+    "Settings: tax_system plus vat_rate (default by country: GB 20, AE 5, SA 15, DE 19, else required), sales_tax_rate, seller_tax_id (GSTIN or VAT number), tax_label override; validation per regime (GSTIN format for gst; free text otherwise).",
+    "routes/invoices.ts create/update/from-itinerary (~235, ~985) and trip-invoice-generator.ts: call computeInvoiceTax with the tenant settings and the contact, store regime, breakdown, ids and notes; GST invoices keep filling cgst/sgst/igst.",
+    "Desktop: invoice form shows the regime label and computed tax lines from the API response (no client-side GST assumptions); settings invoice-defaults page edits the regime fields; _documents.ts PDF renders labels from tax_breakdown and the notes (reverse charge, export) and the seller/buyer tax ids. Contact form gets Tax ID and \"Business customer\" (contacts pages are already EntityForm; add fields in the same section)."
+  ],
+  "migrations": [
+    "backend/drizzle/tenant/0045_invoice_tax_regime.sql"
+  ],
+  "tests": [
+    "backend/test/tax-regimes.test.ts golden cases: GST intra-state 18% (9+9), GST inter-state IGST 18%, GST export 0% with LUT note, UK VAT 20% B2C, EU B2B different country reverse charge 0% with note, UAE VAT 5%, US sales tax 8.875%, none; each persisted invoice row has tax_regime and tax_breakdown; changing settings later does not change an existing invoice.",
+    "Existing tax-calculator tests still pass."
+  ],
+  "acceptance": [
+    "No invoice path calls detectTaxType without the tenant regime (grep).",
+    "Golden tests pass.",
+    "Invoice e2e specs pass."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # pass: 0 failing files, passed >= last merged count (1294 on 2026-10-14)",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/invoices.spec.ts e2e/credit-debit-notes.spec.ts e2e/payments.spec.ts e2e/contacts.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": [
+      "e2e/invoices.spec.ts",
+      "e2e/credit-debit-notes.spec.ts",
+      "e2e/payments.spec.ts",
+      "e2e/contacts.spec.ts"
+    ]
+  },
+  "goLiveVerify": [
+    "Accountant review of invoice wording per regime (LUT note, reverse charge text, mandatory fields per country)."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "Desktop UI follows desktop/audit/remake/CONTRACT.md (ds-* tokens, archetypes, FilterBar + infinite scroll, RelationCombobox, PhoneInput, useConfirm, graceful degradation). lint-gate must not rise for any touched file.",
+    "Money is REAL; round tax per line to 2 decimals with the same rounding the GST code uses today, and compute totals from rounded lines."
+  ]
+}

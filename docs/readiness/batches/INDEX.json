@@ -1,0 +1,486 @@
+[
+  {
+    "id": "R100",
+    "tier": 1,
+    "title": "Owner action: make the repository private, revoke the old token, list secrets to rotate",
+    "size": "S",
+    "dependsOn": [],
+    "blockedOnOwner": "owner action: GitHub settings and token revocation"
+  },
+  {
+    "id": "R101",
+    "tier": 1,
+    "title": "Tenancy resolver: one binding scheme, fail closed, every lookup through resolveTenantDb",
+    "size": "L",
+    "dependsOn": [],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R114",
+    "tier": 1,
+    "title": "Desktop installer that works: Next server inside Electron, runtime API URL, icons, auto-update",
+    "size": "L",
+    "dependsOn": [],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R102",
+    "tier": 1,
+    "title": "Transactional email with a local outbox; app URLs and sender from config",
+    "size": "M",
+    "dependsOn": [
+      "R101"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R120",
+    "tier": 1,
+    "title": "Carry-over defects from the walkthrough: command palette, calendar stray 0, credit notes in the invoice list, yearly numbering reset",
+    "size": "M",
+    "dependsOn": [],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R103",
+    "tier": 1,
+    "title": "Local multi-tenant stack, generated wrangler config, tenant migration runner",
+    "size": "L",
+    "dependsOn": [
+      "R101"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R116",
+    "tier": 1,
+    "title": "Landing page that converts honestly: working CTAs and forms, legal page drafts, sitemap, no unverifiable claims",
+    "size": "M",
+    "dependsOn": [
+      "R101",
+      "R102"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R104",
+    "tier": 1,
+    "title": "Tenant provisioner in the backend: POST /admin/tenants creates a working agency",
+    "size": "L",
+    "dependsOn": [
+      "R101",
+      "R102",
+      "R103"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R115",
+    "tier": 1,
+    "title": "Driver app release: agency code login, release signing from an untracked keystore, iOS permission strings",
+    "size": "M",
+    "dependsOn": [
+      "R101"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R105",
+    "tier": 1,
+    "title": "Cron fan-out through a queue, working cron jobs, usage caps reset once per period",
+    "size": "L",
+    "dependsOn": [
+      "R101",
+      "R103"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R119",
+    "tier": 1,
+    "title": "Call code matches the schema: inbound endpoint, routing, missed calls, extraction follow-ups, dial page lead link",
+    "size": "M",
+    "dependsOn": [
+      "R101"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R106",
+    "tier": 1,
+    "title": "Security: tenant-scoped files, real login limits, CORS and URLs from config, rate limits applied, TEST_MODE fenced",
+    "size": "M",
+    "dependsOn": [
+      "R101"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R108",
+    "tier": 1,
+    "title": "Credentials encrypted at rest, API keys hashed",
+    "size": "M",
+    "dependsOn": [
+      "R101"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R107",
+    "tier": 1,
+    "title": "Provider webhooks signed, chatbot widget on a public mount keyed by widget key",
+    "size": "M",
+    "dependsOn": [
+      "R101"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R109",
+    "tier": 1,
+    "title": "One plan catalogue in the master database: features, prices, seats, allowances, trial expiry",
+    "size": "L",
+    "dependsOn": [
+      "R101",
+      "R105"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R110",
+    "tier": 1,
+    "title": "Cost caps: SMS, WhatsApp, email and login-code allowances enforced; cheaper, abuse-proof login codes",
+    "size": "L",
+    "dependsOn": [
+      "R109",
+      "R105"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R117",
+    "tier": 1,
+    "title": "Operations: real health check, structured logs with an error-reporting hook, backups, hibernating realtime",
+    "size": "M",
+    "dependsOn": [
+      "R105"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R111",
+    "tier": 1,
+    "title": "Super admin backend API: its own login, tenant lifecycle writes, AI credit top-up, impersonation, full audit",
+    "size": "L",
+    "dependsOn": [
+      "R104",
+      "R109"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R113",
+    "tier": 1,
+    "title": "First login: forced password change, onboarding wizard reachable, change password in settings",
+    "size": "M",
+    "dependsOn": [
+      "R104"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R112",
+    "tier": 1,
+    "title": "Super admin console uses the backend, OpenNext build, no tracked credentials; desktop super-admin pages removed",
+    "size": "L",
+    "dependsOn": [
+      "R111"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R118",
+    "tier": 1,
+    "title": "CI on the right branch with one npm workspace model, fresh-clone job, driver and desktop jobs; terraform serves the landing page",
+    "size": "L",
+    "dependsOn": [
+      "R103",
+      "R112",
+      "R114",
+      "R115",
+      "R116",
+      "R117"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R121",
+    "tier": 1,
+    "title": "Three-agency isolation end-to-end test (Tier 1 exit)",
+    "size": "M",
+    "dependsOn": [
+      "R104",
+      "R106",
+      "R107",
+      "R108",
+      "R113"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R122",
+    "tier": 1,
+    "title": "README and CONTRIBUTING rewritten for the desktop-first, multi-tenant product",
+    "size": "M",
+    "dependsOn": [
+      "R118",
+      "R121"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R201",
+    "tier": 2,
+    "title": "Tax engine: GST, VAT with reverse charge, sales tax or none, stored on every invoice",
+    "size": "L",
+    "dependsOn": [
+      "R121"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R210",
+    "tier": 2,
+    "title": "i18n wiring: English catalogue complete for the shell, navigation, auth and shared components; language switch",
+    "size": "L",
+    "dependsOn": [
+      "R121"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R202",
+    "tier": 2,
+    "title": "Locale core: currency, locale and time zone from tenant and user settings in backend and desktop helpers",
+    "size": "L",
+    "dependsOn": [
+      "R201"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R203",
+    "tier": 2,
+    "title": "Desktop sweep: remove hardcoded INR, en-IN and Asia/Kolkata from pages and components",
+    "size": "L",
+    "dependsOn": [
+      "R202"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R205",
+    "tier": 2,
+    "title": "Subscription billing: Razorpay for India, Stripe elsewhere, behind one gateway interface with idempotent webhooks",
+    "size": "L",
+    "dependsOn": [
+      "R109",
+      "R111"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R204",
+    "tier": 2,
+    "title": "Phones by tenant country everywhere; full country list in desktop and driver app; Flutter currency formatting",
+    "size": "M",
+    "dependsOn": [
+      "R202"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R208",
+    "tier": 2,
+    "title": "GDPR and DPDP tooling: consent records, contact export and erasure, public unsubscribe, cookie notice, legal links",
+    "size": "L",
+    "dependsOn": [
+      "R121"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R206",
+    "tier": 2,
+    "title": "Prepaid balance: one wallet per agency for messages, numbers, calls and AI top-ups",
+    "size": "M",
+    "dependsOn": [
+      "R205",
+      "R110"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R209",
+    "tier": 2,
+    "title": "Two-factor sign-in (TOTP) and a stronger password policy",
+    "size": "M",
+    "dependsOn": [
+      "R113"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R207",
+    "tier": 2,
+    "title": "Agencies collect from their customers: payment links on invoices through the agency's own Razorpay or Stripe",
+    "size": "M",
+    "dependsOn": [
+      "R201",
+      "R206",
+      "R108"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R211",
+    "tier": 2,
+    "title": "Arabic with right-to-left layout for the core screens",
+    "size": "L",
+    "dependsOn": [
+      "R210",
+      "R203"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R212",
+    "tier": 2,
+    "title": "Data residency: choose the agency's data region at creation",
+    "size": "M",
+    "dependsOn": [
+      "R104",
+      "R103"
+    ],
+    "blockedOnOwner": "owner decision Q7 (which regions at launch)"
+  },
+  {
+    "id": "R213",
+    "tier": 2,
+    "title": "WhatsApp direct through Meta's Cloud API behind the existing messaging interface",
+    "size": "L",
+    "dependsOn": [
+      "R110",
+      "R107",
+      "R108"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R301",
+    "tier": 3,
+    "title": "VoipProvider contract for reselling, a mock provider and a local call simulator",
+    "size": "M",
+    "dependsOn": [
+      "R119",
+      "R107"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R309",
+    "tier": 3,
+    "title": "WordPress site provisioning: backend queue calls the provisioner, signed and retried, status in the super admin console",
+    "size": "M",
+    "dependsOn": [
+      "R111",
+      "R112"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R302",
+    "tier": 3,
+    "title": "Every call callback signed and processed once; inbound and outbound flows correct",
+    "size": "M",
+    "dependsOn": [
+      "R301"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R310",
+    "tier": 3,
+    "title": "WordPress hosting sized to Oracle's free allowance with a shared database container",
+    "size": "M",
+    "dependsOn": [
+      "R118"
+    ],
+    "blockedOnOwner": "owner decision Q9 (shared database per VM vs multisite)"
+  },
+  {
+    "id": "R303",
+    "tier": 3,
+    "title": "Call lifecycle events, call recipes, timeline entries and the screen pop",
+    "size": "L",
+    "dependsOn": [
+      "R302"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R306",
+    "tier": 3,
+    "title": "Recordings in our storage with consent and retention; transcription and call summary through metered AI",
+    "size": "L",
+    "dependsOn": [
+      "R303"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R304",
+    "tier": 3,
+    "title": "Sub-account per agency, number purchase and release, number registration, country switch (G1)",
+    "size": "L",
+    "dependsOn": [
+      "R303",
+      "R206",
+      "R111"
+    ],
+    "blockedOnOwner": "G1 (ADR-001 Addendum A)"
+  },
+  {
+    "id": "R305",
+    "tier": 3,
+    "title": "Minute metering from provider records, prepaid debits with markup, fraud limits (G1)",
+    "size": "L",
+    "dependsOn": [
+      "R304"
+    ],
+    "blockedOnOwner": "G1 (ADR-001 Addendum A)"
+  },
+  {
+    "id": "R307",
+    "tier": 3,
+    "title": "Softphone in the desktop app for resell countries (G1)",
+    "size": "L",
+    "dependsOn": [
+      "R303",
+      "R304"
+    ],
+    "blockedOnOwner": "G1 (ADR-001 Addendum A)"
+  },
+  {
+    "id": "R308",
+    "tier": 3,
+    "title": "India call-bridge: the agent's own phone rings first, then the customer (G1)",
+    "size": "M",
+    "dependsOn": [
+      "R303",
+      "R304",
+      "R305"
+    ],
+    "blockedOnOwner": "G1 (ADR-001 Addendum A)"
+  }
+]

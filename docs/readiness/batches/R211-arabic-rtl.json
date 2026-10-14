@@ -1,0 +1,104 @@
+{
+  "id": "R211",
+  "tier": 2,
+  "title": "Arabic with right-to-left layout for the core screens",
+  "lane": "desktop",
+  "backend": false,
+  "goal": "Let Gulf agencies use the app in Arabic with a correctly mirrored layout.",
+  "why": "COST-MODEL 5.3: do not sell in the Gulf until Arabic and right-to-left screens exist; the desktop has 53 Arabic keys and no RTL.",
+  "featuresToWorks": [
+    "settings.language"
+  ],
+  "dependsOn": [
+    "R210",
+    "R203"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R207"
+  ],
+  "size": "L",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "desktop/src/app/layout.tsx",
+      "desktop/src/app/globals.css",
+      "desktop/src/messages/ar.json",
+      "desktop/src/messages/en.json",
+      "desktop/src/components/layout/sidebar.tsx",
+      "desktop/src/components/layout/top-navbar.tsx",
+      "desktop/src/components/layout/app-shell.tsx",
+      "desktop/src/components/providers/i18n-provider.tsx",
+      "desktop/src/app/(app)/leads/**",
+      "desktop/src/app/(app)/contacts/**",
+      "desktop/src/app/(app)/itineraries/**",
+      "desktop/src/app/(app)/dashboard/**",
+      "desktop/src/components/domain/**"
+    ],
+    "create": [
+      "desktop/e2e/rtl.spec.ts"
+    ],
+    "mustNotTouch": [
+      "desktop/src/app/(app)/invoices/**",
+      "desktop/src/app/(app)/payments/**",
+      "desktop/src/app/(app)/settings/integrations/**",
+      "backend/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "<html lang dir>: set from the active locale (dir=\"rtl\" for ar) in the provider (client) with an inline script to avoid a flash.",
+    "Replace physical direction utilities with logical ones in the shell, archetypes (components/domain list-page, entity-form, detail-page, filter-bar) and the four core areas: ml-/mr-/pl-/pr-/left-/right-/text-left/text-right/border-l/border-r/rounded-l/rounded-r -> ms-/me-/ps-/pe-/start-/end-/text-start/text-end/border-s/border-e/rounded-s/rounded-e; mirror directional icons (chevrons, arrows) with rtl:rotate-180 or rtl:-scale-x-100.",
+    "Translate the strings of the shell, auth, leads, contacts, itineraries and dashboard into ar.json (drafted by the executor, flagged \"needs native review\" in a comment key); numbers stay Latin digits by default.",
+    "rtl.spec.ts: switch to Arabic, dir is rtl, the sidebar is on the right, no horizontal overflow on /dashboard, /leads, /contacts, /itineraries; run layout-probe on those routes with --themes light."
+  ],
+  "migrations": [],
+  "tests": [
+    "desktop/e2e/rtl.spec.ts as above.",
+    "layout-probe on the four routes in Arabic (add a --locale ar option to layout-probe only if trivial; otherwise set localStorage in the spec)."
+  ],
+  "acceptance": [
+    "Core screens render RTL without overflow (spec + probe).",
+    "English screens unchanged (full e2e)."
+  ],
+  "gate": [
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # pass: 0 failing files, passed >= last merged count (1294 on 2026-10-14)",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && npm run build",
+    "node desktop/scripts/fix-stack.mjs up --slot 0 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3100 E2E_API_URL=http://localhost:8787/api/v1 npx playwright test ",
+    "node desktop/scripts/fix-stack.mjs down --slot 0",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/rtl.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "build": true,
+    "backendTests": false,
+    "flutter": false,
+    "specs": [
+      "ALL"
+    ]
+  },
+  "goLiveVerify": [
+    "Native Arabic speaker review of ar.json."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Desktop UI follows desktop/audit/remake/CONTRACT.md (ds-* tokens, archetypes, FilterBar + infinite scroll, RelationCombobox, PhoneInput, useConfirm, graceful degradation). lint-gate must not rise for any touched file.",
+    "Tailwind 4 supports logical utilities and the rtl: variant natively."
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "id": "R100",
+  "tier": 1,
+  "title": "Owner action: make the repository private, revoke the old token, list secrets to rotate",
+  "lane": "owner",
+  "backend": false,
+  "goal": "Stop the public GitHub repository from exposing the code and old secrets, and write down every secret that must be replaced before go-live.",
+  "why": "sn-arjun/travel-crm is PUBLIC (verified 2026-10-14). backend/.dev.vars was committed in c668ebd and 6d75a0b; super-admin/wrangler.toml carries default super admin credentials and a placeholder JWT secret; a GitHub token was embedded in the old remote URL. Nothing new may be pushed until the repository is private.",
+  "featuresToWorks": [],
+  "dependsOn": [],
+  "blockedOnOwner": "owner action: GitHub settings and token revocation",
+  "parallelSafeWith": [
+    "R101",
+    "R114"
+  ],
+  "size": "S",
+  "newDependencies": [],
+  "files": {
+    "edit": [],
+    "create": [
+      "docs/launch/SECRETS-TO-ROTATE.md"
+    ],
+    "mustNotTouch": [
+      "**/*.ts",
+      "**/*.tsx",
+      "**/*.dart",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "OWNER: GitHub > sn-arjun/travel-crm > Settings > General > Danger zone > Change visibility > Private. Confirm with `gh repo view sn-arjun/travel-crm --json visibility` (expects PRIVATE).",
+    "OWNER: GitHub > Settings > Developer settings > Personal access tokens: revoke the token that was in the old remote URL; run `gh auth login` to create a fresh credential. Orchestrator confirms `git remote -v` shows no token.",
+    "ORCHESTRATOR (no code change): list in docs/launch/SECRETS-TO-ROTATE.md every secret name (never a value) that appeared in public master history or tracked files: everything in backend/.dev.vars at c668ebd and 6d75a0b (use `git show c668ebd:backend/.dev.vars | cut -d= -f1`), SUPER_ADMIN_EMAIL/SUPER_ADMIN_PASSWORD/JWT_SECRET defaults in super-admin/wrangler.toml and their code fallbacks (super-admin/src/middleware.ts, src/lib/session.ts, src/app/api/auth/route.ts, src/app/api/auth/seed/route.ts, terraform/variables.tf), the seeded local admin password (backend/scripts/seed-local.mjs, dev only), and the GitHub token. For each: where it is used, and \"rotate at go-live: generate fresh, never reuse\".",
+    "ORCHESTRATOR: confirm with `git log --all --oneline -- backend/.dev.vars` that no newer commit re-adds the file, and that .gitignore still ignores it."
+  ],
+  "migrations": [],
+  "tests": [],
+  "acceptance": [
+    "`gh repo view sn-arjun/travel-crm --json visibility` prints PRIVATE.",
+    "`git remote -v` contains no token.",
+    "docs/launch/SECRETS-TO-ROTATE.md lists names and locations only, no values."
+  ],
+  "gate": [
+    "gh repo view sn-arjun/travel-crm --json visibility",
+    "git remote -v"
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": false,
+    "flutter": false,
+    "specs": []
+  },
+  "goLiveVerify": [
+    "Every secret in SECRETS-TO-ROTATE.md is regenerated for production (GO-LIVE runbook step \"rotate every secret\")."
+  ],
+  "notes": [
+    "This is the only Tier 1 item that is not code. Nothing is pushed (W1a push, R118 CI) until it is done.",
+    "Do not rewrite git history for this; the values are treated as exposed and rotated instead."
+  ]
+}

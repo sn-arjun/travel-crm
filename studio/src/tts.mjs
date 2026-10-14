@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { ff, probeDuration } from './ff.mjs';
 
 export const studioRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-export const DEFAULT_VOICE = 'bf_emma';
+export const DEFAULT_VOICE = 'af_heart'; // owner choice 2026-10-14 (American female)
 const MODEL = 'onnx-community/Kokoro-82M-v1.0-ONNX';
 const DTYPE = 'q8';
 

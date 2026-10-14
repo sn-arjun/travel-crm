@@ -1,0 +1,111 @@
+{
+  "id": "R116",
+  "tier": 1,
+  "title": "Landing page that converts honestly: working CTAs and forms, legal page drafts, sitemap, no unverifiable claims",
+  "lane": "landing",
+  "backend": true,
+  "goal": "Turn the landing page into a real front door: every button works, visitors can ask for a demo or a trial, and nothing on it claims what cannot be proven.",
+  "why": "landing/index.html: every CTA is href=\"#\", no form or fetch, footer legal links are \"#\", og-image.png, favicon and sitemap.xml (named in robots.txt) do not exist, and it shows unverified \"500+ Travel Agencies\", \"$2.4M+\", \"99.9% Uptime\", six named agencies, three named testimonials and an aggregateRating 4.9 from 127 ratings; prices shown are per-user USD that disagree with the decided INR plans; lucide loads from unpkg @latest.",
+  "featuresToWorks": [
+    "landing.signup",
+    "landing.legal",
+    "landing.reviews",
+    "landing.pricing"
+  ],
+  "dependsOn": [
+    "R101",
+    "R102"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R103"
+  ],
+  "size": "M",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "landing/index.html",
+      "landing/main.js",
+      "landing/styles.css",
+      "landing/public/robots.txt",
+      "backend/src/index.ts",
+      "backend/src/db/master-schema.ts"
+    ],
+    "create": [
+      "landing/legal/privacy.html",
+      "landing/legal/terms.html",
+      "landing/legal/dpa.html",
+      "landing/legal/subprocessors.html",
+      "landing/public/sitemap.xml",
+      "landing/public/og-image.png",
+      "landing/public/favicon.svg",
+      "landing/scripts/check-links.mjs",
+      "landing/config.js",
+      "backend/src/routes/public-enquiries.ts",
+      "backend/drizzle/master/0018_platform_enquiries.sql",
+      "backend/test/public-enquiries.test.ts"
+    ],
+    "mustNotTouch": [
+      "backend/wrangler.toml",
+      "backend/scripts/**",
+      "desktop/**",
+      "super-admin/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "Backend: master 0018 platform_enquiries (id, kind contact|demo|signup, name, email, phone, company, country, agents_count INTEGER, message, source_url, ip_hash, status new|contacted|converted|spam, created_at). routes/public-enquiries.ts mounted at /api/v1/public/enquiries before authMiddleware (index.ts route registration only): POST validates with zod, honeypot field `website` must be empty, limits 5/hour/IP and 3/day/email (middleware/rate-limiter.ts), 10 KB body cap, verifies Cloudflare Turnstile when TURNSTILE_SECRET is set (fetch to challenges.cloudflare.com/turnstile/v0/siteverify; mocked in tests), stores the row, notifies PLATFORM_SUPPORT_EMAIL via sendTransactional(platform_enquiry), answers 202 with no echo of stored data. CORS for this route allows the landing origin from CORS_ORIGINS.",
+    "Landing: one config file landing/config.js ({ apiBase, appDownloadUrl, demoVideoUrl, whatsappNumber, turnstileSiteKey }) read by main.js; CTAs: \"Start free trial\" and pricing buttons open the signup form (kind signup), \"Book a demo\" opens kind demo, \"Contact\" kind contact; forms post with fetch, show success/failure states, are keyboard and screen-reader accessible; WhatsApp button only rendered when whatsappNumber is set; remove the placeholder tel:+919876543210.",
+    "Pricing section renders from GET /api/v1/public/plans?market=<IN or WEST by a toggle> when available (R109 adds it), with a static fallback matching the active catalogue rows today (Basic ₹12,000 / Pro ₹18,000 / Enterprise ₹24,000 per agency per year, 5 / 15 / 100 users); no per-user USD numbers until the owner approves (Q2).",
+    "Remove unverifiable claims (Q12 default): the 500+ / $2.4M / 99.9% stats, named agency logos, named testimonials and the aggregateRating JSON-LD; replace with product facts (feature counts from docs/FEATURES.md, \"Built for Indian tour operators\") and a \"Be one of our first agencies\" pilot message. Keep JSON-LD SoftwareApplication without ratings.",
+    "Legal drafts in landing/legal/*.html: privacy policy, terms, DPA, sub-processor list (Cloudflare, SendGrid, Twilio/Plivo, Anthropic or Workers AI, Google Maps, Oracle) clearly marked \"Draft for legal review, not in force\"; footer links point to them; About/Blog/API links removed until they exist.",
+    "og-image.png (1200x630) and favicon.svg generated from the desktop icon SVG (R114 build-resources/icon.svg if present, else a simple wordmark) with Playwright screenshot of an HTML template; sitemap.xml lists index and legal pages; robots.txt keeps the sitemap line.",
+    "Pin lucide to an exact version on cdnjs or unpkg (no @latest) with a fallback that does not break layout if it fails to load.",
+    "landing/scripts/check-links.mjs: starts a static server on landing/, crawls every internal href and src, fails on any 404 or \"#\"-only CTA link."
+  ],
+  "migrations": [
+    "backend/drizzle/master/0018_platform_enquiries.sql"
+  ],
+  "tests": [
+    "backend/test/public-enquiries.test.ts: valid demo request -> 202 + row + outbox notification; honeypot filled -> 202 but no row (silently dropped); 6th request in an hour from one IP -> 429; Turnstile on with mocked failure -> 400; oversized body -> 413.",
+    "landing/scripts/check-links.mjs passes.",
+    "Manual: fill each form against fix-stack slot 1 and confirm the enquiry row (record in report)."
+  ],
+  "acceptance": [
+    "No href=\"#\" CTA remains (link checker).",
+    "No unverifiable claim remains (grep for 500+, 2.4M, 99.9, aggregateRating).",
+    "Forms post to the local API and show success."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)",
+    "node landing/scripts/check-links.mjs"
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": []
+  },
+  "goLiveVerify": [
+    "Lawyer review of the legal drafts; Turnstile keys; hosting (R118 terraform) and domain; Lighthouse on the deployed page."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "landing/ is plain HTML/CSS/JS with no build step: keep it that way.",
+    "R103 runs in parallel and does not touch index.ts; you may add one route mount line there."
+  ]
+}

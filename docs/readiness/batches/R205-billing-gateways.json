@@ -1,0 +1,104 @@
+{
+  "id": "R205",
+  "tier": 2,
+  "title": "Subscription billing: Razorpay for India, Stripe elsewhere, behind one gateway interface with idempotent webhooks",
+  "lane": "backend",
+  "backend": true,
+  "goal": "Let an agency pay its subscription online in its own currency, and keep the subscription status in step with payments automatically.",
+  "why": "No checkout exists anywhere; the only Razorpay code is a webhook in the super-admin app that skips signature checks when the secret is unset (deleted in R112); there is no Stripe; trial and subscription states are set by hand (record-payment).",
+  "featuresToWorks": [
+    "sa.billing-online",
+    "sa.subscriptions"
+  ],
+  "dependsOn": [
+    "R109",
+    "R111"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R203"
+  ],
+  "size": "L",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "backend/src/index.ts",
+      "backend/src/db/master-schema.ts",
+      "backend/src/routes/admin.ts",
+      "backend/src/cron/dispatch.ts"
+    ],
+    "create": [
+      "backend/src/services/billing/gateway.ts",
+      "backend/src/services/billing/razorpay.ts",
+      "backend/src/services/billing/stripe.ts",
+      "backend/src/services/billing/mock.ts",
+      "backend/src/services/billing/subscriptions.ts",
+      "backend/src/routes/billing.ts",
+      "backend/drizzle/master/0020_billing.sql",
+      "backend/test/billing-webhooks.test.ts",
+      "backend/test/fixtures/billing/stripe-checkout-completed.json",
+      "backend/test/fixtures/billing/razorpay-subscription-charged.json",
+      "desktop/src/app/(app)/settings/billing/page.tsx",
+      "desktop/src/lib/api/billing.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/routes/invoices.ts",
+      "backend/src/routes/payments.ts",
+      "super-admin/src/app/api/**",
+      "desktop/src/app/(app)/!(settings)/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "Follow READINESS-PLAN 4.10. Master 0020: billing_customers (tenant_id, gateway, customer_id), billing_events (gateway, event_id UNIQUE together, type, payload_hash, received_at, processed_at), platform_invoices (number, tenant_id, period, currency, subtotal, tax_lines JSON, total, status, gateway_ref, issued_at); subscriptions gets gateway, gateway_subscription_id, current_period_end, past_due_since.",
+    "gateway.ts interface; razorpay.ts (Subscriptions API create, signature HMAC-SHA256 of raw body with RAZORPAY_WEBHOOK_SECRET, events subscription.charged/halted/cancelled, payment.failed), stripe.ts (Checkout Session mode subscription with price from plan_prices via a Stripe price id column or price_data, Stripe-Signature t=,v1= HMAC-SHA256 with 300 s tolerance, events checkout.session.completed, invoice.paid, invoice.payment_failed, customer.subscription.deleted), mock.ts (local: checkout returns http://localhost/<...>/mock-checkout that, when hit through a TEST_MODE route, posts a signed mock event). All HTTP via fetch; no SDK dependency.",
+    "routes/billing.ts: POST /billing/checkout (tenant admin; plan, seats -> checkout URL; gateway by tenant market: IN -> Razorpay, else Stripe, BILLING_GATEWAY=mock overrides), GET /billing/subscription, POST /billing/cancel; public POST /api/v1/billing/webhooks/:gateway mounted before auth: verify, INSERT OR IGNORE billing_events first, process only when inserted, update subscriptions and tenant status (trial/active/past_due/expired/cancelled; delete KV tenant cache), issue platform_invoices on payment.",
+    "Daily job: past_due older than 7 days -> expired.",
+    "Desktop settings/billing page (admin only): current plan, seats, renewal date, Upgrade/Change seats (opens checkout URL in the system browser via shell.openExternal in Electron, window.open on web), invoices list with download; graceful state when billing is not configured.",
+    "Super admin: admin.ts subscription views read the new fields (console page update is small; if it needs super-admin edits, write them into the report as a follow-up rather than editing super-admin here)."
+  ],
+  "migrations": [
+    "backend/drizzle/master/0020_billing.sql"
+  ],
+  "tests": [
+    "backend/test/billing-webhooks.test.ts: fixture events signed with test secrets move a tenant trial -> active (checkout completed) -> past_due (payment failed) -> expired (daily job after 7 days) -> active again (paid); each event replayed twice changes nothing the second time; bad signature -> 400 and no row; Stripe timestamp older than 5 minutes -> 400; checkout picks Razorpay for IN and Stripe for GB."
+  ],
+  "acceptance": [
+    "Webhooks are verified and idempotent (tests).",
+    "Subscription state drives tenant status (tests)."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # pass: 0 failing files, passed >= last merged count (1294 on 2026-10-14)",
+    "cd desktop && node scripts/lint-gate.mjs"
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": []
+  },
+  "goLiveVerify": [
+    "Test-mode checkout end to end with the owner's Stripe and Razorpay test keys; live keys and webhook endpoints registered; platform invoice tax wording with the accountant (Q10 legal entity)."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "New ids use generateId() (UUIDv7) from backend/src/utils/uuid.ts. D1 conventions: TEXT ISO dates, REAL money, TEXT JSON, INTEGER booleans.",
+    "Compute HMACs over the exact raw body (await c.req.text() before any JSON parse)."
+  ]
+}

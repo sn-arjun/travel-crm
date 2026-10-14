@@ -1,0 +1,118 @@
+{
+  "id": "R103",
+  "tier": 1,
+  "title": "Local multi-tenant stack, generated wrangler config, tenant migration runner",
+  "lane": "backend",
+  "backend": true,
+  "goal": "Generate the real deploy configuration from the agency list, run database migrations for the master and every agency, and run a local stack with several agency databases.",
+  "why": "wrangler.toml [env.production] has only a name (Wrangler does not inherit bindings), ids are placeholders, MASTER_DB migrations_dir points at drizzle/tenant so master migrations are applied only by hand in seed-local.mjs, three queues used in code are unbound, and there is no way to roll a migration across agency databases.",
+  "featuresToWorks": [
+    "platform.deploy",
+    "platform.queues"
+  ],
+  "dependsOn": [
+    "R101"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R116"
+  ],
+  "size": "L",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "backend/wrangler.toml",
+      "backend/package.json",
+      "backend/scripts/seed-local.mjs",
+      "desktop/scripts/fix-stack.mjs",
+      "backend/vitest.config.ts",
+      ".gitignore"
+    ],
+    "create": [
+      "backend/wrangler.base.toml",
+      "backend/scripts/gen-wrangler.mjs",
+      "backend/scripts/migrate-tenants.mjs",
+      "backend/scripts/bundle-tenant-migrations.mjs",
+      "backend/src/db/tenant-migrations.generated.ts",
+      "backend/scripts/fixtures/registry.sample.json",
+      "backend/scripts/predeploy-guard.mjs",
+      "backend/test/tenant-migrations-bundle.test.ts",
+      "backend/scripts/gen-wrangler.selftest.mjs"
+    ],
+    "mustNotTouch": [
+      "backend/src/routes/**",
+      "backend/src/index.ts",
+      "desktop/src/**",
+      "desktop/e2e/**",
+      "super-admin/**",
+      "packages/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "backend/wrangler.base.toml: today's wrangler.toml content without [[d1_databases]] and without [env.*]; add producer bindings AI_EXTRACTION_QUEUE (travelcrm-ai-extraction-queue, consumer with max_retries 3 and dead_letter_queue travelcrm-ai-extraction-dlq) and AI_EXTRACTION_DLQ, TENANT_JOBS_QUEUE (travelcrm-tenant-jobs, consumer max_batch_size 5, max_retries 3, dlq travelcrm-tenant-jobs-dlq; R105 writes the consumer code), [observability] enabled = true, and a comment that ids are filled by gen-wrangler from env vars CF_D1_MASTER_ID, CF_KV_CACHE_ID, CF_KV_SESSIONS_ID, CF_KV_REPORT_CACHE_ID.",
+    "backend/scripts/gen-wrangler.mjs: `node scripts/gen-wrangler.mjs --env <local|dev|staging|production> [--registry <json>] [--pool N] [--single]`. Writes backend/.wrangler.<env>.toml (gitignored): base content, MASTER_DB with migrations_dir = \"drizzle/master\", one [[d1_databases]] per registry entry { binding, database_name, database_id } (local: TENANT_DB_POOL_1..N with database_name travelcrm-tenant-pool-N and database_id = deterministic local UUID), [vars] ENVIRONMENT, TENANCY_MODE (single when --single, else multi), APP_URL, API_URL, CORS_ORIGINS, EMAIL_FROM (read from process.env with local defaults), and for non-local envs a complete [env.<name>] section repeating every binding (not just name). For --env local it also writes .wrangler.local-tenantschema.toml whose MASTER_DB has migrations_dir = \"drizzle/tenant\" and migrations_table = \"d1_migrations_tenant\" (single mode: both schemas in one DB, tracked in different tables because both folders start at 0000_initial.sql). Registry JSON shape: [{ tenantId, binding, databaseName, databaseId, status }].",
+    "Production registry source: `--registry <file>` (exported JSON); add `--from-d1-remote` that runs `npx wrangler d1 execute travelcrm-master --remote --json --command \"SELECT id, db_binding, d1_database_id, status FROM tenants WHERE db_binding IS NOT NULL\"` (not run in this batch; dry-run prints the command).",
+    "backend/scripts/fixtures/registry.sample.json: three fake tenants with fake database ids, used by the dry-run gate.",
+    "backend/scripts/bundle-tenant-migrations.mjs: reads drizzle/tenant/*.sql in name order, splits statements with readD1Migrations from @cloudflare/vitest-pool-workers/config (already a dev dependency; drop comment-only statements like vitest.config.ts stripEmptyQueries does), writes src/db/tenant-migrations.generated.ts exporting TENANT_MIGRATIONS: { name: string; queries: string[] }[]. Add npm script `db:bundle-tenant` and run it.",
+    "backend/scripts/migrate-tenants.mjs: `--local | --remote --env <env>`, `--dry-run`, `--canary <tenantId>`. Order: master (wrangler d1 migrations apply travelcrm-master -c .wrangler.<env>.toml), then the canary tenant DB, then the rest in groups of 10; stop at the first failure and print which tenants are done. Local mode applies to each TENANT_DB_POOL_n by database_name.",
+    "backend/scripts/predeploy-guard.mjs + package.json: scripts deploy/deploy:staging/deploy:production become `node scripts/predeploy-guard.mjs <env> && wrangler deploy -c .wrangler.<env>.toml --env <env>`; the guard fails when the generated file is missing or older than wrangler.base.toml or still contains placeholder ids a0000000-. Add `gen:wrangler`, `migrate:tenants` scripts. db:migrate becomes `node scripts/migrate-tenants.mjs --local`.",
+    "backend/wrangler.toml stays as the developer config for plain `wrangler dev` (single mode): set [vars] ENVIRONMENT = \"development\", TENANCY_MODE = \"single\"; MASTER_DB migrations_dir = \"drizzle/master\"; delete the [env.dev|staging|production] stubs (deploys use generated files); keep [ai].",
+    "backend/scripts/seed-local.mjs: stop applying master SQL by hand (migrations do it now); accept `--multi` to register the demo tenant with db_binding TENANT_DB_POOL_1 and insert the demo admin user into that pool DB (wrangler d1 execute travelcrm-tenant-pool-1 --local -c .wrangler.local.toml); single mode keeps today's behaviour (admin@demo.com / Admin@123, tenant 01960000-0000-7000-8000-000000000001).",
+    "desktop/scripts/fix-stack.mjs: new flags `--multi` and `--pool N` (default 4). Replace writeE2eWranglerConfig with a call to `node scripts/gen-wrangler.mjs --env local [--pool N] [--single]` then strip [ai] from the generated file as today (keep --ai behaviour). DB setup: single mode applies master migrations then tenant migrations to MASTER_DB with the tenantschema config; multi mode applies master to MASTER_DB and tenant migrations to each pool DB; then seed-local.mjs [--multi]. Pass `--var TENANCY_MODE:single|multi` to wrangler dev. Record mode in slot<N>.json.",
+    "backend/vitest.config.ts: keep merged migrations; nothing else unless the generated file breaks it.",
+    ".gitignore: backend/.wrangler.*.toml, backend/.dryrun/."
+  ],
+  "migrations": [],
+  "tests": [
+    "backend/test/tenant-migrations-bundle.test.ts: TENANT_MIGRATIONS names equal the drizzle/tenant file names in order, and the count of non-empty statements matches env.TEST_MIGRATIONS tenant entries (fails when someone adds a migration without re-running db:bundle-tenant). Note: tests cannot read the file system inside workerd; compare against TEST_MIGRATIONS (names prefixed tenant_) which vitest.config.ts already passes in.",
+    "backend/scripts/gen-wrangler.selftest.mjs (Node, because workerd tests have no child_process or fs): generates production config from the sample registry and asserts 3 tenant D1 entries, an [env.production] section containing MASTER_DB, FILE_STORAGE, every queue producer, REALTIME and [vars] TENANCY_MODE = \"multi\", and no a0000000- placeholder when the CF_* id env vars are set; exits non-zero on any failure."
+  ],
+  "acceptance": [
+    "`node backend/scripts/gen-wrangler.mjs --env production --registry backend/scripts/fixtures/registry.sample.json` writes backend/.wrangler.production.toml and `cd backend && npx wrangler deploy --dry-run -c .wrangler.production.toml --env production --outdir .dryrun` exits 0.",
+    "`node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db --multi` starts; admin@demo.com logs in; the demo tenant row has db_binding TENANT_DB_POOL_1; `fix-stack up --slot 0 --reset-db` (single) still works.",
+    "`node backend/scripts/migrate-tenants.mjs --local --dry-run` prints master, canary, then the pool DBs.",
+    "The full desktop e2e suite still passes on slot 0 single mode (run once, at the end of this batch)."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)",
+    "cd backend && node scripts/gen-wrangler.selftest.mjs",
+    "cd backend && node scripts/gen-wrangler.mjs --env production --registry scripts/fixtures/registry.sample.json && npx wrangler deploy --dry-run -c .wrangler.production.toml --env production --outdir .dryrun",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db --multi && node desktop/scripts/fix-stack.mjs status --slot 1 && node desktop/scripts/fix-stack.mjs down --slot 1",
+    "node desktop/scripts/fix-stack.mjs up --slot 0 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3100 E2E_API_URL=http://localhost:8787/api/v1 npx playwright test ",
+    "node desktop/scripts/fix-stack.mjs down --slot 0"
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": [
+      "ALL"
+    ]
+  },
+  "goLiveVerify": [
+    "Real resource ids in env vars; `wrangler deploy` with the generated production file; `migrate-tenants.mjs --remote` against staging with a canary."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Windows checkout: files may have CRLF line endings. When writing regexes over file contents (scripts, tests that read SQL or TOML), split on /\\r?\\n/ and never anchor on \\n alone.",
+    "Both drizzle/master and drizzle/tenant start at 0000_initial.sql: never apply both to one DB with the same migrations_table.",
+    "fix-stack must keep working in existing worktrees: the generated config files live in backend/ and are gitignored.",
+    "The full e2e run in the gate is the expensive part (about an hour); run it once at the end, not per edit.",
+    "wrangler deploy --dry-run needs no Cloudflare login; if it asks for one, set CLOUDFLARE_ACCOUNT_ID to a dummy value and report it."
+  ]
+}

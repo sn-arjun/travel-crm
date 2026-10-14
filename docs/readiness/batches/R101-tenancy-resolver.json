@@ -1,0 +1,122 @@
+{
+  "id": "R101",
+  "tier": 1,
+  "title": "Tenancy resolver: one binding scheme, fail closed, every lookup through resolveTenantDb",
+  "lane": "backend",
+  "backend": true,
+  "goal": "Make every request, queue job and webhook use the agency's own database, and refuse to fall back to the shared master database when it is missing.",
+  "why": "backend/src/services/tenant-db.ts tenantDbFor returns env.MASTER_DB when no TENANT_DB_* binding exists, and wrangler.toml binds only MASTER_DB, so all agencies share rows, settings and logins. Binding names disagree (TENANT_DB_<d1DatabaseId> in auth/driver, TENANT_DB_<tenantId> in queues/cron, TENANT_DB_<contactId> in sms-queue.ts, a non-existent workspaces table in cron), and a UUID with hyphens is not a valid binding name anyway.",
+  "featuresToWorks": [
+    "platform.tenant-isolation"
+  ],
+  "dependsOn": [],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R114",
+    "R100"
+  ],
+  "size": "L",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "backend/src/services/tenant-db.ts",
+      "backend/src/middleware/tenant.ts",
+      "backend/src/middleware/auth.ts",
+      "backend/src/routes/auth.ts",
+      "backend/src/routes/driver.ts",
+      "backend/src/middleware/driver-auth.ts",
+      "backend/src/routes/public.ts",
+      "backend/src/queues/campaign-queue.ts",
+      "backend/src/queues/export-queue.ts",
+      "backend/src/queues/import-queue.ts",
+      "backend/src/queues/sms-queue.ts",
+      "backend/src/queues/ai-extraction-queue.ts",
+      "backend/src/queues/whatsapp-campaign-queue.ts",
+      "backend/src/queues/push-notification-queue.ts",
+      "backend/src/routes/voip-callbacks.ts",
+      "backend/src/types.ts",
+      "backend/src/db/master-schema.ts",
+      "backend/src/utils/jwt.ts",
+      "backend/src/index.ts",
+      "backend/vitest.config.ts",
+      "backend/scripts/seed-local.mjs"
+    ],
+    "create": [
+      "backend/drizzle/master/0011_tenant_db_binding.sql",
+      "backend/test/tenancy-isolation.test.ts",
+      "backend/test/tenant-db.test.ts"
+    ],
+    "mustNotTouch": [
+      "backend/wrangler.toml",
+      "backend/src/cron/**",
+      "backend/src/services/follow-up-reminders.ts",
+      "desktop/**",
+      "super-admin/**",
+      "packages/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "Master migration 0011: ALTER TABLE tenants ADD COLUMN db_binding TEXT; ADD COLUMN shard TEXT NOT NULL DEFAULT 's1'; CREATE UNIQUE INDEX tenants_db_binding_idx ON tenants(db_binding) WHERE db_binding IS NOT NULL. Backfill: UPDATE tenants SET db_binding = 'TENANT_DB_' || lower(replace(id, '-', '')) WHERE d1_database_id IS NOT NULL. Mirror both columns in db/master-schema.ts.",
+    "services/tenant-db.ts: TenantInfo gains dbBinding and shard; getTenantInfo selects them (KV cache key bumped to `tenant:v2:<id>` so stale entries without dbBinding are ignored). New tenancyMode(env): 'single' only when env.TENANCY_MODE === 'single', otherwise 'multi'. tenantDbFor(env, info): single -> env.MASTER_DB; multi -> env[info.dbBinding] or throw TenantDbUnavailableError. Delete the TENANT_DB_<tenantId> and TENANT_DB_<d1DatabaseId> lookups. Export bindingNameFor(tenantId) = `TENANT_DB_${tenantId.replace(/-/g, \"\").toLowerCase()}` for the provisioner (R104).",
+    "candidateTenantDbs: in multi mode never add MASTER_DB when no tenant resolves (return []); in single mode return [MASTER_DB]. resolveTenantDb catches TenantDbUnavailableError and returns null (callers already treat null as unknown tenant).",
+    "middleware/tenant.ts: on TenantDbUnavailableError respond 503 { success:false, error:{ code:'TENANT_DB_UNAVAILABLE' } } using utils/response.ts error(). Also block status 'cancelled' (today only suspended/expired are blocked).",
+    "Production guards in index.ts (a small middleware before routes): if ENVIRONMENT === 'production' and TEST_MODE === 'true' -> 503 for every request; if ENVIRONMENT === 'production' and TENANCY_MODE === 'single' and ALLOW_SINGLE_TENANT_PRODUCTION !== 'true' -> 503. Add to Env in types.ts, in one go, every variable Tier 1 introduces so later parallel batches never edit types.ts at the same time: TENANCY_MODE, ALLOW_SINGLE_TENANT_PRODUCTION, ENVIRONMENT, SUPER_ADMIN_EMAIL, APP_URL, QUOTES_URL, API_PUBLIC_URL, EMAIL_FROM, EMAIL_FROM_NAME, PLATFORM_SUPPORT_EMAIL, CORS_ORIGINS, ALLOW_LOOPBACK_ORIGINS, RATE_LIMIT_MULTIPLIER, CREDENTIALS_KEYS, CREDENTIALS_ACTIVE_KEY_ID, TENANT_PROVISIONER, CF_WORKER_SCRIPT_NAME, SENDGRID_WEBHOOK_PUBLIC_KEY, TURNSTILE_SECRET, OTP_DELIVERY, SUPER_ADMIN_JWT_SECRET, ERROR_REPORTER_DSN, TENANT_JOBS_QUEUE (Queue), all optional strings unless noted; remove NOTIFICATION_QUEUE from Env only if no file uses it (grep; services/missed-call-handler.ts may; if so leave it for R105 and note it).",
+    "routes/auth.ts: replace the five inline `TENANT_DB_${tenant.d1DatabaseId} || MASTER_DB` blocks (login, verify-otp, refresh-token, reset-password, setup-account; grep `bindingKey`) with resolveTenantDb / tenantDbFor. Refresh-token must reject when the tenant status is not active/trial (today it never checks status) and return 403 TENANT_INACTIVE.",
+    "Access token: add claim `db` (the binding name) in utils/jwt.ts signAccessToken payload (optional field, backwards compatible); tenant middleware uses it to skip the KV lookup only for the binding, but still checks status via getTenantInfo (status changes must apply within the KV TTL).",
+    "routes/driver.ts resolveTenantDb (local helper at ~line 62) and middleware/driver-auth.ts (~line 77): delete the local copies and call services/tenant-db.ts resolveTenantDb.",
+    "routes/public.ts (~line 26): replace c.env[`TENANT_DB_${mapping.tenant_id}`] with resolveTenantDb(env, mapping.tenant_id); 404 when null.",
+    "Queues: campaign-queue.ts (~33), export-queue.ts (~35), import-queue.ts (~34), ai-extraction-queue.ts (~84) -> resolveTenantDb(env, tenantId); sms-queue.ts (~58, ~93) uses job.contactId as a tenant id: add tenantId to the SMS job type at every producer (grep `SMS_QUEUE.send`) and resolve with it; whatsapp-campaign-queue.ts (~31, env[d1_database_id]) and push-notification-queue.ts (~60, workspaces table) -> resolveTenantDb with the tenantId carried in the message (add it at the producers if missing). A job whose tenant does not resolve is acked and logged, never run against MASTER_DB.",
+    "routes/voip-callbacks.ts callDb(): remove the final `return env.MASTER_DB`; when no database is found return null and answer the provider with an empty TwiML `<Response/>` (200) so the provider does not retry forever; tenantForCalledNumber keeps its single-tenant shortcut only in single mode.",
+    "backend/vitest.config.ts: add TENANCY_MODE: 'single' to the test bindings and miniflare `d1Databases: ['TENANT_DB_POOL_1', 'TENANT_DB_POOL_2', 'TENANT_DB_POOL_3']` (keep everything else). Existing tests stay in single mode.",
+    "backend/scripts/seed-local.mjs: keep behaviour, but insert db_binding NULL explicitly and print that the stack runs in single mode (R103 rewrites this script fully)."
+  ],
+  "migrations": [
+    "backend/drizzle/master/0011_tenant_db_binding.sql"
+  ],
+  "tests": [
+    "backend/test/tenant-db.test.ts: tenantDbFor in single mode returns MASTER_DB; in multi mode with dbBinding set returns that binding; in multi mode with no binding or an unknown binding throws (never MASTER_DB); bindingNameFor strips hyphens; candidateTenantDbs returns [] in multi mode with no tenants.",
+    "backend/test/tenancy-isolation.test.ts: apply tenant migrations to TENANT_DB_POOL_1..3 and master migrations to MASTER_DB; register tenants A/B/C with db_binding POOL_1..3; seed one admin user and one lead per pool DB; call worker.fetch with { ...env, TENANCY_MODE: 'multi' }: A's token lists only A's lead, GET B's lead id with A's token -> 404; a tenant whose db_binding names a missing binding -> 503 TENANT_DB_UNAVAILABLE; ENVIRONMENT=production + TEST_MODE=true -> 503; refresh-token for a suspended tenant -> 403.",
+    "Extend backend/test/voip-callbacks.test.ts or add a case: in multi mode a status callback for an unknown number and unknown call id writes nothing to MASTER_DB call_logs and returns 200 with <Response/>."
+  ],
+  "acceptance": [
+    "`grep -rn \"TENANT_DB_\\${\" backend/src` finds only services/tenant-db.ts (bindingNameFor).",
+    "`grep -rn \"workspaces\" backend/src/queues backend/src/routes` finds nothing (cron is R105).",
+    "No code path returns env.MASTER_DB as a tenant database when TENANCY_MODE is not single (tests prove it).",
+    "All existing backend tests pass unchanged in single mode."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)"
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": []
+  },
+  "goLiveVerify": [
+    "Workers accept TENANT_DB_<32 hex> binding names in a real deploy (R103 dry run covers syntax only)."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "New ids use generateId() (UUIDv7) from backend/src/utils/uuid.ts. D1 conventions: TEXT ISO dates, REAL money, TEXT JSON, INTEGER booleans.",
+    "Windows checkout: files may have CRLF line endings. When writing regexes over file contents (scripts, tests that read SQL or TOML), split on /\\r?\\n/ and never anchor on \\n alone.",
+    "Cron handlers (cron/*.ts, services/follow-up-reminders.ts, services/automation/schedule.ts) are R105's; do not touch them here even though they use workspaces/env.DB.",
+    "Keep the KV-cached getTenantInfo; tenant status must still reach the request path within 5 minutes. Super admin status changes in R111 will delete the KV key immediately.",
+    "miniflare d1Databases accepts an array of binding names in @cloudflare/vitest-pool-workers 0.5.x; if it rejects the option, use a record { TENANT_DB_POOL_1: \"tenant-pool-1\", ... } and say so in the report."
+  ]
+}

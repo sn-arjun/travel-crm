@@ -1,0 +1,92 @@
+{
+  "id": "R203",
+  "tier": 2,
+  "title": "Desktop sweep: remove hardcoded INR, en-IN and Asia/Kolkata from pages and components",
+  "lane": "desktop",
+  "backend": false,
+  "goal": "Make every screen use the agency's currency, date format and time zone instead of India's.",
+  "why": "Audit 02 counted 178 en-IN, 93 INR, 39 ₹, 14 Asia/Kolkata and 62 +91 lines across desktop/src; after R202 the helpers are locale-aware but pages still pass literals.",
+  "featuresToWorks": [
+    "finance.currency"
+  ],
+  "dependsOn": [
+    "R202"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R205"
+  ],
+  "size": "L",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "desktop/src/app/(app)/**",
+      "desktop/src/components/**"
+    ],
+    "create": [
+      "desktop/e2e/locale.spec.ts"
+    ],
+    "mustNotTouch": [
+      "desktop/src/lib/utils.ts",
+      "desktop/src/lib/dates.ts",
+      "desktop/src/lib/locale.ts",
+      "desktop/src/messages/**",
+      "desktop/src/lib/i18n.ts",
+      "desktop/src/app/(app)/settings/billing/**",
+      "backend/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "grep -rn \"en-IN\\|'INR'\\|\"INR\"\\|₹\\|Asia/Kolkata\\|+91\" desktop/src/app desktop/src/components; for each hit: currency formatting -> formatCurrency(amount, doc.currency) or the store default; dates -> formatDisplayDate; time zones -> the store; currency pickers default to the tenant currency; \"+91\" defaults -> tenant phoneDefaultCountry (PhoneInput gets it in R204; here only remove literal +91 defaults by reading the store).",
+    "Keep India-only features India-only by condition, not by deletion: GSTIN, HSN/SAC, UPI fields show when tax_system is gst or country is IN.",
+    "locale.spec.ts (multi slot, two agencies created through the admin API helper from R121): agency UK (GBP, en-GB, Europe/London) and agency IN; the dashboard, an invoice and a payment show £ and dd/mm/yyyy for UK and ₹ with lakh grouping for IN.",
+    "Work in folders, one at a time (dashboard, leads, contacts, itineraries, invoices/payments/credit-notes, reports, fleet, settings, components); run lint-gate after each folder."
+  ],
+  "migrations": [],
+  "tests": [
+    "desktop/e2e/locale.spec.ts as described."
+  ],
+  "acceptance": [
+    "The grep above returns only India-conditional code paths and tests (list them in the report).",
+    "Full e2e suite green on slot 0 (Indian demo)."
+  ],
+  "gate": [
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # pass: 0 failing files, passed >= last merged count (1294 on 2026-10-14)",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && npm run build",
+    "node desktop/scripts/fix-stack.mjs up --slot 0 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3100 E2E_API_URL=http://localhost:8787/api/v1 npx playwright test ",
+    "node desktop/scripts/fix-stack.mjs down --slot 0",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db --multi",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/locale.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "build": true,
+    "backendTests": false,
+    "flutter": false,
+    "specs": [
+      "ALL"
+    ]
+  },
+  "goLiveVerify": [],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Desktop UI follows desktop/audit/remake/CONTRACT.md (ds-* tokens, archetypes, FilterBar + infinite scroll, RelationCombobox, PhoneInput, useConfirm, graceful degradation). lint-gate must not rise for any touched file.",
+    "Large mechanical sweep: if it will not fit in one sitting, stop after a complete set of folders, leave the tree green and report which folders remain; the orchestrator re-runs this batch for the rest."
+  ]
+}

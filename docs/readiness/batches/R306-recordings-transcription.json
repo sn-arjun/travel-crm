@@ -1,0 +1,102 @@
+{
+  "id": "R306",
+  "tier": 3,
+  "title": "Recordings in our storage with consent and retention; transcription and call summary through metered AI",
+  "lane": "backend",
+  "backend": true,
+  "goal": "Keep call recordings safely in our own storage for a set time, announce recording to callers, and turn recordings into summaries and suggestions only when the agency has switched call AI on.",
+  "why": "Recordings stay at the provider (only the URL is saved); recording_r2_key and recording_retention_days are never written or enforced; recording starts silently; transcription has a consumer but no producer and AI_EXTRACTION_QUEUE was unbound (now bound by R103); call extraction calls Anthropic directly without charging AI credits (services/ai-extraction.ts ~109-122); cost model items 8-9.",
+  "featuresToWorks": [
+    "calls.recording",
+    "calls.transcripts",
+    "calls.ai-summary"
+  ],
+  "dependsOn": [
+    "R303"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [],
+  "size": "L",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "backend/src/routes/voip-callbacks.ts",
+      "backend/src/queues/ai-extraction-queue.ts",
+      "backend/src/services/ai-extraction.ts",
+      "backend/src/services/deepgram.ts",
+      "backend/src/services/ai-pricing.ts",
+      "backend/src/services/ai-router.ts",
+      "backend/src/routes/calls.ts",
+      "backend/src/routes/transcripts.ts",
+      "backend/src/cron/dispatch.ts",
+      "desktop/src/components/domain/call-transcript-panel.tsx",
+      "desktop/src/app/(app)/communication/calls/[id]/page.tsx",
+      "desktop/src/app/(app)/settings/voip/page.tsx"
+    ],
+    "create": [
+      "backend/src/services/voip/recordings.ts",
+      "backend/test/call-recordings.test.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/routes/voip.ts",
+      "backend/src/services/voip/metering.ts",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "Consent: recording policy setting announce (default) | off | on_request; inbound plays the agency's announcement before ringing; outbound plays it on answer or the in-call panel shows the line with a \"consent given\" tick (CALL-AUTOMATION 3.5).",
+    "calls.store_recording job on call.recording_ready: fetch the provider recording (credentials from the encrypted settings), put to R2 `${tenantId}/recordings/<callId>.mp3` (region bucket from R212 if merged), store recording_r2_key, bytes and expires_at from retention, then delete at the provider (provider method; mock in tests). Not paused by automations_paused.",
+    "Playback: GET /calls/:id/recording returns a short-lived signed URL (HMAC over key + expiry, verified by the files route) only for roles allowed by CALL-AUTOMATION 3.7, and logs the play to the activity log. Daily retention job deletes expired audio and keeps the call record and summary. Contact erasure (R208) deletes recordings.",
+    "Transcription producer: when call AI is on for the agency, credits suffice and duration >= 20 s, enqueue transcribe_call on AI_EXTRACTION_QUEUE; consumer uses the standard engine (Workers AI @cf/openai/whisper-large-v3-turbo through the AI router so credits are charged per minute: new credit class transcribe_standard = 3/min, transcribe_premium = 25/min with Deepgram when DEEPGRAM_API_KEY is set and the agency chose premium).",
+    "Summary: calls.summarise runs through AIRouter (metered, Workers AI JSON model by default), never a direct Anthropic call; output becomes suggestions (lead update, tasks, follow-up, draft reply) via the engine as CALL-AUTOMATION 2.4; \"Not summarised: AI credits used up\" state with \"Summarise now\"."
+  ],
+  "migrations": [],
+  "tests": [
+    "backend/test/call-recordings.test.ts: recording_ready stores to local R2 and calls provider delete (mock); signed URL works before expiry and fails after; salesperson cannot play another agent's call; retention job deletes audio after expiry; transcription is not enqueued when call AI is off or credits are 0; credit charge per minute recorded; summary path uses the router (stub the router; no real AI)."
+  ],
+  "acceptance": [
+    "No direct Anthropic call remains in call code (grep api.anthropic.com in services/ai-extraction.ts).",
+    "Recordings move to R2 and expire (tests)."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # pass: 0 failing files, passed >= last merged count (1294 on 2026-10-14)",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/calls.spec.ts e2e/calls-simulator.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": [
+      "e2e/calls.spec.ts",
+      "e2e/calls-simulator.spec.ts"
+    ]
+  },
+  "goLiveVerify": [
+    "The 20-call transcription quality test (Hindi, Hinglish, Tamil, Arabic, Indian English) with capped paid requests; consent wording per market from the lawyer; G1 item 8 (recording default) and 9 (call AI default)."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "No paid AI anywhere: never run fix-stack with --ai; vitest-pool-workers cannot bind Workers AI (vitest.config.ts strips [ai]), so AI paths must be tested through the existing 503 AI_UNAVAILABLE / deterministic fallbacks or with a stubbed router.",
+    "Read docs/decisions/ADR-001-voip.md (sections 4, 6, 7) and docs/CALL-AUTOMATION.md (sections 2, 3, 4) before editing; they are the specification. G1 (provider choice and India shape) is not signed: everything here stays behind the VoipProvider interface.",
+    "Desktop UI follows desktop/audit/remake/CONTRACT.md (ds-* tokens, archetypes, graceful degradation when VoIP is not configured). lint-gate must not rise for any touched file."
+  ]
+}

@@ -1,0 +1,100 @@
+{
+  "id": "R102",
+  "tier": 1,
+  "title": "Transactional email with a local outbox; app URLs and sender from config",
+  "lane": "backend",
+  "backend": true,
+  "goal": "Send welcome, invite and password-reset emails from one place, with links that point at the real app address, and capture them in a local outbox when no email key is set.",
+  "why": "No welcome email exists; user invite returns an inviteUrl but sends nothing (routes/users.ts); reset and invite links are hardcoded to https://app.travelcrm.pro (routes/auth.ts:571, routes/users.ts:312, routes/admin.ts:669) and the sender to noreply@travelcrm.pro (services/email.ts, sendgrid.ts, campaign-queue.ts, sms-queue.ts); APP_URL and SENDGRID_FROM_EMAIL are pushed as secrets but never read. The handoff scenario needs to read the welcome email locally.",
+  "featuresToWorks": [
+    "team.invite-email",
+    "auth.password-reset"
+  ],
+  "dependsOn": [
+    "R101"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R120"
+  ],
+  "size": "M",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "backend/src/services/email.ts",
+      "backend/src/services/sendgrid.ts",
+      "backend/src/routes/auth.ts",
+      "backend/src/routes/users.ts",
+      "backend/src/routes/admin.ts",
+      "backend/src/routes/itineraries.ts",
+      "backend/src/queues/campaign-queue.ts",
+      "backend/src/queues/sms-queue.ts",
+      "backend/src/routes/test.ts",
+      "backend/src/types.ts",
+      ".env.example",
+      "desktop/.env.example"
+    ],
+    "create": [
+      "backend/src/services/mail/transactional.ts",
+      "backend/src/services/mail/templates.ts",
+      "backend/src/utils/app-urls.ts",
+      "backend/test/transactional-email.test.ts"
+    ],
+    "mustNotTouch": [
+      "backend/wrangler.toml",
+      "backend/src/index.ts",
+      "desktop/src/**",
+      "super-admin/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "utils/app-urls.ts: appUrl(env) = env.APP_URL || 'http://localhost:3100'; quoteUrl(env, token) = `${env.QUOTES_URL || appUrl(env) + \"/q\"}/${token}`; emailFrom(env) = { email: env.EMAIL_FROM || 'noreply@localhost.test', name: env.EMAIL_FROM_NAME || 'TravelCRM Pro' }. Add APP_URL, QUOTES_URL, EMAIL_FROM, EMAIL_FROM_NAME, PLATFORM_SUPPORT_EMAIL to Env.",
+    "Replace every hardcoded travelcrm.pro URL and sender (grep -rn \"travelcrm.pro\" backend/src) with these helpers.",
+    "services/mail/transactional.ts: sendTransactional(env, { to, template, data, tenantId? }) renders templates.ts (welcome_admin, invite_user, reset_password, password_changed, platform_enquiry), then: if SENDGRID_API_KEY is set, send through services/email.ts sendEmail; otherwise (or when TEST_MODE is true) write { id, to, subject, html, text, template, createdAt } to KV CACHE under `outbox:<uuidv7>` with a 7-day TTL and also console.log a one-line summary (never the password itself in logs).",
+    "Templates: plain, accessible HTML + text; welcome_admin includes agency name, login email, temporary password (only in the email body), desktop download link placeholder `${appUrl}/download`, quick-start link; invite_user includes the setup-account link; reset includes the reset link and expiry.",
+    "routes/users.ts invite (~242-317): after creating the invite, call sendTransactional(invite_user); keep returning inviteUrl for admins who want to copy it. routes/auth.ts forgot-password: send reset_password through sendTransactional.",
+    "routes/test.ts (TEST_MODE only): GET /test/outbox?to=<email> lists outbox entries newest first; DELETE /test/outbox clears them. Both 404 unless TEST_MODE === 'true'.",
+    "Update .env.example and desktop/.env.example to list APP_URL, QUOTES_URL, EMAIL_FROM, EMAIL_FROM_NAME (names only, no values) and drop the never-read variables the audit listed (SENDGRID_FROM_EMAIL stays as an alias only if a test needs it)."
+  ],
+  "migrations": [],
+  "tests": [
+    "backend/test/transactional-email.test.ts: with SENDGRID_API_KEY blank and TEST_MODE true, inviting a user writes one outbox entry whose html contains `${APP_URL}/setup-account?token=`; forgot-password writes a reset entry; GET /test/outbox returns them; with SENDGRID_API_KEY set and fetch mocked (vi.spyOn(globalThis, \"fetch\")), the SendGrid endpoint is called with the configured sender; no template output contains \"travelcrm.pro\"."
+  ],
+  "acceptance": [
+    "`grep -rn \"travelcrm.pro\" backend/src` returns nothing.",
+    "Invite and reset emails appear in /test/outbox on the local stack.",
+    "Existing auth and users tests still pass."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)"
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": []
+  },
+  "goLiveVerify": [
+    "SendGrid domain authentication (SPF/DKIM) for EMAIL_FROM; a real welcome email lands in an inbox, not spam."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "vitest.config.ts supplies SENDGRID_API_KEY as a fake non-empty value; tests that need the outbox path must pass { ...env, SENDGRID_API_KEY: \"\" } to worker.fetch.",
+    "Do not add the welcome email call to the provisioning route here; R104 calls sendTransactional(welcome_admin)."
+  ]
+}

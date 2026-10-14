@@ -1,0 +1,98 @@
+{
+  "id": "R309",
+  "tier": 3,
+  "title": "WordPress site provisioning: backend queue calls the provisioner, signed and retried, status in the super admin console",
+  "lane": "fullstack",
+  "backend": true,
+  "goal": "Let the super admin give an agency a WordPress website and see whether it is being built, live or failed.",
+  "why": "backend/src/queues/wp-provision-queue.ts is a logging stub; the super admin WordPress route inserts a row with the queue send commented out; oci-provisioner/src/server.ts defaults PROVISIONER_SECRET to 'change-me' and compares it with !== (not constant time); MAX_SITES default 50 ignores memory.",
+  "featuresToWorks": [
+    "wp.provision-queue",
+    "wp.provisioner",
+    "wp.console-page"
+  ],
+  "dependsOn": [
+    "R111",
+    "R112"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R301"
+  ],
+  "size": "M",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "backend/src/queues/wp-provision-queue.ts",
+      "backend/src/routes/admin.ts",
+      "backend/src/db/master-schema.ts",
+      "oci-provisioner/src/server.ts",
+      "oci-provisioner/src/wp-setup.ts",
+      "super-admin/src/app/(authenticated)/wordpress/page.tsx"
+    ],
+    "create": [
+      "backend/drizzle/master/0025_wordpress_status.sql",
+      "backend/test/wp-provisioning.test.ts",
+      "oci-provisioner/src/signature.ts",
+      "oci-provisioner/test/signature.test.mjs"
+    ],
+    "mustNotTouch": [
+      "backend/src/services/voip-provider.ts",
+      "terraform/**",
+      "desktop/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "Master 0025: add to wordpress_sites only the columns that are missing (read 0006_wordpress_sites_expand.sql first): status queued|provisioning|active|failed|suspended, last_error, attempts, provisioner_site_id, admin_url, updated_at.",
+    "Backend admin endpoints (super admin, audited): POST /admin/tenants/:id/wordpress (enqueue WP_PROVISION_QUEUE with tenantId, subdomain, company, adminEmail, branding), POST /admin/wordpress/:siteId/retry, GET /admin/wordpress.",
+    "Queue consumer: POST ${OCI_PROVISIONER_URL}/sites with X-Timestamp and X-Signature = hex HMAC-SHA256(timestamp + \".\" + body, PROVISIONER_SECRET); 3 retries with backoff then failed + last_error; on success active with admin URL; welcome email to the agency admin with the site URL (credentials delivered by WordPress's own password-reset email, never in our email).",
+    "oci-provisioner: refuse to start without PROVISIONER_SECRET (exit 1 with a message); verify timestamp within 300 s and the HMAC with crypto.timingSafeEqual (signature.ts); MAX_SITES derived from os.totalmem() minus 2 GB reserve divided by the per-site budget unless MAX_SITES is set; GET /sites/:slug status endpoint.",
+    "super-admin wordpress page: list from GET /admin/wordpress with status badges and Retry; create from the tenant page."
+  ],
+  "migrations": [
+    "backend/drizzle/master/0025_wordpress_status.sql"
+  ],
+  "tests": [
+    "backend/test/wp-provisioning.test.ts: queued job posts a correctly signed request (mocked fetch), success -> active, 500 three times -> failed with last_error, retry endpoint requeues; non-super-admin -> 403.",
+    "oci-provisioner/test/signature.test.mjs (node --test): valid signature accepted, old timestamp rejected, wrong secret rejected; server refuses to start without the secret.",
+    "If Docker is installed (`docker version` succeeds): build oci-provisioner, run it with a test secret, run the backend consumer against it for one site, record the result; otherwise record \"Docker not present, mocked\"."
+  ],
+  "acceptance": [
+    "No default secret in oci-provisioner (grep change-me).",
+    "Status visible and retryable in the console."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)",
+    "cd super-admin && npx tsc --noEmit && npm run lint && npm run build",
+    "cd oci-provisioner && node --test test/",
+    "cd oci-provisioner && npx tsc --noEmit"
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": []
+  },
+  "goLiveVerify": [
+    "Oracle VM up with the terraform from R310; wildcard DNS and Caddy TLS for agency subdomains; one real site end to end."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "oci-provisioner is not an npm workspace: do not run npm install at the repo root for it; if it needs its own install, run it inside oci-provisioner/ only after confirming it has no package-lock conflict with the root workspace (it is not listed in root workspaces, so a local install is safe there)."
+  ]
+}

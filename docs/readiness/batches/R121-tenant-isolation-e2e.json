@@ -1,0 +1,88 @@
+{
+  "id": "R121",
+  "tier": 1,
+  "title": "Three-agency isolation end-to-end test (Tier 1 exit)",
+  "lane": "e2e",
+  "backend": false,
+  "goal": "Prove in the real app that three agencies on three plans cannot see each other's leads, files, settings or live updates.",
+  "why": "Program plan W3 and Tier 1 exit: \"three-agency isolation e2e passes\"; nothing tests isolation end to end today (platform.tenant-isolation was broken).",
+  "featuresToWorks": [
+    "platform.tenant-isolation"
+  ],
+  "dependsOn": [
+    "R104",
+    "R106",
+    "R107",
+    "R108",
+    "R113"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [],
+  "size": "M",
+  "newDependencies": [],
+  "files": {
+    "edit": [],
+    "create": [
+      "desktop/e2e/tenant-isolation.spec.ts",
+      "desktop/e2e/helpers/tenants.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/**",
+      "desktop/src/**",
+      "desktop/e2e/helpers/auth.ts",
+      "desktop/e2e/fixtures.ts",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "helpers/tenants.ts: createSuperAdminToken(apiUrl) (via the TEST_MODE route R113 added, or SQL through a test route), createAgency(apiUrl, token, { plan, slug }) -> { tenantId, adminEmail, tempPassword } (POST /admin/tenants), firstLogin(page, agency) (outbox password -> change password -> skip onboarding).",
+    "tenant-isolation.spec.ts (serial): on a --multi slot (pool 4: demo + 3), create agencies A (basic), B (pro), C (enterprise); each admin creates a lead with a unique name, uploads a file, sets company name; API checks with A's token: GET B's lead id -> 404; list leads never contains B/C names; GET and DELETE B's file key -> 403; GET /settings returns A's company only; WebSocket: open A's and B's sockets (same URL pattern the desktop uses), create a lead in B, assert A receives no message within 3 s while B does; UI check: A's leads page shows only A's lead; plan gates: A (basic) gets 403 upgrade on an AI route, C does not.",
+    "Run three times in a row on a reset DB (program plan W5 rule for stability) and record the results."
+  ],
+  "migrations": [],
+  "tests": [
+    "desktop/e2e/tenant-isolation.spec.ts as above."
+  ],
+  "acceptance": [
+    "tenant-isolation.spec.ts passes three consecutive runs on `fix-stack up --slot 1 --reset-db --multi`.",
+    "The Tier 1 exit list in READINESS-PLAN section 1 is re-run and recorded by the orchestrator."
+  ],
+  "gate": [
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db --multi",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/tenant-isolation.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db --multi",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/tenant-isolation.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db --multi",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/tenant-isolation.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": false,
+    "flutter": false,
+    "specs": [
+      "e2e/tenant-isolation.spec.ts"
+    ]
+  },
+  "goLiveVerify": [
+    "Repeat on staging with real D1 databases created by the Cloudflare provisioner."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "If any isolation check fails, do not patch backend code here: report the failing check with the request/response and the orchestrator opens a fix batch."
+  ]
+}

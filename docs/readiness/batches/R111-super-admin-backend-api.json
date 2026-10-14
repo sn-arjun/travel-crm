@@ -1,0 +1,100 @@
+{
+  "id": "R111",
+  "tier": 1,
+  "title": "Super admin backend API: its own login, tenant lifecycle writes, AI credit top-up, impersonation, full audit",
+  "lane": "backend",
+  "backend": true,
+  "goal": "Give the operator console one secure backend to talk to for every agency change, with every action recorded.",
+  "why": "The standalone super-admin app writes MASTER_DB directly (34 API routes with getCloudflareContext) and its seed route is public; backend routes/admin.ts is read-only; requireSuperAdmin (middleware/require-super-admin.ts) needs a tenant user login whose email matches; suspend, reactivate, delete and provisioning write no audit rows; there is no impersonation or AI-credit top-up.",
+  "featuresToWorks": [
+    "sa.login",
+    "sa.tenant-lifecycle",
+    "sa.feature-flags",
+    "sa.audit-log",
+    "sa.impersonation",
+    "sa.tenants-list",
+    "sa.dashboard"
+  ],
+  "dependsOn": [
+    "R104",
+    "R109"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R113"
+  ],
+  "size": "L",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "backend/src/routes/admin.ts",
+      "backend/src/middleware/require-super-admin.ts",
+      "backend/src/middleware/auth.ts",
+      "backend/src/index.ts",
+      "backend/src/db/master-schema.ts",
+      "backend/src/routes/admin-tenants.ts"
+    ],
+    "create": [
+      "backend/src/routes/admin-auth.ts",
+      "backend/src/services/admin/audit.ts",
+      "backend/scripts/create-super-admin.mjs",
+      "backend/drizzle/master/0017_impersonation_audit.sql",
+      "backend/test/super-admin-api.test.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/routes/auth.ts",
+      "backend/src/middleware/tenant.ts",
+      "super-admin/**",
+      "desktop/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "routes/admin-auth.ts mounted at /api/v1/admin/auth before authMiddleware (add the path to PUBLIC_PATHS in middleware/auth.ts): POST /login checks super_admins (PBKDF2 hashes made by super-admin/src/lib/auth.ts: port its verify to WebCrypto here, constant-time compare), rate limit 5 per 15 minutes per IP and lockout after 5 failures (like the console today), returns a JWT signed with SUPER_ADMIN_JWT_SECRET (HS256, aud 'super-admin', 2 h) and writes super_admin_login_log. POST /logout records it. No seed route: backend/scripts/create-super-admin.mjs creates the first super admin from the command line (prompts or --email/--password-stdin; writes via wrangler d1 execute against --local or --remote config).",
+    "require-super-admin.ts: accept only the super admin JWT (aud super-admin) from the Authorization header; keep the old tenant-email path only when isTestMode for existing tests, then update those tests to use the new token and delete the old path.",
+    "routes/admin.ts writes (all audited through services/admin/audit.ts logAdminAction(env, actor, action, targetTenantId, before, after)): POST /admin/tenants/:id/suspend, /reactivate, /cancel (status cancelled + subscription cancelled; data kept), PUT /admin/tenants/:id/plan (validates plan key against the catalogue), PUT /admin/tenants/:id/features (tenant_feature_flags), PUT /admin/tenants/:id/caps (tenant_usage_caps overrides), POST /admin/tenants/:id/ai-credits { credits, note } (adds to the period allowance), GET /admin/audit-log (filter, paginated), plus the dashboard/stats/reports reads the console needs (port the SQL from super-admin/src/app/api/dashboard/*, reports/*, subscriptions/* routes so R112 can switch to them; list each ported route in the report). Each status change deletes the KV tenant cache entry.",
+    "Fix routes/admin.ts tenant counts (~1007-1021): counts per tenant must query that tenant's DB via resolveTenantDb (the tenant_id columns do not exist), with a cap of 50 tenants per request and caching for 10 minutes.",
+    "Impersonation: POST /admin/tenants/:id/impersonate { reason } (reason required) issues a normal tenant access token for the tenant's first active admin with extra claims imp = superAdminId and a 30-minute lifetime, no refresh token; master 0017 impersonation_sessions (id, super_admin_id, tenant_id, user_id, reason, started_at, ended_at); every request made with an imp token is logged to the tenant's activity log with actor \"Support (super admin name)\" (add in authMiddleware: if payload.imp, set c.var.impersonatedBy). The desktop shows a banner when the claim is present (R112 adds it, or note as a request).",
+    "Super admin password changes and 2FA are out of scope here (Tier 2 R209 covers staff 2FA; super admin TOTP is listed as a follow-up)."
+  ],
+  "migrations": [
+    "backend/drizzle/master/0017_impersonation_audit.sql"
+  ],
+  "tests": [
+    "backend/test/super-admin-api.test.ts: login with a seeded PBKDF2 super admin returns a token; 6th wrong password -> 429; a tenant admin token on /admin/* -> 403; suspend -> tenant requests 403 within the same test (KV entry deleted) and an audit row with before/after; plan change to an unknown key -> 400; AI credit top-up raises the allowance; impersonation without reason -> 400, with reason returns a token whose requests appear in the tenant activity log with the support actor and expire after 30 minutes (check exp claim)."
+  ],
+  "acceptance": [
+    "Every write under /admin/* creates an audit row (test iterates the routes).",
+    "No public route can create a super admin."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)"
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": []
+  },
+  "goLiveVerify": [
+    "First super admin created with create-super-admin.mjs --remote using a fresh password; SUPER_ADMIN_JWT_SECRET set."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "PBKDF2 parameters must match super-admin/src/lib/auth.ts exactly (iterations, hash, salt format) or existing super admins cannot log in; read that file first."
+  ]
+}

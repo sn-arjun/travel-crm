@@ -1,0 +1,100 @@
+{
+  "id": "R106",
+  "tier": 1,
+  "title": "Security: tenant-scoped files, real login limits, CORS and URLs from config, rate limits applied, TEST_MODE fenced",
+  "lane": "backend",
+  "backend": true,
+  "goal": "Stop users reading or deleting other agencies' files, make password guessing impractical, accept only the real app addresses, and make test shortcuts impossible in production.",
+  "why": "routes/files.ts GET and DELETE accept any key with no tenant-prefix or role check and serve with Cache-Control public; login allows 1,000 attempts per 15 minutes and locks at 50 failures (routes/auth.ts ~104-115); apiRateLimit is defined in middleware/rate-limit.ts but never applied; CORS allows any *.pages.dev origin with credentials and no production domain (index.ts ~131-145); TEST_MODE also bypasses provider signatures, driver OTP and the inbound-email secret.",
+  "featuresToWorks": [
+    "documents.file-store",
+    "platform.cors",
+    "platform.test-mode",
+    "auth.login"
+  ],
+  "dependsOn": [
+    "R101"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R108"
+  ],
+  "size": "M",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "backend/src/routes/files.ts",
+      "backend/src/routes/auth.ts",
+      "backend/src/index.ts",
+      "backend/src/middleware/rate-limit.ts",
+      "backend/src/routes/test.ts",
+      "backend/src/routes/public.ts",
+      "backend/src/routes/exports.ts"
+    ],
+    "create": [
+      "backend/test/security-hardening.test.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/routes/voip-callbacks.ts",
+      "backend/src/routes/webhooks.ts",
+      "backend/src/routes/chatbot.ts",
+      "desktop/**",
+      "super-admin/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "files.ts: GET and DELETE require the decoded key to start with `${tenantId}/` (403 otherwise, and 404 for a missing object only after the prefix check); reject keys containing '..' or a leading '/'; DELETE allowed for admin and sales_manager or the uploader (store uploaderId in R2 customMetadata on upload); responses use Cache-Control private, max-age=300; keep the upload contract unchanged. Check every other R2 read in routes (grep FILE_STORAGE.get) for the same prefix rule and list any that serve keys from other prefixes (documents, visa, driver photos) in the report, fixing those that take a client-supplied key.",
+    "routes/exports.ts: require the reports or settings export permission via requirePermission (middleware/rbac.ts) as other routes do; view_only and salesperson cannot export all data.",
+    "auth.ts login: rate limit 10 attempts per 15 minutes per IP+email and 50 per hour per IP (two rateLimit calls); lockout after 10 consecutive failures for 15 minutes; keep the same 429/423 shapes. OTP and forgot-password limits unchanged.",
+    "Apply apiRateLimit (middleware/rate-limit.ts) to /api/v1/* after auth with a per-user key (userId) at 600 requests per minute, and uploadRateLimit to POST /files/upload; tests must not hit it (raise via env RATE_LIMIT_MULTIPLIER when TEST_MODE is true).",
+    "CORS (index.ts): allowed origins come from env.CORS_ORIGINS (comma-separated); localhost:* allowed only when ENVIRONMENT is development/dev/local/test or TEST_MODE is true; remove the *.pages.dev wildcard; Electron's packaged app loads from http://127.0.0.1:<port> which counts as localhost only in dev, so add `http://127.0.0.1` and `http://localhost` with any port when env.ALLOW_LOOPBACK_ORIGINS === 'true' (set for production too, because the desktop app is a local origin; document why).",
+    "TEST_MODE fence: one helper isTestMode(env) = env.TEST_MODE === 'true' && env.ENVIRONMENT !== 'production'; replace every direct TEST_MODE check in backend/src (grep) with it, so production can never enable the reset route, fixed OTP or signature bypass even if the var leaks. R101 already refuses to serve in that case; this is defence in depth.",
+    "public.ts quote links: return 410 when the link is expired or revoked (check quotation_links columns; add expiry check if columns exist, else note it), add X-Robots-Tag noindex and a 60 per minute per IP limit."
+  ],
+  "migrations": [],
+  "tests": [
+    "backend/test/security-hardening.test.ts: tenant A cannot GET or DELETE `${tenantB}/x.png` (403) even with a valid token; a salesperson cannot delete an admin's upload; key with ../ -> 400; the 11th wrong password in 15 minutes -> 429 or 423; CORS preflight from https://evil.pages.dev gets no Access-Control-Allow-Origin, from a CORS_ORIGINS entry gets it; isTestMode false when ENVIRONMENT=production; view_only export -> 403."
+  ],
+  "acceptance": [
+    "No R2 read or delete takes a client key without the tenant prefix check.",
+    "Existing e2e helpers still log in (they use few attempts)."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/auth-shell.spec.ts e2e/documents.spec.ts e2e/import-export.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": [
+      "e2e/auth-shell.spec.ts",
+      "e2e/documents.spec.ts",
+      "e2e/import-export.spec.ts"
+    ]
+  },
+  "goLiveVerify": [
+    "CORS_ORIGINS for the real domains; WAF/rate limiting rules at the Cloudflare edge as a second layer."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "The desktop app shows uploaded images via /api/v1/files/<key> with the bearer token (check desktop/src for how images are fetched; if <img src> is used without auth today it already fails auth, so do not loosen auth)."
+  ]
+}

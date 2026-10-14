@@ -1,0 +1,98 @@
+{
+  "id": "R204",
+  "tier": 2,
+  "title": "Phones by tenant country everywhere; full country list in desktop and driver app; Flutter currency formatting",
+  "lane": "fullstack",
+  "backend": true,
+  "goal": "Accept and display phone numbers correctly for every target country, and show money in the driver app in the agency's currency.",
+  "why": "backend/src/utils/phone.ts assumes country code 91 and 10 digits; the desktop PhoneInput has 30 codes; the driver app phone screen offers +91, +971, +966 and +1 only; packages/shared/lib/utils/currency_utils.dart uses lakh/crore grouping for everyone.",
+  "featuresToWorks": [
+    "driver.languages",
+    "platform.international"
+  ],
+  "dependsOn": [
+    "R202"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R208"
+  ],
+  "size": "M",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "backend/src/utils/phone.ts",
+      "desktop/src/components/ui/phone-input.tsx",
+      "desktop/src/lib/phone.ts",
+      "desktop/src/lib/phone.test.ts",
+      "packages/driver_app/lib/features/auth/presentation/screens/phone_input_screen.dart",
+      "packages/shared/lib/utils/currency_utils.dart"
+    ],
+    "create": [
+      "desktop/src/lib/countries.ts",
+      "packages/shared/lib/constants/countries.dart",
+      "backend/test/utils/phone.test.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/routes/contacts.ts",
+      "backend/src/routes/marketing/**",
+      "landing/**",
+      "super-admin/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "Backend normalizePhone(raw, defaultCountry = tenant phone_default_country || 'IN'): E.164 using a static calling-code table for all ISO countries (generate desktop/src/lib/countries.ts and a backend copy from one source list: name, iso2, dial code, national number length range); callers that have a tenant context pass it (grep normalizePhone callers; inbound webhooks use the tenant of the receiving address).",
+    "Desktop PhoneInput: full country list with search, default from the locale store phoneDefaultCountry.",
+    "Driver app: country list from packages/shared/lib/constants/countries.dart with search; default from the agency (login response country) or device locale.",
+    "currency_utils.dart: format(amount, currencyCode, locale) via intl NumberFormat.simpleCurrency; lakh grouping only for en_IN; driver screens pass the agency currency from the login response."
+  ],
+  "migrations": [],
+  "tests": [
+    "backend/test/utils/phone.test.ts: UK 07xxx -> +447..., UAE 05x -> +9715..., US 10 digits -> +1..., India unchanged, ambiguous input with tenant default.",
+    "desktop phone.test.ts updated; Flutter unit test for currency_utils (INR lakh, GBP, AED)."
+  ],
+  "acceptance": [
+    "No hardcoded 91 default in backend utils (grep).",
+    "flutter analyze clean, tests green."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # pass: 0 failing files, passed >= last merged count (1294 on 2026-10-14)",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "tasklist | findstr /i \"java.exe dart.exe flutter\"   # must print nothing; if a build is running, wait and ask the orchestrator",
+    "\"C:/Windows/SysWOW64/WindowsPowerShell/v1.0/powershell.exe\" -Command \"cd C:/Users/Admin/Downloads/pro/CRM/packages/driver_app; flutter analyze; flutter test\"",
+    "node desktop/scripts/fix-stack.mjs up --slot 0 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3100 E2E_API_URL=http://localhost:8787/api/v1 npx playwright test e2e/contacts.spec.ts e2e/fleet-drivers.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 0"
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "build": false,
+    "backendTests": true,
+    "flutter": true,
+    "specs": [
+      "e2e/contacts.spec.ts",
+      "e2e/fleet-drivers.spec.ts"
+    ]
+  },
+  "goLiveVerify": [],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Somebody (probably the owner) may be building packages/driver_app on this machine. Before editing anything under packages/driver_app run `tasklist | findstr /i \"java.exe dart.exe flutter\"`; if Gradle or Flutter is running, stop and ask the orchestrator. Flutter commands only through x86 PowerShell.",
+    "Desktop UI follows desktop/audit/remake/CONTRACT.md (ds-* tokens, archetypes, FilterBar + infinite scroll, RelationCombobox, PhoneInput, useConfirm, graceful degradation). lint-gate must not rise for any touched file."
+  ]
+}

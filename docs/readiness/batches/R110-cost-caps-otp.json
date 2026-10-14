@@ -1,0 +1,116 @@
+{
+  "id": "R110",
+  "tier": 1,
+  "title": "Cost caps: SMS, WhatsApp, email and login-code allowances enforced; cheaper, abuse-proof login codes",
+  "lane": "backend",
+  "backend": true,
+  "goal": "Make sure no agency can run up an open-ended messaging, login-code or calling bill: every channel stays included up to its plan cap, then the agency upgrades or buys credits priced at cost + 20%.",
+  "why": "COST-MODEL.md: every plan loses money as coded because platform-paid SMS (about ₹8 per Indian SMS via Twilio), WhatsApp via Twilio (about ₹0.48 per message before Meta's fee) and Twilio Verify login codes (about ₹12.90 each) have no cap. checkUsageCap is applied only to /ai/* (index.ts ~227); sms_per_month, whatsapp_messages_per_month and email_sends_per_month caps exist as keys but are never checked. OTP send is limited only per IP+phone (3 per 10 minutes, routes/auth.ts ~254) with no per-tenant or per-day ceiling; driver OTP has its own log table.",
+  "featuresToWorks": [
+    "auth.otp",
+    "inbox.compose",
+    "inbox.bulk-send",
+    "marketing.campaign-send"
+  ],
+  "dependsOn": [
+    "R109",
+    "R105"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R117"
+  ],
+  "size": "L",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "backend/src/routes/communications.ts",
+      "backend/src/queues/sms-queue.ts",
+      "backend/src/queues/campaign-queue.ts",
+      "backend/src/queues/whatsapp-campaign-queue.ts",
+      "backend/src/queues/email-queue.ts",
+      "backend/src/routes/auth.ts",
+      "backend/src/routes/driver.ts",
+      "backend/src/services/twilio.ts",
+      "backend/src/middleware/usage-cap.ts",
+      "backend/src/db/master-schema.ts",
+      "backend/src/routes/settings.ts"
+    ],
+    "create": [
+      "backend/src/services/metering/meter.ts",
+      "backend/src/services/auth/login-codes.ts",
+      "backend/drizzle/master/0016_otp_requests.sql",
+      "backend/test/metering-caps.test.ts",
+      "backend/test/login-codes.test.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/index.ts",
+      "backend/src/durable-objects/**",
+      "desktop/**",
+      "super-admin/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "services/metering/meter.ts: meterOutbound(env, tenantId, channel: 'sms'|'whatsapp_utility'|'whatsapp_marketing'|'email'|'otp', count = 1): reads the plan allowance (R109 catalogue) and tenant_usage_caps (per period key from R105), atomically increments with a conditional UPDATE ... WHERE current_usage + ? <= max_value (D1 single statement) and returns { allowed, remaining }; when not allowed throws AllowanceExhausted. Fallback to the prepaid balance is a hook (returns false until R206 implements it). WhatsApp category comes from the template's category (utility vs marketing); free-form replies inside the 24 h window are not metered.",
+    "Call meterOutbound before every paid send: routes/communications.ts send (Communication Hub; respond 402 { code: 'ALLOWANCE_EXHAUSTED', channel, remaining: 0 } before calling the provider), queues/sms-queue.ts, campaign-queue.ts and whatsapp-campaign-queue.ts (per recipient; when exhausted mid-campaign, mark remaining recipients skipped_allowance and finish the campaign with a clear status), email-queue.ts.",
+    "Login codes (services/auth/login-codes.ts): generate a 6-digit code in the Worker (crypto.getRandomValues), store SHA-256(code + phone/email + tenant) in KV with 10-minute TTL and 5 verify attempts; deliver by: email for staff users who have an email (default), WhatsApp authentication template when OTP_DELIVERY includes 'whatsapp' and a platform WhatsApp sender is configured, Twilio Verify only when OTP_DELIVERY includes 'twilio_verify' (fallback the owner can switch off). routes/auth.ts send-otp/verify-otp and routes/driver.ts OTP use it. TEST_MODE fixed code behaviour stays behind isTestMode. CHANGE (owner 2026-10-14): keep SMS login codes as the DEFAULT delivery (current behaviour), metered against the plan otp allowance; email and WhatsApp delivery are options selected by OTP_DELIVERY, not the default. Generating and checking the code in the Worker instead of Twilio Verify is still wanted where it lowers cost, but the user-facing channel stays SMS unless configured.",
+    "Abuse limits (master 0016 otp_requests: id, tenant_id, destination_hash, ip, channel, created_at): per destination 3 per 10 minutes and 10 per day; per IP 20 per hour; per tenant otp_per_day allowance (R109, default 200); premium-rate or non-mobile numbers rejected for SMS delivery (utils/phone.ts type check if available, else E.164 + country allow-list from tenant country); responses never reveal whether a phone exists.",
+    "Driver sessions: refresh token lifetime 30 days (cost model item 3) in routes/driver.ts, keeping rotation.",
+    "Usage tab: GET /settings/usage (or the existing AI usage endpoint in routes/settings.ts or ai-settings) also returns sms/whatsapp/email/otp used and allowance for the current period.",
+    "Desktop: Settings > Usage shows each allowance (used / included / purchased) for SMS, WhatsApp, login codes, email, calls and AI credits, with \"Upgrade plan\" and \"Buy credits\" actions (the latter opens a request to the platform until self-serve billing lands in R205/R206). 80% and 100% notifications reuse the AI-credit alert mechanism."
+  ],
+  "migrations": [
+    "backend/drizzle/master/0016_otp_requests.sql"
+  ],
+  "tests": [
+    "backend/test/metering-caps.test.ts: with whatsapp_utility allowance 2, the third send through /communications/send -> 402 ALLOWANCE_EXHAUSTED and the provider fetch mock is not called; India plan SMS allowance 0 -> first SMS refused; a campaign of 5 with allowance 3 sends 3 and marks 2 skipped; usage resets with the next period key; concurrent sends never exceed the allowance (fire 5 in parallel with allowance 3).",
+    "backend/test/login-codes.test.ts: staff code delivered by email (outbox entry) and not via Twilio Verify by default; wrong code 5 times locks; 4th request in 10 minutes for one phone -> 429; 21st request from one IP in an hour -> 429; tenant over otp_per_day -> 429; driver OTP uses the same limits; code never logged."
+  ],
+  "acceptance": [
+    "Every paid outbound send path goes through meterOutbound (grep provider send calls).",
+    "Staff login codes still go by SMS by default and stop at the plan otp cap with a clear message (test).",
+    "Usage page shows every channel with upgrade and buy-credits actions (unit test of the component)."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/communication-inbox.spec.ts e2e/campaigns.spec.ts e2e/whatsapp-campaigns.spec.ts e2e/driver-app-api.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": [
+      "e2e/communication-inbox.spec.ts",
+      "e2e/campaigns.spec.ts",
+      "e2e/whatsapp-campaigns.spec.ts",
+      "e2e/driver-app-api.spec.ts"
+    ]
+  },
+  "goLiveVerify": [
+    "WhatsApp authentication template approved by Meta; email deliverability of login codes; owner decision Q5 on login-code channels."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "Bulk seeding in tests or e2e (many leads, messages or payments) triggers automation recipes; set settings.automations_paused = true for that tenant first (PUT /api/v1/automations/pause or the setting row), then restore it.",
+    "e2e specs send messages on a pro tenant: the seed must give the demo tenant enough allowance (check desktop e2e counts) or the specs will start failing with 402. If needed set generous allowances for the seeded tenant through tenant-level overrides in tenant_usage_caps (seed-local.mjs edit allowed, note it).",
+    "The SMS-off default for India follows the cost model; until a domestic route exists, SMS is effectively disabled for Indian agencies, which the UI must say (R113 or R120 can surface the 402 message; here just make the API message human-readable)."
+  ],
+  "ownerDecision": "Owner decision 2026-10-14: flat price per agency per year (Basic/Pro/Enterprise) that includes a set number of users, a monthly AI credit allowance and monthly communication allowances; paid add-ons for extra users, AI credit packs and communication credit packs. SMS, WhatsApp, login codes and calls stay INCLUDED in every plan with a predefined monthly cap; at the cap the agency upgrades or buys credits. Communication add-ons are priced at provider unit cost + 20% margin."
+}

@@ -1,0 +1,105 @@
+{
+  "id": "R207",
+  "tier": 2,
+  "title": "Agencies collect from their customers: payment links on invoices through the agency's own Razorpay or Stripe",
+  "lane": "fullstack",
+  "backend": true,
+  "goal": "Let an agency send its customer a link to pay an invoice online and record the payment automatically.",
+  "why": "payments.gateway is a stub: manual recording only, plus an unused payment_link column and a UPI id setting (audit 02).",
+  "featuresToWorks": [
+    "payments.gateway",
+    "payments.link-invoice"
+  ],
+  "dependsOn": [
+    "R201",
+    "R206",
+    "R108"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R211"
+  ],
+  "size": "M",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "backend/src/routes/invoices.ts",
+      "backend/src/routes/payments.ts",
+      "backend/src/routes/integrations.ts",
+      "backend/src/index.ts",
+      "backend/src/db/tenant-schema.ts",
+      "desktop/src/app/(app)/invoices/[id]/page.tsx",
+      "desktop/src/app/(app)/settings/integrations/page.tsx",
+      "desktop/src/lib/api/invoices.ts",
+      "desktop/src/lib/api/integrations.ts"
+    ],
+    "create": [
+      "backend/drizzle/tenant/0047_payment_links.sql",
+      "backend/src/routes/payment-webhooks.ts",
+      "backend/test/payment-links.test.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/services/billing/wallet.ts",
+      "desktop/src/messages/**",
+      "desktop/src/lib/i18n.ts",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "Tenant 0047: payment_gateway_accounts (id, gateway, mode test|live, key_id, secret_enc, webhook_secret_enc, is_active), invoices ADD payment_link_id, payment_link_url, payment_link_status. Secrets via utils/crypto-box.ts (R108).",
+    "Settings > Integrations: connect Razorpay or Stripe (keys pasted by the agency; a \"Test connection\" call with mocked fetch in tests); never show secrets after save.",
+    "POST /invoices/:id/payment-link creates a Razorpay Payment Link or Stripe Payment Link / Checkout Session for the balance due in the invoice currency, stores id/url, returns it; the invoice detail page shows \"Create payment link\" and, for sending, opens SendMessageDialog with the link pre-filled (Communication Hub rule).",
+    "routes/payment-webhooks.ts at /api/v1/webhooks/payments/:tenantKey/:gateway (public; tenantKey = a per-tenant random key stored in master tenant_channel_addresses kind payment_webhook): verify with the tenant's webhook secret, idempotent on gateway event id (reuse provider_events-like table: add payment_events in 0047), record the payment through the same domain function as manual payments (emits payment.recorded), update invoice status."
+  ],
+  "migrations": [
+    "backend/drizzle/tenant/0047_payment_links.sql"
+  ],
+  "tests": [
+    "backend/test/payment-links.test.ts: link created with mocked gateway fetch for INR and GBP; signed webhook records one payment and marks the invoice paid; replay ignored; wrong tenantKey -> 404; bad signature -> 400; payment.recorded event emitted once."
+  ],
+  "acceptance": [
+    "Payments from links appear exactly once (tests).",
+    "Links are sent only through the Communication Hub."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # pass: 0 failing files, passed >= last merged count (1294 on 2026-10-14)",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/invoices.spec.ts e2e/payments.spec.ts e2e/webhooks-integrations.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": [
+      "e2e/invoices.spec.ts",
+      "e2e/payments.spec.ts",
+      "e2e/webhooks-integrations.spec.ts"
+    ]
+  },
+  "goLiveVerify": [
+    "An agency's real test-mode Razorpay and Stripe accounts end to end."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "Desktop UI follows desktop/audit/remake/CONTRACT.md (ds-* tokens, archetypes, FilterBar + infinite scroll, RelationCombobox, PhoneInput, useConfirm, graceful degradation). lint-gate must not rise for any touched file.",
+    "Bulk seeding in tests or e2e (many leads, messages or payments) triggers automation recipes; set settings.automations_paused = true for that tenant first (PUT /api/v1/automations/pause or the setting row), then restore it."
+  ]
+}

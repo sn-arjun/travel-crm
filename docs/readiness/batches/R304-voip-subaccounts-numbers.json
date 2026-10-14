@@ -1,0 +1,99 @@
+{
+  "id": "R304",
+  "tier": 3,
+  "title": "Sub-account per agency, number purchase and release, number registration, country switch (G1)",
+  "lane": "backend",
+  "backend": true,
+  "goal": "Give each agency its own compartment at the phone provider and let it buy, use and release numbers safely, only in countries where calling is offered.",
+  "why": "ADR-001 section 6 items 2-3 and 11: no sub-accounts; DELETE /voip/numbers/:id removes only the DB row and never releases the number (provider keeps billing, routes/voip.ts ~495-523); purchase does not register the number in tenant_channel_addresses; calling is offered regardless of country.",
+  "featuresToWorks": [
+    "calls.numbers",
+    "calls.voip-settings"
+  ],
+  "dependsOn": [
+    "R303",
+    "R206",
+    "R111"
+  ],
+  "blockedOnOwner": "G1 (ADR-001 Addendum A: Twilio outside India, agency-owned Exotel in India)",
+  "parallelSafeWith": [],
+  "size": "L",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "backend/src/routes/voip.ts",
+      "backend/src/routes/admin.ts",
+      "backend/src/services/voip-provider.ts",
+      "backend/src/db/master-schema.ts",
+      "desktop/src/app/(app)/settings/phone-numbers/page.tsx",
+      "desktop/src/app/(app)/settings/voip/page.tsx",
+      "desktop/src/lib/api/voip.ts"
+    ],
+    "create": [
+      "backend/drizzle/master/0023_voip_subaccounts.sql",
+      "backend/src/services/voip/country-policy.ts",
+      "backend/test/voip-numbers.test.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/routes/voip-callbacks.ts",
+      "backend/src/services/automation/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "Master 0023: voip_accounts (tenant_id PK, provider, sub_account_id, credentials_enc, status, created_at), call_country_policy (country PK, position resell|bridge|own_account|not_offered, provider, notes) seeded from ADR-001 section 4 (IN bridge plivo; GB/US/AU resell plivo; DE/MY resell twilio second wave; AE/SA/QA/TH/LK/NP/BD not_offered), number_documents (tenant_id, country, status, files JSON) for KYC uploads.",
+    "Enable calling for an agency (admin endpoint + super admin action): checks the country policy and plan (no calling on trial), creates the sub-account via the provider (G1 provider), stores credentials encrypted.",
+    "Numbers: search shows the monthly price from usage_rates (R206) before purchase; purchase only when KYC documents for that country are approved (status set by the super admin), debits the first month from the wallet, sets callbacks, inserts tenant_channel_addresses; release calls provider.releaseNumber then removes the row (and refunds nothing); cancellation of an agency schedules release after a grace period with notice email.",
+    "Desktop: phone numbers page shows price, KYC status and upload, release with useConfirm; VoIP settings hide calling when the policy is not_offered and show the reason."
+  ],
+  "migrations": [
+    "backend/drizzle/master/0023_voip_subaccounts.sql"
+  ],
+  "tests": [
+    "backend/test/voip-numbers.test.ts (mock provider + mocked fetch for the G1 provider): trial cannot enable calling; AE agency gets not_offered; purchase without approved KYC -> 409; purchase debits the wallet and registers the address; release calls the provider before deleting; inbound to the new number resolves the agency."
+  ],
+  "acceptance": [
+    "No path deletes a number row without releasing it at the provider (test)."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # pass: 0 failing files, passed >= last merged count (1294 on 2026-10-14)",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/voip-settings.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": [
+      "e2e/voip-settings.spec.ts"
+    ]
+  },
+  "goLiveVerify": [
+    "G1 provider account, KYC process per country, India legal opinion, written confirmation from the provider about sub-accounts for resale."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "Read docs/decisions/ADR-001-voip.md (sections 4, 6, 7) and docs/CALL-AUTOMATION.md (sections 2, 3, 4) before editing; they are the specification. G1 (provider choice and India shape) is not signed: everything here stays behind the VoipProvider interface.",
+    "Desktop UI follows desktop/audit/remake/CONTRACT.md (ds-* tokens, archetypes, graceful degradation when VoIP is not configured). lint-gate must not rise for any touched file.",
+    "Blocked on G1: start only when the owner has chosen the provider and the India shape (ADR 9a items 1-4, 7)."
+  ],
+  "ownerDecisionNote": "Plivo dropped on 2026-10-14 (owner could not sign up). Target Twilio."
+}

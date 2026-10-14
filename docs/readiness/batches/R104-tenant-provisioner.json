@@ -1,0 +1,109 @@
+{
+  "id": "R104",
+  "tier": 1,
+  "title": "Tenant provisioner in the backend: POST /admin/tenants creates a working agency",
+  "lane": "backend",
+  "backend": true,
+  "goal": "Let the super admin create an agency whose admin can actually log in: its own database, migrated and seeded, an admin user with a temporary password, a welcome email.",
+  "why": "super-admin/src/app/api/tenants/provision/route.ts hashes the admin password with PBKDF2 and never stores it, creates no users row, simulates the DB id without Cloudflare keys, saves no owner email and sends no email, so a new agency cannot log in.",
+  "featuresToWorks": [
+    "sa.tenant-provision",
+    "sa.tenant-lifecycle"
+  ],
+  "dependsOn": [
+    "R101",
+    "R102",
+    "R103"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R115"
+  ],
+  "size": "L",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "backend/src/routes/admin.ts",
+      "backend/src/middleware/require-super-admin.ts",
+      "backend/src/db/master-schema.ts",
+      "backend/src/db/tenant-schema.ts",
+      "backend/src/types.ts",
+      "backend/src/index.ts"
+    ],
+    "create": [
+      "backend/src/services/tenancy/provisioner.ts",
+      "backend/src/services/tenancy/local-provisioner.ts",
+      "backend/src/services/tenancy/cloudflare-provisioner.ts",
+      "backend/src/services/tenancy/apply-migrations.ts",
+      "backend/src/services/tenancy/seed-tenant.ts",
+      "backend/src/routes/admin-tenants.ts",
+      "backend/drizzle/master/0012_tenant_provisioning.sql",
+      "backend/drizzle/tenant/0043_users_must_change_password.sql",
+      "backend/test/tenant-provisioning.test.ts",
+      "backend/test/cloudflare-provisioner.test.ts"
+    ],
+    "mustNotTouch": [
+      "super-admin/**",
+      "desktop/**",
+      "backend/src/routes/auth.ts",
+      "backend/wrangler.toml",
+      "backend/scripts/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "Master 0012: tenants ADD provisioning_status TEXT NOT NULL DEFAULT 'active', provisioning_error TEXT, owner_email TEXT, owner_name TEXT, country TEXT, created_by_admin TEXT, region TEXT NOT NULL DEFAULT 'in' (R212 uses it). Tenant 0043: users ADD must_change_password INTEGER NOT NULL DEFAULT 0. Mirror in schemas. Re-run `npm run db:bundle-tenant` (R103) so the generated migrations include 0043.",
+    "services/tenancy/provisioner.ts: the TenantProvisioner interface exactly as READINESS-PLAN 4.1 plus getProvisioner(env): env.TENANT_PROVISIONER === 'cloudflare' -> CloudflareTenantProvisioner, else LocalTenantProvisioner (TENANCY_MODE single -> a SingleModeProvisioner that uses MASTER_DB and skips createDatabase/migrations, for dev parity).",
+    "local-provisioner.ts: createDatabase claims the first TENANT_DB_POOL_n present in env and absent from tenants.db_binding (query master); 409 POOL_EXHAUSTED when none. applyMigrations = apply-migrations.ts on that binding. registerBinding returns 'active'.",
+    "apply-migrations.ts: applyTenantMigrations(db, table = 'd1_migrations'): CREATE TABLE IF NOT EXISTS <table> (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP) (same shape wrangler uses); for each TENANT_MIGRATIONS entry not yet recorded, db.batch(queries + INSERT name); returns applied names. Idempotent.",
+    "cloudflare-provisioner.ts (fetch-based, CF_ACCOUNT_ID + CF_API_TOKEN + CF_WORKER_SCRIPT_NAME): createDatabase POST https://api.cloudflare.com/client/v4/accounts/{a}/d1/database { name: `travelcrm-t-${slug}`, primary_location_hint } ; applyMigrations and execute via POST .../d1/database/{id}/query { sql, params } per statement batch, recording d1_migrations rows; registerBinding attempts the Workers script-settings PATCH adding { type: 'd1', name: binding, id } and returns 'pending_deploy' on any non-2xx (log status, never the token). dropDatabase DELETE for rollback.",
+    "seed-tenant.ts: seedTenant(provisioner, target, { adminEmail, adminName, company, country, currency, timezone, taxSystem }): users row (generateId, bcrypt hash via utils/password.ts hashPassword, role admin, must_change_password 1), settings rows (company_name, country, currency, timezone, tax_system, onboarding_completed=false), automation defaults the same way the app creates them on first use (grep services/automation for an install/ensure function; if recipes are created lazily, do nothing), returns the generated temporary password (16 chars, letters+digits, crypto.getRandomValues).",
+    "routes/admin-tenants.ts mounted at /api/v1/admin/tenants (behind authMiddleware + requireSuperAdmin; index.ts route mount only): POST validates { companyName, slug (a-z0-9-, 3-40, unique), ownerName, ownerEmail, plan (trial|basic|pro|enterprise), country, currency, timezone, taxSystem, region } with zod; inserts tenants row (status trial or active by plan, provisioning_status creating_db, db_binding set by the provisioner), subscriptions row (as super-admin route does today), tenant_users row; runs createDatabase -> applyMigrations -> seed -> registerBinding updating provisioning_status after each step; on failure stores provisioning_error, rolls back the DB (dropDatabase) and returns 502 with the step name; on success sends welcome_admin via sendTransactional (R102) and returns { tenantId, slug, provisioningStatus, adminEmail, temporaryPassword } (the password is returned once, never stored in clear). POST /:id/retry resumes from the failed step. GET /:id/provisioning returns status. Every action writes super_admin_audit_log (actor from requireSuperAdmin).",
+    "Delete the KV entry tenant:v2:<id> after any tenant status change (helper in tenant-db.ts if not present)."
+  ],
+  "migrations": [
+    "backend/drizzle/master/0012_tenant_provisioning.sql",
+    "backend/drizzle/tenant/0043_users_must_change_password.sql"
+  ],
+  "tests": [
+    "backend/test/tenant-provisioning.test.ts (multi mode via { ...env, TENANCY_MODE: 'multi' } and the POOL DBs from R101): super admin token (seed a super_admins row and use SUPER_ADMIN_EMAIL path of requireSuperAdmin as today) creates agency A and B; each gets a distinct pool binding; the returned temporary password logs in at POST /auth/login for that tenant and the response flags mustChangePassword; the outbox holds a welcome email to the owner; a duplicate slug -> 409; a fourth agency when the pool has 3 -> 409 POOL_EXHAUSTED and no orphan tenants row; a non-super-admin token -> 403; audit log has one row per create.",
+    "backend/test/cloudflare-provisioner.test.ts: mocked fetch asserts the D1 create body (name, location hint), the query calls for every migration statement and the seed, the d1_migrations bookkeeping, and that a 4xx on the settings PATCH yields pending_deploy; token never appears in thrown errors."
+  ],
+  "acceptance": [
+    "A provisioned agency can log in (test).",
+    "Provisioning is resumable and leaves no half-created agency on failure (test).",
+    "No secret or password in logs (grep the test output for the temp password)."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)"
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": []
+  },
+  "goLiveVerify": [
+    "D1 create with location hint and jurisdiction on a real account; whether the Workers settings API adds a D1 binding without redeploy (else pending_deploy + operator deploy)."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "New ids use generateId() (UUIDv7) from backend/src/utils/uuid.ts. D1 conventions: TEXT ISO dates, REAL money, TEXT JSON, INTEGER booleans.",
+    "Login must tell the client mustChangePassword: R104 only adds the flag to the login response (one field in the existing JSON, additive); R113 builds the forced-change flow. If adding the field requires editing routes/auth.ts, that single additive change is allowed despite mustNotTouch; say so in the report.",
+    "The super admin console still uses its own broken route until R112 switches it to this endpoint."
+  ]
+}

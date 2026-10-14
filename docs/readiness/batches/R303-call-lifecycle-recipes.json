@@ -1,0 +1,104 @@
+{
+  "id": "R303",
+  "tier": 3,
+  "title": "Call lifecycle events, call recipes, timeline entries and the screen pop",
+  "lane": "fullstack",
+  "backend": true,
+  "goal": "Let the automation engine and the agent's screen react to every stage of a call, as the call automation design describes.",
+  "why": "Only call.missed reaches emitEvent; calls never appear on contact or lead timelines; no screen pop (no ringing broadcast; GET /voip/caller-info unused); outcome handling is hardcoded in routes/calls.ts (CALL-AUTOMATION 1.6, 2.2-2.5, 4.2, 4.3).",
+  "featuresToWorks": [
+    "calls.screen-pop",
+    "automation.calls.missed_callback",
+    "calls.click-to-call"
+  ],
+  "dependsOn": [
+    "R302"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [],
+  "size": "L",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "backend/src/routes/voip-callbacks.ts",
+      "backend/src/routes/calls.ts",
+      "backend/src/services/automation/recipes.ts",
+      "backend/src/services/automation/actions.ts",
+      "backend/src/services/automation/events.ts",
+      "backend/src/utils/realtime.ts",
+      "backend/test/automation-recipes.test.ts",
+      "desktop/src/components/providers/realtime-provider.tsx",
+      "desktop/src/components/domain/call-controls-panel.tsx",
+      "desktop/src/app/(app)/layout.tsx",
+      "desktop/src/app/(app)/contacts/[id]/page.tsx",
+      "desktop/src/app/(app)/leads/[id]/page.tsx"
+    ],
+    "create": [
+      "desktop/src/components/domain/call-screen-pop.tsx",
+      "backend/test/call-lifecycle.test.ts",
+      "desktop/e2e/calls-simulator.spec.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/services/ai-extraction.ts",
+      "backend/src/queues/ai-extraction-queue.ts",
+      "super-admin/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "Emit call.ringing, call.started, call.answered, call.transferred, call.ended, call.voicemail_left, call.recording_ready with the payloads in CALL-AUTOMATION 4.2 at the matching callback points (depth 0, dedupe keys `callback:<callId>:<event>`).",
+    "Recipes (rule-based, no credits) from CALL-AUTOMATION 4.3: calls.missed_acknowledgement (suggest; skips opted-out, DND, quiet hours), calls.voicemail_task (auto; replaces the call-back task for the same call), calls.log_to_timeline via a new low-risk action log_call_activity (auto), leads.contacted_on_call (auto, 30 s+ connected, Undo), calls.next_step_prompt (suggest) replacing the hardcoded follow-up in routes/calls.ts outcome handling, calls.lead_from_unknown_caller (suggest), calls.retry_task (suggest, one per lead per day). Customer-facing actions stay suggest-only (engine rule).",
+    "Timeline: contact and lead detail activity lists include call entries (from the activity rows log_call_activity writes) with direction, duration, agent, note, and a play button placeholder (R306 fills playback).",
+    "Screen pop: on call.ringing broadcast `call:ringing` over the tenant realtime room to the routed agent (and `call:ringing_for` to others); desktop call-screen-pop.tsx (mounted in the app layout) shows caller name or \"Unknown number\", open lead with stage and value, last message or last call note, Answer (softphone, R307; hidden otherwise) / Dismiss / Open lead. Fix lib/api/voip.ts caller-info param if R119 did not.",
+    "Mount CallControlsPanel on outbound calls started from the dial page (state from realtime events; mute/hold buttons call the provider only when supported, else hidden).",
+    "calls-simulator.spec.ts (slot with TEST_MODE): simulate inbound ringing -> screen pop visible with the seeded contact; simulate missed -> task appears; simulate answered+ended 45 s on a new lead -> lead stage contacted and timeline entry."
+  ],
+  "migrations": [],
+  "tests": [
+    "backend/test/call-lifecycle.test.ts: each scenario emits the expected events once and the recipes produce the expected suggestions/auto actions; quiet hours suppress the acknowledgement send but keep the suggestion scheduled; calls never start a call (no recipe has a place_call action).",
+    "desktop/e2e/calls-simulator.spec.ts as above."
+  ],
+  "acceptance": [
+    "CALL-AUTOMATION section 2 timelines reproduced with the simulator (tests)."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # pass: 0 failing files, passed >= last merged count (1294 on 2026-10-14)",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/calls-simulator.spec.ts e2e/calls.spec.ts e2e/assistant-rules.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": {
+    "typecheck": true,
+    "unit": true,
+    "lint": true,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": [
+      "e2e/calls-simulator.spec.ts",
+      "e2e/calls.spec.ts",
+      "e2e/assistant-rules.spec.ts"
+    ]
+  },
+  "goLiveVerify": [],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "Read docs/decisions/ADR-001-voip.md (sections 4, 6, 7) and docs/CALL-AUTOMATION.md (sections 2, 3, 4) before editing; they are the specification. G1 (provider choice and India shape) is not signed: everything here stays behind the VoipProvider interface.",
+    "Desktop UI follows desktop/audit/remake/CONTRACT.md (ds-* tokens, archetypes, graceful degradation when VoIP is not configured). lint-gate must not rise for any touched file.",
+    "Bulk seeding in tests or e2e (many leads, messages or payments) triggers automation recipes; set settings.automations_paused = true for that tenant first (PUT /api/v1/automations/pause or the setting row), then restore it."
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "id": "R117",
+  "tier": 1,
+  "title": "Operations: real health check, structured logs with an error-reporting hook, backups, hibernating realtime",
+  "lane": "backend",
+  "backend": true,
+  "goal": "Know when the service is broken, be able to restore an agency's data, and stop paying for idle live connections.",
+  "why": "/health returns a static database: connected (backend/src/index.ts ~158); there is no [observability], no error tracking, about 219 bare console calls, no backup or export job; durable-objects/realtime.ts keeps sessions in memory with addEventListener handlers, so it cannot hibernate (cost model item 7).",
+  "featuresToWorks": [
+    "platform.observability",
+    "sa.system-health",
+    "inbox.realtime"
+  ],
+  "dependsOn": [
+    "R105"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R110"
+  ],
+  "size": "M",
+  "newDependencies": [],
+  "files": {
+    "edit": [
+      "backend/src/index.ts",
+      "backend/src/durable-objects/realtime.ts",
+      "backend/src/utils/realtime.ts",
+      "backend/test/realtime-socket.test.ts"
+    ],
+    "create": [
+      "backend/src/utils/logger.ts",
+      "backend/src/services/error-reporter.ts",
+      "backend/scripts/backup-tenants.mjs",
+      "backend/test/health.test.ts",
+      "docs/ops/BACKUPS.md"
+    ],
+    "mustNotTouch": [
+      "backend/src/routes/communications.ts",
+      "backend/src/queues/**",
+      "backend/src/routes/auth.ts",
+      "desktop/**",
+      "super-admin/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "desktop/e2e/showcase/**",
+      "desktop/playwright.showcase.config.ts",
+      "desktop/showcase/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "steps": [
+    "utils/logger.ts: log(level, event, fields) writing one JSON line (ts, level, event, requestId, tenantId, userId, path, ms) via console; a Hono middleware in index.ts assigns requestId (crypto.randomUUID or cf-ray), times the request and logs one line per request (replacing hono/logger). Never log bodies, tokens, passwords or phone numbers.",
+    "services/error-reporter.ts: ErrorReporter interface with ConsoleReporter (default) and an HTTP reporter that posts a Sentry-compatible envelope to ERROR_REPORTER_DSN when set (fetch, fire-and-forget with waitUntil); app.onError and the queue/scheduled handlers call it with requestId and tenantId.",
+    "Health: /api/v1/health stays cheap and public (version, time); /api/v1/health/deep (super admin token or HEALTH_TOKEN header) checks MASTER_DB SELECT 1, KV get/put on a health key, R2 head of a health object, each with latency and ok flag, 503 when any fails. The super admin system-health page can call it later.",
+    "Realtime DO hibernation: use state.acceptWebSocket(ws, tags) with webSocketMessage / webSocketClose / webSocketError class handlers, store per-socket data with serializeAttachment, list sockets with state.getWebSockets(tag) when broadcasting, and set state.setWebSocketAutoResponse(new WebSocketRequestResponsePair(\"ping\", \"pong\")) so the desktop's 30-second ping does not wake the object. Check the desktop ping payload (grep realtime-provider.tsx) and match it exactly; do not change the desktop.",
+    "Backups: docs/ops/BACKUPS.md explains D1 Time Travel (30 days on Workers Paid, restore per database) as the primary restore path and a weekly logical export: backend/scripts/backup-tenants.mjs (--local|--remote --env, --out dir) runs `wrangler d1 export <db> --output <file>.sql` for master and every tenant DB from the generated config, gzips, and (remote) uploads to an R2 bucket travelcrm-backups via `wrangler r2 object put`; --dry-run prints the plan. Locally prove it with --local against fix-stack multi state.",
+    "Generated config (R103) already sets [observability] enabled = true; confirm and note head_sampling_rate 1 in the base file."
+  ],
+  "migrations": [],
+  "tests": [
+    "backend/test/health.test.ts: /health public; /health/deep without token -> 401; with token -> 200 and three checks; with a broken KV stub -> 503.",
+    "backend/test/realtime-socket.test.ts extended: broadcast reaches sockets accepted via acceptWebSocket, a ping gets pong without invoking webSocketMessage (assert via a counter), tenant A broadcast never reaches tenant B sockets.",
+    "backup-tenants.mjs --local --dry-run lists master and pool DBs; --local writes .sql files (record sizes in report)."
+  ],
+  "acceptance": [
+    "One JSON log line per request with requestId; no secrets in logs (grep test output).",
+    "Deep health reflects real dependency state (test).",
+    "Realtime uses the hibernation API (code review + test)."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # pass: 0 failed files and passed >= the last merged count (1296 on 2026-10-14)",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db --multi --no-build && node backend/scripts/backup-tenants.mjs --local --out %TEMP%/tcrm-backup && node desktop/scripts/fix-stack.mjs down --slot 1",
+    "node desktop/scripts/fix-stack.mjs up --slot 0 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3100 E2E_API_URL=http://localhost:8787/api/v1 npx playwright test e2e/notifications.spec.ts e2e/communication-inbox.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 0"
+  ],
+  "gates": {
+    "typecheck": false,
+    "unit": false,
+    "lint": false,
+    "build": false,
+    "backendTests": true,
+    "flutter": false,
+    "specs": [
+      "e2e/notifications.spec.ts",
+      "e2e/communication-inbox.spec.ts"
+    ]
+  },
+  "goLiveVerify": [
+    "Time Travel restore rehearsal on staging; backup job scheduled (GitHub Action or operator cron) and an R2 lifecycle rule; error-reporting DSN if the owner wants Sentry; dashboard alerts on 5xx rate."
+  ],
+  "notes": [
+    "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
+    "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
+    "R110 runs in parallel and must not touch index.ts; you own index.ts in this step.",
+    "In bash on Windows, %TEMP% does not expand; use $TEMP or an absolute scratch path."
+  ]
+}

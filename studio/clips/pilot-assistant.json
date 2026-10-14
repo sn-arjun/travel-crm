@@ -1,6 +1,6 @@
 {
   "id": "pilot-assistant",
-  "voice": "bf_emma",
+  "voice": "af_heart",
   "source": "desktop/showcase/TravelCRM-Assistant.mp4",
   "cropBottom": 0.14,
   "scenes": [
