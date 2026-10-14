@@ -41,6 +41,12 @@ async function waitForGateResolved(page: Page) {
 
 /** The website the seeded visitors "chat from"; added to the allowed websites in beforeAll. */
 const TEST_ORIGIN = 'https://e2e-chatbot.example.test';
+/**
+ * Every seeded message carries this tag and the website config has a FAQ entry for it, so the bot answers
+ * from the FAQ. That keeps seeding deterministic on a stack without AI (the message and the reply are
+ * saved; the AI path would answer 503 and drop the visitor's message).
+ */
+const SEED_TAG = '[e2e-seed]';
 let widgetKey = '';
 
 /** Reads the widget key and makes sure TEST_ORIGIN is on the allow-list (keeping what is already there). */
@@ -49,10 +55,15 @@ async function prepareWidget() {
   widgetKey = info?.data?.widgetKey;
   if (!widgetKey) throw new Error(`No widget key from GET /chatbot/widget: ${JSON.stringify(info)}`);
   const allowed: string[] = info?.data?.allowedOrigins ?? [];
+  const existing = await api('GET', '/chatbot/config/website').catch(() => null);
+  let faq: Array<{ question: string; answer: string }> = [];
+  try { faq = JSON.parse(existing?.data?.faq_entries ?? '[]'); } catch { faq = []; }
+  if (!faq.some((f) => f.question === SEED_TAG)) faq.push({ question: SEED_TAG, answer: 'Thanks! An agent will reply shortly.' });
   // The website config row (greeting, enabled) must exist and be on, or the public mount answers 404.
   await api('PUT', '/chatbot/config/website', {
     enabled: true,
     greeting: 'Hi! How can we help?',
+    faqEntries: faq,
     allowedOrigins: allowed.includes(TEST_ORIGIN) ? allowed : [...allowed, TEST_ORIGIN],
   });
 }
@@ -69,7 +80,7 @@ async function seedConversation(overrides: {
     headers: { 'Content-Type': 'application/json', Origin: TEST_ORIGIN },
     body: JSON.stringify({
       visitorId: overrides.visitorId,
-      message: overrides.message,
+      message: `${overrides.message} ${SEED_TAG}`,
       visitorName: overrides.visitorName,
       visitorEmail: overrides.visitorEmail,
     }),

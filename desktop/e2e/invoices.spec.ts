@@ -504,7 +504,7 @@ test.describe('Invoices', () => {
     await page.getByRole('tab', { name: 'Related' }).click();
     await expect(page.getByText('Payment History')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(reference)).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText('₹2,000')).toBeVisible();
+    await expect(page.getByText('₹2,000', { exact: true })).toBeVisible();
   });
 
   // ─────────────────────────────────────────────────────────────
