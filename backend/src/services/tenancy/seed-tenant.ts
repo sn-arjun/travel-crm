@@ -69,8 +69,8 @@ export async function seedTenant(
       params: [userId, opts.adminEmail.toLowerCase(), opts.adminName, passwordHash, now, now],
     },
     ...settingRows.map(([key, value]) => ({
-      sql: `INSERT OR REPLACE INTO settings (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?)`,
-      params: [key, value, userId, now],
+      sql: `INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES (?, ?, ?)`,
+      params: [key, value, now],
     })),
   ]);
 
