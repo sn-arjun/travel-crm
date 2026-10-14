@@ -9,6 +9,7 @@ import { logActivity } from '../utils/activity-logger';
 import { resolveSegment, type SegmentFilter } from '../services/segment-resolver';
 import { success, created, paginated, error, notFound } from '../utils/response';
 import { broadcastToTenant } from '../utils/realtime';
+import { AllowanceExhausted, meterUsage } from '../services/metering/meter';
 
 const campaignRoutes = new Hono<AppContext>();
 
@@ -236,6 +237,8 @@ campaignRoutes.post(
       const env = c.env;
       let queuedCount = 0;
       let failureCount = 0;
+      let skippedAllowance = 0;
+      let capReached = false;
 
       for (const contactId of contactIds) {
         try {
@@ -249,17 +252,37 @@ campaignRoutes.post(
             continue;
           }
 
+          // Every email takes one unit of the monthly email allowance before it is queued (R110).
+          // At the cap the remaining recipients are recorded as skipped_allowance; the campaign still completes.
+          if (!capReached) {
+            try {
+              await meterUsage(env, c.get('tenantId'), 'email');
+            } catch (meterErr) {
+              if (!(meterErr instanceof AllowanceExhausted)) throw meterErr;
+              capReached = true;
+            }
+          }
+
           // Create message log entry
           const logId = generateId();
           const now = new Date().toISOString();
 
           await tenantDb
             .prepare(`
-              INSERT INTO email_message_log (id, campaign_id, contact_id, recipient_email, status, created_at, updated_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?)
+              INSERT INTO email_message_log (id, campaign_id, contact_id, recipient_email, status, failure_reason, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             `)
-            .bind(logId, campaignId, contactId, contact.email, 'queued', now, now)
+            .bind(
+              logId, campaignId, contactId, contact.email,
+              capReached ? 'skipped_allowance' : 'queued',
+              capReached ? 'Monthly email allowance used up' : null,
+              now, now,
+            )
             .run();
+          if (capReached) {
+            skippedAllowance++;
+            continue;
+          }
 
           // Queue email job
           await env.EMAIL_QUEUE.send({
@@ -272,6 +295,9 @@ campaignRoutes.post(
               templateData: { contactName: contact.name },
               from: undefined,
               replyTo: undefined,
+              tenantId: c.get('tenantId'),
+              metered: true,
+              refundOnFailure: true,
             },
           });
 
@@ -301,7 +327,7 @@ campaignRoutes.post(
         action: 'send',
         entityType: 'email_campaign',
         entityId: campaignId,
-        details: JSON.stringify({ queuedCount, failureCount }),
+        details: JSON.stringify({ queuedCount, failureCount, skippedAllowance }),
       });
 
       // Broadcast real-time event
@@ -317,7 +343,9 @@ campaignRoutes.post(
         message: `Campaign sent to ${queuedCount} recipients`,
         queuedCount,
         failureCount,
+        skippedAllowance,
         totalContacts: contactIds.length,
+        ...(skippedAllowance > 0 && { allowanceExhausted: true, options: ['upgrade', 'top_up'] }),
       });
     } catch (err: any) {
       console.error('[CAMPAIGNS] Send error:', err.message);

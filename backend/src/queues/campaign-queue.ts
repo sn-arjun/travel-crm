@@ -1,6 +1,7 @@
 import type { Env } from '../types';
 import { resolveTenantDb } from '../services/tenant-db';
 import { emailFrom } from '../utils/app-urls';
+import { refundUsage, tryMeter } from '../services/metering/meter';
 
 export interface CampaignJob {
   campaignId: string;
@@ -70,10 +71,27 @@ async function processCampaignBatch(job: CampaignJob, env: Env): Promise<void> {
 
   let sentCount = 0;
   let failedCount = 0;
+  let capReached = false;
+  let skippedCount = 0;
 
   for (const recipient of recipients) {
     const recipientId = (recipient as any).id;
     const now = new Date().toISOString();
+
+    // R110: each recipient takes one unit of the monthly allowance before the provider is called. At the cap the
+    // remaining recipients are marked skipped_allowance and the campaign still finishes (it does not fail).
+    if (!capReached) {
+      const taken = await tryMeter(env, tenantId, campaignType);
+      if (!taken.allowed) capReached = true;
+    }
+    if (capReached) {
+      await dbBinding
+        .prepare('UPDATE campaign_recipients SET status = ?, error_message = ? WHERE id = ?')
+        .bind('skipped_allowance', 'Monthly allowance used up', recipientId)
+        .run();
+      skippedCount++;
+      continue;
+    }
 
     try {
       // Mark as queued
@@ -116,6 +134,7 @@ async function processCampaignBatch(job: CampaignJob, env: Env): Promise<void> {
         .run();
       sentCount++;
     } catch (err) {
+      await refundUsage(env, tenantId, campaignType); // a failed send does not consume allowance
       const errMsg = err instanceof Error ? err.message : 'Unknown error';
       await dbBinding
         .prepare('UPDATE campaign_recipients SET status = ?, error_message = ? WHERE id = ?')
@@ -136,6 +155,10 @@ async function processCampaignBatch(job: CampaignJob, env: Env): Promise<void> {
     )
     .bind(sentCount, failedCount, new Date().toISOString(), campaignId)
     .run();
+
+  if (skippedCount > 0) {
+    console.warn(`Campaign ${campaignId}: ${skippedCount} recipients skipped, monthly ${campaignType} allowance used up`);
+  }
 
   // If there are more pending recipients, re-enqueue
   const remaining = await dbBinding

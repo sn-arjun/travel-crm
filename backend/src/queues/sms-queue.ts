@@ -6,6 +6,7 @@ import { sendSms, sendWhatsApp, sendMediaMessage } from '../services/twilio-mess
 import { sendEmail } from '../services/email';
 import { emailFrom } from '../utils/app-urls';
 import { resolveTenantDb } from '../services/tenant-db';
+import { refundUsage, tryMeter } from '../services/metering/meter';
 
 export interface SmsJob {
   to: string; // E.164 format: +919876543210 or email
@@ -20,6 +21,10 @@ export interface SmsJob {
   tenantId?: string;
   channel?: 'sms' | 'whatsapp' | 'email';
   mediaUrl?: string; // for media messages
+  /** The sender already took the allowance (Communication Hub); the queue must not take it again. */
+  metered?: boolean;
+  /** With metered: give the unit back if the provider rejects the send. False for free WhatsApp replies. */
+  refundOnFailure?: boolean;
 }
 
 /**
@@ -28,6 +33,20 @@ export interface SmsJob {
 export async function handleSmsJob(job: SmsJob, env: Env): Promise<void> {
   const channel = job.channel || 'sms';
   const messageLogId = job.messageLogId;
+
+  // Metering (R110): every paid send takes one unit of the agency's monthly allowance BEFORE the provider is called.
+  // Jobs from the Communication Hub are metered at the route (so the user gets the 402); everything else here.
+  let queueMetered = false;
+  if (!job.metered && job.tenantId) {
+    const taken = await tryMeter(env, job.tenantId, channel === 'whatsapp' ? 'whatsapp' : channel === 'email' ? 'email' : 'sms');
+    if (!taken.allowed) {
+      await markSkippedForAllowance(job, env, channel);
+      return;
+    }
+    queueMetered = true;
+  }
+  const refundable = queueMetered || (job.metered === true && job.refundOnFailure === true);
+  const meterChannel = channel === 'whatsapp' ? 'whatsapp' : channel === 'email' ? 'email' : 'sms';
 
   try {
     console.log(`[SMS QUEUE] Sending ${channel} to ${job.to}...`);
@@ -77,6 +96,7 @@ export async function handleSmsJob(job: SmsJob, env: Env): Promise<void> {
 
           console.log(`[SMS QUEUE] ${channel.toUpperCase()} sent successfully: ${messageLogId}`);
         } else {
+          if (refundable && job.tenantId) await refundUsage(env, job.tenantId, meterChannel);
           await db
             .update(messageLog)
             .set({
@@ -91,6 +111,8 @@ export async function handleSmsJob(job: SmsJob, env: Env): Promise<void> {
     }
   } catch (err) {
     console.error(`[SMS QUEUE] Error processing ${channel} job:`, err);
+    // The queue retries a thrown job and meters again; a hub job keeps its unit for the retry.
+    if (queueMetered && job.tenantId) await refundUsage(env, job.tenantId, meterChannel);
 
     // Update message log with error
     if (messageLogId && job.tenantId) {
@@ -111,4 +133,16 @@ export async function handleSmsJob(job: SmsJob, env: Env): Promise<void> {
 
     throw err; // Re-throw to trigger queue retry
   }
+}
+
+/** The agency is at its monthly cap: the message is not sent and its log row says why. Never retried. */
+async function markSkippedForAllowance(job: SmsJob, env: Env, channel: string): Promise<void> {
+  console.warn(`[SMS QUEUE] ${channel} to ${job.to} skipped: monthly allowance used up`);
+  if (!job.messageLogId || !job.tenantId) return;
+  const tenantDb = await resolveTenantDb(env, job.tenantId);
+  if (!tenantDb) return;
+  await drizzle(tenantDb)
+    .update(messageLog)
+    .set({ status: 'failed', errorMessage: 'skipped_allowance: monthly allowance used up' })
+    .where(eq(messageLog.id, job.messageLogId));
 }

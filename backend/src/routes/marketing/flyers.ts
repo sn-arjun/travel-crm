@@ -299,7 +299,7 @@ flyerRoutes.post(
           // eslint-disable-next-line no-await-in-loop
           await c.env.EMAIL_QUEUE.send({
             type: 'email',
-            data: { to: emailAddr, subject: `Flyer: ${flyerTitle}`, html: `<p>Here's the flyer: <a href="${flyerUrl}">View Flyer</a></p>` },
+            data: { to: emailAddr, subject: `Flyer: ${flyerTitle}`, html: `<p>Here's the flyer: <a href="${flyerUrl}">View Flyer</a></p>`, tenantId: c.get('tenantId') },
           });
         }
       }
@@ -316,6 +316,7 @@ flyerRoutes.post(
           to: body.recipientInfo,
           subject: `Flyer: ${(flyer as any).title ?? (flyer as any).name}`,
           html: `<p>Here's the flyer: <a href="${(flyer as any).image_url ?? (flyer as any).url}">View Flyer</a></p>`,
+          tenantId: c.get('tenantId'),
         },
       });
       recipientCount = 1;

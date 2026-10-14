@@ -6,6 +6,7 @@
 
 import type { Env } from '../types';
 import { resolveTenantDb } from '../services/tenant-db';
+import { refundUsage, tryMeter } from '../services/metering/meter';
 
 interface WhatsAppCampaignMessage {
   type: 'whatsapp_campaign';
@@ -39,6 +40,8 @@ export async function processWhatsAppCampaign(
   const batchSize = 10;
   let processed = 0;
   let failed = 0;
+  let skipped = 0;
+  let capReached = false;
 
   while (true) {
     const recipients = await db.prepare(`
@@ -60,6 +63,20 @@ export async function processWhatsAppCampaign(
     }
 
     for (const recipient of batch) {
+      // R110: a business-initiated WhatsApp message costs money, so it takes one unit of the monthly allowance
+      // before the send. At the cap the remaining recipients are skipped (status skipped_allowance), not failed.
+      if (!capReached) {
+        const taken = await tryMeter(env, tenantId, 'whatsapp');
+        if (!taken.allowed) capReached = true;
+      }
+      if (capReached) {
+        await db.prepare(`
+          UPDATE whatsapp_campaign_recipients SET status = 'skipped_allowance', error_message = 'Monthly WhatsApp allowance used up'
+          WHERE id = ?
+        `).bind((recipient as any).id).run();
+        skipped++;
+        continue;
+      }
       try {
         // Resolve template variables
         const templateContent = campaign.template_content
@@ -76,6 +93,7 @@ export async function processWhatsAppCampaign(
 
         processed++;
       } catch (e: any) {
+        await refundUsage(env, tenantId, 'whatsapp');
         await db.prepare(`
           UPDATE whatsapp_campaign_recipients
           SET status = 'failed', error_message = ?
@@ -113,14 +131,5 @@ export async function processWhatsAppCampaign(
     `).bind(campaignId).run();
   }
 
-  // Increment WhatsApp usage cap
-  try {
-    await env.MASTER_DB.prepare(`
-      UPDATE tenant_usage_caps SET current_usage = current_usage + ?,
-        updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-      WHERE tenant_id = ? AND cap_key = 'whatsapp_messages_per_month'
-    `).bind(processed, tenantId).run();
-  } catch (_e) { /* non-critical */ }
-
-  console.log(`WhatsApp campaign ${campaignId}: ${processed} sent, ${failed} failed`);
+  console.log(`WhatsApp campaign ${campaignId}: ${processed} sent, ${failed} failed, ${skipped} skipped (allowance)`);
 }

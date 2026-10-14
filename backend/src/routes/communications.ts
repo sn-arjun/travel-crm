@@ -19,6 +19,32 @@ import { generateId } from '../utils/uuid';
 import { success, created, paginated, error, notFound } from '../utils/response';
 import { requirePermission } from '../middleware/rbac';
 import { substituteVariables, resolveVariables } from '../services/template-engine';
+import {
+  AllowanceExhausted,
+  allowanceExhaustedResponse,
+  insideFreeWhatsAppWindow,
+  meterUsage,
+  refundUsage,
+  type MeterChannel,
+} from '../services/metering/meter';
+
+/**
+ * Take one unit of the agency's allowance for an outbound message before it is queued (R110).
+ * Returns the metered channel (the queue refunds it if the provider rejects the send), or null when nothing was
+ * taken: a free-form WhatsApp reply inside the 24 hour window the contact opened is free.
+ * Throws AllowanceExhausted at the cap; callers answer 402 and queue nothing.
+ */
+async function meterOutbound(
+  c: any,
+  channel: 'whatsapp' | 'sms' | 'email',
+  opts: { contactId?: string; template?: boolean } = {},
+): Promise<MeterChannel | null> {
+  if (channel === 'whatsapp' && !opts.template && opts.contactId && (await insideFreeWhatsAppWindow(c.get('tenantDb'), opts.contactId))) {
+    return null;
+  }
+  await meterUsage(c.env, c.get('tenantId'), channel);
+  return channel;
+}
 
 const communicationRoutes = new Hono<AppContext>();
 
@@ -114,6 +140,8 @@ communicationRoutes.post(
         }
       }
 
+      const metered = await meterOutbound(c, body.channel, { contactId: body.contact_id });
+
       // Create message log entry
       const messageId = generateId();
       const now = new Date().toISOString();
@@ -147,6 +175,8 @@ communicationRoutes.post(
           contactId: body.contact_id,
           tenantId: c.get('tenantId'),
           channel: body.channel,
+          metered: true,
+          refundOnFailure: metered !== null,
           ...(body.media_url && { mediaUrl: body.media_url }),
         },
       });
@@ -163,6 +193,7 @@ communicationRoutes.post(
         status: 'queued',
       });
     } catch (err) {
+      if (err instanceof AllowanceExhausted) return allowanceExhaustedResponse(c, err);
       console.error('Error sending message:', err);
       return error(c, 'Failed to send message', 500);
     }
@@ -229,6 +260,8 @@ communicationRoutes.post(
         }
       }
 
+      await meterOutbound(c, template.channel as 'whatsapp' | 'sms' | 'email', { contactId: body.contact_id, template: true });
+
       // Create message log entry
       const messageId = generateId();
       const now = new Date().toISOString();
@@ -262,6 +295,8 @@ communicationRoutes.post(
           contactId: body.contact_id,
           tenantId: c.get('tenantId'),
           channel: template.channel,
+          metered: true,
+          refundOnFailure: true,
         },
       });
 
@@ -270,6 +305,7 @@ communicationRoutes.post(
         status: 'queued',
       });
     } catch (err) {
+      if (err instanceof AllowanceExhausted) return allowanceExhaustedResponse(c, err);
       console.error('Error sending template:', err);
       return error(c, 'Failed to send template', 500);
     }
@@ -353,6 +389,8 @@ communicationRoutes.post(
         }
       }
 
+      await meterOutbound(c, body.channel, { contactId: body.contact_id, template: true });
+
       // Create message log entry
       const messageId = generateId();
       const now = new Date().toISOString();
@@ -386,6 +424,8 @@ communicationRoutes.post(
           contactId: body.contact_id,
           tenantId: c.get('tenantId'),
           channel: body.channel,
+          metered: true,
+          refundOnFailure: true,
           mediaUrl: mediaUrl,
         },
       });
@@ -395,6 +435,7 @@ communicationRoutes.post(
         status: 'queued',
       });
     } catch (err) {
+      if (err instanceof AllowanceExhausted) return allowanceExhaustedResponse(c, err);
       console.error('Error sending document:', err);
       return error(c, 'Failed to send document', 500);
     }
@@ -455,6 +496,8 @@ communicationRoutes.post(
 
       // Create message log entries and queue messages
       const messageIds: string[] = [];
+      let skippedAllowance = 0;
+      let exhausted: AllowanceExhausted | null = null;
 
       for (const contact of bulkContacts) {
         // Determine destination
@@ -467,6 +510,21 @@ communicationRoutes.post(
 
         if (!destination) {
           continue; // Skip contacts without proper destination
+        }
+
+        // Metered per recipient before anything is queued; at the cap the rest are skipped, not failed.
+        let metered: MeterChannel | null = null;
+        if (!exhausted) {
+          try {
+            metered = await meterOutbound(c, body.channel, { contactId: contact.id, template: !!templateId });
+          } catch (err) {
+            if (!(err instanceof AllowanceExhausted)) throw err;
+            exhausted = err;
+          }
+        }
+        if (exhausted) {
+          skippedAllowance++;
+          continue;
         }
 
         const messageId = generateId();
@@ -505,16 +563,26 @@ communicationRoutes.post(
             contactId: contact.id,
             tenantId: c.get('tenantId'),
             channel: body.channel,
+            metered: true,
+            refundOnFailure: metered !== null,
           },
         });
       }
+
+      // Nothing could be sent because the allowance is used up: refuse like a single send.
+      if (exhausted && messageIds.length === 0) return allowanceExhaustedResponse(c, exhausted);
 
       return created(c, {
         batch_id: batchId,
         total_messages: messageIds.length,
         status: 'queued',
+        ...(skippedAllowance > 0 && {
+          skipped_allowance: skippedAllowance,
+          allowance_exhausted: exhausted ? { channel: exhausted.channel, used: exhausted.used, allowance: exhausted.allowance, options: exhausted.body.options } : undefined,
+        }),
       });
     } catch (err) {
+      if (err instanceof AllowanceExhausted) return allowanceExhaustedResponse(c, err);
       console.error('Error in bulk send:', err);
       return error(c, 'Failed to bulk send', 500);
     }
