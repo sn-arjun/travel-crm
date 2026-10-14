@@ -86,6 +86,7 @@ import aiAssistantRoutes from './routes/ai-assistant';
 import aiIntelligenceRoutes from './routes/ai-intelligence';
 import chatbotRoutes from './routes/chatbot';
 import { publicChatbotRoutes, chatbotWebhookRoutes } from './routes/public-chatbot';
+import { publicEnquiryRoutes, adminEnquiryRoutes } from './routes/public-enquiries';
 import businessIntelligenceRoutes from './routes/business-intelligence';
 import aiSettingsRoutes from './routes/ai-settings';
 import whatsappCampaignRoutes from './routes/whatsapp-campaigns';
@@ -193,6 +194,8 @@ app.route('/api/v1/webhooks/chatbot', chatbotWebhookRoutes);
 app.route('/api/webhooks/chatbot', chatbotWebhookRoutes);
 app.route('/api/v1/public/chatbot', publicChatbotRoutes);
 app.route('/api/public/chatbot', publicChatbotRoutes);
+app.route('/api/v1/public/enquiries', publicEnquiryRoutes);
+app.route('/api/public/enquiries', publicEnquiryRoutes);
 
 app.route('/api/v1/webhooks/inbound', inboundRoutes);
 app.route('/api/webhooks/inbound', inboundRoutes);
@@ -321,6 +324,7 @@ const routeMounts: Array<[string, typeof authRoutes]> = [
   ['automations', automationRoutes],
   ['admin/auth', adminAuthRoutes],
   ['admin/tenants', adminTenantsRoutes],
+  ['admin/enquiries', adminEnquiryRoutes],
   ['admin', adminRoutes],
 ];
 

@@ -441,3 +441,23 @@ export const meteredEvents = sqliteTable('metered_events', {
   units: integer('units').notNull(),
   createdAt: text('created_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
 });
+
+// --- Landing page enquiries (R116, migration 0018) ---
+export const platformEnquiries = sqliteTable('platform_enquiries', {
+  id: text('id').primaryKey(), // UUIDv7
+  kind: text('kind').notNull().default('contact'), // contact | demo | signup
+  name: text('name').notNull(),
+  email: text('email').notNull(),
+  phone: text('phone'),
+  company: text('company'),
+  country: text('country'),
+  agentsCount: integer('agents_count'),
+  message: text('message'),
+  sourceUrl: text('source_url'),
+  ipHash: text('ip_hash'),
+  status: text('status').notNull().default('new'), // new | contacted | converted | spam
+  createdAt: text('created_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+}, (table) => [
+  index('platform_enquiries_status_idx').on(table.status, table.createdAt),
+  index('platform_enquiries_email_idx').on(table.email, table.createdAt),
+]);
