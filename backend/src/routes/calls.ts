@@ -14,13 +14,14 @@ import { success, created, paginated, error, notFound } from '../utils/response'
 import { rbac } from '../middleware/rbac';
 import { requirePermission } from '../middleware/rbac';
 import { drizzle } from 'drizzle-orm/d1';
-import { createVoipProvider } from '../services/voip-provider';
+import { createVoipProvider, loadVoipSettings, credentialsAwareErrorHandler } from '../services/voip-provider';
 import type { VoipSettingsRow } from '../services/voip-provider';
 import { logActivity } from '../utils/activity-logger';
 import { emitFromRequest } from '../services/automation/events';
 import { tenantToday, addDaysLocal, localDateStartUtcIso, sqlOffsetModifier } from '../utils/tz';
 
 const callRoutes = new Hono<AppContext>();
+callRoutes.onError(credentialsAwareErrorHandler);
 
 // ── Schemas ───────────────────────────────────────────────────
 
@@ -41,37 +42,6 @@ const transferSchema = z.object({
 
 // ── Helper: load VoIP settings ────────────────────────────────
 
-async function loadVoipSettings(db: D1Database): Promise<VoipSettingsRow | null> {
-  const row = await db.prepare('SELECT * FROM voip_settings LIMIT 1').first<any>();
-  if (!row) return null;
-  return {
-    id: row.id,
-    voipProvider: row.voip_provider || 'twilio',
-    providerAccountId: row.provider_account_id,
-    providerAuthToken: row.provider_auth_token,
-    providerApiKeyId: row.provider_api_key_id,
-    providerApiKeySecret: row.provider_api_key_secret,
-    providerAppId: row.provider_app_id,
-    twilioAccountSid: row.twilio_account_sid,
-    twilioAuthToken: row.twilio_auth_token,
-    twilioApiKeySid: row.twilio_api_key_sid,
-    twilioApiKeySecret: row.twilio_api_key_secret,
-    twilioTwimlAppSid: row.twilio_twiml_app_sid,
-    defaultCallerId: row.default_caller_id,
-    recordingPolicy: row.recording_policy || 'all',
-    ivrEnabled: row.ivr_enabled || 0,
-    ivrConfig: row.ivr_config,
-    businessHoursEnabled: row.business_hours_enabled || 0,
-    businessHours: row.business_hours,
-    voicemailEnabled: row.voicemail_enabled ?? 1,
-    voicemailGreetingUrl: row.voicemail_greeting_url,
-    maxRingDuration: row.max_ring_duration || 30,
-    routingStrategy: row.routing_strategy || 'assigned',
-    autoCreateLeadMissedCall: row.auto_create_lead_missed_call ?? 1,
-    recordingRetentionDays: row.recording_retention_days ?? 90,
-    recordingStorageBytes: row.recording_storage_bytes ?? 0,
-  };
-}
 
 // ── Helper: parse call log row ────────────────────────────────
 
@@ -459,7 +429,7 @@ callRoutes.post('/outbound', zValidator('json', outboundCallSchema), async (c) =
   const userId = c.get('userId');
   const data = c.req.valid('json');
 
-  const settings = await loadVoipSettings(db);
+  const settings = await loadVoipSettings(c.env, db);
   if (!settings?.defaultCallerId) {
     return error(c, 'VoIP not configured. Please set up VoIP credentials in Settings.', 422);
   }
@@ -550,7 +520,7 @@ callRoutes.post('/:id/transfer', zValidator('json', transferSchema), async (c) =
   const providerCallId = callLog?.provider_call_id || callLog?.twilio_call_sid;
   if (!providerCallId) return notFound(c, 'Call log');
 
-  const settings = await loadVoipSettings(db);
+  const settings = await loadVoipSettings(c.env, db);
   if (!settings) {
     return error(c, 'VoIP not configured', 422);
   }
@@ -573,7 +543,7 @@ callRoutes.post('/:id/end', async (c) => {
   const providerCallId = callLog?.provider_call_id || callLog?.twilio_call_sid;
   if (!providerCallId) return notFound(c, 'Call log');
 
-  const settings = await loadVoipSettings(db);
+  const settings = await loadVoipSettings(c.env, db);
   if (!settings) {
     return error(c, 'VoIP not configured', 422);
   }

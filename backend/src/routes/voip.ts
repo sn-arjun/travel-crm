@@ -16,10 +16,11 @@ import { generateId } from '../utils/uuid';
 import { success, error } from '../utils/response';
 import { rbac } from '../middleware/rbac';
 import { findContactByPhone, findOpenLeadForContact } from '../services/call-routing';
-import { createVoipProvider } from '../services/voip-provider';
+import { createVoipProvider, loadVoipSettings, sealVoipSecret, credentialsAwareErrorHandler } from '../services/voip-provider';
 import type { VoipSettingsRow, VoipProviderName } from '../services/voip-provider';
 
 const voipRoutes = new Hono<AppContext>();
+voipRoutes.onError(credentialsAwareErrorHandler);
 
 // ── Schemas ───────────────────────────────────────────────────
 
@@ -67,37 +68,6 @@ const updateSettingsSchema = z.object({
 
 // ── Helper: load full VoIP settings ─────────────────────────────
 
-async function loadVoipSettings(db: D1Database): Promise<VoipSettingsRow | null> {
-  const row = await db.prepare('SELECT * FROM voip_settings LIMIT 1').first<any>();
-  if (!row) return null;
-  return {
-    id: row.id,
-    voipProvider: row.voip_provider || 'twilio',
-    providerAccountId: row.provider_account_id,
-    providerAuthToken: row.provider_auth_token,
-    providerApiKeyId: row.provider_api_key_id,
-    providerApiKeySecret: row.provider_api_key_secret,
-    providerAppId: row.provider_app_id,
-    twilioAccountSid: row.twilio_account_sid,
-    twilioAuthToken: row.twilio_auth_token,
-    twilioApiKeySid: row.twilio_api_key_sid,
-    twilioApiKeySecret: row.twilio_api_key_secret,
-    twilioTwimlAppSid: row.twilio_twiml_app_sid,
-    defaultCallerId: row.default_caller_id,
-    recordingPolicy: row.recording_policy || 'all',
-    ivrEnabled: row.ivr_enabled || 0,
-    ivrConfig: row.ivr_config,
-    businessHoursEnabled: row.business_hours_enabled || 0,
-    businessHours: row.business_hours,
-    voicemailEnabled: row.voicemail_enabled ?? 1,
-    voicemailGreetingUrl: row.voicemail_greeting_url,
-    maxRingDuration: row.max_ring_duration || 30,
-    routingStrategy: row.routing_strategy || 'assigned',
-    autoCreateLeadMissedCall: row.auto_create_lead_missed_call ?? 1,
-    recordingRetentionDays: row.recording_retention_days ?? 90,
-    recordingStorageBytes: row.recording_storage_bytes ?? 0,
-  };
-}
 
 /** Mask sensitive string: show only last 4 chars */
 function maskSecret(val: string | null): string | null {
@@ -133,20 +103,23 @@ voipRoutes.get('/settings', rbac(['admin']), async (c) => {
     try { businessHours = JSON.parse(businessHours); } catch { /* keep string */ }
   }
 
+  // Masks show the last four characters of the real value, so the stored (encrypted) value is opened first.
+  const secrets = await loadVoipSettings(c.env, db);
+
   return success(c, {
     id: row.id,
     voipProvider: row.voip_provider || 'twilio',
     // Generic provider (masked)
     providerAccountId: row.provider_account_id,
-    providerAuthToken: maskSecret(row.provider_auth_token),
+    providerAuthToken: maskSecret(secrets?.providerAuthToken ?? null),
     providerApiKeyId: row.provider_api_key_id,
-    providerApiKeySecret: maskSecret(row.provider_api_key_secret),
+    providerApiKeySecret: maskSecret(secrets?.providerApiKeySecret ?? null),
     providerAppId: row.provider_app_id,
     // Legacy Twilio (masked)
     twilioAccountSid: row.twilio_account_sid,
-    twilioAuthToken: maskSecret(row.twilio_auth_token),
+    twilioAuthToken: maskSecret(secrets?.twilioAuthToken ?? null),
     twilioApiKeySid: row.twilio_api_key_sid,
-    twilioApiKeySecret: maskSecret(row.twilio_api_key_secret),
+    twilioApiKeySecret: maskSecret(secrets?.twilioApiKeySecret ?? null),
     twilioTwimlAppSid: row.twilio_twiml_app_sid,
     // Common
     defaultCallerId: row.default_caller_id,
@@ -185,15 +158,15 @@ voipRoutes.put('/settings', rbac(['admin']), zValidator('json', updateSettingsSc
   if (data.voipProvider !== undefined) { updates.push('voip_provider = ?'); values.push(data.voipProvider); }
   // Generic provider credentials
   if (data.providerAccountId !== undefined) { updates.push('provider_account_id = ?'); values.push(data.providerAccountId); }
-  if (data.providerAuthToken !== undefined) { updates.push('provider_auth_token = ?'); values.push(data.providerAuthToken); }
+  if (data.providerAuthToken !== undefined) { updates.push('provider_auth_token = ?'); values.push(await sealVoipSecret(c.env, row.id, 'provider_auth_token', data.providerAuthToken)); }
   if (data.providerApiKeyId !== undefined) { updates.push('provider_api_key_id = ?'); values.push(data.providerApiKeyId); }
-  if (data.providerApiKeySecret !== undefined) { updates.push('provider_api_key_secret = ?'); values.push(data.providerApiKeySecret); }
+  if (data.providerApiKeySecret !== undefined) { updates.push('provider_api_key_secret = ?'); values.push(await sealVoipSecret(c.env, row.id, 'provider_api_key_secret', data.providerApiKeySecret)); }
   if (data.providerAppId !== undefined) { updates.push('provider_app_id = ?'); values.push(data.providerAppId); }
   // Legacy Twilio
   if (data.twilioAccountSid !== undefined) { updates.push('twilio_account_sid = ?'); values.push(data.twilioAccountSid); }
-  if (data.twilioAuthToken !== undefined) { updates.push('twilio_auth_token = ?'); values.push(data.twilioAuthToken); }
+  if (data.twilioAuthToken !== undefined) { updates.push('twilio_auth_token = ?'); values.push(await sealVoipSecret(c.env, row.id, 'twilio_auth_token', data.twilioAuthToken)); }
   if (data.twilioApiKeySid !== undefined) { updates.push('twilio_api_key_sid = ?'); values.push(data.twilioApiKeySid); }
-  if (data.twilioApiKeySecret !== undefined) { updates.push('twilio_api_key_secret = ?'); values.push(data.twilioApiKeySecret); }
+  if (data.twilioApiKeySecret !== undefined) { updates.push('twilio_api_key_secret = ?'); values.push(await sealVoipSecret(c.env, row.id, 'twilio_api_key_secret', data.twilioApiKeySecret)); }
   if (data.twilioTwimlAppSid !== undefined) { updates.push('twilio_twiml_app_sid = ?'); values.push(data.twilioTwimlAppSid); }
   // Common
   if (data.defaultCallerId !== undefined) { updates.push('default_caller_id = ?'); values.push(data.defaultCallerId); }
@@ -225,7 +198,7 @@ voipRoutes.put('/settings', rbac(['admin']), zValidator('json', updateSettingsSc
 
 voipRoutes.get('/test-connection', rbac(['admin']), async (c) => {
   const db = c.get('tenantDb');
-  const settings = await loadVoipSettings(db);
+  const settings = await loadVoipSettings(c.env, db);
 
   if (!settings) {
     return error(c, 'VoIP not configured', 422);
@@ -246,7 +219,7 @@ voipRoutes.get('/test-connection', rbac(['admin']), async (c) => {
 voipRoutes.post('/token', async (c) => {
   const userId = c.get('userId');
   const db = c.get('tenantDb');
-  const settings = await loadVoipSettings(db);
+  const settings = await loadVoipSettings(c.env, db);
 
   if (!settings) {
     return error(c, 'VoIP not configured. Please set up credentials in Settings.', 422);
@@ -351,7 +324,7 @@ voipRoutes.get('/numbers', rbac(['admin']), async (c) => {
 voipRoutes.post('/numbers/search', rbac(['admin']), async (c) => {
   const db = c.get('tenantDb');
   const body = await c.req.json() as { country?: string; areaCode?: string; contains?: string };
-  const settings = await loadVoipSettings(db);
+  const settings = await loadVoipSettings(c.env, db);
 
   if (!settings) {
     return error(c, 'VoIP credentials not configured', 422);
@@ -373,7 +346,7 @@ voipRoutes.post('/numbers/search', rbac(['admin']), async (c) => {
 voipRoutes.post('/numbers/purchase', rbac(['admin']), async (c) => {
   const db = c.get('tenantDb');
   const body = await c.req.json() as { phoneNumber: string; friendlyName?: string };
-  const settings = await loadVoipSettings(db);
+  const settings = await loadVoipSettings(c.env, db);
 
   if (!settings) {
     return error(c, 'VoIP credentials not configured', 422);

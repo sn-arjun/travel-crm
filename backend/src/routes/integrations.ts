@@ -18,6 +18,7 @@ import { zValidator } from '../utils/validator';
 import type { AppContext } from '../types';
 import { rbac } from '../middleware/rbac';
 import { generateId } from '../utils/uuid';
+import { hashApiKey } from '../utils/crypto-box';
 import { success, created, error, notFound } from '../utils/response';
 import { normalizeAddress } from '../services/inbound/ingest';
 
@@ -120,14 +121,15 @@ integrationRoutes.delete('/channels/:id', async (c) => {
 
 interface ApiKeyRow {
   id: string;
-  api_key: string;
+  key_prefix: string | null;
   label: string | null;
   is_active: number;
   created_at: string;
 }
 
-function maskKey(key: string): string {
-  return key.length > 12 ? `${key.slice(0, 8)}…${key.slice(-4)}` : '…';
+/** Display form of a key: the stored 8-character prefix only (the full key exists once, at creation). */
+function maskKey(prefix: string | null): string {
+  return prefix ? `${prefix}…` : '…';
 }
 
 function newApiKey(): string {
@@ -137,12 +139,12 @@ function newApiKey(): string {
 
 integrationRoutes.get('/api-keys', async (c) => {
   const rows = await c.env.MASTER_DB
-    .prepare('SELECT id, api_key, label, is_active, created_at FROM tenant_api_keys WHERE tenant_id = ? AND is_active = 1 ORDER BY created_at')
+    .prepare('SELECT id, key_prefix, label, is_active, created_at FROM tenant_api_keys WHERE tenant_id = ? AND is_active = 1 ORDER BY created_at')
     .bind(c.get('tenantId'))
     .all<ApiKeyRow>();
   return success(
     c,
-    rows.results.map((row) => ({ id: row.id, label: row.label, maskedKey: maskKey(row.api_key), createdAt: row.created_at })),
+    rows.results.map((row) => ({ id: row.id, label: row.label, maskedKey: maskKey(row.key_prefix), createdAt: row.created_at })),
   );
 });
 
@@ -150,12 +152,13 @@ integrationRoutes.post('/api-keys', zValidator('json', z.object({ label: z.strin
   const { label } = c.req.valid('json');
   const id = generateId();
   const apiKey = newApiKey();
+  // Only the hash and an 8-character prefix are stored; api_key stays '' (legacy column).
   await c.env.MASTER_DB
-    .prepare('INSERT INTO tenant_api_keys (id, tenant_id, api_key, label, is_active) VALUES (?, ?, ?, ?, 1)')
-    .bind(id, c.get('tenantId'), apiKey, label?.trim() || null)
+    .prepare("INSERT INTO tenant_api_keys (id, tenant_id, api_key, key_hash, key_prefix, label, is_active) VALUES (?, ?, '', ?, ?, ?, 1)")
+    .bind(id, c.get('tenantId'), await hashApiKey(apiKey), apiKey.slice(0, 8), label?.trim() || null)
     .run();
   // The full key is returned only here; afterwards it is shown masked.
-  return created(c, { id, label: label?.trim() || null, apiKey, maskedKey: maskKey(apiKey) });
+  return created(c, { id, label: label?.trim() || null, apiKey, maskedKey: maskKey(apiKey.slice(0, 8)) });
 });
 
 integrationRoutes.delete('/api-keys/:id', async (c) => {

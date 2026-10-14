@@ -5,7 +5,11 @@
  * Supports Twilio and Plivo (and future providers).
  */
 
+import type { Context } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import type { Env } from '../types';
+import { error } from '../utils/response';
+import { CredentialDecryptError, CredentialsKeyMissing, decryptColumn, encryptSecret } from '../utils/crypto-box';
 import { TwilioVoipProvider } from './twilio-voice';
 import { PlivoVoipProvider } from './plivo-voice';
 import { TwilioMessagingProvider } from './twilio-messaging';
@@ -205,3 +209,79 @@ export function createMessagingProvider(env: Env, provider: VoipProviderName = '
   return new TwilioMessagingProvider(env);
 }
 
+
+// ── Stored settings (credentials encrypted at rest, R108) ───
+
+/** The four credential columns of voip_settings; stored as enc:v1 values, never plaintext. */
+export const VOIP_SECRET_COLUMNS = [
+  'provider_auth_token',
+  'provider_api_key_secret',
+  'twilio_auth_token',
+  'twilio_api_key_secret',
+] as const;
+export type VoipSecretColumn = (typeof VOIP_SECRET_COLUMNS)[number];
+
+/**
+ * Additional authenticated data of a stored credential: the settings row (one per workspace database, with
+ * a unique id) and the column, so a ciphertext copied to another row or column does not open.
+ */
+export function voipSecretAad(rowId: string, column: VoipSecretColumn): string {
+  return `${rowId}:voip_settings.${column}`;
+}
+
+/** Seal a credential for a column of a voip_settings row. Null and empty clear the column. */
+export async function sealVoipSecret(env: Env, rowId: string, column: VoipSecretColumn, value: string | null): Promise<string | null> {
+  if (!value) return value ?? null;
+  return encryptSecret(env, value, voipSecretAad(rowId, column));
+}
+
+/**
+ * The one reader of voip_settings: every route, callback and provider gets credentials decrypted through
+ * here. Legacy plaintext values pass through unchanged until they are re-encrypted. Throws
+ * CredentialsKeyMissing when a stored credential cannot be opened for lack of a key.
+ */
+export async function loadVoipSettings(env: Env, db: D1Database): Promise<VoipSettingsRow | null> {
+  const row = await db.prepare('SELECT * FROM voip_settings LIMIT 1').first<any>();
+  if (!row) return null;
+  const secret = (column: VoipSecretColumn) => decryptColumn(env, row[column], voipSecretAad(row.id, column));
+  return {
+    id: row.id,
+    voipProvider: row.voip_provider || 'twilio',
+    providerAccountId: row.provider_account_id,
+    providerAuthToken: await secret('provider_auth_token'),
+    providerApiKeyId: row.provider_api_key_id,
+    providerApiKeySecret: await secret('provider_api_key_secret'),
+    providerAppId: row.provider_app_id,
+    twilioAccountSid: row.twilio_account_sid,
+    twilioAuthToken: await secret('twilio_auth_token'),
+    twilioApiKeySid: row.twilio_api_key_sid,
+    twilioApiKeySecret: await secret('twilio_api_key_secret'),
+    twilioTwimlAppSid: row.twilio_twiml_app_sid,
+    defaultCallerId: row.default_caller_id,
+    recordingPolicy: row.recording_policy || 'all',
+    ivrEnabled: row.ivr_enabled || 0,
+    ivrConfig: row.ivr_config,
+    businessHoursEnabled: row.business_hours_enabled || 0,
+    businessHours: row.business_hours,
+    voicemailEnabled: row.voicemail_enabled ?? 1,
+    voicemailGreetingUrl: row.voicemail_greeting_url,
+    maxRingDuration: row.max_ring_duration || 30,
+    routingStrategy: row.routing_strategy || 'assigned',
+    autoCreateLeadMissedCall: row.auto_create_lead_missed_call ?? 1,
+    recordingRetentionDays: row.recording_retention_days ?? 90,
+    recordingStorageBytes: row.recording_storage_bytes ?? 0,
+  };
+}
+
+/** Error handler for routers that read credentials: a missing key is 503 CREDENTIALS_UNAVAILABLE, nothing else changes. */
+export function credentialsAwareErrorHandler(err: Error, c: Context): Response {
+  if (err instanceof CredentialsKeyMissing || err instanceof CredentialDecryptError) {
+    console.error('[voip] credentials unavailable:', err.name);
+    return error(c, 'Stored credentials are unavailable. Contact support.', 503, { code: 'CREDENTIALS_UNAVAILABLE' });
+  }
+  if (err instanceof HTTPException) {
+    return error(c, err.status >= 500 ? 'Internal server error' : err.message || 'Bad request', err.status);
+  }
+  console.error('Unhandled error:', err);
+  return error(c, 'Internal server error', 500);
+}

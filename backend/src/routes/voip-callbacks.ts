@@ -17,7 +17,7 @@ import { handleMissedCall } from '../services/missed-call-handler';
 import { emitEvent } from '../services/automation/events';
 import { normalizePhone } from '../utils/phone';
 import { checkBusinessHours, type BusinessHoursConfig } from '../utils/business-hours';
-import { createVoipProvider, escapeXml as escapeXmlUtil } from '../services/voip-provider';
+import { createVoipProvider, escapeXml as escapeXmlUtil, loadVoipSettings } from '../services/voip-provider';
 import type { VoipSettingsRow } from '../services/voip-provider';
 
 import { candidateTenantDbs, resolveTenantDb, tenancyMode } from '../services/tenant-db';
@@ -49,9 +49,9 @@ voipCallbackRoutes.use('/*', async (c, next) => {
     const db =
       (await callDb(c.env, { number: params.To, callSid: params.CallSid, callLogId: c.req.query('callLogId') })) ??
       (await callDb(c.env, { number: params.From }));
-    const settings = db ? await loadSettings(db) : null;
+    const settings = db ? await loadSettings(c.env, db) : null;
     if (settings && settings.voipProvider !== 'twilio') return c.json({ error: 'Webhook signatures are not supported for this provider' }, 403);
-    // Credentials are plaintext today; R108 decrypts them here when it lands.
+    // loadSettings decrypts the workspace's stored token (R108); an unreadable one leaves only the platform token.
     if (settings) tokens.unshift(settings.providerAuthToken || settings.twilioAuthToken);
   } catch (e) {
     console.error('VoIP callback tenant lookup failed:', e);
@@ -63,39 +63,18 @@ voipCallbackRoutes.use('/*', async (c, next) => {
   return next();
 });
 
-// ── Helper: load VoIP settings from DB ────────────────────────
+// ── Helper: load VoIP settings from DB (credentials decrypted) ─
 
-async function loadSettings(db: D1Database): Promise<VoipSettingsRow | null> {
-  const row = await db.prepare('SELECT * FROM voip_settings LIMIT 1').first<any>();
-  if (!row) return null;
-  return {
-    id: row.id,
-    voipProvider: row.voip_provider || 'twilio',
-    providerAccountId: row.provider_account_id,
-    providerAuthToken: row.provider_auth_token,
-    providerApiKeyId: row.provider_api_key_id,
-    providerApiKeySecret: row.provider_api_key_secret,
-    providerAppId: row.provider_app_id,
-    twilioAccountSid: row.twilio_account_sid,
-    twilioAuthToken: row.twilio_auth_token,
-    twilioApiKeySid: row.twilio_api_key_sid,
-    twilioApiKeySecret: row.twilio_api_key_secret,
-    twilioTwimlAppSid: row.twilio_twiml_app_sid,
-    defaultCallerId: row.default_caller_id,
-    recordingPolicy: row.recording_policy || 'all',
-    ivrEnabled: row.ivr_enabled || 0,
-    ivrConfig: row.ivr_config,
-    businessHoursEnabled: row.business_hours_enabled || 0,
-    businessHours: row.business_hours,
-    voicemailEnabled: row.voicemail_enabled ?? 1,
-    voicemailGreetingUrl: row.voicemail_greeting_url,
-    maxRingDuration: row.max_ring_duration || 30,
-    routingStrategy: row.routing_strategy || 'assigned',
-    autoCreateLeadMissedCall: row.auto_create_lead_missed_call ?? 1,
-    recordingRetentionDays: row.recording_retention_days ?? 90,
-    recordingStorageBytes: row.recording_storage_bytes ?? 0,
-  };
+/** A workspace whose stored credentials cannot be opened is treated as not configured (fail closed, logged without values). */
+async function loadSettings(env: Env, db: D1Database): Promise<VoipSettingsRow | null> {
+  try {
+    return await loadVoipSettings(env, db);
+  } catch (e) {
+    console.error('[voip-callbacks] stored credentials unavailable:', e instanceof Error ? e.name : 'error');
+    return null;
+  }
 }
+
 
 /** Parse JSON safely, return null on failure */
 function safeJsonParse(val: string | null): any {
@@ -227,7 +206,7 @@ voipCallbackRoutes.post('/status-callback', async (c) => {
       }>();
 
       if (callLog?.direction === 'inbound') {
-        const settings = await loadSettings(db);
+        const settings = await loadSettings(c.env, db);
         try {
           await handleMissedCall(db, c.env as any, {
             callLogId: callLog.id,
@@ -316,7 +295,7 @@ voipCallbackRoutes.post('/twiml/outbound', async (c) => {
   const db = await callDb(c.env, { number: from, callSid: (body.CallSid || body.CallUUID) as string });
 
   if (!db) return c.text('<Response/>', 200, { 'Content-Type': 'text/xml' });
-  const settings = await loadSettings(db);
+  const settings = await loadSettings(c.env, db);
   if (settings) {
     const provider = createVoipProvider(c.env as any, settings);
     return c.text(provider.generateDialMarkup(to, from, false), 200, { 'Content-Type': 'text/xml' });
@@ -345,7 +324,7 @@ voipCallbackRoutes.post('/twiml/inbound', async (c) => {
   const db = await callDb(c.env, { number: to, callSid });
 
   if (!db) return c.text('<Response/>', 200, { 'Content-Type': 'text/xml' });
-  const settings = await loadSettings(db);
+  const settings = await loadSettings(c.env, db);
 
   if (!settings) {
     return c.text(`<?xml version="1.0" encoding="UTF-8"?>
@@ -435,7 +414,7 @@ voipCallbackRoutes.post('/twiml/ivr-handler', async (c) => {
   const db = await callDb(c.env, { number: body.To as string, callLogId });
 
   if (!db) return c.text('<Response/>', 200, { 'Content-Type': 'text/xml' });
-  const settings = await loadSettings(db);
+  const settings = await loadSettings(c.env, db);
   const baseUrl = c.req.url.replace(/\/api\/v1\/voip\/twiml\/ivr-handler.*$/, '').replace(/\/api\/voip\/twiml\/ivr-handler.*$/, '');
 
   if (!settings) {
@@ -530,7 +509,7 @@ voipCallbackRoutes.post('/twiml/dial-status', async (c) => {
   if (dialStatus !== 'answered' && dialStatus !== 'completed') {
     const db = await callDb(c.env, { number: body.To as string, callLogId });
     if (!db) return c.text('<Response/>', 200, { 'Content-Type': 'text/xml' });
-    const settings = await loadSettings(db);
+    const settings = await loadSettings(c.env, db);
     if (settings) {
       const provider = createVoipProvider(c.env as any, settings);
       return c.text(provider.generateVoicemailMarkup(

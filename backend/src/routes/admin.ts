@@ -2,7 +2,10 @@ import { Hono } from 'hono';
 import type { AppContext } from '../types';
 import { success, error, notFound, paginated } from '../utils/response';
 import { requireSuperAdmin } from '../middleware/require-super-admin';
-import { getTenantInfo, tenantDbFor } from '../services/tenant-db';
+import { getTenantInfo, tenantDbFor, resolveTenantDb, tenancyMode } from '../services/tenant-db';
+import { actorFrom, logAdminAction } from '../services/admin/audit';
+import { CredentialsKeyMissing, activeKeyId, decryptSecret, encryptSecret, hashApiKey, isEncrypted, keyIdOf } from '../utils/crypto-box';
+import { VOIP_SECRET_COLUMNS, voipSecretAad } from '../services/voip-provider';
 import tenantOpsRoutes from './admin-tenant-ops';
 import reportRoutes from './admin-reports';
 import { appUrl, emailFrom, supportEmail } from '../utils/app-urls';
@@ -38,6 +41,95 @@ app.post('/tenants/:id/addons', grantAddon);
 // Lifecycle, plan, features, caps, usage, impersonation, audit log (R111) and console dashboard/reports/subscriptions
 app.route('/', tenantOpsRoutes);
 app.route('/', reportRoutes);
+
+// --- Credential maintenance (R108) ---
+
+/**
+ * POST /maintenance/hash-api-keys: hash every website API key still stored as plaintext and blank the plaintext
+ * column. Idempotent; a second run changes nothing.
+ */
+app.post('/maintenance/hash-api-keys', async (c) => {
+  const rows = await c.env.MASTER_DB
+    .prepare("SELECT id, api_key FROM tenant_api_keys WHERE api_key != '' AND key_hash IS NULL")
+    .all<{ id: string; api_key: string }>();
+  let hashed = 0;
+  for (const row of rows.results) {
+    const res = await c.env.MASTER_DB
+      .prepare("UPDATE tenant_api_keys SET key_hash = ?, key_prefix = ?, api_key = '' WHERE id = ? AND key_hash IS NULL")
+      .bind(await hashApiKey(row.api_key), row.api_key.slice(0, 8), row.id)
+      .run();
+    hashed += res.meta.changes ? 1 : 0;
+  }
+  await logAdminAction(c.env, actorFrom(c), 'maintenance.hash_api_keys', null, null, { converted: hashed }, { entityType: 'system' });
+  return success(c, { hashed });
+});
+
+/**
+ * POST /maintenance/reencrypt?cursor=<tenantId>&limit=<n>: for each agency (ordered by id, after the cursor), encrypt
+ * legacy plaintext VoIP credentials and move values sealed with an older key to the active key. Idempotent and
+ * resumable: when nextCursor is not null, call again with it. Never returns or logs a credential.
+ */
+app.post('/maintenance/reencrypt', async (c) => {
+  const params = new URL(c.req.url).searchParams;
+  const cursor = (params.get('cursor') || '').trim();
+  const limit = Math.min(200, Math.max(1, parseInt(params.get('limit') || '25', 10) || 25));
+  let activeId: string;
+  try {
+    activeId = await activeKeyId(c.env);
+  } catch (e) {
+    if (e instanceof CredentialsKeyMissing) return error(c, 'Credential encryption keys are not configured', 503, { code: 'CREDENTIALS_UNAVAILABLE' });
+    throw e;
+  }
+
+  const tenants = await c.env.MASTER_DB
+    .prepare('SELECT id FROM tenants WHERE id > ? ORDER BY id LIMIT ?')
+    .bind(cursor, limit)
+    .all<{ id: string }>();
+  const counts = { tenantsScanned: 0, encrypted: 0, rotated: 0, failed: 0 };
+  const seen = new Set<D1Database>();
+  const databases: D1Database[] = [];
+  for (const tenant of tenants.results) {
+    counts.tenantsScanned++;
+    try {
+      const db = await resolveTenantDb(c.env, tenant.id);
+      if (db && !seen.has(db)) { seen.add(db); databases.push(db); }
+    } catch {
+      counts.failed++;
+    }
+  }
+  if (!cursor && databases.length === 0 && tenancyMode(c.env) === 'single') databases.push(c.env.MASTER_DB);
+
+  for (const db of databases) {
+    let row: Record<string, any> | null = null;
+    try {
+      row = await db.prepare('SELECT * FROM voip_settings LIMIT 1').first<Record<string, any>>();
+    } catch {
+      continue; // an agency database without VoIP settings
+    }
+    if (!row) continue;
+    const sets: string[] = [];
+    const binds: string[] = [];
+    for (const column of VOIP_SECRET_COLUMNS) {
+      const stored = row[column] as string | null;
+      if (!stored) continue;
+      try {
+        const aad = voipSecretAad(row.id, column);
+        const { value, legacy } = await decryptSecret(c.env, stored, aad);
+        if (!legacy && isEncrypted(stored) && keyIdOf(stored) === activeId) continue;
+        sets.push(`${column} = ?`);
+        binds.push(await encryptSecret(c.env, value, aad));
+        if (legacy) counts.encrypted++; else counts.rotated++;
+      } catch {
+        counts.failed++;
+      }
+    }
+    if (sets.length) await db.prepare(`UPDATE voip_settings SET ${sets.join(', ')} WHERE id = ?`).bind(...binds, row.id).run();
+  }
+
+  const nextCursor = tenants.results.length === limit ? tenants.results[tenants.results.length - 1].id : null;
+  await logAdminAction(c.env, actorFrom(c), 'maintenance.reencrypt', null, null, { ...counts, activeKeyId: activeId }, { entityType: 'system' });
+  return success(c, { ...counts, nextCursor });
+});
 
 // --- Helpers ---
 

@@ -21,6 +21,7 @@ import { resolveTenantDb } from '../services/tenant-db';
 import { ingestInbound, normalizeAddress, parseEmailAddress, type InboundChannel } from '../services/inbound/ingest';
 import { findOrCreateContact } from '../services/domain/contacts';
 import { createLead } from '../services/domain/leads';
+import { hashApiKey } from '../utils/crypto-box';
 
 const inboundRoutes = new Hono<AppContext>();
 
@@ -291,18 +292,35 @@ export async function handleWebForm(c: Context<AppContext>): Promise<Response> {
   if (!apiKey) return c.json({ error: 'api_key is required' }, 400);
 
   const masterDb = c.env.MASTER_DB;
-  const keyRecord = await masterDb
-    .prepare('SELECT tenant_id FROM tenant_api_keys WHERE api_key = ? AND is_active = 1')
-    .bind(apiKey)
-    .first<{ tenant_id: string }>();
+  // Keys are stored as SHA-256 hashes. A key issued before R108 may still sit in api_key as plaintext; it is
+  // accepted once and hashed in place, so the plaintext copy disappears the first time the key is used.
+  let keyRecord = await masterDb
+    .prepare('SELECT id, tenant_id FROM tenant_api_keys WHERE key_hash = ? AND is_active = 1')
+    .bind(await hashApiKey(apiKey))
+    .first<{ id: string; tenant_id: string }>();
+  if (!keyRecord) {
+    keyRecord = await masterDb
+      .prepare("SELECT id, tenant_id FROM tenant_api_keys WHERE api_key = ? AND api_key != '' AND is_active = 1")
+      .bind(apiKey)
+      .first<{ id: string; tenant_id: string }>();
+    if (keyRecord) {
+      await masterDb
+        .prepare("UPDATE tenant_api_keys SET key_hash = ?, key_prefix = ?, api_key = '' WHERE id = ?")
+        .bind(await hashApiKey(apiKey), apiKey.slice(0, 8), keyRecord.id)
+        .run()
+        .catch((err) => console.error('[inbound] legacy API key hashing failed:', err instanceof Error ? err.name : 'error'));
+    }
+  }
   if (!keyRecord) return c.json({ error: 'Invalid API key' }, 401);
 
   const tenantId = keyRecord.tenant_id;
+  // The request log and the rate limit see the 8-character prefix, never the key itself.
+  const keyPrefix = apiKey.slice(0, 8);
 
   // Rate limiting: max 100 requests per API key per hour
   const recentRequests = await masterDb
-    .prepare(`SELECT COUNT(*) as cnt FROM webhook_log WHERE api_key = ? AND created_at > strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-1 hour')`)
-    .bind(apiKey)
+    .prepare(`SELECT COUNT(*) as cnt FROM webhook_log WHERE tenant_id = ? AND api_key = ? AND created_at > strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-1 hour')`)
+    .bind(tenantId, keyPrefix)
     .first<{ cnt: number }>();
   if ((recentRequests?.cnt || 0) >= 100) return c.json({ error: 'Rate limit exceeded (100/hour)' }, 429);
 
@@ -362,12 +380,12 @@ export async function handleWebForm(c: Context<AppContext>): Promise<Response> {
       metadata: Object.fromEntries(Object.entries(utm).filter(([, v]) => v)),
     });
 
-    await logWebhook(c.env, { tenantId, apiKey, source, payload: body, status: 'success' });
+    await logWebhook(c.env, { tenantId, apiKey: keyPrefix, source, payload: { ...body, api_key: keyPrefix }, status: 'success' });
     return c.json({ success: true, lead_id: lead.id, contact_id: contact.id });
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     console.error('[inbound] web form failed:', detail);
-    await logWebhook(c.env, { tenantId, apiKey, source, payload: body, status: 'error', error: detail });
+    await logWebhook(c.env, { tenantId, apiKey: keyPrefix, source, payload: { ...body, api_key: keyPrefix }, status: 'error', error: detail });
     return c.json({ error: 'Failed to create lead' }, 500);
   }
 }

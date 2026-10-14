@@ -241,12 +241,16 @@ export const superAdminAuditLog = sqliteTable('super_admin_audit_log', {
 export const tenantApiKeys = sqliteTable('tenant_api_keys', {
   id: text('id').primaryKey(),
   tenantId: text('tenant_id').notNull().references(() => tenants.id),
+  // Legacy plaintext key; '' once hashed (R108). New keys are only ever stored as keyHash.
   apiKey: text('api_key').notNull(),
+  keyHash: text('key_hash'), // lowercase hex SHA-256 of the key
+  keyPrefix: text('key_prefix'), // first 8 characters, for display and the request log
   label: text('label'),
   isActive: integer('is_active').default(1),
   createdAt: text('created_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+  lastUsedAt: text('last_used_at'),
 }, (table) => [
-  uniqueIndex('tenant_api_keys_key_idx').on(table.apiKey),
+  uniqueIndex('tenant_api_keys_hash_idx').on(table.keyHash),
   index('tenant_api_keys_tenant_idx').on(table.tenantId),
 ]);
 
@@ -254,7 +258,7 @@ export const tenantApiKeys = sqliteTable('tenant_api_keys', {
 export const webhookLog = sqliteTable('webhook_log', {
   id: text('id').primaryKey(),
   tenantId: text('tenant_id').notNull(),
-  apiKey: text('api_key'),
+  apiKey: text('api_key'), // key prefix only (R108)
   source: text('source'),
   payload: text('payload'),
   status: text('status').notNull().default('success'),

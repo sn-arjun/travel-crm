@@ -51,6 +51,12 @@ const TEST_ONLY_SECRETS = {
     SENDGRID_FROM_EMAIL: 'noreply@travelcrm.test',
     FCM_SERVER_KEY: 'test-only-fcm-key',
     APP_URL: 'http://localhost:3000',
+    // R108: AES key for credential encryption (base64 of 32 fixed bytes) and a second one used by the rotation test.
+    CREDENTIALS_KEYS: JSON.stringify({
+        t1: Buffer.alloc(32, 0x11).toString('base64'),
+        t0: Buffer.alloc(32, 0x22).toString('base64'),
+    }),
+    CREDENTIALS_ACTIVE_KEY_ID: 't1',
 };
 
 // Filter out comment-only queries that D1 rejects as empty statements
