@@ -228,6 +228,7 @@ const STATIC_TITLES: Record<string, string> = {
   '/import': 'Import',
   '/onboarding': 'Onboarding',
   '/settings': 'Settings',
+  '/settings/ai-usage': 'Usage and limits',
   '/campaigns': 'Campaigns',
   '/marketing': 'Marketing',
   '/assistant': 'Assistant',

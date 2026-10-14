@@ -74,7 +74,9 @@ VALUES
   ('01960000-0000-7000-8000-0000000000a2', '${TENANT_ID}', 'ai_credit_pack_5000', 10, 50000, '${PERIOD}', 'super_admin_grant', 'seed-local', 'demo tenant AI credits'),
   ('01960000-0000-7000-8000-0000000000a3', '${TENANT_ID}', 'sms_100', 10, 1000, '${PERIOD}', 'super_admin_grant', 'seed-local', 'demo tenant SMS'),
   ('01960000-0000-7000-8000-0000000000a4', '${TENANT_ID}', 'whatsapp_1000', 10, 10000, '${PERIOD}', 'super_admin_grant', 'seed-local', 'demo tenant WhatsApp'),
-  ('01960000-0000-7000-8000-0000000000a5', '${TENANT_ID}', 'otp_100', 10, 1000, '${PERIOD}', 'super_admin_grant', 'seed-local', 'demo tenant login codes');
+  ('01960000-0000-7000-8000-0000000000a5', '${TENANT_ID}', 'otp_100', 10, 1000, '${PERIOD}', 'super_admin_grant', 'seed-local', 'demo tenant login codes'),
+  ('01960000-0000-7000-8000-0000000000a6', '${TENANT_ID}', 'email_1000', 20, 20000, '${PERIOD}', 'super_admin_grant', 'seed-local', 'demo tenant emails (R110)'),
+  ('01960000-0000-7000-8000-0000000000a7', '${TENANT_ID}', 'call_minutes_100', 20, 2000, '${PERIOD}', 'super_admin_grant', 'seed-local', 'demo tenant call minutes (R110)');
 `;
 
 const tenantSql = `

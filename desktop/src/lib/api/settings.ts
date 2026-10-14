@@ -348,3 +348,46 @@ export async function resolveUserOption(id: string): Promise<User | null> {
   const res = await usersApi.getById(id);
   return 'data' in res ? res.data : null;
 }
+
+// ── Usage and limits (R110) ───────────────────────────────────────────────
+
+export interface UsagePack {
+  key: string;
+  name: string;
+  units: number;
+  price: number;
+  currency: string;
+}
+
+export interface UsageLine {
+  key: string;
+  channel: string;
+  label: string;
+  used: number;
+  allowance: number;
+  percent: number;
+  exhausted: boolean;
+  state: 'ok' | 'warning' | 'exhausted';
+  periodEnd: string;
+  addons: UsagePack[];
+  upgradeTo: { key: string; name: string; allowance: number } | null;
+}
+
+export interface UsageOverview {
+  periodKey: string;
+  periodEnd: string;
+  plan: string;
+  lines: UsageLine[];
+}
+
+export interface RequestUpgradeInput {
+  kind: 'plan' | 'top_up';
+  channel?: 'ai' | 'sms' | 'whatsapp' | 'otp' | 'call_minute' | 'email';
+  note?: string;
+}
+
+export const usageApi = {
+  get: () => client.get<ApiResponse<UsageOverview>>(API_ENDPOINTS.settings.usage),
+  requestUpgrade: (data: RequestUpgradeInput) =>
+    client.post<ApiResponse<{ requested: boolean; delivered: boolean }>>(API_ENDPOINTS.settings.requestUpgrade, data),
+};

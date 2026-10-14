@@ -8,6 +8,7 @@ import { AppShell } from '@/components/layout/app-shell';
 import { CommandPalette } from '@/components/domain/command-palette';
 import { KeyboardShortcutsProvider } from '@/components/domain/keyboard-shortcuts-provider';
 import { useAuthStore } from '@/stores/auth-store';
+import { LimitReachedHost } from '@/components/domain/allowance-exhausted-dialog';
 import { RealtimeProvider } from '@/components/providers/realtime-provider';
 import { isOnboardingPending, onboardingApi } from '@/lib/api/onboarding';
 
@@ -72,6 +73,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           {showBanner && <FinishSetupBanner />}
           {children}
           <CommandPalette />
+          <LimitReachedHost />
         </AppShell>
       </KeyboardShortcutsProvider>
     </RealtimeProvider>

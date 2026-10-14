@@ -88,12 +88,12 @@ test.describe('AI Settings & Usage', () => {
     await expect(page.locator('a[href^="tel:"]')).toHaveCount(0);
   });
 
-  test('AI Usage page — stats, breakdown table, quotas, daily trend', async ({ page }) => {
+  test('Usage and limits page — allowances, stats, breakdown table, daily trend', async ({ page }) => {
     await page.goto('/settings/ai-usage');
     await waitForLoad(page);
 
-    await expect(page.getByRole('heading', { name: 'AI Usage' })).toBeVisible();
-    await expect(page.locator('text=Monitor your AI feature usage')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Usage and limits', level: 1 })).toBeVisible();
+    await expect(page.locator('text=Monthly allowances for AI, SMS, WhatsApp')).toBeVisible();
 
     // Top stat tiles.
     await expect(page.locator('text=Total API Calls')).toBeVisible();
@@ -128,8 +128,10 @@ test.describe('AI Settings & Usage', () => {
       await expect(breakdownTable.locator('tbody tr').first()).toBeVisible();
     }
 
-    // Quotas section renders (may report "no caps configured" for this plan).
-    await expect(page.locator('text=Usage Quotas')).toBeVisible();
+    // R110: every metered channel is listed against the plan allowance.
+    for (const key of ['ai_credits', 'sms', 'whatsapp', 'otp', 'email', 'call_minute']) {
+      await expect(page.getByTestId(`usage-row-${key}`)).toBeVisible();
+    }
 
     // Back button returns to AI Settings.
     await page.getByRole('button', { name: 'Back to AI settings' }).click();

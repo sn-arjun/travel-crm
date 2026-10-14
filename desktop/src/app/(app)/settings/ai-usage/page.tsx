@@ -22,6 +22,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useApiQuery } from '@/hooks/use-api';
 import { aiApi } from '@/lib/api/ai';
 import { PageContainer } from '@/components/layout/page-container';
+import { UsageLimits } from '@/components/domain/usage-limits';
 
 const taskIcons: Record<string, React.ReactNode> = {
   lead_extraction: <FileText className="size-4" />,
@@ -66,14 +67,16 @@ function AiUsagePageContent() {
   return (
     <div className="space-y-ds-6">
       <PageHeader
-        title="AI Usage"
-        description="Monitor your AI feature usage and estimated costs"
+        title="Usage and limits"
+        description="Monthly allowances for AI, SMS, WhatsApp, email, login codes and calls, and your AI feature usage"
         back={
           <Button variant="ghost" size="icon" onClick={() => router.push('/settings/ai')} aria-label="Back to AI settings">
             <ArrowLeft className="size-5" />
           </Button>
         }
       />
+
+      <UsageLimits />
 
       <div className="grid grid-cols-1 gap-ds-4 md:grid-cols-3">
         <Stat label="Total API Calls" value={formatNumber(totalRequests)} icon={<Zap className="size-5" />} loading={loading} />
@@ -144,36 +147,6 @@ function AiUsagePageContent() {
                   })}
               </tbody>
             </table>
-          </div>
-        )}
-      </SectionCard>
-
-      <SectionCard title="Usage Quotas" description="Current usage against your plan limits">
-        {loading ? (
-          <Skeleton className="h-24 w-full" />
-        ) : !usage || usage.quotas.length === 0 ? (
-          <p className="text-sm text-ds-foreground-muted">No usage caps configured for your plan.</p>
-        ) : (
-          <div className="grid gap-ds-4 md:grid-cols-2">
-            {usage.quotas.map((cap) => (
-              <div key={cap.key} className="space-y-ds-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium capitalize text-ds-foreground">{cap.key.replace(/_/g, ' ')}</span>
-                  <span className="text-ds-foreground-muted">
-                    {cap.used} / {cap.limit}
-                  </span>
-                </div>
-                <div className="h-2 w-full overflow-hidden rounded-ds-full bg-ds-surface-sunken">
-                  <div
-                    className="h-full rounded-ds-full bg-ds-primary"
-                    style={{ width: `${Math.min(cap.percentUsed, 100)}%` }}
-                  />
-                </div>
-                <p className="text-xs text-ds-foreground-muted">
-                  {cap.remaining} remaining — resets {cap.resetPeriod}
-                </p>
-              </div>
-            ))}
           </div>
         )}
       </SectionCard>

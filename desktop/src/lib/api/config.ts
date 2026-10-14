@@ -392,6 +392,8 @@ export const API_ENDPOINTS = {
   // Settings
   settings: {
     company: '/settings/company',
+    usage: '/settings/usage',
+    requestUpgrade: '/settings/usage/request-upgrade',
     logo: '/settings/logo',
     assignmentRules: '/settings/assignment-rules',
     routingRules: '/settings/routing-rules',

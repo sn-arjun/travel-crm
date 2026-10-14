@@ -74,7 +74,7 @@ const groups: SettingsGroup[] = [
     title: 'AI',
     links: [
       { label: 'AI Features', description: 'Toggle AI features and provider', href: '/settings/ai', icon: <Sparkles className="h-5 w-5" aria-hidden="true" /> },
-      { label: 'AI Usage', description: 'Monitor AI usage and quotas', href: '/settings/ai-usage', icon: <Sparkles className="h-5 w-5" aria-hidden="true" /> },
+      { label: 'Usage and limits', description: 'AI credits, SMS, WhatsApp, email, login codes and calls', href: '/settings/ai-usage', icon: <Sparkles className="h-5 w-5" aria-hidden="true" /> },
     ],
   },
   {

@@ -2,6 +2,7 @@
 
 import { getApiBaseUrl } from './config';
 import { useAuthStore } from '@/stores/auth-store';
+import { emitLimitReached, isLimitBody } from './limit-events';
 
 // ============================================================================
 // Types
@@ -12,6 +13,8 @@ export interface ApiError {
   message: string;
   code?: string;
   errors?: Record<string, string[]>;
+  /** The whole error body, for errors that carry data (ALLOWANCE_EXHAUSTED, SEAT_LIMIT). */
+  details?: Record<string, unknown>;
 }
 
 export interface PaginatedResponse<T> {
@@ -126,6 +129,13 @@ class HttpClient {
       code: (errorData.code as string | undefined) || envelopeCode || undefined,
       errors: (errorData.errors as Record<string, string[]> | undefined) || undefined,
     };
+
+    // A plan limit (monthly allowance used up, or no free seat): keep the data and let the app show the upgrade dialog.
+    if (response.status === 402 && isLimitBody(errorData)) {
+      error.details = errorData;
+      error.code = error.code || (errorData.code as string);
+      emitLimitReached(errorData);
+    }
 
     throw error;
   }
