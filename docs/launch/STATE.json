@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-14T13:45+05:30",
+  "updated": "2026-10-14T15:10+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -90,13 +90,14 @@
       "batches": {
         "R100": "owner action pending",
         "R101": "merged (8a08cf5, b9762b8): backend tsc 0, 59 files / 1317 tests",
-        "R114": "running",
+        "R114": "merged (e543b39..5d33400): desktop tsc 0, 64 files / 1297 tests, lint 0; installer built and smoke-tested in the worktree (install, login, server stops on close). Open: electron-updater not installed yet (install after R103 finishes, then rebuild and run the update-available smoke test).",
         "R102": "merged (0e62374): backend tsc 0, 60 files / 1325 tests",
         "R103": "running (stack slots 2 and 3; R114 holds slots 0 and 1)"
       },
       "merged": [
         "R101",
-        "R102"
+        "R102",
+        "R114"
       ]
     },
     "W4": {
@@ -119,7 +120,8 @@
     "Audit correction: backend/package-lock.json was in sync.",
     "Running npm ci inside backend/ wipes the root workspace install (backend is a workspace). Install only at the root. Fix scheduled in R118.",
     "Since R101 the local API refuses to start unless backend/.dev.vars has TENANCY_MODE=single (added to the main checkout on 2026-10-14; untracked). R103 makes the local stack multi-agency.",
-    "Worktree teardown that worked: PowerShell [System.IO.Directory]::Delete(<junction>, $false) for each node_modules junction, then git worktree remove; main checkout packages verified intact afterwards."
+    "Worktree teardown that worked: PowerShell [System.IO.Directory]::Delete(<junction>, $false) for each node_modules junction, then git worktree remove; main checkout packages verified intact afterwards.",
+    "Desktop standalone builds inside a worktree create symlinks into the main node_modules under desktop/.next/standalone; unlink every reparse point before removing a worktree."
   ],
   "ownerDecisions": {
     "2026-10-14": [
@@ -130,6 +132,11 @@
     ]
   },
   "goLiveConfig": [
-    "R102: APP_URL, QUOTES_URL, EMAIL_FROM, EMAIL_FROM_NAME, PLATFORM_SUPPORT_EMAIL; SENDGRID_API_KEY secret; SendGrid domain authentication (SPF/DKIM); TEST_MODE off in production"
+    "R102: APP_URL, QUOTES_URL, EMAIL_FROM, EMAIL_FROM_NAME, PLATFORM_SUPPORT_EMAIL; SENDGRID_API_KEY secret; SendGrid domain authentication (SPF/DKIM); TEST_MODE off in production",
+    "R114: Windows code-signing certificate (CSC_LINK, CSC_KEY_PASSWORD); update feed host set as TRAVELCRM_UPDATE_URL at build and runtime; macOS/Linux builds need their own runners."
+  ],
+  "todo": [
+    "After R103: npm install electron-updater@6.3.9 -w travelcrm-desktop --save-exact at the root (lockfile currently lacks it, so npm ci would fail), commit the lockfile, rebuild the installer, run the Electron smoke spec including the update test.",
+    "Leftover folder .claude/worktrees/R114/packages/shared is locked by another program (editor/Dart analyzer); delete by hand later. Not tracked by git."
   ]
 }
