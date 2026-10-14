@@ -48,8 +48,12 @@ void main() {
 
     // The right code shows the agency name before anything is stored.
     await chooseAgency(tester, expectedName: _agencyName);
-    expect(find.byKey(const Key('agency-banner-name')), findsOneWidget);
-    expect(find.text(_agencyName), findsOneWidget);
+    // The sign-in screen names the agency the phone is tied to.
+    await tester.pump(const Duration(seconds: 1)); // let the route transition finish
+    expect(
+      tester.widget<Text>(find.byKey(const Key('agency-banner-name'))).data,
+      _agencyName,
+    );
 
     await signInWithPhone(tester);
     expect(find.byKey(const Key('tab-today')), findsOneWidget);
