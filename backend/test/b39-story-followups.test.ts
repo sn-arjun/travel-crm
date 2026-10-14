@@ -228,7 +228,7 @@ describe('B39 tenant summary on auth responses', () => {
     expect(body.data.tenant.plan).toMatchObject({ key: expect.any(String) });
     expect(body.data.tenant.seats).toMatchObject({ limit: expect.any(Number), used: expect.any(Number) });
     expect(body.data.user.email).toBe('admin@e2e.test'); // existing shape intact
-    expect(JSON.stringify(body.data.tenant)).not.toMatch(/plan|secret|d1|subscription/i);
+    expect(JSON.stringify(body.data.tenant)).not.toMatch(/secret|d1|subscription|unit_?cost|margin/i); // plan key, name and seats are public (R109); internals are not
 
     const company = await api('GET', '/settings/company', body.data.accessToken);
     expect(company.body.data.company_name).toBe(body.data.tenant.name);
