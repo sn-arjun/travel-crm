@@ -133,6 +133,9 @@ tag = "v1"
 new_classes = ["RealtimeRoom"]
 
 # --- Plain variables (secrets live in .dev.vars locally, wrangler secret in production) ---
+# .dev.vars overrides these. Plain `wrangler dev` needs TENANCY_MODE=single (or unset here) with all data in
+# travelcrm-master. The local stack (desktop/scripts/fix-stack.mjs) passes `--var TENANCY_MODE:single|multi`,
+# which beats .dev.vars, so one .dev.vars (JWT secrets, provider keys, TEST_MODE, APP_URL) serves both modes.
 [vars]
 ENVIRONMENT = "development"
 TENANCY_MODE = "single"
