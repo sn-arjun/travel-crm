@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-15T10:00+05:30",
+  "updated": "2026-10-15T10:40+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -110,7 +110,7 @@
         "R121": "merged: isolation spec 9/9 passed three runs in a row on the branch; re-run on merged line (with R110): 9 passed (18.7s)",
         "R124": "merged: backend 81 files / 1576 tests; reminders reach the queues in the consumer shape with tenantId, metered, claimed per recipient (cron_job_runs, no migration)",
         "R116": "merged: backend 82 files / 1586 tests; landing link check OK; no unverifiable claims; master 0018_platform_enquiries; enquiries visible to the operator at GET /admin/enquiries",
-        "R115": "merged (gate on merged line running): agency-code sign-in (slug), stored tenant, full country picker, release signing from key.properties with debug fallback, icons, iOS strings. Branch: backend 82/1582, flutter analyze clean, flutter test 106, release APK 53.5 MB built with throwaway key, agency_login_test passed on emulator-5554."
+        "R115": "merged; merged-line gate: backend 83 files / 1592 tests, flutter analyze clean, flutter test 106 passed: agency-code sign-in (slug), stored tenant, full country picker, release signing from key.properties with debug fallback, icons, iOS strings. Branch: backend 82/1582, flutter analyze clean, flutter test 106, release APK 53.5 MB built with throwaway key, agency_login_test passed on emulator-5554."
       },
       "merged": [
         "R101",
@@ -188,7 +188,8 @@
     "Leftover folder .claude/worktrees/R114/packages/shared is locked by another program (editor/Dart analyzer); delete by hand later. Not tracked by git.",
     "Refresh docs/FEATURES.md and features.json after Tier 1 (chatbot routes are now public; many statuses changed).",
     "Follow-up batch needed (R124): per-recipient idempotency for scheduled reminders, so a retried daily job never re-sends to recipients already handled (found by R117).",
-    "W6: packages/driver_app/integration_test/demo_flow_test.dart (driver recording for the films) must call chooseAgency(tester) from integration_test/helpers/agency_login.dart before entering the phone number; remove its TENANT_ID comment."
+    "W6: packages/driver_app/integration_test/demo_flow_test.dart (driver recording for the films) must call chooseAgency(tester) from integration_test/helpers/agency_login.dart before entering the phone number; remove its TENANT_ID comment.",
+    "Leftover untracked worktree folders under .claude/worktrees (R106, R107, R112, R114, R115, R123, ...) are locked by an editor or have over-long Flutter paths; delete by hand when the editor is closed (long paths: robocopy an empty folder over them with /MIR)."
   ],
   "e2eBaseline": {
     "date": "2026-10-15",
