@@ -3,7 +3,8 @@ export type TemplateName =
   | 'invite_user'
   | 'reset_password'
   | 'password_changed'
-  | 'platform_enquiry';
+  | 'platform_enquiry'
+  | 'usage_alert';
 
 export interface TemplateData {
   appUrl: string;
@@ -115,6 +116,22 @@ ${button(url, 'Reset password')}
         .join('');
       const html = layout(subject, `<p>A new enquiry arrived.</p><table>${rows}</table>`);
       const text = 'A new enquiry arrived.\n\n' + keys.map((k) => `${k}: ${data[k]}`).join('\n') + '\n';
+      return { subject, html, text };
+    }
+    case 'usage_alert': {
+      const label = str(data, 'label', 'usage');
+      const threshold = Number(data.threshold) >= 100 ? 100 : 80;
+      const used = str(data, 'used', '0');
+      const allowance = str(data, 'allowance', '0');
+      const usageUrl = str(data, 'usageUrl', `${data.appUrl}/settings/ai-usage`);
+      const subject = threshold >= 100
+        ? `You have used all of this month's ${label}`
+        : `You have used 80% of this month's ${label}`;
+      const lead = threshold >= 100
+        ? `Your agency has used all ${esc(allowance)} of this month's ${esc(label)}. New sends are refused until the allowance renews next month; you can ask for an upgrade or extra credits.`
+        : `Your agency has used ${esc(used)} of this month's ${esc(allowance)} ${esc(label)} (80%).`;
+      const html = layout(subject, `<p>${lead}</p>${button(usageUrl, 'Open usage and limits')}`);
+      const text = `${subject}\n\nUsed ${used} of ${allowance} ${label}.\n${threshold >= 100 ? 'New sends are refused until the allowance renews next month. Ask for an upgrade or extra credits.\n' : ''}\nUsage and limits: ${usageUrl}\n`;
       return { subject, html, text };
     }
   }

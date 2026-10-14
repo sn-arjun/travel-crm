@@ -9,7 +9,9 @@
 import { HTTPException } from 'hono/http-exception';
 import { generateId } from '../utils/uuid';
 import { AI_CREDITS_CAP_KEY, CREDIT_WEIGHTS, type AiCreditClass } from './ai-pricing';
-import { asCatalogueEnv, getAllowance, type MasterRef } from './plans/catalogue';
+import { asCatalogueEnv, currentPeriodKey, getAllowance, type MasterRef } from './plans/catalogue';
+import { checkUsageAlerts } from './metering/usage-alerts';
+import type { Env } from '../types';
 
 export const AI_QUOTA_EXCEEDED_MESSAGE =
   'This month\'s AI credits are used up. Automations that do not use AI keep running; ask your administrator to add credits.';
@@ -45,7 +47,7 @@ export async function getCreditBalance(ref: MasterRef, tenantId: string): Promis
         `INSERT OR IGNORE INTO tenant_usage_caps (id, tenant_id, cap_key, cap_value, current_usage, reset_period, last_reset_at)
          VALUES (?, ?, ?, ?, 0, 'monthly', strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`,
       )
-      .bind(generateId(), tenantId, AI_CREDITS_CAP_KEY, allowance)
+      .bind(generateId(), tenantId, AI_CREDITS_CAP_KEY, allowance, currentPeriodKey())
       .run();
     cap = { cap_value: allowance, current_usage: 0 };
   } else if (cap.cap_value !== allowance) {

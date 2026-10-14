@@ -236,6 +236,7 @@ export function allowanceChannel(key: string): string | null {
     case 'whatsapp': return 'whatsapp';
     case 'otp': return 'otp';
     case 'call_minutes': return 'call_minute';
+    case 'email': return 'email';
     default: return null;
   }
 }

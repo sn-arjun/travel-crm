@@ -410,3 +410,34 @@ export const impersonationSessions = sqliteTable('impersonation_sessions', {
   index('impersonation_sessions_tenant_idx').on(table.tenantId),
   index('impersonation_sessions_admin_idx').on(table.superAdminId),
 ]);
+
+// --- Communication caps (R110, migration 0016) ---
+export const otpRequests = sqliteTable('otp_requests', {
+  id: text('id').primaryKey(), // UUIDv7
+  tenantId: text('tenant_id'),
+  destinationHash: text('destination_hash').notNull(), // SHA-256 of the digits; the number itself is never stored
+  ip: text('ip'),
+  purpose: text('purpose').notNull().default('login'),
+  createdAt: text('created_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+}, (table) => [
+  index('otp_requests_dest_idx').on(table.destinationHash, table.createdAt),
+  index('otp_requests_ip_idx').on(table.ip, table.createdAt),
+]);
+
+export const usageAlerts = sqliteTable('usage_alerts', {
+  tenantId: text('tenant_id').notNull(),
+  capKey: text('cap_key').notNull(),
+  periodKey: text('period_key').notNull(),
+  threshold: integer('threshold').notNull(), // 80 or 100
+  createdAt: text('created_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+}, (table) => [
+  primaryKey({ columns: [table.tenantId, table.capKey, table.periodKey, table.threshold] }),
+]);
+
+export const meteredEvents = sqliteTable('metered_events', {
+  eventKey: text('event_key').primaryKey(),
+  tenantId: text('tenant_id').notNull(),
+  channel: text('channel').notNull(),
+  units: integer('units').notNull(),
+  createdAt: text('created_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+});
