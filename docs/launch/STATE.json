@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-14T15:30+05:30",
+  "updated": "2026-10-14T17:40+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -92,13 +92,14 @@
         "R101": "merged (8a08cf5, b9762b8): backend tsc 0, 59 files / 1317 tests",
         "R114": "merged (e543b39..5d33400): desktop tsc 0, 64 files / 1297 tests, lint 0; installer built and smoke-tested in the worktree (install, login, server stops on close). Open: electron-updater not installed yet (install after R103 finishes, then rebuild and run the update-available smoke test).",
         "R102": "merged (0e62374): backend tsc 0, 60 files / 1325 tests",
-        "R103": "STOPPED by usage limit during its full e2e run; work so far committed on batch/R103 (worktree .claude/worktrees/R103). Resume: re-launch an agent on that worktree to finish the gate (slots 2 and 3).",
-        "R106": "STOPPED by usage limit just after starting; worktree .claude/worktrees/R106 on batch/R106. Resume: re-launch the R106 agent (slot 1)."
+        "R103": "running: finishing its gate (full e2e on slot 3)",
+        "R106": "merged (a0b5c4d..a43bc23): backend tsc 0, 61 files / 1341 tests. e2e: auth-shell reset-password test failed once, passed alone (possible cold-start flake; watch in R121)."
       },
       "merged": [
         "R101",
         "R102",
-        "R114"
+        "R114",
+        "R106"
       ]
     },
     "W4": {
@@ -134,7 +135,8 @@
   },
   "goLiveConfig": [
     "R102: APP_URL, QUOTES_URL, EMAIL_FROM, EMAIL_FROM_NAME, PLATFORM_SUPPORT_EMAIL; SENDGRID_API_KEY secret; SendGrid domain authentication (SPF/DKIM); TEST_MODE off in production",
-    "R114: Windows code-signing certificate (CSC_LINK, CSC_KEY_PASSWORD); update feed host set as TRAVELCRM_UPDATE_URL at build and runtime; macOS/Linux builds need their own runners."
+    "R114: Windows code-signing certificate (CSC_LINK, CSC_KEY_PASSWORD); update feed host set as TRAVELCRM_UPDATE_URL at build and runtime; macOS/Linux builds need their own runners.",
+    "R106: ENVIRONMENT=production, TEST_MODE unset, CORS_ORIGINS (exact web origins), ALLOW_LOOPBACK_ORIGINS=true for the desktop app; add Cloudflare WAF rate-limit rules at the edge."
   ],
   "todo": [
     "After R103: npm install electron-updater@6.3.9 -w travelcrm-desktop --save-exact at the root (lockfile currently lacks it, so npm ci would fail), commit the lockfile, rebuild the installer, run the Electron smoke spec including the update test.",

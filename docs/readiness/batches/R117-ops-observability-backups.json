@@ -58,7 +58,8 @@
     "Health: /api/v1/health stays cheap and public (version, time); /api/v1/health/deep (super admin token or HEALTH_TOKEN header) checks MASTER_DB SELECT 1, KV get/put on a health key, R2 head of a health object, each with latency and ok flag, 503 when any fails. The super admin system-health page can call it later.",
     "Realtime DO hibernation: use state.acceptWebSocket(ws, tags) with webSocketMessage / webSocketClose / webSocketError class handlers, store per-socket data with serializeAttachment, list sockets with state.getWebSockets(tag) when broadcasting, and set state.setWebSocketAutoResponse(new WebSocketRequestResponsePair(\"ping\", \"pong\")) so the desktop's 30-second ping does not wake the object. Check the desktop ping payload (grep realtime-provider.tsx) and match it exactly; do not change the desktop.",
     "Backups: docs/ops/BACKUPS.md explains D1 Time Travel (30 days on Workers Paid, restore per database) as the primary restore path and a weekly logical export: backend/scripts/backup-tenants.mjs (--local|--remote --env, --out dir) runs `wrangler d1 export <db> --output <file>.sql` for master and every tenant DB from the generated config, gzips, and (remote) uploads to an R2 bucket travelcrm-backups via `wrangler r2 object put`; --dry-run prints the plan. Locally prove it with --local against fix-stack multi state.",
-    "Generated config (R103) already sets [observability] enabled = true; confirm and note head_sampling_rate 1 in the base file."
+    "Generated config (R103) already sets [observability] enabled = true; confirm and note head_sampling_rate 1 in the base file.",
+    "Rate limiting off KV (found when merging R106, 2026-10-14): backend/src/middleware/rate-limit.ts counts requests with a KV read + KV put on every /api/* request (fail-open). KV allows about one write per second per key and bills per write, so counts are inaccurate under load and cost grows with traffic. Move apiRateLimit and uploadRateLimit to the Cloudflare Workers Rate Limiting binding (declared through the generated wrangler config from R103; verify the current binding syntax and limits on developers.cloudflare.com before writing it) and keep the KV path only for the low-volume login lockout. Local and test runs keep an in-memory fallback."
   ],
   "migrations": [],
   "tests": [
@@ -69,7 +70,8 @@
   "acceptance": [
     "One JSON log line per request with requestId; no secrets in logs (grep test output).",
     "Deep health reflects real dependency state (test).",
-    "Realtime uses the hibernation API (code review + test)."
+    "Realtime uses the hibernation API (code review + test).",
+    "No KV write happens on an ordinary authenticated API request (test with a KV spy)."
   ],
   "gate": [
     "cd backend && npx tsc --noEmit",
