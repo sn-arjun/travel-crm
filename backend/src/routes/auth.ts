@@ -14,7 +14,9 @@ import { logActivity } from '../utils/activity-logger';
 import { rateLimit } from '../middleware/rate-limiter';
 import { sendVerifyOtp, checkVerifyOtp } from '../services/twilio';
 import { sendEmail } from '../services/email';
-import { resetPasswordEmailHtml, accountLockedEmailHtml } from '../templates/reset-email';
+import { accountLockedEmailHtml } from '../templates/reset-email';
+import { appUrl } from '../utils/app-urls';
+import { sendTransactional } from '../services/mail/transactional';
 import { success, created, error } from '../utils/response';
 import { getTenantSummary } from '../utils/tenant-summary';
 import { tenantDbFor, TenantDbUnavailableError } from '../services/tenant-db';
@@ -572,13 +574,13 @@ auth.post(
         { expirationTtl: 3600 } // 1 hour
       );
 
-      const resetUrl = `https://app.travelcrm.pro/reset-password?token=${resetToken}`;
-      const html = resetPasswordEmailHtml(resetUrl, email);
+      const resetUrl = `${appUrl(c.env)}/reset-password?token=${resetToken}`;
 
-      await sendEmail(c.env, {
+      await sendTransactional(c.env, {
         to: email,
-        subject: 'Reset your TravelCRM Pro password',
-        html,
+        template: 'reset_password',
+        tenantId: results[0].tenantId,
+        data: { resetUrl, name: email },
       });
     }
 

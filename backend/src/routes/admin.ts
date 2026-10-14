@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { AppContext } from '../types';
 import { success, error, notFound, paginated } from '../utils/response';
 import { requireSuperAdmin, isSuperAdminEmail } from '../middleware/require-super-admin';
+import { appUrl, emailFrom, supportEmail } from '../utils/app-urls';
 import { PLAN_DEFAULTS } from '../middleware/feature-gate';
 
 /**
@@ -666,8 +667,8 @@ app.get('/config', async (c) => {
   return success(c, {
     id: 'global',
     appName: 'TravelCRM Pro',
-    appUrl: 'https://app.travelcrm.pro',
-    supportEmail: 'support@travelcrm.pro',
+    appUrl: appUrl(c.env),
+    supportEmail: supportEmail(c.env),
     supportPhone: '',
     maxTenantsPerPlan,
     features: {
@@ -691,8 +692,8 @@ app.get('/config', async (c) => {
       smtpHost: 'smtp.sendgrid.net',
       smtpPort: 587,
       smtpUser: 'apikey',
-      fromEmail: 'no-reply@travelcrm.pro',
-      fromName: 'TravelCRM Pro',
+      fromEmail: emailFrom(c.env).email,
+      fromName: emailFrom(c.env).name,
     },
   });
 });

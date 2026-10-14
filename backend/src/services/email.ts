@@ -1,4 +1,5 @@
 import type { Env } from '../types';
+import { emailFrom } from '../utils/app-urls';
 
 interface SendEmailParams {
   to: string;
@@ -22,7 +23,7 @@ export async function sendEmail(
     },
     body: JSON.stringify({
       personalizations: [{ to: [{ email: params.to }] }],
-      from: { email: params.from || 'noreply@travelcrm.pro', name: 'TravelCRM Pro' },
+      from: { email: params.from || emailFrom(env).email, name: emailFrom(env).name },
       subject: params.subject,
       content: [{ type: 'text/html', value: params.html }],
     }),

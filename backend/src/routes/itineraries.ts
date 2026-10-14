@@ -18,6 +18,7 @@ import {
 import { requirePermission } from '../middleware/rbac';
 import { generateId } from '../utils/uuid';
 import { logActivity } from '../utils/activity-logger';
+import { quoteUrl } from '../utils/app-urls';
 import { success, created, paginated, error, notFound } from '../utils/response';
 
 const itineraryRoutes = new Hono<AppContext>();
@@ -872,7 +873,7 @@ itineraryRoutes.post('/:id/share-link', requirePermission('itineraries', 'edit')
      VALUES (?, ?, ?, 1, ?)`
   ).bind(shareToken, c.get('tenantId'), id, new Date().toISOString()).run();
 
-  const shareUrl = `https://quotes.travelcrm.pro/q/${shareToken}`;
+  const shareUrl = quoteUrl(c.env, shareToken);
 
   await logActivity(db, {
     userId,

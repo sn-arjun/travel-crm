@@ -12,6 +12,8 @@ import { hashPassword } from '../utils/password';
 import { generateId } from '../utils/uuid';
 import { logActivity } from '../utils/activity-logger';
 import { success, created, error } from '../utils/response';
+import { appUrl } from '../utils/app-urls';
+import { sendTransactional } from '../services/mail/transactional';
 
 const userRoutes = new Hono<AppContext>();
 
@@ -301,6 +303,24 @@ userRoutes.post(
       ipAddress: c.get('clientIp'),
     });
 
+    const setupUrl = `${appUrl(c.env)}/setup-account?token=${inviteToken}`;
+    const [tenantRow] = await masterDb
+      .select({ name: tenants.companyName })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+    const [inviter] = await db
+      .select({ name: users.name })
+      .from(users)
+      .where(eq(users.id, c.get('userId')))
+      .limit(1);
+    await sendTransactional(c.env, {
+      to: data.email.toLowerCase(),
+      template: 'invite_user',
+      tenantId,
+      data: { name: data.name, role: data.role, setupUrl, agencyName: tenantRow?.name, inviterName: inviter?.name },
+    });
+
     return created(c, {
       id: newUserId,
       name: data.name,
@@ -309,7 +329,7 @@ userRoutes.post(
       inviteStatus: 'pending',
       isActive: 1,
       inviteToken,
-      inviteUrl: `https://app.travelcrm.pro/setup-account?token=${inviteToken}`,
+      inviteUrl: setupUrl,
       email: data.email,
       role: data.role,
     });

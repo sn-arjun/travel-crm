@@ -1,5 +1,6 @@
 import type { Env } from '../types';
 import { resolveTenantDb } from '../services/tenant-db';
+import { emailFrom } from '../utils/app-urls';
 
 export interface CampaignJob {
   campaignId: string;
@@ -230,7 +231,7 @@ async function sendEmail(
     },
     body: JSON.stringify({
       personalizations: [{ to: [{ email: to }] }],
-      from: { email: 'noreply@travelcrm.pro' },
+      from: emailFrom(env),
       subject,
       content: [{ type: 'text/html', value: htmlBody }],
     }),

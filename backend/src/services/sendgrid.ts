@@ -1,4 +1,5 @@
 import type { Env } from '../types';
+import { emailFrom } from '../utils/app-urls';
 
 export interface EmailAttachment {
   filename: string;
@@ -98,8 +99,8 @@ export async function sendEmail(
     const requestBody: Record<string, any> = {
       personalizations,
       from: {
-        email: params.from || 'noreply@travelcrm.pro',
-        name: 'TravelCRM Pro',
+        email: params.from || emailFrom(env).email,
+        name: emailFrom(env).name,
       },
       subject: params.subject,
       content: content.length > 0 ? content : [{ type: 'text/plain', value: '' }],
@@ -172,8 +173,8 @@ export async function sendWithTemplate(
     const requestBody: Record<string, any> = {
       personalizations,
       from: {
-        email: params.from || 'noreply@travelcrm.pro',
-        name: 'TravelCRM Pro',
+        email: params.from || emailFrom(env).email,
+        name: emailFrom(env).name,
       },
       template_id: params.templateId,
     };
@@ -263,8 +264,8 @@ export async function sendBulk(
     const requestBody = {
       personalizations,
       from: {
-        email: 'noreply@travelcrm.pro',
-        name: 'TravelCRM Pro',
+        email: emailFrom(env).email,
+        name: emailFrom(env).name,
       },
       content: content.length > 0 ? content : [{ type: 'text/plain', value: '' }],
     };

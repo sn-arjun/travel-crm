@@ -4,6 +4,7 @@ import type { Env } from '../types';
 import { messageLog } from '../db/tenant-schema';
 import { sendSms, sendWhatsApp, sendMediaMessage } from '../services/twilio-messaging';
 import { sendEmail } from '../services/email';
+import { emailFrom } from '../utils/app-urls';
 import { resolveTenantDb } from '../services/tenant-db';
 
 export interface SmsJob {
@@ -50,7 +51,7 @@ export async function handleSmsJob(job: SmsJob, env: Env): Promise<void> {
         to: job.to,
         subject: job.subject || 'Message',
         html: job.html || '',
-        from: 'noreply@travelcrm.pro',
+        from: emailFrom(env).email,
       });
     } else {
       throw new Error(`Unknown channel: ${channel}`);

@@ -5,6 +5,7 @@ import { users } from '../db/tenant-schema';
 import type { Env } from '../types';
 import bcrypt from 'bcryptjs';
 import { resolveTenantDb } from '../services/tenant-db';
+import { listOutbox, clearOutbox } from '../services/mail/transactional';
 import { ingestInbound, type InboundChannel } from '../services/inbound/ingest';
 
 const testApp = new Hono<{ Bindings: Env }>();
@@ -131,6 +132,20 @@ testApp.post('/inbound', async (c) => {
     });
 
     return c.json({ success: true, data: result });
+});
+
+/** Local outbox: system emails captured instead of sent (TEST_MODE only). */
+testApp.get('/outbox', async (c) => {
+    if (c.env.TEST_MODE !== 'true') return c.json({ error: 'Not found' }, 404);
+    const to = c.req.query('to') || undefined;
+    const emails = await listOutbox(c.env, to);
+    return c.json({ success: true, data: emails });
+});
+
+testApp.delete('/outbox', async (c) => {
+    if (c.env.TEST_MODE !== 'true') return c.json({ error: 'Not found' }, 404);
+    const cleared = await clearOutbox(c.env);
+    return c.json({ success: true, data: { cleared } });
 });
 
 export default testApp;
