@@ -197,12 +197,13 @@ describe('cron fan-out through TENANT_JOBS_QUEUE', () => {
     const t0 = Date.UTC(2026, 10, 3, 6, 0);
     const first = await runTenantJobSet(e, TENANT.A, db, 'hourly', new Date(t0).toISOString());
     expect(first.failed).toEqual([]);
-    expect([...first.ran].sort()).toEqual(['fleet.alerts', 'invoices.reminders', 'tasks.overdue']);
+    // 06:00 UTC is 11:30 in the default Asia/Kolkata zone: past the 09:00 send hour, so the daily agency jobs (R117) run in this set too
+    expect([...first.ran].sort()).toEqual(['contacts.birthdays', 'fleet.alerts', 'housekeeping.prune-job-runs', 'invoices.reminders', 'tasks.overdue', 'trips.reminders', 'visa.missing-documents', 'visa.passport-expiry']);
     const second = await runTenantJobSet(e, TENANT.A, db, 'hourly', new Date(t0 + 3600000).toISOString());
     expect(second.ran).toEqual([]);
-    expect(second.skipped.length).toBe(3);
+    expect(second.skipped.length).toBe(8);
     const nextDay = await runTenantJobSet(e, TENANT.A, db, 'hourly', new Date(t0 + 24 * 3600000).toISOString());
-    expect(nextDay.ran.length).toBe(3);
+    expect(nextDay.ran.length).toBe(8);
   });
 
   it('the daily set runs the reminder jobs against the agency database', async () => {

@@ -89,16 +89,16 @@ describe('Realtime socket', () => {
 
     it('answers {"type":"ping"} with pong without invoking webSocketMessage; other messages do reach the handler', async () => {
       const { socket, received } = await connect(token);
-      const before = await runInDurableObject(room(TENANT_ID), async (instance: any) => instance.messageHandlerCalls as number);
+      const before = await (runInDurableObject as any)(room(TENANT_ID), async (instance: any) => instance.messageHandlerCalls as number) as number;
       socket.send(JSON.stringify({ type: 'ping' }));
       await wait();
       expect(received.map((m) => m.type)).toContain('pong');
-      const afterPing = await runInDurableObject(room(TENANT_ID), async (instance: any) => instance.messageHandlerCalls as number);
+      const afterPing = await (runInDurableObject as any)(room(TENANT_ID), async (instance: any) => instance.messageHandlerCalls as number) as number;
       expect(afterPing).toBe(before);
 
       socket.send(JSON.stringify({ type: 'ping', extra: true })); // not an exact match: handled by the class
       await wait();
-      const afterOther = await runInDurableObject(room(TENANT_ID), async (instance: any) => instance.messageHandlerCalls as number);
+      const afterOther = await (runInDurableObject as any)(room(TENANT_ID), async (instance: any) => instance.messageHandlerCalls as number) as number;
       expect(afterOther).toBe(before + 1);
       expect(received.filter((m) => m.type === 'pong').length).toBe(2);
       socket.close();

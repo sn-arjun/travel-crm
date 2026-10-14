@@ -44,14 +44,12 @@ describe('daily jobs fire at the agency-local send hour', () => {
     const sms = queueSpy();
     const e = envWith({ SMS_QUEUE: sms.queue, EMAIL_QUEUE: queueSpy().queue, PUSH_NOTIFICATION_QUEUE: queueSpy().queue });
 
-    // 00:30 UTC on Nov 4 is 19:30 on Nov 3 in New York: the old daily cron time. Nothing daily runs.
-    const midnightUtc = await runTenantJobSet(e, TENANT, db(), 'hourly', utc(0, 30));
-    expect(midnightUtc.ran).not.toContain('contacts.birthdays');
-    expect(midnightUtc.notDue).toEqual(expect.arrayContaining(['contacts.birthdays', 'trips.reminders']));
-
-    // 13:00 UTC is 08:00 local: still before the send hour.
-    const early = await runTenantJobSet(e, TENANT, db(), 'hourly', utc(13));
-    expect(early.ran).not.toContain('contacts.birthdays');
+    // 12:00 and 13:00 UTC are 07:00 and 08:00 local: before the send hour, nothing daily runs.
+    const early7 = await runTenantJobSet(e, TENANT, db(), 'hourly', utc(12));
+    expect(early7.ran).not.toContain('contacts.birthdays');
+    expect(early7.notDue).toEqual(expect.arrayContaining(['contacts.birthdays', 'trips.reminders']));
+    const early8 = await runTenantJobSet(e, TENANT, db(), 'hourly', utc(13));
+    expect(early8.ran).not.toContain('contacts.birthdays');
     expect(sms.sent.length).toBe(0);
 
     // 14:00 UTC is 09:00 local: the birthday job runs and the SMS is queued.
@@ -65,6 +63,13 @@ describe('daily jobs fire at the agency-local send hour', () => {
     expect(later.ran).not.toContain('contacts.birthdays');
     expect(later.skipped).toContain('contacts.birthdays');
     expect(sms.sent.filter((m) => m.data.templateId === 'birthday_wish').length).toBe(1);
+  });
+
+  it('at 00:30 UTC (the old daily time) the Nov 4 birthday is not sent: it is still Nov 3 in New York', async () => {
+    const sms = queueSpy();
+    const e = envWith({ SMS_QUEUE: sms.queue, EMAIL_QUEUE: queueSpy().queue, PUSH_NOTIFICATION_QUEUE: queueSpy().queue });
+    await runTenantJobSet(e, TENANT, db(), 'hourly', utc(0, 30));
+    expect(sms.sent.filter((m) => m.data.templateId === 'birthday_wish').length).toBe(0);
   });
 
   it('a missed hourly firing is caught up later the same local day', async () => {
