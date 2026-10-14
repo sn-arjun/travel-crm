@@ -18,6 +18,11 @@ describe('navigation', () => {
     expect(findActiveHref('/chatbot/conversations/abc')).toBe('/assistant');
   });
 
+  it('has no Super Admin entry: the operator console is a separate app', () => {
+    expect(hrefs.filter((href) => href.startsWith('/super-admin'))).toEqual([]);
+    expect(findActiveHref('/super-admin')).toBeNull();
+  });
+
   it('leaves other sections alone', () => {
     expect(findActiveHref('/leads/123')).toBe('/leads');
     expect(findActiveHref('/communication/templates')).toBe('/communication/templates');

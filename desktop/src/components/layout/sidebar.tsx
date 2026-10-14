@@ -10,7 +10,6 @@ import {
   HelpCircle,
   LogOut,
   Settings,
-  ShieldCheck,
   UserRound,
 } from 'lucide-react';
 import { cn, getInitials } from '@/lib/utils';
@@ -34,13 +33,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { notificationsApi } from '@/lib/api/notifications';
 import { assistantApi } from '@/lib/api/assistant';
 import { useRealtimeEvent, useRealtimeConnected } from '@/hooks/use-realtime-event';
-import { useIsSuperAdmin } from '@/hooks/use-is-super-admin';
 import { useElectron } from '@/hooks/use-electron';
 import { ConnectionStatus } from '@/components/layout/connection-status';
 import {
   navigation,
   bottomNav,
-  superAdminNav,
   findActiveHref,
   type NavItem,
 } from '@/components/layout/nav-config';
@@ -193,7 +190,7 @@ function NavItemLink({
   return linkContent;
 }
 
-/** Icon-only link used in the compact footer (Help, Settings, Super Admin). */
+/** Icon-only link used in the compact footer (Help, Settings). */
 function FooterIconLink({ item, isActive }: { item: NavItem; isActive: boolean }) {
   return (
     <Tooltip delayDuration={0}>
@@ -218,7 +215,7 @@ function FooterIconLink({ item, isActive }: { item: NavItem; isActive: boolean }
   );
 }
 
-function SidebarUserMenu({ isCollapsed, isSuperAdmin }: { isCollapsed: boolean; isSuperAdmin: boolean }) {
+function SidebarUserMenu({ isCollapsed }: { isCollapsed: boolean }) {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
 
@@ -275,11 +272,6 @@ function SidebarUserMenu({ isCollapsed, isSuperAdmin }: { isCollapsed: boolean; 
         <DropdownMenuItem onSelect={() => router.push('/settings')}>
           <Settings aria-hidden="true" /> Settings
         </DropdownMenuItem>
-        {isSuperAdmin && (
-          <DropdownMenuItem onSelect={() => router.push('/super-admin')}>
-            <ShieldCheck aria-hidden="true" /> Super Admin
-          </DropdownMenuItem>
-        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           className="text-destructive"
@@ -299,14 +291,9 @@ export function Sidebar() {
   const { isCollapsed, toggle } = useSidebarStore();
   const pathname = usePathname();
   const badgeCounts = useBadgeCounts();
-  const { isSuperAdmin } = useIsSuperAdmin();
   const { isElectron } = useElectron();
 
-  // Super admin pages only highlight an item the user can actually see.
-  const activeHref = React.useMemo(() => {
-    const href = findActiveHref(pathname);
-    return href === superAdminNav.href && !isSuperAdmin ? null : href;
-  }, [pathname, isSuperAdmin]);
+  const activeHref = React.useMemo(() => findActiveHref(pathname), [pathname]);
 
   // macOS draws its window buttons over the top-left corner of the sidebar.
   const insetForWindowButtons =
@@ -369,13 +356,10 @@ export function Sidebar() {
               {bottomNav.map((item) => (
                 <FooterIconLink key={item.href} item={item} isActive={activeHref === item.href} />
               ))}
-              {isSuperAdmin && (
-                <FooterIconLink item={superAdminNav} isActive={activeHref === superAdminNav.href} />
-              )}
             </div>
             <ConnectionStatus />
           </div>
-          <SidebarUserMenu isCollapsed={isCollapsed} isSuperAdmin={isSuperAdmin} />
+          <SidebarUserMenu isCollapsed={isCollapsed} />
         </div>
 
         {/* Collapse Toggle */}

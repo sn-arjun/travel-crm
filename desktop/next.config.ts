@@ -21,6 +21,14 @@ const nextConfig: NextConfig = {
   // Do not pin `turbopack.root`: the parallel fix worktrees junction node_modules
   // from the main checkout, and Turbopack rejects symlinks that leave a pinned root.
   turbopack: {},
+
+  // The operator console is a separate app (super-admin/); old bookmarks to the removed pages land on the dashboard.
+  async redirects() {
+    return [
+      { source: '/super-admin', destination: '/dashboard', permanent: false },
+      { source: '/super-admin/:path*', destination: '/dashboard', permanent: false },
+    ];
+  },
 };
 
 export default nextConfig;

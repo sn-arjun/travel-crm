@@ -31,7 +31,6 @@ import {
   UserRound,
   Send,
   LayoutTemplate,
-  ShieldCheck,
   MessageCircle,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -146,13 +145,10 @@ export const bottomNav: NavItem[] = [
   { title: 'Settings', href: '/settings', icon: Settings },
 ];
 
-export const superAdminNav: NavItem = { title: 'Super Admin', href: '/super-admin', icon: ShieldCheck };
-
-/** Every nav href, including the footer entries and the Super Admin entry. */
+/** Every nav href, including the footer entries. */
 const allNavItems: NavItem[] = [
   ...navigation.flatMap((group) => group.items),
   ...bottomNav,
-  superAdminNav,
 ];
 
 /**
@@ -228,14 +224,6 @@ const STATIC_TITLES: Record<string, string> = {
   '/reports/customer': 'Customer report',
   '/reports/team': 'Team report',
   '/reports/visa': 'Visa report',
-  '/super-admin': 'Super Admin',
-  '/super-admin/tenants': 'Super Admin - Tenants',
-  '/super-admin/users': 'Super Admin - Users',
-  '/super-admin/plans': 'Super Admin - Plans',
-  '/super-admin/billing': 'Super Admin - Billing',
-  '/super-admin/audit': 'Super Admin - Audit log',
-  '/super-admin/config': 'Super Admin - Configuration',
-  '/super-admin/system': 'Super Admin - System',
   '/help': 'Help Center',
   '/import': 'Import',
   '/onboarding': 'Onboarding',
@@ -275,7 +263,6 @@ const ENTITY_NOUNS: Record<string, string> = {
   '/fleet/rate-cards': 'rate card',
   '/rate-cards': 'rate card',
   '/tasks': 'task',
-  '/super-admin/tenants': 'tenant',
   '/ai/extractions': 'extraction',
   '/ai/lead-score': 'lead score',
 };

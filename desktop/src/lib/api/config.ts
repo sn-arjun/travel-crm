@@ -448,46 +448,4 @@ export const API_ENDPOINTS = {
     me: '/notification-preferences/me',
     quietHours: '/notification-preferences/me/quiet-hours',
   },
-  // Admin & Super Admin
-  admin: {
-    // Dashboard
-    dashboard: '/admin/dashboard',
-    stats: '/admin/stats',
-    platformHealth: '/admin/platform/health',
-    // Tenants
-    tenants: '/admin/tenants',
-    tenantById: (id: string) => `/admin/tenants/${id}`,
-    tenantActivate: (id: string) => `/admin/tenants/${id}/activate`,
-    tenantSuspend: (id: string) => `/admin/tenants/${id}/suspend`,
-    tenantUpdate: (id: string) => `/admin/tenants/${id}`,
-    tenantCreate: '/admin/tenants',
-    // Users (across all tenants)
-    allUsers: '/admin/users',
-    userById: (id: string) => `/admin/users/${id}`,
-    userUpdate: (id: string) => `/admin/users/${id}`,
-    userDelete: (id: string) => `/admin/users/${id}`,
-    userActivate: (id: string) => `/admin/users/${id}/activate`,
-    userSuspend: (id: string) => `/admin/users/${id}/suspend`,
-    // Plans
-    plans: '/admin/plans',
-    planById: (id: string) => `/admin/plans/${id}`,
-    planCreate: '/admin/plans',
-    planUpdate: (id: string) => `/admin/plans/${id}`,
-    planDelete: (id: string) => `/admin/plans/${id}`,
-    // Billing & Revenue
-    billing: '/admin/billing',
-    billingStats: '/admin/billing/stats',
-    invoices: '/admin/billing/invoices',
-    payments: '/admin/billing/payments',
-    revenue: '/admin/billing/revenue',
-    // System
-    systemHealth: '/admin/system/health',
-    systemLogs: '/admin/system/logs',
-    systemMetrics: '/admin/system/metrics',
-    // Configuration
-    globalConfig: '/admin/config',
-    configUpdate: '/admin/config',
-    // Audit Logs
-    auditLogs: '/admin/audit-logs',
-  },
 } as const;

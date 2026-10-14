@@ -111,15 +111,6 @@ describe('API_ENDPOINTS', () => {
       expect(API_ENDPOINTS.stickyNotes.byId('n1')).toBe('/sticky-notes/n1');
     });
   });
-
-  describe('Admin endpoints', () => {
-    it('should define tenant management', () => {
-      expect(API_ENDPOINTS.admin.tenants).toBe('/admin/tenants');
-      expect(API_ENDPOINTS.admin.tenantById('t1')).toBe('/admin/tenants/t1');
-      expect(API_ENDPOINTS.admin.tenantActivate('t1')).toBe('/admin/tenants/t1/activate');
-      expect(API_ENDPOINTS.admin.tenantSuspend('t1')).toBe('/admin/tenants/t1/suspend');
-    });
-  });
 });
 
 describe('getApiBaseUrl', () => {
