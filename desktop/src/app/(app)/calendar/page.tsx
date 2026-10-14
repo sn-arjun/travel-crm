@@ -26,7 +26,7 @@ import { FilterBar } from '@/components/domain/filter-bar';
 import { RelationCombobox } from '@/components/domain/relation-combobox';
 import { cn } from '@/lib/utils';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { eventsApi, type CalendarEvent, type CreateEventRequest, type UpdateEventRequest, type EventType } from '@/lib/api/events';
+import { eventsApi, normalizeEventFlags, type CalendarEvent, type CreateEventRequest, type UpdateEventRequest, type EventType } from '@/lib/api/events';
 import { leadsApi } from '@/lib/api/leads';
 import { toast } from 'sonner';
 import Link from 'next/link';
@@ -81,7 +81,7 @@ function normalizeEvent(e: CalendarEvent): CalendarEvent & { startTime: string; 
   const endTime = e.endTime || e.end_at || '';
   const type = (e.event_type || e.type || 'other') as EventType;
   return {
-    ...e,
+    ...normalizeEventFlags(e),
     startTime, endTime, type, event_type: type,
     leadId: e.leadId || e.related_lead_id,
     lead_title: e.lead_title as string | undefined,
@@ -1128,7 +1128,7 @@ export default function CalendarPage() {
                         <div className="flex-1 min-w-0 space-y-2">
                           <div className="flex items-center gap-2">
                             <Badge className={cn('text-xs', cfg.badge)}>{cfg.label}</Badge>
-                            {event.all_day && <Badge variant="outline" className="text-xs">All Day</Badge>}
+                            {event.all_day ? <Badge variant="outline" className="text-xs">All Day</Badge> : null}
                           </div>
                           <h3 className="font-semibold text-sm">{event.title}</h3>
                           {!event.all_day && event.startTime && (

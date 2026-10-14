@@ -46,6 +46,16 @@ export interface CalendarEvent {
   updated_at?: string;
 }
 
+/**
+ * The API stores flags as 0/1 (SQLite). Turn them into real booleans so JSX such as an
+ * all-day check can never print a stray "0".
+ */
+export function normalizeEventFlags<T extends object>(
+  e: T & { all_day?: unknown; is_recurring?: unknown },
+): Omit<T, 'all_day' | 'is_recurring'> & { all_day: boolean; is_recurring: boolean } {
+  return { ...e, all_day: Boolean(e.all_day), is_recurring: Boolean(e.is_recurring) };
+}
+
 export interface CreateEventRequest {
   title: string;
   description?: string;

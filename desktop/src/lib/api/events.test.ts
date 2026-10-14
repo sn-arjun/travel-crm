@@ -11,7 +11,7 @@ vi.mock('./client', () => ({
 }));
 
 import { client } from './client';
-import { eventsApi } from './events';
+import { eventsApi, normalizeEventFlags } from './events';
 
 describe('eventsApi', () => {
   beforeEach(() => {
@@ -217,5 +217,13 @@ describe('eventsApi', () => {
       const result = await eventsApi.reschedule('e1', { start_at: '2026-05-01T09:00:00Z' });
       expect(result.data.start_at).toBe('2026-05-01T09:00:00Z');
     });
+  });
+});
+
+describe('normalizeEventFlags', () => {
+  it('turns the API 0/1 flags into booleans so a falsy 0 can never render as text', () => {
+    const raw = { id: 'e1', all_day: 0 as unknown as boolean, is_recurring: 1 as unknown as boolean };
+    expect(normalizeEventFlags(raw)).toMatchObject({ all_day: false, is_recurring: true });
+    expect(normalizeEventFlags({ id: 'e2' })).toMatchObject({ all_day: false, is_recurring: false });
   });
 });
