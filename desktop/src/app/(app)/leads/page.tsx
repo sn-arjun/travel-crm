@@ -159,7 +159,7 @@ export default function LeadsPage() {
               <Pencil />
             </Button>
             {(l.contactPhone || l.contact?.phone) && (
-              <Button variant="ghost" size="icon-sm" aria-label="Call" onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(l.contactPhone || l.contact?.phone || '')}`)}>
+              <Button variant="ghost" size="icon-sm" aria-label="Call" onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(l.contactPhone || l.contact?.phone || '')}&leadId=${encodeURIComponent(l.id)}&contactId=${encodeURIComponent(l.contactId)}`)}>
                 <Phone />
               </Button>
             )}

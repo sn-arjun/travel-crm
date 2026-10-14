@@ -186,6 +186,15 @@ describe('voipApi', () => {
     });
   });
 
+  // ─── callerInfo ────────────────────────────────────────────────
+  describe('callerInfo', () => {
+    it('sends the number as the phone query parameter the API reads', async () => {
+      vi.mocked(client.get).mockResolvedValue({ data: { isKnown: false, contact: null, lead: null } });
+      await voipApi.callerInfo.get('+919000005001');
+      expect(client.get).toHaveBeenCalledWith('/voip/caller-info', { params: { phone: '+919000005001' } });
+    });
+  });
+
   // ─── analytics ─────────────────────────────────────────────────
   describe('analytics', () => {
     describe('get', () => {

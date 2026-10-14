@@ -293,7 +293,7 @@ export default function ContactDetailPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(contact.phone ?? '')}`)}
+                onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(contact.phone ?? '')}&contactId=${encodeURIComponent(contact.id)}`)}
               >
                 <Phone aria-hidden="true" /> Call
               </Button>

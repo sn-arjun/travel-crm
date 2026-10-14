@@ -330,7 +330,7 @@ export default function LeadDetailPage() {
               <Car aria-hidden="true" /> Book transfer
             </Button>
             {contactPhone && (
-              <Button variant="outline" size="sm" onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(contactPhone)}`)}>
+              <Button variant="outline" size="sm" onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(contactPhone)}&leadId=${encodeURIComponent(lead.id)}&contactId=${encodeURIComponent(lead.contactId)}`)}>
                 <Phone aria-hidden="true" /> Call
               </Button>
             )}

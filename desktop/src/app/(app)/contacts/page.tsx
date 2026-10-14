@@ -117,7 +117,7 @@ function ContactDetailPanel({ contactId, onDeleted }: { contactId: string; onDel
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(contact.phone ?? '')}`)}
+                  onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(contact.phone ?? '')}&contactId=${encodeURIComponent(contact.id)}`)}
                 >
                   <Phone aria-hidden="true" /> Call
                 </Button>
@@ -409,7 +409,7 @@ export default function ContactsPage() {
                 variant="ghost"
                 size="icon-sm"
                 aria-label="Call"
-                onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(c.phone ?? '')}`)}
+                onClick={() => router.push(`/communication/calls/dial?phone=${encodeURIComponent(c.phone ?? '')}&contactId=${encodeURIComponent(c.id)}`)}
               >
                 <Phone aria-hidden="true" />
               </Button>

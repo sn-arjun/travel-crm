@@ -239,7 +239,7 @@ export const voipApi = {
 
   callerInfo: {
     get: (number: string) =>
-      client.get<ApiResponse<CallerInfo>>('/voip/caller-info', { params: { number } }),
+      client.get<ApiResponse<CallerInfo>>('/voip/caller-info', { params: { phone: number } }),
   },
 
   calls: {

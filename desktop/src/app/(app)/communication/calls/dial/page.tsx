@@ -44,7 +44,10 @@ function DialPadPage() {
   const { enabled, reason, upgradeHref, loading: gateLoading } = useFeatureGate('voip_calling');
   const [number, setNumber] = React.useState(searchParams.get('phone') || '');
   const [countryCode, setCountryCode] = React.useState('+91');
-  const [contactId, setContactId] = React.useState<string | null>(null);
+  // A call started from a lead or contact page arrives with their ids; they travel with the call so it
+  // stays linked to them.
+  const leadId = searchParams.get('leadId');
+  const [contactId, setContactId] = React.useState<string | null>(searchParams.get('contactId'));
   const [isCalling, setIsCalling] = React.useState(false);
 
   const { data: recentCallsResponse, loading: recentLoading } = useApiQuery(
@@ -57,6 +60,19 @@ function DialPadPage() {
   );
 
   const recentCalls: Call[] = recentCallsResponse?.data ?? [];
+
+  // Arrived with a contact but no number: fill in the contact's number
+  const initialContactId = React.useRef(searchParams.get('contactId'));
+  const hadPhoneParam = React.useRef(Boolean(searchParams.get('phone')));
+  React.useEffect(() => {
+    const id = initialContactId.current;
+    if (!id || hadPhoneParam.current) return;
+    let cancelled = false;
+    contactsApi.getById(id).then((r) => {
+      if (!cancelled && r.data?.phone) setNumber(r.data.phone);
+    }).catch(() => { /* the number can still be typed */ });
+    return () => { cancelled = true; };
+  }, []);
 
   function handleKeyPress(key: string) {
     setNumber((prev) => prev + key);
@@ -74,7 +90,7 @@ function DialPadPage() {
     }
     const toNumber = number.trim().startsWith('+') ? number.trim() : `${countryCode}${digits}`;
     setIsCalling(true);
-    const result = await makeCall({ toNumber, contactId: contactId ?? undefined });
+    const result = await makeCall({ toNumber, contactId: contactId ?? undefined, leadId: leadId ?? undefined });
     if (result) {
       toast.success(`Calling ${number}...`);
     } else {
