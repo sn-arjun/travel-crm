@@ -71,13 +71,14 @@ interface TenantJob {
   atSendHour?: boolean;
   /** 'tick' = once per firing (5-minute bucket); 'local-day' = once per agency-local calendar day. */
   period: 'tick' | 'local-day';
-  run(env: Env, tenantId: string, db: D1Database, now: Date): Promise<unknown>;
+  /** periodKey is the claim period of this run ('tick:...' or 'day:...'); retried deliveries get the same one. */
+  run(env: Env, tenantId: string, db: D1Database, now: Date, periodKey: string): Promise<unknown>;
 }
 
 const EVERY5_JOBS: TenantJob[] = [
   { name: 'automations.schedule-tick', period: 'local-day', run: (env, id, db, now) => runScheduledAutomationsForTenant(env, id, db, now) },
   { name: 'marketing.campaign-scheduler', period: 'tick', run: (env, id, db, now) => processCampaignScheduler(env, id, db, now) },
-  { name: 'followups.reminders', period: 'tick', run: (env, id, db, now) => checkFollowUpReminders(env, id, db, now) },
+  { name: 'followups.reminders', period: 'tick', run: (env, id, db, now, period) => checkFollowUpReminders(env, id, db, now, period) },
 ];
 
 const HOURLY_JOBS: TenantJob[] = [
@@ -186,7 +187,7 @@ export async function runTenantJobSet(
         continue;
       }
       // Tick jobs look at "now" (reminder windows); daily jobs use the moment the cron fired.
-      await job.run(env, tenantId, db, job.period === 'tick' ? new Date() : new Date(firedIso));
+      await job.run(env, tenantId, db, job.period === 'tick' ? new Date() : new Date(firedIso), periodKey);
       result.ran.push(job.name);
     } catch (err) {
       const infrastructure = isInfrastructureError(err);

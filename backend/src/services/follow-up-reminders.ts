@@ -10,9 +10,9 @@ import { sendOnce, type RecipientClaims } from '../cron/recipient-claims';
  * 4. Deduplicates notifications via CACHE KV (the job runner also claims the tick, so a retried
  *    message does not run this twice).
  */
-export async function checkFollowUpReminders(env: Env, tenantId: string, tenantDb: D1Database, now: Date = new Date()): Promise<void> {
+export async function checkFollowUpReminders(env: Env, tenantId: string, tenantDb: D1Database, now: Date = new Date(), claimPeriod?: string): Promise<void> {
   const in15Min = new Date(now.getTime() + 15 * 60 * 1000);
-  await processFollowUpsForTenant(env, tenantDb, tenantId, now.toISOString(), in15Min.toISOString());
+  await processFollowUpsForTenant(env, tenantDb, tenantId, now.toISOString(), in15Min.toISOString(), claimPeriod);
 }
 
 export async function processFollowUpsForTenant(
@@ -20,11 +20,13 @@ export async function processFollowUpsForTenant(
   tenantDb: D1Database,
   tenantId: string,
   nowIso: string,
-  in15MinIso: string
+  in15MinIso: string,
+  claimPeriod?: string
 ): Promise<void> {
   {
-    // Per-recipient claims: a retried tick never repeats a push or notification already delivered (R124).
-    const claims: RecipientClaims = { db: tenantDb, tenantId, job: 'followups.reminders', period: 'followup' };
+    // Per-recipient claims (per 5-minute tick): a retried tick never repeats a push or notification already delivered (R124).
+    // Across ticks the CACHE keys below remain the dedupe.
+    const claims: RecipientClaims = { db: tenantDb, tenantId, job: 'followups.reminders', period: claimPeriod ?? `tick:${new Date(Math.floor(new Date(nowIso).getTime() / 300000) * 300000).toISOString().slice(0, 16)}Z` };
 
     // 1. Auto-mark missed follow-ups
     await tenantDb
