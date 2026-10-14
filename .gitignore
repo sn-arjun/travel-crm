@@ -118,3 +118,7 @@ coverage/
 
 # Agent worktrees and their scratch files
 .claude/worktrees/
+
+# R103: generated Worker configs and dry-run output
+backend/.wrangler.*.toml
+backend/.dryrun/
