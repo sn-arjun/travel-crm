@@ -7,7 +7,7 @@ import { TENANT_MIGRATIONS } from '../src/db/tenant-migrations.generated';
 const testMigrations = (env as unknown as { TEST_MIGRATIONS: { name: string; queries: string[] }[] }).TEST_MIGRATIONS;
 const tenantFromFiles = testMigrations
   .filter((m) => m.name.startsWith('tenant_'))
-  .map((m) => ({ name: m.name.slice('tenant_'.length), queries: m.queries }));
+  .map((m) => ({ name: m.name.slice('tenant_'.length), queries: m.queries.map((q) => q.replace(/\r\n/g, '\n')) }));
 
 describe('tenant migration bundle', () => {
   it('has the same migration names, in the same order, as drizzle/tenant', () => {

@@ -18,7 +18,8 @@ const migrations = await readD1Migrations(path.join(backendDir, 'drizzle', 'tena
 
 const bundled = migrations.map((m) => ({
   name: m.name,
-  queries: m.queries.filter((q) => q.replace(/--[^\n]*/g, '').trim().length > 0),
+  // Line endings normalised so the bundle is identical on CRLF (Windows) and LF checkouts.
+  queries: m.queries.map((q) => q.replace(/\r\n/g, '\n')).filter((q) => q.replace(/--[^\n]*/g, '').trim().length > 0),
 }));
 
 const body =
