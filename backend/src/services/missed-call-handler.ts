@@ -17,7 +17,7 @@ interface MissedCallParams {
 
 export async function handleMissedCall(
   db: D1Database,
-  env: { NOTIFICATION_QUEUE?: Queue },
+  env: { PUSH_NOTIFICATION_QUEUE?: Queue },
   params: MissedCallParams,
 ): Promise<void> {
   const { callLogId, fromNumber, routedTo, contactId } = params;
@@ -41,14 +41,16 @@ export async function handleMissedCall(
     `).bind(generateId(), userId, `Missed call from ${callerName}`, callLogId).run();
   }
 
-  if (routedTo && env.NOTIFICATION_QUEUE) {
+  if (routedTo && env.PUSH_NOTIFICATION_QUEUE) {
     try {
-      await env.NOTIFICATION_QUEUE.send({
-        type: 'push_notification',
-        userId: routedTo,
-        title: 'Missed Call',
-        body: callerName === fromNumber ? fromNumber : `${callerName} (${fromNumber})`,
-        data: { type: 'missed_call', callLogId },
+      await env.PUSH_NOTIFICATION_QUEUE.send({
+        type: 'push',
+        data: {
+          userId: routedTo,
+          title: 'Missed Call',
+          body: callerName === fromNumber ? fromNumber : `${callerName} (${fromNumber})`,
+          data: { type: 'missed_call', callLogId },
+        },
       });
     } catch (e) {
       console.error('Failed to queue push notification:', e);

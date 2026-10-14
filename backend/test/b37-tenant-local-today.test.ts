@@ -239,14 +239,14 @@ describe('B37 tasks overdue / due today', () => {
   it('overdue-tasks cron flags yesterday-local tasks at 00:30 IST and does not re-notify at 23:30 IST', async () => {
     await run("UPDATE tasks SET overdue_notified_date = NULL WHERE title LIKE 'B37 %'");
     await run("DELETE FROM notifications WHERE title LIKE '%B37 due%'");
-    await processOverdueTasks({ DB: db } as any, new Date(IST_0030));
+    await processOverdueTasks({} as any, TENANT_ID, db, new Date(IST_0030));
     const row = await db.prepare("SELECT overdue_notified_date FROM tasks WHERE title = 'B37 due yesterday'").first<any>();
     expect(row.overdue_notified_date).toBe(LOCAL_TODAY);
     const todayRow = await db.prepare("SELECT overdue_notified_date FROM tasks WHERE title = 'B37 due today'").first<any>();
     expect(todayRow.overdue_notified_date).toBeNull();
 
     const before = await db.prepare("SELECT COUNT(*) AS c FROM notifications WHERE message LIKE '%B37 due yesterday%'").first<any>();
-    await processOverdueTasks({ DB: db } as any, new Date(IST_2330));
+    await processOverdueTasks({} as any, TENANT_ID, db, new Date(IST_2330));
     const after = await db.prepare("SELECT COUNT(*) AS c FROM notifications WHERE message LIKE '%B37 due yesterday%'").first<any>();
     expect(after.c).toBe(before.c); // same local day: not notified again
   });

@@ -1,94 +1,85 @@
 /**
- * Campaign Scheduler Cron Job
- * Runs every 5 minutes via wrangler.toml cron trigger.
- * Finds campaigns with status='scheduled' and scheduledAt <= now(),
- * then resolves their segments and queues emails.
+ * Campaign Scheduler (per-agency job, every 5 minutes)
+ * Finds this agency's campaigns with status='scheduled' and scheduled_at <= now, creates the recipient
+ * rows from the campaign's segment and hands the campaign to CAMPAIGN_QUEUE in the same shape the
+ * "send now" route uses (one message per campaign; the queue consumer sends to pending recipients).
  */
 import type { Env } from '../types';
 import { resolveSegment, type SegmentFilter } from '../services/segment-resolver';
 import { generateId } from '../utils/uuid';
 
-/** Single-tenant deployments bind the tenant database as DB (or TENANT_DB). */
-interface SchedulerEnv extends Env {
-  DB?: D1Database;
-  TENANT_DB?: D1Database;
-}
-
 interface CampaignRow {
   id: string;
   name: string;
   type: string | null;
-  segment_id: string | null;
-  email_subject: string | null;
-  message_body: string | null;
-  template_id: string | null;
 }
 
 interface ContactRow {
   id: string;
   email: string | null;
-  name: string | null;
+  phone: string | null;
 }
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-export async function processCampaignScheduler(env: Env): Promise<void> {
-  // Get tenant DB — for single-tenant setups use DB binding
-  const schedulerEnv = env as SchedulerEnv;
-  const tenantDb = schedulerEnv.DB || schedulerEnv.TENANT_DB;
-  if (!tenantDb) {
-    console.error('[CAMPAIGN SCHEDULER] No database available');
-    return;
-  }
+export async function processCampaignScheduler(env: Env, tenantId: string, tenantDb: D1Database, nowDate: Date = new Date()): Promise<void> {
+  const now = nowDate.toISOString();
 
-  const now = new Date().toISOString();
-
-  // Find all scheduled campaigns whose time has arrived
   const dueCampaigns = await tenantDb
     .prepare(`
-      SELECT * FROM marketing_campaigns
+      SELECT id, name, type, segment_id FROM marketing_campaigns
       WHERE status = 'scheduled'
         AND scheduled_at IS NOT NULL
         AND scheduled_at <= ?
       LIMIT 10
     `)
     .bind(now)
-    .all<CampaignRow>();
+    .all<CampaignRow & { segment_id: string | null }>();
 
-  const campaigns = dueCampaigns.results ?? [];
+  for (const campaign of dueCampaigns.results ?? []) {
+    // Claim the campaign: only the run that flips scheduled -> sending processes it
+    const claim = await tenantDb
+      .prepare(`UPDATE marketing_campaigns SET status = 'sending', updated_at = ? WHERE id = ? AND status = 'scheduled'`)
+      .bind(now, campaign.id)
+      .run();
+    if (!claim.meta.changes) continue;
 
-  if (campaigns.length === 0) {
-    console.log('[CAMPAIGN SCHEDULER] No scheduled campaigns due');
-    return;
-  }
-
-  console.log(`[CAMPAIGN SCHEDULER] Processing ${campaigns.length} scheduled campaign(s)`);
-
-  for (const campaign of campaigns) {
     try {
-      // Mark as sending to prevent double-processing
-      await tenantDb
-        .prepare(`UPDATE marketing_campaigns SET status = 'sending', updated_at = ? WHERE id = ? AND status = 'scheduled'`)
-        .bind(now, campaign.id)
-        .run();
-
-      // Resolve contacts for this segment via the linked contact_segments record
       let filters: SegmentFilter = {};
       if (campaign.segment_id) {
         const segment = await tenantDb
           .prepare('SELECT filters_json FROM contact_segments WHERE id = ?')
           .bind(campaign.segment_id)
           .first<{ filters_json: string | null }>();
-        if (segment?.filters_json) {
-          filters = JSON.parse(segment.filters_json) as SegmentFilter;
-        }
+        if (segment?.filters_json) filters = JSON.parse(segment.filters_json) as SegmentFilter;
       }
       const contactIds = await resolveSegment(tenantDb, filters);
+      const campaignType = campaign.type || 'email';
 
-      if (contactIds.length === 0) {
-        console.warn(`[CAMPAIGN SCHEDULER] Campaign ${campaign.id}: no contacts matched segment`);
+      let recipients = 0;
+      for (const contactId of contactIds) {
+        const contact = await tenantDb
+          .prepare('SELECT id, email, phone FROM contacts WHERE id = ?')
+          .bind(contactId)
+          .first<ContactRow>();
+        if (!contact) continue;
+        if (campaignType === 'email' && !contact.email) continue;
+        if ((campaignType === 'sms' || campaignType === 'whatsapp') && !contact.phone) continue;
+
+        await tenantDb
+          .prepare(`
+            INSERT INTO campaign_recipients (id, campaign_id, contact_id, phone, email, status, created_at)
+            VALUES (?, ?, ?, ?, ?, 'pending', ?)
+          `)
+          .bind(generateId(), campaign.id, contactId, contact.phone || null, contact.email || null, now)
+          .run();
+        recipients++;
+      }
+
+      if (recipients === 0) {
+        console.warn(`[CAMPAIGN SCHEDULER] ${tenantId}/${campaign.id}: no contacts matched the segment`);
         await tenantDb
           .prepare(`UPDATE marketing_campaigns SET status = 'cancelled', updated_at = ? WHERE id = ?`)
           .bind(now, campaign.id)
@@ -96,64 +87,19 @@ export async function processCampaignScheduler(env: Env): Promise<void> {
         continue;
       }
 
-      let queuedCount = 0;
-      let failureCount = 0;
-
-      for (const contactId of contactIds) {
-        try {
-          const contact = await tenantDb
-            .prepare('SELECT id, email, name FROM contacts WHERE id = ?')
-            .bind(contactId)
-            .first<ContactRow>();
-
-          if (!contact || !contact.email) {
-            failureCount++;
-            continue;
-          }
-
-          // Insert campaign recipient record
-          const logId = generateId();
-          await tenantDb
-            .prepare(`
-              INSERT INTO campaign_recipients (id, campaign_id, contact_id, email, status, created_at)
-              VALUES (?, ?, ?, ?, ?, ?)
-            `)
-            .bind(logId, campaign.id, contactId, contact.email, 'queued', now)
-            .run();
-
-          // Queue campaign via CAMPAIGN_QUEUE
-          await env.CAMPAIGN_QUEUE.send({
-            type: campaign.type || 'email',
-            campaignId: campaign.id,
-            contactId: contactId,
-            to: contact.email,
-            subject: campaign.email_subject || campaign.name,
-            html: campaign.message_body || undefined,
-            templateId: campaign.template_id || undefined,
-            templateData: { contactName: contact.name },
-          });
-
-          queuedCount++;
-        } catch (contactErr: unknown) {
-          console.error(`[CAMPAIGN SCHEDULER] Failed to queue for contact ${contactId}:`, errorMessage(contactErr));
-          failureCount++;
-        }
-      }
-
-      // Update campaign to sent
       await tenantDb
-        .prepare(`
-          UPDATE marketing_campaigns
-          SET status = 'sent', total_recipients = ?, sent_count = ?, updated_at = ?
-          WHERE id = ?
-        `)
-        .bind(queuedCount + failureCount, queuedCount, now, campaign.id)
+        .prepare(`UPDATE marketing_campaigns SET total_recipients = ?, updated_at = ? WHERE id = ?`)
+        .bind(recipients, now, campaign.id)
         .run();
 
-      console.log(`[CAMPAIGN SCHEDULER] Campaign ${campaign.id} sent: ${queuedCount} queued, ${failureCount} failed`);
+      await env.CAMPAIGN_QUEUE.send({
+        type: `${campaignType}_campaign`,
+        data: { campaignId: campaign.id, tenantId, campaignType },
+      });
     } catch (err: unknown) {
-      console.error(`[CAMPAIGN SCHEDULER] Error processing campaign ${campaign.id}:`, errorMessage(err));
-      // Roll back to scheduled so it can be retried
+      console.error(`[CAMPAIGN SCHEDULER] ${tenantId}/${campaign.id} failed:`, errorMessage(err));
+      // Remove half-created recipients and put the campaign back so the next tick retries it
+      await tenantDb.prepare(`DELETE FROM campaign_recipients WHERE campaign_id = ? AND status = 'pending'`).bind(campaign.id).run();
       await tenantDb
         .prepare(`UPDATE marketing_campaigns SET status = 'scheduled', updated_at = ? WHERE id = ?`)
         .bind(now, campaign.id)

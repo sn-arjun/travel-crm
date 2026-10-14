@@ -128,7 +128,7 @@ max_batch_timeout = 30
 max_retries = 3
 dead_letter_queue = "travelcrm-ai-extraction-dlq"
 
-# Per-agency job fan-out (R105 writes the consumer code)
+# Per-agency job fan-out (cron/dispatch.ts produces, queues/tenant-jobs-queue.ts consumes)
 [[queues.producers]]
 binding = "TENANT_JOBS_QUEUE"
 queue = "travelcrm-tenant-jobs"
@@ -142,7 +142,7 @@ dead_letter_queue = "travelcrm-tenant-jobs-dlq"
 
 # --- Cron Triggers ---
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["*/5 * * * *", "0 * * * *", "30 0 * * *"]
 
 # --- Workers AI ---
 [ai]

@@ -14,7 +14,6 @@ import { authMiddleware } from './middleware/auth';
 import { tenantMiddleware } from './middleware/tenant';
 import { requireFeature } from './middleware/feature-gate';
 import { checkUsageCap } from './middleware/usage-cap';
-import { resetUsageCaps } from './middleware/usage-cap';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import activityLogRoutes from './routes/activity-logs';
@@ -43,7 +42,6 @@ import assistantRoutes from './routes/assistant';
 import automationRoutes from './routes/automations';
 import { setRootApp } from './app-ref';
 import { verifyAccessToken } from './utils/jwt';
-import { runScheduledAutomations } from './services/automation/schedule';
 import pushTokenRoutes from './routes/push-tokens';
 import preferencesRoutes from './routes/notification-preferences';
 import documentRoutes from './routes/documents';
@@ -95,17 +93,7 @@ import publicRoutes from './routes/public';
 import hsnCodeRoutes from './routes/hsn-codes';
 import adminRoutes from './routes/admin';
 import adminTenantsRoutes from './routes/admin-tenants';
-import { checkFollowUpReminders } from './services/follow-up-reminders';
-import {
-  checkBirthdayAnniversary,
-  checkInvoiceReminders,
-  checkVisaPassportExpiry,
-  checkTripReminders,
-  checkMissingVisaDocuments,
-} from './cron/auto-reminders';
-import { processOverdueTasks } from './cron/overdue-tasks';
-import { processFleetAlerts } from './cron/fleet-alerts';
-import { processCampaignScheduler } from './cron/campaign-scheduler';
+import { dispatchScheduled } from './cron/dispatch';
 
 const app = new Hono<AppContext>();
 
@@ -364,45 +352,10 @@ app.get('/api/v1/ws', async (c) => {
 export default {
   fetch: app.fetch,
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-    // Cron schedule:
-    // - Every 5 minutes: checkFollowUpReminders
-    // - Every hour: checkInvoiceReminders
-    // - Daily at 8 AM: checkBirthdayAnniversary
-    // - Daily at 9 AM: checkVisaPassportExpiry
-    // - Daily at 10 AM: checkTripReminders
-    // These can be customized in wrangler.toml with cron expressions
-
-    const cron = event.cron;
-
-    if (!cron) {
-      // Default: run follow-up reminders
-      ctx.waitUntil(checkFollowUpReminders(env));
-    } else {
-      // Run appropriate handler based on cron time
-      // In production, you would map specific cron expressions to handlers
-      // For now, run all checks (they handle their own filtering)
-      // Check if it's midnight (reset daily caps) or 1st of month (reset monthly caps)
-      const now = new Date();
-      const isMonthStart = now.getUTCDate() === 1;
-
-      ctx.waitUntil(
-        Promise.all([
-          checkFollowUpReminders(env),
-          checkBirthdayAnniversary(env),
-          checkInvoiceReminders(env),
-          checkVisaPassportExpiry(env),
-          checkMissingVisaDocuments(env),
-          checkTripReminders(env),
-          processOverdueTasks(env),
-          processFleetAlerts(env),
-          processCampaignScheduler(env),
-          runScheduledAutomations(env),
-          // Reset usage caps
-          resetUsageCaps(env.MASTER_DB, 'daily'),
-          isMonthStart ? resetUsageCaps(env.MASTER_DB, 'monthly') : Promise.resolve(0),
-        ])
-      );
-    }
+    // Three crons (wrangler.base.toml): every 5 minutes, hourly, daily at 00:30 UTC. scheduled() only
+    // enqueues one TENANT_JOBS_QUEUE message per active agency (and resets usage caps on the daily
+    // cron); the queue consumer runs the agency's jobs. See cron/dispatch.ts.
+    ctx.waitUntil(dispatchScheduled(event, env));
   },
   async queue(batch: MessageBatch<QueueMessage>, env: Env) {
     await handleQueue(batch, env);

@@ -23,7 +23,6 @@ export interface Env {
   CAMPAIGN_QUEUE: Queue;
   AI_EXTRACTION_QUEUE: Queue;
   AI_EXTRACTION_DLQ: Queue;
-  NOTIFICATION_QUEUE: Queue;
   TENANT_JOBS_QUEUE?: Queue;
 
   // Durable Objects

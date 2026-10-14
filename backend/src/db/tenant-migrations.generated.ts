@@ -903,5 +903,12 @@ export const TENANT_MIGRATIONS: BundledMigration[] = [
     "queries": [
       "-- R104: an admin created by the provisioner signs in with a temporary password and must change it (R113 builds the flow).\nALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0;\n"
     ]
+  },
+  {
+    "name": "0045_cron_job_runs.sql",
+    "queries": [
+      "-- R105: one row per (job, period) that already ran for this agency. The queue consumer claims a row with\n-- INSERT OR IGNORE before running a job, so a retried or duplicated message cannot repeat the work.\nCREATE TABLE IF NOT EXISTS cron_job_runs (\n  job TEXT NOT NULL,\n  period_key TEXT NOT NULL,\n  claimed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\n  PRIMARY KEY (job, period_key)\n)",
+      "--> statement-breakpoint\nCREATE INDEX IF NOT EXISTS cron_job_runs_claimed_idx ON cron_job_runs (claimed_at)"
+    ]
   }
 ];

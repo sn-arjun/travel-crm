@@ -55,22 +55,34 @@ export async function incrementUsage(
   }
 }
 
+/** The period a moment falls in: UTC yyyy-mm-dd for daily caps, UTC yyyy-mm for monthly caps. */
+export function usageCapPeriodKey(period: 'daily' | 'monthly', now: Date = new Date()): string {
+  const iso = now.toISOString();
+  return period === 'daily' ? iso.slice(0, 10) : iso.slice(0, 7);
+}
+
 /**
- * Reset usage counters (called by cron job).
- * - Daily: Reset caps with reset_period = 'daily'
- * - Monthly (1st of month): Reset caps with reset_period = 'monthly'
+ * Reset usage counters once per period (called by the daily cron).
+ * A cap is reset only when its stored period_key differs from the current period's key, so calling this
+ * any number of times within a UTC day (daily caps) or UTC month (monthly caps) resets each cap exactly
+ * once and never wipes usage recorded after that reset. Returns the number of caps reset.
  */
 export async function resetUsageCaps(
   masterDb: D1Database,
   period: 'daily' | 'monthly',
+  now: Date = new Date(),
 ): Promise<number> {
+  const key = usageCapPeriodKey(period, now);
+  const stamp = now.toISOString().replace(/.d{3}Z$/, 'Z');
   const result = await masterDb.prepare(
     `UPDATE tenant_usage_caps
      SET current_usage = 0,
-         last_reset_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-         updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-     WHERE reset_period = ?`,
-  ).bind(period).run();
+         period_key = ?,
+         last_reset_at = ?,
+         updated_at = ?
+     WHERE reset_period = ?
+       AND (period_key IS NULL OR period_key <> ?)`,
+  ).bind(key, stamp, stamp, period, key).run();
 
   return result.meta.changes || 0;
 }

@@ -3,24 +3,11 @@ import { generateId } from '../utils/uuid';
 import { getTenantTimeZone, localDateString, addDaysLocal } from '../utils/tz';
 
 /**
- * Daily cron job to check for expiring vehicle/driver documents and upcoming maintenance.
- * Sends push notifications and creates in-app notifications for admin/manager roles.
+ * One agency's fleet alerts (vehicle/driver document expiry, maintenance due). Run by the hourly
+ * per-agency job; every alert is deduplicated per day through reminder_log.
  */
-export async function processFleetAlerts(env: Env, now: Date = new Date()) {
-  try {
-    const tenants = await env.MASTER_DB.prepare('SELECT id FROM tenants WHERE is_active = 1').all();
-
-    for (const tenant of (tenants.results || [])) {
-      const tenantId = tenant.id as string;
-      const dbKey = `TENANT_DB_${tenantId}` as `TENANT_DB_${string}`;
-      const db = env[dbKey];
-      if (!db) continue;
-
-      await processFleetAlertsForTenant(env, db, tenantId, now);
-    }
-  } catch (err) {
-    console.error('Fleet alerts cron error:', err);
-  }
+export async function processFleetAlerts(env: Env, tenantId: string, db: D1Database, now: Date = new Date()) {
+  await processFleetAlertsForTenant(env, db, tenantId, now);
 }
 
 /** One tenant's alerts. `now` is injectable so tests can pin the clock. */

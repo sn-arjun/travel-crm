@@ -116,7 +116,7 @@ queue = "travelcrm-campaign-dlq"
 
 # --- Cron Triggers ---
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["*/5 * * * *", "0 * * * *", "30 0 * * *"]
 
 # --- Workers AI ---
 [ai]

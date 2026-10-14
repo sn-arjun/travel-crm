@@ -131,6 +131,7 @@ export const tenantUsageCaps = sqliteTable('tenant_usage_caps', {
   currentUsage: integer('current_usage').default(0),
   resetPeriod: text('reset_period').default('monthly'), // daily, monthly
   lastResetAt: text('last_reset_at'),
+  periodKey: text('period_key'),
   createdAt: text('created_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
   updatedAt: text('updated_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
 }, (table) => [

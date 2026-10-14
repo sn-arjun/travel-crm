@@ -2,27 +2,6 @@ import type { Env } from '../types';
 import { createInAppNotification } from '../services/notification-service';
 import { getTenantTimeZone, localDateString, localMonthDay, addDaysLocal, sqlOffsetModifier } from '../utils/tz';
 
-/**
- * Daily cron job (runs at 8 AM) to check for upcoming birthdays and anniversaries.
- * Sends WhatsApp/SMS birthday wishes to contacts.
- */
-export async function checkBirthdayAnniversary(env: Env): Promise<void> {
-  try {
-    const tenants = await env.MASTER_DB
-      .prepare('SELECT db_binding, id FROM workspaces WHERE is_active = 1')
-      .all<{ db_binding: string; id: string }>();
-
-    for (const tenant of tenants.results) {
-      const tenantDb = ((env as unknown) as Record<string, D1Database>)[tenant.db_binding] as D1Database | undefined;
-      if (!tenantDb) continue;
-
-      await processBirthdaysForTenant(env, tenantDb, tenant.id);
-    }
-  } catch (err) {
-    console.error('Birthday/Anniversary check failed:', err);
-  }
-}
-
 export async function processBirthdaysForTenant(env: Env, db: D1Database, tenantId: string, now: Date = new Date()): Promise<void> {
   try {
     // 'today' is the tenant's local calendar day (birthdays are local calendar dates)
@@ -97,29 +76,6 @@ export async function processBirthdaysForTenant(env: Env, db: D1Database, tenant
     }
   } catch (err) {
     console.error(`Birthday/Anniversary processing failed for tenant ${tenantId}:`, err);
-  }
-}
-
-/**
- * Daily cron job to check for invoice reminders.
- * - Due in 3 days → email + WhatsApp
- * - Overdue 1 day → email + WhatsApp
- * - Overdue 7 days → email + WhatsApp + push to accountant
- */
-export async function checkInvoiceReminders(env: Env): Promise<void> {
-  try {
-    const tenants = await env.MASTER_DB
-      .prepare('SELECT db_binding, id FROM workspaces WHERE is_active = 1')
-      .all<{ db_binding: string; id: string }>();
-
-    for (const tenant of tenants.results) {
-      const tenantDb = ((env as unknown) as Record<string, D1Database>)[tenant.db_binding] as D1Database | undefined;
-      if (!tenantDb) continue;
-
-      await processInvoiceRemindersForTenant(env, tenantDb);
-    }
-  } catch (err) {
-    console.error('Invoice reminder check failed:', err);
   }
 }
 
@@ -318,28 +274,6 @@ export async function processInvoiceRemindersForTenant(env: Env, db: D1Database,
   }
 }
 
-/**
- * Daily cron job to check for visa/passport expiry reminders.
- * - Visa expiry 30 days → push to salesperson
- * - Passport expiry 6 months → email to contact
- */
-export async function checkVisaPassportExpiry(env: Env): Promise<void> {
-  try {
-    const tenants = await env.MASTER_DB
-      .prepare('SELECT db_binding, id FROM workspaces WHERE is_active = 1')
-      .all<{ db_binding: string; id: string }>();
-
-    for (const tenant of tenants.results) {
-      const tenantDb = ((env as unknown) as Record<string, D1Database>)[tenant.db_binding] as D1Database | undefined;
-      if (!tenantDb) continue;
-
-      await processVisaPassportForTenant(env, tenantDb);
-    }
-  } catch (err) {
-    console.error('Visa/Passport expiry check failed:', err);
-  }
-}
-
 export async function processVisaPassportForTenant(env: Env, db: D1Database, now: Date = new Date()): Promise<void> {
   try {
     const today = localDateString(await getTenantTimeZone(db), now);
@@ -411,27 +345,6 @@ export async function processVisaPassportForTenant(env: Env, db: D1Database, now
   }
 }
 
-/**
- * Daily cron job to check for missing visa documents.
- * - If > 7 days since application and status is documents_collecting -> Email to contact
- */
-export async function checkMissingVisaDocuments(env: Env): Promise<void> {
-  try {
-    const tenants = await env.MASTER_DB
-      .prepare('SELECT db_binding, id FROM workspaces WHERE is_active = 1')
-      .all<{ db_binding: string; id: string }>();
-
-    for (const tenant of tenants.results) {
-      const tenantDb = ((env as unknown) as Record<string, D1Database>)[tenant.db_binding] as D1Database | undefined;
-      if (!tenantDb) continue;
-
-      await processMissingVisaDocsForTenant(env, tenantDb);
-    }
-  } catch (err) {
-    console.error('Missing visa docs check failed:', err);
-  }
-}
-
 export async function processMissingVisaDocsForTenant(env: Env, db: D1Database, now: Date = new Date()): Promise<void> {
   try {
     const tz = await getTenantTimeZone(db);
@@ -464,28 +377,6 @@ export async function processMissingVisaDocsForTenant(env: Env, db: D1Database, 
     }
   } catch (err) {
     console.error('Missing visa docs processing failed:', err);
-  }
-}
-
-/**
- * Daily cron job to check for trip reminders.
- * - Departure tomorrow → WhatsApp + email summary
- * - Completed yesterday → feedback request email
- */
-export async function checkTripReminders(env: Env): Promise<void> {
-  try {
-    const tenants = await env.MASTER_DB
-      .prepare('SELECT db_binding, id FROM workspaces WHERE is_active = 1')
-      .all<{ db_binding: string; id: string }>();
-
-    for (const tenant of tenants.results) {
-      const tenantDb = ((env as unknown) as Record<string, D1Database>)[tenant.db_binding] as D1Database | undefined;
-      if (!tenantDb) continue;
-
-      await processTripRemindersForTenant(env, tenantDb);
-    }
-  } catch (err) {
-    console.error('Trip reminder check failed:', err);
   }
 }
 

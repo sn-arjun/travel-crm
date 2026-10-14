@@ -2,47 +2,26 @@ import type { Env } from '../types';
 import { createInAppNotification } from './notification-service';
 
 /**
- * Runs every 5 minutes (cron trigger).
+ * One agency's follow-up reminders, run from the per-agency tick (every 5 minutes).
  * 1. Auto-marks past-due pending follow-ups as 'missed'.
- * 2. Sends push notification 15 min before and at scheduled time.
+ * 2. Sends push notification 15 min before the scheduled time.
  * 3. Sends notification for missed/overdue follow-ups to assignee + manager.
- * 4. Deduplicates notifications via CACHE KV.
- *
- * NOTE: This runs against all tenant databases.
- * Tenant DB bindings are resolved dynamically from MASTER_DB.
+ * 4. Deduplicates notifications via CACHE KV (the job runner also claims the tick, so a retried
+ *    message does not run this twice).
  */
-export async function checkFollowUpReminders(env: Env): Promise<void> {
-  try {
-    const now = new Date();
-    const in15Min = new Date(now.getTime() + 15 * 60 * 1000);
-
-    const nowIso = now.toISOString();
-    const in15MinIso = in15Min.toISOString();
-
-    // Get all tenant slugs from master DB
-    const tenants = await env.MASTER_DB
-      .prepare('SELECT db_binding, id FROM workspaces WHERE is_active = 1')
-      .all<{ db_binding: string; id: string }>();
-
-    for (const tenant of tenants.results) {
-      const tenantDb = (env as unknown as Record<string, unknown>)[tenant.db_binding] as D1Database | undefined;
-      if (!tenantDb) continue;
-
-      await processFollowUpsForTenant(env, tenantDb, tenant.id, nowIso, in15MinIso);
-    }
-  } catch (err) {
-    console.error('Follow-up reminder check failed:', err);
-  }
+export async function checkFollowUpReminders(env: Env, tenantId: string, tenantDb: D1Database, now: Date = new Date()): Promise<void> {
+  const in15Min = new Date(now.getTime() + 15 * 60 * 1000);
+  await processFollowUpsForTenant(env, tenantDb, tenantId, now.toISOString(), in15Min.toISOString());
 }
 
-async function processFollowUpsForTenant(
+export async function processFollowUpsForTenant(
   env: Env,
   tenantDb: D1Database,
   tenantId: string,
   nowIso: string,
   in15MinIso: string
 ): Promise<void> {
-  try {
+  {
     // 1. Auto-mark missed follow-ups
     await tenantDb
       .prepare("UPDATE follow_ups SET status = 'missed' WHERE status = 'pending' AND scheduled_at < ?")
@@ -86,6 +65,7 @@ async function processFollowUpsForTenant(
       await env.PUSH_NOTIFICATION_QUEUE.send({
         type: 'push',
         data: {
+          tenantId,
           userId: fu.created_by,
           title,
           body,
@@ -153,7 +133,5 @@ async function processFollowUpsForTenant(
       // Mark as notified; expires in 24 hours
       await env.CACHE.put(cacheKey, '1', { expirationTtl: 86400 });
     }
-  } catch (err) {
-    console.error(`Follow-up processing failed for tenant ${tenantId}:`, err);
   }
 }

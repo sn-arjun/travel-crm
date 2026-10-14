@@ -8,6 +8,7 @@ import { handleExportQueue } from './export-queue';
 import { handleCampaignQueue } from './campaign-queue';
 import { handleAIExtractionQueue } from './ai-extraction-queue';
 import { processWhatsAppCampaign } from './whatsapp-campaign-queue';
+import { handleTenantJobs } from './tenant-jobs-queue';
 
 export interface QueueMessage {
   type: 'email' | 'sms' | 'push' | 'wp-provision' | 'import' | 'export_invoices' | 'export_full' | 'whatsapp_campaign' | 'sms_campaign' | 'email_campaign';
@@ -22,6 +23,11 @@ export async function handleQueue(
   batch: MessageBatch<QueueMessage>,
   env: Env
 ): Promise<void> {
+
+  if (batch.queue === 'travelcrm-tenant-jobs') {
+    await handleTenantJobs(batch as any, env);
+    return;
+  }
 
   if (batch.queue === 'import-queue' || batch.queue.includes('import')) {
     await handleImportQueue(batch as any, env);

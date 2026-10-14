@@ -1,4 +1,4 @@
-import { sqliteTable, text, real, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, real, integer, index, uniqueIndex, primaryKey } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 
 const timestamp = sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`;
@@ -1716,6 +1716,15 @@ export const vehicleRateCards = sqliteTable('vehicle_rate_cards', {
 // ============================================================
 // FLEET MANAGEMENT: REMINDER LOG (avoid duplicate notifications)
 // ============================================================
+
+export const cronJobRuns = sqliteTable('cron_job_runs', {
+  job: text('job').notNull(),
+  periodKey: text('period_key').notNull(),
+  claimedAt: text('claimed_at').notNull().default(timestamp),
+}, (table) => [
+  primaryKey({ columns: [table.job, table.periodKey] }),
+  index('cron_job_runs_claimed_idx').on(table.claimedAt),
+]);
 
 export const reminderLog = sqliteTable('reminder_log', {
   id: text('id').primaryKey(),

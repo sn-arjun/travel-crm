@@ -1,20 +1,13 @@
 /**
  * Overdue Task Cron Job
- * Runs daily at 9 AM and 6 PM to detect and notify about overdue tasks.
+ * Runs hourly per agency (the job runner claims one run per tenant-local day) and notifies assignees of overdue tasks.
  */
 import type { Env } from '../types';
 import { generateId } from '../utils/uuid';
 import { getTenantTimeZone, localDateString } from '../utils/tz';
 
-export async function processOverdueTasks(env: Env, now: Date = new Date()) {
+export async function processOverdueTasks(_env: Env, _tenantId: string, db: D1Database, now: Date = new Date()) {
     try {
-        // For single-tenant setup, use the main DB
-        const db = (env as any).DB || (env as any).TENANT_DB;
-        if (!db) {
-            console.error('No database available for overdue task processing');
-            return;
-        }
-
         // 'today' is the tenant's local calendar day, not the UTC date
         const today = localDateString(await getTenantTimeZone(db), now);
 
@@ -58,5 +51,6 @@ export async function processOverdueTasks(env: Env, now: Date = new Date()) {
         console.log(`Processed ${results.length} overdue task notifications`);
     } catch (err) {
         console.error('Error processing overdue tasks:', err);
+        throw err;
     }
 }

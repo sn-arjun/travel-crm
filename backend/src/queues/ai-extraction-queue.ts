@@ -220,14 +220,16 @@ async function handleTranscribeVoicemail(
     .bind(callLogId)
     .first<{ routed_to: string | null; from_number: string }>();
 
-  if (callLog?.routed_to && env.NOTIFICATION_QUEUE) {
+  if (callLog?.routed_to && env.PUSH_NOTIFICATION_QUEUE) {
     try {
-      await env.NOTIFICATION_QUEUE.send({
-        type: 'push_notification',
-        userId: callLog.routed_to,
-        title: 'Voicemail Transcribed',
-        body: `From ${callLog.from_number}: "${snippet}"`,
-        data: { type: 'voicemail', callLogId },
+      await env.PUSH_NOTIFICATION_QUEUE.send({
+        type: 'push',
+        data: {
+          userId: callLog.routed_to,
+          title: 'Voicemail Transcribed',
+          body: `From ${callLog.from_number}: "${snippet}"`,
+          data: { type: 'voicemail', callLogId },
+        },
       });
     } catch (e) {
       console.error('Failed to send voicemail notification:', e);
@@ -374,7 +376,7 @@ async function handleExtractLead(
   }
 
   // Notify if urgent sentiment
-  if (result.sentiment === 'urgent' && env.NOTIFICATION_QUEUE) {
+  if (result.sentiment === 'urgent' && env.PUSH_NOTIFICATION_QUEUE) {
     // Notify admins about urgent sentiment
     const admins = await db
       .prepare("SELECT id FROM users WHERE role = 'admin' AND is_active = 1")
@@ -382,12 +384,14 @@ async function handleExtractLead(
 
     for (const admin of admins.results || []) {
       try {
-        await env.NOTIFICATION_QUEUE.send({
-          type: 'push_notification',
-          userId: (admin as any).id,
-          title: 'Urgent Call Detected',
-          body: `Call ${callLogId} flagged as urgent. ${result.summary[0] || ''}`,
-          data: { type: 'urgent_call', callLogId },
+        await env.PUSH_NOTIFICATION_QUEUE.send({
+          type: 'push',
+          data: {
+            userId: (admin as any).id,
+            title: 'Urgent Call Detected',
+            body: `Call ${callLogId} flagged as urgent. ${result.summary[0] || ''}`,
+            data: { type: 'urgent_call', callLogId },
+          },
         });
       } catch (e) {
         console.error('Failed to send urgent notification:', e);
