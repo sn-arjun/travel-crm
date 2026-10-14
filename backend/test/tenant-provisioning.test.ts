@@ -2,6 +2,7 @@ import { env, createExecutionContext, waitOnExecutionContext, applyD1Migrations 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import worker from '../src/index';
 import { superAdminToken } from './utils/super-admin';
+import { signAccessToken } from '../src/utils/jwt';
 import { LocalTenantProvisioner } from '../src/services/tenancy/local-provisioner';
 import { generateTemporaryPassword } from '../src/services/tenancy/seed-tenant';
 import { TENANT_MIGRATIONS } from '../src/db/tenant-migrations.generated';

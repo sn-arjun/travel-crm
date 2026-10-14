@@ -8,6 +8,7 @@ import bcrypt from 'bcryptjs';
 import { resolveTenantDb } from '../services/tenant-db';
 import { listOutbox, clearOutbox } from '../services/mail/transactional';
 import { signAccessToken } from '../utils/jwt';
+import { signSuperAdminToken } from '../services/admin/session';
 import { ingestInbound, type InboundChannel } from '../services/inbound/ingest';
 
 const testApp = new Hono<{ Bindings: Env }>();
@@ -141,22 +142,22 @@ testApp.post('/inbound', async (c) => {
 });
 
 /**
- * Register a platform super admin and mint its access token (TEST_MODE only), so e2e specs can call the
- * super admin API (e.g. POST /admin/tenants) without a super admin login. The token is carried by the demo
- * tenant, whose database the tenant middleware needs; requireSuperAdmin keys off the email only.
+ * Register a platform super admin and mint a real super admin token for it (TEST_MODE only), the same token
+ * POST /admin/auth/login issues, so e2e specs can call the super admin API (e.g. POST /admin/tenants)
+ * without knowing a password.
  */
 testApp.post('/super-admin', async (c) => {
     if (!isTestMode(c.env)) return c.json({ error: 'Forbidden: Test mode is not active.' }, 403);
+    const id = '01960000-0000-7000-8000-0000000000f2';
     const email = 'e2e-super@platform.test';
+    const name = 'E2E Super Admin';
     await c.env.MASTER_DB
-        .prepare(`INSERT OR REPLACE INTO super_admins (id, email, name, password_hash, role, is_active) VALUES ('01960000-0000-7000-8000-0000000000f2', ?, 'E2E Super Admin', 'unused', 'super_admin', 1)`)
-        .bind(email)
+        .prepare(`INSERT OR REPLACE INTO super_admins (id, email, name, password_hash, role, is_active) VALUES (?, ?, ?, 'unused', 'super_admin', 1)`)
+        .bind(id, email, name)
         .run();
-    const accessToken = await signAccessToken(
-        { userId: 'e2e-super-admin', tenantId: '01960000-0000-7000-8000-000000000001', role: 'admin', email },
-        c.env.JWT_SECRET,
-    );
-    return c.json({ success: true, data: { email, accessToken } });
+    const issued = await signSuperAdminToken(c.env, { id, email, name, role: 'super_admin' });
+    if (!issued) return c.json({ error: 'Super admin secret unavailable' }, 503);
+    return c.json({ success: true, data: { email, accessToken: issued.token } });
 });
 
 /** Local outbox: system emails captured instead of sent (TEST_MODE only). */

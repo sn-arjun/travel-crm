@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import worker from '../src/index';
 import { signAccessToken } from '../src/utils/jwt';
 import { passwordChangeAllowed } from '../src/middleware/tenant';
+import { superAdminToken } from './utils/super-admin';
 
 // R113: a provisioned agency admin signs in with a temporary password and can do nothing but change it.
 const testEnv = env as any;
@@ -42,11 +43,7 @@ describe('first login: forced password change', () => {
       .prepare(`INSERT OR REPLACE INTO tenants (id, company_name, subdomain, plan, status) VALUES (?, 'Platform', 'r113-platform', 'enterprise', 'active')`)
       .bind(PLATFORM_TENANT)
       .run();
-    await testEnv.MASTER_DB
-      .prepare(`INSERT OR REPLACE INTO super_admins (id, email, name, password_hash, role, is_active) VALUES ('0196a113-0000-7000-8000-0000000000ab', ?, 'R113 Super', 'unused', 'super_admin', 1)`)
-      .bind(SUPER_EMAIL)
-      .run();
-    const superToken = await signAccessToken({ userId: 'r113-super', tenantId: PLATFORM_TENANT, role: 'admin', email: SUPER_EMAIL }, testEnv.JWT_SECRET);
+    const superToken = await superAdminToken(e, { id: '0196a113-0000-7000-8000-0000000000ab', email: SUPER_EMAIL, name: 'R113 Super' });
 
     // The R104 path: the provisioner creates the agency and its admin with a temporary password.
     const res = await call('POST', '/admin/tenants', superToken, {
