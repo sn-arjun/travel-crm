@@ -59,7 +59,8 @@
     "Apply apiRateLimit (middleware/rate-limit.ts) to /api/v1/* after auth with a per-user key (userId) at 600 requests per minute, and uploadRateLimit to POST /files/upload; tests must not hit it (raise via env RATE_LIMIT_MULTIPLIER when TEST_MODE is true).",
     "CORS (index.ts): allowed origins come from env.CORS_ORIGINS (comma-separated); localhost:* allowed only when ENVIRONMENT is development/dev/local/test or TEST_MODE is true; remove the *.pages.dev wildcard; Electron's packaged app loads from http://127.0.0.1:<port> which counts as localhost only in dev, so add `http://127.0.0.1` and `http://localhost` with any port when env.ALLOW_LOOPBACK_ORIGINS === 'true' (set for production too, because the desktop app is a local origin; document why).",
     "TEST_MODE fence: one helper isTestMode(env) = env.TEST_MODE === 'true' && env.ENVIRONMENT !== 'production'; replace every direct TEST_MODE check in backend/src (grep) with it, so production can never enable the reset route, fixed OTP or signature bypass even if the var leaks. R101 already refuses to serve in that case; this is defence in depth.",
-    "public.ts quote links: return 410 when the link is expired or revoked (check quotation_links columns; add expiry check if columns exist, else note it), add X-Robots-Tag noindex and a 60 per minute per IP limit."
+    "public.ts quote links: return 410 when the link is expired or revoked (check quotation_links columns; add expiry check if columns exist, else note it), add X-Robots-Tag noindex and a 60 per minute per IP limit.",
+    "Desktop origin (found by R114, 2026-10-14): the packaged Electron app serves its UI from http://127.0.0.1:<random free port> and calls the API from there. Production CORS must accept that origin pattern for the desktop app (exact rule: scheme http, host 127.0.0.1 or localhost, any port) in addition to the configured web origins, without reopening wildcard origins. Add a test for an allowed desktop origin and a rejected foreign origin."
   ],
   "migrations": [],
   "tests": [
@@ -67,7 +68,8 @@
   ],
   "acceptance": [
     "No R2 read or delete takes a client key without the tenant prefix check.",
-    "Existing e2e helpers still log in (they use few attempts)."
+    "Existing e2e helpers still log in (they use few attempts).",
+    "A request from http://127.0.0.1:<port> is accepted by CORS in production mode; http://evil.example is rejected (test)."
   ],
   "gate": [
     "cd backend && npx tsc --noEmit",
