@@ -5,6 +5,7 @@
  */
 
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import { z } from 'zod';
 import type { AppContext } from '../types';
 import { success, error } from '../utils/response';
@@ -23,8 +24,56 @@ app.onError(aiAwareErrorHandler);
 // CHATBOT CONFIG (TICKET-459, 475)
 // ============================================================
 
+/** Random, unguessable, URL-safe key the website widget uses to name its agency. */
+function newWidgetKey(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(18));
+  let s = '';
+  for (const b of bytes) s += String.fromCharCode(b);
+  return 'wk_' + btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/**
+ * The agency's widget key: master tenant_channel_addresses (channel 'widget', address = key) maps it to exactly
+ * one tenant. Created on first use; a key is never reassigned.
+ */
+export async function ensureWidgetKey(masterDb: D1Database, tenantId: string): Promise<string> {
+  const existing = await masterDb
+    .prepare("SELECT address FROM tenant_channel_addresses WHERE tenant_id = ? AND channel = 'widget' AND is_active = 1 ORDER BY created_at LIMIT 1")
+    .bind(tenantId)
+    .first<{ address: string }>();
+  if (existing) return existing.address;
+  const key = newWidgetKey();
+  await masterDb
+    .prepare("INSERT INTO tenant_channel_addresses (id, tenant_id, channel, address, provider, label) VALUES (?, ?, 'widget', ?, NULL, 'Website chat widget')")
+    .bind(generateId(), tenantId, key)
+    .run();
+  // A concurrent request may have inserted first; read back whichever key won.
+  const winner = await masterDb
+    .prepare("SELECT address FROM tenant_channel_addresses WHERE tenant_id = ? AND channel = 'widget' AND is_active = 1 ORDER BY created_at, id LIMIT 1")
+    .bind(tenantId)
+    .first<{ address: string }>();
+  return winner?.address ?? key;
+}
+
+// The embed snippet for the agency's website (the desktop settings page shows it).
+app.get('/widget', async (c) => {
+  const db = c.get('tenantDb');
+  const widgetKey = await ensureWidgetKey(c.env.MASTER_DB, c.get('tenantId'));
+  const base = (c.env.API_PUBLIC_URL?.trim() || new URL(c.req.url).origin).replace(/\/+$/, '');
+  const scriptUrl = `${base}/api/v1/public/chatbot/${widgetKey}/widget.js`;
+  const cfg = await db.prepare("SELECT allowed_origins FROM chatbot_config WHERE channel = 'website'").first<{ allowed_origins: string | null }>();
+  let allowedOrigins: string[] = [];
+  try { allowedOrigins = cfg?.allowed_origins ? JSON.parse(cfg.allowed_origins) : []; } catch { allowedOrigins = []; }
+  return c.json({
+    success: true,
+    data: { widgetKey, scriptUrl, snippet: `<script async src="${scriptUrl}"></script>`, allowedOrigins },
+  });
+});
+
 app.get('/config', async (c) => {
   const db = c.get('tenantDb');
+  // Turning the chatbot settings on is when the agency gets its widget key.
+  await ensureWidgetKey(c.env.MASTER_DB, c.get('tenantId')).catch((e) => console.error('widget key', e));
   const channel = c.req.query('channel');
   let query = `SELECT * FROM chatbot_config`;
   const binds: any[] = [];
@@ -53,7 +102,7 @@ app.put('/config/:channel', async (c) => {
   if (existing) {
     const updates: string[] = [];
     const vals: any[] = [];
-    const fields = ['enabled', 'greeting', 'business_hours_start', 'business_hours_end', 'business_days', 'after_hours_message', 'qualification_questions', 'faq_entries', 'branding_color', 'branding_logo', 'max_auto_replies', 'handoff_threshold', 'system_prompt'];
+    const fields = ['enabled', 'greeting', 'business_hours_start', 'business_hours_end', 'business_days', 'after_hours_message', 'qualification_questions', 'faq_entries', 'branding_color', 'branding_logo', 'max_auto_replies', 'handoff_threshold', 'system_prompt', 'allowed_origins'];
     for (const f of fields) {
       const camelCase = f.replace(/_([a-z])/g, (_, l) => l.toUpperCase());
       if (body[camelCase] !== undefined) {
@@ -71,8 +120,8 @@ app.put('/config/:channel', async (c) => {
   } else {
     const id = generateId();
     await db.prepare(`
-      INSERT INTO chatbot_config (id, channel, enabled, greeting, business_hours_start, business_hours_end, business_days, after_hours_message, qualification_questions, faq_entries, branding_color, branding_logo, max_auto_replies, handoff_threshold, system_prompt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO chatbot_config (id, channel, enabled, greeting, business_hours_start, business_hours_end, business_days, after_hours_message, qualification_questions, faq_entries, branding_color, branding_logo, max_auto_replies, handoff_threshold, system_prompt, allowed_origins)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       id, channel,
       body.enabled ?? 1,
@@ -88,6 +137,7 @@ app.put('/config/:channel', async (c) => {
       body.maxAutoReplies || 10,
       body.handoffThreshold || 5,
       body.systemPrompt || null,
+      body.allowedOrigins ? JSON.stringify(body.allowedOrigins) : null,
     ).run();
     const row = await db.prepare(`SELECT * FROM chatbot_config WHERE id = ?`).bind(id).first();
     return c.json({ success: true, data: row }, 201);
@@ -98,13 +148,15 @@ app.put('/config/:channel', async (c) => {
 // PUBLIC CHATBOT WEBHOOK (TICKET-460, 462, 469)
 // ============================================================
 
-app.post('/webhook/:channel', async (c) => {
+/**
+ * One visitor message in, one reply out. Shared by the public widget mount (public-chatbot.ts) and the
+ * signed WhatsApp webhook; the caller resolves the tenant and sets `tenantDb` / `tenantId` on the context.
+ */
+export async function handleChatbotMessage(c: Context<AppContext>, channel: string, body: unknown): Promise<Response> {
   const db = c.get('tenantDb');
-  const { channel } = c.req.param();
-  const body = await c.req.json();
 
   const parsed = z.object({
-    visitorId: z.string(),
+    visitorId: z.string().min(1).max(100),
     message: z.string().min(1).max(2000),
     visitorName: z.string().optional(),
     visitorEmail: z.string().email().optional(),
@@ -230,15 +282,13 @@ Always be friendly and professional. If you can't help, suggest speaking with a 
         conversationId: convId,
         reply,
         suggestHandoff: shouldHandoff,
-        model: result.model,
-        cost: result.cost,
       },
     });
   } catch (e: any) {
     if (e instanceof AiUnavailableError) return aiUnavailableResponse(c, e.message);
     return error(c, 'Chatbot error: ' + e.message, 500);
   }
-});
+}
 
 // ============================================================
 // CHATBOT CONVERSATIONS MANAGEMENT (TICKET-477)
@@ -452,102 +502,6 @@ app.get('/analytics', async (c) => {
       handoffRate: totalConvs?.count ? ((handoffs?.count || 0) / totalConvs.count * 100).toFixed(1) : '0.0',
     },
   });
-});
-
-// ============================================================
-// WHATSAPP WEBHOOK (TICKET-469–474)
-// ============================================================
-
-// Twilio WhatsApp incoming webhook
-app.post('/whatsapp/incoming', async (c) => {
-  const db = c.get('tenantDb');
-  const body = await c.req.parseBody();
-
-  const from = (body['From'] as string || '').replace('whatsapp:', '');
-  const messageBody = body['Body'] as string || '';
-  const messageSid = body['MessageSid'] as string || '';
-
-  if (!from || !messageBody) return c.text('OK');
-
-  // Route through the chatbot webhook handler
-  const webhookUrl = new URL(c.req.url);
-  webhookUrl.pathname = webhookUrl.pathname.replace('/whatsapp/incoming', '/webhook/whatsapp');
-
-  const response = await app.fetch(new Request(webhookUrl.toString(), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', ...Object.fromEntries(c.req.raw.headers.entries()) },
-    body: JSON.stringify({
-      visitorId: from,
-      message: messageBody,
-      visitorPhone: from,
-    }),
-  }), c.env);
-
-  const result = await response.json() as any;
-
-  // Send reply via Twilio
-  if (result.data?.reply && c.env.TWILIO_ACCOUNT_SID) {
-    const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${c.env.TWILIO_ACCOUNT_SID}/Messages.json`;
-    const twilioBody = new URLSearchParams({
-      To: `whatsapp:${from}`,
-      From: `whatsapp:${c.env.TWILIO_WHATSAPP_FROM_NUMBER || ''}`,
-      Body: result.data.reply,
-    });
-
-    await fetch(twilioUrl, {
-      method: 'POST',
-      headers: {
-        Authorization: `Basic ${btoa(`${c.env.TWILIO_ACCOUNT_SID}:${c.env.TWILIO_AUTH_TOKEN}`)}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: twilioBody.toString(),
-    });
-  }
-
-  return c.text('OK');
-});
-
-// ============================================================
-// WIDGET EMBED SCRIPT (TICKET-462)
-// ============================================================
-
-app.get('/widget.js', async (c) => {
-  const tenantId = c.get('tenantId');
-  const baseUrl = new URL(c.req.url).origin;
-
-  const script = `
-(function() {
-  var d = document, s = d.createElement('style'), b = d.createElement('div');
-  s.textContent = '.cb-btn{position:fixed;bottom:20px;right:20px;width:56px;height:56px;border-radius:28px;background:#4F46E5;color:#fff;border:none;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:9999;font-size:24px;display:flex;align-items:center;justify-content:center;transition:transform 0.2s}.cb-btn:hover{transform:scale(1.1)}.cb-win{position:fixed;bottom:84px;right:20px;width:380px;height:520px;background:#fff;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,0.12);z-index:9998;display:none;flex-direction:column;overflow:hidden}.cb-win.open{display:flex}.cb-hdr{padding:16px;background:#4F46E5;color:#fff;font-weight:600;display:flex;justify-content:space-between;align-items:center}.cb-msgs{flex:1;overflow-y:auto;padding:12px}.cb-msg{margin:6px 0;padding:8px 12px;border-radius:12px;max-width:80%;word-wrap:break-word;font-size:14px}.cb-bot{background:#f0f0f0;margin-right:auto}.cb-usr{background:#4F46E5;color:#fff;margin-left:auto}.cb-inp{display:flex;padding:8px;border-top:1px solid #eee}.cb-inp input{flex:1;border:1px solid #ddd;border-radius:8px;padding:8px 12px;outline:none;font-size:14px}.cb-inp button{background:#4F46E5;color:#fff;border:none;border-radius:8px;padding:8px 16px;margin-left:8px;cursor:pointer}';
-  d.head.appendChild(s);
-  b.innerHTML = '<button class="cb-btn" onclick="toggleCB()">💬</button><div class="cb-win" id="cbWin"><div class="cb-hdr"><span>Chat with us</span><button onclick="toggleCB()" style="background:none;border:none;color:#fff;cursor:pointer;font-size:18px">✕</button></div><div class="cb-msgs" id="cbMsgs"></div><div class="cb-inp"><input id="cbInp" placeholder="Type a message..." onkeypress="if(event.key===\\'Enter\\')sendCB()"><button onclick="sendCB()">Send</button></div></div>';
-  d.body.appendChild(b);
-  var vid = localStorage.getItem('cb_vid') || ('v_' + Math.random().toString(36).substr(2));
-  localStorage.setItem('cb_vid', vid);
-  var cid = null;
-  window.toggleCB = function() { d.getElementById('cbWin').classList.toggle('open'); };
-  window.sendCB = function() {
-    var inp = d.getElementById('cbInp'), msg = inp.value.trim();
-    if (!msg) return;
-    addMsg(msg, 'usr'); inp.value = '';
-    fetch('${baseUrl}/api/v1/chatbot/webhook/website', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({visitorId: vid, message: msg, conversationId: cid})
-    }).then(function(r){return r.json()}).then(function(d){
-      if(d.data){cid=d.data.conversationId;if(d.data.reply)addMsg(d.data.reply,'bot');}
-    }).catch(function(){addMsg('Sorry, connection error.','bot');});
-  };
-  function addMsg(t, cls) {
-    var m = d.createElement('div');
-    m.className = 'cb-msg cb-' + cls;
-    m.textContent = t;
-    var c = d.getElementById('cbMsgs');
-    c.appendChild(m); c.scrollTop = c.scrollHeight;
-  }
-})();`;
-
-  return c.text(script, 200, { 'Content-Type': 'application/javascript', 'Cache-Control': 'public, max-age=3600' });
 });
 
 // ============================================================

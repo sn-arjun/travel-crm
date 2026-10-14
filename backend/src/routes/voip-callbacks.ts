@@ -21,11 +21,47 @@ import { createVoipProvider, escapeXml as escapeXmlUtil } from '../services/voip
 import type { VoipSettingsRow } from '../services/voip-provider';
 
 import { candidateTenantDbs, resolveTenantDb, tenancyMode } from '../services/tenant-db';
+import { formParams, publicRequestUrl, unsignedAllowed, verifyTwilioAny } from '../middleware/provider-signature';
 
 const voipCallbackRoutes = new Hono<AppContext>();
 
 // Public CORS for VoIP provider webhooks
 voipCallbackRoutes.use('/*', cors({ origin: '*' }));
+
+/**
+ * Every route here is a public provider callback, so every one must be genuinely signed. The workspace is
+ * found from the callback (its number, or a call it already logged) and the signature is checked with that
+ * workspace's own provider token, falling back to the platform's TWILIO_AUTH_TOKEN. Unsigned or invalid:
+ * 403 before any handler (and so any database write) runs. Test mode lets a callback with no signature
+ * header through; a callback that carries one is always checked.
+ */
+voipCallbackRoutes.use('/*', async (c, next) => {
+  if (c.req.method === 'OPTIONS') return next();
+  const signature = c.req.header('X-Twilio-Signature');
+  const anySignature = signature || c.req.header('X-Plivo-Signature-V3');
+  if (unsignedAllowed(c.env, anySignature)) return next();
+  // Plivo is dropped (owner decision 2026-10-14); its callbacks are not accepted here.
+  if (!signature) return c.json({ error: 'Missing webhook signature' }, 403);
+
+  const params = await formParams(c);
+  const tokens: Array<string | null | undefined> = [c.env.TWILIO_AUTH_TOKEN];
+  try {
+    const db =
+      (await callDb(c.env, { number: params.To, callSid: params.CallSid, callLogId: c.req.query('callLogId') })) ??
+      (await callDb(c.env, { number: params.From }));
+    const settings = db ? await loadSettings(db) : null;
+    if (settings && settings.voipProvider !== 'twilio') return c.json({ error: 'Webhook signatures are not supported for this provider' }, 403);
+    // Credentials are plaintext today; R108 decrypts them here when it lands.
+    if (settings) tokens.unshift(settings.providerAuthToken || settings.twilioAuthToken);
+  } catch (e) {
+    console.error('VoIP callback tenant lookup failed:', e);
+  }
+
+  if (!(await verifyTwilioAny(publicRequestUrl(c), params, tokens, signature))) {
+    return c.json({ error: 'Invalid Twilio signature' }, 403);
+  }
+  return next();
+});
 
 // ── Helper: load VoIP settings from DB ────────────────────────
 

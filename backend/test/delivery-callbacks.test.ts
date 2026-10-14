@@ -1,6 +1,7 @@
 import { env, createExecutionContext, waitOnExecutionContext, applyD1Migrations } from 'cloudflare:test';
 import { describe, it, expect, beforeAll } from 'vitest';
 import worker from '../src/index';
+import { twilioSignature } from '../src/middleware/provider-signature';
 
 const testEnv = env as any;
 const TENANT_ID = '00000000-0000-0000-0000-000000000000';
@@ -18,10 +19,17 @@ function json(method: string, path: string, body?: unknown, token?: string): Pro
   return send(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
 }
 
-function twilioStatus(fields: Record<string, string>, query = ''): Promise<Response> {
-  return send(`/webhooks/twilio/status${query}`, {
+/** Sign a Twilio callback the way Twilio does: HMAC-SHA1 of the public URL and the sorted form fields. */
+async function signTwilio(path: string, fields: Record<string, string>): Promise<string> {
+  const base = testEnv.API_PUBLIC_URL ? String(testEnv.API_PUBLIC_URL).replace(/[/]+$/, '') : 'http://localhost';
+  return twilioSignature(`${base}/api/v1${path}`, fields, testEnv.TWILIO_AUTH_TOKEN);
+}
+
+async function twilioStatus(fields: Record<string, string>, query = ''): Promise<Response> {
+  const path = `/webhooks/twilio/status${query}`;
+  return send(path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Twilio-Signature': await signTwilio(path, fields) },
     body: new URLSearchParams(fields).toString(),
   });
 }

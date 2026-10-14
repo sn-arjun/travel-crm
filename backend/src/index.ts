@@ -83,6 +83,7 @@ import aiExtractionRoutes from './routes/ai-extractions';
 import aiAssistantRoutes from './routes/ai-assistant';
 import aiIntelligenceRoutes from './routes/ai-intelligence';
 import chatbotRoutes from './routes/chatbot';
+import { publicChatbotRoutes, chatbotWebhookRoutes } from './routes/public-chatbot';
 import businessIntelligenceRoutes from './routes/business-intelligence';
 import aiSettingsRoutes from './routes/ai-settings';
 import whatsappCampaignRoutes from './routes/whatsapp-campaigns';
@@ -142,7 +143,9 @@ app.use('*', secureHeaders());
 app.use(
   '*',
   cors({
-    origin: (origin, c) => resolveCorsOrigin(origin, c.env as any),
+    // The website chat widget runs on agencies' own websites: its public mount reflects the caller's origin and
+    // the route itself enforces each agency's allow-list (no cookies or staff credentials are involved there).
+    origin: (origin, c) => (/^\/api(\/v1)?\/public\/chatbot\//.test(c.req.path) ? origin || null : resolveCorsOrigin(origin, c.env as any)),
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization', 'X-Refresh-Token', 'X-Tenant-Id'],
     exposeHeaders: ['Content-Length', 'X-Request-Id', 'X-RateLimit-Remaining', 'X-RateLimit-Reset'],
@@ -169,6 +172,12 @@ app.get('/api/health', healthHandler);
 // --- Public Webhook Routes (BEFORE auth middleware) ---
 
 // Inbound gateway: WhatsApp, SMS, email and website form (provider-signed or API-key authenticated)
+// Chatbot: WhatsApp incoming (Twilio-signed) and the website widget (keyed by widget key, no login)
+app.route('/api/v1/webhooks/chatbot', chatbotWebhookRoutes);
+app.route('/api/webhooks/chatbot', chatbotWebhookRoutes);
+app.route('/api/v1/public/chatbot', publicChatbotRoutes);
+app.route('/api/public/chatbot', publicChatbotRoutes);
+
 app.route('/api/v1/webhooks/inbound', inboundRoutes);
 app.route('/api/webhooks/inbound', inboundRoutes);
 app.route('/api/v1/webhooks', webhookRoutes);

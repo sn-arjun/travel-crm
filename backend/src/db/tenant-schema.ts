@@ -2195,6 +2195,7 @@ export const chatbotConfig = sqliteTable('chatbot_config', {
   maxAutoReplies: integer('max_auto_replies').default(10),
   handoffThreshold: integer('handoff_threshold').default(5), // after N messages, offer handoff
   systemPrompt: text('system_prompt'), // custom instructions for AI
+  allowedOrigins: text('allowed_origins'), // JSON array of website origins allowed to embed the widget
   createdAt: text('created_at').default(timestamp),
   updatedAt: text('updated_at').default(timestamp),
 }, (table) => [

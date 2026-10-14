@@ -5,6 +5,7 @@ import type { AppContext } from '../types';
 import { messageLog, emailMessageLog, contacts } from '../db/tenant-schema';
 import { error, success } from '../utils/response';
 import { candidateTenantDbs } from '../services/tenant-db';
+import { formParams, publicRequestUrl, unsignedAllowed, verifySendgrid, verifyTwilio } from '../middleware/provider-signature';
 
 const webhookRoutes = new Hono<AppContext>();
 
@@ -13,8 +14,16 @@ const webhookRoutes = new Hono<AppContext>();
 // ============================================================
 
 webhookRoutes.post('/twilio/status', async (c) => {
-  // This endpoint is public (no auth required)
-  // Twilio sends status updates here
+  // Public endpoint: Twilio sends status updates here, so it must be genuinely signed (platform token;
+  // messages are sent from the platform account). Test mode accepts a callback with no signature only.
+  const signature = c.req.header('X-Twilio-Signature');
+  if (!unsignedAllowed(c.env, signature)) {
+    const params = await formParams(c);
+    const token = c.env.TWILIO_AUTH_TOKEN;
+    if (!signature || !token || !(await verifyTwilio(publicRequestUrl(c), params, token, signature))) {
+      return error(c, 'Invalid webhook signature', 403);
+    }
+  }
 
   try {
     // Get form data from Twilio
@@ -87,11 +96,22 @@ webhookRoutes.post('/twilio/status', async (c) => {
 // ============================================================
 
 webhookRoutes.post('/sendgrid/events', async (c) => {
-  // This endpoint is public (no auth required)
-  // SendGrid sends event notifications here
+  // Public endpoint: SendGrid's Signed Event Webhook (ECDSA over timestamp + raw body). Without
+  // SENDGRID_WEBHOOK_PUBLIC_KEY nothing is accepted, except in test mode.
+  const rawBody = await c.req.text();
+  const signature = c.req.header('X-Twilio-Email-Event-Webhook-Signature');
+  const timestamp = c.req.header('X-Twilio-Email-Event-Webhook-Timestamp');
+  const publicKey = c.env.SENDGRID_WEBHOOK_PUBLIC_KEY;
+  if (!publicKey) {
+    if (!unsignedAllowed(c.env, signature)) return error(c, 'SendGrid webhook is not configured', 403);
+    console.warn('[SENDGRID WEBHOOK] SENDGRID_WEBHOOK_PUBLIC_KEY is not set; accepting an unsigned event in test mode');
+  } else if (!(unsignedAllowed(c.env, signature) || (await verifySendgrid(publicKey, signature, timestamp, rawBody)))) {
+    return error(c, 'Invalid webhook signature', 403);
+  }
 
   try {
-    const body = await c.req.json();
+    let body: unknown;
+    try { body = JSON.parse(rawBody); } catch { return error(c, 'Expected array of events', 400); }
 
     if (!Array.isArray(body)) {
       return error(c, 'Expected array of events', 400);

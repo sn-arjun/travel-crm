@@ -1,6 +1,7 @@
 import { env, createExecutionContext, waitOnExecutionContext, applyD1Migrations } from 'cloudflare:test';
 import { describe, it, expect, beforeAll } from 'vitest';
 import worker from '../src/index';
+import { twilioSignature } from '../src/middleware/provider-signature';
 
 const testEnv = env as any;
 const TENANT_ID = '00000000-0000-0000-0000-000000000000';
@@ -21,12 +22,17 @@ async function call(method: string, path: string, token: string | null, body?: u
 }
 
 /** A provider webhook: form-encoded, no login. */
+async function signTwilio(path: string, fields: Record<string, string>, e: any): Promise<string> {
+  const base = e.API_PUBLIC_URL ? String(e.API_PUBLIC_URL).replace(/[/]+$/, '') : 'http://localhost';
+  return twilioSignature(`${base}/api/v1/voip${path}`, fields, e.TWILIO_AUTH_TOKEN);
+}
+
 async function webhook(path: string, fields: Record<string, string>, e: any = testEnv): Promise<Response> {
   const ctx = createExecutionContext();
   const res = await worker.fetch(
     new Request(`http://localhost/api/v1/voip${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Twilio-Signature': await signTwilio(path, fields, e) },
       body: new URLSearchParams(fields).toString(),
     }),
     e,
