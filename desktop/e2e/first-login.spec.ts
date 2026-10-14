@@ -128,14 +128,14 @@ test.describe('First login: forced password change and onboarding', () => {
     await page.locator('#newPassword').fill('short1');
     await page.locator('#confirmPassword').fill('short1');
     await page.getByRole('button', { name: 'Change password' }).click();
-    await expect(page.getByRole('alert')).toContainText('at least 10');
+    await expect(page.locator('form [role="alert"]')).toContainText('at least 10');
 
     // A wrong temporary password is refused by the API
     await page.locator('#currentPassword').fill('not-the-temporary-1');
     await page.locator('#newPassword').fill(NEW_PASSWORD);
     await page.locator('#confirmPassword').fill(NEW_PASSWORD);
     await page.getByRole('button', { name: 'Change password' }).click();
-    await expect(page.getByRole('alert')).toContainText(/incorrect/i);
+    await expect(page.locator('form [role="alert"]')).toContainText(/incorrect/i);
 
     // The right one goes through and lands on the wizard
     await page.locator('#currentPassword').fill(agency.temporaryPassword);
