@@ -5,6 +5,8 @@ export interface TokenPayload extends JWTPayload {
   tenantId: string;
   role: string;
   email: string;
+  /** Binding name of the tenant database (informational; the tenant registry stays authoritative). */
+  db?: string;
 }
 
 const ACCESS_TOKEN_EXPIRY = '15m';
@@ -14,7 +16,7 @@ function getSecretKey(secret: string): Uint8Array {
 }
 
 export async function signAccessToken(
-  payload: { userId: string; tenantId: string; role: string; email: string },
+  payload: { userId: string; tenantId: string; role: string; email: string; db?: string | null },
   secret: string
 ): Promise<string> {
   return new SignJWT({
@@ -22,6 +24,7 @@ export async function signAccessToken(
     tenantId: payload.tenantId,
     role: payload.role,
     email: payload.email,
+    ...(payload.db ? { db: payload.db } : {}),
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()

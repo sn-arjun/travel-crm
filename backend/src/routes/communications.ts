@@ -145,6 +145,7 @@ communicationRoutes.post(
           ...(body.channel !== 'email' && { body: body.message }),
           messageLogId: messageId,
           contactId: body.contact_id,
+          tenantId: c.get('tenantId'),
           channel: body.channel,
           ...(body.media_url && { mediaUrl: body.media_url }),
         },
@@ -259,6 +260,7 @@ communicationRoutes.post(
           ...(template.channel !== 'email' && { body: content }),
           messageLogId: messageId,
           contactId: body.contact_id,
+          tenantId: c.get('tenantId'),
           channel: template.channel,
         },
       });
@@ -382,6 +384,7 @@ communicationRoutes.post(
           body: caption,
           messageLogId: messageId,
           contactId: body.contact_id,
+          tenantId: c.get('tenantId'),
           channel: body.channel,
           mediaUrl: mediaUrl,
         },
@@ -500,6 +503,7 @@ communicationRoutes.post(
             ...(body.channel !== 'email' && { body: content }),
             messageLogId: messageId,
             contactId: contact.id,
+            tenantId: c.get('tenantId'),
             channel: body.channel,
           },
         });

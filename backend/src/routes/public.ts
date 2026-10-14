@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, and } from 'drizzle-orm';
 import type { Env } from '../types';
+import { resolveTenantDb } from '../services/tenant-db';
 import { getTenantTimeZone, localDateString } from '../utils/tz';
 import { itineraries, itineraryDays, itineraryItems } from '../db/tenant-schema';
 
@@ -23,7 +24,7 @@ publicRoutes.get('/quotation/:token', async (c) => {
   }
 
   // Get tenant DB
-  const tenantDbBinding = c.env[`TENANT_DB_${mapping.tenant_id}`] as D1Database | undefined;
+  const tenantDbBinding = await resolveTenantDb(c.env, mapping.tenant_id);
   if (!tenantDbBinding) {
     return c.json({ error: 'Quotation not found' }, 404);
   }

@@ -17,8 +17,23 @@ import { sendEmail } from '../services/email';
 import { resetPasswordEmailHtml, accountLockedEmailHtml } from '../templates/reset-email';
 import { success, created, error } from '../utils/response';
 import { getTenantSummary } from '../utils/tenant-summary';
+import { tenantDbFor, TenantDbUnavailableError } from '../services/tenant-db';
 
 const auth = new Hono<AppContext>();
+
+/** The tenant's own database via the single resolver; null when its binding is missing (never MASTER_DB in multi mode). */
+function authTenantDb(env: AppContext['Bindings'], tenant: { dbBinding: string | null }): D1Database | null {
+  try {
+    return tenantDbFor(env, tenant);
+  } catch (e) {
+    if (e instanceof TenantDbUnavailableError) return null;
+    throw e;
+  }
+}
+
+function tenantDbUnavailable(c: any) {
+  return c.json({ success: false, error: { code: 'TENANT_DB_UNAVAILABLE', message: 'Tenant database is not available' } }, 503);
+}
 
 // ============================================================
 // POST /resolve-tenant — Look up tenants by email
@@ -119,7 +134,7 @@ auth.post(
     // Resolve tenant DB
     const masterDb = drizzle(c.env.MASTER_DB);
     const [tenant] = await masterDb
-      .select({ d1DatabaseId: tenants.d1DatabaseId, status: tenants.status, companyName: tenants.companyName })
+      .select({ dbBinding: tenants.dbBinding, status: tenants.status, companyName: tenants.companyName })
       .from(tenants)
       .where(eq(tenants.id, tenantId))
       .limit(1);
@@ -128,14 +143,8 @@ auth.post(
       return error(c, 'Invalid tenant', 400);
     }
 
-    // Get tenant DB binding
-    let tenantDb: D1Database;
-    if (tenant.d1DatabaseId) {
-      const bindingKey = `TENANT_DB_${tenant.d1DatabaseId}` as `TENANT_DB_${string}`;
-      tenantDb = c.env[bindingKey] || c.env.MASTER_DB;
-    } else {
-      tenantDb = c.env.MASTER_DB;
-    }
+    const tenantDb = authTenantDb(c.env, tenant);
+    if (!tenantDb) return tenantDbUnavailable(c);
 
     const db = drizzle(tenantDb);
     const ua = parseUserAgent(c.req.header('User-Agent'));
@@ -164,7 +173,7 @@ auth.post(
 
     // Generate tokens
     const accessToken = await signAccessToken(
-      { userId: user.id, tenantId, role: user.role, email: user.email },
+      { userId: user.id, tenantId, role: user.role, email: user.email, db: tenant.dbBinding },
       c.env.JWT_SECRET
     );
 
@@ -323,18 +332,14 @@ auth.post(
 
     // Resolve tenant DB
     const [tenant] = await masterDb
-      .select({ d1DatabaseId: tenants.d1DatabaseId })
+      .select({ dbBinding: tenants.dbBinding, status: tenants.status })
       .from(tenants)
       .where(eq(tenants.id, tenantId))
       .limit(1);
 
-    let tenantDb: D1Database;
-    if (tenant?.d1DatabaseId) {
-      const bindingKey = `TENANT_DB_${tenant.d1DatabaseId}` as `TENANT_DB_${string}`;
-      tenantDb = c.env[bindingKey] || c.env.MASTER_DB;
-    } else {
-      tenantDb = c.env.MASTER_DB;
-    }
+    if (!tenant) return error(c, 'Invalid tenant', 400);
+    const tenantDb = authTenantDb(c.env, tenant);
+    if (!tenantDb) return tenantDbUnavailable(c);
 
     const db = drizzle(tenantDb);
     const [user] = await db
@@ -351,7 +356,7 @@ auth.post(
 
     // Generate tokens
     const accessToken = await signAccessToken(
-      { userId: user.id, tenantId, role: user.role, email: user.email },
+      { userId: user.id, tenantId, role: user.role, email: user.email, db: tenant.dbBinding },
       c.env.JWT_SECRET
     );
 
@@ -457,18 +462,17 @@ auth.post(
     // Resolve tenant DB and get user
     const masterDb = drizzle(c.env.MASTER_DB);
     const [tenant] = await masterDb
-      .select({ d1DatabaseId: tenants.d1DatabaseId })
+      .select({ dbBinding: tenants.dbBinding, status: tenants.status })
       .from(tenants)
       .where(eq(tenants.id, tokenData.tenantId))
       .limit(1);
 
-    let tenantDb: D1Database;
-    if (tenant?.d1DatabaseId) {
-      const bindingKey = `TENANT_DB_${tenant.d1DatabaseId}` as `TENANT_DB_${string}`;
-      tenantDb = c.env[bindingKey] || c.env.MASTER_DB;
-    } else {
-      tenantDb = c.env.MASTER_DB;
+    if (!tenant) return error(c, 'Invalid tenant', 400);
+    if (tenant.status !== 'active' && tenant.status !== 'trial') {
+      return c.json({ success: false, error: { code: 'TENANT_INACTIVE', message: 'Tenant account is not active' } }, 403);
     }
+    const tenantDb = authTenantDb(c.env, tenant);
+    if (!tenantDb) return tenantDbUnavailable(c);
 
     const db = drizzle(tenantDb);
     const [user] = await db
@@ -483,7 +487,7 @@ auth.post(
 
     // Generate new tokens
     const newAccessToken = await signAccessToken(
-      { userId: user.id, tenantId: tokenData.tenantId, role: user.role, email: user.email },
+      { userId: user.id, tenantId: tokenData.tenantId, role: user.role, email: user.email, db: tenant.dbBinding },
       c.env.JWT_SECRET
     );
 
@@ -612,18 +616,14 @@ auth.post(
     // Resolve tenant DB
     const masterDb = drizzle(c.env.MASTER_DB);
     const [tenant] = await masterDb
-      .select({ d1DatabaseId: tenants.d1DatabaseId })
+      .select({ dbBinding: tenants.dbBinding, status: tenants.status })
       .from(tenants)
       .where(eq(tenants.id, tokenData.tenantId))
       .limit(1);
 
-    let tenantDb: D1Database;
-    if (tenant?.d1DatabaseId) {
-      const bindingKey = `TENANT_DB_${tenant.d1DatabaseId}` as `TENANT_DB_${string}`;
-      tenantDb = c.env[bindingKey] || c.env.MASTER_DB;
-    } else {
-      tenantDb = c.env.MASTER_DB;
-    }
+    if (!tenant) return error(c, 'Invalid tenant', 400);
+    const tenantDb = authTenantDb(c.env, tenant);
+    if (!tenantDb) return tenantDbUnavailable(c);
 
     const db = drizzle(tenantDb);
 
@@ -698,18 +698,14 @@ auth.post(
     // Resolve tenant DB
     const masterDb = drizzle(c.env.MASTER_DB);
     const [tenant] = await masterDb
-      .select({ d1DatabaseId: tenants.d1DatabaseId })
+      .select({ dbBinding: tenants.dbBinding, status: tenants.status })
       .from(tenants)
       .where(eq(tenants.id, inviteData.tenantId))
       .limit(1);
 
-    let tenantDb: D1Database;
-    if (tenant?.d1DatabaseId) {
-      const bindingKey = `TENANT_DB_${tenant.d1DatabaseId}` as `TENANT_DB_${string}`;
-      tenantDb = c.env[bindingKey] || c.env.MASTER_DB;
-    } else {
-      tenantDb = c.env.MASTER_DB;
-    }
+    if (!tenant) return error(c, 'Invalid tenant', 400);
+    const tenantDb = authTenantDb(c.env, tenant);
+    if (!tenantDb) return tenantDbUnavailable(c);
 
     const db = drizzle(tenantDb);
 

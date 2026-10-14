@@ -5,6 +5,7 @@
  */
 
 import type { Env } from '../types';
+import { resolveTenantDb } from '../services/tenant-db';
 
 interface WhatsAppCampaignMessage {
   type: 'whatsapp_campaign';
@@ -18,19 +19,10 @@ export async function processWhatsAppCampaign(
 ): Promise<void> {
   const { campaignId, tenantId } = message;
 
-  // Resolve tenant DB
-  const tenant = await env.MASTER_DB.prepare(
-    'SELECT d1_database_id FROM tenants WHERE id = ?'
-  ).bind(tenantId).first<{ d1_database_id: string }>();
-
-  if (!tenant?.d1_database_id) {
-    console.error(`Tenant ${tenantId} not found or no D1 database`);
-    return;
-  }
-
-  const db = env[tenant.d1_database_id as keyof Env] as D1Database;
+  // Resolve tenant DB (never MASTER_DB in multi-tenant mode)
+  const db = await resolveTenantDb(env, tenantId);
   if (!db) {
-    console.error(`D1 database binding ${tenant.d1_database_id} not found`);
+    console.error(`Tenant ${tenantId} has no resolvable database; WhatsApp campaign ${campaignId} dropped`);
     return;
   }
 

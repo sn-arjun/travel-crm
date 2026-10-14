@@ -121,6 +121,18 @@ registerMarketingReports();
 
 // --- Global Middleware ---
 
+// Production guards: a deployment must never run with test shortcuts or a shared database by accident.
+app.use('*', async (c, next) => {
+  const isProduction = c.env.ENVIRONMENT === 'production';
+  if (isProduction && c.env.TEST_MODE === 'true') {
+    return c.json({ success: false, error: { code: 'MISCONFIGURED', message: 'Service unavailable: test mode is enabled in production' } }, 503);
+  }
+  if (isProduction && c.env.TENANCY_MODE === 'single' && c.env.ALLOW_SINGLE_TENANT_PRODUCTION !== 'true') {
+    return c.json({ success: false, error: { code: 'MISCONFIGURED', message: 'Service unavailable: single-tenant mode is not allowed in production' } }, 503);
+  }
+  return next();
+});
+
 app.use('*', logger());
 app.use('*', prettyJSON());
 app.use('*', secureHeaders());

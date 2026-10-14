@@ -3,6 +3,7 @@ import { eq, inArray } from 'drizzle-orm';
 import * as schema from '../db/tenant-schema';
 import * as XLSX from 'xlsx';
 import type { Env } from '../types';
+import { resolveTenantDb as resolveTenantD1 } from '../services/tenant-db';
 import { broadcastToTenant } from '../utils/realtime';
 
 export interface ExportInvoicesMessage {
@@ -30,13 +31,11 @@ function toXlsxBuffer(data: Record<string, unknown>[], sheetName: string): Uint8
 
 type TenantDb = DrizzleD1Database<typeof schema>;
 
-function resolveTenantDb(env: Env, tenantId?: string): TenantDb {
-    if (tenantId) {
-        const bindingKey = `TENANT_DB_${tenantId}` as `TENANT_DB_${string}`;
-        const binding: D1Database | undefined = env[bindingKey];
-        if (binding) return drizzle(binding, { schema });
-    }
-    return drizzle(env.MASTER_DB, { schema });
+/** Tenant database for a queue message. Null (job dropped, never run on MASTER_DB) when the tenant does not resolve. */
+async function resolveTenantDb(env: Env, tenantId?: string): Promise<TenantDb | null> {
+    if (!tenantId) return null;
+    const binding = await resolveTenantD1(env, tenantId);
+    return binding ? drizzle(binding, { schema }) : null;
 }
 
 export async function handleExportQueue(batch: MessageBatch<ExportQueueMessage>, env: Env): Promise<void> {
@@ -44,7 +43,12 @@ export async function handleExportQueue(batch: MessageBatch<ExportQueueMessage>,
         try {
             const payload = msg.body;
             // Resolve tenant DB from the queue message's tenantId
-            const db = resolveTenantDb(env, payload.tenantId || undefined);
+            const db = await resolveTenantDb(env, payload.tenantId || undefined);
+            if (!db) {
+                console.error(`Export job ${payload.jobId}: tenant ${payload.tenantId} has no resolvable database; dropped`);
+                msg.ack();
+                continue;
+            }
             console.log(`Processing Export Job: ${payload.jobId} [${payload.type}]`);
 
             // Mark job as processing
@@ -204,8 +208,8 @@ export async function handleExportQueue(batch: MessageBatch<ExportQueueMessage>,
             console.error(`Error processing export message ${msg.id}:`, error);
 
             if (msg.body?.jobId) {
-                const fallbackDb = resolveTenantDb(env, msg.body?.tenantId || undefined);
-                await fallbackDb.update(schema.exportJobs)
+                const fallbackDb = await resolveTenantDb(env, msg.body?.tenantId || undefined);
+                if (fallbackDb) await fallbackDb.update(schema.exportJobs)
                     .set({
                         status: 'failed',
                         completedAt: new Date().toISOString(),

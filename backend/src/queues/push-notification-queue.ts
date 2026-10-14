@@ -1,7 +1,10 @@
 import type { Env } from '../types';
+import { resolveTenantDb } from '../services/tenant-db';
 import { sendPushNotification } from '../services/fcm';
 
 export interface PushNotificationJob {
+  /** Owning agency. When present only that agency's database is searched for tokens. */
+  tenantId?: string;
   userId: string;
   title: string;
   body: string;
@@ -22,7 +25,7 @@ export async function handlePushJob(
     console.log(`[PUSH QUEUE] Sending push to user ${job.userId}: ${job.title}`);
 
     // Get all active FCM tokens for the user from all tenant databases
-    const tokens = await getAllUserTokens(env, job.userId);
+    const tokens = await getAllUserTokens(env, job.userId, job.tenantId);
 
     if (tokens.length === 0) {
       console.warn(`[PUSH QUEUE] No active FCM tokens found for user ${job.userId}`);
@@ -50,20 +53,26 @@ export async function handlePushJob(
  */
 async function getAllUserTokens(
   env: Env,
-  userId: string
+  userId: string,
+  tenantId?: string
 ): Promise<{ fcmToken: string; dbBinding: string }[]> {
   const allTokens: { fcmToken: string; dbBinding: string }[] = [];
 
   try {
-    // Get all active tenants from master DB
-    const tenants = await env.MASTER_DB
-      .prepare('SELECT db_binding FROM workspaces WHERE is_active = 1')
-      .all<{ db_binding: string }>();
+    // Tenants to search: the one named in the job, otherwise every live tenant in the registry
+    let tenantIds: string[];
+    if (tenantId) {
+      tenantIds = [tenantId];
+    } else {
+      const rows = await env.MASTER_DB
+        .prepare("SELECT id FROM tenants WHERE status IN ('active', 'trial') LIMIT 500")
+        .all<{ id: string }>();
+      tenantIds = rows.results.map((r) => r.id);
+    }
 
-    // Search each tenant for tokens for this user
-    for (const tenant of tenants.results) {
+    for (const id of tenantIds) {
       try {
-        const tenantDb = ((env as unknown) as Record<string, D1Database>)[tenant.db_binding] as D1Database | undefined;
+        const tenantDb = await resolveTenantDb(env, id);
         if (!tenantDb) continue;
 
         const result = await tenantDb
@@ -78,12 +87,12 @@ async function getAllUserTokens(
           for (const row of result.results) {
             allTokens.push({
               fcmToken: row.fcm_token,
-              dbBinding: tenant.db_binding,
+              dbBinding: id,
             });
           }
         }
       } catch (err) {
-        console.error(`Failed to query tokens from ${tenant.db_binding}:`, err);
+        console.error(`Failed to query tokens for tenant ${id}:`, err);
       }
     }
   } catch (err) {

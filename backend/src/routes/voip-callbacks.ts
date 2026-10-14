@@ -20,7 +20,7 @@ import { checkBusinessHours, type BusinessHoursConfig } from '../utils/business-
 import { createVoipProvider, escapeXml as escapeXmlUtil } from '../services/voip-provider';
 import type { VoipSettingsRow } from '../services/voip-provider';
 
-import { candidateTenantDbs, resolveTenantDb } from '../services/tenant-db';
+import { candidateTenantDbs, resolveTenantDb, tenancyMode } from '../services/tenant-db';
 
 const voipCallbackRoutes = new Hono<AppContext>();
 
@@ -70,7 +70,8 @@ function safeJsonParse(val: string | null): any {
 // ── Status Callback — Twilio & Plivo call status updates ──────
 
 /** Which workspace a call belongs to: the owner of the called number, or the only workspace there is. */
-async function tenantForCalledNumber(masterDb: D1Database, toNumber: string | null): Promise<string | null> {
+async function tenantForCalledNumber(env: Env, toNumber: string | null): Promise<string | null> {
+  const masterDb = env.MASTER_DB;
   const number = toNumber ? normalizePhone(toNumber) : '';
   if (number) {
     const owner = await masterDb
@@ -79,6 +80,8 @@ async function tenantForCalledNumber(masterDb: D1Database, toNumber: string | nu
       .first<{ tenant_id: string }>();
     if (owner) return owner.tenant_id;
   }
+  // The single-workspace shortcut exists only in single-tenant mode; in multi mode an unknown number is unknown.
+  if (tenancyMode(env) !== 'single') return null;
   const tenants = await masterDb.prepare("SELECT id FROM tenants WHERE status = 'active' LIMIT 2").all<{ id: string }>();
   return tenants.results.length === 1 ? tenants.results[0].id : null;
 }
@@ -87,7 +90,7 @@ async function tenantForCalledNumber(masterDb: D1Database, toNumber: string | nu
  * The database of the workspace a provider webhook is about. A webhook carries no login, so the workspace is
  * found from what it does carry: the workspace's own number, or a call that workspace has already logged.
  */
-async function callDb(env: Env, hint: { number?: string | null; callSid?: string | null; callLogId?: string | null }): Promise<D1Database> {
+async function callDb(env: Env, hint: { number?: string | null; callSid?: string | null; callLogId?: string | null }): Promise<D1Database | null> {
   const number = hint.number ? normalizePhone(hint.number) : '';
   if (number) {
     const owner = await env.MASTER_DB
@@ -114,7 +117,8 @@ async function callDb(env: Env, hint: { number?: string | null; callSid?: string
       }
     }
   }
-  return env.MASTER_DB;
+  // No workspace found: never fall back to the shared database. The caller answers with an empty TwiML response.
+  return null;
 }
 
 voipCallbackRoutes.post('/status-callback', async (c) => {
@@ -149,6 +153,7 @@ voipCallbackRoutes.post('/status-callback', async (c) => {
 
   const status = statusMap[callStatus] || callStatus;
   const db = await callDb(c.env, { number: body.To as string, callSid });
+  if (!db) return c.text('<Response/>', 200, { 'Content-Type': 'text/xml' });
 
   const updates: string[] = ['status = ?'];
   const values: (string | number)[] = [status];
@@ -200,7 +205,7 @@ voipCallbackRoutes.post('/status-callback', async (c) => {
         }
 
         // Let the automations react (call-back task). The workspace is the one that owns the called number.
-        const tenantId = await tenantForCalledNumber(c.env.MASTER_DB, callLog.to_number);
+        const tenantId = await tenantForCalledNumber(c.env, callLog.to_number);
         if (tenantId) {
           await emitEvent(c.env, tenantId, db, {
             type: 'call.missed',
@@ -241,6 +246,8 @@ voipCallbackRoutes.post('/recording-callback', async (c) => {
   }
 
   const db = await callDb(c.env, { callSid });
+
+  if (!db) return c.text('<Response/>', 200, { 'Content-Type': 'text/xml' });
   const url = recordingUrl.endsWith('.mp3') ? recordingUrl : `${recordingUrl}.mp3`;
 
   try {
@@ -271,6 +278,8 @@ voipCallbackRoutes.post('/twiml/outbound', async (c) => {
   const from = (body.From as string) || (body.Caller as string) || '';
 
   const db = await callDb(c.env, { number: from, callSid: (body.CallSid || body.CallUUID) as string });
+
+  if (!db) return c.text('<Response/>', 200, { 'Content-Type': 'text/xml' });
   const settings = await loadSettings(db);
   if (settings) {
     const provider = createVoipProvider(c.env as any, settings);
@@ -298,6 +307,8 @@ voipCallbackRoutes.post('/twiml/inbound', async (c) => {
   const callSid = (body.CallSid || body.CallUUID) as string || '';
 
   const db = await callDb(c.env, { number: to, callSid });
+
+  if (!db) return c.text('<Response/>', 200, { 'Content-Type': 'text/xml' });
   const settings = await loadSettings(db);
 
   if (!settings) {
@@ -384,6 +395,8 @@ voipCallbackRoutes.post('/twiml/ivr-handler', async (c) => {
   const from = (body.From as string) || '';
 
   const db = await callDb(c.env, { number: body.To as string, callLogId });
+
+  if (!db) return c.text('<Response/>', 200, { 'Content-Type': 'text/xml' });
   const settings = await loadSettings(db);
   const baseUrl = c.req.url.replace(/\/api\/v1\/voip\/twiml\/ivr-handler.*$/, '').replace(/\/api\/voip\/twiml\/ivr-handler.*$/, '');
 
@@ -478,6 +491,7 @@ voipCallbackRoutes.post('/twiml/dial-status', async (c) => {
   // If the agent didn't answer, route to voicemail
   if (dialStatus !== 'answered' && dialStatus !== 'completed') {
     const db = await callDb(c.env, { number: body.To as string, callLogId });
+    if (!db) return c.text('<Response/>', 200, { 'Content-Type': 'text/xml' });
     const settings = await loadSettings(db);
     if (settings) {
       const provider = createVoipProvider(c.env as any, settings);
@@ -509,6 +523,7 @@ voipCallbackRoutes.post('/voicemail-callback', async (c) => {
 
   if (callLogId && recordingUrl) {
     const db = await callDb(c.env, { number: body.To as string, callLogId });
+    if (!db) return c.text('<Response/>', 200, { 'Content-Type': 'text/xml' });
     try {
       await db.prepare(`
         UPDATE call_logs

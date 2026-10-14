@@ -287,13 +287,13 @@ flyerRoutes.post(
           // eslint-disable-next-line no-await-in-loop
           await c.env.SMS_QUEUE.send({
             type: 'sms',
-            data: { to: phone, body: `Check out this flyer: ${flyerUrl}`, isWhatsApp: true },
+            data: { to: phone, body: `Check out this flyer: ${flyerUrl}`, isWhatsApp: true, tenantId: c.get('tenantId') },
           });
         } else if (body.channel === 'sms' && phone) {
           // eslint-disable-next-line no-await-in-loop
           await c.env.SMS_QUEUE.send({
             type: 'sms',
-            data: { to: phone, body: `Check out this flyer: ${flyerUrl}` },
+            data: { to: phone, body: `Check out this flyer: ${flyerUrl}`, tenantId: c.get('tenantId') },
           });
         } else if (body.channel === 'email' && emailAddr) {
           // eslint-disable-next-line no-await-in-loop
@@ -306,7 +306,7 @@ flyerRoutes.post(
     } else if (body.channel === 'whatsapp' && body.recipientInfo) {
       await c.env.SMS_QUEUE.send({
         type: 'sms',
-        data: { to: body.recipientInfo, body: `Check out this flyer: ${(flyer as any).image_url ?? (flyer as any).url}`, isWhatsApp: true },
+        data: { to: body.recipientInfo, body: `Check out this flyer: ${(flyer as any).image_url ?? (flyer as any).url}`, isWhatsApp: true, tenantId: c.get('tenantId') },
       });
       recipientCount = 1;
     } else if (body.channel === 'email' && body.recipientInfo) {

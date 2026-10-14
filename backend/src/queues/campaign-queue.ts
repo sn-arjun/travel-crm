@@ -1,4 +1,5 @@
 import type { Env } from '../types';
+import { resolveTenantDb } from '../services/tenant-db';
 
 export interface CampaignJob {
   campaignId: string;
@@ -30,9 +31,9 @@ async function processCampaignBatch(job: CampaignJob, env: Env): Promise<void> {
   const { campaignId, tenantId, campaignType } = job;
 
   // Get tenant DB
-  const dbBinding = env[`TENANT_DB_${tenantId}` as keyof Env] as D1Database | undefined;
+  const dbBinding = await resolveTenantDb(env, tenantId);
   if (!dbBinding) {
-    console.error(`No DB binding for tenant: ${tenantId}`);
+    console.error(`No tenant database for tenant: ${tenantId}; job dropped`);
     return;
   }
 

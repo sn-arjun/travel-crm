@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { drizzle, type DrizzleD1Database } from 'drizzle-orm/d1';
 import type { Env } from '../types';
+import { resolveTenantDb as resolveTenantD1 } from '../services/tenant-db';
 import * as schema from '../db/tenant-schema';
 import { FileParser } from '../services/imports/file-parser';
 import { ImportValidator } from '../services/imports/import-validator';
@@ -29,19 +30,21 @@ export async function handleImportQueue(batch: MessageBatch<any>, env: Env): Pro
 
 type TenantDb = DrizzleD1Database<typeof schema>;
 
-function resolveTenantDb(env: Env, tenantId?: string): TenantDb {
-    if (tenantId) {
-        const bindingKey = `TENANT_DB_${tenantId}` as `TENANT_DB_${string}`;
-        const binding: D1Database | undefined = env[bindingKey];
-        if (binding) return drizzle(binding, { schema });
-    }
-    return drizzle(env.MASTER_DB, { schema });
+/** Tenant database for a queue message. Null (job dropped, never run on MASTER_DB) when the tenant does not resolve. */
+async function resolveTenantDb(env: Env, tenantId?: string): Promise<TenantDb | null> {
+    if (!tenantId) return null;
+    const binding = await resolveTenantD1(env, tenantId);
+    return binding ? drizzle(binding, { schema }) : null;
 }
 
 export async function handleImportJob(data: ImportJobMessage, env: Env): Promise<void> {
     const jobId = data.jobId;
     // Use tenantId from the queue message to resolve the correct tenant DB
-    const db = resolveTenantDb(env, data.tenantId || undefined);
+    const db = await resolveTenantDb(env, data.tenantId || undefined);
+    if (!db) {
+        console.error(`Import job ${jobId}: tenant ${data.tenantId} has no resolvable database; dropped`);
+        return;
+    }
 
     const job = await db.query.importJobs.findFirst({
         where: eq(schema.importJobs.id, jobId)

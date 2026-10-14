@@ -78,9 +78,9 @@ DELETE FROM users        WHERE email     = '${EMAIL}';
 
 -- Master schema seed
 INSERT INTO tenants
-  (id, company_name, subdomain, d1_database_id, plan, status, max_users)
+  (id, company_name, subdomain, d1_database_id, db_binding, plan, status, max_users)
 VALUES
-  ('${TENANT_ID}', '${COMPANY}', '${SUBDOMAIN}', NULL, 'pro', 'active', 50);
+  ('${TENANT_ID}', '${COMPANY}', '${SUBDOMAIN}', NULL, NULL, 'pro', 'active', 50);
 
 INSERT INTO tenant_users
   (id, tenant_id, email, user_id, role, is_active)

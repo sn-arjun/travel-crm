@@ -4,6 +4,7 @@ import type { Env } from '../types';
 import { messageLog } from '../db/tenant-schema';
 import { sendSms, sendWhatsApp, sendMediaMessage } from '../services/twilio-messaging';
 import { sendEmail } from '../services/email';
+import { resolveTenantDb } from '../services/tenant-db';
 
 export interface SmsJob {
   to: string; // E.164 format: +919876543210 or email
@@ -14,6 +15,8 @@ export interface SmsJob {
   templateData?: Record<string, string>;
   messageLogId?: string; // DB record ID to update
   contactId?: string;
+  /** Owning agency. Required to write the message-log result back; without it the send still happens. */
+  tenantId?: string;
   channel?: 'sms' | 'whatsapp' | 'email';
   mediaUrl?: string; // for media messages
 }
@@ -54,8 +57,8 @@ export async function handleSmsJob(job: SmsJob, env: Env): Promise<void> {
     }
 
     // Update message log with result
-    if (messageLogId && job.contactId) {
-      const tenantDb = env[`TENANT_DB_${job.contactId}`];
+    if (messageLogId && job.tenantId) {
+      const tenantDb = await resolveTenantDb(env, job.tenantId);
       if (tenantDb) {
         const db = drizzle(tenantDb);
 
@@ -89,8 +92,8 @@ export async function handleSmsJob(job: SmsJob, env: Env): Promise<void> {
     console.error(`[SMS QUEUE] Error processing ${channel} job:`, err);
 
     // Update message log with error
-    if (messageLogId && job.contactId) {
-      const tenantDb = env[`TENANT_DB_${job.contactId}`];
+    if (messageLogId && job.tenantId) {
+      const tenantDb = await resolveTenantDb(env, job.tenantId);
       if (tenantDb) {
         const db = drizzle(tenantDb);
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';

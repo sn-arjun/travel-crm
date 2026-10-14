@@ -80,9 +80,11 @@ export default async () => {
                     isolatedStorage: false,
                     wrangler: { configPath: writeTestWranglerConfig() },
                     miniflare: {
+                        d1Databases: ['TENANT_DB_POOL_1', 'TENANT_DB_POOL_2', 'TENANT_DB_POOL_3'],
                         bindings: {
                             ...TEST_ONLY_SECRETS,
                             TEST_MODE: 'true',
+                            TENANCY_MODE: 'single',
                             TEST_MIGRATIONS: mergedMigrations as any,
                         },
                     },

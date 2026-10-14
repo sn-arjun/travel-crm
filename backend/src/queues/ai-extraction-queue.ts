@@ -6,6 +6,7 @@
  */
 
 import type { Env } from '../types';
+import { resolveTenantDb } from '../services/tenant-db';
 import { DeepgramService } from '../services/deepgram';
 import { AIExtractionService } from '../services/ai-extraction';
 import { AIRouter } from '../services/ai-router';
@@ -30,7 +31,12 @@ export async function handleAIExtractionQueue(
   for (const msg of batch.messages) {
     const startTime = Date.now();
     try {
-      const tenantDb = getTenantDb(env, msg.body.tenantId);
+      const tenantDb = await resolveTenantDb(env, msg.body.tenantId);
+      if (!tenantDb) {
+        console.error(`AI extraction: tenant ${msg.body.tenantId} has no resolvable database; message dropped`);
+        msg.ack();
+        continue;
+      }
 
       switch (msg.body.type) {
         case 'transcribe_call':
@@ -78,11 +84,6 @@ export async function handleAIExtractionQueue(
       }
     }
   }
-}
-
-function getTenantDb(env: Env, tenantId: string): D1Database {
-  const binding = env[`TENANT_DB_${tenantId}` as keyof Env] as D1Database | undefined;
-  return binding || env.MASTER_DB;
 }
 
 // ── Transcribe Call (TICKET-393) ───────────────────────────────

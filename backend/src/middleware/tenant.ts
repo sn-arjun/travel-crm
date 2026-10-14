@@ -1,7 +1,7 @@
 import type { MiddlewareHandler } from 'hono';
 import type { AppContext } from '../types';
 import { error } from '../utils/response';
-import { getTenantInfo, tenantDbFor } from '../services/tenant-db';
+import { getTenantInfo, tenantDbFor, TenantDbUnavailableError } from '../services/tenant-db';
 
 export const tenantMiddleware: MiddlewareHandler<AppContext> = async (c, next) => {
   const tenantId = c.get('tenantId');
@@ -23,7 +23,21 @@ export const tenantMiddleware: MiddlewareHandler<AppContext> = async (c, next) =
   if (tenantInfo.status === 'expired') {
     return error(c, 'Tenant subscription has expired', 403);
   }
+  if (tenantInfo.status === 'cancelled') {
+    return error(c, 'Tenant account has been cancelled', 403);
+  }
 
-  c.set('tenantDb', tenantDbFor(c.env, tenantId, tenantInfo));
+  try {
+    c.set('tenantDb', tenantDbFor(c.env, tenantInfo));
+  } catch (e) {
+    if (e instanceof TenantDbUnavailableError) {
+      console.error(JSON.stringify({ event: 'tenant_db_unavailable', tenantId, binding: e.tenantBinding }));
+      return c.json(
+        { success: false, error: { code: 'TENANT_DB_UNAVAILABLE', message: 'Tenant database is not available' } },
+        503,
+      );
+    }
+    throw e;
+  }
   return next();
 };

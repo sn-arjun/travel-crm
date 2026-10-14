@@ -306,6 +306,7 @@ notificationsRoutes.post('/announce', async (c) => {
       await c.env.PUSH_NOTIFICATION_QUEUE.send({
         type: 'push',
         data: {
+          tenantId: c.get('tenantId'),
           userId: targetUserId,
           title: body.title,
           body: body.body,

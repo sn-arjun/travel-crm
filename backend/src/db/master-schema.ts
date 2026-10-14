@@ -7,6 +7,8 @@ export const tenants = sqliteTable('tenants', {
   companyName: text('company_name').notNull(),
   subdomain: text('subdomain').notNull(),
   d1DatabaseId: text('d1_database_id'),
+  dbBinding: text('db_binding'), // Worker binding name TENANT_DB_<32 hex>
+  shard: text('shard').notNull().default('s1'),
   logoUrl: text('logo_url'),
   plan: text('plan').notNull().default('trial'), // trial, basic, pro, enterprise
   status: text('status').notNull().default('trial'), // trial, active, suspended, expired
@@ -16,6 +18,7 @@ export const tenants = sqliteTable('tenants', {
   updatedAt: text('updated_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
 }, (table) => [
   uniqueIndex('tenants_subdomain_idx').on(table.subdomain),
+  uniqueIndex('tenants_db_binding_idx').on(table.dbBinding).where(sql`${table.dbBinding} IS NOT NULL`),
   index('tenants_status_idx').on(table.status),
 ]);
 

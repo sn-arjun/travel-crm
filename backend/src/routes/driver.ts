@@ -6,6 +6,7 @@ import type { AppContext } from '../types';
 import { generateId } from '../utils/uuid';
 import { success, created, paginated, error, notFound, forbidden } from '../utils/response';
 import { driverAuth } from '../middleware/driver-auth';
+import { resolveTenantDb } from '../services/tenant-db';
 import { phoneLookupVariants, inPlaceholders } from '../utils/phone';
 import { localDayWindowUtc, getTenantTimeZone } from '../utils/tz';
 import {
@@ -56,40 +57,6 @@ async function hashToken(token: string): Promise<string> {
 }
 
 // ============================================================================
-// HELPER: Tenant DB resolution for public endpoints (login, verify, refresh)
-// ============================================================================
-
-async function resolveTenantDb(c: any, tenantId: string): Promise<D1Database | null> {
-  const cacheKey = `tenant:${tenantId}`;
-  const cached = await c.env.CACHE.get(cacheKey, 'json') as { d1DatabaseId: string | null; status: string } | null;
-
-  let tenantInfo: { d1DatabaseId: string | null; status: string };
-
-  if (cached) {
-    tenantInfo = cached;
-  } else {
-    // Inline master DB lookup (can't use drizzle here without importing schema)
-    const tenant = await c.env.MASTER_DB.prepare(
-      'SELECT d1_database_id, status FROM tenants WHERE id = ? LIMIT 1'
-    ).bind(tenantId).first() as { d1_database_id: string | null; status: string } | null;
-
-    if (!tenant) return null;
-
-    tenantInfo = { d1DatabaseId: tenant.d1_database_id, status: tenant.status };
-    await c.env.CACHE.put(cacheKey, JSON.stringify(tenantInfo), { expirationTtl: 300 });
-  }
-
-  if (tenantInfo.status === 'suspended' || tenantInfo.status === 'expired') return null;
-
-  if (tenantInfo.d1DatabaseId) {
-    const bindingKey = `TENANT_DB_${tenantInfo.d1DatabaseId}` as `TENANT_DB_${string}`;
-    const binding = c.env[bindingKey];
-    return binding ? binding : c.env.MASTER_DB;
-  }
-  return c.env.MASTER_DB;
-}
-
-// ============================================================================
 // AUTH: OTP LOGIN (PUBLIC — no driverAuth middleware)
 // ============================================================================
 
@@ -111,7 +78,7 @@ driver.post('/login', zValidator('json', loginSchema), async (c) => {
   const tenantId = body.tenantId ?? c.req.header('X-Tenant-Id');
   if (!tenantId) return error(c, 'tenantId is required', 400);
 
-  const db = await resolveTenantDb(c, tenantId);
+  const db = await resolveTenantDb(c.env, tenantId);
   if (!db) return error(c, 'Tenant not found or inactive', 404);
 
   // Phones are stored as E.164 (from the app / fleet routes) or digits-only (older rows)
@@ -194,7 +161,7 @@ driver.post('/login/verify', zValidator('json', verifyOtpSchema), async (c) => {
   const tenantId = body.tenantId ?? c.req.header('X-Tenant-Id');
   if (!tenantId) return error(c, 'tenantId is required', 400);
 
-  const db = await resolveTenantDb(c, tenantId);
+  const db = await resolveTenantDb(c.env, tenantId);
   if (!db) return error(c, 'Tenant not found or inactive', 404);
 
   const variants = phoneLookupVariants(phone);
@@ -293,7 +260,7 @@ driver.post('/refresh', zValidator('json', refreshTokenSchema), async (c) => {
   const tenantId = c.req.header('X-Tenant-Id');
   if (!tenantId) return error(c, 'Tenant ID is required (X-Tenant-Id header)', 400);
 
-  const db = await resolveTenantDb(c, tenantId);
+  const db = await resolveTenantDb(c.env, tenantId);
   if (!db) return error(c, 'Tenant not found or inactive', 404);
 
   const tokenHash = await hashToken(refreshToken);
