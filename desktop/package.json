@@ -9,7 +9,7 @@
     "dev:electron": "concurrently -n next,electron -c green,blue \"next dev --turbopack --port 3100\" \"wait-on http://localhost:3100 && electron .\"",
     "build": "next build",
     "build:electron": "next build && node scripts/prepare-standalone.mjs && tsc -p electron/tsconfig.json",
-    "build:desktop": "npm run build:electron && node scripts/make-icons.mjs && electron-builder --config electron-builder.yml",
+    "build:desktop": "npm run build:electron && node scripts/make-icons.mjs && node scripts/run-builder.mjs",
     "start": "next start",
     "lint": "eslint .",
     "lint:gate": "node scripts/lint-gate.mjs",
