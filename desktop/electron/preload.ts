@@ -6,6 +6,9 @@ import { contextBridge, ipcRenderer } from 'electron';
  *
  * Access in React: window.electronAPI.minimize()
  */
+// Runtime config (server address), read synchronously so it is set before any page script runs.
+contextBridge.exposeInMainWorld('travelcrmConfig', ipcRenderer.sendSync('config:get'));
+
 contextBridge.exposeInMainWorld('electronAPI', {
   // ─── Window Controls ────────────────────────────────
   minimize: () => ipcRenderer.invoke('window:minimize'),
@@ -16,6 +19,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ─── App Info ───────────────────────────────────────
   getVersion: () => ipcRenderer.invoke('app:version'),
   getPlatform: () => ipcRenderer.invoke('app:platform'),
+
+  // ─── Runtime config ─────────────────────────────────
+  setApiUrl: (url: string) => ipcRenderer.invoke('config:setApiUrl', url),
+
+  // ─── Updates ────────────────────────────────────────
+  onUpdateReady: (callback: (version: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, version: string) => callback(version);
+    ipcRenderer.on('update:ready', handler);
+    return () => ipcRenderer.removeListener('update:ready', handler);
+  },
+  installUpdate: () => ipcRenderer.invoke('update:install'),
 
   // ─── Event Listeners ────────────────────────────────
   onShortcut: (callback: (shortcut: string) => void) => {

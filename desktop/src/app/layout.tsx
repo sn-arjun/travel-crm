@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { DM_Sans, Geist, Geist_Mono } from 'next/font/google';
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from 'sonner';
+import { UpdateToast } from '@/components/electron/update-toast';
 import './globals.css';
 
 const geist = Geist({
@@ -47,6 +48,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           {children}
+          <UpdateToast />
           <Toaster
             position="bottom-right"
             toastOptions={{

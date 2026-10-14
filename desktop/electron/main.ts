@@ -7,14 +7,36 @@ import {
   shell,
   ipcMain,
   globalShortcut,
+  dialog,
 } from 'electron';
 import path from 'path';
+import { startNextServer, nextServerLogPath, type NextServer } from './next-server';
+import { setupRuntimeConfigIpc } from './runtime-config';
+import { setupUpdater } from './updater';
 
 // ─── Constants ──────────────────────────────────────────────
 const DEV_URL = 'http://localhost:3100';
 const isProd = app.isPackaged;
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
+let nextServer: NextServer | null = null;
+let appUrl = DEV_URL;
+
+// Tests (and portable setups) can pin the profile directory; this also scopes the single-instance lock.
+if (process.env.TRAVELCRM_USER_DATA) {
+  app.setPath('userData', process.env.TRAVELCRM_USER_DATA);
+}
+
+function stopNextServer(): void {
+  nextServer?.stop();
+  nextServer = null;
+}
+
+function relaunchApp(): void {
+  stopNextServer();
+  app.relaunch();
+  app.exit(0);
+}
 
 // ─── Window Creation ────────────────────────────────────────
 function createMainWindow(): void {
@@ -36,17 +58,8 @@ function createMainWindow(): void {
     },
   });
 
-  // Load the app
-  if (isProd) {
-    // Production: load built Next.js output
-    mainWindow.loadFile(path.join(__dirname, '../.next/server/app/index.html'))
-      .catch(() => {
-        // Fallback: start built Next.js server
-        mainWindow?.loadURL('http://localhost:3000');
-      });
-  } else {
-    mainWindow.loadURL(DEV_URL);
-  }
+  // Load the app: the bundled Next server in production, the dev server otherwise
+  void mainWindow.loadURL(appUrl);
 
   // Show window when ready (prevents white flash)
   mainWindow.once('ready-to-show', () => {
@@ -76,8 +89,11 @@ function createMainWindow(): void {
 
 // ─── System Tray ────────────────────────────────────────────
 function createTray(): void {
-  // Create a 16x16 tray icon (placeholder — replace with real icon)
-  const icon = nativeImage.createEmpty();
+  const trayPng = isProd
+    ? path.join(process.resourcesPath, 'tray.png')
+    : path.join(__dirname, '..', '..', 'build-resources', 'tray.png');
+  let icon = nativeImage.createFromPath(trayPng);
+  if (!icon.isEmpty()) icon = icon.resize({ width: 16, height: 16 });
   tray = new Tray(icon);
 
   const contextMenu = Menu.buildFromTemplate([
@@ -206,6 +222,9 @@ function setupIPC(): void {
   // App info
   ipcMain.handle('app:version', () => app.getVersion());
   ipcMain.handle('app:platform', () => process.platform);
+
+  // Runtime config (server address) and updates
+  setupRuntimeConfigIpc(relaunchApp);
 }
 
 // ─── Global Shortcuts ───────────────────────────────────────
@@ -219,31 +238,6 @@ function registerGlobalShortcuts(): void {
 }
 
 // ─── App Lifecycle ──────────────────────────────────────────
-app.whenReady().then(() => {
-  createMainWindow();
-  createTray();
-  createAppMenu();
-  setupIPC();
-  registerGlobalShortcuts();
-
-  app.on('activate', () => {
-    // macOS: re-create window when dock icon clicked
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow();
-    }
-  });
-});
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
-});
-
-app.on('will-quit', () => {
-  globalShortcut.unregisterAll();
-});
-
 // Prevent multiple instances
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -254,5 +248,61 @@ if (!gotLock) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
     }
+  });
+
+  app.whenReady().then(async () => {
+    setupIPC(); // config:get must be registered before the preload runs
+
+    if (isProd) {
+      try {
+        nextServer = await startNextServer({ serverDir: path.join(process.resourcesPath, 'app-server') });
+        appUrl = nextServer.url;
+        process.env.TRAVELCRM_SERVER_URL = nextServer.url;
+        process.env.TRAVELCRM_SERVER_PID = String(nextServer.pid);
+      } catch (err) {
+        stopNextServer();
+        dialog.showErrorBox(
+          'TravelCRM Pro could not start',
+          `${(err as Error).message}
+
+Details: ${nextServerLogPath()}`,
+        );
+        app.exit(1);
+        return;
+      }
+    }
+
+    createMainWindow();
+    createTray();
+    createAppMenu();
+    registerGlobalShortcuts();
+    setupUpdater(() => mainWindow);
+
+    app.on('activate', () => {
+      // macOS: re-create window when dock icon clicked
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createMainWindow();
+      }
+    });
+  });
+
+  app.on('window-all-closed', () => {
+    stopNextServer();
+    if (process.platform !== 'darwin') {
+      app.quit();
+    }
+  });
+
+  app.on('before-quit', stopNextServer);
+
+  app.on('will-quit', () => {
+    globalShortcut.unregisterAll();
+    stopNextServer();
+  });
+
+  process.on('exit', stopNextServer);
+  process.on('uncaughtException', (err) => {
+    console.error(err);
+    stopNextServer();
   });
 }
