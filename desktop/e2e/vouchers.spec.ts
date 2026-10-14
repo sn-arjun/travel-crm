@@ -30,6 +30,8 @@ const YEAR = NOW.getFullYear();
 const MONTH = NOW.getMonth();
 const iso = (day: number) => `${YEAR}-${String(MONTH + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 const shown = (day: number) => new Date(YEAR, MONTH, day).toLocaleDateString('en-IN', DATE_FMT);
+// The detail page also shows a "Created" date (today), which can equal a seeded stay date, so stay dates are read from their own labelled row.
+const detailRow = (page: Page, label: string) => page.locator('div').filter({ has: page.locator(`xpath=./p[normalize-space()="${label}"]`) });
 const SHOWN_DATE = /\d{1,2} [A-Za-z]{3,4} \d{4}/;
 
 let leadA: any;
@@ -170,8 +172,8 @@ test.describe.serial('A. Hotel voucher — full lifecycle', () => {
     await expect(page.getByText('Hotel details')).toBeVisible();
     await expect(page.getByText(HOTEL, { exact: true })).toBeVisible();
     await expect(page.getByText(ADDRESS)).toBeVisible();
-    await expect(page.getByText(shown(10), { exact: true })).toBeVisible();
-    await expect(page.getByText(shown(12), { exact: true })).toBeVisible();
+    await expect(detailRow(page, 'Check-in').getByText(shown(10), { exact: true })).toBeVisible();
+    await expect(detailRow(page, 'Check-out').getByText(shown(12), { exact: true })).toBeVisible();
     await expect(page.getByText('Suite', { exact: true })).toBeVisible();
     await expect(page.getByText('CP', { exact: true })).toBeVisible();
     await expect(page.getByText(CONF, { exact: true })).toBeVisible();
@@ -267,7 +269,7 @@ test.describe.serial('A. Hotel voucher — full lifecycle', () => {
     await expect(page.getByText('Villa', { exact: true })).toBeVisible();
     await expect(page.getByText('Cara Lee', { exact: true })).toBeVisible();
     await expect(page.getByText(`${NOTES} edited`)).toBeVisible();
-    await expect(page.getByText(shown(14), { exact: true })).toBeVisible();
+    await expect(detailRow(page, 'Check-out').getByText(shown(14), { exact: true })).toBeVisible();
 
     const v = await getVoucher(id);
     expect(v.details.hotelName).toBe(`${HOTEL} Annex`);
