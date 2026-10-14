@@ -7,6 +7,8 @@ export interface TokenPayload extends JWTPayload {
   email: string;
   /** Binding name of the tenant database (informational; the tenant registry stays authoritative). */
   db?: string;
+  /** Must-change-password: while true the tenant middleware only lets the change-password flow through (R113). */
+  mcp?: boolean;
 }
 
 const ACCESS_TOKEN_EXPIRY = '15m';
@@ -16,7 +18,7 @@ function getSecretKey(secret: string): Uint8Array {
 }
 
 export async function signAccessToken(
-  payload: { userId: string; tenantId: string; role: string; email: string; db?: string | null },
+  payload: { userId: string; tenantId: string; role: string; email: string; db?: string | null; mustChangePassword?: boolean },
   secret: string
 ): Promise<string> {
   return new SignJWT({
@@ -25,6 +27,7 @@ export async function signAccessToken(
     role: payload.role,
     email: payload.email,
     ...(payload.db ? { db: payload.db } : {}),
+    ...(payload.mustChangePassword ? { mcp: true } : {}),
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()

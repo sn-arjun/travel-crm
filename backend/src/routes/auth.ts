@@ -184,7 +184,7 @@ auth.post(
 
     // Generate tokens
     const accessToken = await signAccessToken(
-      { userId: user.id, tenantId, role: user.role, email: user.email, db: tenant.dbBinding },
+      { userId: user.id, tenantId, role: user.role, email: user.email, db: tenant.dbBinding, mustChangePassword: user.mustChangePassword === 1 },
       c.env.JWT_SECRET
     );
 
@@ -369,7 +369,7 @@ auth.post(
 
     // Generate tokens
     const accessToken = await signAccessToken(
-      { userId: user.id, tenantId, role: user.role, email: user.email, db: tenant.dbBinding },
+      { userId: user.id, tenantId, role: user.role, email: user.email, db: tenant.dbBinding, mustChangePassword: user.mustChangePassword === 1 },
       c.env.JWT_SECRET
     );
 
@@ -430,6 +430,7 @@ auth.post(
         language: user.language,
       },
       tenant: await getTenantSummary(tenantDb, tenantId, undefined, c.env),
+      mustChangePassword: user.mustChangePassword === 1,
     });
   }
 );
@@ -501,7 +502,7 @@ auth.post(
 
     // Generate new tokens
     const newAccessToken = await signAccessToken(
-      { userId: user.id, tenantId: tokenData.tenantId, role: user.role, email: user.email, db: tenant.dbBinding },
+      { userId: user.id, tenantId: tokenData.tenantId, role: user.role, email: user.email, db: tenant.dbBinding, mustChangePassword: user.mustChangePassword === 1 },
       c.env.JWT_SECRET
     );
 
@@ -541,6 +542,7 @@ auth.post(
         language: user.language,
       },
       tenant: await getTenantSummary(tenantDb, tokenData.tenantId, undefined, c.env),
+      mustChangePassword: user.mustChangePassword === 1,
     });
   }
 );
@@ -942,6 +944,97 @@ auth.delete('/sessions', async (c) => {
 
   return success(c, { message: 'All other sessions revoked' });
 });
+
+// ============================================================
+// POST /change-password — Signed-in user chooses a new password (R113)
+// Also the only way out of a first login with a temporary password (must_change_password).
+// ============================================================
+
+// Until R209 strengthens the policy: 10+ characters with at least one letter and one digit.
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Enter your current password'),
+  newPassword: z
+    .string()
+    .min(10, 'Password must be at least 10 characters')
+    .max(128, 'Password must be at most 128 characters')
+    .regex(/[A-Za-z]/, 'Password must contain at least one letter')
+    .regex(/[0-9]/, 'Password must contain at least one digit'),
+});
+
+auth.post(
+  '/change-password',
+  zValidator('json', changePasswordSchema),
+  async (c) => {
+    const { currentPassword, newPassword } = c.req.valid('json');
+    const userId = c.get('userId');
+    const tenantId = c.get('tenantId');
+    const tenantDb = c.get('tenantDb');
+    if (!userId || !tenantDb) return error(c, 'Missing or invalid authorization header', 401);
+
+    // The current password is checkable with a stolen token, so bound the guesses per user.
+    const mult = limitMultiplier(c.env);
+    const rl = await rateLimit(c.env.CACHE, `rate:change-password:${userId}`, 10 * mult, 900);
+    if (!rl.allowed) return error(c, `Too many attempts. Retry in ${rl.retryAfterSecs}s`, 429);
+
+    const db = drizzle(tenantDb);
+    const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (!user || !user.isActive) return error(c, 'User account is deactivated', 401);
+
+    if (!(await comparePassword(currentPassword, user.passwordHash))) {
+      return error(c, 'Current password is incorrect', 401);
+    }
+    if (currentPassword === newPassword) {
+      return error(c, 'New password must be different from the current password', 400);
+    }
+
+    const passwordHash = await hashPassword(newPassword);
+    await db
+      .update(users)
+      .set({ passwordHash, mustChangePassword: 0, updatedAt: new Date().toISOString() })
+      .where(eq(users.id, userId));
+
+    await c.env.CACHE.delete(`failed_login:${tenantId}:${user.email.toLowerCase()}`);
+
+    // Revoke every other session: keep only the one the caller's refresh token belongs to.
+    const keepRefresh = c.req.header('X-Refresh-Token');
+    const kept = keepRefresh
+      ? ((await c.env.SESSIONS.get(`refresh:${keepRefresh}`, 'json')) as { sessionId?: string; userId?: string } | null)
+      : null;
+    const keepSessionId = kept?.userId === userId ? kept.sessionId : undefined;
+    const indexKey = `sessions_index:${userId}`;
+    const sessionIds = ((await c.env.SESSIONS.get(indexKey, 'json')) as string[] | null) ?? [];
+    for (const sid of sessionIds) {
+      if (sid === keepSessionId) continue;
+      const sessionData = (await c.env.SESSIONS.get(`session:${sid}`, 'json')) as { refreshToken?: string } | null;
+      if (sessionData?.refreshToken) await c.env.SESSIONS.delete(`refresh:${sessionData.refreshToken}`);
+      await c.env.SESSIONS.delete(`session:${sid}`);
+    }
+    if (keepSessionId) await c.env.SESSIONS.put(indexKey, JSON.stringify([keepSessionId]));
+    else await c.env.SESSIONS.delete(indexKey);
+
+    await logActivity(db, {
+      userId,
+      action: 'password_changed',
+      entityType: 'user',
+      entityId: userId,
+      ipAddress: c.get('clientIp'),
+    });
+
+    await sendTransactional(c.env, {
+      to: user.email,
+      template: 'password_changed',
+      tenantId,
+      data: { name: user.name },
+    });
+
+    // The caller's old access token still says "must change"; hand back one that does not.
+    const accessToken = await signAccessToken(
+      { userId: user.id, tenantId, role: user.role, email: user.email, db: c.get('jwtPayload')?.db },
+      c.env.JWT_SECRET,
+    );
+    return success(c, { message: 'Password changed', accessToken, mustChangePassword: false });
+  }
+);
 
 // ============================================================
 // POST /logout — Logout current session

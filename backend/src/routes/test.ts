@@ -7,6 +7,7 @@ import { isTestMode } from '../utils/test-mode';
 import bcrypt from 'bcryptjs';
 import { resolveTenantDb } from '../services/tenant-db';
 import { listOutbox, clearOutbox } from '../services/mail/transactional';
+import { signAccessToken } from '../utils/jwt';
 import { ingestInbound, type InboundChannel } from '../services/inbound/ingest';
 
 const testApp = new Hono<{ Bindings: Env }>();
@@ -137,6 +138,25 @@ testApp.post('/inbound', async (c) => {
     });
 
     return c.json({ success: true, data: result });
+});
+
+/**
+ * Register a platform super admin and mint its access token (TEST_MODE only), so e2e specs can call the
+ * super admin API (e.g. POST /admin/tenants) without a super admin login. The token is carried by the demo
+ * tenant, whose database the tenant middleware needs; requireSuperAdmin keys off the email only.
+ */
+testApp.post('/super-admin', async (c) => {
+    if (!isTestMode(c.env)) return c.json({ error: 'Forbidden: Test mode is not active.' }, 403);
+    const email = 'e2e-super@platform.test';
+    await c.env.MASTER_DB
+        .prepare(`INSERT OR REPLACE INTO super_admins (id, email, name, password_hash, role, is_active) VALUES ('01960000-0000-7000-8000-0000000000f2', ?, 'E2E Super Admin', 'unused', 'super_admin', 1)`)
+        .bind(email)
+        .run();
+    const accessToken = await signAccessToken(
+        { userId: 'e2e-super-admin', tenantId: '01960000-0000-7000-8000-000000000001', role: 'admin', email },
+        c.env.JWT_SECRET,
+    );
+    return c.json({ success: true, data: { email, accessToken } });
 });
 
 /** Local outbox: system emails captured instead of sent (TEST_MODE only). */

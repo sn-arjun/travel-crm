@@ -3,12 +3,29 @@ import type { AppContext } from '../types';
 import { error } from '../utils/response';
 import { getTenantInfo, tenantDbFor, TenantDbUnavailableError } from '../services/tenant-db';
 
+const CHANGE_PASSWORD_ALLOWED = ['/auth/change-password', '/auth/logout'];
+
+/** Paths (with or without the /v1 prefix) a must-change-password token may reach. */
+export function passwordChangeAllowed(method: string, path: string): boolean {
+  const p = path.replace(/\/+$/, '').replace(/^\/api(\/v1)?/, '');
+  if (CHANGE_PASSWORD_ALLOWED.includes(p)) return true;
+  return p === '/users/me' && method.toUpperCase() === 'GET';
+}
+
 export const tenantMiddleware: MiddlewareHandler<AppContext> = async (c, next) => {
   const tenantId = c.get('tenantId');
 
   // Skip if no tenantId (public routes handled by auth middleware)
   if (!tenantId) {
     return next();
+  }
+
+  // R113: a token issued for a first login (temporary password) may only change the password, log out or read the profile.
+  if (c.get('jwtPayload')?.mcp === true && !passwordChangeAllowed(c.req.method, c.req.path)) {
+    return c.json(
+      { success: false, error: { code: 'PASSWORD_CHANGE_REQUIRED', message: 'You must change your temporary password before continuing' } },
+      403,
+    );
   }
 
   const tenantInfo = await getTenantInfo(c.env, tenantId);
