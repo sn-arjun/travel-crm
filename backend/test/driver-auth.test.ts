@@ -196,11 +196,12 @@ describe('Driver auth (TEST_MODE OTP bypass, phone formats, tenantId)', () => {
       expect(res.status).toBe(409);
     });
 
-    it('returns 404 for an unknown driver', async () => {
+    it('answers an unknown driver exactly like a known one (no driverId, no code sent)', async () => {
       const send = await call('POST', '/api/v1/driver/login', {
         body: { phone: '+919000000000', tenantId: TENANT_ID },
       });
-      expect(send.status).toBe(404);
+      expect(send.status).toBe(200);
+      expect(((await send.json()) as any).data.driverId).toBeUndefined();
     });
   });
 

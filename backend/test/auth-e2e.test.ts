@@ -253,8 +253,9 @@ describe('M2 Authentication & Multi-Tenancy E2E Tests', () => {
         phone: '+919876543210',
         tenantId: '00000000-0000-0000-0000-000000000000',
       });
-      // Public endpoint: no 401. The phone is not registered for this tenant, so it is a 404.
-      expect(res.status).toBe(404);
+      // Public endpoint: no 401. The phone is not registered for this tenant, but the answer is the same as for a
+      // registered number (R110: never reveal whether a phone exists), so it is a 200.
+      expect(res.status).toBe(200);
     });
   });
 
