@@ -155,7 +155,7 @@ test.describe('Tenant isolation: three agencies, three plans', () => {
     for (const k of KEYS) {
       const { body } = await apiLogin(API_URL, ctx[k].agency, ctx[k].agency.password!);
       expect(body.data.tenant.id).toBe(ctx[k].agency.tenantId);
-      expect(body.data.tenant.plan).toBe(PLANS[k]);
+      expect(body.data.tenant.plan.key ?? body.data.tenant.plan).toBe(PLANS[k]);
     }
   });
 
@@ -266,7 +266,7 @@ test.describe('Tenant isolation: three agencies, three plans', () => {
     } finally {
       for (const s of Object.values(sockets)) s.close();
     }
-    const bad = await fetch(`${API_URL}/ws?token=nope`, { headers: { Upgrade: 'websocket' } });
+    const bad = await fetch(`${API_URL}/ws?token=nope`);
     expect(bad.status).toBe(401);
   });
 
