@@ -60,7 +60,8 @@
     "Timeline: contact and lead detail activity lists include call entries (from the activity rows log_call_activity writes) with direction, duration, agent, note, and a play button placeholder (R306 fills playback).",
     "Screen pop: on call.ringing broadcast `call:ringing` over the tenant realtime room to the routed agent (and `call:ringing_for` to others); desktop call-screen-pop.tsx (mounted in the app layout) shows caller name or \"Unknown number\", open lead with stage and value, last message or last call note, Answer (softphone, R307; hidden otherwise) / Dismiss / Open lead. Fix lib/api/voip.ts caller-info param if R119 did not.",
     "Mount CallControlsPanel on outbound calls started from the dial page (state from realtime events; mute/hold buttons call the provider only when supported, else hidden).",
-    "calls-simulator.spec.ts (slot with TEST_MODE): simulate inbound ringing -> screen pop visible with the seeded contact; simulate missed -> task appears; simulate answered+ended 45 s on a new lead -> lead stage contacted and timeline entry."
+    "calls-simulator.spec.ts (slot with TEST_MODE): simulate inbound ringing -> screen pop visible with the seeded contact; simulate missed -> task appears; simulate answered+ended 45 s on a new lead -> lead stage contacted and timeline entry.",
+    "From R119 (2026-10-15): handle Twilio <Dial action> no-answer/busy for a ringing agent (voicemail fallback, missed-call event), and make per-agent call analytics count inbound rows by answered_by/routed_to instead of joining users on created_by (inbound rows have created_by NULL)."
   ],
   "migrations": [],
   "tests": [
