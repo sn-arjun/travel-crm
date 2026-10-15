@@ -64,7 +64,7 @@ PLIVO_AUTH_ID=
 PLIVO_AUTH_TOKEN=
 PLIVO_SMS_FROM_NUMBER=
 PLIVO_WHATSAPP_FROM_NUMBER=
-# How login codes are delivered (see src/services/metering/otp-limits.ts); blank = default.
+# Declared in src/types.ts but not read by any code yet; leave blank.
 OTP_DELIVERY=
 
 # --- Other providers (all optional; features switch off when blank) ---
