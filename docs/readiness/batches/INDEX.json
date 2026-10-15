@@ -273,6 +273,17 @@
     "blockedOnOwner": null
   },
   {
+    "id": "R126",
+    "tier": 1,
+    "title": "Shared Flutter package tests green and in CI",
+    "size": "S",
+    "dependsOn": [
+      "R204",
+      "R118"
+    ],
+    "blockedOnOwner": null
+  },
+  {
     "id": "R201",
     "tier": 2,
     "title": "Tax engine: GST, VAT with reverse charge, sales tax or none, stored on every invoice",

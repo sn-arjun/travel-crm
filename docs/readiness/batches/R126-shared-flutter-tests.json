@@ -1,0 +1,45 @@
+{
+  "id": "R126",
+  "tier": 1,
+  "title": "Shared Flutter package tests green and in CI",
+  "goal": "The shared Flutter package passes its own tests, and CI runs them so they cannot silently break again.",
+  "why": "Found 2026-10-15: packages/shared had 3 failing tests on launch-readiness (2 after R204, in LeadModel destinations) and no gate or CI job ran them.",
+  "dependsOn": [
+    "R204",
+    "R118"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [],
+  "size": "S",
+  "files": {
+    "edit": [
+      "packages/shared/lib/**",
+      "packages/shared/test/**",
+      ".github/workflows/driver-app.yml",
+      "scripts/fresh-clone-check.mjs"
+    ],
+    "create": [],
+    "mustNotTouch": [
+      "backend/**",
+      "desktop/**",
+      "super-admin/**"
+    ]
+  },
+  "steps": [
+    "Run flutter test in packages/shared (x86 PowerShell) and fix the failing LeadModel destinations tests at the root cause (model or test, whichever is wrong; say which).",
+    "Add a packages/shared flutter test step to .github/workflows/driver-app.yml (and to fresh-clone-check.mjs if Flutter is available locally, skipped otherwise like terraform)."
+  ],
+  "migrations": [],
+  "tests": [
+    "packages/shared flutter test: 0 failures",
+    "packages/driver_app flutter test still passes"
+  ],
+  "acceptance": [
+    "flutter test passes in packages/shared and packages/driver_app"
+  ],
+  "gate": [
+    "flutter analyze + flutter test in packages/shared and packages/driver_app (x86 PowerShell)"
+  ],
+  "goLiveVerify": [],
+  "notes": []
+}
