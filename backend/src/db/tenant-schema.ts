@@ -1788,6 +1788,20 @@ export const voipSettings = sqliteTable('voip_settings', {
 });
 
 // ============================================================
+// PROVIDER EVENTS (R302): callbacks processed once
+// ============================================================
+
+export const providerEvents = sqliteTable('provider_events', {
+  provider: text('provider').notNull(),
+  providerCallId: text('provider_call_id').notNull(),
+  event: text('event').notNull(),
+  sequence: text('sequence').notNull().default(''),
+  receivedAt: text('received_at').notNull().default(timestamp),
+}, (table) => [
+  primaryKey({ columns: [table.provider, table.providerCallId, table.event, table.sequence] }),
+]);
+
+// ============================================================
 // CALL LOGS (TICKET-370)
 // ============================================================
 

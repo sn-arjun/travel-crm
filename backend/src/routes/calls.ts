@@ -30,6 +30,10 @@ const outboundCallSchema = z.object({
   toNumber: z.string().regex(/^\+[1-9]\d{9,14}$/, 'Invalid phone number. Must be E.164 format.'),
   contactId: z.string().optional().nullable(),
   leadId: z.string().optional().nullable(),
+  /** How the agent is reached first: their in-app softphone (default) or their own phone (bridge). */
+  mode: z.enum(['softphone', 'bridge']).optional(),
+  /** Bridge only: the number to ring the agent on; defaults to the phone on their profile. */
+  agentNumber: z.string().regex(/^\+[1-9]\d{9,14}$/, 'Invalid phone number. Must be E.164 format.').optional(),
 });
 
 const updateCallSchema = z.object({
@@ -464,16 +468,31 @@ callRoutes.post('/outbound', zValidator('json', outboundCallSchema), async (c) =
 
   try {
     const provider = createVoipProvider(c.env, settings);
-    const baseUrl = c.req.url.replace(/\/api\/v1\/calls\/outbound.*$/, '');
+    const baseUrl = (c.env.API_PUBLIC_URL?.trim() || c.req.url.replace(/\/api\/v1\/calls\/outbound.*$/, '')).replace(/\/+$/, '');
 
-    const result = await provider.initiateCall({
+    // The agent's leg comes first (their softphone, or their own phone in bridge mode); the customer is
+    // dialled only when the agent answers. Softphone is the default.
+    const mode = data.mode ?? 'softphone';
+    let agentNumber = data.agentNumber;
+    if (mode === 'bridge' && !agentNumber) {
+      const me = await db.prepare('SELECT phone FROM users WHERE id = ?').bind(userId).first<{ phone: string | null }>();
+      const phone = (me?.phone ?? '').replace(/[\s()-]/g, '');
+      agentNumber = /^\+[1-9]\d{9,14}$/.test(phone) ? phone : undefined;
+      if (!agentNumber) {
+        await db.prepare("UPDATE call_logs SET status = 'failed', notes = ? WHERE id = ?")
+          .bind('No phone number to call the agent on', callLogId).run();
+        return error(c, 'Add your phone number to your profile (or pass agentNumber) to be called first.', 422, { callLogId });
+      }
+    }
+
+    const result = await provider.placeCall({
+      mode,
       from: callerId,
       to: data.toNumber,
-      statusCallbackUrl: `${baseUrl}/api/v1/voip/status-callback`,
+      agentIdentity: mode === 'softphone' ? userId : undefined,
+      agentNumber,
+      callbackBaseUrl: baseUrl,
       record: shouldRecord,
-      recordingCallbackUrl: shouldRecord
-        ? `${baseUrl}/api/v1/voip/recording-callback`
-        : undefined,
     });
 
     await db.prepare('UPDATE call_logs SET twilio_call_sid = ?, provider_call_id = ? WHERE id = ?')

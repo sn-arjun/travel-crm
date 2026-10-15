@@ -34,14 +34,21 @@ export async function handleMissedCall(
   ).bind(routedTo || '').all<{ id: string }>();
   const recipients = [...(routedTo ? [routedTo] : []), ...admins.results.map((admin) => admin.id)];
 
+  // One notification per person per call: a repeated callback (or the dial result and the status callback
+  // both reporting the same miss) never tells anyone twice.
+  let routedWasTold = false;
   for (const userId of recipients) {
-    await db.prepare(`
+    const inserted = await db.prepare(`
       INSERT INTO notifications (id, user_id, type, title, message, reference_type, reference_id, is_read)
-      VALUES (?, ?, 'missed_call', 'Missed call', ?, 'call', ?, 0)
-    `).bind(generateId(), userId, `Missed call from ${callerName}`, callLogId).run();
+      SELECT ?, ?, 'missed_call', 'Missed call', ?, 'call', ?, 0
+      WHERE NOT EXISTS (
+        SELECT 1 FROM notifications WHERE user_id = ? AND type = 'missed_call' AND reference_type = 'call' AND reference_id = ?
+      )
+    `).bind(generateId(), userId, `Missed call from ${callerName}`, callLogId, userId, callLogId).run();
+    if (userId === routedTo && (inserted.meta.changes ?? 0) > 0) routedWasTold = true;
   }
 
-  if (routedTo && env.PUSH_NOTIFICATION_QUEUE) {
+  if (routedTo && routedWasTold && env.PUSH_NOTIFICATION_QUEUE) {
     try {
       await env.PUSH_NOTIFICATION_QUEUE.send({
         type: 'push',

@@ -211,11 +211,13 @@ export class PlivoVoipProvider implements VoipProvider {
 </Response>`;
   }
 
-  generateClientDialMarkup(clientIdentity: string, callerId: string, record = false): string {
+  generateClientDialMarkup(clientIdentity: string, callerId: string, record = false, opts: { actionUrl?: string; timeout?: number } = {}): string {
     const recordAttr = record ? ' record="true" recordFileFormat="mp3"' : '';
+    const actionAttr = opts.actionUrl ? ` action="${escapeXml(opts.actionUrl)}" method="POST"` : '';
+    const timeoutAttr = opts.timeout ? ` timeout="${Math.floor(opts.timeout)}"` : '';
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Dial callerId="${escapeXml(callerId)}"${recordAttr}>
+  <Dial callerId="${escapeXml(callerId)}"${recordAttr}${actionAttr}${timeoutAttr}>
     <User>${escapeXml(clientIdentity)}</User>
   </Dial>
 </Response>`;

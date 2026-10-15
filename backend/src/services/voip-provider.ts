@@ -152,7 +152,8 @@ export interface VoipProvider {
 
   // Call response markup (XML) generation
   generateDialMarkup(number: string, callerId: string, record: boolean): string;
-  generateClientDialMarkup(clientIdentity: string, callerId: string, record: boolean): string;
+  /** Ring an agent. With actionUrl the provider calls it when the dial ends (answered or not), so a no-answer reaches the fallback. */
+  generateClientDialMarkup(clientIdentity: string, callerId: string, record: boolean, opts?: { actionUrl?: string; timeout?: number }): string;
   generateIvrMarkup(greeting: string, options: IvrOption[], actionUrl: string): string;
   generateVoicemailMarkup(recordingCallbackUrl: string, greetingUrl?: string): string;
   generateTransferMarkup(targetNumber: string, callerId: string): string;

@@ -144,7 +144,7 @@ describe('Inbound calls are logged and routed on the real schema', () => {
       .bind(TENANT_ID, new Date().toISOString().slice(0, 7))
       .run();
     // Never reach the real provider
-    vi.spyOn(TwilioVoipProvider.prototype, 'initiateCall').mockResolvedValue({ providerCallId: 'CA-out-lead', status: 'queued', direction: 'outbound', from: '+918047182291', to: '+919000005001' } as any);
+    vi.spyOn(TwilioVoipProvider.prototype, 'placeCall').mockResolvedValue({ providerCallId: 'CA-out-lead', status: 'queued', direction: 'outbound', from: '+918047182291', to: '+919000005001' } as any);
     const res = await call('POST', '/calls/outbound', admin, { toNumber: '+919000005001', leadId });
     expect(res.status).toBe(201);
     const id = ((await res.json()) as any).data.callLogId;

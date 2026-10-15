@@ -960,5 +960,11 @@ export const TENANT_MIGRATIONS: BundledMigration[] = [
       "-- R202: a user may override the agency's display locale and time zone. NULL means \"use the agency setting\".\nALTER TABLE users ADD COLUMN locale TEXT",
       "--> statement-breakpoint\nALTER TABLE users ADD COLUMN timezone TEXT"
     ]
+  },
+  {
+    "name": "0049_provider_events.sql",
+    "queries": [
+      "-- R302: every provider callback is processed once. A callback claims its row here before any side effect;\n-- a repeat of the same callback (the provider retries) finds the row and changes nothing.\nCREATE TABLE IF NOT EXISTS provider_events (\n  provider TEXT NOT NULL,\n  provider_call_id TEXT NOT NULL,\n  event TEXT NOT NULL,\n  sequence TEXT NOT NULL DEFAULT '',\n  received_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\n  PRIMARY KEY (provider, provider_call_id, event, sequence)\n)"
+    ]
   }
 ];
