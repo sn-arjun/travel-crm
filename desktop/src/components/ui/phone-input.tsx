@@ -4,7 +4,9 @@ import * as React from 'react';
 import { ChevronDown } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { joinPhone, splitPhone } from '@/lib/phone';
+import { joinPhone, phonePlaceholder, splitPhone } from '@/lib/phone';
+import { COUNTRIES, countryByDial, countryByIso, flagOf } from '@/lib/countries';
+import { useLocale } from '@/lib/locale';
 import {
   Popover,
   PopoverContent,
@@ -19,70 +21,54 @@ import {
   CommandItem,
 } from '@/components/ui/command';
 
-const COUNTRY_CODES = [
-  { code: '+91', country: 'IN', flag: '\u{1F1EE}\u{1F1F3}', label: 'India' },
-  { code: '+1', country: 'US', flag: '\u{1F1FA}\u{1F1F8}', label: 'USA' },
-  { code: '+44', country: 'GB', flag: '\u{1F1EC}\u{1F1E7}', label: 'UK' },
-  { code: '+971', country: 'AE', flag: '\u{1F1E6}\u{1F1EA}', label: 'UAE' },
-  { code: '+966', country: 'SA', flag: '\u{1F1F8}\u{1F1E6}', label: 'Saudi' },
-  { code: '+65', country: 'SG', flag: '\u{1F1F8}\u{1F1EC}', label: 'Singapore' },
-  { code: '+66', country: 'TH', flag: '\u{1F1F9}\u{1F1ED}', label: 'Thailand' },
-  { code: '+60', country: 'MY', flag: '\u{1F1F2}\u{1F1FE}', label: 'Malaysia' },
-  { code: '+61', country: 'AU', flag: '\u{1F1E6}\u{1F1FA}', label: 'Australia' },
-  { code: '+49', country: 'DE', flag: '\u{1F1E9}\u{1F1EA}', label: 'Germany' },
-  { code: '+33', country: 'FR', flag: '\u{1F1EB}\u{1F1F7}', label: 'France' },
-  { code: '+86', country: 'CN', flag: '\u{1F1E8}\u{1F1F3}', label: 'China' },
-  { code: '+81', country: 'JP', flag: '\u{1F1EF}\u{1F1F5}', label: 'Japan' },
-  { code: '+82', country: 'KR', flag: '\u{1F1F0}\u{1F1F7}', label: 'S. Korea' },
-  { code: '+7', country: 'RU', flag: '\u{1F1F7}\u{1F1FA}', label: 'Russia' },
-  { code: '+55', country: 'BR', flag: '\u{1F1E7}\u{1F1F7}', label: 'Brazil' },
-  { code: '+27', country: 'ZA', flag: '\u{1F1FF}\u{1F1E6}', label: 'S. Africa' },
-  { code: '+234', country: 'NG', flag: '\u{1F1F3}\u{1F1EC}', label: 'Nigeria' },
-  { code: '+254', country: 'KE', flag: '\u{1F1F0}\u{1F1EA}', label: 'Kenya' },
-  { code: '+62', country: 'ID', flag: '\u{1F1EE}\u{1F1E9}', label: 'Indonesia' },
-  { code: '+63', country: 'PH', flag: '\u{1F1F5}\u{1F1ED}', label: 'Philippines' },
-  { code: '+84', country: 'VN', flag: '\u{1F1FB}\u{1F1F3}', label: 'Vietnam' },
-  { code: '+34', country: 'ES', flag: '\u{1F1EA}\u{1F1F8}', label: 'Spain' },
-  { code: '+39', country: 'IT', flag: '\u{1F1EE}\u{1F1F9}', label: 'Italy' },
-  { code: '+90', country: 'TR', flag: '\u{1F1F9}\u{1F1F7}', label: 'Turkey' },
-  { code: '+20', country: 'EG', flag: '\u{1F1EA}\u{1F1EC}', label: 'Egypt' },
-  { code: '+94', country: 'LK', flag: '\u{1F1F1}\u{1F1F0}', label: 'Sri Lanka' },
-  { code: '+977', country: 'NP', flag: '\u{1F1F3}\u{1F1F5}', label: 'Nepal' },
-  { code: '+880', country: 'BD', flag: '\u{1F1E7}\u{1F1E9}', label: 'Bangladesh' },
-  { code: '+92', country: 'PK', flag: '\u{1F1F5}\u{1F1F0}', label: 'Pakistan' },
-];
+/** Every country with its own calling code (generated table); the picker searches name, ISO code and +code. */
+const COUNTRY_OPTIONS = COUNTRIES.map((c) => ({
+  code: `+${c.dial}`,
+  iso: c.iso,
+  flag: flagOf(c.iso),
+  label: c.name,
+}));
 
 export interface PhoneInputProps {
   value: string;
   onChange: (value: string) => void;
   countryCode?: string;
-  onCountryCodeChange?: (code: string) => void;
+  /** Receives the picked calling code ("+44") and the picked country (ISO alpha-2, tells +1 US from CA). */
+  onCountryCodeChange?: (code: string, iso: string) => void;
+  /** ISO code of the picked country, so countries sharing a calling code show the right flag. */
+  countryIso?: string;
   placeholder?: string;
   className?: string;
   disabled?: boolean;
 }
 
-function getSelectedCountry(code: string) {
-  return COUNTRY_CODES.find((c) => c.code === code) ?? COUNTRY_CODES[0]!;
+function getSelectedCountry(code: string, iso?: string) {
+  const byIso = iso ? COUNTRY_OPTIONS.find((c) => c.iso === iso && c.code === code) : undefined;
+  return byIso ?? COUNTRY_OPTIONS.find((c) => c.code === code) ?? COUNTRY_OPTIONS.find((c) => c.iso === 'IN')!;
 }
 
 export function PhoneInput({
   value,
   onChange,
-  countryCode = '+91',
+  countryCode,
   onCountryCodeChange,
-  placeholder = 'XXXXX XXXXX',
+  countryIso,
+  placeholder,
   className,
   disabled,
 }: PhoneInputProps) {
   const [open, setOpen] = React.useState(false);
+  // The agency's country decides the code until the user picks another one
+  const { phoneDefaultCountry } = useLocale();
+  const effectiveCode = countryCode ?? `+${(countryByIso(phoneDefaultCountry) ?? countryByIso('IN')!).dial}`;
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const raw = e.target.value.replace(/[^0-9\s-]/g, '');
     onChange(raw);
   }
 
-  const selected = getSelectedCountry(countryCode);
+  const selected = getSelectedCountry(effectiveCode, countryIso);
+  const examplePlaceholder = placeholder ?? phonePlaceholder(countryByDial(effectiveCode));
 
   return (
     <div className={cn('flex items-center gap-1.5', className)}>
@@ -110,12 +96,12 @@ export function PhoneInput({
             <CommandList>
               <CommandEmpty>No country found.</CommandEmpty>
               <CommandGroup>
-                {COUNTRY_CODES.map((c) => (
+                {COUNTRY_OPTIONS.map((c) => (
                   <CommandItem
-                    key={c.code}
-                    value={`${c.label} ${c.country} ${c.code}`}
+                    key={c.iso}
+                    value={`${c.label} ${c.iso} ${c.code}`}
                     onSelect={() => {
-                      onCountryCodeChange?.(c.code);
+                      onCountryCodeChange?.(c.code, c.iso);
                       setOpen(false);
                     }}
                   >
@@ -132,7 +118,7 @@ export function PhoneInput({
       <Input
         value={value}
         onChange={handleChange}
-        placeholder={placeholder}
+        placeholder={examplePlaceholder}
         disabled={disabled}
         className="h-9 flex-1"
         type="tel"
@@ -153,24 +139,28 @@ export interface E164PhoneInputProps {
 
 /**
  * `PhoneInput` for forms that keep one string. It splits the stored value for the picker
- * (legacy digit-only numbers read as +91) and always writes E.164 back.
+ * (digit-only numbers are read as numbers of the agency's country) and always writes E.164 back.
  */
 export function E164PhoneInput({ value, onChange, placeholder, className, disabled }: E164PhoneInputProps) {
   const parts = splitPhone(value);
   // The picked code is remembered even while no digits are typed yet
   const [pickedCode, setPickedCode] = React.useState<string | null>(null);
+  const [pickedIso, setPickedIso] = React.useState<string | undefined>(undefined);
   const countryCode = parts.national ? parts.countryCode : (pickedCode ?? parts.countryCode);
+  const iso = countryCode === pickedCode ? pickedIso : undefined;
 
   return (
     <PhoneInput
       value={parts.national}
       countryCode={countryCode}
+      countryIso={iso}
       placeholder={placeholder}
       className={className}
       disabled={disabled}
       onChange={(national) => onChange(joinPhone(countryCode, national))}
-      onCountryCodeChange={(code) => {
+      onCountryCodeChange={(code, pickedCountry) => {
         setPickedCode(code);
+        setPickedIso(pickedCountry);
         if (parts.national) onChange(joinPhone(code, parts.national));
       }}
     />

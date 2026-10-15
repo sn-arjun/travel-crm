@@ -21,6 +21,7 @@ import {
   type CustomFieldDef,
 } from '@/lib/api/contacts';
 import { parseLocalDate, toLocalDateString } from '@/lib/dates';
+import { defaultCountryCode } from '@/lib/phone';
 
 import { joinPhone, splitPhone } from './contact-utils';
 
@@ -92,7 +93,8 @@ export type ContactFormValues = z.infer<typeof contactSchema>;
 export const EMPTY_CONTACT: ContactFormValues = {
   name: '',
   email: '',
-  countryCode: '+91',
+  // the agency's calling code, read when the form opens (the locale store is set by then)
+  get countryCode() { return defaultCountryCode(); },
   phone: '',
   company: '',
   type: 'customer',

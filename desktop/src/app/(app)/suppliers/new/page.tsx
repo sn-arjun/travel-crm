@@ -10,6 +10,7 @@ import {
 import { PhoneInput } from '@/components/ui/phone-input';
 import { AddressAutocomplete, type AddressParts } from '@/components/ui/address-autocomplete';
 import { suppliersApi } from '@/lib/api/suppliers';
+import { defaultCountryCode } from '@/lib/phone';
 
 const CATEGORY_OPTIONS = [
   { value: 'hotel', label: 'Hotel' },
@@ -55,7 +56,7 @@ export default function NewSupplierPage() {
         category: 'hotel',
         contactPerson: '',
         phone: '',
-        phoneCountryCode: '+91',
+        phoneCountryCode: defaultCountryCode(),
         email: '',
         website: '',
         address: '',

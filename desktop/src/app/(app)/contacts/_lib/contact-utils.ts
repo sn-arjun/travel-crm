@@ -1,4 +1,5 @@
 import { formatCurrency } from '@/lib/utils';
+import { joinPhone as joinPhoneNumber, splitPhone as splitPhoneNumber } from '@/lib/phone';
 import type { ContactTimeline } from '@/lib/api/contacts';
 
 const LAKH = 100_000;
@@ -16,29 +17,12 @@ function trimZero(n: number): string {
   return n.toFixed(2).replace(/\.?0+$/, '');
 }
 
-/** Country calling codes the PhoneInput offers, longest first so +971 wins over +9. */
-const CALLING_CODES = [
-  '+91', '+1', '+44', '+971', '+966', '+65', '+66', '+60', '+61', '+49', '+33', '+86', '+81',
-  '+82', '+7', '+55', '+27', '+234', '+254', '+62', '+63', '+84', '+34', '+39', '+90', '+20',
-  '+94', '+977', '+880', '+92',
-].sort((a, b) => b.length - a.length);
+/** Splits a stored phone number ("+919845023117") into the picker code and the national digits (every country). */
+export const splitPhone = splitPhoneNumber;
 
-/** Splits a stored phone number ("+919845023117") into the picker code and the national digits. */
-export function splitPhone(phone: string | null | undefined): { countryCode: string; national: string } {
-  const raw = (phone ?? '').trim();
-  if (!raw) return { countryCode: '+91', national: '' };
-  if (raw.startsWith('+')) {
-    const compact = `+${raw.replace(/\D/g, '')}`;
-    const code = CALLING_CODES.find((c) => compact.startsWith(c));
-    if (code) return { countryCode: code, national: compact.slice(code.length) };
-  }
-  return { countryCode: '+91', national: raw.replace(/\D/g, '').replace(/^0+/, '') };
-}
-
-/** Joins the picker code and national digits back into the stored form. */
+/** Joins the picker code and national digits back into the stored form; null when no digits. */
 export function joinPhone(countryCode: string, national: string): string | null {
-  const digits = national.replace(/\D/g, '').replace(/^0+/, '');
-  return digits ? `${countryCode}${digits}` : null;
+  return joinPhoneNumber(countryCode, national) || null;
 }
 
 const INTERACTION_ACTIONS = /note|call|email|message|whatsapp|sms|meeting/i;

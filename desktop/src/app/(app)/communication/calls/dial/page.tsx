@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
 import { voipApi, type Call, type CreateOutboundCallRequest } from '@/lib/api/voip';
+import { defaultCountryCode } from '@/lib/phone';
 import { unwrapList } from '@/lib/api/envelope';
 import { contactsApi } from '@/lib/api/contacts';
 import type { Contact } from '@travelcrm/shared';
@@ -43,7 +44,7 @@ function DialPadPage() {
   const searchParams = useSearchParams();
   const { enabled, reason, upgradeHref, loading: gateLoading } = useFeatureGate('voip_calling');
   const [number, setNumber] = React.useState(searchParams.get('phone') || '');
-  const [countryCode, setCountryCode] = React.useState('+91');
+  const [countryCode, setCountryCode] = React.useState(() => defaultCountryCode());
   // A call started from a lead or contact page arrives with their ids; they travel with the call so it
   // stays linked to them.
   const leadId = searchParams.get('leadId');
@@ -159,7 +160,7 @@ function DialPadPage() {
           <Card>
             <CardContent className="pt-ds-6 pb-ds-4">
               <div className="mb-ds-4">
-                <PhoneInput value={number} onChange={setNumber} countryCode={countryCode} onCountryCodeChange={setCountryCode} placeholder="XXXXX XXXXX" />
+                <PhoneInput value={number} onChange={setNumber} countryCode={countryCode} onCountryCodeChange={setCountryCode} />
               </div>
 
               <div className="mx-auto grid max-w-72 grid-cols-3 gap-ds-3">

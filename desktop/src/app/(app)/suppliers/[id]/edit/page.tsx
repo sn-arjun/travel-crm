@@ -12,6 +12,7 @@ import { PhoneInput } from '@/components/ui/phone-input';
 import { AddressAutocomplete, type AddressParts } from '@/components/ui/address-autocomplete';
 import { useApiQuery } from '@/hooks/use-api';
 import { suppliersApi } from '@/lib/api/suppliers';
+import { defaultCountryCode } from '@/lib/phone';
 
 const CATEGORY_OPTIONS = [
   { value: 'hotel', label: 'Hotel' },
@@ -75,7 +76,7 @@ export default function SupplierEditPage() {
 
   const rawPhone: string = supplier.phone ?? '';
   const phoneMatch = rawPhone.match(/^(\+\d+)\s+(.*)$/);
-  const phoneCountryCode = phoneMatch ? phoneMatch[1] : '+91';
+  const phoneCountryCode = phoneMatch ? phoneMatch[1] : defaultCountryCode();
   const phone = phoneMatch ? phoneMatch[2] : rawPhone;
 
   return (
