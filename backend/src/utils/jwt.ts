@@ -9,6 +9,8 @@ export interface TokenPayload extends JWTPayload {
   db?: string;
   /** Must-change-password: while true the tenant middleware only lets the change-password flow through (R113). */
   mcp?: boolean;
+  /** Two-factor setup required (R209): the agency requires 2FA and this user has not enrolled; only the 2FA routes work. */
+  tfs?: boolean;
 }
 
 const ACCESS_TOKEN_EXPIRY = '15m';
@@ -18,7 +20,7 @@ function getSecretKey(secret: string): Uint8Array {
 }
 
 export async function signAccessToken(
-  payload: { userId: string; tenantId: string; role: string; email: string; db?: string | null; mustChangePassword?: boolean },
+  payload: { userId: string; tenantId: string; role: string; email: string; db?: string | null; mustChangePassword?: boolean; twoFactorSetupRequired?: boolean },
   secret: string
 ): Promise<string> {
   return new SignJWT({
@@ -28,6 +30,7 @@ export async function signAccessToken(
     email: payload.email,
     ...(payload.db ? { db: payload.db } : {}),
     ...(payload.mustChangePassword ? { mcp: true } : {}),
+    ...(payload.twoFactorSetupRequired ? { tfs: true } : {}),
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()

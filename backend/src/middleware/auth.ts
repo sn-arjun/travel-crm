@@ -15,6 +15,7 @@ const PUBLIC_PATHS = [
   '/api/v1/auth/forgot-password',
   '/api/v1/auth/reset-password',
   '/api/v1/auth/setup-account',
+  '/api/v1/auth/2fa/verify',
   // Super admin login (R111): the only public route under /admin; it has its own rate limit and lockout
   '/api/v1/admin/auth/login',
   '/api/admin/auth/login',
@@ -28,6 +29,7 @@ const PUBLIC_PATHS = [
   '/api/auth/forgot-password',
   '/api/auth/reset-password',
   '/api/auth/setup-account',
+  '/api/auth/2fa/verify',
 ];
 
 export const authMiddleware: MiddlewareHandler<AppContext> = async (c, next) => {

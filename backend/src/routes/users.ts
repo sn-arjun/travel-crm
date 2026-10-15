@@ -14,11 +14,18 @@ import { logActivity } from '../utils/activity-logger';
 import { success, created, error } from '../utils/response';
 import { appUrl } from '../utils/app-urls';
 import { sendTransactional } from '../services/mail/transactional';
+import { revokeAllSessions } from '../services/two-factor';
 import { seatLimitResponse } from '../services/plans/seats';
 import { isValidLocale } from '../utils/money';
 import { isValidTimeZone } from '../utils/tz';
 
 const userRoutes = new Hono<AppContext>();
+
+/** A user row for the client: no password hash and none of the two-factor material (R209), just whether 2FA is on. */
+function withoutSecrets(user: typeof users.$inferSelect) {
+  const { passwordHash: _p, totpSecretEnc: _s, recoveryCodesHash: _r, totpLastStep: _l, totpEnabled, ...rest } = user;
+  return { ...rest, twoFactorEnabled: totpEnabled === 1 };
+}
 
 // ============================================================
 // GET /me/permissions — What the signed-in user's role may do
@@ -52,6 +59,7 @@ userRoutes.get('/me', async (c) => {
       locale: users.locale,
       timezone: users.timezone,
       isActive: users.isActive,
+      totpEnabled: users.totpEnabled,
       lastLoginAt: users.lastLoginAt,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt,
@@ -64,7 +72,8 @@ userRoutes.get('/me', async (c) => {
     return error(c, 'User not found', 404);
   }
 
-  return success(c, user);
+  const { totpEnabled, ...profile } = user;
+  return success(c, { ...profile, twoFactorEnabled: totpEnabled === 1 });
 });
 
 // ============================================================
@@ -364,8 +373,7 @@ userRoutes.get('/:id', rbac(['admin', 'sales_manager']), async (c) => {
     return error(c, 'User not found', 404);
   }
 
-  const { passwordHash: _, ...userWithoutPassword } = user;
-  return success(c, userWithoutPassword);
+  return success(c, withoutSecrets(user));
 });
 
 // ============================================================
@@ -408,7 +416,7 @@ userRoutes.put(
     }
 
     const [updated] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-    const { passwordHash: _, ...userWithoutPassword } = updated;
+    const userWithoutPassword = withoutSecrets(updated);
 
     await logActivity(db, {
       userId: c.get('userId'),
@@ -513,6 +521,44 @@ userRoutes.post('/:id/unlock', rbac(['admin']), async (c) => {
   });
 
   return success(c, { message: 'Account unlocked' });
+});
+
+// ============================================================
+// POST /:id/two-factor/reset — Turn off a user's two-factor sign-in (admin only, R209)
+// ============================================================
+// For a lost phone with no recovery codes left. The person is signed out everywhere and told by email.
+
+userRoutes.post('/:id/two-factor/reset', rbac(['admin']), async (c) => {
+  const targetId = c.req.param('id');
+  const db = drizzle(c.get('tenantDb'));
+
+  if (targetId === c.get('userId')) {
+    return error(c, 'Use Settings > Security to change your own two-factor sign-in', 400);
+  }
+  const [target] = await db
+    .select({ id: users.id, email: users.email, name: users.name, totpEnabled: users.totpEnabled })
+    .from(users)
+    .where(eq(users.id, targetId))
+    .limit(1);
+  if (!target) return error(c, 'User not found', 404);
+
+  await db
+    .update(users)
+    .set({ totpSecretEnc: null, totpEnabled: 0, recoveryCodesHash: null, totpLastStep: null, updatedAt: new Date().toISOString() })
+    .where(eq(users.id, targetId));
+  await revokeAllSessions(c.env, targetId);
+
+  await logActivity(db, {
+    userId: c.get('userId'),
+    action: 'two_factor_reset',
+    entityType: 'user',
+    entityId: targetId,
+    ipAddress: c.get('clientIp'),
+  });
+  if (target.totpEnabled === 1) {
+    await sendTransactional(c.env, { to: target.email, template: 'two_factor_disabled', tenantId: c.get('tenantId'), data: { name: target.name } });
+  }
+  return success(c, { message: 'Two-factor sign-in turned off for this user' });
 });
 
 // ============================================================

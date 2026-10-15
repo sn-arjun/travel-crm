@@ -3,6 +3,8 @@ export type TemplateName =
   | 'invite_user'
   | 'reset_password'
   | 'password_changed'
+  | 'two_factor_enabled'
+  | 'two_factor_disabled'
   | 'platform_enquiry'
   | 'usage_alert';
 
@@ -106,6 +108,24 @@ ${button(url, 'Reset password')}
         `<p>Hello${data.name ? ` ${esc(data.name)}` : ''},</p><p>The password for your account was just changed. If this was not you, reset it now or contact your administrator.</p>${button(`${data.appUrl}/forgot-password`, 'Reset password')}`
       );
       const text = `The password for your TravelCRM Pro account was just changed. If this was not you, reset it at ${data.appUrl}/forgot-password or contact your administrator.\n`;
+      return { subject, html, text };
+    }
+    case 'two_factor_enabled': {
+      const subject = 'Two-factor sign-in was turned on for your TravelCRM Pro account';
+      const html = layout(
+        subject,
+        `<p>Hello${data.name ? ` ${esc(data.name)}` : ''},</p><p>Two-factor sign-in with an authenticator app is now on for your account. You will be asked for a code each time you sign in. If this was not you, change your password and contact your administrator.</p>`
+      );
+      const text = `Two-factor sign-in with an authenticator app is now on for your TravelCRM Pro account. If this was not you, change your password and contact your administrator.\n`;
+      return { subject, html, text };
+    }
+    case 'two_factor_disabled': {
+      const subject = 'Two-factor sign-in was turned off for your TravelCRM Pro account';
+      const html = layout(
+        subject,
+        `<p>Hello${data.name ? ` ${esc(data.name)}` : ''},</p><p>Two-factor sign-in was turned off for your account. If this was not you, reset your password now and contact your administrator.</p>${button(`${data.appUrl}/forgot-password`, 'Reset password')}`
+      );
+      const text = `Two-factor sign-in was turned off for your TravelCRM Pro account. If this was not you, reset your password at ${data.appUrl}/forgot-password and contact your administrator.\n`;
       return { subject, html, text };
     }
     case 'platform_enquiry': {

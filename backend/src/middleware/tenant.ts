@@ -12,6 +12,13 @@ export function passwordChangeAllowed(method: string, path: string): boolean {
   return p === '/users/me' && method.toUpperCase() === 'GET';
 }
 
+/** Paths a two-factor-setup-required token (R209) may reach: the 2FA enrolment routes, logout and the profile read. */
+export function twoFactorSetupAllowed(method: string, path: string): boolean {
+  const p = path.replace(/\/+$/, '').replace(/^\/api(\/v1)?/, '');
+  if (p === '/auth/logout' || p.startsWith('/auth/2fa/')) return true;
+  return p === '/users/me' && method.toUpperCase() === 'GET';
+}
+
 export const tenantMiddleware: MiddlewareHandler<AppContext> = async (c, next) => {
   const tenantId = c.get('tenantId');
 
@@ -24,6 +31,14 @@ export const tenantMiddleware: MiddlewareHandler<AppContext> = async (c, next) =
   if (c.get('jwtPayload')?.mcp === true && !passwordChangeAllowed(c.req.method, c.req.path)) {
     return c.json(
       { success: false, error: { code: 'PASSWORD_CHANGE_REQUIRED', message: 'You must change your temporary password before continuing' } },
+      403,
+    );
+  }
+
+  // R209: the agency requires two-factor sign-in and this user has not enrolled yet.
+  if (c.get('jwtPayload')?.tfs === true && !twoFactorSetupAllowed(c.req.method, c.req.path)) {
+    return c.json(
+      { success: false, error: { code: 'TWO_FACTOR_SETUP_REQUIRED', message: 'Set up two-factor sign-in before continuing' } },
       403,
     );
   }

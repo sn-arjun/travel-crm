@@ -23,6 +23,10 @@ export const users = sqliteTable('users', {
   invitedAt: text('invited_at'),
   emailSignature: text('email_signature'), // HTML or plain text email signature
   mustChangePassword: integer('must_change_password').notNull().default(0),
+  totpSecretEnc: text('totp_secret_enc'), // R209: crypto-box sealed base32 secret (a pending secret while totp_enabled = 0)
+  totpEnabled: integer('totp_enabled').notNull().default(0),
+  recoveryCodesHash: text('recovery_codes_hash'), // R209: JSON array of SHA-256 hex hashes of the unused recovery codes
+  totpLastStep: integer('totp_last_step'), // R209: last accepted 30 s step; a code works once
   isActive: integer('is_active').default(1),
   lastLoginAt: text('last_login_at'),
   createdAt: text('created_at').default(timestamp),

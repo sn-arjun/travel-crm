@@ -111,7 +111,7 @@ describe('transactional email', () => {
   });
 
   it('no template output mentions travelcrm.pro', () => {
-    const names: TemplateName[] = ['welcome_admin', 'invite_user', 'reset_password', 'password_changed', 'platform_enquiry', 'usage_alert'];
+    const names: TemplateName[] = ['welcome_admin', 'invite_user', 'reset_password', 'password_changed', 'two_factor_enabled', 'two_factor_disabled', 'platform_enquiry', 'usage_alert'];
     for (const n of names) {
       const out = renderTemplate(n, { appUrl: 'http://localhost:3100', agencyName: 'A', email: 'e@x.test', name: 'N', setupUrl: 'u', resetUrl: 'u' });
       expect(out.subject + out.html + out.text).not.toContain('travelcrm.pro');

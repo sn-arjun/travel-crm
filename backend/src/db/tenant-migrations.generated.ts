@@ -966,5 +966,14 @@ export const TENANT_MIGRATIONS: BundledMigration[] = [
     "queries": [
       "-- R302: every provider callback is processed once. A callback claims its row here before any side effect;\n-- a repeat of the same callback (the provider retries) finds the row and changes nothing.\nCREATE TABLE IF NOT EXISTS provider_events (\n  provider TEXT NOT NULL,\n  provider_call_id TEXT NOT NULL,\n  event TEXT NOT NULL,\n  sequence TEXT NOT NULL DEFAULT '',\n  received_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\n  PRIMARY KEY (provider, provider_call_id, event, sequence)\n)"
     ]
+  },
+  {
+    "name": "0051_user_two_factor.sql",
+    "queries": [
+      "-- R209: two-factor sign-in (TOTP). The secret is sealed with the credential key (crypto-box); recovery codes are stored as SHA-256 hashes only.\nALTER TABLE users ADD COLUMN totp_secret_enc TEXT",
+      "--> statement-breakpoint\nALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0",
+      "--> statement-breakpoint\nALTER TABLE users ADD COLUMN recovery_codes_hash TEXT",
+      "--> statement-breakpoint\nALTER TABLE users ADD COLUMN totp_last_step INTEGER"
+    ]
   }
 ];
