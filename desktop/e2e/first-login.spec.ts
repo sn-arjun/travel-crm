@@ -128,7 +128,7 @@ test.describe('First login: forced password change and onboarding', () => {
     await page.locator('#newPassword').fill('short1');
     await page.locator('#confirmPassword').fill('short1');
     await page.getByRole('button', { name: 'Change password' }).click();
-    await expect(page.locator('form [role="alert"]')).toContainText('at least 10');
+    await expect(page.locator('form [role="alert"]')).toContainText('at least 12');
 
     // A wrong temporary password is refused by the API
     await page.locator('#currentPassword').fill('not-the-temporary-1');

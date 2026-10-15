@@ -80,7 +80,7 @@ export async function completeFirstLogin(apiUrl: string, agency: Agency): Promis
   if (first.status !== 200 || !first.body.data?.mustChangePassword) {
     throw new Error(`first login of ${agency.slug}: unexpected ${first.status} ${JSON.stringify(first.body)}`);
   }
-  const password = `Chosen${agency.slug.replace(/[^a-z0-9]/gi, '')}9x`;
+  const password = `Chosen${agency.slug.replace(/[^a-z0-9]/gi, '')}9x-Voyage26`; // 12+ characters whatever the slug
   const change = await fetch(`${apiUrl}/auth/change-password`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${first.body.data.accessToken}` },

@@ -33,6 +33,27 @@ async function expireAccessToken(page: Page): Promise<void> {
     [AUTH_KEY, expired],
   );
   expect(ok, 'expected a persisted session with a refresh token').toBe(true);
+
+  // The page that is still open keeps writing its in-memory session to storage for a few seconds after login (the
+  // onboarding check, tenant refresh), which would silently put the valid token back before the next load. So the
+  // expired token is also applied as each tab starts loading, once, before the app reads storage.
+  await page.context().addInitScript(
+    ([key, token]) => {
+      try {
+        if (sessionStorage.getItem('e2e-expired-applied')) return;
+        sessionStorage.setItem('e2e-expired-applied', '1');
+        const raw = localStorage.getItem(key as string);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (!parsed.state?.refreshToken) return;
+        parsed.state.accessToken = token;
+        localStorage.setItem(key as string, JSON.stringify(parsed));
+      } catch {
+        /* storage unavailable: the immediate write above is all we can do */
+      }
+    },
+    [AUTH_KEY, expired],
+  );
 }
 
 function countRefreshCalls(context: BrowserContext): { count: () => number } {
