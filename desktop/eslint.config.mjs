@@ -173,6 +173,7 @@ const eslintConfig = [
   {
     ignores: [
       '.next/**',
+      '.open-next/**',
       'out/**',
       'node_modules/**',
       'electron/**',

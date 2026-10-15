@@ -46,3 +46,46 @@ jobs:
         working-directory: super-admin
       - name: Check worker output
         run: test -f super-admin/.open-next/worker.js
+
+  desktop-web:
+    name: Agency web app (OpenNext build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm -w @travelcrm/shared run build
+      - name: OpenNext (Cloudflare) build of the agency app
+        run: npm -w travelcrm-desktop run build:web
+      - name: Check worker output
+        run: test -f desktop/.open-next/worker.js
+
+  infra-scripts:
+    name: Infrastructure (terraform, gen-wrangler, deploy scripts)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.8.5'
+          terraform_wrapper: false
+      - name: terraform fmt, init, validate (Cloudflare root; the Oracle root is separate)
+        working-directory: terraform
+        run: |
+          terraform fmt -check -recursive
+          terraform init -backend=false
+          terraform validate
+      - name: terraform validate (Oracle root, Tier 3)
+        working-directory: terraform/oracle
+        run: |
+          terraform init -backend=false
+          terraform validate
+      - run: node backend/scripts/gen-wrangler.selftest.mjs
+      - run: node scripts/shell-scripts.selftest.mjs

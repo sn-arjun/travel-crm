@@ -9,9 +9,20 @@ D1 keeps a point-in-time history of every database (30 days on Workers Paid). It
 restores one database in place, so it is the right tool for "an agency deleted data an hour ago".
 
 ```
-npx wrangler d1 time-travel info <database name> --env production
-npx wrangler d1 time-travel restore <database name> --timestamp=<unix seconds or RFC3339> --env production
+cd backend
+npx wrangler d1 time-travel info <database name> -c .wrangler.production.toml --env production
+npx wrangler d1 time-travel restore <database name> --timestamp=<unix seconds or RFC3339> -c .wrangler.production.toml --env production
 ```
+
+`-c .wrangler.production.toml` is required: wrangler finds the database by looking its name up in that generated config
+(`node scripts/gen-wrangler.mjs --env production --from-d1-remote` writes it). Without it wrangler reads the placeholder
+`wrangler.toml` and does not know the database.
+
+**Database names differ between the dashboard and the generated config.** The provisioner creates each agency database
+as `travelcrm-t-<agency slug>` (what the Cloudflare dashboard shows), while the generated config names it
+`travelcrm-tenant-<binding>` (for example `travelcrm-tenant-3f2a9c...`, from the registry's `db_binding`). Wrangler commands that use
+`-c` take the name from the generated config; the dashboard name will not match. The master database is `travelcrm-master` in
+both. Look the agency's binding up in the registry, or open `.wrangler.production.toml`, to get the name to pass.
 
 `restore` prints the bookmark of the state it replaced, so a restore can itself be undone. Rehearse it on
 staging before go-live (see "Go-live checklist").
@@ -64,8 +75,10 @@ list and every row count with the source; it fails the command when they differ.
 
 ## Schedule and ownership
 
-* Weekly (Sunday 02:00 UTC) from a GitHub Action or the operator's cron host, with `CLOUDFLARE_API_TOKEN`
-  (D1 read, R2 write) and `CLOUDFLARE_ACCOUNT_ID` set. The dump runs through the Cloudflare API, so it does not
+* Weekly (Sunday 02:00 UTC) by the GitHub Action `.github/workflows/backup.yml` (also runnable by hand from the Actions tab;
+  it needs the repository secrets `CLOUDFLARE_API_TOKEN` with D1 read and R2 write, `CLOUDFLARE_ACCOUNT_ID` and `CF_D1_MASTER_ID`,
+  and the repository variable `TRAVELCRM_DOMAIN`), or from the operator's cron host with `CLOUDFLARE_API_TOKEN`
+  and `CLOUDFLARE_ACCOUNT_ID` set. The dump runs through the Cloudflare API, so it does not
   load the Worker.
 * Keep Time Travel as the first response; use the R2 copy for account-level disasters, for migrating an agency
   to another account, and for the 30+ day window.

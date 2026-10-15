@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Script from 'next/script';
 import { DM_Sans, Geist, Geist_Mono } from 'next/font/google';
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from 'sonner';
@@ -43,13 +44,9 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${geist.variable} ${dmSans.variable} ${geistMono.variable}`}
     >
-      {isWebTarget && (
-        <head>
-          {/* The website has no Electron preload: the API address comes from the Worker's variables (route.ts). */}
-          <script src="/runtime-config.js" />
-        </head>
-      )}
       <body className="min-h-screen antialiased">
+        {/* The website has no Electron preload: the API address comes from the Worker's variables (runtime-config.js/route.ts). */}
+        {isWebTarget && <Script src="/runtime-config.js" strategy="beforeInteractive" />}
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
