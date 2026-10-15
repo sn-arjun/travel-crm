@@ -384,25 +384,25 @@ void main() {
     });
 
     test('destinations from JSON string', () {
-      final json = {...baseJson, 'destination': '["Bali","Singapore"]'};
+      final json = {...baseJson, 'destinations': '["Bali","Singapore"]'};
       final lead = LeadModel.fromJson(json);
       expect(lead.destinations, ['Bali', 'Singapore']);
     });
 
     test('destinations from list', () {
-      final json = {...baseJson, 'destination': ['Bali']};
+      final json = {...baseJson, 'destinations': ['Bali']};
       final lead = LeadModel.fromJson(json);
       expect(lead.destinations, ['Bali']);
     });
 
     test('destinations null returns empty', () {
-      final json = {...baseJson, 'destination': null};
+      final json = {...baseJson, 'destinations': null};
       final lead = LeadModel.fromJson(json);
       expect(lead.destinations, isEmpty);
     });
 
     test('destinations empty string returns empty', () {
-      final json = {...baseJson, 'destination': ''};
+      final json = {...baseJson, 'destinations': ''};
       final lead = LeadModel.fromJson(json);
       expect(lead.destinations, isEmpty);
     });
