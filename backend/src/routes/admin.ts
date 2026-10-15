@@ -1072,7 +1072,7 @@ app.get('/tenants', async (c) => {
         status:
           r.sub_status === 'cancelled'
             ? 'cancelled'
-            : r.sub_status === 'past_due'
+            : r.sub_status === 'past_due' || r.sub_status === 'expired'
               ? 'expired'
               : 'active',
       },
@@ -1113,7 +1113,7 @@ app.get('/tenants/:id', async (c) => {
 
     const sub = await db
       .prepare(
-        `SELECT plan, status, next_billing_date
+        `SELECT plan, status, next_billing_date, payment_gateway, current_period_end, past_due_since, extra_users, cancel_at_period_end
            FROM subscriptions
           WHERE tenant_id = ?
           ORDER BY created_at DESC
@@ -1153,10 +1153,17 @@ app.get('/tenants/:id', async (c) => {
         status:
           sub?.status === 'cancelled'
             ? 'cancelled'
-            : sub?.status === 'past_due'
+            : sub?.status === 'past_due' || sub?.status === 'expired'
               ? 'expired'
               : 'active',
         renewalDate: sub?.next_billing_date ?? undefined,
+        // R205 billing detail (additive): the gateway state behind the status above
+        billingStatus: sub?.status ?? undefined,
+        gateway: sub?.payment_gateway ?? undefined,
+        currentPeriodEnd: sub?.current_period_end ?? undefined,
+        pastDueSince: sub?.past_due_since ?? undefined,
+        extraUsers: sub?.extra_users ?? 0,
+        cancelAtPeriodEnd: !!sub?.cancel_at_period_end,
       },
       stats: { userCount, contactCount, leadCount, invoiceCount },
     });
