@@ -209,9 +209,9 @@ export function createVoipProvider(env: Env, settings: VoipSettingsRow): VoipPro
   const creds = resolveCredentials(settings);
   const deps: VoipProviderDeps = { sealSecret: (plain, aad) => encryptSecret(env, plain, aad) };
 
-  // The mock is explicit (VOIP_PROVIDER=mock, or the row says so) or, in test mode only, the fallback when no
+  // The mock is explicit (VOIP_PROVIDER=mock; never a stored row, whose signed callbacks must stay verifiable) or, in test mode only, the fallback when no
   // credentials exist anywhere. Production can never reach it.
-  if (env.ENVIRONMENT !== 'production' && (env.VOIP_PROVIDER === 'mock' || provider === 'mock' || (isTestMode(env) && !creds.accountId && !env.TWILIO_ACCOUNT_SID))) {
+  if (env.ENVIRONMENT !== 'production' && (env.VOIP_PROVIDER === 'mock' || (isTestMode(env) && !creds.accountId && !env.TWILIO_ACCOUNT_SID))) {
     return new MockVoipProvider(settings, deps);
   }
 
