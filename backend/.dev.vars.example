@@ -4,8 +4,8 @@
 #
 # .dev.vars is gitignored. Never commit real values, and never put production secrets in it.
 # The values below are safe local placeholders. Names come from backend/src/types.ts (interface Env).
-# `node desktop/scripts/fix-stack.mjs up` and the backend tests do NOT need this file (they pass their
-# own values); you only need it for plain `npm run dev:api` / `wrangler dev`.
+# Needed by `npm run dev:api`, `wrangler dev` and `node desktop/scripts/fix-stack.mjs up` (the local stack reads the login
+# secrets from here). NOT needed by the backend tests or the fresh-clone check, which bring their own test-only values.
 # Production values are set with `wrangler secret put <NAME>` (see scripts/push-secrets.sh).
 
 # --- Mode ---
