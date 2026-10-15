@@ -12,14 +12,22 @@ import { error } from '../utils/response';
 import { CredentialDecryptError, CredentialsKeyMissing, decryptColumn, encryptSecret } from '../utils/crypto-box';
 import { TwilioVoipProvider } from './twilio-voice';
 import { PlivoVoipProvider } from './plivo-voice';
+import { MockVoipProvider } from './voip/mock-provider';
+import { isTestMode } from '../utils/test-mode';
+import type {
+  VoipSubAccountInput, VoipSubAccount, VoipPlaceCallOptions, VoipFetchUsageInput, VoipUsageRecord,
+  VoipRecordingRef, VoipRecordingFile, VoipProviderDeps,
+} from './voip/contract';
 import { TwilioMessagingProvider } from './twilio-messaging';
 import { PlivoMessagingProvider } from './plivo-messaging';
 
-export { VoipProviderError, escapeXml } from './voip-base';
+export { VoipProviderError, NotImplementedForProvider, escapeXml, voipClientIdentity, errorKindForStatus } from './voip-base';
+export type { VoipErrorKind } from './voip-base';
+export * from './voip/contract';
 
 // ── Shared Types ────────────────────────────────────────────
 
-export type VoipProviderName = 'twilio' | 'plivo';
+export type VoipProviderName = 'twilio' | 'plivo' | 'mock';
 
 export interface VoipCallOptions {
   from: string;
@@ -112,7 +120,22 @@ export interface VoipSettingsRow {
 export interface VoipProvider {
   readonly providerName: VoipProviderName;
 
-  // Call management
+  // ── Reselling contract (R301). Adapters throw NotImplementedForProvider for what they do not support yet;
+  //    R304 sub-accounts + numbers, R305 usage, R306 recordings, R307 softphone token fill the Twilio side.
+  /** Platform credentials only. Creates the agency's sub-account; the token comes back sealed. */
+  createSubAccount(input: VoipSubAccountInput): Promise<VoipSubAccount>;
+  /** Platform credentials only. Closes the sub-account (the provider releases its numbers). */
+  closeSubAccount(subAccountId: string): Promise<void>;
+  /** Place a call from the agency's account: agent leg first (app or phone), then the customer. */
+  placeCall(options: VoipPlaceCallOptions): Promise<VoipCallResult>;
+  /** Platform credentials only. Calls the sub-account made or received since a time, normalised. */
+  fetchUsage(input: VoipFetchUsageInput): Promise<VoipUsageRecord[]>;
+  /** The identity rule shared by tokens and ring markup: voipClientIdentity(userId). */
+  clientIdentity(userId: string): string;
+  /** Download a recording's audio. */
+  fetchRecording(ref: VoipRecordingRef): Promise<VoipRecordingFile>;
+
+  // Call management (initiateCall is kept for existing routes; placeCall is the contract)
   initiateCall(options: VoipCallOptions): Promise<VoipCallResult>;
   endCall(providerCallId: string): Promise<void>;
   holdCall(providerCallId: string, hold: boolean): Promise<void>;
@@ -184,10 +207,17 @@ export function resolveCredentials(settings: VoipSettingsRow): VoipProviderCrede
 export function createVoipProvider(env: Env, settings: VoipSettingsRow): VoipProvider {
   const provider = settings.voipProvider || 'twilio';
   const creds = resolveCredentials(settings);
+  const deps: VoipProviderDeps = { sealSecret: (plain, aad) => encryptSecret(env, plain, aad) };
+
+  // The mock is explicit (VOIP_PROVIDER=mock, or the row says so) or, in test mode only, the fallback when no
+  // credentials exist anywhere. Production can never reach it.
+  if (env.ENVIRONMENT !== 'production' && (env.VOIP_PROVIDER === 'mock' || provider === 'mock' || (isTestMode(env) && !creds.accountId && !env.TWILIO_ACCOUNT_SID))) {
+    return new MockVoipProvider(settings, deps);
+  }
 
   if (provider === 'plivo') {
     // Plivo is dropped (owner decision 2026-10-14); kept compiling only.
-        return new PlivoVoipProvider(creds, settings);
+    return new PlivoVoipProvider(creds, settings);
   }
 
   // Default: Twilio (with env fallback)
@@ -195,7 +225,7 @@ export function createVoipProvider(env: Env, settings: VoipSettingsRow): VoipPro
     TWILIO_ACCOUNT_SID: env.TWILIO_ACCOUNT_SID,
     TWILIO_AUTH_TOKEN: env.TWILIO_AUTH_TOKEN,
   };
-  return new TwilioVoipProvider(twilioEnv, settings);
+  return new TwilioVoipProvider(twilioEnv, settings, deps);
 }
 
 /**

@@ -53,6 +53,10 @@ export interface Env {
   // Shared secret in the SendGrid Inbound Parse URL (/webhooks/inbound/email/:secret)
   INBOUND_EMAIL_SECRET?: string;
   TEST_MODE?: string;
+  /** 'mock' selects the in-memory VoIP provider (never in production). */
+  VOIP_PROVIDER?: string;
+  /** Comma-separated ISO country codes where calling is offered; default GB,US,AU,SG. '*' = all (non-production only). */
+  VOIP_CALLING_COUNTRIES?: string;
   CF_ACCOUNT_ID?: string;
   CF_API_TOKEN?: string;
 

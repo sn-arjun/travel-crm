@@ -7,9 +7,16 @@
 
 import type {
   VoipProvider, VoipCallOptions, VoipCallResult, VoipAvailableNumber,
-  VoipPurchasedNumber, VoipClientToken, IvrOption, VoipSettingsRow,
+  VoipPurchasedNumber, VoipClientToken, IvrOption, VoipSettingsRow, VoipProviderName,
 } from './voip-provider';
-import { VoipProviderError, escapeXml } from './voip-base';
+import type {
+  VoipSubAccountInput, VoipSubAccount, VoipPlaceCallOptions, VoipFetchUsageInput, VoipUsageRecord,
+  VoipRecordingRef, VoipRecordingFile, VoipProviderDeps,
+} from './voip/contract';
+import { subAccountSecretAad } from './voip/contract';
+import { VoipProviderError, escapeXml, voipClientIdentity, errorKindForStatus } from './voip-base';
+
+const TWILIO_API = 'https://api.twilio.com';
 
 // ── Legacy types (re-exported for backward compat) ──────────
 
@@ -50,7 +57,7 @@ const TWILIO_ERROR_MAP: Record<number, string> = {
 };
 
 export class TwilioVoipProvider implements VoipProvider {
-  readonly providerName = 'twilio' as const;
+  readonly providerName: VoipProviderName = 'twilio';
 
   private accountSid: string;
   private authToken: string;
@@ -62,6 +69,7 @@ export class TwilioVoipProvider implements VoipProvider {
   constructor(
     private env: { TWILIO_ACCOUNT_SID: string; TWILIO_AUTH_TOKEN: string },
     private settings: VoipSettingsRow,
+    private deps: VoipProviderDeps = {},
   ) {
     // Prefer provider_* fields, fall back to twilio_* fields, then env
     this.accountSid = settings.providerAccountId || settings.twilioAccountSid || env.TWILIO_ACCOUNT_SID;
@@ -102,14 +110,133 @@ export class TwilioVoipProvider implements VoipProvider {
       params.set('MachineDetection', 'Enable');
     }
 
-    const data = await this.twilioRequest<any>('POST', '/Calls.json', params);
+    return this.createCall(params);
+  }
 
+  /**
+   * R301 contract: the agent leg first (their app or their phone), then the customer. The call is created
+   * with inline TwiML so no other endpoint has to exist for the bridge to work; status and recording
+   * callbacks go to the existing signed callback routes.
+   */
+  async placeCall(options: VoipPlaceCallOptions): Promise<VoipCallResult> {
+    let agentLeg: string;
+    if (options.mode === 'softphone') {
+      if (!options.agentIdentity) throw new VoipProviderError('twilio', 'AGENT_IDENTITY_REQUIRED', 'agentIdentity is required for a softphone call', 'invalid_request');
+      agentLeg = `client:${voipClientIdentity(options.agentIdentity)}`;
+    } else if (options.mode === 'bridge') {
+      if (!options.agentNumber) throw new VoipProviderError('twilio', 'AGENT_NUMBER_REQUIRED', 'agentNumber is required for a bridge call', 'invalid_request');
+      agentLeg = options.agentNumber;
+    } else {
+      throw new VoipProviderError('twilio', 'INVALID_MODE', 'mode must be softphone or bridge', 'invalid_request');
+    }
+
+    const base = options.callbackBaseUrl.replace(/\/+$/, '');
+    const ring = options.timeout || this.settings.maxRingDuration || 30;
+    const recordAttrs = options.record
+      ? ` record="record-from-answer-dual" recordingStatusCallback="${escapeXml(`${base}/api/v1/voip/recording-callback`)}"`
+      : '';
+    const twiml =
+      `<Response><Dial callerId="${escapeXml(options.from)}" timeout="${ring}" answerOnBridge="true"${recordAttrs}>` +
+      `<Number>${escapeXml(options.to)}</Number></Dial></Response>`;
+
+    const params = new URLSearchParams({
+      From: options.from,
+      To: agentLeg,
+      Twiml: twiml,
+      StatusCallback: `${base}/api/v1/voip/status-callback`,
+      StatusCallbackEvent: 'initiated ringing answered completed',
+      StatusCallbackMethod: 'POST',
+      Timeout: String(ring),
+    });
+    if (options.machineDetection) params.set('MachineDetection', 'Enable');
+    const result = await this.createCall(params);
+    return { ...result, direction: 'outbound', from: options.from, to: options.to };
+  }
+
+  private async createCall(params: URLSearchParams): Promise<VoipCallResult> {
+    const data = await this.twilioRequest<any>('POST', '/Calls.json', params);
     return {
       providerCallId: data.sid,
       status: data.status,
       direction: data.direction,
       from: data.from,
       to: data.to,
+    };
+  }
+
+  // ── VoipProvider: Sub-accounts (platform credentials) ─────
+
+  async createSubAccount(input: VoipSubAccountInput): Promise<VoipSubAccount> {
+    if (!this.deps.sealSecret) {
+      throw new VoipProviderError('twilio', 'NO_SEALER', 'No secret sealer configured; a sub-account token cannot be stored safely', 'provider');
+    }
+    const friendly = `${input.name.slice(0, 48)} (${input.tenantId.slice(-8)})`;
+    const data = await this.twilioRequest<any>('POST', `${TWILIO_API}/2010-04-01/Accounts.json`, new URLSearchParams({ FriendlyName: friendly }));
+    if (!data?.sid || !data?.auth_token) {
+      throw new VoipProviderError('twilio', 'BAD_RESPONSE', 'Twilio did not return the new sub-account credentials', 'provider');
+    }
+    return {
+      subAccountId: data.sid,
+      authId: data.sid,
+      authTokenEnc: await this.deps.sealSecret(data.auth_token, subAccountSecretAad(input.tenantId, data.sid)),
+    };
+  }
+
+  async closeSubAccount(subAccountId: string): Promise<void> {
+    await this.twilioRequest('POST', `${TWILIO_API}/2010-04-01/Accounts/${subAccountId}.json`, new URLSearchParams({ Status: 'closed' }));
+  }
+
+  // ── VoipProvider: Usage (platform credentials) ────────────
+
+  async fetchUsage(input: VoipFetchUsageInput): Promise<VoipUsageRecord[]> {
+    const sinceMs = Date.parse(input.since);
+    if (Number.isNaN(sinceMs)) throw new VoipProviderError('twilio', 'INVALID_SINCE', 'since must be an ISO 8601 time', 'invalid_request');
+    const query = new URLSearchParams({ 'StartTime>': new Date(sinceMs).toISOString().slice(0, 10), PageSize: '1000' });
+    let url: string | null = `${TWILIO_API}/2010-04-01/Accounts/${input.subAccountId}/Calls.json?${query}`;
+    const out: VoipUsageRecord[] = [];
+    for (let page = 0; url && page < (input.maxPages ?? 20); page++) {
+      const data: any = await this.twilioRequest<any>('GET', url);
+      for (const call of data.calls || []) {
+        const startedMs = Date.parse(call.start_time || call.date_created || '');
+        if (Number.isNaN(startedMs) || startedMs < sinceMs) continue;
+        const duration = Number.parseInt(call.duration ?? '0', 10) || 0;
+        const price = Number.parseFloat(call.price ?? '0');
+        out.push({
+          providerCallId: call.sid,
+          direction: String(call.direction || '').startsWith('inbound') ? 'inbound' : 'outbound',
+          to: call.to,
+          from: call.from,
+          startedAt: new Date(startedMs).toISOString(),
+          durationSeconds: duration,
+          // Twilio bills voice per started minute.
+          billedSeconds: duration > 0 ? Math.ceil(duration / 60) * 60 : 0,
+          cost: Number.isFinite(price) ? Math.abs(price) : 0,
+          currency: (call.price_unit || 'USD').toUpperCase(),
+        });
+      }
+      url = data.next_page_uri ? `${TWILIO_API}${data.next_page_uri}` : null;
+    }
+    return out;
+  }
+
+  clientIdentity(userId: string): string {
+    return voipClientIdentity(userId);
+  }
+
+  // ── VoipProvider: Recordings ──────────────────────────────
+
+  async fetchRecording(ref: VoipRecordingRef): Promise<VoipRecordingFile> {
+    const account = ref.subAccountId || this.accountSid;
+    const res = await fetch(`${TWILIO_API}/2010-04-01/Accounts/${account}/Recordings/${ref.recordingId}.mp3`, {
+      headers: { Authorization: this.authHeader },
+    });
+    if (!res.ok) {
+      throw new VoipProviderError('twilio', res.status, `Twilio recording fetch failed: ${res.status}`, errorKindForStatus(res.status));
+    }
+    return {
+      recordingId: ref.recordingId,
+      contentType: res.headers.get('Content-Type') || 'audio/mpeg',
+      bytes: await res.arrayBuffer(),
     };
   }
 
@@ -192,7 +319,7 @@ export class TwilioVoipProvider implements VoipProvider {
 
   async generateClientToken(userId: string): Promise<VoipClientToken> {
     if (!this.apiKeySid || !this.apiKeySecret) {
-      throw new VoipProviderError('twilio', 'NO_API_KEY', 'Twilio API key not configured');
+      throw new VoipProviderError('twilio', 'NO_API_KEY', 'Twilio API key not configured', 'auth');
     }
 
     const now = Math.floor(Date.now() / 1000);
@@ -206,7 +333,7 @@ export class TwilioVoipProvider implements VoipProvider {
       sub: this.accountSid,
       exp: now + expiresIn,
       grants: {
-        identity: userId,
+        identity: voipClientIdentity(userId),
         voice: {
           outgoing: { application_sid: this.twimlAppSid || '' },
           incoming: { allow: true },
@@ -232,7 +359,7 @@ export class TwilioVoipProvider implements VoipProvider {
 
     return {
       token: `${signingInput}.${sigB64}`,
-      identity: userId,
+      identity: voipClientIdentity(userId),
       expiresIn,
     };
   }
@@ -254,7 +381,7 @@ export class TwilioVoipProvider implements VoipProvider {
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Dial callerId="${escapeXml(callerId)}"${recordAttr}>
-    <Client>${escapeXml(clientIdentity)}</Client>
+    <Client>${escapeXml(voipClientIdentity(clientIdentity))}</Client>
   </Dial>
 </Response>`;
   }
@@ -385,7 +512,7 @@ export class TwilioVoipProvider implements VoipProvider {
         if (!res.ok) {
           const code = data?.code || data?.error_code || 0;
           const message = TWILIO_ERROR_MAP[code] || data?.message || `Twilio API error: ${res.status}`;
-          throw new VoipProviderError('twilio', code, message);
+          throw new VoipProviderError('twilio', code, message, code === 21401 ? 'auth' : errorKindForStatus(res.status));
         }
 
         return data as T;

@@ -16,7 +16,11 @@ import type {
   VoipPurchasedNumber, VoipClientToken, IvrOption, VoipSettingsRow,
   VoipProviderCredentials,
 } from './voip-provider';
-import { VoipProviderError, escapeXml } from './voip-base';
+import type {
+  VoipSubAccountInput, VoipSubAccount, VoipPlaceCallOptions, VoipFetchUsageInput, VoipUsageRecord,
+  VoipRecordingRef, VoipRecordingFile,
+} from './voip/contract';
+import { VoipProviderError, NotImplementedForProvider, escapeXml, voipClientIdentity } from './voip-base';
 
 export class PlivoVoipProvider implements VoipProvider {
   readonly providerName = 'plivo' as const;
@@ -37,6 +41,15 @@ export class PlivoVoipProvider implements VoipProvider {
   private get authHeader(): string {
     return 'Basic ' + btoa(`${this.authId}:${this.authToken}`);
   }
+
+  // ── Reselling contract: not supported on Plivo (owner decision 2026-10-14) ──
+
+  async createSubAccount(_input: VoipSubAccountInput): Promise<VoipSubAccount> { throw new NotImplementedForProvider('plivo', 'createSubAccount'); }
+  async closeSubAccount(_subAccountId: string): Promise<void> { throw new NotImplementedForProvider('plivo', 'closeSubAccount'); }
+  async placeCall(_options: VoipPlaceCallOptions): Promise<VoipCallResult> { throw new NotImplementedForProvider('plivo', 'placeCall'); }
+  async fetchUsage(_input: VoipFetchUsageInput): Promise<VoipUsageRecord[]> { throw new NotImplementedForProvider('plivo', 'fetchUsage'); }
+  async fetchRecording(_ref: VoipRecordingRef): Promise<VoipRecordingFile> { throw new NotImplementedForProvider('plivo', 'fetchRecording'); }
+  clientIdentity(userId: string): string { return voipClientIdentity(userId); }
 
   // ── VoipProvider: Call Management ─────────────────────────
 
