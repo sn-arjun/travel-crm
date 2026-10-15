@@ -1,0 +1,93 @@
+# Local secrets and settings for `wrangler dev` (backend/).
+#
+#   cp backend/.dev.vars.example backend/.dev.vars
+#
+# .dev.vars is gitignored. Never commit real values, and never put production secrets in it.
+# The values below are safe local placeholders. Names come from backend/src/types.ts (interface Env).
+# `node desktop/scripts/fix-stack.mjs up` and the backend tests do NOT need this file (they pass their
+# own values); you only need it for plain `npm run dev:api` / `wrangler dev`.
+# Production values are set with `wrangler secret put <NAME>` (see scripts/push-secrets.sh).
+
+# --- Mode ---
+# single = one D1 database holds everything (local default). multi = one D1 database per agency.
+TENANCY_MODE=single
+# Enables /api/v1/test/* (reset, outbox). Local and CI only. Never set in production.
+TEST_MODE=true
+ENVIRONMENT=development
+# Production refuses TENANCY_MODE=single unless this is "true".
+# ALLOW_SINGLE_TENANT_PRODUCTION=
+# Set to 1 to apply the real rate limits locally (default multiplier is 1000).
+# RATE_LIMIT_MULTIPLIER=
+
+# --- Login tokens (required) ---
+JWT_SECRET=local-dev-jwt-secret-change-me-0123456789abcdef
+JWT_REFRESH_SECRET=local-dev-jwt-refresh-secret-change-me-0123456789
+# Signs super admin tokens; must be the same value in super-admin/.env.local.
+SUPER_ADMIN_JWT_SECRET=local-dev-super-admin-secret-change-me-0123456789
+# Seed/contact address of the platform owner account.
+SUPER_ADMIN_EMAIL=owner@example.test
+
+# --- Credential encryption (agency provider keys stored in the database) ---
+# CREDENTIALS_KEYS is JSON: {"k1":"<base64 of 32 random bytes>"}. Generate one with:
+#   node -e "console.log(JSON.stringify({k1: require('crypto').randomBytes(32).toString('base64')}))"
+CREDENTIALS_KEYS=
+CREDENTIALS_ACTIVE_KEY_ID=k1
+
+# --- Addresses ---
+APP_URL=http://localhost:3100
+# Base of shared quotation links (default: APP_URL/q).
+QUOTES_URL=
+API_PUBLIC_URL=http://localhost:8787
+# Comma-separated browser origins allowed to call the API.
+CORS_ORIGINS=
+# "true" accepts any http://localhost:* / 127.0.0.1:* origin (local only).
+ALLOW_LOOPBACK_ORIGINS=true
+
+# --- Email (SendGrid). Blank key: system mail goes to GET /api/v1/test/outbox when TEST_MODE=true ---
+SENDGRID_API_KEY=
+EMAIL_FROM=
+EMAIL_FROM_NAME=
+PLATFORM_SUPPORT_EMAIL=
+# Public key that verifies SendGrid event webhooks.
+SENDGRID_WEBHOOK_PUBLIC_KEY=
+# Shared secret in the SendGrid Inbound Parse URL (/webhooks/inbound/email/:secret).
+INBOUND_EMAIL_SECRET=
+
+# --- SMS, WhatsApp, login codes (Twilio). Blank: nothing is sent ---
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_VERIFY_SERVICE_SID=
+TWILIO_SMS_FROM_NUMBER=
+TWILIO_WHATSAPP_FROM_NUMBER=
+# Optional alternative provider (Plivo).
+PLIVO_AUTH_ID=
+PLIVO_AUTH_TOKEN=
+PLIVO_SMS_FROM_NUMBER=
+PLIVO_WHATSAPP_FROM_NUMBER=
+# How login codes are delivered (see src/services/metering/otp-limits.ts); blank = default.
+OTP_DELIVERY=
+
+# --- Other providers (all optional; features switch off when blank) ---
+FCM_SERVER_KEY=
+DEEPGRAM_API_KEY=
+# Claude API key for AI features that call Anthropic directly. AI usage is metered in credits.
+ANTHROPIC_API_KEY=
+GOOGLE_MAPS_API_KEY=
+# Cloudflare Turnstile secret for the landing form; when set, the widget becomes mandatory.
+TURNSTILE_SECRET=
+
+# --- Agency database provisioning (production only) ---
+# "cloudflare" creates a D1 database per new agency through the Cloudflare API.
+TENANT_PROVISIONER=
+CF_ACCOUNT_ID=
+CF_API_TOKEN=
+CF_WORKER_SCRIPT_NAME=
+
+# --- Operations ---
+# Shared secret for GET /api/v1/health/deep when no super admin token is used.
+HEALTH_TOKEN=
+# Where server errors are reported; blank = structured log line only.
+ERROR_REPORTER_DSN=
+# Hour (0-23, agency local time) at which daily jobs run. Default 9.
+DAILY_JOB_HOUR=
+APP_VERSION=
