@@ -14,6 +14,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { PageContainer } from '@/components/layout/page-container';
 import { formatDisplayDate } from '@/lib/dates';
 import { toast } from 'sonner';
+import { PLACEHOLDER_DOMAIN } from '@/lib/web-config';
 
 
 interface FAQItem {
@@ -86,7 +87,8 @@ const faqItems: FAQItem[] = [
   },
 ];
 
-const SUPPORT_EMAIL = 'support@travelcrmpro.com';
+// Build-time NEXT_PUBLIC_SUPPORT_EMAIL, else the placeholder domain (web-config.ts is the one place it is named).
+const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || `support@${PLACEHOLDER_DOMAIN}`;
 
 // In-page shortcuts: every destination exists on this page.
 const quickLinks = [
