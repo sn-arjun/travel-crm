@@ -2,3 +2,6 @@
 # (Windows autocrlf produced different statement counts per checkout; found 2026-10-14).
 backend/drizzle/**/*.sql text eol=lf
 *.sh text eol=lf
+*.tf text eol=lf
+*.tfvars text eol=lf
+*.hcl text eol=lf
