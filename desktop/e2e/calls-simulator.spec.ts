@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures';
-import { waitForLoad, API_URL, getAuthToken } from './helpers/auth';
+import { waitForLoad, API_URL, TENANT_ID, getAuthToken } from './helpers/auth';
 import { api, seedContact, seedLead } from './helpers/api-seed';
 
 /**
@@ -25,9 +25,13 @@ async function adminUserId(): Promise<string> {
 /** The agency's number must belong to the workspace, and VoIP must be set up, before a call can reach it. */
 async function ensureInboundLine() {
   const settings = await api('GET', '/voip/settings');
-  if (!settings?.data?.defaultCallerId) {
-    await api('PUT', '/voip/settings', { defaultCallerId: AGENCY_NUMBER, voipProvider: 'twilio' });
-  }
+  // The simulator signs its callbacks with the workspace's provider token. With no account id the provider stays the
+  // mock (no telephony account is ever contacted), but the token lets the signature verify like a real callback's.
+  await api('PUT', '/voip/settings', {
+    voipProvider: 'twilio',
+    providerAuthToken: 'e2e-simulator-token',
+    ...(settings?.data?.defaultCallerId ? {} : { defaultCallerId: AGENCY_NUMBER }),
+  });
   // 409 when already registered: fine.
   await api('POST', '/integrations/channels', { channel: 'voice', address: AGENCY_NUMBER, provider: 'twilio', label: 'Simulator line' });
 }
@@ -36,7 +40,7 @@ async function simulate(scenario: string, from: string, durationSeconds?: number
   const res = await fetch(`${API_URL}/test/voip/simulate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ scenario, to: AGENCY_NUMBER, from, durationSeconds }),
+    body: JSON.stringify({ scenario, to: AGENCY_NUMBER, from, durationSeconds, tenantId: TENANT_ID }),
   });
   const json = (await res.json()) as any;
   expect(res.status, JSON.stringify(json)).toBe(200);
