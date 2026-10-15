@@ -306,6 +306,9 @@ async function up() {
       'wrangler', 'dev', '--port', String(apiPort), '-c', devConfig,
       '--var', 'TEST_MODE:true',
       '--var', 'TENANCY_MODE:' + mode,
+      // Local stacks exercise calling for every agency; the real allow-list (R301) applies in production,
+      // which refuses '*'. Override with FIX_STACK_CALLING_COUNTRIES to test the country gate end to end.
+      '--var', 'VOIP_CALLING_COUNTRIES:' + (process.env.FIX_STACK_CALLING_COUNTRIES || '*'),
       '--var', 'SENDGRID_API_KEY:',
       '--var', 'TWILIO_ACCOUNT_SID:',
       '--var', 'TWILIO_AUTH_TOKEN:',
