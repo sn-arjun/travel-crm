@@ -319,5 +319,21 @@
       .then(function () { if (timer) window.clearTimeout(timer); });
   }
 
+  // Cookie notice (R208): the site sets no tracking cookies. Shown until dismissed; the choice lives in localStorage.
+  (function () {
+    var KEY = 'cookie-notice-dismissed';
+    var box = document.getElementById('cookie-notice');
+    var btn = document.getElementById('cookie-notice-dismiss');
+    if (!box || !btn) return;
+    var dismissed = false;
+    try { dismissed = window.localStorage.getItem(KEY) === '1'; } catch (e) { /* storage blocked: show the notice each visit */ }
+    if (dismissed) return;
+    box.hidden = false;
+    btn.addEventListener('click', function () {
+      box.hidden = true;
+      try { window.localStorage.setItem(KEY, '1'); } catch (e) { /* ignore */ }
+    });
+  })();
+
   icons();
 })();
