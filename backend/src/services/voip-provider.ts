@@ -173,18 +173,36 @@ export interface VoipProvider {
 
 // ── Messaging Provider Interface ────────────────────────────
 
+/** Meta's pricing category of a WhatsApp message: 'service' is a free-form reply inside the 24 hour window (free). */
+export type WhatsAppCategory = 'service' | 'utility' | 'marketing' | 'authentication';
+
 export interface MessageResult {
   providerMessageId: string;
   status: string;
   to: string;
   channel: 'sms' | 'whatsapp';
+  /** Set by providers that report why a send failed (Meta). */
+  error?: string;
+  errorKind?: 'auth' | 'window' | 'rate_limited' | 'invalid_request' | 'provider';
+  category?: WhatsAppCategory;
 }
 
+/** Template details a provider that sends approved templates (Meta) needs; Twilio and Plivo ignore them. */
+export interface WhatsAppTemplateOptions {
+  language?: string;
+  category?: WhatsAppCategory;
+  /** Header image/document/video URL when the approved template has a media header. */
+  headerMediaUrl?: string;
+}
+
+export type MessagingProviderName = VoipProviderName | 'meta';
+
 export interface MessagingProvider {
-  readonly providerName: VoipProviderName;
+  readonly providerName: MessagingProviderName;
   sendSms(to: string, message: string): Promise<MessageResult>;
   sendWhatsApp(to: string, message: string, mediaUrl?: string): Promise<MessageResult>;
-  sendWhatsAppTemplate(to: string, templateId: string, variables: Record<string, string>): Promise<MessageResult>;
+  /** templateId is the provider's template reference: a Twilio content SID, or the approved template name on Meta. */
+  sendWhatsAppTemplate(to: string, templateId: string, variables: Record<string, string>, options?: WhatsAppTemplateOptions): Promise<MessageResult>;
 }
 
 // ── Provider Error ──────────────────────────────────────────

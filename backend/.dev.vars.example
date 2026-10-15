@@ -66,6 +66,12 @@ PLIVO_AUTH_ID=
 PLIVO_AUTH_TOKEN=
 PLIVO_SMS_FROM_NUMBER=
 PLIVO_WHATSAPP_FROM_NUMBER=
+# WhatsApp through Meta's Cloud API (optional; agencies can also connect their own account in Settings > Integrations).
+WHATSAPP_META_TOKEN=
+WHATSAPP_META_PHONE_NUMBER_ID=
+WHATSAPP_META_APP_SECRET=
+WHATSAPP_META_VERIFY_TOKEN=
+WHATSAPP_META_GRAPH_VERSION=
 # Declared in src/types.ts but not read by any code yet; leave blank.
 OTP_DELIVERY=
 

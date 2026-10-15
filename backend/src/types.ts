@@ -45,6 +45,17 @@ export interface Env {
   PLIVO_AUTH_TOKEN?: string;
   PLIVO_SMS_FROM_NUMBER?: string;
   PLIVO_WHATSAPP_FROM_NUMBER?: string;
+  // WhatsApp through Meta's Cloud API (R213). All optional: without them Meta works only for agencies that bring their own account.
+  /** Platform system-user access token (agencies on the platform's WhatsApp account). */
+  WHATSAPP_META_TOKEN?: string;
+  /** Platform default sending phone number id (used when an agency has none of its own). */
+  WHATSAPP_META_PHONE_NUMBER_ID?: string;
+  /** The platform Meta app's secret: signs every webhook the platform app delivers (X-Hub-Signature-256). */
+  WHATSAPP_META_APP_SECRET?: string;
+  /** Verify token typed into the platform app's webhook settings (GET handshake). */
+  WHATSAPP_META_VERIFY_TOKEN?: string;
+  /** Graph API version, default v21.0. */
+  WHATSAPP_META_GRAPH_VERSION?: string;
   SENDGRID_API_KEY: string;
   FCM_SERVER_KEY: string;
   DEEPGRAM_API_KEY: string;

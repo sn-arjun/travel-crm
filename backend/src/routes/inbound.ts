@@ -3,6 +3,7 @@
  *
  *   POST /twilio/message   WhatsApp + SMS from Twilio (form-encoded, X-Twilio-Signature)
  *   POST /plivo/message    WhatsApp + SMS from Plivo  (X-Plivo-Signature-V3)
+ *   GET|POST /meta/whatsapp  WhatsApp through Meta's Cloud API (hub.* handshake; X-Hub-Signature-256)
  *   POST /email/:secret    SendGrid Inbound Parse (multipart)
  *   POST /web-form         Website enquiry form (tenant API key)
  *
@@ -22,6 +23,7 @@ import { ingestInbound, normalizeAddress, parseEmailAddress, type InboundChannel
 import { findOrCreateContact } from '../services/domain/contacts';
 import { createLead } from '../services/domain/leads';
 import { hashApiKey } from '../utils/crypto-box';
+import { handleMetaWebhook, metaHandshake } from '../services/messaging/meta-webhook';
 
 const inboundRoutes = new Hono<AppContext>();
 
@@ -176,6 +178,23 @@ inboundRoutes.post('/plivo/message', twilioWebhookMiddleware, async (c) => {
   }
 
   return c.json({ success: true });
+});
+
+// ── Meta: WhatsApp Cloud API (R213) ──────────────────────────
+// GET answers the subscription handshake; POST is signed with the app secret over the raw body. Anything that is
+// signed correctly is answered 200 (even a number we do not serve) so Meta does not retry it; only a bad signature is 401.
+
+inboundRoutes.get('/meta/whatsapp', async (c) => {
+  const challenge = await metaHandshake(c.env, c.req.query('hub.mode'), c.req.query('hub.verify_token'), c.req.query('hub.challenge'));
+  if (challenge === null) return c.text('Forbidden', 403);
+  return c.text(challenge, 200);
+});
+
+inboundRoutes.post('/meta/whatsapp', async (c) => {
+  const rawBody = await c.req.text();
+  const result = await handleMetaWebhook(c.env, waiterOf(c), rawBody, c.req.header('X-Hub-Signature-256'));
+  if (result.status === 401) return c.json({ error: 'Invalid signature' }, 401);
+  return c.json({ success: true, messages: result.messages, statuses: result.statuses });
 });
 
 // ── Email: SendGrid Inbound Parse ────────────────────────────

@@ -2610,3 +2610,20 @@ export const paymentEvents = sqliteTable('payment_events', {
 }, (table) => [
   primaryKey({ columns: [table.gateway, table.eventId] }),
 ]);
+
+// R213: the agency's WhatsApp number on Meta's Cloud API. Token and app secret are sealed (crypto-box) and never returned.
+export const whatsappMetaAccounts = sqliteTable('whatsapp_meta_accounts', {
+  id: text('id').primaryKey(),
+  phoneNumberId: text('phone_number_id').notNull(),
+  wabaId: text('waba_id'),
+  displayPhone: text('display_phone'),
+  accessTokenEnc: text('access_token_enc'),
+  accessTokenLast4: text('access_token_last4'),
+  appSecretEnc: text('app_secret_enc'),
+  isActive: integer('is_active').notNull().default(1),
+  lastTestedAt: text('last_tested_at'),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  uniqueIndex('whatsapp_meta_accounts_phone_idx').on(table.phoneNumberId),
+]);
