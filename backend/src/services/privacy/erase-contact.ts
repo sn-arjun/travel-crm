@@ -259,7 +259,7 @@ export async function eraseContact(
   steps.push(
     step('trip_timeline', `UPDATE trip_timeline SET notes = NULL, latitude = NULL, longitude = NULL WHERE trip_id IN ${TRIPS}`, contactId),
     step('trip_assignments', `UPDATE trip_assignments SET passenger_name = 'Erased', passenger_phone = NULL, special_instructions = NULL, pickup_location = NULL, drop_location = NULL, cancellation_reason = NULL, contact_id = NULL WHERE id IN ${TRIPS}`, contactId),
-    step('invoices', `UPDATE invoices SET notes = NULL, payment_link = NULL WHERE contact_id = ? OR lead_id IN ${LEADS}`, contactId),
+    step('invoices', `UPDATE invoices SET notes = NULL, payment_link = NULL, payment_link_id = NULL, payment_link_url = NULL, payment_link_status = NULL WHERE contact_id = ? OR lead_id IN ${LEADS}`, contactId),
     step('payments', `UPDATE payments SET notes = NULL, receipt_url = NULL WHERE contact_id = ? OR invoice_id IN ${INVOICES}`, contactId),
     step('itineraries', `UPDATE itineraries SET title = 'Erased itinerary', notes = NULL, share_token = NULL, share_link_active = 0 WHERE lead_id IN ${LEADS}`, contactId),
     step('leads', `UPDATE leads SET title = 'Erased lead', notes = NULL, special_requirements = NULL, lost_reason = NULL, hotel_preference = NULL, meal_preference = NULL WHERE contact_id = ?`, contactId)

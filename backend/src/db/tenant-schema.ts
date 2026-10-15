@@ -393,6 +393,9 @@ export const invoices = sqliteTable('invoices', {
   notes: text('notes'),
   bankDetails: text('bank_details'), // JSON text
   paymentLink: text('payment_link'),
+  paymentLinkId: text('payment_link_id'), // the agency's own gateway link (R207)
+  paymentLinkUrl: text('payment_link_url'),
+  paymentLinkStatus: text('payment_link_status'), // created, paid, expired, cancelled
   createdBy: text('created_by').references(() => users.id),
   createdAt: text('created_at').default(timestamp),
   updatedAt: text('updated_at').default(timestamp),
@@ -2565,3 +2568,31 @@ export const assistantMessageAnalysis = sqliteTable('assistant_message_analysis'
   costEstimate: real('cost_estimate').default(0),
   createdAt: text('created_at').default(timestamp),
 });
+
+// R207: the agency's own Razorpay or Stripe account. Secrets are sealed (crypto-box) and never returned.
+export const paymentGatewayAccounts = sqliteTable('payment_gateway_accounts', {
+  id: text('id').primaryKey(),
+  gateway: text('gateway').notNull(), // razorpay, stripe
+  mode: text('mode').notNull().default('test'), // test, live
+  keyId: text('key_id'),
+  secretEnc: text('secret_enc'),
+  secretLast4: text('secret_last4'),
+  webhookSecretEnc: text('webhook_secret_enc'),
+  isActive: integer('is_active').notNull().default(1),
+  lastTestedAt: text('last_tested_at'),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  uniqueIndex('payment_gateway_accounts_gateway_idx').on(table.gateway),
+]);
+
+// R207: verified gateway events, processed once (primary key = gateway + the provider's event id).
+export const paymentEvents = sqliteTable('payment_events', {
+  gateway: text('gateway').notNull(),
+  eventId: text('event_id').notNull(),
+  eventType: text('event_type'),
+  paymentId: text('payment_id'),
+  receivedAt: text('received_at').notNull().default(timestamp),
+}, (table) => [
+  primaryKey({ columns: [table.gateway, table.eventId] }),
+]);

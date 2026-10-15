@@ -983,5 +983,16 @@ export const TENANT_MIGRATIONS: BundledMigration[] = [
       "--> statement-breakpoint\nCREATE INDEX IF NOT EXISTS contact_consents_contact_idx ON contact_consents(contact_id, purpose, captured_at)",
       "--> statement-breakpoint\nALTER TABLE contacts ADD COLUMN erased_at TEXT"
     ]
+  },
+  {
+    "name": "0054_payment_links.sql",
+    "queries": [
+      "-- R207: an agency collects from its own customers through its OWN Razorpay or Stripe account.\n-- None of this touches the platform's billing tables: the keys, the links and the events are the agency's.\n\n-- The agency's gateway account. The secret key and the webhook secret are sealed (utils/crypto-box.ts, R108) and\n-- never returned; secret_last4 is the only hint shown back. One account per gateway.\nCREATE TABLE IF NOT EXISTS payment_gateway_accounts (\n  id TEXT PRIMARY KEY,\n  gateway TEXT NOT NULL CHECK (gateway IN ('razorpay', 'stripe')),\n  mode TEXT NOT NULL DEFAULT 'test' CHECK (mode IN ('test', 'live')),\n  key_id TEXT,\n  secret_enc TEXT,\n  secret_last4 TEXT,\n  webhook_secret_enc TEXT,\n  is_active INTEGER NOT NULL DEFAULT 1,\n  last_tested_at TEXT,\n  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\n  updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))\n)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS payment_gateway_accounts_gateway_idx ON payment_gateway_accounts(gateway)",
+      "-- The payment link currently offered on an invoice.\nALTER TABLE invoices ADD COLUMN payment_link_id TEXT",
+      "ALTER TABLE invoices ADD COLUMN payment_link_url TEXT",
+      "ALTER TABLE invoices ADD COLUMN payment_link_status TEXT",
+      "-- Every verified gateway event is processed once: the event claims its row here before any side effect.\nCREATE TABLE IF NOT EXISTS payment_events (\n  gateway TEXT NOT NULL,\n  event_id TEXT NOT NULL,\n  event_type TEXT,\n  payment_id TEXT,\n  received_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\n  PRIMARY KEY (gateway, event_id)\n)"
+    ]
   }
 ];
