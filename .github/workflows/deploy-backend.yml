@@ -15,6 +15,7 @@ jobs:
       CF_KV_CACHE_ID: ${{ secrets.CF_KV_CACHE_ID }}
       CF_KV_SESSIONS_ID: ${{ secrets.CF_KV_SESSIONS_ID }}
       CF_KV_REPORT_CACHE_ID: ${{ secrets.CF_KV_REPORT_CACHE_ID }}
+      DOMAIN: ${{ vars.TRAVELCRM_DOMAIN }}
       APP_URL: ${{ vars.APP_URL }}
       API_URL: ${{ vars.API_URL }}
       CORS_ORIGINS: ${{ vars.CORS_ORIGINS }}

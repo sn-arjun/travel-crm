@@ -4,7 +4,7 @@
  *   node scripts/gen-wrangler.selftest.mjs
  */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -73,6 +73,47 @@ try {
   const r3 = run(['--env', 'local', '--pool', '3', '--single', '--out', loc]);
   const lt = readFileSync(loc, 'utf8');
   check(r3.status === 0 && tenantDbs(lt) === 3 && /TENANCY_MODE = "single"/.test(lt) && !/^\[env\./m.test(lt), 'local --pool 3 --single: 3 pool DBs, single mode, no env section');
+
+  // ---- first deploy from an empty registry, and the explicit config (--from-d1-remote) ----
+  const fake = path.join(here, 'fixtures', 'fake-wrangler.mjs');
+  const log = path.join(tmp, 'wrangler-calls.jsonl');
+  const remoteEnv = { ...ids, GEN_WRANGLER_BIN: fake, FAKE_WRANGLER_LOG: log };
+  const lines = () => (existsSync(log) ? readFileSync(log, "utf8").trim().split(String.fromCharCode(10)).map((l) => l.trim()).filter(Boolean).map((l) => JSON.parse(l)) : []);
+
+  const first = path.join(tmp, 'first.toml');
+  const r4 = run(['--env', 'production', '--from-d1-remote', '--out', first], { ...remoteEnv, FAKE_WRANGLER_ROWS: '[]' });
+  check(r4.status === 0, `first deploy: empty registry exits 0 ${r4.status === 0 ? '' : r4.stderr}`);
+  const ft = readFileSync(first, 'utf8');
+  check(tenantDbs(ft) === 0 && /binding = "MASTER_DB"/.test(ft) && ft.includes(ids.CF_D1_MASTER_ID), 'first deploy: config holds MASTER_DB with the real master id and no agencies');
+  check(!/a0000000-/.test(ft), 'first deploy: no placeholder master id');
+  const call = lines()[0];
+  check(!!call && call.args[call.args.indexOf('-c') + 1] === first, 'wrangler is given the generated config explicitly with -c');
+  check(!!call && call.args.includes('--env') && call.args[call.args.indexOf('--env') + 1] === 'production', 'wrangler is given --env production');
+  check(!!call && call.cfg.includes(ids.CF_D1_MASTER_ID) && !/a0000000-/.test(call.cfg), 'the config wrangler reads has the real master id, not wrangler.toml placeholder');
+
+  const second = path.join(tmp, 'second.toml');
+  const rows = JSON.stringify([{ id: 'aaaaaaaa-0000-4000-8000-000000000001', db_binding: 'TENANT_DB_aaaa0000', d1_database_id: 'f0000000-0000-4000-8000-000000000001', status: 'active' }]);
+  const r5 = run(['--env', 'production', '--from-d1-remote', '--out', second], { ...remoteEnv, FAKE_WRANGLER_ROWS: rows });
+  check(r5.status === 0 && tenantDbs(readFileSync(second, 'utf8')) === 2, 'registry with one agency: tenant D1 entry present at top level and in [env.production]');
+
+  const r6 = run(['--env', 'production', '--from-d1-remote', '--out', path.join(tmp, 'noid.toml')], { ...remoteEnv, CF_D1_MASTER_ID: '' });
+  check(r6.status !== 0 && /CF_D1_MASTER_ID/.test(r6.stderr), '--from-d1-remote without CF_D1_MASTER_ID is refused');
+
+  const r7 = run(['--env', 'production', '--from-d1-remote', '--out', path.join(tmp, 'nt.toml')], { ...remoteEnv, FAKE_WRANGLER_FAIL: 'D1_ERROR: no such table: tenants' });
+  check(r7.status !== 0 && /master migrations/.test(r7.stderr), 'missing tenants table explains that master migrations come first');
+
+  const r8 = run(['--env', 'staging', '--from-d1-remote', '--dry-run', '--out', path.join(tmp, 'dry.toml')], ids);
+  check(r8.status === 0 && /-c /.test(r8.stdout) && /--env staging/.test(r8.stdout), 'dry-run prints the command with -c and --env');
+
+  // ---- domain placeholder: one definition, everything else derived ----
+  const dom = path.join(tmp, 'dom.toml');
+  run(['--env', 'production', '--registry', sample, '--out', dom], { ...ids, DOMAIN: 'acme.test', APP_URL: '', API_URL: '', CORS_ORIGINS: '', EMAIL_FROM: '' });
+  const dt = readFileSync(dom, 'utf8');
+  check(dt.includes("CORS_ORIGINS = \"https://app.acme.test,https://acme.test,https://www.acme.test\""), "CORS_ORIGINS defaults to the web app and landing origins of DOMAIN");
+  check(dt.includes("APP_URL = \"https://app.acme.test\"") && dt.includes("API_URL = \"https://api.acme.test\"") && dt.includes("EMAIL_FROM = \"noreply@acme.test\""), "APP_URL, API_URL and EMAIL_FROM derive from DOMAIN");
+  const dflt = path.join(tmp, 'dflt.toml');
+  run(['--env', 'production', '--registry', sample, '--out', dflt], { ...ids, DOMAIN: '', APP_URL: '', API_URL: '', CORS_ORIGINS: '', EMAIL_FROM: '' });
+  check(readFileSync(dflt, "utf8").includes("https://app.YOUR-DOMAIN.example"), "without DOMAIN the clearly marked YOUR-DOMAIN.example placeholder is used");
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

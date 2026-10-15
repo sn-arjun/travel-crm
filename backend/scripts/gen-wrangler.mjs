@@ -12,7 +12,14 @@
  *
  * Registry JSON: [{ tenantId, binding, databaseName, databaseId, status }]
  * Env vars (non-local): CF_D1_MASTER_ID, CF_KV_CACHE_ID, CF_KV_SESSIONS_ID, CF_KV_REPORT_CACHE_ID,
- *   APP_URL, API_URL, CORS_ORIGINS, EMAIL_FROM.
+ *   DOMAIN (the one place the public domain is set; APP_URL, API_URL, CORS_ORIGINS and EMAIL_FROM default
+ *   from it), and the explicit overrides APP_URL, API_URL, CORS_ORIGINS, EMAIL_FROM.
+ *
+ * --from-d1-remote: FIRST writes the config with an EMPTY registry (real master id, no agencies), then
+ *   reads the registry with `wrangler d1 execute ... -c <that file> [--env <env>]`, so the placeholder
+ *   master id in backend/wrangler.toml is never used, then rewrites the file with the agencies found.
+ *   First deploy from an empty registry therefore yields a valid config with zero agencies.
+ *   GEN_WRANGLER_BIN=<script.mjs> replaces `npx wrangler` (used by the self-test).
  */
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -22,6 +29,9 @@ import { fileURLToPath } from 'node:url';
 const backendDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ENVS = ['local', 'dev', 'staging', 'production'];
 const PLACEHOLDER_MASTER = 'a0000000-0000-0000-0000-000000000001';
+// PLACEHOLDER DOMAIN: the owner has not chosen one yet. This is the ONLY place the backend toolchain names it;
+// set DOMAIN in the environment (or APP_URL / API_URL / EMAIL_FROM directly) to override. See docs/GO-LIVE.md.
+export const PLACEHOLDER_DOMAIN = 'YOUR-DOMAIN.example';
 
 function die(msg) {
   console.error(`gen-wrangler: ${msg}`);
@@ -100,18 +110,30 @@ export function normaliseRegistry(rows) {
 
 const REMOTE_QUERY = 'SELECT id, db_binding, d1_database_id, status FROM tenants WHERE db_binding IS NOT NULL';
 
-function registryFromD1Remote(dryRun) {
-  const args = ['wrangler', 'd1', 'execute', 'travelcrm-master', '--remote', '--json', '--command', REMOTE_QUERY];
+export function d1RemoteArgs(configFile, env) {
+  return ['d1', 'execute', 'travelcrm-master', '--remote', '-c', configFile, ...(env === 'local' ? [] : ['--env', env]), '--json', '--command', REMOTE_QUERY];
+}
+
+function registryFromD1Remote(configFile, env, dryRun) {
+  const wargs = d1RemoteArgs(configFile, env);
   if (dryRun) {
-    console.log(`gen-wrangler (dry-run): would run: npx ${args.map((x) => (x.includes(' ') ? q(x) : x)).join(' ')}`);
+    console.log(`gen-wrangler (dry-run): would run: npx wrangler ${wargs.map((x) => (x.includes(' ') ? q(x) : x)).join(' ')}`);
     return null;
   }
-  const r = spawnSync('npx', args.map((x) => (process.platform === 'win32' && x.includes(' ') ? q(x) : x)), {
-    cwd: backendDir,
-    encoding: 'utf8',
-    shell: process.platform === 'win32',
-  });
-  if (r.status !== 0) die(`wrangler d1 execute failed:\n${r.stderr || r.stdout}`);
+  const bin = process.env.GEN_WRANGLER_BIN;
+  const r = bin
+    ? spawnSync(process.execPath, [bin, ...wargs], { cwd: backendDir, encoding: 'utf8' })
+    : spawnSync('npx', ['wrangler', ...wargs.map((x) => (process.platform === 'win32' && x.includes(' ') ? q(x) : x))], {
+        cwd: backendDir,
+        encoding: 'utf8',
+        shell: process.platform === 'win32',
+      });
+  if (r.status !== 0) {
+    const msg = `${r.stderr || ''}${r.stdout || ''}`;
+    if (/no such table/i.test(msg)) die('the master database has no tenants table yet: run the master migrations first (docs/GO-LIVE.md phase 3), then re-run.');
+    die(`wrangler d1 execute failed:
+${msg}`);
+  }
   const parsed = JSON.parse(r.stdout);
   const rows = (Array.isArray(parsed) ? parsed : [parsed]).flatMap((p) => p.results ?? []);
   return rows.map((x) => ({ tenantId: x.id, binding: x.db_binding, databaseId: x.d1_database_id, status: x.status }));
@@ -166,16 +188,17 @@ export function buildConfig({ env, registry, pool, single, tenantSchemaMaster = 
     );
   }
 
-  const appUrl = process.env.APP_URL || (env === 'local' ? 'http://localhost:3000' : 'https://app.travelcrm.example');
-  const apiUrl = process.env.API_URL || (env === 'local' ? 'http://localhost:8787' : 'https://api.travelcrm.example');
+  const domain = process.env.DOMAIN || PLACEHOLDER_DOMAIN;
+  const appUrl = process.env.APP_URL || (env === 'local' ? 'http://localhost:3000' : `https://app.${domain}`);
+  const apiUrl = process.env.API_URL || (env === 'local' ? 'http://localhost:8787' : `https://api.${domain}`);
   const vars = [
     '[vars]',
     `ENVIRONMENT = ${q(env === 'local' ? 'development' : env)}`,
     `TENANCY_MODE = ${q(single ? 'single' : 'multi')}`,
     `APP_URL = ${q(appUrl)}`,
     `API_URL = ${q(apiUrl)}`,
-    `CORS_ORIGINS = ${q(process.env.CORS_ORIGINS || appUrl)}`,
-    `EMAIL_FROM = ${q(process.env.EMAIL_FROM || 'noreply@travelcrm.example')}`,
+    `CORS_ORIGINS = ${q(process.env.CORS_ORIGINS || (env === "local" ? appUrl : `${appUrl},https://${domain},https://www.${domain}`))}`,
+    `EMAIL_FROM = ${q(process.env.EMAIL_FROM || `noreply@${domain}`)}`,
   ].join('\n');
 
   const bodyBlocks = [...d1.map((text) => ({ text })), ...blocks.slice(1), { text: vars }];
@@ -200,18 +223,26 @@ export function buildConfig({ env, registry, pool, single, tenantSchemaMaster = 
 function main() {
   const args = parseArgs(process.argv.slice(2));
   let registry = [];
+  const outFile = args.out ? path.resolve(process.cwd(), args.out) : path.join(backendDir, `.wrangler.${args.env}.toml`);
   if (args.env !== 'local') {
     if (args.fromD1) {
-      const rows = registryFromD1Remote(args.dryRun);
+      const master = process.env.CF_D1_MASTER_ID;
+      if (!master || master === PLACEHOLDER_MASTER) {
+        if (args.dryRun) console.log('gen-wrangler (dry-run): CF_D1_MASTER_ID is not set; a real run would stop here.');
+        else die('--from-d1-remote needs CF_D1_MASTER_ID (the real master database id, terraform output d1_master_database_id).');
+      }
+      // Pass 1: base config with an empty registry, so wrangler reads the real master id, never wrangler.toml's placeholder.
+      if (!args.dryRun) writeFileSync(outFile, buildConfig({ env: args.env, registry: [], pool: args.pool, single: args.single }));
+      const rows = registryFromD1Remote(outFile, args.env, args.dryRun);
       if (rows === null) return;
       registry = normaliseRegistry(rows);
+      if (registry.length === 0) console.log('gen-wrangler: the agency registry is empty (first deploy): the config will hold the master database only.');
     } else if (args.registry) {
       registry = normaliseRegistry(JSON.parse(readFileSync(path.resolve(process.cwd(), args.registry), 'utf8')));
     } else {
       die('non-local environments need --registry <json> or --from-d1-remote');
     }
   }
-  const outFile = args.out ? path.resolve(process.cwd(), args.out) : path.join(backendDir, `.wrangler.${args.env}.toml`);
   writeFileSync(outFile, buildConfig({ env: args.env, registry, pool: args.pool, single: args.single }));
   const what = args.env === 'local' ? `${args.pool} pool databases` : `${registry.length} agencies`;
   console.log(`gen-wrangler: wrote ${outFile} (${args.env}, ${what}, TENANCY_MODE=${args.single ? 'single' : 'multi'})`);
