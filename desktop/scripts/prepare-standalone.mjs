@@ -1,8 +1,9 @@
 // After `next build`: Next's standalone output does not include .next/static or public/. Copy them
-// next to server.js, and write electron/dist/build-config.json (build-time API URL default).
+// next to server.js, and write electron/dist/build-config.json (build-time API URL and update feed).
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildConfigJson } from './build-urls.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const standalone = path.join(root, '.next', 'standalone');
@@ -56,6 +57,6 @@ console.log(`prepare-standalone: static assets copied next to ${path.relative(ro
 
 const distDir = path.join(root, 'electron', 'dist');
 fs.mkdirSync(distDir, { recursive: true });
-const apiUrl = process.env.TRAVELCRM_API_URL;
-fs.writeFileSync(path.join(distDir, 'build-config.json'), JSON.stringify(apiUrl ? { apiUrl } : {}, null, 2));
-console.log(`prepare-standalone: build-config.json ${apiUrl ? `apiUrl=${apiUrl}` : '(no TRAVELCRM_API_URL; default applies)'}`);
+const buildConfig = buildConfigJson(process.env);
+fs.writeFileSync(path.join(distDir, 'build-config.json'), JSON.stringify(buildConfig, null, 2));
+console.log(`prepare-standalone: build-config.json apiUrl=${buildConfig.apiUrl ?? '(default applies)'} updateUrl=${buildConfig.updateUrl ?? '(none: no auto-update)'}`);

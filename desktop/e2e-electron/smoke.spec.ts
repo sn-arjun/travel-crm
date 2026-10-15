@@ -156,3 +156,23 @@ test('the updater reports update-available from a local feed', async () => {
     server.close();
   }
 });
+
+test('the update feed baked into the installer is used without TRAVELCRM_UPDATE_URL in the environment', async () => {
+  // A customer PC has no such variable. The installer must have been built with TRAVELCRM_UPDATE_URL (or DOMAIN) set,
+  // e.g. TRAVELCRM_UPDATE_URL=http://127.0.0.1:19999/feed/ npm run build:desktop, and E2E_EXPECT_FEED set to the same value.
+  const installed = ['.', '..'].some((d) => fs.existsSync(path.resolve(__dirname, '..', d, 'node_modules', 'electron-updater')));
+  test.skip(!installed, 'electron-updater is not installed in the build');
+  const userData = profile('baked-feed', API_URL);
+  const app = await launch(userData, { TRAVELCRM_UPDATE_URL: '' });
+  try {
+    const log = path.join(userData, 'logs', 'updater.log');
+    await waitUntil(() => fs.existsSync(log) && /updater (enabled|disabled)/.test(fs.readFileSync(log, 'utf8')), 60_000, 'the updater to report its state');
+    const text = fs.readFileSync(log, 'utf8');
+    const m = /updater enabled \(feed=build-config:(\S+)\)/.exec(text);
+    expect(m, `updater.log should say the baked feed is in use, got:\n${text}`).not.toBeNull();
+    if (process.env.E2E_EXPECT_FEED) expect(m![1]).toBe(process.env.E2E_EXPECT_FEED);
+    expect(text).not.toContain('feed=unset');
+  } finally {
+    await app.close();
+  }
+});
