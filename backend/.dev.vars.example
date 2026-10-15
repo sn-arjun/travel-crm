@@ -52,6 +52,8 @@ PLATFORM_SUPPORT_EMAIL=
 SENDGRID_WEBHOOK_PUBLIC_KEY=
 # Shared secret in the SendGrid Inbound Parse URL (/webhooks/inbound/email/:secret).
 INBOUND_EMAIL_SECRET=
+# HMAC key of the unsubscribe links in marketing messages. Blank: derived from JWT_SECRET (set it in production).
+UNSUB_SECRET=
 
 # --- SMS, WhatsApp, login codes (Twilio). Blank: nothing is sent ---
 TWILIO_ACCOUNT_SID=

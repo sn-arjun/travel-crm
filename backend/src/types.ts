@@ -52,6 +52,8 @@ export interface Env {
   GOOGLE_MAPS_API_KEY?: string;
   // Shared secret in the SendGrid Inbound Parse URL (/webhooks/inbound/email/:secret)
   INBOUND_EMAIL_SECRET?: string;
+  /** R208: HMAC key of the public unsubscribe links in marketing messages (falls back to a key derived from JWT_SECRET). */
+  UNSUB_SECRET?: string;
   TEST_MODE?: string;
   /** 'mock' selects the in-memory VoIP provider (never in production). */
   VOIP_PROVIDER?: string;

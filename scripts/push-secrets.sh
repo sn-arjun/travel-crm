@@ -55,6 +55,7 @@ SECRET_MAP=(
   "sendgrid_api_key:SENDGRID_API_KEY"
   "sendgrid_webhook_public_key:SENDGRID_WEBHOOK_PUBLIC_KEY"
   "inbound_email_secret:INBOUND_EMAIL_SECRET"
+  "unsub_secret:UNSUB_SECRET"
   "twilio_account_sid:TWILIO_ACCOUNT_SID"
   "twilio_auth_token:TWILIO_AUTH_TOKEN"
   "twilio_verify_service_sid:TWILIO_VERIFY_SERVICE_SID"

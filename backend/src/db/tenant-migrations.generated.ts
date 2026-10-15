@@ -975,5 +975,13 @@ export const TENANT_MIGRATIONS: BundledMigration[] = [
       "--> statement-breakpoint\nALTER TABLE users ADD COLUMN recovery_codes_hash TEXT",
       "--> statement-breakpoint\nALTER TABLE users ADD COLUMN totp_last_step INTEGER"
     ]
+  },
+  {
+    "name": "0052_contact_consents.sql",
+    "queries": [
+      "-- R208: consent records (append-only: the app never updates or deletes a row except erasure, which clears evidence) and an erasure marker on contacts.\nCREATE TABLE IF NOT EXISTS contact_consents (\n  id TEXT PRIMARY KEY,\n  contact_id TEXT NOT NULL REFERENCES contacts(id),\n  channel TEXT NOT NULL DEFAULT 'any',\n  purpose TEXT NOT NULL DEFAULT 'marketing',\n  status TEXT NOT NULL,\n  source TEXT NOT NULL DEFAULT 'manual',\n  captured_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\n  evidence TEXT,\n  captured_by TEXT\n)",
+      "--> statement-breakpoint\nCREATE INDEX IF NOT EXISTS contact_consents_contact_idx ON contact_consents(contact_id, purpose, captured_at)",
+      "--> statement-breakpoint\nALTER TABLE contacts ADD COLUMN erased_at TEXT"
+    ]
   }
 ];

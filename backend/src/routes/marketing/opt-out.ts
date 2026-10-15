@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { AppContext } from '../../types';
 import { requirePermission } from '../../middleware/rbac';
 import { success, error, notFound, paginated } from '../../utils/response';
+import { withdrawMarketing, grantMarketing, CONSENT_CHANNELS, type ConsentChannel } from '../../services/privacy/consent';
 
 const optOutRoutes = new Hono<AppContext>();
 
@@ -87,12 +88,9 @@ optOutRoutes.post(
     const channel = typeof body?.channel === 'string' ? body.channel : 'manual';
     const reason = typeof body?.reason === 'string' ? body.reason : null;
 
-    await db
-      .prepare(
-        'UPDATE contacts SET opted_out = 1, opted_out_at = ?, opt_out_channel = ?, opt_out_reason = ?, updated_at = ? WHERE id = ?'
-      )
-      .bind(new Date().toISOString(), channel, reason, new Date().toISOString(), contactId)
-      .run();
+    // R208: the opt-out is also a consent record (append-only) so the history shows who withdrew and when
+    const consentChannel: ConsentChannel = (CONSENT_CHANNELS as readonly string[]).includes(channel) && channel !== 'call' ? (channel as ConsentChannel) : 'any';
+    await withdrawMarketing(db, contactId, consentChannel, 'manual', { reason, label: channel, capturedBy: c.get('userId') });
 
     return success(c, { opted_out: true });
   }
@@ -115,12 +113,7 @@ optOutRoutes.post(
       .first();
     if (!contact) return notFound(c, 'Contact');
 
-    await db
-      .prepare(
-        'UPDATE contacts SET opted_out = 0, opted_out_at = NULL, opt_out_channel = NULL, opt_out_reason = NULL, updated_at = ? WHERE id = ?'
-      )
-      .bind(new Date().toISOString(), contactId)
-      .run();
+    await grantMarketing(db, contactId, 'any', 'manual', { capturedBy: c.get('userId') });
 
     return success(c, { opted_out: false });
   }

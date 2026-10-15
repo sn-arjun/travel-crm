@@ -17,7 +17,10 @@ import {
   activityLogs,
   notifications,
 } from '../db/tenant-schema';
-import { requirePermission } from '../middleware/rbac';
+import { requirePermission, rbac } from '../middleware/rbac';
+import { recordConsent, withdrawMarketing, grantMarketing, CONSENT_CHANNELS, CONSENT_PURPOSES, CONSENT_SOURCES, type ConsentChannel } from '../services/privacy/consent';
+import { buildContactExport, storeContactExport } from '../services/privacy/export-contact';
+import { eraseContact } from '../services/privacy/erase-contact';
 import { generateId } from '../utils/uuid';
 import { logActivity } from '../utils/activity-logger';
 import { tenantToday } from '../utils/tz';
@@ -55,9 +58,28 @@ const createContactSchema = z.object({
   anniversary: z.string().optional().nullable(),
   preferredLanguage: z.string().optional().default('en'),
   customFields: z.record(z.string(), z.any()).optional(),
+  // R208: consent given when the contact was created (recorded in contact_consents). Channels the person agreed to be marketed to on.
+  consent: z
+    .object({
+      marketing: z.array(z.enum(CONSENT_CHANNELS)).max(5).optional(),
+      source: z.enum(['form', 'manual', 'chatbot']).optional(),
+      evidence: z.record(z.string(), z.any()).optional(),
+    })
+    .optional(),
 });
 
-const updateContactSchema = createContactSchema.partial();
+const updateContactSchema = createContactSchema.omit({ consent: true }).partial();
+
+const consentBodySchema = z.object({
+  channel: z.enum(CONSENT_CHANNELS).default('any'),
+  purpose: z.enum(CONSENT_PURPOSES).default('marketing'),
+  status: z.enum(['granted', 'withdrawn']),
+  source: z.enum(CONSENT_SOURCES).default('manual'),
+  evidence: z.record(z.string(), z.any()).optional(),
+});
+
+const ERASE_PHRASE = 'ERASE CONTACT';
+const eraseBodySchema = z.object({ confirmation: z.string() });
 
 const duplicateCheckSchema = z.object({
   email: z.string().email().optional(),
@@ -223,7 +245,7 @@ contactRoutes.post(
     const db = drizzle(c.get('tenantDb'));
 
     const id = generateId();
-    const { customFields, ...contactData } = data;
+    const { customFields, consent, ...contactData } = data;
 
     await db.insert(contacts).values({
       id,
@@ -248,6 +270,20 @@ contactRoutes.post(
 
       if (cfValues.length > 0) {
         await db.insert(contactCustomFieldValues).values(cfValues);
+      }
+    }
+
+    if (consent?.marketing?.length) {
+      for (const channel of consent.marketing) {
+        await recordConsent(c.get('tenantDb'), {
+          contactId: id,
+          channel,
+          purpose: 'marketing',
+          status: 'granted',
+          source: consent.source ?? 'manual',
+          evidence: consent.evidence ?? null,
+          capturedBy: userId,
+        });
       }
     }
 
@@ -431,6 +467,8 @@ contactRoutes.post('/import', requirePermission('contacts', 'import'), async (c)
     tags: 'tags', notes: 'notes', source: 'source', birthday: 'birthday',
     anniversary: 'anniversary', preferred_language: 'preferredLanguage',
     language: 'preferredLanguage',
+    // R208: a yes/true/1 here records marketing consent (source import) for the imported contact
+    marketing_consent: 'marketingConsent', consent: 'marketingConsent',
   };
 
   let imported = 0;
@@ -458,8 +496,9 @@ contactRoutes.post('/import', requirePermission('contacts', 'import'), async (c)
       record.type = record.type || 'customer';
       record.tags = record.tags ? JSON.stringify(record.tags.split(';').map((t: string) => t.trim())) : '[]';
 
+      const importedId = generateId();
       await db.insert(contacts).values({
-        id: generateId(),
+        id: importedId,
         name: record.name as string,
         type: record.type as string,
         email: record.email || null,
@@ -478,6 +517,17 @@ contactRoutes.post('/import', requirePermission('contacts', 'import'), async (c)
         preferredLanguage: record.preferredLanguage || 'en',
         createdBy: userId,
       });
+      if (/^(yes|true|1|y)$/i.test(String(record.marketingConsent ?? '').trim())) {
+        await recordConsent(c.get('tenantDb'), {
+          contactId: importedId,
+          channel: 'any',
+          purpose: 'marketing',
+          status: 'granted',
+          source: 'import',
+          evidence: { file: file.name },
+          capturedBy: userId,
+        });
+      }
       imported++;
     } catch (err: any) {
       skipped++;
@@ -1063,6 +1113,104 @@ contactRoutes.delete('/:id', requirePermission('contacts', 'delete'), async (c) 
   });
 
   return success(c, { message: 'Contact deleted' });
+});
+
+// ============================================================
+// R208 privacy: consent history, data export and erasure
+// ============================================================
+
+async function consentHistory(tenantDb: D1Database, contactId: string) {
+  const { results } = await tenantDb
+    .prepare(
+      `SELECT k.id, k.channel, k.purpose, k.status, k.source, k.captured_at, k.evidence, k.captured_by, u.name AS captured_by_name
+       FROM contact_consents k LEFT JOIN users u ON u.id = k.captured_by
+       WHERE k.contact_id = ? ORDER BY k.captured_at DESC, k.id DESC`
+    )
+    .bind(contactId)
+    .all<any>();
+  const history = (results ?? []).map((r) => ({
+    id: r.id,
+    channel: r.channel,
+    purpose: r.purpose,
+    status: r.status,
+    source: r.source,
+    capturedAt: r.captured_at,
+    evidence: r.evidence ? safeJson(r.evidence) : null,
+    capturedBy: r.captured_by,
+    capturedByName: r.captured_by_name ?? null,
+  }));
+  // The newest record per purpose and channel is the current state.
+  const current: Record<string, string> = {};
+  for (const h of [...history].reverse()) current[`${h.purpose}:${h.channel}`] = h.status;
+  return { history, current };
+}
+
+function safeJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+contactRoutes.get('/:id/consents', requirePermission('contacts', 'view'), async (c) => {
+  const contactId = c.req.param('id');
+  const tenantDb = c.get('tenantDb');
+  const exists = await tenantDb.prepare('SELECT id FROM contacts WHERE id = ?').bind(contactId).first();
+  if (!exists) return notFound(c, 'Contact');
+  return success(c, await consentHistory(tenantDb, contactId));
+});
+
+// Append one consent record. Marketing records also move the contact's opted_out switch.
+contactRoutes.post('/:id/consents', requirePermission('contacts', 'edit'), zValidator('json', consentBodySchema), async (c) => {
+  const contactId = c.req.param('id');
+  const body = c.req.valid('json');
+  const tenantDb = c.get('tenantDb');
+  const userId = c.get('userId');
+  const contact = await tenantDb.prepare('SELECT id, erased_at FROM contacts WHERE id = ? AND is_deleted = 0').bind(contactId).first<{ id: string; erased_at: string | null }>();
+  if (!contact) return notFound(c, 'Contact');
+
+  const opts = { capturedBy: userId, evidence: body.evidence ?? null };
+  if (body.purpose === 'marketing' && body.status === 'withdrawn') {
+    await withdrawMarketing(tenantDb, contactId, body.channel as ConsentChannel, body.source, opts);
+  } else if (body.purpose === 'marketing') {
+    await grantMarketing(tenantDb, contactId, body.channel as ConsentChannel, body.source, opts);
+  } else {
+    await recordConsent(tenantDb, { contactId, channel: body.channel, purpose: body.purpose, status: body.status, source: body.source, ...opts });
+  }
+  return created(c, await consentHistory(tenantDb, contactId));
+});
+
+// Everything held about the contact, as JSON stored in R2 and handed back as a signed link that expires in 15 minutes.
+contactRoutes.post('/:id/privacy-export', rbac(['admin']), async (c) => {
+  const contactId = c.req.param('id');
+  const tenantDb = c.get('tenantDb');
+  const tenantId = c.get('tenantId');
+  const contact = await tenantDb.prepare('SELECT id, erased_at FROM contacts WHERE id = ?').bind(contactId).first<{ id: string; erased_at: string | null }>();
+  if (!contact) return notFound(c, 'Contact');
+  if (contact.erased_at) return error(c, 'This contact was erased; nothing is held to export', 410);
+
+  const bundle = await buildContactExport(c.env, tenantDb, tenantId, contactId);
+  const stored = await storeContactExport(c.env, tenantId, contactId, bundle);
+  await logActivity(tenantDb, {
+    userId: c.get('userId'),
+    action: 'privacy_export',
+    entityType: 'contact',
+    entityId: contactId,
+    details: JSON.stringify({ tables: Object.keys(stored.summary).length, files: stored.fileCount }),
+    ipAddress: c.get('clientIp'),
+  });
+  return success(c, stored);
+});
+
+// Erase the contact's personal data. The body must carry the confirmation phrase.
+contactRoutes.post('/:id/erase', rbac(['admin']), zValidator('json', eraseBodySchema), async (c) => {
+  const contactId = c.req.param('id');
+  const { confirmation } = c.req.valid('json');
+  if (confirmation.trim() !== ERASE_PHRASE) return error(c, `Type ${ERASE_PHRASE} to confirm`, 400);
+  const result = await eraseContact(c.env, c.get('tenantDb'), c.get('tenantId'), contactId, c.get('userId'));
+  if (!result) return notFound(c, 'Contact');
+  return success(c, result);
 });
 
 // ============================================================

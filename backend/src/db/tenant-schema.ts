@@ -66,6 +66,7 @@ export const contacts = sqliteTable('contacts', {
   optedOutAt: text('opted_out_at'),
   optOutChannel: text('opt_out_channel'), // email, sms, whatsapp, manual
   optOutReason: text('opt_out_reason'), // user-provided reason for opting out
+  erasedAt: text('erased_at'), // R208: set when the personal data was erased (the row stays, anonymised, for invoices)
   isDeleted: integer('is_deleted').default(0),
   createdBy: text('created_by').references(() => users.id),
   createdAt: text('created_at').default(timestamp),
@@ -1060,6 +1061,21 @@ export const emailMessageLog = sqliteTable('email_message_log', {
 // ============================================================
 // EMAIL UNSUBSCRIBES (TICKET-155)
 // ============================================================
+
+// R208: append-only record of what a contact agreed to, where and when
+export const contactConsents = sqliteTable('contact_consents', {
+  id: text('id').primaryKey(),
+  contactId: text('contact_id').notNull().references(() => contacts.id),
+  channel: text('channel').notNull().default('any'), // email, whatsapp, sms, call, any
+  purpose: text('purpose').notNull().default('marketing'), // marketing, service, recording
+  status: text('status').notNull(), // granted, withdrawn
+  source: text('source').notNull().default('manual'), // form, import, manual, unsubscribe_link, chatbot
+  capturedAt: text('captured_at').notNull().default(timestamp),
+  evidence: text('evidence'), // JSON: how it was captured; cleared on erasure
+  capturedBy: text('captured_by'), // user id who recorded it; null when the contact acted themselves
+}, (table) => [
+  index('contact_consents_contact_idx').on(table.contactId, table.purpose, table.capturedAt),
+]);
 
 export const unsubscribes = sqliteTable('unsubscribes', {
   id: text('id').primaryKey(),
