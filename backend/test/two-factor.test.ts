@@ -129,7 +129,7 @@ describe('TOTP primitives (RFC 6238 / RFC 4226)', () => {
     const uri = otpauthUri('JBSWY3DPEHPK3PXP', 'a@b.test', 'TravelCRM Pro');
     expect(uri).toMatch(/^otpauth:\/\/totp\/TravelCRM%20Pro:a%40b\.test\?/);
     expect(uri).toContain('secret=JBSWY3DPEHPK3PXP');
-    expect(uri).toContain('period=30');
+    expect(uri).toContain('issuer=TravelCRM%20Pro');
   });
 
   it('accepts one step either side, refuses two, and never accepts a step twice', async () => {

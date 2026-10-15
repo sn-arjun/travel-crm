@@ -2,14 +2,28 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { ShieldCheck, Smartphone } from 'lucide-react';
-import { PageHeader, SectionCard, Badge, Button } from '@/components/ui';
+import { ShieldCheck } from 'lucide-react';
+import { PageHeader, SectionCard, Button } from '@/components/ui';
 import { PageContainer } from '@/components/layout/page-container';
 import { ChangePasswordForm } from '@/components/auth/change-password-form';
+import { TwoFactorCard } from '@/components/auth/two-factor-card';
+import { useAuthStore } from '@/stores/auth-store';
+import { authApi } from '@/lib/api/auth';
 
 export default function SecuritySettingsPage() {
   const router = useRouter();
   const [formKey, setFormKey] = React.useState(0);
+  const setupRequired = useAuthStore((s) => s.twoFactorSetupRequired);
+
+  async function signOut() {
+    try {
+      await authApi.logout();
+    } catch {
+      // The session is dropped locally either way.
+    }
+    useAuthStore.getState().logout();
+    router.replace('/login');
+  }
 
   return (
     <PageContainer width="narrow">
@@ -23,6 +37,19 @@ export default function SecuritySettingsPage() {
         }
       />
 
+      {setupRequired && (
+        <div
+          role="alert"
+          data-testid="two-factor-required-banner"
+          className="flex flex-wrap items-center justify-between gap-ds-3 rounded-ds-md border border-ds-warning bg-ds-warning-subtle px-ds-4 py-ds-3 text-sm"
+        >
+          <span>Your agency requires two-factor sign-in. Set it up below to continue.</span>
+          <Button variant="outline" size="sm" onClick={() => void signOut()}>
+            Sign out
+          </Button>
+        </div>
+      )}
+
       <SectionCard
         title="Change password"
         description="Other devices are signed out when you change it. You will get a confirmation email."
@@ -31,16 +58,7 @@ export default function SecuritySettingsPage() {
         <ChangePasswordForm key={formKey} onDone={() => setFormKey((k) => k + 1)} className="max-w-md" />
       </SectionCard>
 
-      <SectionCard
-        title="Two-factor authentication"
-        description="Ask for a second step when signing in."
-        actions={<Badge variant="secondary">Coming soon</Badge>}
-      >
-        <div className="flex items-center gap-ds-3 text-sm text-ds-foreground-muted">
-          <Smartphone className="size-5" aria-hidden="true" />
-          Authenticator app support will be available here.
-        </div>
-      </SectionCard>
+      <TwoFactorCard />
     </PageContainer>
   );
 }

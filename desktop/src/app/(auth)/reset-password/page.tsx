@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { authApi, type ResetPasswordRequest } from '@/lib/api/auth';
+import { authApi, passwordPolicyError, type ResetPasswordRequest } from '@/lib/api/auth';
 
 export default function ResetPasswordPageWrapper() {
   return (
@@ -46,8 +46,9 @@ function ResetPasswordPage() {
       setError('Passwords do not match');
       return;
     }
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
+    const policy = passwordPolicyError(password);
+    if (policy) {
+      setError(policy);
       return;
     }
     if (!token) {
@@ -116,7 +117,7 @@ function ResetPasswordPage() {
             <Input
               id="password"
               type={showPassword ? 'text' : 'password'}
-              placeholder="At least 8 characters"
+              placeholder="At least 12 characters"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="pl-9 pr-10"

@@ -113,6 +113,10 @@ export const usersApi = {
   unlock: (id: string) =>
     client.post<ApiResponse<{ message: string }>>(`${API_ENDPOINTS.users.byId(id)}/unlock`, {}),
 
+  /** Admin only: turn off a user's two-factor sign-in (lost phone, no recovery codes). They are signed out everywhere and emailed. */
+  resetTwoFactor: (id: string) =>
+    client.post<ApiResponse<{ message: string }>>(`${API_ENDPOINTS.users.byId(id)}/two-factor/reset`, {}),
+
   getLoginHistory: (id: string) =>
     client.get<ApiResponse<LoginHistoryEntry[]>>(`${API_ENDPOINTS.users.byId(id)}/login-history`),
 

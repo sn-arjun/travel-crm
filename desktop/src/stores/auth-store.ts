@@ -16,6 +16,8 @@ interface AuthState {
   isLoading: boolean;
   /** First login with a temporary password: the app only offers the change-password screen (enforced by the API too). */
   mustChangePassword: boolean;
+  /** The agency requires two-factor sign-in and this user has not set it up: only Settings > Security is usable (enforced by the API too). */
+  twoFactorSetupRequired: boolean;
   /** Admin onboarding wizard not finished yet. null = not checked this session (never persisted). */
   onboardingPending: boolean | null;
 
@@ -26,8 +28,10 @@ interface AuthState {
     user: User;
     tenant: Tenant;
     mustChangePassword?: boolean;
+    twoFactorSetupRequired?: boolean;
   }) => void;
   setMustChangePassword: (value: boolean) => void;
+  setTwoFactorSetupRequired: (value: boolean) => void;
   setOnboardingPending: (value: boolean | null) => void;
   setTokens: (accessToken: string, refreshToken: string) => void;
   setUser: (user: User | null) => void;
@@ -47,9 +51,10 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: true, // Start true until hydration completes
       mustChangePassword: false,
+      twoFactorSetupRequired: false,
       onboardingPending: null,
 
-      setAuth: ({ accessToken, refreshToken, user, tenant, mustChangePassword }) => {
+      setAuth: ({ accessToken, refreshToken, user, tenant, mustChangePassword, twoFactorSetupRequired }) => {
         setLocaleFromTenant(tenant);
         set({
           accessToken,
@@ -59,11 +64,14 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: true,
           isLoading: false,
           mustChangePassword: mustChangePassword === true,
+          twoFactorSetupRequired: twoFactorSetupRequired === true,
           onboardingPending: null,
         });
       },
 
       setMustChangePassword: (mustChangePassword) => set({ mustChangePassword }),
+
+      setTwoFactorSetupRequired: (twoFactorSetupRequired) => set({ twoFactorSetupRequired }),
 
       setOnboardingPending: (onboardingPending) => set({ onboardingPending }),
 
@@ -91,6 +99,7 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: false,
           isLoading: false,
           mustChangePassword: false,
+          twoFactorSetupRequired: false,
           onboardingPending: null,
         });
       },
@@ -105,6 +114,7 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: false,
           isLoading: false,
           mustChangePassword: false,
+          twoFactorSetupRequired: false,
           onboardingPending: null,
         });
       },
@@ -118,6 +128,7 @@ export const useAuthStore = create<AuthState>()(
         tenant: state.tenant,
         isAuthenticated: state.isAuthenticated,
         mustChangePassword: state.mustChangePassword,
+        twoFactorSetupRequired: state.twoFactorSetupRequired,
       }),
       onRehydrateStorage: () => (state) => {
         // After hydration completes, set isLoading to false

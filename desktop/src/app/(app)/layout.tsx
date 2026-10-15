@@ -34,7 +34,7 @@ function FinishSetupBanner() {
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { isAuthenticated, isLoading, mustChangePassword, onboardingPending, user } = useAuthStore();
+  const { isAuthenticated, isLoading, mustChangePassword, twoFactorSetupRequired, onboardingPending, user } = useAuthStore();
   const isAdmin = user?.role === 'admin';
 
   React.useEffect(() => {
@@ -42,7 +42,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     if (!isAuthenticated) router.replace('/login');
     // The API refuses every data request until the temporary password is replaced; the UI does not even try.
     else if (mustChangePassword) router.replace('/change-password');
-  }, [isAuthenticated, isLoading, mustChangePassword, router]);
+    // Same for an agency that requires two-factor sign-in: Settings > Security is the only screen the API answers for.
+    else if (twoFactorSetupRequired && pathname !== '/settings/security') router.replace('/settings/security');
+  }, [isAuthenticated, isLoading, mustChangePassword, twoFactorSetupRequired, pathname, router]);
 
   // Once per session: is the setup wizard still open? (admins only; a failed check shows no banner)
   React.useEffect(() => {
@@ -63,6 +65,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (isLoading || !isAuthenticated || mustChangePassword) {
     return null;
+  }
+
+  // No app shell (it would fetch data the API refuses) until two-factor sign-in is set up.
+  if (twoFactorSetupRequired) {
+    return pathname === '/settings/security' ? <>{children}</> : null;
   }
 
   const showBanner = isAdmin && onboardingPending === true && pathname !== '/onboarding';

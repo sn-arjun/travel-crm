@@ -26,6 +26,13 @@ export const API_ENDPOINTS = {
     sendOtp: '/auth/send-otp',
     verifyOtp: '/auth/verify-otp',
     sessions: '/auth/sessions',
+    twoFactorVerify: '/auth/2fa/verify',
+    twoFactorStatus: '/auth/2fa/status',
+    twoFactorSetup: '/auth/2fa/setup',
+    twoFactorEnable: '/auth/2fa/enable',
+    twoFactorDisable: '/auth/2fa/disable',
+    twoFactorRecoveryCodes: '/auth/2fa/recovery-codes',
+    twoFactorPolicy: '/auth/2fa/policy',
   },
   // Users
   users: {

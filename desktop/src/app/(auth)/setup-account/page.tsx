@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
+import { passwordPolicyError } from '@/lib/api/auth';
 import { client, type ApiResponse } from '@/lib/api/client';
 import type { User, Tenant } from '@travelcrm/shared';
 
@@ -84,8 +85,9 @@ function SetupAccountPage() {
       setError('Please enter your full name');
       return;
     }
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
+    const policy = passwordPolicyError(password);
+    if (policy) {
+      setError(policy);
       return;
     }
     if (password !== confirmPassword) {
@@ -177,7 +179,7 @@ function SetupAccountPage() {
             <Input
               id="password"
               type={showPassword ? 'text' : 'password'}
-              placeholder="At least 8 characters"
+              placeholder="At least 12 characters"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="pl-9 pr-10"

@@ -178,6 +178,22 @@ describe('useAuthStore', () => {
     expect(useAuthStore.getState().mustChangePassword).toBe(false);
   });
 
+  it('remembers a required two-factor setup from login until it is done, and drops it on logout', () => {
+    const { setAuth } = useAuthStore.getState();
+    setAuth({ accessToken: 't', refreshToken: 'r', user: mockUser, tenant: mockTenant, twoFactorSetupRequired: true });
+    expect(useAuthStore.getState().twoFactorSetupRequired).toBe(true);
+
+    useAuthStore.getState().setTwoFactorSetupRequired(false);
+    expect(useAuthStore.getState().twoFactorSetupRequired).toBe(false);
+
+    setAuth({ accessToken: 't', refreshToken: 'r', user: mockUser, tenant: mockTenant, twoFactorSetupRequired: true });
+    useAuthStore.getState().logout();
+    expect(useAuthStore.getState().twoFactorSetupRequired).toBe(false);
+
+    setAuth({ accessToken: 't', refreshToken: 'r', user: mockUser, tenant: mockTenant });
+    expect(useAuthStore.getState().twoFactorSetupRequired).toBe(false);
+  });
+
   it('clears the forced-change and onboarding flags on logout', () => {
     const store = useAuthStore.getState();
     store.setAuth({ accessToken: 't', refreshToken: 'r', user: mockUser, tenant: mockTenant, mustChangePassword: true });

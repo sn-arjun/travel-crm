@@ -110,17 +110,11 @@ export async function verifyTotp(
   return matched;
 }
 
-/** otpauth:// URI that authenticator apps read from a QR code. */
+/** otpauth:// URI that authenticator apps read from a QR code (the secret is base32, so it needs no escaping). */
 export function otpauthUri(secret: string, account: string, issuer: string): string {
   const label = `${encodeURIComponent(issuer)}:${encodeURIComponent(account)}`;
-  const params = new URLSearchParams({
-    secret,
-    issuer,
-    algorithm: 'SHA1',
-    digits: String(TOTP_DIGITS),
-    period: String(TOTP_STEP_SECONDS),
-  });
-  return `otpauth://totp/${label}?${params.toString()}`;
+  // SHA-1, 6 digits and 30 seconds are the defaults every authenticator app assumes; leaving them out keeps the QR code small.
+  return `otpauth://totp/${label}?secret=${secret}&issuer=${encodeURIComponent(issuer)}`;
 }
 
 // ---------------------------------------------------------------- recovery codes

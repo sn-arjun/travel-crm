@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, Loader2, Mail, Lock, Phone, ArrowLeft, Building2 } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Mail, Lock, Phone, ArrowLeft, Building2, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,10 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
-import { authApi, type ResolvedTenant } from '@/lib/api/auth';
+import { authApi, isTwoFactorChallenge, type LoginResponse, type ResolvedTenant } from '@/lib/api/auth';
 import { ServerAddress } from './_components/server-address';
 
-type Step = 'email' | 'password';
+type Step = 'email' | 'password' | 'code';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -33,12 +33,37 @@ export default function LoginPage() {
   const [resolvedTenants, setResolvedTenants] = React.useState<ResolvedTenant[]>([]);
   const [selectedTenantId, setSelectedTenantId] = React.useState('');
 
+  // Second step (two-factor sign-in)
+  const [challengeToken, setChallengeToken] = React.useState('');
+  const [twoFactorCode, setTwoFactorCode] = React.useState('');
+  const [useRecoveryCode, setUseRecoveryCode] = React.useState(false);
+
   // OTP login
   const [phone, setPhone] = React.useState('');
   const [countryCode, setCountryCode] = React.useState('+91');
   const [otp, setOtp] = React.useState('');
 
+  /** Store the session and leave the login screen: a temporary password or a required 2FA setup comes first. */
+  function finishSignIn(data: LoginResponse) {
+    const { accessToken, refreshToken, user, tenant, mustChangePassword, twoFactorSetupRequired } = data;
+    setAuth({ accessToken, refreshToken, user, tenant, mustChangePassword, twoFactorSetupRequired });
+    toast.success('Logged in successfully');
+    if (mustChangePassword) router.push('/change-password');
+    else if (twoFactorSetupRequired) router.push('/settings/security');
+    else router.push('/dashboard');
+  }
+
+  function startSecondStep(token: string) {
+    setChallengeToken(token);
+    setTwoFactorCode('');
+    setUseRecoveryCode(false);
+    setStep('code');
+  }
+
   function goBackToEmail() {
+    setChallengeToken('');
+    setTwoFactorCode('');
+    setUseRecoveryCode(false);
     setStep('email');
     setResolvedTenants([]);
     setSelectedTenantId('');
@@ -91,11 +116,9 @@ export default function LoginPage() {
       const response = await authApi.login({ email, password, tenantId: selectedTenantId });
 
       if (response.data) {
-        const { accessToken, refreshToken, user, tenant, mustChangePassword } = response.data;
-        setAuth({ accessToken, refreshToken, user, tenant, mustChangePassword });
-        toast.success('Logged in successfully');
-        // A temporary password must be replaced before anything else is reachable.
-        router.push(mustChangePassword ? '/change-password' : '/dashboard');
+        // Password accepted. With two-factor sign-in on there is no session until the authenticator code is checked.
+        if (isTwoFactorChallenge(response.data)) startSecondStep(response.data.challengeToken);
+        else finishSignIn(response.data);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Invalid email or password';
@@ -146,16 +169,48 @@ export default function LoginPage() {
       const response = await authApi.verifyOtp({ phone: fullPhone, otp, tenantId: selectedTenantId });
 
       if (response.data) {
-        const { accessToken, refreshToken, user, tenant, mustChangePassword } = response.data;
-        setAuth({ accessToken, refreshToken, user, tenant, mustChangePassword });
-        toast.success('Logged in successfully');
-        // A temporary password must be replaced before anything else is reachable.
-        router.push(mustChangePassword ? '/change-password' : '/dashboard');
+        if (isTwoFactorChallenge(response.data)) startSecondStep(response.data.challengeToken);
+        else finishSignIn(response.data);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Invalid OTP';
       setError(msg);
       toast.error(msg);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function handleVerifyTwoFactor(e: React.FormEvent) {
+    e.preventDefault();
+    setIsLoading(true);
+    setError('');
+    try {
+      const code = twoFactorCode.trim();
+      if (!code) {
+        setError(useRecoveryCode ? 'Enter one of your recovery codes' : 'Enter the 6-digit code from your authenticator app');
+        return;
+      }
+      const response = await authApi.twoFactorVerify({ challengeToken, code });
+      if (response.data) {
+        if (response.data.usedRecoveryCode) {
+          toast.info(`Recovery code used. ${response.data.recoveryCodesRemaining} left. Generate new ones in Settings > Security.`);
+        }
+        finishSignIn(response.data);
+      }
+    } catch (err) {
+      // The API client throws plain { status, message } objects, not Error instances.
+      const failure = err as { status?: number; message?: string } | null;
+      const status = failure?.status;
+      const msg = failure?.message || 'That code did not work';
+      setError(msg);
+      // The challenge is spent after too many wrong codes or when it expires: start again from the password.
+      if (status === 429 || /expired/i.test(msg)) {
+        setStep('password');
+        setChallengeToken('');
+        setPassword('');
+        setTwoFactorCode('');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -174,6 +229,7 @@ export default function LoginPage() {
         <p className="text-muted-foreground text-sm mt-1">
           {step === 'email' && 'Enter your email to find your account'}
           {step === 'password' && `Signing in as ${email}`}
+          {step === 'code' && 'Two-step verification'}
         </p>
       </div>
 
@@ -207,6 +263,63 @@ export default function LoginPage() {
             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Continue
           </Button>
+        </form>
+      )}
+
+      {/* Step 3: second factor, only for accounts with two-factor sign-in on */}
+      {step === 'code' && (
+        <form onSubmit={handleVerifyTwoFactor} className="space-y-4" data-testid="two-factor-form">
+          <button
+            type="button"
+            onClick={goBackToEmail}
+            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" /> Start over
+          </button>
+          <div className="space-y-2">
+            <Label htmlFor="twoFactorCode">{useRecoveryCode ? 'Recovery code' : 'Authenticator code'}</Label>
+            <p className="text-xs text-muted-foreground">
+              {useRecoveryCode
+                ? 'Enter one of the recovery codes you saved when you turned on two-factor sign-in. Each works once.'
+                : 'Open your authenticator app and enter the 6-digit code for TravelCRM Pro.'}
+            </p>
+            <div className="relative">
+              <ShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                id="twoFactorCode"
+                type="text"
+                inputMode={useRecoveryCode ? 'text' : 'numeric'}
+                autoComplete="one-time-code"
+                placeholder={useRecoveryCode ? 'XXXXX-XXXXX' : '000000'}
+                value={twoFactorCode}
+                onChange={(e) =>
+                  setTwoFactorCode(useRecoveryCode ? e.target.value.slice(0, 16) : e.target.value.replace(/\D/g, '').slice(0, 6))
+                }
+                className="pl-9 font-mono tracking-widest"
+                autoFocus
+                required
+              />
+            </div>
+          </div>
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={isLoading || (!useRecoveryCode && twoFactorCode.length !== 6) || (useRecoveryCode && twoFactorCode.trim().length < 10)}
+          >
+            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Verify and sign in
+          </Button>
+          <button
+            type="button"
+            onClick={() => {
+              setUseRecoveryCode((v) => !v);
+              setTwoFactorCode('');
+              setError('');
+            }}
+            className="w-full text-sm text-muted-foreground hover:text-foreground text-center"
+          >
+            {useRecoveryCode ? 'Use the authenticator app instead' : 'Use a recovery code'}
+          </button>
         </form>
       )}
 

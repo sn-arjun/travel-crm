@@ -10,6 +10,7 @@ import {
   Pencil,
   Plus,
   Shield,
+  ShieldOff,
   UserCheck,
   UserX,
   Users,
@@ -26,6 +27,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { Spinner } from '@/components/ui/spinner';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import { usersApi } from '@/lib/api/users';
 import type { User } from '@travelcrm/shared';
 
@@ -73,6 +75,7 @@ const emptyInvite: InviteFormState = { email: '', name: '', role: 'salesperson',
 
 export default function TeamSettingsPage() {
   const router = useRouter();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const [inviteOpen, setInviteOpen] = React.useState(false);
   const [editingUser, setEditingUser] = React.useState<User | null>(null);
   const [editRole, setEditRole] = React.useState<Role>('salesperson');
@@ -144,6 +147,22 @@ export default function TeamSettingsPage() {
       toast.success('Account unlocked');
     } catch {
       toast.error('Failed to unlock account');
+    }
+  };
+
+  const handleResetTwoFactor = async (user: User) => {
+    const ok = await confirm({
+      title: `Turn off two-factor sign-in for ${user.name ?? user.email}?`,
+      description: 'They are signed out everywhere and emailed. They can set up two-factor sign-in again in Settings > Security.',
+      confirmLabel: 'Turn off',
+      tone: 'destructive',
+    });
+    if (!ok) return;
+    try {
+      await usersApi.resetTwoFactor(user.id);
+      toast.success('Two-factor sign-in turned off');
+    } catch (err) {
+      toast.error((err as { message?: string } | null)?.message || 'Failed to reset two-factor sign-in');
     }
   };
 
@@ -273,6 +292,9 @@ export default function TeamSettingsPage() {
               </Button>
               <Button variant="outline" size="sm" onClick={() => void handleUnlock(u)} className="gap-ds-2">
                 <Lock aria-hidden="true" /> Unlock account
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => void handleResetTwoFactor(u)} className="gap-ds-2">
+                <ShieldOff aria-hidden="true" /> Reset two-factor
               </Button>
               <Button
                 variant="outline"
@@ -415,6 +437,7 @@ export default function TeamSettingsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </>
   );
 }

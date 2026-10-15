@@ -26,11 +26,18 @@ vi.mock('./config', () => ({
       resetPassword: '/auth/reset-password',
       changePassword: '/auth/change-password',
       sessions: '/auth/sessions',
+      twoFactorVerify: '/auth/2fa/verify',
+      twoFactorStatus: '/auth/2fa/status',
+      twoFactorSetup: '/auth/2fa/setup',
+      twoFactorEnable: '/auth/2fa/enable',
+      twoFactorDisable: '/auth/2fa/disable',
+      twoFactorRecoveryCodes: '/auth/2fa/recovery-codes',
+      twoFactorPolicy: '/auth/2fa/policy',
     },
   },
 }));
 
-const { authApi, passwordPolicyError } = await import('./auth');
+const { authApi, passwordPolicyError, isTwoFactorChallenge } = await import('./auth');
 
 describe('Auth API Module', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
@@ -100,8 +107,32 @@ describe('Auth API Module', () => {
       expect(body.email).toBe('admin@test.com');
       expect(body.password).toBe('password123');
       expect(body.tenantId).toBe('tenant-1');
+      if (isTwoFactorChallenge(result.data)) throw new Error('unexpected two-factor challenge');
       expect(result.data.accessToken).toBe('jwt-token');
       expect(result.data.user.role).toBe('admin');
+    });
+
+    it('returns a two-factor challenge, not tokens, when the account has 2FA on', async () => {
+      fetchMock.mockResolvedValue(new Response(
+        JSON.stringify({ success: true, data: { requires2fa: true, challengeToken: 'c'.repeat(64), methods: ['totp', 'recovery_code'] } }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ));
+      const result = await authApi.login({ email: 'a@b.test', password: 'x', tenantId: 't' });
+      expect(isTwoFactorChallenge(result.data)).toBe(true);
+      if (!isTwoFactorChallenge(result.data)) return;
+      expect(result.data.challengeToken).toHaveLength(64);
+      expect('accessToken' in result.data).toBe(false);
+    });
+
+    it('posts the challenge and the code to /auth/2fa/verify', async () => {
+      fetchMock.mockResolvedValue(new Response(
+        JSON.stringify({ success: true, data: { accessToken: 'jwt', refreshToken: 'r', usedRecoveryCode: false, recoveryCodesRemaining: 10 } }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ));
+      const result = await authApi.twoFactorVerify({ challengeToken: 'tok', code: '123456' });
+      expect(fetchMock.mock.calls[0]![0] as string).toContain('/auth/2fa/verify');
+      expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({ challengeToken: 'tok', code: '123456' });
+      expect(result.data.accessToken).toBe('jwt');
     });
 
     it('should reject with error on invalid credentials', async () => {
@@ -263,8 +294,9 @@ describe('Auth API Module', () => {
   });
 
   describe('passwordPolicyError', () => {
-    it('mirrors the API rule: 10+ characters with a letter and a digit', () => {
-      expect(passwordPolicyError('short1A')).toMatch(/at least 10/);
+    it('mirrors the API rule: 12+ characters with a letter and a digit', () => {
+      expect(passwordPolicyError('short1A')).toMatch(/at least 12/);
+      expect(passwordPolicyError('Chosen2026')).toMatch(/at least 12/); // 10 characters passed the old rule
       expect(passwordPolicyError('onlyletterspassword')).toMatch(/digit/);
       expect(passwordPolicyError('12345678901234')).toMatch(/letter/);
       expect(passwordPolicyError('Chosen2026pw')).toBeNull();
