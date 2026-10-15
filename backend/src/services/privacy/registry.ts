@@ -104,6 +104,7 @@ export const PRIVACY_NOT_PERSONAL: Record<string, string> = {
   contact_segments: 'segment definitions (filters), no contact rows',
   driver_otp_log: 'driver (staff) login codes',
   quotation_links: 'master table; erasure sets is_active = 0 for the contact itineraries (erase-contact.ts step 2)',
+  addon_orders: 'master table (R206): an agency buying add-ons from the platform; invoice_id is the platform invoice, not a customer invoice',
   import_errors: 'handled by the import-row scrub in erase-contact.ts (row_data text match)',
 };
 
