@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-15T21:30+05:30",
+  "updated": "2026-10-15T22:00+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -119,7 +119,7 @@
         "R301": "merged (Tier 3): VoipProvider reselling contract, mock provider, country gating (VOIP_CALLING_COUNTRIES, default GB,US,AU,SG; unset country = not offered); backend 86/1678; local stacks pass VOIP_CALLING_COUNTRIES=* (e229395). Merged line: desktop 69/1357, lint 0, calls + voip-settings e2e green after the mock failing-area-code fix (95ab598).",
         "R302": "merged (Tier 3): provider callbacks exactly once (tenant 0049 provider_events), inbound Dial action -> voicemail and missed once, outbound placeCall with agent leg; backend 87/1692; calls e2e 16/16",
         "R204": "merged (Tier 2): phones by agency country (226-country generated table), desktop PhoneInput all countries, driver app fares in agency currency, routing on national number; merged line: backend 88/1710, desktop 71/1382, lint 0, driver flutter 114 passed; packages/shared 2 pre-existing failures (3 before R204) -> R126",
-        "R126": "new: shared Flutter tests green + in CI",
+        "R126": "merged: LeadModel destinations tests used the singular key (test bug, model correct); driver-app.yml runs shared analyze + test; fresh-clone-check runs shared Flutter steps when flutter is on PATH. Merged line: shared 88 passed, driver 114 passed. Follow-up noted: LeadModel.toJson encodes destinations as a JSON string (unused today).",
         "R303": "merged (Tier 3): 7 call events emitted once (provider_events claims), 7 call recipes (client-facing ones suggest-only), timeline entries, incoming-call screen pop + call:status push, analytics on answered_by; merged line: backend 89/1732, desktop 72/1389, lint 0; e2e calls-simulator + calls + assistant-rules 22 passed on the identical batch tree",
         "R209": "running (slot 2)"
       },
@@ -154,7 +154,8 @@
         "R302",
         "R125",
         "R204",
-        "R303"
+        "R303",
+        "R126"
       ],
       "tier1": "COMPLETE 2026-10-15: R101-R124 merged (incl. orchestrator follow-ups R123, R124); exit test R121 9/9 on the merged line; fresh-clone check passes."
     },
