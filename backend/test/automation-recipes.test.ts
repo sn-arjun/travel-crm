@@ -69,7 +69,7 @@ describe('Recipe library', () => {
 
   it('only low-risk actions exist that could run without a click', () => {
     const low = Object.values(ACTIONS).filter((a) => a.risk === 'low').map((a) => a.type).sort();
-    expect(low).toEqual(['advance_lead_status', 'create_follow_up', 'create_task', 'link_message_to_lead']);
+    expect(low).toEqual(['advance_lead_status', 'create_follow_up', 'create_task', 'link_message_to_lead', 'log_call_activity']);
     // Money, new records and outgoing messages are never low risk.
     for (const type of ['create_lead_from_enquiry', 'create_invoice_from_itinerary', 'record_payment', 'create_vouchers', 'draft_reply', 'mark_lead_won']) {
       expect(ACTIONS[type].risk).not.toBe('low');

@@ -13,6 +13,30 @@ export interface EmitInput {
   depth?: number;
 }
 
+/**
+ * Call lifecycle events (CALL-AUTOMATION 4.2). All are emitted at depth 0 from provider callbacks or the agent's own
+ * request, once per real occurrence (the callback routes claim a `provider_events` row first). Payloads:
+ *  - call.ringing: callId, direction, from, to, contactId, leadId, routedTo
+ *  - call.started: callId, direction, to, contactId, leadId, agentId
+ *  - call.answered: callId, direction, agentId, answeredAt
+ *  - call.transferred: callId, fromAgent, toAgent, toNumber, note
+ *  - call.ended: callId, direction, result (completed | no_answer | busy | failed), durationSeconds, number, contactId, leadId, agentId
+ *  - call.missed: from, contactId, leadId, routedTo, offerLead
+ *  - call.voicemail_left: callId, from, contactId, leadId, routedTo, durationSeconds, recordingUrl
+ *  - call.recording_ready: callId, durationSeconds, channels
+ */
+export const CALL_EVENT_TYPES = [
+  'call.ringing',
+  'call.started',
+  'call.answered',
+  'call.transferred',
+  'call.ended',
+  'call.missed',
+  'call.voicemail_left',
+  'call.recording_ready',
+] as const;
+export type CallEventType = (typeof CALL_EVENT_TYPES)[number];
+
 interface Waiter {
   waitUntil(promise: Promise<unknown>): void;
 }

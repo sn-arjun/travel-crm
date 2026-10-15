@@ -8,13 +8,14 @@
  * TICKET-384: Voicemail recording
  */
 
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 import type { AppContext, Env } from '../types';
 import { generateId } from '../utils/uuid';
 import { resolveInboundRouting } from '../services/call-routing';
 import { handleMissedCall } from '../services/missed-call-handler';
 import { emitEvent } from '../services/automation/events';
+import { broadcastCallRinging } from '../utils/realtime';
 import { normalizePhone } from '../utils/phone';
 import { checkBusinessHours, type BusinessHoursConfig } from '../utils/business-hours';
 import { createVoipProvider, escapeXml as escapeXmlUtil, loadVoipSettings } from '../services/voip-provider';
@@ -231,6 +232,184 @@ async function recordMissedCall(env: Env, db: D1Database, key: { callLogId?: str
   return true;
 }
 
+// ── Call lifecycle events (R303) ─────────────────────────────
+// One automation event per real occurrence: each is claimed in provider_events (keyed by the provider's call id and
+// the event name) before it is emitted, so a repeated or out-of-order callback never emits it twice.
+
+interface LifecycleCall {
+  id: string;
+  direction: string;
+  from_number: string;
+  to_number: string | null;
+  status: string | null;
+  duration_seconds: number | null;
+  routed_to: string | null;
+  answered_by: string | null;
+  created_by: string | null;
+  contact_id: string | null;
+  lead_id: string | null;
+  recording_url: string | null;
+  provider_call_id: string | null;
+  twilio_call_sid: string | null;
+}
+
+async function loadLifecycleCall(db: D1Database, key: { callLogId?: string; callSid?: string }): Promise<LifecycleCall | null> {
+  return db.prepare(`
+    SELECT id, direction, from_number, to_number, status, duration_seconds, routed_to, answered_by, created_by,
+           contact_id, lead_id, recording_url, provider_call_id, twilio_call_sid
+    FROM call_logs WHERE id = ? OR provider_call_id = ? OR twilio_call_sid = ? LIMIT 1
+  `).bind(key.callLogId || '', key.callSid || '', key.callSid || '').first<LifecycleCall>();
+}
+
+function claimKeyOf(call: LifecycleCall): string {
+  return call.provider_call_id || call.twilio_call_sid || call.id;
+}
+
+/** The agency's side of a call is the number it owns: the called number inbound, the caller ID outbound. */
+function agencyNumberOf(call: LifecycleCall): string | null {
+  return call.direction === 'outbound' ? call.from_number : call.to_number;
+}
+
+/** The customer's number. */
+function customerNumberOf(call: LifecycleCall): string {
+  return (call.direction === 'outbound' ? call.to_number : call.from_number) ?? '';
+}
+
+/** Emit `type` for the call once. Returns true when this request was the one that emitted it. */
+async function emitCallEventOnce(
+  env: Env,
+  db: D1Database,
+  call: LifecycleCall,
+  type: string,
+  payload: Record<string, unknown>,
+): Promise<boolean> {
+  if (!(await claimEvent(db, claimKeyOf(call), `event:${type}`))) return false;
+  const tenantId = await tenantForCalledNumber(env, agencyNumberOf(call));
+  if (!tenantId) return false;
+  await emitEvent(env, tenantId, db, {
+    type,
+    entityType: 'call',
+    entityId: call.id,
+    payload: { callId: call.id, direction: call.direction, ...payload },
+  });
+  return true;
+}
+
+/** Has this event already been emitted for the call (or the missed-call claim been taken)? */
+async function claimExists(db: D1Database, call: LifecycleCall, event: string): Promise<boolean> {
+  const hit = await db
+    .prepare('SELECT 1 AS hit FROM provider_events WHERE provider = ? AND provider_call_id = ? AND event = ? LIMIT 1')
+    .bind(EVENT_PROVIDER, claimKeyOf(call), event)
+    .first();
+  return !!hit;
+}
+
+/**
+ * An inbound call reaches an agent: emit call.ringing and push the screen pop (call:ringing to the routed agent,
+ * call:ringing_for to everyone else). Once per call.
+ */
+async function announceRinging(env: Env, db: D1Database, callLogId: string): Promise<void> {
+  try {
+    const call = await loadLifecycleCall(db, { callLogId });
+    if (!call || call.direction !== 'inbound' || !call.routed_to) return;
+    if (!(await claimEvent(db, claimKeyOf(call), 'event:call.ringing'))) return;
+    const tenantId = await tenantForCalledNumber(env, call.to_number);
+    if (!tenantId) return;
+
+    await emitEvent(env, tenantId, db, {
+      type: 'call.ringing',
+      entityType: 'call',
+      entityId: call.id,
+      payload: {
+        callId: call.id,
+        direction: 'inbound',
+        from: call.from_number,
+        to: call.to_number,
+        contactId: call.contact_id,
+        leadId: call.lead_id,
+        routedTo: call.routed_to,
+      },
+    });
+
+    const contact = call.contact_id
+      ? await db.prepare('SELECT id, name FROM contacts WHERE id = ?').bind(call.contact_id).first<{ id: string; name: string }>()
+      : null;
+    const lead = call.lead_id
+      ? await db.prepare('SELECT id, title, status, estimated_value FROM leads WHERE id = ?').bind(call.lead_id).first<{ id: string; title: string; status: string; estimated_value: number | null }>()
+      : null;
+    const agent = await db.prepare('SELECT name FROM users WHERE id = ?').bind(call.routed_to).first<{ name: string }>();
+
+    let lastInteraction: { kind: 'message' | 'call_note'; text: string; at: string | null } | null = null;
+    if (contact) {
+      const message = await db
+        .prepare(`SELECT content, created_at FROM message_log WHERE contact_id = ? AND content IS NOT NULL AND content <> '' ORDER BY created_at DESC LIMIT 1`)
+        .bind(contact.id)
+        .first<{ content: string; created_at: string }>();
+      const note = await db
+        .prepare(`SELECT notes, created_at FROM call_logs WHERE contact_id = ? AND id <> ? AND notes IS NOT NULL AND notes <> '' ORDER BY created_at DESC LIMIT 1`)
+        .bind(contact.id, call.id)
+        .first<{ notes: string; created_at: string }>();
+      // Whichever is newer.
+      if (message && (!note || message.created_at >= note.created_at)) {
+        lastInteraction = { kind: 'message', text: message.content.slice(0, 200), at: message.created_at };
+      } else if (note) {
+        lastInteraction = { kind: 'call_note', text: note.notes.slice(0, 200), at: note.created_at };
+      }
+    }
+
+    await broadcastCallRinging(env, tenantId, {
+      callId: call.id,
+      direction: 'inbound',
+      from: call.from_number,
+      to: call.to_number,
+      routedTo: call.routed_to,
+      routedToName: agent?.name ?? null,
+      contact,
+      lead: lead ? { id: lead.id, title: lead.title, status: lead.status, value: lead.estimated_value } : null,
+      lastInteraction,
+      ringingAt: new Date().toISOString(),
+    });
+  } catch (e) {
+    // Never fail the provider's request over a screen pop.
+    console.error('Ringing announcement failed:', e instanceof Error ? e.message : 'error');
+  }
+}
+
+/** Run announceRinging after the response is sent when the request has an execution context, else before it resolves. */
+function deferRinging(c: Context<AppContext>, env: Env, db: D1Database, callLogId: string): void {
+  const work = announceRinging(env, db, callLogId);
+  try {
+    c.executionCtx.waitUntil(work);
+  } catch {
+    // no execution context (unit tests calling the app directly): the promise still runs
+  }
+}
+
+/** Somebody picked up. Inbound: the agent the call rang. Outbound: the agent who placed it. */
+async function recordAnswered(env: Env, db: D1Database, call: LifecycleCall): Promise<void> {
+  const agentId = call.answered_by ?? (call.direction === 'outbound' ? call.created_by : call.routed_to);
+  if (call.direction === 'inbound' && !agentId) return;
+  const answeredAt = new Date().toISOString();
+  if (agentId && !call.answered_by) {
+    await db.prepare('UPDATE call_logs SET answered_by = ? WHERE id = ? AND answered_by IS NULL').bind(agentId, call.id).run();
+  }
+  await emitCallEventOnce(env, db, call, 'call.answered', { agentId: agentId ?? null, answeredAt });
+}
+
+/** The call is over: a connected call finished, or an outbound call was not answered. */
+async function recordEnded(env: Env, db: D1Database, key: { callLogId?: string; callSid?: string }, result: string): Promise<void> {
+  const call = await loadLifecycleCall(db, key);
+  if (!call) return;
+  await emitCallEventOnce(env, db, call, 'call.ended', {
+    result,
+    durationSeconds: call.duration_seconds ?? 0,
+    number: customerNumberOf(call),
+    contactId: call.contact_id,
+    leadId: call.lead_id,
+    agentId: call.answered_by ?? call.created_by ?? call.routed_to,
+  });
+}
+
 // ── Status Callback — Twilio & Plivo call status updates ──────
 
 voipCallbackRoutes.post('/status-callback', async (c) => {
@@ -320,6 +499,30 @@ voipCallbackRoutes.post('/status-callback', async (c) => {
     if (status === 'no-answer' || status === 'busy' || status === 'canceled') {
       await recordMissedCall(c.env, db, { callSid });
     }
+
+    // Lifecycle events (R303): answered and ended, each once per call.
+    const call = await loadLifecycleCall(db, { callSid });
+    if (call) {
+      if (status === 'in-progress') {
+        // Outbound: the agent's leg answered. (An inbound call is answered when the agent picks up; that is
+        // reported by the dial result, or at the end when this provider reports only the call's own status.)
+        if (call.direction === 'outbound') await recordAnswered(c.env, db, call);
+      } else if (status === 'completed') {
+        if (call.direction === 'inbound') {
+          if (!(await claimExists(db, call, 'missed')) && call.routed_to) {
+            await recordAnswered(c.env, db, call);
+            await recordEnded(c.env, db, { callSid }, 'completed');
+          }
+        } else if ((call.duration_seconds ?? 0) > 0 || (await claimExists(db, call, 'event:call.answered'))) {
+          await recordAnswered(c.env, db, call);
+          await recordEnded(c.env, db, { callSid }, 'completed');
+        } else {
+          await recordEnded(c.env, db, { callSid }, 'no_answer');
+        }
+      } else if (call.direction === 'outbound' && (status === 'no-answer' || status === 'busy' || status === 'canceled' || status === 'failed')) {
+        await recordEnded(c.env, db, { callSid }, status === 'busy' ? 'busy' : status === 'failed' ? 'failed' : 'no_answer');
+      }
+    }
   } catch (e) {
     console.error('Status callback error:', e);
     await releaseEvent(db, callSid, event, sequence);
@@ -368,6 +571,33 @@ voipCallbackRoutes.post('/recording-callback', async (c) => {
     }
   } catch (e) {
     console.error('Recording callback error:', e);
+  }
+
+  // Lifecycle events (R303): the recording is ready, and an inbound recording nobody picked up is a voicemail.
+  try {
+    const call = await loadLifecycleCall(db, { callSid });
+    if (call) {
+      await emitCallEventOnce(c.env, db, call, 'call.recording_ready', {
+        durationSeconds: recordingDuration,
+        channels: Number(body.RecordingChannels) || 1,
+      });
+      const answered = !!call.answered_by || (await claimExists(db, call, 'event:call.answered'));
+      if (call.direction === 'inbound' && !answered) {
+        // A voicemail is a missed call too: record that first so the call-back task exists for the voicemail task to replace.
+        await recordMissedCall(c.env, db, { callSid });
+        await db.prepare(`UPDATE call_logs SET outcome = COALESCE(outcome, 'voicemail') WHERE id = ?`).bind(call.id).run();
+        await emitCallEventOnce(c.env, db, call, 'call.voicemail_left', {
+          from: call.from_number,
+          contactId: call.contact_id,
+          leadId: call.lead_id,
+          routedTo: call.routed_to,
+          durationSeconds: recordingDuration,
+          recordingUrl: url,
+        });
+      }
+    }
+  } catch (e) {
+    console.error('Recording lifecycle events failed:', e instanceof Error ? e.message : 'error');
   }
 
   return c.text('<Response/>', 200, { 'Content-Type': 'text/xml' });
@@ -499,6 +729,9 @@ voipCallbackRoutes.post('/twiml/inbound', async (c) => {
 
   const shouldRecord = settings.recordingPolicy === 'all' || settings.recordingPolicy === 'inbound';
 
+  // The agent's phone is about to ring: event and screen pop, after the provider has its answer.
+  deferRinging(c, c.env, db, callLogId);
+
   return c.text(
     provider.generateClientDialMarkup(routing.targetIdentity, from, shouldRecord, dialFallback(baseUrl, callLogId, settings)),
     200,
@@ -575,6 +808,10 @@ voipCallbackRoutes.post('/twiml/ivr-handler', async (c) => {
   switch (option.action) {
     case 'extension': {
       const shouldRecord = settings.recordingPolicy === 'all' || settings.recordingPolicy === 'inbound';
+      if (callLogId && option.target) {
+        await db.prepare('UPDATE call_logs SET routed_to = ? WHERE id = ?').bind(String(option.target), callLogId).run();
+        deferRinging(c, c.env, db, callLogId);
+      }
       return c.text(
         provider.generateClientDialMarkup(`user_${option.target}`, from, shouldRecord, dialFallback(baseUrl, callLogId, settings)),
         200, { 'Content-Type': 'text/xml' },
@@ -589,6 +826,10 @@ voipCallbackRoutes.post('/twiml/ivr-handler', async (c) => {
       const routing = await resolveInboundRouting(db, from, settings);
       if (routing.targetIdentity) {
         const shouldRecord = settings.recordingPolicy === 'all' || settings.recordingPolicy === 'inbound';
+        if (callLogId && routing.targetUserId) {
+          await db.prepare('UPDATE call_logs SET routed_to = ? WHERE id = ?').bind(routing.targetUserId, callLogId).run();
+          deferRinging(c, c.env, db, callLogId);
+        }
         return c.text(
           provider.generateClientDialMarkup(routing.targetIdentity, from, shouldRecord, dialFallback(baseUrl, callLogId, settings)),
           200, { 'Content-Type': 'text/xml' },
@@ -611,6 +852,14 @@ voipCallbackRoutes.post('/twiml/dial-status', async (c) => {
 
   // The agent answered (or the call simply ended): nothing more to do.
   if (dialStatus === 'answered' || dialStatus === 'completed') {
+    // The agent picked up: that is when the call was answered (call.answered, once, and who answered).
+    try {
+      const answeredDb = await callDb(c.env, { number: body.To as string, callSid, callLogId });
+      const call = answeredDb ? await loadLifecycleCall(answeredDb, { callLogId, callSid }) : null;
+      if (answeredDb && call && call.direction === 'inbound') await recordAnswered(c.env, answeredDb, call);
+    } catch (e) {
+      console.error('Answered handling failed:', e instanceof Error ? e.message : 'error');
+    }
     return c.text('<Response/>', 200, { 'Content-Type': 'text/xml' });
   }
 

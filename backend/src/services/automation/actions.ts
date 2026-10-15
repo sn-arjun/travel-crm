@@ -305,6 +305,36 @@ const createFollowUp: ActionDefinition = {
   },
 };
 
+/** Retire the task (or the pending suggestion for it) that another suggestion, found by its key, stands for. */
+async function supersedeTaskSuggestion(ctx: ActionContext, dedupeKey: string): Promise<void> {
+  const old = await ctx.db
+    .prepare('SELECT id, status, result FROM assistant_suggestions WHERE dedupe_key = ?')
+    .bind(dedupeKey)
+    .first<{ id: string; status: string; result: string | null }>();
+  if (!old) return;
+  if (old.status === 'pending') {
+    await ctx.db
+      .prepare(`UPDATE assistant_suggestions SET status = 'dismissed', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ? AND status = 'pending'`)
+      .bind(old.id)
+      .run();
+    return;
+  }
+  if (old.status !== 'auto_applied' && old.status !== 'applied') return;
+  try {
+    const entities = (JSON.parse(old.result ?? '{}').entities ?? []) as Array<{ type: string; id: string }>;
+    for (const entity of entities) {
+      // Only a task nobody has touched yet; one already started or finished stays.
+      if (entity.type === 'task') await ctx.db.prepare(`DELETE FROM tasks WHERE id = ? AND status = 'todo'`).bind(entity.id).run();
+    }
+  } catch {
+    return;
+  }
+  await ctx.db
+    .prepare(`UPDATE assistant_suggestions SET status = 'undone', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`)
+    .bind(old.id)
+    .run();
+}
+
 const createTask: ActionDefinition = {
   type: 'create_task',
   label: 'Create task',
@@ -318,8 +348,11 @@ const createTask: ActionDefinition = {
     priority: z.enum(['low', 'medium', 'high']).default('medium'),
     assignedTo: z.string().optional().nullable(),
     relatedLeadId: z.string().optional().nullable(),
+    /** Dedupe key of an earlier task suggestion this one replaces (a voicemail task replaces the call-back task for the same call). */
+    supersedes: z.string().max(200).optional(),
   }),
   async execute(ctx, p) {
+    if (p.supersedes) await supersedeTaskSuggestion(ctx, p.supersedes);
     // Written directly so the task can belong to the lead owner rather than to whoever triggered it.
     const id = generateId();
     await ctx.db
@@ -469,6 +502,8 @@ const draftReply: ActionDefinition = {
     channel: z.enum(['whatsapp', 'sms', 'email']),
     subject: z.string().max(200).optional().nullable(),
     body: z.string().min(1).max(4000),
+    /** Quiet hours: the earliest moment the message should go out; the send dialog offers "Send at ..." with a manual override. */
+    sendAfter: z.string().datetime().optional().nullable(),
   }),
   async execute(_ctx, p) {
     return { entities: [{ type: 'contact', id: p.contactId }], summary: 'Message sent' };
@@ -515,6 +550,81 @@ const linkMessageToLead: ActionDefinition = {
   },
 };
 
+// ── Calls ────────────────────────────────────────────────────
+
+/** Fixed wording for the timeline entry of a finished call. */
+function callSummaryText(p: { direction: string; result: string; durationSeconds: number; agentName?: string | null }): string {
+  const who = p.agentName ? ` by ${p.agentName}` : '';
+  const dir = p.direction === 'outbound' ? 'Outbound' : 'Inbound';
+  if (p.result !== 'completed') return `${dir} call, not answered${who}`;
+  const m = Math.floor(p.durationSeconds / 60);
+  const sec = p.durationSeconds % 60;
+  return `${dir} call, ${m > 0 ? `${m} min ${sec} s` : `${sec} s`}${who}`;
+}
+
+/** One entry on the contact and lead timeline for a finished call. Internal only, so it may run on its own. */
+const logCallActivity: ActionDefinition = {
+  type: 'log_call_activity',
+  label: 'Log call on timeline',
+  module: 'leads',
+  permission: 'edit',
+  risk: 'low',
+  schema: z.object({
+    callId: z.string().min(1),
+    contactId: z.string().optional().nullable(),
+    leadId: z.string().optional().nullable(),
+    direction: z.enum(['inbound', 'outbound']),
+    result: z.string().max(40).default('completed'),
+    durationSeconds: z.number().int().min(0).default(0),
+    agentId: z.string().optional().nullable(),
+  }),
+  async execute(ctx, p) {
+    const call = await ctx.db
+      .prepare('SELECT notes, recording_url, recording_r2_key FROM call_logs WHERE id = ?')
+      .bind(p.callId)
+      .first<{ notes: string | null; recording_url: string | null; recording_r2_key: string | null }>();
+    if (!call) throw new Error('This call no longer exists');
+    const agent = p.agentId ? await ctx.db.prepare('SELECT name FROM users WHERE id = ?').bind(p.agentId).first<{ name: string }>() : null;
+
+    const text = callSummaryText({ direction: p.direction, result: p.result, durationSeconds: p.durationSeconds, agentName: agent?.name });
+    const meta = JSON.stringify({
+      call_id: p.callId,
+      direction: p.direction,
+      result: p.result,
+      duration_seconds: p.durationSeconds,
+      agent_id: p.agentId ?? null,
+      agent_name: agent?.name ?? null,
+      note: call.notes,
+      has_recording: !!(call.recording_url || call.recording_r2_key),
+    });
+
+    const created: { leadActivityId?: string; contactLogId?: string } = {};
+    const entities: Array<{ type: string; id: string }> = [];
+    if (p.leadId) {
+      created.leadActivityId = generateId();
+      await ctx.db
+        .prepare(`INSERT INTO lead_activities (id, lead_id, type, content, metadata, created_by) VALUES (?, ?, 'call', ?, ?, ?)`)
+        .bind(created.leadActivityId, p.leadId, text, meta, p.agentId ?? ctx.actorId)
+        .run();
+      entities.push({ type: 'lead', id: p.leadId });
+    }
+    const logUser = p.agentId ?? ctx.actorId;
+    if (p.contactId && logUser) {
+      created.contactLogId = generateId();
+      await ctx.db
+        .prepare(`INSERT INTO activity_logs (id, user_id, action, entity_type, entity_id, details) VALUES (?, ?, 'call', 'contact', ?, ?)`)
+        .bind(created.contactLogId, logUser, p.contactId, meta)
+        .run();
+      entities.push({ type: 'contact', id: p.contactId });
+    }
+    return { entities, undo: created, summary: text };
+  },
+  async undo(ctx, u) {
+    if (u.leadActivityId) await ctx.db.prepare('DELETE FROM lead_activities WHERE id = ?').bind(u.leadActivityId).run();
+    if (u.contactLogId) await ctx.db.prepare('DELETE FROM activity_logs WHERE id = ?').bind(u.contactLogId).run();
+  },
+};
+
 export const ACTIONS: Record<string, ActionDefinition> = Object.fromEntries(
   [
     createLeadFromEnquiry,
@@ -530,5 +640,6 @@ export const ACTIONS: Record<string, ActionDefinition> = Object.fromEntries(
     draftReply,
     openPrefilledForm,
     linkMessageToLead,
+    logCallActivity,
   ].map((action) => [action.type, action]),
 );

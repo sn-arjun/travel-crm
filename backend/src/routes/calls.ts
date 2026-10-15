@@ -43,6 +43,8 @@ const updateCallSchema = z.object({
 
 const transferSchema = z.object({
   targetNumber: z.string().regex(/^\+[1-9]\d{9,14}$/),
+  /** What the next person should know. */
+  note: z.string().max(500).optional(),
 });
 
 // ── Helper: load VoIP settings ────────────────────────────────
@@ -104,7 +106,8 @@ callRoutes.get('/', async (c) => {
 
   if (contactId) { conditions.push('cl.contact_id = ?'); values.push(contactId); }
   if (leadId) { conditions.push('cl.lead_id = ?'); values.push(leadId); }
-  if (userId) { conditions.push('cl.created_by = ?'); values.push(userId); }
+  // An agent's calls: the ones they placed, and the inbound ones that rang or were answered by them.
+  if (userId) { conditions.push('(cl.created_by = ? OR cl.routed_to = ? OR cl.answered_by = ?)'); values.push(userId, userId, userId); }
   if (direction) { conditions.push('cl.direction = ?'); values.push(direction); }
   if (status) { conditions.push('cl.status = ?'); values.push(status); }
   if (outcome) { conditions.push('cl.outcome = ?'); values.push(outcome); }
@@ -186,14 +189,15 @@ callRoutes.get('/analytics', rbac(['admin', 'sales_manager']), async (c) => {
     ORDER BY date ASC
   `).bind(fromIso, toIso).all();
 
-  // Top callers (agents)
+  // Top callers (agents). An outbound call belongs to the agent who placed it; an inbound row has no creator, so it
+  // belongs to the agent who answered it, else the one it was routed to.
   const topAgents = await db.prepare(`
     SELECT u.name, u.id as user_id,
       COUNT(*) as total_calls,
       SUM(CASE WHEN cl.status = 'completed' THEN 1 ELSE 0 END) as completed,
       ROUND(AVG(CASE WHEN cl.duration_seconds > 0 THEN cl.duration_seconds END), 1) as avg_duration
     FROM call_logs cl
-    JOIN users u ON cl.created_by = u.id
+    JOIN users u ON u.id = COALESCE(cl.answered_by, cl.routed_to, cl.created_by)
     WHERE cl.created_at >= ? AND cl.created_at < ?
     GROUP BY u.id, u.name
     ORDER BY total_calls DESC
@@ -379,18 +383,8 @@ callRoutes.put('/:id', zValidator('json', updateCallSchema), async (c) => {
           });
         }
 
-        // Auto-create follow-up if outcome is follow_up_needed
-        if (data.outcome === 'follow_up_needed') {
-          // 10:00 tomorrow in the tenant's local time
-          const { timeZone: fuTz, today: fuToday } = await tenantToday(c);
-          const tomorrow = new Date(new Date(localDateStartUtcIso(fuTz, addDaysLocal(fuToday, 1))).getTime() + 10 * 3600000);
-          const scheduledAt = tomorrow.toISOString().replace(/\.\d{3}Z$/, 'Z');
-
-          await db.prepare(`
-            INSERT INTO follow_ups (id, lead_id, scheduled_at, type, notes, status, created_by)
-            VALUES (?, ?, ?, 'call', 'Auto-created from call outcome: follow-up needed', 'pending', ?)
-          `).bind(generateId(), leadId, scheduledAt, userId).run();
-        }
+        // The follow-up is no longer created here: the recipe calls.next_step_prompt proposes it when the call
+        // ends (R303), as a one-click suggestion the agent can change or dismiss.
       }
     }
     // Call minutes are metered from the provider status callback (voip-callbacks.ts), once per call.
@@ -506,6 +500,14 @@ callRoutes.post('/outbound', zValidator('json', outboundCallSchema), async (c) =
       details: JSON.stringify({ direction: 'outbound', to: data.toNumber, provider: settings.voipProvider }),
     });
 
+    // Automations see the call start (the lead and contact are on the call from the first moment).
+    await emitFromRequest(c, {
+      type: 'call.started',
+      entityType: 'call',
+      entityId: callLogId,
+      payload: { callId: callLogId, direction: 'outbound', to: data.toNumber, contactId, leadId: data.leadId || null, agentId: userId, mode },
+    });
+
     return created(c, {
       callLogId,
       providerCallId: result.providerCallId,
@@ -527,10 +529,10 @@ callRoutes.post('/outbound', zValidator('json', outboundCallSchema), async (c) =
 callRoutes.post('/:id/transfer', zValidator('json', transferSchema), async (c) => {
   const db = c.get('tenantDb');
   const id = c.req.param('id');
-  const { targetNumber } = c.req.valid('json');
+  const { targetNumber, note } = c.req.valid('json');
 
-  const callLog = await db.prepare('SELECT twilio_call_sid, provider_call_id FROM call_logs WHERE id = ?')
-    .bind(id).first<{ twilio_call_sid: string; provider_call_id: string }>();
+  const callLog = await db.prepare('SELECT twilio_call_sid, provider_call_id, routed_to, answered_by, created_by FROM call_logs WHERE id = ?')
+    .bind(id).first<{ twilio_call_sid: string; provider_call_id: string; routed_to: string | null; answered_by: string | null; created_by: string | null }>();
 
   const providerCallId = callLog?.provider_call_id || callLog?.twilio_call_sid;
   if (!providerCallId) return notFound(c, 'Call log');
@@ -542,6 +544,21 @@ callRoutes.post('/:id/transfer', zValidator('json', transferSchema), async (c) =
 
   const provider = createVoipProvider(c.env, settings);
   await provider.transferCall(providerCallId, targetNumber);
+
+  // The agent on the call hands it over; the number may belong to a colleague.
+  const colleague = await db.prepare('SELECT id FROM users WHERE phone = ? AND is_active = 1 LIMIT 1').bind(targetNumber).first<{ id: string }>();
+  await emitFromRequest(c, {
+    type: 'call.transferred',
+    entityType: 'call',
+    entityId: id,
+    payload: {
+      callId: id,
+      fromAgent: callLog?.answered_by ?? callLog?.routed_to ?? callLog?.created_by ?? c.get('userId'),
+      toAgent: colleague?.id ?? null,
+      toNumber: targetNumber,
+      note: note ?? null,
+    },
+  });
 
   return success(c, { message: 'Call transferred' });
 });

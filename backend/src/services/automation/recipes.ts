@@ -6,7 +6,7 @@
  * the engine turns proposals into suggestions or runs them through the action registry.
  */
 
-import { getTenantTimeZone, localDateString, addDaysLocal } from '../../utils/tz';
+import { getTenantTimeZone, localDateString, addDaysLocal, localClock, localDateStartUtcIso } from '../../utils/tz';
 import { analyzeMessage, type MessageAnalysis, type MessageEntities } from './message-analysis';
 import type { DomainEvent, Proposal, Recipe, RecipeContext } from './types';
 import { formatMoney, loadLocaleContext } from '../../utils/money';
@@ -950,6 +950,292 @@ const leadFromMissedCall: Recipe = {
   },
 };
 
+// ── Call lifecycle recipes (R303) ────────────────────────────
+// All rule-based (0 credits). Nothing here places a call. Anything the customer would see stays a suggestion.
+
+/** Minutes since local midnight for "HH:MM" ("24:00" allowed as an end); null when unreadable. */
+function clockMinutes(value: string | null | undefined): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec((value ?? '').trim());
+  if (!m) return null;
+  const total = Number(m[1]) * 60 + Number(m[2]);
+  return total >= 0 && total <= 1440 ? total : null;
+}
+
+async function settingText(ctx: RecipeContext, key: string): Promise<string | null> {
+  const row = await ctx.db.prepare('SELECT value FROM settings WHERE key = ?').bind(key).first<{ value: string | null }>();
+  if (!row?.value) return null;
+  try {
+    const parsed = JSON.parse(row.value);
+    return typeof parsed === 'string' ? parsed : row.value;
+  } catch {
+    return row.value;
+  }
+}
+
+/**
+ * Customer quiet hours (settings `customer_quiet_start` / `customer_quiet_end`, default 21:00 to 09:00 in the agency's time
+ * zone). Inside them a message suggestion is still created, but carries the moment it may go out; null when it may go now.
+ */
+async function quietHoursSendAfter(ctx: RecipeContext, now: Date = new Date()): Promise<string | null> {
+  const start = clockMinutes(await settingText(ctx, 'customer_quiet_start')) ?? 21 * 60;
+  const end = clockMinutes(await settingText(ctx, 'customer_quiet_end')) ?? 9 * 60;
+  if (start === end) return null;
+  const tz = await getTenantTimeZone(ctx.db);
+  const clock = localClock(tz, now);
+  const minute = clock.hour * 60 + clock.minute;
+  const inside = start < end ? minute >= start && minute < end : minute >= start || minute < end;
+  if (!inside) return null;
+  // The next time the clock reads `end`: today when it is still ahead, else tomorrow.
+  const day = end > minute ? clock.date : addDaysLocal(clock.date, 1);
+  const endOfDay = end >= 1440;
+  const base = localDateStartUtcIso(tz, endOfDay ? addDaysLocal(day, 1) : day);
+  const at = new Date(new Date(base).getTime() + (endOfDay ? 0 : end) * 60000);
+  return at.toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+
+function numericPayload(event: DomainEvent, key: string): number {
+  const v = Number(event.payload[key]);
+  return Number.isFinite(v) ? v : 0;
+}
+
+const missedAcknowledgement: Recipe = {
+  key: 'calls.missed_acknowledgement',
+  area: 'Calls',
+  title: 'Draft a "sorry we missed your call" message',
+  description: 'After a missed call from a known contact, drafts a short WhatsApp or SMS for you to send. Skipped for contacts who opted out or asked not to be disturbed. During the customer quiet hours the draft waits until they end.',
+  triggers: ['call.missed'],
+  defaultMode: 'suggest',
+  autoEligible: false,
+  async evaluate(ctx, event) {
+    const contact = await loadContact(ctx, event.payload.contactId as string | undefined);
+    if (!contact || contact.opted_out || contact.dnd_enabled || !contact.phone) return [];
+    const channel = replyChannel('whatsapp', contact);
+    if (!channel || channel === 'email') return [];
+    const company = await companyName(ctx);
+    const sendAfter = await quietHoursSendAfter(ctx);
+    return [{
+      action: 'draft_reply',
+      title: `Tell ${contact.name} we will ring back`,
+      reason: sendAfter ? 'Missed call; it is quiet hours for the customer, so this waits until they end' : 'Missed call',
+      params: {
+        contactId: contact.id,
+        leadId: (event.payload.leadId as string | null) ?? null,
+        channel,
+        subject: null,
+        body: `Hi ${contact.name.split(' ')[0]},\n\nSorry we missed your call. We will ring you back shortly.${company ? `\n\nWarm regards,\n${company}` : ''}`,
+        sendAfter,
+      },
+      entityType: 'contact',
+      entityId: contact.id,
+      contactId: contact.id,
+      leadId: (event.payload.leadId as string | null) ?? null,
+      assignedTo: (event.payload.routedTo as string | null) ?? null,
+      dedupeKey: `missed-ack:${event.entityId}`,
+    }];
+  },
+};
+
+const voicemailTask: Recipe = {
+  key: 'calls.voicemail_task',
+  area: 'Calls',
+  title: 'Create a task to listen to every voicemail',
+  description: 'A voicemail becomes a task for the person the call was routed to, and replaces the call-back task for the same call so there is one task, not two.',
+  triggers: ['call.voicemail_left'],
+  defaultMode: 'auto',
+  autoEligible: true,
+  async evaluate(ctx, event) {
+    const contact = await loadContact(ctx, event.payload.contactId as string | undefined);
+    const from = String(event.payload.from ?? 'unknown number');
+    const who = contact?.name ?? from;
+    const recording = typeof event.payload.recordingUrl === 'string' ? event.payload.recordingUrl : null;
+    const seconds = numericPayload(event, 'durationSeconds');
+    const routedTo = (event.payload.routedTo as string | null) ?? null;
+    return [{
+      action: 'create_task',
+      title: `Listen to voicemail from ${who}`,
+      reason: 'Voicemail left',
+      params: {
+        title: `Listen to voicemail from ${who}`,
+        description: `Voicemail from ${from}${seconds ? `, ${seconds} s` : ''}.${recording ? ` Recording: ${recording}` : ''}`,
+        dueDate: await today(ctx),
+        priority: 'high',
+        assignedTo: routedTo,
+        relatedLeadId: (event.payload.leadId as string | null) ?? null,
+        supersedes: `callback:${event.entityId}`,
+      },
+      entityType: contact ? 'contact' : 'call',
+      entityId: contact ? contact.id : event.entityId,
+      contactId: contact?.id ?? null,
+      leadId: (event.payload.leadId as string | null) ?? null,
+      assignedTo: routedTo,
+      dedupeKey: `voicemail:${event.entityId}`,
+    }];
+  },
+};
+
+const logCallToTimeline: Recipe = {
+  key: 'calls.log_to_timeline',
+  area: 'Calls',
+  title: 'Put every finished call on the contact and lead timeline',
+  description: 'One entry with direction, duration, agent and note, on the contact and on the lead.',
+  triggers: ['call.ended'],
+  defaultMode: 'auto',
+  autoEligible: true,
+  async evaluate(ctx, event) {
+    const contactId = (event.payload.contactId as string | null) ?? null;
+    const leadId = (event.payload.leadId as string | null) ?? null;
+    if (!contactId && !leadId) return [];
+    return [{
+      action: 'log_call_activity',
+      title: 'Log the call on the timeline',
+      reason: 'Call ended',
+      params: {
+        callId: event.entityId,
+        contactId,
+        leadId,
+        direction: event.payload.direction === 'outbound' ? 'outbound' : 'inbound',
+        result: String(event.payload.result ?? 'completed'),
+        durationSeconds: Math.max(0, Math.floor(numericPayload(event, 'durationSeconds'))),
+        agentId: (event.payload.agentId as string | null) ?? null,
+      },
+      entityType: leadId ? 'lead' : 'contact',
+      entityId: (leadId ?? contactId) as string,
+      contactId,
+      leadId,
+      dedupeKey: `call-timeline:${event.entityId}`,
+    }];
+  },
+};
+
+const contactedOnCall: Recipe = {
+  key: 'leads.contacted_on_call',
+  area: 'Leads',
+  title: 'Mark a new lead Contacted after a real conversation',
+  description: 'A lead still marked New moves to Contacted after a connected call of at least the minimum length. Undo is one click.',
+  triggers: ['call.ended'],
+  defaultMode: 'auto',
+  autoEligible: true,
+  settings: [{ key: 'minSeconds', label: 'Call at least', type: 'number', default: 30, min: 5, max: 600, unit: 'seconds' }],
+  async evaluate(ctx, event) {
+    if (event.payload.result !== 'completed') return [];
+    if (numericPayload(event, 'durationSeconds') < (ctx.settings.minSeconds ?? 30)) return [];
+    const lead = await loadLead(ctx, event.payload.leadId as string | undefined);
+    if (!lead || lead.status !== 'new') return [];
+    return [{
+      action: 'advance_lead_status',
+      title: `Mark "${lead.title}" as contacted`,
+      reason: `Connected call of ${Math.round(numericPayload(event, 'durationSeconds'))} s`,
+      params: { leadId: lead.id, status: 'contacted' },
+      entityType: 'lead',
+      entityId: lead.id,
+      contactId: lead.contact_id,
+      leadId: lead.id,
+      assignedTo: lead.assigned_to,
+      dedupeKey: `contacted-call:${lead.id}`,
+    }];
+  },
+};
+
+const nextStepPrompt: Recipe = {
+  key: 'calls.next_step_prompt',
+  area: 'Calls',
+  title: 'Suggest a follow-up after a connected call',
+  description: 'After a call that connected, suggests a follow-up call for tomorrow at 10:00 on the open lead. Change the time or dismiss it.',
+  triggers: ['call.ended'],
+  defaultMode: 'suggest',
+  autoEligible: true,
+  async evaluate(ctx, event) {
+    if (event.payload.result !== 'completed' || numericPayload(event, 'durationSeconds') < 10) return [];
+    const lead = await loadLead(ctx, event.payload.leadId as string | undefined);
+    if (!lead || !isOpenStatus(lead.status)) return [];
+    const tz = await getTenantTimeZone(ctx.db);
+    const tomorrow = addDaysLocal(await today(ctx), 1);
+    const at = new Date(new Date(localDateStartUtcIso(tz, tomorrow)).getTime() + 10 * 3600000);
+    const contact = await loadContact(ctx, lead.contact_id);
+    return [{
+      action: 'create_follow_up',
+      title: `Schedule a follow-up with ${contact?.name ?? lead.title}?`,
+      reason: 'The call connected; set the next step while it is fresh',
+      params: { leadId: lead.id, scheduledAt: at.toISOString().replace(/\.\d{3}Z$/, 'Z'), type: 'call', notes: 'Follow-up after call' },
+      entityType: 'lead',
+      entityId: lead.id,
+      contactId: lead.contact_id,
+      leadId: lead.id,
+      assignedTo: (event.payload.agentId as string | null) ?? lead.assigned_to,
+      dedupeKey: `next-step:${event.entityId}`,
+    }];
+  },
+};
+
+function isOpenStatus(status: string): boolean {
+  return !['won', 'lost', 'booking_confirmed', 'completed'].includes(status);
+}
+
+const leadFromUnknownCaller: Recipe = {
+  key: 'calls.lead_from_unknown_caller',
+  area: 'Calls',
+  title: 'Offer a contact and lead after a call with an unknown number',
+  description: 'After a connected call with a number that is not in your contacts, suggests creating the contact and a lead with the phone number filled in.',
+  triggers: ['call.ended'],
+  defaultMode: 'suggest',
+  autoEligible: false,
+  async evaluate(ctx, event) {
+    if (event.payload.result !== 'completed') return [];
+    const number = typeof event.payload.number === 'string' ? event.payload.number.trim() : '';
+    if (!number || event.payload.contactId || event.payload.leadId) return [];
+    const { findContactByIdentity } = await import('../domain/contacts');
+    if (await findContactByIdentity(ctx.db, { phone: number })) return [];
+    return [{
+      action: 'create_lead_from_enquiry',
+      title: `Create contact and lead for ${number}`,
+      reason: 'You spoke to a number that is not in your contacts',
+      params: { phone: number, title: `Call with ${number}`, source: 'phone_call' },
+      entityType: 'call',
+      entityId: event.entityId,
+      assignedTo: (event.payload.agentId as string | null) ?? null,
+      dedupeKey: `call-lead:${number.replace(/\D/g, '').slice(-10)}:${await today(ctx)}`,
+    }];
+  },
+};
+
+const retryTask: Recipe = {
+  key: 'calls.retry_task',
+  area: 'Calls',
+  title: 'Suggest trying again when an outbound call is not answered',
+  description: 'When the person you called does not pick up, suggests a task to try again later today. One suggestion per lead per day.',
+  triggers: ['call.ended'],
+  defaultMode: 'suggest',
+  autoEligible: true,
+  async evaluate(ctx, event) {
+    if (event.payload.direction !== 'outbound' || (event.payload.result !== 'no_answer' && event.payload.result !== 'busy')) return [];
+    const lead = await loadLead(ctx, event.payload.leadId as string | undefined);
+    if (!lead || !isOpenStatus(lead.status)) return [];
+    const contact = await loadContact(ctx, lead.contact_id);
+    const who = contact?.name ?? lead.title;
+    const day = await today(ctx);
+    const agentId = (event.payload.agentId as string | null) ?? lead.assigned_to;
+    return [{
+      action: 'create_task',
+      title: `Try ${who} again`,
+      reason: 'Your call was not answered',
+      params: {
+        title: `Try ${who} again`,
+        description: `Outbound call to ${String(event.payload.number ?? who)} was not answered.`,
+        dueDate: day,
+        priority: 'medium',
+        assignedTo: agentId,
+        relatedLeadId: lead.id,
+      },
+      entityType: 'lead',
+      entityId: lead.id,
+      contactId: lead.contact_id,
+      leadId: lead.id,
+      assignedTo: agentId,
+      dedupeKey: `call-retry:${lead.id}:${day}`,
+    }];
+  },
+};
+
 const tripFeedback: Recipe = {
   key: 'fleet.trip_feedback',
   area: 'Fleet',
@@ -1483,6 +1769,13 @@ export const RECIPES: Recipe[] = [
   overdueInvoiceReminder,
   missedCallCallback,
   leadFromMissedCall,
+  missedAcknowledgement,
+  voicemailTask,
+  logCallToTimeline,
+  contactedOnCall,
+  nextStepPrompt,
+  leadFromUnknownCaller,
+  retryTask,
   tripFeedback,
   contactedOnFirstReply,
   unansweredMessage,
