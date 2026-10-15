@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 import type { User, Tenant } from '@travelcrm/shared';
+import { setLocaleFromTenant } from '@/lib/locale';
 
 interface AuthState {
   // State
@@ -48,7 +49,8 @@ export const useAuthStore = create<AuthState>()(
       mustChangePassword: false,
       onboardingPending: null,
 
-      setAuth: ({ accessToken, refreshToken, user, tenant, mustChangePassword }) =>
+      setAuth: ({ accessToken, refreshToken, user, tenant, mustChangePassword }) => {
+        setLocaleFromTenant(tenant);
         set({
           accessToken,
           refreshToken,
@@ -58,7 +60,8 @@ export const useAuthStore = create<AuthState>()(
           isLoading: false,
           mustChangePassword: mustChangePassword === true,
           onboardingPending: null,
-        }),
+        });
+      },
 
       setMustChangePassword: (mustChangePassword) => set({ mustChangePassword }),
 
@@ -70,13 +73,16 @@ export const useAuthStore = create<AuthState>()(
       setUser: (user) =>
         set({ user, isAuthenticated: user !== null }),
 
-      setTenant: (tenant) =>
-        set({ tenant }),
+      setTenant: (tenant) => {
+        setLocaleFromTenant(tenant);
+        set({ tenant });
+      },
 
       setLoading: (isLoading) =>
         set({ isLoading }),
 
-      logout: () =>
+      logout: () => {
+        setLocaleFromTenant(null);
         set({
           accessToken: null,
           refreshToken: null,
@@ -86,9 +92,11 @@ export const useAuthStore = create<AuthState>()(
           isLoading: false,
           mustChangePassword: false,
           onboardingPending: null,
-        }),
+        });
+      },
 
-      clearAuth: () =>
+      clearAuth: () => {
+        setLocaleFromTenant(null);
         set({
           accessToken: null,
           refreshToken: null,
@@ -98,7 +106,8 @@ export const useAuthStore = create<AuthState>()(
           isLoading: false,
           mustChangePassword: false,
           onboardingPending: null,
-        }),
+        });
+      },
     }),
     {
       name: 'travelcrm-auth',
@@ -113,6 +122,7 @@ export const useAuthStore = create<AuthState>()(
       onRehydrateStorage: () => (state) => {
         // After hydration completes, set isLoading to false
         if (state) {
+          setLocaleFromTenant(state.tenant);
           state.isLoading = false;
           useAuthStore.setState({ isLoading: false });
         }

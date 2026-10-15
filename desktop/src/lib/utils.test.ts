@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { setLocaleContext } from './locale';
 import { cn, formatCurrency, formatDate, formatRelativeTime, truncate, getInitials, debounce } from './utils';
 
 describe('cn (className merge)', () => {
@@ -48,10 +49,13 @@ describe('formatCurrency', () => {
     expect(result).toContain('5,000');
   });
 
-  it('should default to INR', () => {
-    const result = formatCurrency(1000);
-    expect(result).toBeDefined();
-    expect(typeof result).toBe('string');
+  it('should default to the active agency currency and locale (not a fixed INR)', () => {
+    // test-setup.ts starts every test as an Indian agency
+    expect(formatCurrency(100000)).toBe('₹1,00,000');
+    setLocaleContext({ currency: 'GBP', locale: 'en-GB' });
+    expect(formatCurrency(100000)).toBe('£100,000');
+    setLocaleContext({ currency: 'USD', locale: 'en-US' });
+    expect(formatCurrency(1000)).toBe('$1,000');
   });
 });
 
@@ -74,6 +78,12 @@ describe('formatDate', () => {
   it('should accept custom options', () => {
     const result = formatDate('2025-06-15', { month: 'long' });
     expect(result).toContain('June');
+  });
+
+  it('should use the active locale', () => {
+    expect(formatDate('2025-06-15T12:00:00Z')).toBe('15 Jun 2025');
+    setLocaleContext({ locale: 'en-US' });
+    expect(formatDate('2025-06-15T12:00:00Z')).toBe('Jun 15, 2025');
   });
 });
 

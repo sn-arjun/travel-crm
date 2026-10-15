@@ -2,6 +2,8 @@ import { client, type ApiResponse } from './client';
 import { API_ENDPOINTS } from './config';
 import { usersApi } from './users';
 import type { User } from '@travelcrm/shared';
+import { setLocaleContext } from '../locale';
+import { useAuthStore } from '@/stores/auth-store';
 
 // The backend stores company settings as flat key/value rows. The UI works
 // with camelCase fields, so every call below maps between the two shapes.
@@ -21,6 +23,10 @@ export interface CompanySettings {
   timezone: string;
   currency: string;
   language: string;
+  /** BCP 47 tag the agency writes numbers and dates in, e.g. en-GB. */
+  locale: string;
+  /** ISO 3166 country phone numbers are read in when typed without a country code. */
+  phoneDefaultCountry: string;
 }
 
 export type UpdateCompanySettingsRequest = Partial<Omit<CompanySettings, 'logoUrl'>>;
@@ -39,6 +45,8 @@ const COMPANY_KEYS: Record<keyof Omit<CompanySettings, 'logoUrl'>, string> = {
   timezone: 'timezone',
   currency: 'currency',
   language: 'language',
+  locale: 'locale',
+  phoneDefaultCountry: 'phone_default_country',
 };
 
 function fromCompanyKeys(raw: Record<string, string | null> | null | undefined): CompanySettings {
@@ -272,13 +280,61 @@ function fromSequence(s: Raw): FollowUpSequence {
   };
 }
 
+/**
+ * Re-read the agency's settings and the signed-in user's own locale and time zone, then make them the active
+ * display locale. Called after either is saved. Never throws: on failure the previous locale stays.
+ */
+export async function refreshLocaleFromServer(): Promise<void> {
+  try {
+    const [company, me] = await Promise.all([
+      client.get<ApiResponse<Record<string, string | null>>>(API_ENDPOINTS.settings.company),
+      client.get<ApiResponse<{ locale?: string | null; timezone?: string | null }>>(API_ENDPOINTS.users.me),
+    ]);
+    const c = company.data ?? {};
+    const u = me.data ?? {};
+    const resolved = {
+      currency: c.currency || undefined,
+      locale: u.locale || c.locale || undefined,
+      timeZone: u.timezone || c.timezone || c.company_timezone || undefined,
+      country: c.country || c.company_country || undefined,
+      phoneDefaultCountry: c.phone_default_country || undefined,
+    };
+    setLocaleContext(resolved);
+    const tenant = useAuthStore.getState().tenant;
+    if (tenant) {
+      useAuthStore.getState().setTenant({
+        ...tenant,
+        ...(resolved.currency ? { currency: resolved.currency as typeof tenant.currency } : {}),
+        ...(resolved.timeZone ? { timezone: resolved.timeZone } : {}),
+        ...(resolved.locale ? { locale: resolved.locale } : {}),
+        ...(resolved.country ? { country: resolved.country } : {}),
+        ...(resolved.phoneDefaultCountry ? { phoneDefaultCountry: resolved.phoneDefaultCountry } : {}),
+      });
+    }
+  } catch {
+    // keep showing the locale we already have
+  }
+}
+
 export const settingsApi = {
+  /** The signed-in user's own display overrides; null clears one so the agency setting applies again. */
+  myLocale: {
+    update: async (data: { locale?: string | null; timezone?: string | null }) => {
+      const res = await client.put<ApiResponse<{ locale: string | null; timezone: string | null }>>(API_ENDPOINTS.users.me, data);
+      await refreshLocaleFromServer();
+      return res;
+    },
+  },
+
   company: {
     get: async () =>
       mapData(await client.get<ApiResponse<Record<string, string | null>>>(API_ENDPOINTS.settings.company), fromCompanyKeys),
 
-    update: (data: UpdateCompanySettingsRequest) =>
-      client.put<ApiResponse<{ message: string }>>(API_ENDPOINTS.settings.company, toCompanyKeys(data)),
+    update: async (data: UpdateCompanySettingsRequest) => {
+      const res = await client.put<ApiResponse<{ message: string }>>(API_ENDPOINTS.settings.company, toCompanyKeys(data));
+      await refreshLocaleFromServer();
+      return res;
+    },
   },
 
   logo: {
