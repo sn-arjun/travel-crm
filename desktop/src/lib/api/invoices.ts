@@ -102,6 +102,26 @@ export interface InvoicePaymentRow {
   notes: string | null;
 }
 
+/** The link the customer pays through (the agency's own gateway). */
+export interface InvoicePaymentLink {
+  id: string;
+  url: string;
+  status: 'created' | 'paid' | 'expired' | 'cancelled' | string;
+  gateway: 'razorpay' | 'stripe' | string | null;
+}
+
+/** POST /invoices/:id/payment-link */
+export interface CreatedPaymentLink {
+  invoiceId: string;
+  gateway: 'razorpay' | 'stripe';
+  mode: 'test' | 'live';
+  linkId: string;
+  url: string;
+  status: string;
+  amount: number;
+  currency: string;
+}
+
 /** GET /invoices/:id with camelCase fields and numeric money. */
 export interface InvoiceDetail {
   id: string;
@@ -139,6 +159,8 @@ export interface InvoiceDetail {
   terms: string | null;
   items: InvoiceItemRow[];
   payments: InvoicePaymentRow[];
+  /** The payment link on this invoice, if one was created. */
+  paymentLink: InvoicePaymentLink | null;
 }
 
 type RawRow = Record<string, unknown>;
@@ -204,6 +226,18 @@ export function normalizeInvoicePayment(raw: RawRow): InvoicePaymentRow {
   };
 }
 
+function normalizePaymentLink(raw: RawRow): InvoicePaymentLink | null {
+  const url = strOrNull(pick(raw, 'paymentLinkUrl', 'payment_link_url'));
+  const id = strOrNull(pick(raw, 'paymentLinkId', 'payment_link_id'));
+  if (!url || !id) return null;
+  return {
+    id,
+    url,
+    status: strOrNull(pick(raw, 'paymentLinkStatus', 'payment_link_status')) ?? 'created',
+    gateway: strOrNull(pick(raw, 'paymentLinkGateway', 'payment_link_gateway')),
+  };
+}
+
 export function normalizeInvoiceDetail(input: unknown): InvoiceDetail | null {
   if (!input || typeof input !== 'object') return null;
   const raw = input as RawRow;
@@ -245,6 +279,7 @@ export function normalizeInvoiceDetail(input: unknown): InvoiceDetail | null {
     terms: strOrNull(raw.terms),
     items: asRows(raw.items).map(normalizeInvoiceItem),
     payments: asRows(raw.payments).map(normalizeInvoicePayment),
+    paymentLink: normalizePaymentLink(raw),
   };
 }
 
@@ -308,6 +343,13 @@ export const invoicesApi = {
 
   send: (id: string, data: { channel: 'email' | 'whatsapp'; to: string }) =>
     client.post<ApiResponse<Invoice>>(API_ENDPOINTS.invoices.send(id), data),
+
+  /** A link to pay the balance due through the agency's own Razorpay or Stripe account. */
+  createPaymentLink: (id: string, data?: { gateway?: 'razorpay' | 'stripe' }) =>
+    client.post<ApiResponse<CreatedPaymentLink>>(API_ENDPOINTS.invoices.paymentLink(id), data ?? {}),
+
+  cancelPaymentLink: (id: string) =>
+    client.delete<ApiResponse<{ invoiceId: string; status: string }>>(API_ENDPOINTS.invoices.paymentLink(id)),
 
   summary: () =>
     client.get<ApiResponse<{ outstanding: number; overdue: number; paidThisMonth: number; invoicedThisMonth: number }>>(API_ENDPOINTS.invoices.summary),

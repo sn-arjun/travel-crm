@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { useApiBaseUrl } from '@/lib/api/use-api-base-url';
 import { PageContainer } from '@/components/layout/page-container';
 import { useApiQuery } from '@/hooks/use-api';
+import { PaymentGateways } from './_payment-gateways';
 import {
   integrationsApi,
   type ChannelAddress,
@@ -385,6 +386,7 @@ function IntegrationsSettingsPageContent() {
 
       <ReceivingAddresses />
       <ApiKeys />
+      <PaymentGateways />
 
       <div className="flex flex-col gap-ds-4">
         {WEBHOOKS.map((wh) => (

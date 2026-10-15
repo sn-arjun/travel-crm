@@ -104,6 +104,7 @@ export const API_ENDPOINTS = {
     void: (id: string) => `/invoices/${id}/void`,
     duplicate: (id: string) => `/invoices/${id}/duplicate`,
     send: (id: string) => `/invoices/${id}/send`,
+    paymentLink: (id: string) => `/invoices/${id}/payment-link`,
     summary: '/invoices/summary',
     fromItinerary: '/invoices/from-itinerary',
   },
@@ -433,6 +434,9 @@ export const API_ENDPOINTS = {
     channelById: (id: string) => `/integrations/channels/${id}`,
     apiKeys: '/integrations/api-keys',
     apiKeyById: (id: string) => `/integrations/api-keys/${id}`,
+    paymentGateways: '/integrations/payment-gateways',
+    paymentGatewayById: (gateway: string) => `/integrations/payment-gateways/${gateway}`,
+    paymentGatewayTest: (gateway: string) => `/integrations/payment-gateways/${gateway}/test`,
   },
   // Bookmarks & Notes
   bookmarks: {

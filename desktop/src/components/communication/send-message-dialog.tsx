@@ -34,7 +34,7 @@ interface MessageTemplate {
   content: string;
   variables?: string[];
   /** Hidden unless the caller supplies this variable (e.g. a share link). */
-  requires?: 'share_link';
+  requires?: 'share_link' | 'payment_link';
 }
 
 /** Values a caller can supply for template placeholders. Anything omitted stays as `{{name}}`. */
@@ -42,7 +42,7 @@ export type MessageVariableName =
   | 'customer_name' | 'first_name' | 'company_name' | 'company_phone' | 'company_email'
   | 'agent_name' | 'agent_email'
   | 'destination' | 'travel_date' | 'return_date' | 'pax_count' | 'amount'
-  | 'share_link';
+  | 'share_link' | 'payment_link' | 'invoice_number';
 
 export type MessageVariables = Partial<Record<MessageVariableName, string>>;
 
@@ -55,7 +55,9 @@ const LOCAL_TEMPLATES: MessageTemplate[] = [
   { id: 'tpl-itinerary-email', name: 'Itinerary Link Email', channel: 'email', category: 'quotation', subject: 'Your {{destination}} itinerary from {{company_name}}', content: 'Hi {{customer_name}},\n\nYour {{destination}} itinerary is ready. You can view the day-by-day plan here:\n{{share_link}}\n\nTotal package price: {{amount}}\n\nWarm regards,\n{{agent_name}}\n{{company_name}}', variables: ['customer_name', 'destination', 'share_link', 'amount', 'agent_name', 'company_name'], requires: 'share_link' },
   { id: 'tpl-booking-email', name: 'Booking Confirmation', channel: 'email', category: 'booking', subject: 'Booking Confirmed - {{destination}}', content: 'Dear {{customer_name}},\n\nYour booking for {{destination}} has been confirmed!\n\nTravel Date: {{travel_date}}\nReturn Date: {{return_date}}\nPassengers: {{pax_count}}\n\nWe will send you the detailed itinerary shortly.\n\nHappy travels!\n{{agent_name}}', variables: ['customer_name', 'destination', 'travel_date', 'return_date', 'pax_count', 'agent_name'] },
   { id: 'tpl-reminder-email', name: 'Payment Reminder', channel: 'email', category: 'reminder', subject: 'Payment Reminder - {{destination}} Trip', content: 'Dear {{customer_name}},\n\nThis is a friendly reminder that your payment of {{amount}} for the {{destination}} trip is due.\n\nPlease make the payment at your earliest convenience.\n\nThank you,\n{{agent_name}}', variables: ['customer_name', 'amount', 'destination', 'agent_name'] },
+  { id: 'tpl-paylink-email', name: 'Invoice Payment Link', channel: 'email', category: 'reminder', subject: 'Pay invoice {{invoice_number}} online', content: 'Dear {{customer_name}},\n\nInvoice {{invoice_number}} for {{amount}} can be paid securely online here:\n{{payment_link}}\n\nThank you,\n{{agent_name}}\n{{company_name}}', variables: ['customer_name', 'invoice_number', 'amount', 'payment_link', 'agent_name', 'company_name'], requires: 'payment_link' },
   // WhatsApp
+  { id: 'tpl-paylink-wa', name: 'Invoice Payment Link WA', channel: 'whatsapp', category: 'reminder', content: 'Hi {{first_name}}, you can pay invoice {{invoice_number}} ({{amount}}) securely online: {{payment_link}}', variables: ['first_name', 'invoice_number', 'amount', 'payment_link'], requires: 'payment_link' },
   { id: 'tpl-welcome-wa', name: 'Welcome WhatsApp', channel: 'whatsapp', category: 'greeting', content: 'Hi {{first_name}}! Welcome to {{company_name}}. We\'re thrilled to help you plan your dream vacation. How can we assist you today?', variables: ['first_name', 'company_name'] },
   { id: 'tpl-followup-wa', name: 'Follow-up WhatsApp', channel: 'whatsapp', category: 'follow_up', content: 'Hi {{first_name}}, just following up on your inquiry about {{destination}}. We have some amazing deals available! Would you like to know more?', variables: ['first_name', 'destination'] },
   { id: 'tpl-itinerary-wa', name: 'Itinerary Link WhatsApp', channel: 'whatsapp', category: 'quotation', content: 'Hi {{first_name}}, your {{destination}} itinerary from {{company_name}} is ready: {{share_link}}\nPackage price: {{amount}}', variables: ['first_name', 'destination', 'company_name', 'share_link', 'amount'], requires: 'share_link' },
@@ -229,10 +231,11 @@ export function SendMessageDialog({ open, onOpenChange, contact, defaultChannel,
   const channelTemplates = [...ownTemplates, ...starterTemplates];
 
   function substituteVariables(text: string): string {
-    // A line that exists to carry the share link is dropped when there is no link
-    const lines = values.share_link
+    // A line that exists to carry a link (share link, payment link) is dropped when there is no link
+    const missing = (['share_link', 'payment_link'] as const).filter((name) => !values[name]);
+    const lines = missing.length === 0
       ? text
-      : text.split('\n').filter((line) => !line.includes('{{share_link}}')).join('\n');
+      : text.split('\n').filter((line) => !missing.some((name) => line.includes(`{{${name}}}`))).join('\n');
     return lines.replace(PLACEHOLDER_RE, (whole, name: string) => values[name as MessageVariableName] ?? whole);
   }
 

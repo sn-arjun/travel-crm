@@ -24,6 +24,7 @@ import { formatCurrency } from '@/lib/utils';
 import { formatDisplayDate, toLocalDateString } from '@/lib/dates';
 import { buildInvoicePdf, downloadInvoiceCsv } from './_documents';
 import { NoteDialog } from './_note-dialog';
+import { PaymentLinkCard } from './_payment-link';
 
 const METHOD_LABELS: Record<string, string> = {
   cash: 'Cash', transfer: 'Bank Transfer', card: 'Card', check: 'Cheque', upi: 'UPI', other: 'Other',
@@ -260,6 +261,8 @@ export default function InvoiceDetailPage() {
                 </div>
               </div>
             </SectionCard>
+
+            <PaymentLinkCard invoice={invoice} contact={{ name: invoice.contactName || contact?.name || 'Client', email: billEmail, phone: invoice.contactPhone ?? contact?.phone }} onChanged={() => void refetch()} />
 
             <SectionCard title="Bill to">
               <div className="grid gap-ds-4 sm:grid-cols-2" data-testid="invoice-bill-to">
