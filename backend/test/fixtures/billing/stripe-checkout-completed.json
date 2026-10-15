@@ -1,0 +1,23 @@
+{
+  "id": "__EVENT_ID__",
+  "object": "event",
+  "api_version": "2024-06-20",
+  "created": "__CREATED__",
+  "type": "checkout.session.completed",
+  "livemode": false,
+  "data": {
+    "object": {
+      "id": "cs_test_fixture_1",
+      "object": "checkout.session",
+      "mode": "subscription",
+      "payment_status": "paid",
+      "status": "complete",
+      "client_reference_id": "__TENANT_ID__",
+      "customer": "cus_fixture_1",
+      "subscription": "sub_fixture_1",
+      "amount_total": 24000,
+      "currency": "gbp",
+      "metadata": { "tenant_id": "__TENANT_ID__", "plan_key": "pro", "extra_users": "2" }
+    }
+  }
+}
