@@ -1,5 +1,5 @@
 import { generateId } from '../../utils/uuid';
-import { normalizePhone, phoneLookupVariants, inPlaceholders } from '../../utils/phone';
+import { normalizePhone, phoneLookupVariants, inPlaceholders, tenantPhoneCountry } from '../../utils/phone';
 
 export interface ContactIdentity {
   phone?: string | null;
@@ -24,9 +24,10 @@ export async function findContactByIdentity(
   db: D1Database,
   identity: ContactIdentity,
 ): Promise<ContactMatch | null> {
-  const phone = identity.phone ? normalizePhone(identity.phone) : '';
+  const country = identity.phone ? await tenantPhoneCountry(db) : undefined;
+  const phone = identity.phone ? normalizePhone(identity.phone, country) : '';
   if (phone) {
-    const variants = phoneLookupVariants(phone);
+    const variants = phoneLookupVariants(phone, country);
     const match = await db
       .prepare(`SELECT id, name FROM contacts WHERE COALESCE(is_deleted, 0) = 0 AND phone IN (${inPlaceholders(variants)}) LIMIT 1`)
       .bind(...variants)
@@ -58,7 +59,7 @@ export async function findOrCreateContact(
   if (existing) return { ...existing, created: false };
 
   const name = (input.name ?? '').trim();
-  const phone = input.phone ? normalizePhone(input.phone) : '';
+  const phone = input.phone ? normalizePhone(input.phone, await tenantPhoneCountry(db)) : '';
   const email = (input.email ?? '').trim().toLowerCase();
   if (!name && !phone && !email) return null;
 

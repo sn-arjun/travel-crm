@@ -3,7 +3,7 @@ import { zValidator } from '../utils/validator';
 import type { AppContext } from '../types';
 import { success, created, paginated, error, notFound } from '../utils/response';
 import { generateId } from '../utils/uuid';
-import { normalizePhone, phoneLookupVariants, inPlaceholders } from '../utils/phone';
+import { normalizePhone, phoneLookupVariants, inPlaceholders, tenantPhoneCountry } from '../utils/phone';
 import { logActivity } from '../utils/activity-logger';
 import { tenantToday, tenantTimeZone, addDaysLocal, daysBetweenLocal, localMonthWindow } from '../utils/tz';
 import {
@@ -779,9 +779,11 @@ fleet.post('/drivers', zValidator('json', createDriverSchema), async (c) => {
   const id = generateId();
   const now = new Date().toISOString();
 
-  // Store phones as E.164 so the driver app (+91...) and desktop (digits-only) agree
-  const phone = normalizePhone(data.phone) || data.phone;
-  const phoneVariants = phoneLookupVariants(data.phone);
+  // Store phones as E.164 so the driver app and desktop (digits-only) agree; numbers typed without a country code
+  // are read as the agency's own country (R204)
+  const phoneCountry = await tenantPhoneCountry(db);
+  const phone = normalizePhone(data.phone, phoneCountry) || data.phone;
+  const phoneVariants = phoneLookupVariants(data.phone, phoneCountry);
 
   // Check unique phone (any stored format)
   const existing = await db.prepare(
@@ -795,7 +797,7 @@ fleet.post('/drivers', zValidator('json', createDriverSchema), async (c) => {
   `).bind(
     id, tenantId, data.name, phone,
     data.email ?? null, data.licenseNumber ?? null, data.licenseExpiry ?? null,
-    data.address ?? null, data.emergencyContactName ?? null, normalizePhone(data.emergencyContactPhone ?? '') || null,
+    data.address ?? null, data.emergencyContactName ?? null, normalizePhone(data.emergencyContactPhone ?? '', phoneCountry) || null,
     data.dateOfJoining ?? null, data.notes ?? null, userId, now, now,
   ).run();
 
@@ -818,9 +820,10 @@ fleet.put('/drivers/:id', zValidator('json', updateDriverSchema), async (c) => {
   const existing = await db.prepare('SELECT * FROM drivers WHERE id = ? AND is_deleted = 0').bind(id).first();
   if (!existing) return notFound(c, 'Driver');
 
-  const normalizedPhone = data.phone ? (normalizePhone(data.phone) || data.phone) : undefined;
+  const phoneCountry = data.phone !== undefined || data.emergencyContactPhone !== undefined ? await tenantPhoneCountry(db) : undefined;
+  const normalizedPhone = data.phone ? (normalizePhone(data.phone, phoneCountry) || data.phone) : undefined;
   if (data.phone && normalizedPhone !== existing.phone) {
-    const phoneVariants = phoneLookupVariants(data.phone);
+    const phoneVariants = phoneLookupVariants(data.phone, phoneCountry);
     const dup = await db.prepare(
       `SELECT id FROM drivers WHERE phone IN (${inPlaceholders(phoneVariants)}) AND is_deleted = 0 AND id != ?`
     ).bind(...phoneVariants, id).first();
@@ -837,7 +840,7 @@ fleet.put('/drivers/:id', zValidator('json', updateDriverSchema), async (c) => {
   if (data.licenseExpiry !== undefined) { sets.push('license_expiry = ?'); params.push(data.licenseExpiry); }
   if (data.address !== undefined) { sets.push('address = ?'); params.push(data.address); }
   if (data.emergencyContactName !== undefined) { sets.push('emergency_contact_name = ?'); params.push(data.emergencyContactName); }
-  if (data.emergencyContactPhone !== undefined) { sets.push('emergency_contact_phone = ?'); params.push(normalizePhone(data.emergencyContactPhone ?? '') || null); }
+  if (data.emergencyContactPhone !== undefined) { sets.push('emergency_contact_phone = ?'); params.push(normalizePhone(data.emergencyContactPhone ?? '', phoneCountry) || null); }
   if (data.dateOfJoining !== undefined) { sets.push('date_of_joining = ?'); params.push(data.dateOfJoining); }
   if (data.notes !== undefined) { sets.push('notes = ?'); params.push(data.notes); }
 
@@ -1206,7 +1209,7 @@ fleet.post('/trips', zValidator('json', createTripSchema), async (c) => {
   if (driverConflict) return error(c, 'Driver is not available for the selected date range', 400);
 
   // Store the passenger phone as E.164 (empty -> null)
-  const passengerPhoneE164 = normalizePhone(data.passengerPhone ?? '') || null;
+  const passengerPhoneE164 = normalizePhone(data.passengerPhone ?? '', await tenantPhoneCountry(db)) || null;
 
   await db.prepare(`
     INSERT INTO trip_assignments (
@@ -1358,7 +1361,7 @@ fleet.put('/trips/:id', zValidator('json', updateTripSchema), async (c) => {
   if (data.pickupDatetime !== undefined) { sets.push('pickup_datetime = ?'); params.push(data.pickupDatetime); }
   if (data.dropDatetime !== undefined) { sets.push('drop_datetime = ?'); params.push(data.dropDatetime); }
   if (data.passengerName !== undefined) { sets.push('passenger_name = ?'); params.push(data.passengerName); }
-  if (data.passengerPhone !== undefined) { sets.push('passenger_phone = ?'); params.push(normalizePhone(data.passengerPhone ?? '') || null); }
+  if (data.passengerPhone !== undefined) { sets.push('passenger_phone = ?'); params.push(normalizePhone(data.passengerPhone ?? '', await tenantPhoneCountry(db)) || null); }
   if (data.specialInstructions !== undefined) { sets.push('special_instructions = ?'); params.push(data.specialInstructions); }
   // M20 fields
   if (data.tripType !== undefined) { sets.push('trip_type = ?'); params.push(data.tripType); }

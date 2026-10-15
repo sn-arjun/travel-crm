@@ -1,0 +1,64 @@
+/// The country assumed when an agency has not chosen one.
+const String kDefaultCountryIso = 'IN';
+
+PhoneCountry? phoneCountryByIso(String? iso) {
+  final code = (iso ?? '').trim().toUpperCase();
+  if (code.isEmpty) return null;
+  for (final c in kPhoneCountries) {
+    if (c.iso == code) return c;
+  }
+  return null;
+}
+
+/// The country whose calling code starts [digits] (longest code wins: 1684 before 1); the first listed when
+/// several countries share a code.
+PhoneCountry? phoneCountryForDigits(String digits) {
+  PhoneCountry? best;
+  for (final c in kPhoneCountries) {
+    if (digits.startsWith(c.dialDigits) &&
+        (best == null || c.dialDigits.length > best.dialDigits.length)) {
+      best = c;
+    }
+  }
+  return best;
+}
+
+/// Splits E.164 into its country and national digits; null when no country matches.
+({PhoneCountry country, String national})? splitPhoneE164(String? e164) {
+  final digits = (e164 ?? '').replaceAll(RegExp(r'\D'), '');
+  if (digits.isEmpty) return null;
+  final country = phoneCountryForDigits(digits);
+  if (country == null) return null;
+  final national = digits.substring(country.dialDigits.length);
+  return national.isEmpty ? null : (country: country, national: national);
+}
+
+bool _inRange(PhoneCountry c, int n) => n >= c.minLength && n <= c.maxLength;
+
+bool _isNanpTerritory(PhoneCountry c) =>
+    c.dialDigits.length == 4 && c.dialDigits.startsWith('1');
+
+/// Drops one leading trunk 0 from digits typed next to [country]'s calling code (07911 123456 becomes
+/// 7911123456), unless the country keeps it or the rest would be too short.
+String nationalDigitsFor(PhoneCountry country, String typed) {
+  var d = typed.replaceAll(RegExp(r'\D'), '');
+  if (d.startsWith('0') && !country.keepZero && _inRange(country, d.length - 1)) {
+    d = d.substring(1);
+  }
+  return d;
+}
+
+/// True when [typed] (trunk 0 allowed) is a plausible national number for [country].
+bool isValidNational(PhoneCountry country, String typed) {
+  final d = nationalDigitsFor(country, typed);
+  if (_isNanpTerritory(country)) return d.length == 7 || d.length == 10;
+  return _inRange(country, d.length);
+}
+
+/// E.164 for [typed] digits read in [country]: "+", the calling code, the national number.
+String composePhoneE164(PhoneCountry country, String typed) {
+  final d = nationalDigitsFor(country, typed);
+  if (d.isEmpty) return '';
+  if (_isNanpTerritory(country) && d.length == 10) return '+1$d';
+  return '+${country.dialDigits}$d';
+}

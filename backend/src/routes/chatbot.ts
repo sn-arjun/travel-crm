@@ -10,7 +10,7 @@ import { z } from 'zod';
 import type { AppContext } from '../types';
 import { success, error } from '../utils/response';
 import { generateId } from '../utils/uuid';
-import { normalizePhone, phoneLookupVariants, inPlaceholders } from '../utils/phone';
+import { normalizePhone, phoneLookupVariants, inPlaceholders, tenantPhoneCountry } from '../utils/phone';
 import { AIRouter } from '../services/ai-router';
 
 import { aiAwareErrorHandler, aiUnavailableResponse } from '../utils/ai-unavailable';
@@ -406,11 +406,12 @@ app.post('/conversations/:id/create-lead', async (c) => {
   // phone or email, else create a contact from what the visitor told us.
   const visitorName = typeof conv.visitor_name === 'string' ? conv.visitor_name.trim() : '';
   const visitorEmail = typeof conv.visitor_email === 'string' ? conv.visitor_email.trim().toLowerCase() : '';
-  const visitorPhone = typeof conv.visitor_phone === 'string' ? normalizePhone(conv.visitor_phone) : '';
+  const phoneCountry = await tenantPhoneCountry(db);
+  const visitorPhone = typeof conv.visitor_phone === 'string' ? normalizePhone(conv.visitor_phone, phoneCountry) : '';
 
   let contactId: string | null = conv.contact_id || null;
   if (!contactId && visitorPhone) {
-    const variants = phoneLookupVariants(visitorPhone);
+    const variants = phoneLookupVariants(visitorPhone, phoneCountry);
     const match = await db
       .prepare(`SELECT id FROM contacts WHERE COALESCE(is_deleted, 0) = 0 AND phone IN (${inPlaceholders(variants)}) LIMIT 1`)
       .bind(...variants)

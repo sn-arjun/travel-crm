@@ -7,6 +7,8 @@
 
 import type { VoipSettingsRow } from './voip-provider';
 import { voipClientIdentity } from './voip-base';
+import { significantNumber } from '../utils/countries';
+import { tenantPhoneCountry } from '../utils/phone';
 
 export interface RoutingResult {
   type: 'assigned_agent' | 'round_robin' | 'least_recent' | 'voicemail' | 'default';
@@ -18,11 +20,12 @@ export interface RoutingResult {
 }
 
 /**
- * Normalize a phone number to last 10 digits for matching.
+ * The digits that identify a caller inside their country (R204): the national number once the caller's country is
+ * known (the number's own calling code, else the agency's phone country), so a UK 07911 123456, a stored
+ * +447911123456 and a dialled +44 7911 123456 all match. Indian numbers keep matching on their ten digits.
  */
-function normalizePhone(phone: string): string {
-  const digits = phone.replace(/[\s\-\(\)\+]/g, '');
-  return digits.length > 10 ? digits.slice(-10) : digits;
+function matchSuffix(phone: string, defaultCountry: string): string {
+  return significantNumber(phone, defaultCountry);
 }
 
 /**
@@ -32,8 +35,9 @@ function normalizePhone(phone: string): string {
 export async function findContactByPhone(
   db: D1Database,
   phone: string,
+  defaultCountry?: string,
 ): Promise<{ id: string; name: string; company: string | null; type: string; phone: string | null; email: string | null } | null> {
-  const suffix = normalizePhone(phone);
+  const suffix = matchSuffix(phone, defaultCountry ?? (await tenantPhoneCountry(db)));
   if (suffix.length < 5) return null;
   return db.prepare(`
     SELECT c.id, c.name, c.company, c.type, c.phone, c.email
@@ -74,7 +78,7 @@ export async function resolveInboundRouting(
 ): Promise<RoutingResult> {
   // 1. Match a known contact, then that contact's newest open lead. The lead's owner is the agent the call
   //    goes to first (contacts have no owner column).
-  const contact = await findContactByPhone(db, fromNumber);
+  const contact = await findContactByPhone(db, fromNumber, await tenantPhoneCountry(db));
   const leadMatch = contact ? await findOpenLeadForContact(db, contact.id) : null;
 
   const contactId = contact?.id ?? undefined;

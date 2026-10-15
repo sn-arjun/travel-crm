@@ -38,12 +38,12 @@ const PREMIUM_PREFIXES = [
 export type MobileCheck = { ok: true; e164: string } | { ok: false; message: string };
 
 /** Mobile numbers only. Anything else is rejected with the same message, whatever the reason. */
-export function checkMobileNumber(raw: string): MobileCheck {
+export function checkMobileNumber(raw: string, defaultCountry?: string): MobileCheck {
   const bad: MobileCheck = { ok: false, message: 'Enter a valid mobile number, including the country code.' };
   const trimmed = (raw ?? '').trim();
   const digits = trimmed.replace(/\D/g, '');
   if (!digits) return bad;
-  const e164 = normalizePhone(trimmed);
+  const e164 = defaultCountry ? normalizePhone(trimmed, defaultCountry) : normalizePhone(trimmed);
   if (!/^\+[1-9]\d{7,14}$/.test(e164)) return bad;
   if (PREMIUM_PREFIXES.some((re) => re.test(e164))) return bad;
   // India: mobile numbers are ten digits starting 6 to 9 (anything else is a landline or a service number).

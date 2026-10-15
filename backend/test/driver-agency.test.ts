@@ -45,8 +45,11 @@ describe('Driver agency-code lookup (R115)', () => {
     expect(body.success).toBe(true);
     expect(body.data.name).toBe('Sahyadri Holidays');
     expect(body.data.tenantId).toBe('01960000-0000-7000-8000-0000000000a1');
-    // Nothing beyond id, name and logo.
-    expect(Object.keys(body.data).sort()).toEqual(['logoUrl', 'name', 'tenantId']);
+    // Nothing beyond id, name, logo and the agency's currency, locale and country (R204: the app defaults its country
+    // picker and shows fares in the agency's currency). No contact details, plan or settings.
+    expect(Object.keys(body.data).sort()).toEqual(['country', 'currency', 'locale', 'logoUrl', 'name', 'phoneDefaultCountry', 'tenantId']);
+    expect(body.data.currency).toMatch(/^[A-Z]{3}$/);
+    expect(body.data.phoneDefaultCountry).toMatch(/^[A-Z]{2}$/);
   });
 
   it('is case-insensitive and trims whitespace, and also serves the /api/driver alias', async () => {

@@ -4,7 +4,7 @@ import { authMiddleware } from '../middleware/auth';
 import type { AppContext } from '../types';
 import { createTravellerSchema, updateTravellerSchema } from '../validators/traveller';
 import { generateId } from '../utils/uuid';
-import { normalizePhone } from '../utils/phone';
+import { normalizePhone, tenantPhoneCountry } from '../utils/phone';
 
 const travellerRouter = new Hono<AppContext>();
 travellerRouter.use('*', authMiddleware);
@@ -93,7 +93,7 @@ travellerRouter.post('/', zValidator('json', createTravellerSchema), async (c) =
     const userId = c.get('userId');
 
     const email = body.email || null;
-    const phone = body.phone ? (normalizePhone(body.phone) || body.phone) : null;
+    const phone = body.phone ? (normalizePhone(body.phone, await tenantPhoneCountry(db)) || body.phone) : null;
     const frequentFlyerNumbers = body.frequentFlyerNumbers ?? body.frequentFlyerNumber ?? null;
 
     await db.prepare(`
@@ -164,7 +164,7 @@ travellerRouter.put('/:id', zValidator('json', updateTravellerSchema), async (c)
         seenCols.add(col);
 
         let value: unknown = rawValue;
-        if (key === 'phone') value = rawValue ? (normalizePhone(rawValue as string) || rawValue) : null;
+        if (key === 'phone') value = rawValue ? (normalizePhone(rawValue as string, await tenantPhoneCountry(db)) || rawValue) : null;
         else if (key === 'email') value = rawValue || null;
 
         updates.push(`${col} = ?`);

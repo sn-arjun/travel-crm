@@ -1,0 +1,105 @@
+const BY_ISO = new Map(COUNTRIES.map((c) => [c.iso, c]));
+
+/** Calling codes, longest first, each pointing at the first country listed for it. */
+const BY_DIAL: ReadonlyArray<readonly [string, PhoneCountry]> = (() => {
+  const first = new Map<string, PhoneCountry>();
+  for (const c of COUNTRIES) if (!first.has(c.dial)) first.set(c.dial, c);
+  return [...first.entries()].sort((a, b) => b[0].length - a[0].length);
+})();
+
+export function countryByIso(iso: string | null | undefined): PhoneCountry | undefined {
+  return iso ? BY_ISO.get(iso.trim().toUpperCase()) : undefined;
+}
+
+/** The country behind a calling code ("+91", "91" or "971"); the first one listed when several share it. */
+export function countryByDial(dial: string | null | undefined): PhoneCountry | undefined {
+  const d = (dial ?? '').replace(/\D/g, '');
+  return BY_DIAL.find(([k]) => k === d)?.[1];
+}
+
+/** The country whose calling code starts these digits (longest code wins: 1684 before 1). */
+export function countryForDigits(digits: string): PhoneCountry | undefined {
+  return BY_DIAL.find(([dial]) => digits.startsWith(dial))?.[1];
+}
+
+/** Splits E.164 ("+447911123456") into its country and national digits; null when no country matches. */
+export function splitE164(e164: string | null | undefined): { country: PhoneCountry; national: string } | null {
+  const digits = (e164 ?? '').replace(/\D/g, '');
+  if (!digits) return null;
+  const country = countryForDigits(digits);
+  if (!country) return null;
+  const national = digits.slice(country.dial.length);
+  return national ? { country, national } : null;
+}
+
+function inRange(c: PhoneCountry, n: number): boolean {
+  return n >= c.min && n <= c.max;
+}
+
+function isNanpTerritory(c: PhoneCountry): boolean {
+  return c.dial.length === 4 && c.dial.startsWith('1');
+}
+
+/** True when digits read as a full international number (calling code plus a national number of valid length). */
+function looksInternational(digits: string): boolean {
+  const c = countryForDigits(digits);
+  return !!c && inRange(c, digits.length - c.dial.length);
+}
+
+/**
+ * Normalises typed or stored input to E.164 ("+<digits>"), reading numbers without a country code as numbers of
+ * `defaultIso` (the agency's country). Empty input returns ''.
+ *   - "+<digits>" is kept as typed (separators removed)
+ *   - "00<digits>" is the international prefix when the rest looks like a full number
+ *   - a leading trunk 0 is dropped (07911 123456 -> +447911123456)
+ *   - digits that already start with the country's calling code (and are too long to be national) keep it
+ *   - anything that fits no rule becomes "+" plus the digits
+ */
+export function toE164(raw: string | null | undefined, defaultIso: string = DEFAULT_COUNTRY_ISO): string {
+  const trimmed = (raw ?? '').trim();
+  const digits = trimmed.replace(/\D/g, '');
+  if (!digits) return '';
+  if (trimmed.startsWith('+')) return `+${digits}`;
+  if (trimmed.startsWith('00') && (looksInternational(digits.slice(2)) || digits.length > 12)) return `+${digits.slice(2)}`;
+
+  const c = countryByIso(defaultIso) ?? countryByIso(DEFAULT_COUNTRY_ISO)!;
+  const dial = c.dial;
+
+  // NANP territories (American Samoa, Jamaica...): ten digits carry the area code, seven do not.
+  if (isNanpTerritory(c)) {
+    if (digits.length === 7) return `+${dial}${digits}`;
+    if (digits.length === 10) return `+1${digits}`;
+    return `+${digits}`;
+  }
+
+  if (digits.startsWith(dial)) {
+    const rest = digits.length - dial.length;
+    const wide = c.max - c.min >= 3; // wide ranges (Singapore 8-11, Germany 6-13): digits that fit the code plus the shortest number win
+    if (inRange(c, rest) && (digits.length > c.max || (wide && (digits.length >= 11 || (rest === c.min && digits.length >= 10))))) return `+${digits}`;
+  }
+  let national = digits;
+  if (national.startsWith('0') && !c.keepZero && inRange(c, national.length - 1)) national = national.slice(1);
+  if (inRange(c, national.length)) return `+${dial}${national}`;
+  return `+${digits}`;
+}
+
+/**
+ * The digits that identify a subscriber inside a country: the national number of the E.164 value, or the last ten
+ * digits when no country matches. Used to match a stored number whatever way it was typed.
+ */
+export function significantNumber(raw: string | null | undefined, defaultIso: string = DEFAULT_COUNTRY_ISO): string {
+  const e164 = toE164(raw, defaultIso);
+  if (!e164) return '';
+  const split = splitE164(e164);
+  if (split) return split.national;
+  const digits = e164.slice(1);
+  return digits.length > 10 ? digits.slice(-10) : digits;
+}
+
+/** True when `national` (a trunk 0 is allowed) is a plausible national number for the country. */
+export function isPlausibleNational(c: PhoneCountry, national: string): boolean {
+  let d = national.replace(/\D/g, '');
+  if (d.startsWith('0') && !c.keepZero && inRange(c, d.length - 1)) d = d.slice(1);
+  if (isNanpTerritory(c)) return d.length === 7 || d.length === 10;
+  return inRange(c, d.length);
+}

@@ -12,7 +12,8 @@ import { OTP_CAP_MESSAGE, checkAndRecordOtpRequest, checkMobileNumber } from '..
 import { resolveTenantDb } from '../services/tenant-db';
 import { rateLimit } from '../middleware/rate-limiter';
 import { limitMultiplier } from '../middleware/rate-limit';
-import { phoneLookupVariants, inPlaceholders } from '../utils/phone';
+import { phoneLookupVariants, inPlaceholders, tenantPhoneCountry } from '../utils/phone';
+import { loadLocaleContext } from '../utils/money';
 import { localDayWindowUtc, getTenantTimeZone } from '../utils/tz';
 import {
   loginSchema,
@@ -87,7 +88,8 @@ driver.post('/login', zValidator('json', loginSchema), async (c) => {
   if (!db) return error(c, 'Tenant not found or inactive', 404);
 
   // Phones are stored as E.164 (from the app / fleet routes) or digits-only (older rows)
-  const variants = phoneLookupVariants(phone);
+  const phoneCountry = await tenantPhoneCountry(db);
+  const variants = phoneLookupVariants(phone, phoneCountry);
   if (variants.length === 0) return error(c, 'Phone number is required', 400);
   const e164 = variants[0];
   const inList = inPlaceholders(variants);
@@ -99,7 +101,7 @@ driver.post('/login', zValidator('json', loginSchema), async (c) => {
 
   // R110: only mobile numbers, abuse limits per number and per IP, and the agency's monthly login-code allowance.
   // All three come before the driver lookup and answer the same for known and unknown numbers.
-  const mobile = checkMobileNumber(phone);
+  const mobile = checkMobileNumber(phone, phoneCountry);
   if (!mobile.ok) return error(c, mobile.message, 400);
   const requestIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For')?.split(',')[0]?.trim() || null;
   const abuse = await checkAndRecordOtpRequest(c.env, { tenantId, e164, ip: requestIp, purpose: 'driver_login' });
@@ -207,7 +209,7 @@ driver.post('/login/verify', zValidator('json', verifyOtpSchema), async (c) => {
   const db = await resolveTenantDb(c.env, tenantId);
   if (!db) return error(c, 'Tenant not found or inactive', 404);
 
-  const variants = phoneLookupVariants(phone);
+  const variants = phoneLookupVariants(phone, await tenantPhoneCountry(db));
   if (variants.length === 0) return error(c, 'Phone number is required', 400);
   const e164 = variants[0];
   const inList = inPlaceholders(variants);
@@ -277,9 +279,12 @@ driver.post('/login/verify', zValidator('json', verifyOtpSchema), async (c) => {
      VALUES (?, ?, ?, datetime('now', '+30 days'), ?)`
   ).bind(generateId(), driverRecord.id, refreshHash, new Date().toISOString()).run();
 
+  // The agency's money and number conventions, so the app shows fares in the agency's currency (R204)
+  const loc = await loadLocaleContext(db);
   return success(c, {
     accessToken,
     refreshToken,
+    tenant: { currency: loc.currency, locale: loc.locale, country: loc.country, phoneDefaultCountry: loc.phoneDefaultCountry },
     driver: {
       id: driverRecord.id,
       name: driverRecord.name,
@@ -385,7 +390,21 @@ driver.get('/agency/:code', async (c) => {
     }
   }
 
-  return success(c, { tenantId: tenant.id, name: tenant.company_name, logoUrl: logoUrl ?? null });
+  // Currency and country let the app default its country picker and show fares in the agency's currency (R204).
+  // Public like the name: a currency code and a country code reveal nothing sensitive.
+  let loc: Awaited<ReturnType<typeof loadLocaleContext>> | null = null;
+  try {
+    const db = await resolveTenantDb(c.env, tenant.id);
+    loc = db ? await loadLocaleContext(db) : null;
+  } catch {
+    loc = null;
+  }
+  return success(c, {
+    tenantId: tenant.id,
+    name: tenant.company_name,
+    logoUrl: logoUrl ?? null,
+    ...(loc ? { currency: loc.currency, locale: loc.locale, country: loc.country, phoneDefaultCountry: loc.phoneDefaultCountry } : {}),
+  });
 });
 
 // ============================================================================
