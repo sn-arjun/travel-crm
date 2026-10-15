@@ -49,7 +49,8 @@
   "steps": [
     "Extend VoipProvider (READINESS-PLAN 4.13): createSubAccount({ tenantId, name }) -> { subAccountId, authId, authTokenEnc }, closeSubAccount, placeCall({ mode: softphone|bridge, from, to, agentNumber?, agentIdentity?, callbackBaseUrl, record }) (replaces initiateCall; keep initiateCall as a wrapper), fetchUsage({ subAccountId, since }) -> normalized records { providerCallId, direction, to, from, startedAt, durationSeconds, billedSeconds, cost, currency }, clientIdentity(userId) (one naming rule used for tokens and ring markup: `u_${userId without hyphens}`), plus existing methods. Twilio implementation (fetch, mocked in tests): sub-accounts via the Accounts API, usage via the Calls list per sub-account, bridge and softphone placeCall; whatever the addendum provider needs beyond that is added once the addendum is signed. Plivo (owner decision 2026-10-14: do not design around it): plivo-voice.ts only keeps compiling against the new interface by throwing NotImplementedForProvider for the new methods; it is an optional, untested path and no batch fixes Plivo outbound.",
     "mock-provider.ts: in-memory/KV-backed provider that records calls and returns deterministic ids; selected when VOIP_PROVIDER=mock or TEST_MODE and no credentials.",
-    "simulator.ts + routes/test.ts (TEST_MODE only): POST /test/voip/simulate { scenario: inbound_answered|inbound_missed|inbound_voicemail|outbound_answered|outbound_no_answer, to, from, durationSeconds } that posts the same signed form callbacks the real provider would send (signed with the mock secret) to the callback routes in order, so backend and e2e tests drive full flows."
+    "simulator.ts + routes/test.ts (TEST_MODE only): POST /test/voip/simulate { scenario: inbound_answered|inbound_missed|inbound_voicemail|outbound_answered|outbound_no_answer, to, from, durationSeconds } that posts the same signed form callbacks the real provider would send (signed with the mock secret) to the callback routes in order, so backend and e2e tests drive full flows.",
+    "Owner decision 2026-10-15: calling is offered only where the platform resells Twilio (agency country in an allow-list: GB, US, AU, SG first; DE, MY later). For agencies in any other country (including India) the calling features, settings pages, nav entries and plan copy are hidden, and call endpoints return 403 CALLING_NOT_AVAILABLE_IN_COUNTRY. Keep the allow-list as configuration."
   ],
   "migrations": [],
   "tests": [
@@ -57,7 +58,8 @@
   ],
   "acceptance": [
     "One identity rule (test).",
-    "Simulator drives a missed-call scenario that creates the call-back task (existing recipe)."
+    "Simulator drives a missed-call scenario that creates the call-back task (existing recipe).",
+    "An Indian agency sees no calling UI and gets 403 CALLING_NOT_AVAILABLE_IN_COUNTRY from call endpoints; a UK agency on a calling plan does not (test)."
   ],
   "gate": [
     "cd backend && npx tsc --noEmit",

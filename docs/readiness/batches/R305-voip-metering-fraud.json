@@ -12,7 +12,7 @@
   "dependsOn": [
     "R304"
   ],
-  "blockedOnOwner": "G1 (ADR-001 addendum)",
+  "blockedOnOwner": null,
   "parallelSafeWith": [],
   "size": "L",
   "newDependencies": [],
@@ -82,5 +82,6 @@
     "Backend tests follow the existing pattern (see backend/test/voip-callbacks.test.ts): import env, createExecutionContext, waitOnExecutionContext, applyD1Migrations from cloudflare:test; applyD1Migrations(env.MASTER_DB, env.TEST_MIGRATIONS) in beforeAll; POST /api/v1/test/reset; call worker.fetch(request, env, ctx). isolatedStorage is false and singleWorker true, so use unique ids/emails per test file.",
     "Read docs/decisions/ADR-001-voip.md (sections 4, 6, 7), its addendum when it exists (the owner could not sign up with Plivo; the addendum settles the default provider, likely Twilio where it can serve, with India handled separately), and docs/CALL-AUTOMATION.md (sections 2, 3, 4). Everything here stays behind the VoipProvider interface; do not design around Plivo. Calls are included in plans with a monthly minute cap (owner decision 2026-10-14).",
     "Blocked on G1: the ADR-001 addendum (provider and its usage API) must be signed first."
-  ]
+  ],
+  "ownerDecisionNote": "G1 decided 2026-10-15: Twilio only (sub-account per agency) outside India; no calling for agencies in India, the Gulf, Thailand, Sri Lanka, Nepal, Bangladesh at launch."
 }

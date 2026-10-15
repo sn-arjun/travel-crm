@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-15T09:10+05:30",
+  "updated": "2026-10-15T09:30+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -20,8 +20,8 @@
   },
   "backup": "C:/Users/Admin/Downloads/pro/CRM-backups/2026-10-09 (travelcrm-before-history-strip.bundle holds every branch before the rewrite)",
   "ownerGates": {
-    "push": "BLOCKED: repo sn-arjun/travel-crm is PUBLIC (re-checked 2026-10-14). Owner must make it private and revoke the old token (batch R100). Nothing new pushed.",
-    "G1": "PARTLY OPEN: owner could not sign up with Plivo; ADR-001 Addendum A proposes Twilio outside India and agency-owned Exotel call bridge in India. Awaiting confirmation; blocks R304, R305, R307, R308 only.",
+    "push": "BLOCKED: owner says the repo is not private yet (2026-10-15).",
+    "G1": "DONE 2026-10-15: Twilio only; no calling for Indian agencies (or Gulf/TH/LK/NP/BD) at launch; R308 dropped.",
     "G2": "DONE 2026-10-14: style approved, voice changed to American female (kokoro af_heart). Pilot re-rendered: studio/out/pilot-assistant.mp4 (75.3 s)."
   },
   "waves": {
@@ -190,6 +190,12 @@
       "Communication (SMS, WhatsApp, login codes, calls) stays included with per-plan caps; at the cap upgrade or buy credits; communication add-ons priced at provider cost + 20%.",
       "VoIP: something easier than Plivo (sign-up failed).",
       "Video voice: American female (af_heart)."
+    ],
+    "2026-10-15": [
+      "Agency app also deployed on the web at app.<domain> (emailed links + browser access).",
+      "Domain not decided: single placeholder.",
+      "VoIP: Twilio only, skip India calling.",
+      "Repo: not private yet; keep holding the push."
     ]
   },
   "goLiveConfig": [

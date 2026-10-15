@@ -424,3 +424,7 @@ All retrieved 2026-10-09.
 - Telnyx WebRTC JS SDK: https://developers.telnyx.com/docs/voice/webrtc/js-sdk/
 - Twilio India restrictions (third-party summary of Twilio's guidelines; Twilio's own page was not reachable): https://support.revenue.io/ringdna/telephony-101/voice-guidelines/india/ ; Twilio India toll-free note: https://support.twilio.com/hc/en-us/articles/40728263317915-India-Toll-Free-Voice-Number-Not-Working-and-Not-Receiving-Calls
 
+## Decision (owner, 2026-10-15)
+
+**Twilio only, and no calling for Indian agencies at launch.** The platform resells Twilio numbers and minutes (one sub-account per agency) in the markets where Twilio can serve them (UK, US, Australia, Singapore first; Germany and Malaysia in a second wave). Calling features are hidden for agencies whose country is India, and for the Gulf, Thailand, Sri Lanka, Nepal and Bangladesh, as in section 4. The Exotel call bridge for India (Addendum A) is not built for v1; it can be revisited later behind the same `VoipProvider` interface. Plivo stays out.
+

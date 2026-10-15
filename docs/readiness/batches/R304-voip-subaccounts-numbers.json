@@ -15,7 +15,7 @@
     "R206",
     "R111"
   ],
-  "blockedOnOwner": "G1 (ADR-001 addendum)",
+  "blockedOnOwner": null,
   "parallelSafeWith": [],
   "size": "L",
   "newDependencies": [],
@@ -94,5 +94,6 @@
     "Read docs/decisions/ADR-001-voip.md (sections 4, 6, 7), its addendum when it exists (the owner could not sign up with Plivo; the addendum settles the default provider, likely Twilio where it can serve, with India handled separately), and docs/CALL-AUTOMATION.md (sections 2, 3, 4). Everything here stays behind the VoipProvider interface; do not design around Plivo. Calls are included in plans with a monthly minute cap (owner decision 2026-10-14).",
     "Desktop UI follows desktop/audit/remake/CONTRACT.md (ds-* tokens, archetypes, graceful degradation when VoIP is not configured). lint-gate must not rise for any touched file.",
     "Blocked on G1: start only when the owner has chosen the provider and the India shape (ADR 9a items 1-4, 7)."
-  ]
+  ],
+  "ownerDecisionNote": "G1 decided 2026-10-15: Twilio only (sub-account per agency) outside India; no calling for agencies in India, the Gulf, Thailand, Sri Lanka, Nepal, Bangladesh at launch."
 }

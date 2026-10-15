@@ -270,7 +270,7 @@
       "R118",
       "R122"
     ],
-    "blockedOnOwner": "decision: where the web pages that emails link to are hosted (APP_URL) and the domain name"
+    "blockedOnOwner": null
   },
   {
     "id": "R201",
@@ -482,7 +482,7 @@
       "R206",
       "R111"
     ],
-    "blockedOnOwner": "G1 (ADR-001 addendum)"
+    "blockedOnOwner": null
   },
   {
     "id": "R305",
@@ -492,7 +492,7 @@
     "dependsOn": [
       "R304"
     ],
-    "blockedOnOwner": "G1 (ADR-001 addendum)"
+    "blockedOnOwner": null
   },
   {
     "id": "R307",
@@ -503,7 +503,7 @@
       "R303",
       "R304"
     ],
-    "blockedOnOwner": "G1 (ADR-001 addendum)"
+    "blockedOnOwner": null
   },
   {
     "id": "R308",
@@ -515,6 +515,6 @@
       "R304",
       "R305"
     ],
-    "blockedOnOwner": "G1 (ADR-001 addendum)"
+    "blockedOnOwner": "DROPPED for v1"
   }
 ]

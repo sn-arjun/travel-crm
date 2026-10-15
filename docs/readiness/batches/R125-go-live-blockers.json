@@ -8,7 +8,7 @@
     "R118",
     "R122"
   ],
-  "blockedOnOwner": "decision: where the web pages that emails link to are hosted (APP_URL) and the domain name",
+  "blockedOnOwner": null,
   "parallelSafeWith": [],
   "size": "L",
   "files": {
@@ -21,14 +21,16 @@
       "desktop/electron/updater.ts",
       "desktop/scripts/run-builder.mjs",
       "docs/ops/BACKUPS.md",
-      ".github/workflows/**"
+      ".github/workflows/**",
+      "desktop/next.config.ts",
+      "desktop/package.json",
+      "desktop/src/app/**"
     ],
     "create": [
       ".github/workflows/backup.yml"
     ],
     "mustNotTouch": [
-      "backend/src/**",
-      "desktop/src/**"
+      "backend/src/**"
     ]
   },
   "steps": [
@@ -37,8 +39,8 @@
     "push-secrets.sh and sync-config.sh: target the generated config with -c; fix ((PUSHED++)) under set -e; push only real secrets (plain settings go to [vars] via gen-wrangler); never overwrite an existing .dev.vars or sed wrangler.toml; root npm deploy/deploy:api/infra scripts made safe or removed.",
     "Desktop auto-update: the update feed URL must be baked in at build time (TRAVELCRM_UPDATE_URL read by run-builder.mjs into the app config/electron-builder publish url) so customer PCs, which have no such env var, still check for updates; keep the env override for testing.",
     "Weekly backup: add a dispatch + schedule workflow running backend/scripts/backup-tenants.mjs --remote --env production (secrets CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID); fix the missing -c in BACKUPS.md time-travel commands; note the dashboard vs generated database-name difference.",
-    "Domains: one placeholder domain used consistently (landing, console CORS/Caddy, terraform examples) from a single variable, pending the owner's choice.",
-    "Web host for emailed links (BLOCKED on owner decision): invite, password reset, shared quote /q/<token>, /download and /quick-start all point at APP_URL, but those pages exist only inside the desktop app. Implement the option the owner chooses (recommended: deploy the desktop Next app as a web build at app.<domain> on Cloudflare via OpenNext, like super-admin, which also gives agencies browser access; alternative: a small public site with only those pages)."
+    "Domains (owner: not decided yet): one placeholder (e.g. YOUR-DOMAIN.example) defined in ONE place per toolchain (terraform variable, landing/config.js, super-admin and backend vars), every other reference derived from it; list them all in docs/GO-LIVE.md phase 0.",
+    "Agency web app (owner decision 2026-10-15): deploy the desktop Next app as a website at app.<domain> on Cloudflare via OpenNext (same pattern as super-admin: open-next config, wrangler config with an [assets] block, `npm -w travelcrm-desktop run deploy:web` dispatch-only workflow, CI build step that proves `.open-next/worker.js` is produced). The Electron build keeps output standalone; the web build must not break it (separate build script/config if needed). Runtime API URL for the web build from an env var. Add the web origin to CORS docs. Make sure /reset-password, /setup-account (invite), /q/<token> (public shared quote, no login), /download (links to the installer and driver app) and /quick-start exist and work in the web build; add or fix pages as needed. Electron-only features (auto-update, local server, server-address field) are hidden on the web."
   ],
   "migrations": [],
   "tests": [
@@ -49,7 +51,8 @@
   "acceptance": [
     "terraform plan with the Oracle module disabled needs no oci_* values",
     "push-secrets.sh run in dry-run mode lists only secrets and the generated config path",
-    "every link in the welcome, invite, reset and quote emails opens a working page on the chosen host"
+    "every link in the welcome, invite, reset and quote emails opens a working page on the chosen host",
+    "The web build of the agency app produces .open-next/worker.js and, served locally, opens /q/<token> without login and the reset and invite pages (e2e against a local stack)."
   ],
   "gate": [
     "cd backend && node scripts/gen-wrangler.selftest.mjs",
@@ -62,5 +65,6 @@
   ],
   "notes": [
     "Found by the documentation pass; see docs/INFRA.md Known gaps for the full list."
-  ]
+  ],
+  "ownerDecisionNote": "Owner 2026-10-15: deploy the agency app on the web too at app.<domain> (browser access + all emailed links work); domain not decided: one clearly marked placeholder in a single place."
 }
