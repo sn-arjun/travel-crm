@@ -6,6 +6,7 @@ import { reportRegistry } from '../services/report-registry';
 import { ReportCache, reportCacheScope } from '../services/report-cache';
 import { resolveDateRange } from '../utils/date-range';
 import { tenantToday, sqlOffsetModifier } from '../utils/tz';
+import { loadLocaleContext } from '../utils/money';
 import { success, error } from '../utils/response';
 import { excelExportService } from '../services/exports/excel-export';
 import { pdfExportService } from '../services/exports/pdf-export';
@@ -375,7 +376,7 @@ reportRoutes.get('/:id/export', async (c) => {
     const fileName = `${id}_${dateLabel}`;
 
     if (format === 'excel') {
-      const buffer = await excelExportService.generateExcel(reportDef, result.data);
+      const buffer = await excelExportService.generateExcel(reportDef, result.data, await loadLocaleContext(c.get('tenantDb'), userId));
       c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       c.header('Content-Disposition', `attachment; filename="${fileName}.xlsx"`);
       return c.body(buffer as any);

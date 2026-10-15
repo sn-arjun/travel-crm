@@ -953,5 +953,12 @@ export const TENANT_MIGRATIONS: BundledMigration[] = [
       "-- Existing invoices were all issued under GST: derive the treatment and the breakdown from the columns.\nUPDATE invoices SET tax_regime = 'gst',\n  tax_type = CASE WHEN COALESCE(cgst, 0) > 0 THEN 'cgst_sgst' ELSE 'igst' END",
       "UPDATE invoices SET tax_breakdown = CASE\n  WHEN COALESCE(cgst, 0) > 0 THEN json_array(\n    json_object('code', 'CGST', 'rate', (SELECT COALESCE(MAX(tax_rate), 0) / 2.0 FROM invoice_items WHERE invoice_id = invoices.id),\n      'base', COALESCE(taxable_amount, 0), 'amount', cgst, 'label', 'CGST'),\n    json_object('code', 'SGST', 'rate', (SELECT COALESCE(MAX(tax_rate), 0) / 2.0 FROM invoice_items WHERE invoice_id = invoices.id),\n      'base', COALESCE(taxable_amount, 0), 'amount', COALESCE(sgst, 0), 'label', 'SGST'))\n  WHEN COALESCE(igst, 0) > 0 THEN json_array(\n    json_object('code', 'IGST', 'rate', (SELECT COALESCE(MAX(tax_rate), 0) FROM invoice_items WHERE invoice_id = invoices.id),\n      'base', COALESCE(taxable_amount, 0), 'amount', igst, 'label', 'IGST'))\n  ELSE '[]' END"
     ]
+  },
+  {
+    "name": "0048_user_locale_timezone.sql",
+    "queries": [
+      "-- R202: a user may override the agency's display locale and time zone. NULL means \"use the agency setting\".\nALTER TABLE users ADD COLUMN locale TEXT",
+      "--> statement-breakpoint\nALTER TABLE users ADD COLUMN timezone TEXT"
+    ]
   }
 ];

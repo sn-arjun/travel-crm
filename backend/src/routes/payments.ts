@@ -10,6 +10,7 @@ import { logActivity } from '../utils/activity-logger';
 import { notifications } from '../db/tenant-schema';
 import { broadcastToTenant } from '../utils/realtime';
 import { tenantToday } from '../utils/tz';
+import { formatMoney, loadLocaleContext } from '../utils/money';
 
 const paymentRoutes = new Hono<AppContext>();
 
@@ -59,7 +60,7 @@ paymentRoutes.post('/', zValidator('json', recordPaymentSchema), async (c) => {
     // Verify invoice exists
     const invoice = await tenantDb
       .prepare(
-        `SELECT id, contact_id, total, paid_amount, balance_due, status
+        `SELECT id, contact_id, total, paid_amount, balance_due, status, currency
          FROM invoices WHERE id = ?1`
       )
       .bind(data.invoiceId)
@@ -70,6 +71,7 @@ paymentRoutes.post('/', zValidator('json', recordPaymentSchema), async (c) => {
         paid_amount: number;
         balance_due: number;
         status: string;
+        currency: string | null;
       }>();
 
     if (!invoice) {
@@ -81,6 +83,10 @@ paymentRoutes.post('/', zValidator('json', recordPaymentSchema), async (c) => {
       // +0.01 for floating point tolerance
       return error(c, `Payment amount exceeds balance due (${invoice.balance_due})`, 400);
     }
+
+    // A payment is in the currency of the invoice it settles; agency locale only drives how it is written.
+    const localeCtx = await loadLocaleContext(tenantDb);
+    const paymentCurrency = invoice.currency || localeCtx.currency;
 
     // Create payment record
     const paymentId = generateId();
@@ -100,7 +106,7 @@ paymentRoutes.post('/', zValidator('json', recordPaymentSchema), async (c) => {
         data.invoiceId,
         invoice.contact_id,
         data.amount,
-        'INR',
+        paymentCurrency,
         data.method,
         data.reference || null,
         'incoming',
@@ -152,7 +158,7 @@ paymentRoutes.post('/', zValidator('json', recordPaymentSchema), async (c) => {
           id: generateId(),
           userId: invoiceCreator.created_by,
           title: 'Payment received',
-          message: `₹${data.amount.toLocaleString('en-IN')} recorded against invoice`,
+          message: `${formatMoney(data.amount, paymentCurrency, localeCtx.locale)} recorded against invoice`,
           type: 'payment_received',
           referenceType: 'payment',
           referenceId: paymentId,

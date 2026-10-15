@@ -13,6 +13,7 @@ import { getUsageOverview } from '../services/metering/meter';
 import { sendTransactional } from '../services/mail/transactional';
 import { supportEmail } from '../utils/app-urls';
 import { rateLimit } from '../middleware/rate-limiter';
+import { validateLocaleSettings } from '../utils/money';
 import { DEFAULT_VAT_RATES, loadTaxSettings, normalizeCountry } from '../services/tax-calculator';
 
 const settingsRoutes = new Hono<AppContext>();
@@ -46,6 +47,8 @@ settingsRoutes.put(
   zValidator('json', updateSettingsSchema),
   async (c) => {
     const data = c.req.valid('json');
+    const localeProblem = validateLocaleSettings(data);
+    if (localeProblem) return error(c, localeProblem, 400);
     const db = drizzle(c.get('tenantDb'));
     const userId = c.get('userId');
     const now = new Date().toISOString();

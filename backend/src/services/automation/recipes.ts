@@ -9,6 +9,7 @@
 import { getTenantTimeZone, localDateString, addDaysLocal } from '../../utils/tz';
 import { analyzeMessage, type MessageAnalysis, type MessageEntities } from './message-analysis';
 import type { DomainEvent, Proposal, Recipe, RecipeContext } from './types';
+import { formatMoney, loadLocaleContext } from '../../utils/money';
 
 const OPEN_LEAD_SQL = `status NOT IN ('won', 'lost', 'booking_confirmed', 'completed') AND COALESCE(is_deleted, 0) = 0`;
 
@@ -97,8 +98,17 @@ async function knownDestinations(ctx: RecipeContext): Promise<string[]> {
   return [...names];
 }
 
-function inr(amount: number): string {
-  return `₹${Math.round(amount).toLocaleString('en-IN')}`;
+type MoneyFmt = (amount: number) => string;
+const moneyFmtCache = new WeakMap<object, Promise<MoneyFmt>>();
+
+/** Whole-unit money text in the agency's own currency and number format (settings currency and locale). */
+function moneyFmt(ctx: RecipeContext): Promise<MoneyFmt> {
+  let p = moneyFmtCache.get(ctx);
+  if (!p) {
+    p = loadLocaleContext(ctx.db).then((loc) => (amount: number) => formatMoney(amount, loc.currency, loc.locale, { whole: true }));
+    moneyFmtCache.set(ctx, p);
+  }
+  return p;
 }
 
 function shortDate(iso: string): string {
@@ -106,7 +116,7 @@ function shortDate(iso: string): string {
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
 }
 
-function describeTrip(e: MessageEntities): string {
+function describeTrip(e: MessageEntities, inr: MoneyFmt): string {
   const parts: string[] = [];
   if (e.destinations.length > 0) parts.push(e.destinations.slice(0, 3).join(', '));
   if (e.nights) parts.push(`${e.nights} night${e.nights === 1 ? '' : 's'}`);
@@ -160,6 +170,7 @@ const readMessages: Recipe = {
   autoEligible: false,
   usesAi: true,
   async evaluate(ctx, event) {
+    const inr = await moneyFmt(ctx);
     const message = await ctx.db
       .prepare(`SELECT id, contact_id, lead_id, channel, subject, content, from_address, metadata FROM message_log WHERE id = ? AND direction = 'incoming'`)
       .bind(event.entityId)
@@ -222,7 +233,7 @@ const readMessages: Recipe = {
         ...where,
         action: 'create_lead_from_enquiry',
         title: contact ? `Create a lead for ${sender}` : `Create contact and lead for ${sender}`,
-        reason: describeTrip(e) || 'New travel enquiry',
+        reason: describeTrip(e, inr) || 'New travel enquiry',
         params: {
           contactId: contact?.id ?? null,
           name: contact ? null : senderName,
@@ -264,7 +275,7 @@ const readMessages: Recipe = {
           entityId: lead.id,
           action: 'update_lead',
           title: `Update "${lead.title}" from ${sender}'s message`,
-          reason: describeTrip({ ...e, destinations: added }) || Object.keys(changes).join(', '),
+          reason: describeTrip({ ...e, destinations: added }, inr) || Object.keys(changes).join(', '),
           params: { leadId: lead.id, changes },
           dedupeKey: `update-lead:${message.id}`,
           confidence: analysis.source === 'ai' ? 0.85 : 0.6,
@@ -567,6 +578,7 @@ const invoiceOnWon: Recipe = {
   defaultMode: 'suggest',
   autoEligible: false,
   async evaluate(ctx, event) {
+    const inr = await moneyFmt(ctx);
     if (event.payload.to !== 'won') return [];
     const lead = await loadLead(ctx, event.entityId);
     if (!lead) return [];
@@ -633,6 +645,7 @@ const paymentFromMessage: Recipe = {
   defaultMode: 'suggest',
   autoEligible: false,
   async evaluate(ctx, event) {
+    const inr = await moneyFmt(ctx);
     const invoice = await ctx.db
       .prepare(`SELECT id, invoice_number, contact_id, lead_id, total, paid_amount FROM invoices WHERE id = ? AND status NOT IN ('paid', 'cancelled')`)
       .bind(event.entityId)
@@ -749,6 +762,7 @@ const wonOnPayment: Recipe = {
   defaultMode: 'suggest',
   autoEligible: false,
   async evaluate(ctx, event) {
+    const inr = await moneyFmt(ctx);
     const lead = await loadLead(ctx, event.payload.leadId as string | undefined);
     if (!lead || !/^(new|contacted|qualified|requirement_gathered|proposal_sent|negotiation)$/.test(lead.status)) return [];
     return [{
@@ -830,6 +844,7 @@ const overdueInvoiceReminder: Recipe = {
   autoEligible: false,
   settings: [{ key: 'days', label: 'Overdue by at least', type: 'number', default: 1, min: 1, max: 90, unit: 'days' }],
   async evaluate(ctx) {
+    const inr = await moneyFmt(ctx);
     const day = await today(ctx);
     const cutoff = addDaysLocal(day, -ctx.settings.days);
     const invoices = await ctx.db
@@ -1100,6 +1115,7 @@ const paymentThankYou: Recipe = {
   defaultMode: 'suggest',
   autoEligible: false,
   async evaluate(ctx, event) {
+    const inr = await moneyFmt(ctx);
     const invoice = await ctx.db
       .prepare('SELECT id, invoice_number, contact_id, lead_id, balance_due FROM invoices WHERE id = ?')
       .bind(event.payload.invoiceId as string)
@@ -1142,6 +1158,7 @@ const balanceBeforeTravel: Recipe = {
   autoEligible: false,
   settings: [{ key: 'days', label: 'Days before travel', type: 'number', default: 21, min: 1, max: 90, unit: 'days' }],
   async evaluate(ctx) {
+    const inr = await moneyFmt(ctx);
     const day = await today(ctx);
     const until = addDaysLocal(day, ctx.settings.days);
     const rows = await ctx.db

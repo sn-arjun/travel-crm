@@ -221,3 +221,35 @@ export async function tenantToday(c: TzCtx, now: Date = new Date()): Promise<{ t
   const timeZone = await tenantTimeZone(c);
   return { timeZone, today: localDateString(timeZone, now) };
 }
+
+// ---------------------------------------------------------------------------
+// Per-user time zone (R202)
+// ---------------------------------------------------------------------------
+
+/**
+ * The zone to show times in: the user's own (users.timezone) when valid, else the agency's (settings key
+ * 'timezone', then 'company_timezone'), else Asia/Kolkata. `settings` is the key/value map of the settings table.
+ */
+export function tenantTz(
+  settings: Record<string, string | null | undefined>,
+  user?: { timezone?: string | null } | null,
+): string {
+  for (const candidate of [user?.timezone, settings.timezone, settings.company_timezone]) {
+    const tz = candidate?.trim();
+    if (isValidTimeZone(tz)) return tz;
+  }
+  return DEFAULT_TIMEZONE;
+}
+
+/** The signed-in user's zone when set, else the agency's. Pass the request's tenant database and user id. */
+export async function getUserTimeZone(db: D1Database, userId: string | null | undefined): Promise<string> {
+  if (userId) {
+    try {
+      const row = await db.prepare('SELECT timezone FROM users WHERE id = ?').bind(userId).first<{ timezone: string | null }>();
+      if (isValidTimeZone(row?.timezone?.trim())) return row!.timezone!.trim();
+    } catch {
+      // users.timezone missing on an unmigrated database: use the agency zone
+    }
+  }
+  return getTenantTimeZone(db);
+}

@@ -14,6 +14,7 @@ import { drizzle } from 'drizzle-orm/d1';
 import { notifications } from '../db/tenant-schema';
 import { broadcastToTenant } from '../utils/realtime';
 import { tenantToday, tenantTimeZone, sqlOffsetModifier } from '../utils/tz';
+import { formatMoney, loadLocaleContext } from '../utils/money';
 
 const invoiceRoutes = new Hono<AppContext>();
 
@@ -43,7 +44,8 @@ const createInvoiceSchema = z.object({
   terms: z.string().optional().nullable(),
   notes: z.string().optional(),
   bankDetails: z.record(z.string(), z.any()).optional(),
-  currency: z.string().default('INR'),
+  // Omitted: the agency's currency setting applies (R202), not a fixed INR.
+  currency: z.string().length(3).optional(),
   // GST only: rate for items that carry no taxRate (the form sends one rate for the whole invoice).
   // VAT and sales tax invoices use the agency's rate; 'none' charges no tax.
   gstRate: z.number().min(0).max(100).optional(),
@@ -225,6 +227,8 @@ invoiceRoutes.post('/', zValidator('json', createInvoiceSchema), async (c) => {
   const data = c.req.valid('json');
 
   try {
+    const localeCtx = await loadLocaleContext(tenantDb);
+    const currency = (data.currency ?? localeCtx.currency).toUpperCase();
     // Verify contact exists
     const buyer = await loadTaxBuyer(tenantDb, data.contactId);
     if (!buyer) {
@@ -294,7 +298,7 @@ invoiceRoutes.post('/', zValidator('json', createInvoiceSchema), async (c) => {
         totals.vatAmount,
         totals.totalTax,
         totals.total,
-        data.currency,
+        currency,
         'draft', // status
         data.dueDate || null,
         0, // paid_amount
@@ -366,7 +370,7 @@ invoiceRoutes.post('/', zValidator('json', createInvoiceSchema), async (c) => {
             id: generateId(),
             userId: notifyId,
             title: 'Invoice created',
-            message: `Invoice ${invoiceNumber} for ₹${totals.total.toLocaleString('en-IN')} has been created`,
+            message: `Invoice ${invoiceNumber} for ${formatMoney(totals.total, currency, localeCtx.locale)} has been created`,
             type: 'invoice_overdue',
             referenceType: 'invoice',
             referenceId: invoiceId,
@@ -1115,7 +1119,7 @@ invoiceRoutes.post('/from-itinerary', zValidator('json', fromItinerarySchema), a
         invoiceId, itinerary.contact_id, itinerary.lead_id, invoiceNumber, 'tax_invoice',
         totals.subtotal, totals.taxableAmount, taxCols.tax_type, totals.cgst, totals.sgst,
         totals.igst, totals.vatAmount, totals.totalTax, totals.total,
-        'INR', 'draft', 0, totals.total,
+        (await loadLocaleContext(tenantDb)).currency, 'draft', 0, totals.total,
         JSON.stringify({ generatedFromItinerary: itineraryId }),
         userId, now, now,
         taxCols.tax_regime, taxCols.tax_breakdown, taxCols.seller_tax_id, taxCols.buyer_tax_id,

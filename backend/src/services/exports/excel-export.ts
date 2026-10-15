@@ -1,8 +1,15 @@
 import ExcelJS from 'exceljs';
 import { ReportDefinition } from '../../types/report';
+import { excelCurrencyFormat } from '../../utils/money';
+
+/** Currency and locale the workbook is written in; the caller takes them from the agency's settings. */
+export interface ExcelLocale {
+    currency: string;
+    locale: string;
+}
 
 export const excelExportService = {
-    async generateExcel(reportDef: ReportDefinition, data: any[]): Promise<Buffer> {
+    async generateExcel(reportDef: ReportDefinition, data: any[], money: ExcelLocale): Promise<Buffer> {
         const workbook = new ExcelJS.Workbook();
         workbook.creator = 'TravelCRM Reports';
         workbook.created = new Date();
@@ -32,7 +39,7 @@ export const excelExportService = {
         // Formatting based on type
         reportDef.columns.forEach((col, index) => {
             if (col.type === 'currency') {
-                sheet.getColumn(index + 1).numFmt = '"₹"#,##0.00';
+                sheet.getColumn(index + 1).numFmt = excelCurrencyFormat(money.currency, money.locale);
             } else if (col.type === 'date') {
                 sheet.getColumn(index + 1).numFmt = 'yyyy-mm-dd';
             } else if (col.type === 'number') {

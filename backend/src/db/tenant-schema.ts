@@ -17,6 +17,8 @@ export const users = sqliteTable('users', {
   avatarUrl: text('avatar_url'),
   department: text('department'),
   language: text('language').default('en'),
+  locale: text('locale'), // R202: BCP 47 override of the agency locale; null = agency setting
+  timezone: text('timezone'), // R202: IANA zone override of the agency zone; null = agency setting
   inviteStatus: text('invite_status').default('active'), // pending, active
   invitedAt: text('invited_at'),
   emailSignature: text('email_signature'), // HTML or plain text email signature

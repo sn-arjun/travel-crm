@@ -252,7 +252,7 @@ auth.post(
         department: user.department,
         language: user.language,
       },
-      tenant: await getTenantSummary(tenantDb, tenantId, tenant.companyName, c.env),
+      tenant: await getTenantSummary(tenantDb, tenantId, tenant.companyName, c.env, user.id),
       mustChangePassword: user.mustChangePassword === 1,
     });
   }
@@ -477,7 +477,7 @@ auth.post(
         department: user.department,
         language: user.language,
       },
-      tenant: await getTenantSummary(tenantDb, tenantId, undefined, c.env),
+      tenant: await getTenantSummary(tenantDb, tenantId, undefined, c.env, user.id),
       mustChangePassword: user.mustChangePassword === 1,
     });
   }
@@ -589,7 +589,7 @@ auth.post(
         department: user.department,
         language: user.language,
       },
-      tenant: await getTenantSummary(tenantDb, tokenData.tenantId, undefined, c.env),
+      tenant: await getTenantSummary(tenantDb, tokenData.tenantId, undefined, c.env, user.id),
       mustChangePassword: user.mustChangePassword === 1,
     });
   }
@@ -862,7 +862,7 @@ auth.post(
         department: null,
         language: 'en',
       },
-      tenant: await getTenantSummary(tenantDb, inviteData.tenantId, undefined, c.env),
+      tenant: await getTenantSummary(tenantDb, inviteData.tenantId, undefined, c.env, userId),
     });
   }
 );

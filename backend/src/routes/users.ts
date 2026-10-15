@@ -15,6 +15,8 @@ import { success, created, error } from '../utils/response';
 import { appUrl } from '../utils/app-urls';
 import { sendTransactional } from '../services/mail/transactional';
 import { seatLimitResponse } from '../services/plans/seats';
+import { isValidLocale } from '../utils/money';
+import { isValidTimeZone } from '../utils/tz';
 
 const userRoutes = new Hono<AppContext>();
 
@@ -47,6 +49,8 @@ userRoutes.get('/me', async (c) => {
       avatarUrl: users.avatarUrl,
       department: users.department,
       language: users.language,
+      locale: users.locale,
+      timezone: users.timezone,
       isActive: users.isActive,
       lastLoginAt: users.lastLoginAt,
       createdAt: users.createdAt,
@@ -72,6 +76,9 @@ const updateProfileSchema = z.object({
   phone: z.string().optional(),
   department: z.string().optional(),
   language: z.string().optional(),
+  // R202: personal display overrides; null clears the override and the agency setting applies again
+  locale: z.string().refine((v) => isValidLocale(v), 'Not a valid locale tag').nullable().optional(),
+  timezone: z.string().refine((v) => isValidTimeZone(v), 'Not a valid IANA time zone').nullable().optional(),
 });
 
 userRoutes.put(
@@ -107,6 +114,8 @@ userRoutes.put(
       avatarUrl: updated.avatarUrl,
       department: updated.department,
       language: updated.language,
+      locale: updated.locale,
+      timezone: updated.timezone,
       isActive: updated.isActive,
       lastLoginAt: updated.lastLoginAt,
       createdAt: updated.createdAt,

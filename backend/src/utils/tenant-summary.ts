@@ -4,7 +4,7 @@
  * The plan key and name and the seat limit and seats used come from the plan catalogue (R109).
  */
 
-import { getTenantTimeZone } from './tz';
+import { loadLocaleContext } from './money';
 import type { Env } from '../types';
 import { getCatalogue, tenantPlanKey } from '../services/plans/catalogue';
 import { getSeatStatus } from '../services/plans/seats';
@@ -12,8 +12,13 @@ import { getSeatStatus } from '../services/plans/seats';
 export interface TenantSummary {
   id: string;
   name: string;
+  /** IANA zone: the user's own when set, else the agency's. */
   timezone: string;
   currency: string;
+  /** BCP 47 tag: the user's own when set, else the agency's. */
+  locale: string;
+  country: string;
+  phoneDefaultCountry: string;
   plan?: { key: string; name: string };
   seats?: { limit: number; used: number };
 }
@@ -23,27 +28,30 @@ export async function getTenantSummary(
   tenantId: string,
   fallbackName?: string | null,
   env?: Env,
+  userId?: string | null,
 ): Promise<TenantSummary> {
   let name = '';
-  let currency = '';
   try {
     // same source as GET /settings/company (tenant settings key/value table)
     const { results } = await tenantDb
-      .prepare(`SELECT key, value FROM settings WHERE key IN ('company_name', 'currency')`)
+      .prepare(`SELECT key, value FROM settings WHERE key IN ('company_name')`)
       .all<{ key: string; value: string | null }>();
     for (const row of results ?? []) {
       const v = (row.value ?? '').trim();
       if (row.key === 'company_name') name = v;
-      if (row.key === 'currency') currency = v;
     }
   } catch {
     // settings unavailable - fall back to defaults below
   }
+  const loc = await loadLocaleContext(tenantDb, userId);
   const summary: TenantSummary = {
     id: tenantId,
     name: name || (fallbackName ?? '').trim(),
-    timezone: await getTenantTimeZone(tenantDb),
-    currency: currency || 'INR',
+    timezone: loc.timezone,
+    currency: loc.currency,
+    locale: loc.locale,
+    country: loc.country,
+    phoneDefaultCountry: loc.phoneDefaultCountry,
   };
   if (env) {
     try {

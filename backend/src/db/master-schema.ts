@@ -461,3 +461,16 @@ export const platformEnquiries = sqliteTable('platform_enquiries', {
   index('platform_enquiries_status_idx').on(table.status, table.createdAt),
   index('platform_enquiries_email_idx').on(table.email, table.createdAt),
 ]);
+
+// --- Daily exchange rates (R202, migration 0019) ---
+export const exchangeRates = sqliteTable('exchange_rates', {
+  base: text('base').notNull(),
+  quote: text('quote').notNull(),
+  rate: real('rate').notNull(), // units of quote per one unit of base
+  asOf: text('as_of').notNull(), // YYYY-MM-DD
+  source: text('source').notNull().default('open.er-api.com'),
+  fetchedAt: text('fetched_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+}, (table) => [
+  primaryKey({ columns: [table.base, table.quote, table.asOf] }),
+  index('exchange_rates_pair_idx').on(table.base, table.quote, table.asOf),
+]);
