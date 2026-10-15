@@ -6,7 +6,8 @@ import { sendSms, sendWhatsApp, sendMediaMessage } from '../services/twilio-mess
 import { sendEmail } from '../services/email';
 import { emailFrom } from '../utils/app-urls';
 import { resolveTenantDb } from '../services/tenant-db';
-import { refundUsage, tryMeter } from '../services/metering/meter';
+import { insideFreeWhatsAppWindow, refundUsage, tryMeter } from '../services/metering/meter';
+import { recordWhatsAppCategory, resolveWhatsAppSender, type WhatsAppSender, type WhatsAppTemplateJob } from '../services/messaging/whatsapp-sender';
 
 export interface SmsJob {
   to: string; // E.164 format: +919876543210 or email
@@ -25,6 +26,8 @@ export interface SmsJob {
   metered?: boolean;
   /** With metered: give the unit back if the provider rejects the send. False for free WhatsApp replies. */
   refundOnFailure?: boolean;
+  /** An approved WhatsApp template to send (Meta provider). Without it a Meta send is free-form text, valid only inside the 24 hour window. */
+  whatsappTemplate?: WhatsAppTemplateJob;
 }
 
 /**
@@ -53,7 +56,11 @@ export async function handleSmsJob(job: SmsJob, env: Env): Promise<void> {
 
     let result: { success: boolean; sid?: string; error?: string } | { success: boolean };
 
-    if (channel === 'whatsapp') {
+    const waSender = channel === 'whatsapp' ? await whatsappSenderFor(env, job) : ({ provider: 'twilio' } as WhatsAppSender);
+
+    if (channel === 'whatsapp' && waSender.provider === 'meta') {
+      result = await sendWhatsAppViaMeta(env, job, waSender);
+    } else if (channel === 'whatsapp') {
       if (job.mediaUrl) {
         result = await sendMediaMessage(env, job.to, 'whatsapp', job.mediaUrl, job.body);
       } else {
@@ -133,6 +140,48 @@ export async function handleSmsJob(job: SmsJob, env: Env): Promise<void> {
 
     throw err; // Re-throw to trigger queue retry
   }
+}
+
+/** The agency's WhatsApp provider (R213). Twilio unless the agency, or the platform default, is on Meta. */
+async function whatsappSenderFor(env: Env, job: SmsJob): Promise<WhatsAppSender> {
+  if (!job.tenantId) return { provider: 'twilio' };
+  try {
+    const tenantDb = await resolveTenantDb(env, job.tenantId);
+    return tenantDb ? await resolveWhatsAppSender(env, tenantDb) : { provider: 'twilio' };
+  } catch (err) {
+    console.error('[SMS QUEUE] WhatsApp provider lookup failed; using Twilio:', err instanceof Error ? err.message : err);
+    return { provider: 'twilio' };
+  }
+}
+
+/**
+ * Send a WhatsApp message through Meta. A template goes any time; free-form text or media only inside the 24 hour
+ * window the contact opened, otherwise it is refused here with a message that says to use a template (the route
+ * metered it, the failure refunds it). Paid sends record their Meta category (utility / marketing).
+ */
+async function sendWhatsAppViaMeta(env: Env, job: SmsJob, sender: Extract<WhatsAppSender, { provider: 'meta' }>): Promise<{ success: boolean; sid?: string; error?: string }> {
+  if (!sender.client) return { success: false, error: sender.unavailable };
+
+  if (job.whatsappTemplate) {
+    const t = job.whatsappTemplate;
+    const parameters = Object.fromEntries(t.parameters.map((value, i) => [String(i + 1), value]));
+    const res = await sender.client.sendWhatsAppTemplate(job.to, t.name, parameters, { language: t.language, category: t.category, headerMediaUrl: job.mediaUrl });
+    if (res.status === 'failed') return { success: false, error: res.error };
+    if (job.tenantId) await recordWhatsAppCategory(env, job.tenantId, t.category, res.providerMessageId);
+    return { success: true, sid: res.providerMessageId };
+  }
+
+  if (job.tenantId && job.contactId) {
+    const tenantDb = await resolveTenantDb(env, job.tenantId);
+    if (tenantDb && !(await insideFreeWhatsAppWindow(tenantDb, job.contactId))) {
+      return { success: false, error: 'outside_24h_window: WhatsApp only allows free-form messages within 24 hours of the last message from the customer. Send an approved template instead.' };
+    }
+  }
+  const res = await sender.client.sendWhatsApp(job.to, job.body || '', job.mediaUrl);
+  if (res.status === 'failed') {
+    return { success: false, error: res.errorKind === 'window' ? `outside_24h_window: ${res.error}` : res.error };
+  }
+  return { success: true, sid: res.providerMessageId };
 }
 
 /** The agency is at its monthly cap: the message is not sent and its log row says why. Never retried. */

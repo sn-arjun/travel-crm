@@ -26,6 +26,12 @@ import {
   isCredentialError, listAccounts, loadAccount, openCredentials, seal, secretAad, webhookKeyFor, webhookSecretAad, webhookUrl,
   type AccountRow,
 } from '../services/payments/accounts';
+import { MetaWhatsAppProvider } from '../services/messaging/meta-whatsapp';
+import {
+  accessTokenAad, appSecretAad, effectiveProvider, isCredentialError as isWaCredentialError, loadMetaAccount, metaWebhookUrl,
+  openMetaSecrets, platformMetaConfigured, registerPhoneNumberId, sealMetaSecret, unregisterPhoneNumberId, verifyTokenFor, writeProviderSetting,
+  type MetaAccountRow,
+} from '../services/messaging/whatsapp-sender';
 
 const integrationRoutes = new Hono<AppContext>();
 
@@ -68,7 +74,7 @@ integrationRoutes.get('/channels', async (c) => {
   const rows = await c.env.MASTER_DB
     .prepare(
       `SELECT id, channel, address, provider, label, is_active, created_at
-       FROM tenant_channel_addresses WHERE tenant_id = ? AND channel != 'payment_webhook' ORDER BY channel, created_at`,
+       FROM tenant_channel_addresses WHERE tenant_id = ? AND channel NOT IN ('payment_webhook', 'meta_whatsapp', 'meta_verify') ORDER BY channel, created_at`,
     )
     .bind(c.get('tenantId'))
     .all<ChannelRow>();
@@ -292,6 +298,142 @@ integrationRoutes.delete('/payment-gateways/:gateway', async (c) => {
   if (!isAgencyGateway(gateway)) return notFound(c, 'Payment gateway');
   const result = await c.get('tenantDb').prepare('DELETE FROM payment_gateway_accounts WHERE gateway = ?').bind(gateway).run();
   if (!result.meta.changes) return notFound(c, 'Payment gateway');
+  return success(c, { deleted: true });
+});
+
+// ── WhatsApp through Meta's Cloud API (R213) ─────────────────────────────────
+//   GET    /integrations/whatsapp              provider in use + the agency's Meta number (secrets never returned: last 4 only)
+//   PUT    /integrations/whatsapp/provider     choose twilio | meta
+//   PUT    /integrations/whatsapp/meta         connect or update the agency's own WhatsApp number
+//   POST   /integrations/whatsapp/meta/test    "Test connection" (an authenticated read at Meta)
+//   DELETE /integrations/whatsapp/meta         disconnect
+// The webhook URL and verify token to paste into the Meta app's WhatsApp configuration come with the account.
+
+const connectMetaSchema = z.object({
+  phoneNumberId: z.string().trim().regex(/^\d{5,25}$/, 'The phone number id is the numeric id shown in Meta WhatsApp Manager').optional(),
+  wabaId: z.string().trim().regex(/^\d{5,25}$/, 'The WhatsApp Business Account id is numeric').optional(),
+  displayPhone: z.string().trim().max(40).optional(),
+  accessToken: z.string().trim().min(16).max(1000).optional(),
+  appSecret: z.string().trim().min(16).max(200).optional(),
+  isActive: z.boolean().optional(),
+});
+
+async function whatsappView(c: Context<AppContext>, row: MetaAccountRow | null) {
+  const db = c.get('tenantDb');
+  const choice = await effectiveProvider(c.env, db);
+  const token = row ? await verifyTokenFor(c.env, c.get('tenantId'), true) : null;
+  return {
+    provider: choice.choice,
+    providerExplicit: choice.explicit,
+    platformConfigured: platformMetaConfigured(c.env),
+    platformTokenAvailable: !!c.env.WHATSAPP_META_TOKEN,
+    account: row
+      ? {
+          phoneNumberId: row.phone_number_id,
+          wabaId: row.waba_id,
+          displayPhone: row.display_phone,
+          isActive: !!row.is_active,
+          tokenConfigured: !!row.access_token_enc,
+          tokenLast4: row.access_token_last4,
+          appSecretConfigured: !!row.app_secret_enc,
+          lastTestedAt: row.last_tested_at,
+        }
+      : null,
+    webhookUrl: metaWebhookUrl(c.env, c.req.url),
+    verifyToken: token,
+  };
+}
+
+integrationRoutes.get('/whatsapp', async (c) => {
+  return success(c, await whatsappView(c, await loadMetaAccount(c.get('tenantDb')).catch(() => null)));
+});
+
+integrationRoutes.put('/whatsapp/provider', zValidator('json', z.object({ provider: z.enum(['twilio', 'meta']) })), async (c) => {
+  const { provider } = c.req.valid('json');
+  const db = c.get('tenantDb');
+  const account = await loadMetaAccount(db).catch(() => null);
+  if (provider === 'meta' && !account && !platformMetaConfigured(c.env)) {
+    return error(c, 'Connect your WhatsApp number on Meta first', 400);
+  }
+  await writeProviderSetting(db, provider);
+  return success(c, await whatsappView(c, account));
+});
+
+integrationRoutes.put('/whatsapp/meta', zValidator('json', connectMetaSchema), async (c) => {
+  const body = c.req.valid('json');
+  const db = c.get('tenantDb');
+  const tenantId = c.get('tenantId');
+  const existing = await loadMetaAccount(db);
+
+  const phoneNumberId = body.phoneNumberId ?? existing?.phone_number_id;
+  if (!phoneNumberId) return error(c, 'Enter the WhatsApp phone number id', 400);
+  if (!existing?.access_token_enc && !body.accessToken && !c.env.WHATSAPP_META_TOKEN) {
+    return error(c, 'Enter the access token from your Meta app', 400);
+  }
+
+  const id = existing?.id ?? generateId();
+  try {
+    if (!(await registerPhoneNumberId(c.env, tenantId, phoneNumberId, body.displayPhone?.trim() || existing?.display_phone || null))) {
+      // Never reveal which workspace holds the number.
+      return error(c, 'This WhatsApp number is registered to another workspace', 409);
+    }
+    const tokenEnc = body.accessToken ? await sealMetaSecret(c.env, body.accessToken, accessTokenAad(id)) : existing?.access_token_enc ?? null;
+    const secretEnc = body.appSecret ? await sealMetaSecret(c.env, body.appSecret, appSecretAad(id)) : existing?.app_secret_enc ?? null;
+    const last4 = body.accessToken ? body.accessToken.slice(-4) : existing?.access_token_last4 ?? null;
+    const active = body.isActive === undefined ? existing?.is_active ?? 1 : body.isActive ? 1 : 0;
+    const now = new Date().toISOString();
+    if (existing) {
+      await db
+        .prepare(
+          `UPDATE whatsapp_meta_accounts SET phone_number_id = ?, waba_id = ?, display_phone = ?, access_token_enc = ?, access_token_last4 = ?, app_secret_enc = ?, is_active = ?, updated_at = ? WHERE id = ?`,
+        )
+        .bind(phoneNumberId, body.wabaId ?? existing.waba_id, body.displayPhone?.trim() ?? existing.display_phone, tokenEnc, last4, secretEnc, active, now, id)
+        .run();
+    } else {
+      await db
+        .prepare(
+          `INSERT INTO whatsapp_meta_accounts (id, phone_number_id, waba_id, display_phone, access_token_enc, access_token_last4, app_secret_enc, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(id, phoneNumberId, body.wabaId ?? null, body.displayPhone?.trim() || null, tokenEnc, last4, secretEnc, active)
+        .run();
+    }
+  } catch (e) {
+    if (e instanceof CredentialsKeyMissing) return error(c, 'Credential encryption keys are not configured', 503, { code: 'CREDENTIALS_UNAVAILABLE' });
+    throw e;
+  }
+  return success(c, await whatsappView(c, await loadMetaAccount(db)));
+});
+
+integrationRoutes.post('/whatsapp/meta/test', async (c) => {
+  const db = c.get('tenantDb');
+  const row = await loadMetaAccount(db);
+  if (!row) return notFound(c, 'WhatsApp account');
+  let token: string | null = null;
+  try {
+    token = (await openMetaSecrets(c.env, row)).accessToken ?? c.env.WHATSAPP_META_TOKEN ?? null;
+  } catch (e) {
+    if (isWaCredentialError(e)) return error(c, 'Stored token cannot be opened; enter it again', 503, { code: 'CREDENTIALS_UNAVAILABLE' });
+    throw e;
+  }
+  if (!token) return error(c, 'No access token saved', 400);
+  const result = await new MetaWhatsAppProvider({ accessToken: token, phoneNumberId: row.phone_number_id, graphVersion: c.env.WHATSAPP_META_GRAPH_VERSION || undefined }).testConnection();
+  if (result.ok) {
+    await db
+      .prepare('UPDATE whatsapp_meta_accounts SET last_tested_at = ?, display_phone = COALESCE(display_phone, ?) WHERE id = ?')
+      .bind(new Date().toISOString(), result.displayPhone ?? null, row.id)
+      .run();
+  }
+  return success(c, { ok: result.ok, message: result.message });
+});
+
+integrationRoutes.delete('/whatsapp/meta', async (c) => {
+  const db = c.get('tenantDb');
+  const result = await db.prepare('DELETE FROM whatsapp_meta_accounts').run();
+  if (!result.meta.changes) return notFound(c, 'WhatsApp account');
+  await unregisterPhoneNumberId(c.env, c.get('tenantId'));
+  // Without an account, Meta only works on the platform's number; otherwise fall back to Twilio.
+  const choice = await effectiveProvider(c.env, db);
+  if (choice.choice === 'meta' && !platformMetaConfigured(c.env)) await writeProviderSetting(db, 'twilio');
   return success(c, { deleted: true });
 });
 

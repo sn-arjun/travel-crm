@@ -7,12 +7,22 @@
 import type { Env } from '../types';
 import { resolveTenantDb } from '../services/tenant-db';
 import { refundUsage, tryMeter } from '../services/metering/meter';
+import { recordWhatsAppCategory, resolveWhatsAppSender } from '../services/messaging/whatsapp-sender';
 import { marketingBlockedReason, unsubscribeUrl, unsubscribeFooterText } from '../services/privacy/consent';
 
 interface WhatsAppCampaignMessage {
   type: 'whatsapp_campaign';
   campaignId: string;
   tenantId: string;
+}
+
+function safeJson(text: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
 }
 
 export async function processWhatsAppCampaign(
@@ -35,6 +45,18 @@ export async function processWhatsAppCampaign(
 
   if (!campaign || campaign.status === 'cancelled' || campaign.status === 'paused') {
     return;
+  }
+
+  // R213: an agency on Meta sends the approved template for real; any other provider keeps the existing behaviour.
+  const sender = await resolveWhatsAppSender(env, db).catch(() => ({ provider: 'twilio' as const }));
+  let metaLanguage = 'en';
+  if (sender.provider === 'meta' && campaign.template_name) {
+    const row = await db
+      .prepare("SELECT language FROM message_templates WHERE channel = 'whatsapp' AND name = ? LIMIT 1")
+      .bind(campaign.template_name)
+      .first<{ language: string | null }>()
+      .catch(() => null);
+    metaLanguage = row?.language || 'en';
   }
 
   // Process pending recipients in batches of 10
@@ -92,16 +114,46 @@ export async function processWhatsAppCampaign(
           .replace(/\{\{phone\}\}/gi, (recipient as any).phone || '');
 
         // R208: every marketing WhatsApp message carries the unsubscribe link (the body to hand to the provider)
-        const outgoingBody = templateContent + '\n\n' + unsubscribeFooterText(await unsubscribeUrl(env, tenantId, (recipient as any).contact_id, 'whatsapp'));
+        const unsubLink = await unsubscribeUrl(env, tenantId, (recipient as any).contact_id, 'whatsapp');
+        const outgoingBody = templateContent + '\n\n' + unsubscribeFooterText(unsubLink);
         void outgoingBody;
 
-        // TODO: Send via MessagingProvider when WhatsApp integration is configured
-        // For now, mark as sent (simulate)
+        let providerMessageId: string | null = null;
+        if (sender.provider === 'meta') {
+          // Meta sends only approved templates. The unsubscribe link has to be a variable of the template, so every
+          // marketing message carries it (R208).
+          if (!sender.client) throw new Error(sender.unavailable);
+          if (!campaign.template_name) throw new Error("Meta WhatsApp sends an approved template: set the campaign's template name");
+          if (!/{{\s*unsubscribe_url\s*}}/i.test(campaign.template_content)) {
+            throw new Error('The template must include {{unsubscribe_url}} so the message carries the unsubscribe link');
+          }
+          const values: Record<string, string> = {
+            ...((campaign.template_variables ? safeJson(campaign.template_variables) : {}) as Record<string, string>),
+            name: (recipient as any).name || 'there',
+            phone: (recipient as any).phone || '',
+            unsubscribe_url: unsubLink,
+          };
+          const lowered = Object.fromEntries(Object.entries(values).map(([k, v]) => [k.toLowerCase(), String(v ?? '')]));
+          const names: string[] = [];
+          for (const m of String(campaign.template_content).matchAll(/{{\s*(\w+)\s*}}/g)) {
+            const n = m[1].toLowerCase();
+            if (!names.includes(n)) names.push(n);
+          }
+          const parameters = Object.fromEntries(names.map((n, i) => [String(i + 1), lowered[n] ?? '']));
+          const res = await sender.client.sendWhatsAppTemplate((recipient as any).phone, campaign.template_name, parameters, {
+            language: metaLanguage,
+            category: 'marketing',
+          });
+          if (res.status === 'failed') throw new Error(res.error || 'WhatsApp send failed');
+          providerMessageId = res.providerMessageId;
+          await recordWhatsAppCategory(env, tenantId, 'marketing', providerMessageId);
+        }
+        // Other providers: the send is still simulated here (existing behaviour, unchanged).
         await db.prepare(`
           UPDATE whatsapp_campaign_recipients
-          SET status = 'sent', sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+          SET status = 'sent', provider_message_id = COALESCE(?, provider_message_id), sent_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
           WHERE id = ?
-        `).bind((recipient as any).id).run();
+        `).bind(providerMessageId, (recipient as any).id).run();
 
         processed++;
       } catch (e: any) {

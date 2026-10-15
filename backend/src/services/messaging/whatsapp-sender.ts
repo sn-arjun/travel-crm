@@ -82,7 +82,7 @@ export type WhatsAppSender =
 export async function effectiveProvider(env: Env, db: D1Database): Promise<{ choice: WhatsAppProviderChoice; explicit: boolean }> {
   const setting = await readProviderSetting(db);
   if (setting) return { choice: setting, explicit: true };
-  const account = await loadMetaAccount(db);
+  const account = await loadMetaAccount(db).catch(() => null);
   const usable = !!env.WHATSAPP_META_TOKEN && ((!!account && !!account.is_active) || !!env.WHATSAPP_META_PHONE_NUMBER_ID);
   return { choice: usable ? 'meta' : 'twilio', explicit: false };
 }
@@ -92,7 +92,7 @@ export async function resolveWhatsAppSender(env: Env, db: D1Database): Promise<W
   const { choice } = await effectiveProvider(env, db);
   if (choice === 'twilio') return { provider: 'twilio' };
 
-  const account = await loadMetaAccount(db);
+  const account = await loadMetaAccount(db).catch(() => null);
   if (account && !account.is_active) return { provider: 'meta', client: null, unavailable: 'WhatsApp (Meta) is switched off for this workspace' };
   let token = env.WHATSAPP_META_TOKEN || null;
   if (account) {
@@ -200,4 +200,40 @@ export async function isKnownVerifyToken(env: Env, token: string): Promise<boole
 export function metaWebhookUrl(env: Pick<Env, 'API_PUBLIC_URL'>, requestUrl: string): string {
   const base = (env.API_PUBLIC_URL?.trim() || new URL(requestUrl).origin).replace(/\/+$/, '');
   return `${base}/api/v1/webhooks/inbound/meta/whatsapp`;
+}
+
+// ----------------------------------------------------------------------------
+// Template parameters
+// ----------------------------------------------------------------------------
+
+/** What a Meta template send needs, carried on a queue job. */
+export interface WhatsAppTemplateJob {
+  /** The approved template's name at Meta (the CRM template's name). */
+  name: string;
+  language: string;
+  category: WhatsAppCategory;
+  /** Body parameters in order ({{1}}, {{2}} ...). */
+  parameters: string[];
+}
+
+/**
+ * Body parameters for a CRM template: the {placeholders} of its content in order of first appearance, each filled
+ * from `values`. The approved Meta template must use the same placeholders in the same order.
+ */
+export function templateParametersFor(content: string, values: Record<string, string | null | undefined>): string[] {
+  const seen: string[] = [];
+  for (const match of content.matchAll(/{(\w+)}/g)) if (!seen.includes(match[1])) seen.push(match[1]);
+  return seen.map((name) => values[name] ?? '');
+}
+
+export function whatsappTemplateJob(
+  template: { name: string; content: string; category?: string | null; language?: string | null },
+  values: Record<string, string | null | undefined>,
+): WhatsAppTemplateJob {
+  return {
+    name: template.name,
+    language: template.language || 'en',
+    category: metaCategoryForTemplate(template.category),
+    parameters: templateParametersFor(template.content, values),
+  };
 }

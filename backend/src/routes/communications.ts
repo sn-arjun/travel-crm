@@ -27,6 +27,7 @@ import {
   refundUsage,
   type MeterChannel,
 } from '../services/metering/meter';
+import { whatsappTemplateJob } from '../services/messaging/whatsapp-sender';
 
 /**
  * Take one unit of the agency's allowance for an outbound message before it is queued (R110).
@@ -297,6 +298,8 @@ communicationRoutes.post(
           channel: template.channel,
           metered: true,
           refundOnFailure: true,
+          // R213: on Meta the approved template is sent by name; other providers ignore this.
+          ...(template.channel === 'whatsapp' && { whatsappTemplate: whatsappTemplateJob(template, mergedVariables) }),
         },
       });
 
@@ -459,6 +462,7 @@ communicationRoutes.post(
       // Determine message content
       let messageContent = '';
       let templateId: string | null = null;
+      let bulkTemplate: { name: string; content: string; category: string | null; language: string | null } | null = null;
 
       if (body.template_id) {
         const template = await db
@@ -474,6 +478,7 @@ communicationRoutes.post(
 
         messageContent = template.content;
         templateId = body.template_id;
+        bulkTemplate = template;
       } else if (body.message) {
         messageContent = body.message;
       } else {
@@ -565,6 +570,7 @@ communicationRoutes.post(
             channel: body.channel,
             metered: true,
             refundOnFailure: metered !== null,
+            ...(body.channel === 'whatsapp' && bulkTemplate && { whatsappTemplate: whatsappTemplateJob(bulkTemplate, variables) }),
           },
         });
       }
