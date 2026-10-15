@@ -1,6 +1,7 @@
 import { app, ipcMain, type BrowserWindow } from 'electron';
 import fs from 'fs';
 import path from 'path';
+import { resolveUpdateFeed } from './update-feed';
 
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
 
@@ -34,11 +35,14 @@ export function updaterLogPath(): string {
 }
 
 /**
- * Checks the generic feed at TRAVELCRM_UPDATE_URL on start and every 6 hours. Skipped in dev and
- * when the URL is unset. electron-updater is loaded lazily so an unconfigured build never needs it.
+ * Checks the generic feed on start and every 6 hours. The feed is the address baked into the installer at
+ * build time (electron/dist/build-config.json, from TRAVELCRM_UPDATE_URL), so customer PCs update without
+ * any environment variable; TRAVELCRM_UPDATE_URL at runtime overrides it (testing). Skipped in dev and when no
+ * feed was baked in. electron-updater is loaded lazily so an unconfigured build never needs it.
  */
 export function setupUpdater(getWindow: () => BrowserWindow | null): void {
-  const feed = process.env.TRAVELCRM_UPDATE_URL;
+  const resolved = resolveUpdateFeed(process.env, __dirname);
+  const feed = resolved.url;
   fs.mkdirSync(app.getPath('logs'), { recursive: true });
   const logger = fileLogger(updaterLogPath());
   let updater: UpdaterLike | null = null;
@@ -48,7 +52,7 @@ export function setupUpdater(getWindow: () => BrowserWindow | null): void {
   });
 
   if (!app.isPackaged || !feed) {
-    logger.info(`updater disabled (packaged=${app.isPackaged}, feed=${feed ? 'set' : 'unset'})`);
+    logger.info(`updater disabled (packaged=${app.isPackaged}, feed=${feed ? `${resolved.source}:${feed}` : 'unset'})`);
     return;
   }
 
@@ -60,7 +64,7 @@ export function setupUpdater(getWindow: () => BrowserWindow | null): void {
     return;
   }
 
-  // The generic feed URL is read from the baked app-update.yml; TRAVELCRM_UPDATE_URL at runtime wins.
+  logger.info(`updater enabled (feed=${resolved.source}:${feed})`);
   (updater as unknown as { setFeedURL(o: { provider: 'generic'; url: string }): void }).setFeedURL({
     provider: 'generic',
     url: feed,

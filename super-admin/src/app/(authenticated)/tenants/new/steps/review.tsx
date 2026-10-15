@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { WizardData } from '../page';
 import { Loader2, CheckCircle2 } from 'lucide-react';
+import { PLATFORM_DOMAIN } from '@/lib/domain';
 
 interface Props {
   data: WizardData;
@@ -22,7 +23,7 @@ export function ReviewStep({ data, onProvision, isProvisioning, provisionStep, o
       <CardContent className="space-y-6">
         <Section title="Company Details">
           <Row label="Company Name" value={data.company.name} />
-          <Row label="Subdomain" value={`${data.company.slug}.travelcrmpro.com`} />
+          <Row label="Subdomain" value={`${data.company.slug}.${PLATFORM_DOMAIN}`} />
           <Row label="Owner" value={`${data.company.ownerName} (${data.company.ownerEmail})`} />
           <Row label="Location" value={`${data.company.country} (${data.company.timezone}), data region ${data.company.region.toUpperCase()}`} />
           <Row label="Currency / tax" value={`${data.company.currency} / ${data.company.taxSystem}`} />

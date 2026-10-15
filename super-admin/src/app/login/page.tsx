@@ -1,5 +1,6 @@
 'use client';
 
+import { PLATFORM_DOMAIN } from '@/lib/domain';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -68,7 +69,7 @@ export default function LoginPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@travelcrm.com"
+                placeholder={`admin@${PLATFORM_DOMAIN}`}
                 required
                 disabled={isLocked}
               />

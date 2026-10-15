@@ -1,5 +1,6 @@
 'use client';
 
+import { PLATFORM_DOMAIN } from '@/lib/domain';
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Breadcrumb } from '@/components/layout/breadcrumb';
@@ -119,7 +120,7 @@ export default function TenantDetailPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">{tenant.name}</h1>
-          <p className="text-muted-foreground">{prov?.slug ? `${prov.slug}.travelcrmpro.com` : tenant.email}</p>
+          <p className="text-muted-foreground">{prov?.slug ? `${prov.slug}.${PLATFORM_DOMAIN}` : tenant.email}</p>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className={statusColors[status] || ''}>{status}</Badge>

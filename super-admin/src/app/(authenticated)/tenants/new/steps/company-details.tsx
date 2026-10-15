@@ -1,5 +1,6 @@
 'use client';
 
+import { PLATFORM_DOMAIN } from '@/lib/domain';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -76,7 +77,7 @@ export function CompanyDetailsStep({ data, onNext }: Props) {
         <Field label="Subdomain" error={errors.slug}>
           <div className="flex items-center gap-2">
             <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value.toLowerCase() })} placeholder="acme-travel" />
-            <span className="text-sm text-muted-foreground whitespace-nowrap">.travelcrmpro.com</span>
+            <span className="text-sm text-muted-foreground whitespace-nowrap">.{PLATFORM_DOMAIN}</span>
           </div>
         </Field>
         <Field label="Owner Name" error={errors.ownerName}>

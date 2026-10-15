@@ -13,5 +13,7 @@ binding = "ASSETS"
 
 [vars]
 ENVIRONMENT = "production"
-# The backend API including /api/v1. Replace with your deployed backend before the first deploy.
-BACKEND_API_URL = "https://api.travelcrmpro.com/api/v1"
+# The backend API address. Production default comes from src/lib/domain.ts.
+# BACKEND_API_URL is derived: https://api.<PLATFORM_DOMAIN>/api/v1 (src/lib/domain.ts, the single placeholder).
+# Set it here only to point the console at a different API (e.g. a staging workers.dev address).
+# BACKEND_API_URL = "https://api.YOUR-DOMAIN.example/api/v1"

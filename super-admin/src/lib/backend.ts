@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import { SESSION_COOKIE } from './auth';
+import { derivedApiUrl } from './domain';
 
 /**
  * Server-side client for the TravelCRM backend's super admin API. The console has no database access: every read
@@ -9,7 +10,8 @@ import { SESSION_COOKIE } from './auth';
 const LOCAL_DEFAULT = 'http://localhost:8787/api/v1';
 
 export function backendBaseUrl(): string {
-  return (process.env.BACKEND_API_URL || LOCAL_DEFAULT).replace(/\/+$/, '');
+  const fallback = process.env.ENVIRONMENT === 'production' ? derivedApiUrl() : LOCAL_DEFAULT;
+  return (process.env.BACKEND_API_URL || fallback).replace(/\/+$/, '');
 }
 
 export interface BackendEnvelope<T = unknown> {

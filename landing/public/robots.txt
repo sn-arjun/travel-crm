@@ -3,7 +3,7 @@ User-agent: *
 Allow: /
 
 # Sitemaps
-Sitemap: https://travelcrm.pro/sitemap.xml
+Sitemap: https://YOUR-DOMAIN.example/sitemap.xml
 
 # Block admin paths
 Disallow: /admin/

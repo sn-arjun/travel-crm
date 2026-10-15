@@ -1,3 +1,4 @@
 # SQL migrations are split into statements by line; keep them LF on every checkout
 # (Windows autocrlf produced different statement counts per checkout; found 2026-10-14).
 backend/drizzle/**/*.sql text eol=lf
+*.sh text eol=lf

@@ -4,17 +4,23 @@
  * feature off (no WhatsApp button, no film button, no verification widget, no city line).
  * Nothing here is a secret: this file is public. Never put an API key or secret in it.
  */
+// OWNER: PLACEHOLDER DOMAIN. The domain is not decided yet; this is the ONE place the landing site names it.
+// scripts/build.mjs also replaces the token YOUR-DOMAIN.example in index.html, sitemap.xml and robots.txt with
+// this value (or with the LANDING_DOMAIN environment variable, if set). Everything below is derived from it.
+var TRAVELCRM_DOMAIN = 'YOUR-DOMAIN.example';
+
 window.TRAVELCRM_CONFIG = {
-  // OWNER: the public API address, no trailing slash. Empty = same origin as this page ("/api/v1/...").
+  domain: TRAVELCRM_DOMAIN,
+
+  // The public API address, no trailing slash (derived: api.<domain>). Empty string = same origin as this page.
   // For a local test against fix-stack slot 1 use the slot's API URL, e.g. "http://localhost:8787".
-  apiBase: '',
+  apiBase: 'https://api.' + TRAVELCRM_DOMAIN,
 
-  // OWNER: the public web address of this site (used in the sitemap and og:url; the HTML and sitemap.xml
-  // currently say https://travelcrm.pro, a placeholder domain).
-  siteUrl: 'https://travelcrm.pro',
+  // The public web address of this site (derived).
+  siteUrl: 'https://' + TRAVELCRM_DOMAIN,
 
-  // OWNER: inbox that receives mail from the site's footer (shown in the footer).
-  contactEmail: 'hello@travelcrm.pro',
+  // OWNER: inbox that receives mail from the site's footer (derived default; shown in the footer).
+  contactEmail: 'hello@' + TRAVELCRM_DOMAIN,
 
   // OWNER: a real WhatsApp number in international format, digits only, e.g. "919812345678". Empty = no button.
   whatsappNumber: '',

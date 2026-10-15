@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Copy, ExternalLink } from 'lucide-react';
+import { derivedAppUrl } from '@/lib/domain';
 
 interface ImpersonationResult {
   accessToken: string;
@@ -27,7 +28,7 @@ interface Props {
   tenantName: string;
 }
 
-const DESKTOP_URL = process.env.NEXT_PUBLIC_DESKTOP_URL || 'http://localhost:3000';
+const DESKTOP_URL = process.env.NEXT_PUBLIC_DESKTOP_URL || (process.env.NODE_ENV === 'production' ? derivedAppUrl() : 'http://localhost:3000');
 
 /**
  * Starts a time-boxed support session (POST /admin/tenants/:id/impersonate). A reason is required and is
