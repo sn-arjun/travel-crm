@@ -1,8 +1,15 @@
 import type { NextConfig } from 'next';
 
+// TRAVELCRM_TARGET=web (set by scripts/build-web.mjs) builds the agency app as a website for Cloudflare via
+// OpenNext. Everything else is the Electron build, which needs a standalone server it can ship and start.
+const isWebTarget = process.env.TRAVELCRM_TARGET === 'web';
+
 const nextConfig: NextConfig = {
-  // Output standalone for Electron packaging
-  output: 'standalone',
+  // Standalone output for Electron packaging; OpenNext does its own bundling for the web build.
+  ...(isWebTarget ? {} : { output: 'standalone' as const }),
+
+  // Inlined into the client bundle: lets the UI know it runs as a website (no Electron bridge, no local server).
+  env: { NEXT_PUBLIC_TRAVELCRM_TARGET: isWebTarget ? 'web' : 'desktop' },
 
   // Enable React strict mode for development
   reactStrictMode: true,

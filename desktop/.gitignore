@@ -45,3 +45,6 @@ audit/fix/stack/
 audit/fix/probe/
 audit/fix/gates/*-vitest.json
 audit/fix/probe-ids.json
+
+# OpenNext web build (scripts/build-web.mjs)
+.open-next/
