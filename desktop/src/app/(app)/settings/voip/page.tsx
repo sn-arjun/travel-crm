@@ -40,6 +40,7 @@ import {
 } from '@/lib/api/voip';
 import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { PageContainer } from '@/components/layout/page-container';
+import { RecordingSettingsCard } from '@/components/domain/recording-settings-card';
 
 type VoipToggleKey = 'voicemailEnabled' | 'ivrEnabled' | 'businessHoursEnabled';
 
@@ -368,6 +369,8 @@ function VoipSettingsPageContent() {
           </div>
         </div>
       </SectionCard>
+
+      <RecordingSettingsCard />
 
       <SectionCard title="Calling Features" description="Enable or disable specific VoIP capabilities">
         <div className="flex flex-col divide-y divide-ds-border">

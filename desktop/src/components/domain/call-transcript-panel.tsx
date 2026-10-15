@@ -1,10 +1,10 @@
 'use client';
 
 import * as React from 'react';
-import { Copy, FileText, Plus } from 'lucide-react';
+import { Copy, FileText, Plus, Sparkles } from 'lucide-react';
 import { Button, EmptyState, Skeleton, Tag, SectionCard } from '@/components/ui';
 import { useApiQuery } from '@/hooks/use-api';
-import { voipApi, type Transcript } from '@/lib/api/voip';
+import { voipApi, type CallSummary, type Transcript } from '@/lib/api/voip';
 import { toast } from 'sonner';
 
 interface CallTranscriptPanelProps {
@@ -18,6 +18,81 @@ function formatClock(seconds: number): string {
   const mins = Math.floor(total / 60);
   const secs = total % 60;
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+/** What the call AI did with the call, in words the agent can act on. */
+function aiStatusText(summary: CallSummary | null): string | null {
+  if (!summary) return null;
+  if (summary.aiStatus === 'queued') return 'Transcribing and summarising this call...';
+  if (summary.aiStatus === 'skipped' || summary.aiStatus === 'failed') return summary.aiStatusReason ?? 'Not summarised';
+  return null;
+}
+
+/**
+ * The AI summary of a call (3 lines and the next steps) with its state: queued, summarised, or "Not summarised: AI credits
+ * used up" with a button to run it now. Suggestions made from it (lead update, tasks, a drafted message) appear in the
+ * Assistant and need a click; nothing here changes the lead.
+ */
+export function CallSummaryCard({ callId }: { callId: string }) {
+  const { data, loading, refetch } = useApiQuery<{ data: CallSummary }>(() => voipApi.calls.summary(callId), [callId]);
+  const [busy, setBusy] = React.useState(false);
+  const summary = data?.data ?? null;
+  const status = aiStatusText(summary);
+  const actionable = summary?.aiStatus === 'skipped' || summary?.aiStatus === 'failed';
+
+  // Nothing to show for a call the call AI never looked at (it is off, or the viewer may not read summaries).
+  if (loading || (!summary?.summary && !summary?.aiStatus)) return null;
+
+  const run = async () => {
+    setBusy(true);
+    try {
+      await voipApi.calls.summarise(callId);
+      toast.success('Summarising this call');
+      refetch();
+    } catch (error) {
+      toast.error((error as { message?: string } | null)?.message || 'Could not summarise this call');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div data-testid="call-summary-card">
+    <SectionCard title="AI summary">
+      <div className="flex flex-col gap-ds-3">
+        {summary?.summary ? (
+          <>
+            <ul className="list-disc space-y-ds-1 pl-ds-5 text-sm">
+              {summary.summary.bullets.map((line, i) => (
+                <li key={i}>{line}</li>
+              ))}
+            </ul>
+            {summary.summary.actionItems.length > 0 && (
+              <div>
+                <p className="mb-ds-1 text-xs text-ds-foreground-muted">Next steps</p>
+                <ul className="list-disc space-y-ds-1 pl-ds-5 text-sm">
+                  {summary.summary.actionItems.map((item, i) => (
+                    <li key={i}>{item.text}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <p className="text-xs text-ds-foreground-muted">Suggested changes are in the Assistant. Nothing is applied until you click.</p>
+          </>
+        ) : status ? (
+          <div className="flex flex-wrap items-center gap-ds-3">
+            <Tag tone={summary?.aiStatus === 'queued' ? 'info' : 'warning'} data-testid="call-ai-status">{status}</Tag>
+            {actionable && (
+              <Button size="sm" variant="outline" onClick={() => void run()} disabled={busy} className="gap-ds-2" data-testid="call-summarise-now">
+                <Sparkles aria-hidden="true" /> {summary?.aiStatus === 'failed' ? 'Try again' : 'Summarise now'}
+              </Button>
+            )}
+          </div>
+        ) : null}
+      </div>
+    </SectionCard>
+    </div>
+  );
 }
 
 /** Real transcript for a call. Shows an honest empty state when none was recorded. */
@@ -41,6 +116,7 @@ export function CallTranscriptPanel({ callId, onCreateLead, onAddFollowUp }: Cal
 
   return (
     <div className="flex flex-col gap-ds-4">
+      <CallSummaryCard callId={callId} />
       <SectionCard title="Call transcript">
         {loading ? (
           <Skeleton className="h-32 w-full" />

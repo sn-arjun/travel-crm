@@ -2,14 +2,14 @@
 
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import {
-  Download, FileText, PhoneForwarded, PhoneOff, Play, Pause, Trash2, User, Briefcase,
-} from 'lucide-react';
+import { PhoneForwarded, PhoneOff, Trash2, User, Briefcase } from 'lucide-react';
 import { DetailPage } from '@/components/domain';
 import { Button, Tag, SectionCard, Skeleton, Input, EmptyState } from '@/components/ui';
 import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { voipApi, type Call, type Transcript } from '@/lib/api/voip';
+import { CallRecordingPlayer } from '@/components/domain/call-recording';
+import { CallTranscriptPanel } from '@/components/domain/call-transcript-panel';
+import { voipApi, type Call, type RecordingSettings } from '@/lib/api/voip';
 import { toast } from 'sonner';
 
 function formatDuration(seconds: number): string {
@@ -29,56 +29,63 @@ function statusTone(status: Call['status']): 'success' | 'danger' | 'info' | 'wa
   return 'neutral';
 }
 
-function AudioPlayer({ src }: { src: string }) {
-  const [playing, setPlaying] = React.useState(false);
-  const [progress, setProgress] = React.useState(0);
-  const [duration, setDuration] = React.useState(0);
-  const audioRef = React.useRef<HTMLAudioElement | null>(null);
-
-  React.useEffect(() => {
-    const audio = new Audio(src);
-    audioRef.current = audio;
-    audio.addEventListener('loadedmetadata', () => setDuration(audio.duration));
-    audio.addEventListener('timeupdate', () => {
-      if (audio.duration) setProgress((audio.currentTime / audio.duration) * 100);
-    });
-    audio.addEventListener('ended', () => {
-      setPlaying(false);
-      setProgress(0);
-    });
-    return () => {
-      audio.pause();
-      audio.remove();
-    };
-  }, [src]);
-
-  const toggle = () => {
-    if (!audioRef.current) return;
-    if (playing) audioRef.current.pause();
-    else void audioRef.current.play();
-    setPlaying(!playing);
-  };
-
+/** The agency's recording state for this call, in words. */
+function RecordingSection({ call }: { call: Call }) {
+  const consent =
+    call.recordingConsent === 'announced' ? 'The caller heard the recording announcement.'
+    : call.recordingConsent === 'given' ? 'The agent confirmed the caller agreed to be recorded.'
+    : null;
+  const expires = call.recordingExpiresAt ? new Date(call.recordingExpiresAt).toLocaleDateString('en-IN') : null;
   return (
-    <div className="flex items-center gap-ds-3 rounded-ds-md bg-ds-surface-sunken p-ds-4">
-      <Button variant="outline" size="icon" onClick={toggle} className="shrink-0">
-        {playing ? <Pause className="size-4" /> : <Play className="size-4" />}
-      </Button>
-      <div className="flex-1 space-y-ds-1">
-        <div className="h-2 overflow-hidden rounded-ds-full bg-ds-surface">
-          <div className="h-full rounded-ds-full bg-ds-primary transition-all" style={{ width: `${progress}%` }} />
-        </div>
-        <div className="flex justify-between text-xs text-ds-foreground-muted">
-          <span>{formatDuration(Math.floor((progress / 100) * duration))}</span>
-          <span>{formatDuration(Math.floor(duration))}</span>
-        </div>
+    <SectionCard title="Recording">
+      <div className="flex flex-col gap-ds-3">
+        {call.hasRecording ? (
+          <>
+            <CallRecordingPlayer callId={call.id} />
+            {expires && <p className="text-xs text-ds-foreground-muted">Kept until {expires}, then deleted. The call record and summary stay.</p>}
+          </>
+        ) : call.recordingState === 'expired' ? (
+          <p className="text-sm text-ds-foreground-muted" data-testid="recording-expired">This recording was deleted after the retention period.</p>
+        ) : call.recordingState === 'provider' || call.recordingState === 'failed' ? (
+          <p className="text-sm text-ds-foreground-muted" data-testid="recording-pending">This recording is being saved. It will be playable in a few minutes.</p>
+        ) : (
+          <p className="text-sm text-ds-foreground-muted">This call was not recorded.</p>
+        )}
+        {consent && <p className="text-xs text-ds-foreground-muted">{consent}</p>}
       </div>
-      <a href={src} download>
-        <Button variant="ghost" size="icon-sm" aria-label="Download recording">
-          <Download className="size-4" />
+    </SectionCard>
+  );
+}
+
+/** For agencies that record on request: the line to read to the caller, and a tick that starts the recording. */
+function ConsentSection({ call, onGiven }: { call: Call; onGiven: () => void }) {
+  const { data } = useApiQuery<{ data: RecordingSettings }>(() => voipApi.recordingSettings.get(), []);
+  const settings = data?.data;
+  const [busy, setBusy] = React.useState(false);
+  const live = call.status === 'in-progress' || call.status === 'ringing';
+  if (!settings || !live || settings.consentMode !== 'on_request' || call.recordingConsent === 'given') return null;
+  const tick = async () => {
+    setBusy(true);
+    try {
+      await voipApi.calls.recordingConsent(call.id);
+      toast.success('Recording started');
+      onGiven();
+    } catch (error) {
+      toast.error((error as { message?: string } | null)?.message || 'Could not start recording');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <SectionCard title="Recording consent">
+      <div className="flex flex-col gap-ds-3" data-testid="recording-consent">
+        <p className="text-sm text-ds-foreground-muted">Read this to the caller and start recording only if they agree.</p>
+        <blockquote className="rounded-ds-md bg-ds-surface-sunken p-ds-3 text-sm">{settings.effectiveAnnouncement}</blockquote>
+        <Button onClick={() => void tick()} disabled={busy} className="self-start" data-testid="recording-consent-given">
+          Consent given: start recording
         </Button>
-      </a>
-    </div>
+      </div>
+    </SectionCard>
   );
 }
 
@@ -94,16 +101,11 @@ export default function CallDetailPage() {
     () => voipApi.calls.getById(callId),
     [callId],
   );
-  const { data: transcriptResponse } = useApiQuery<{ data: Transcript }>(
-    () => voipApi.transcripts.getByCall(callId),
-    [callId],
-  );
 
   const { mutate: endCall, loading: ending } = useApiMutation<void, { data: { message: string } }>(() => voipApi.calls.end(callId));
   const { mutate: deleteCall } = useApiMutation<void, unknown>(() => voipApi.calls.remove(callId));
 
   const call = callResponse?.data ?? null;
-  const transcript = transcriptResponse?.data ?? null;
 
   if (gateLoading) return <Skeleton className="h-9 w-32" />;
 
@@ -252,27 +254,12 @@ export default function CallDetailPage() {
             </SectionCard>
           )}
 
-          {call.recordingUrl && (
-            <SectionCard title="Recording">
-              <AudioPlayer src={call.recordingUrl} />
-            </SectionCard>
-          )}
+          <ConsentSection call={call} onGiven={refetch} />
+          <RecordingSection call={call} />
 
-          <SectionCard title="Transcript">
-            {transcript ? (
-              <div className="flex flex-col gap-ds-3">
-                <div className="flex items-center gap-ds-2">
-                  {transcript.language && <Tag tone="neutral">{transcript.language}</Tag>}
-                  {transcript.isEdited && <Tag tone="info">Edited{transcript.editedByName ? ` by ${transcript.editedByName}` : ''}</Tag>}
-                </div>
-                <div className="rounded-ds-md bg-ds-surface-sunken p-ds-4 text-sm leading-relaxed whitespace-pre-wrap">
-                  {transcript.fullTranscript}
-                </div>
-              </div>
-            ) : (
-              <EmptyState icon={<FileText className="size-8" />} title="No transcript" description="No transcript available for this call." />
-            )}
-          </SectionCard>
+          <div className="sm:col-span-2">
+            <CallTranscriptPanel callId={call.id} />
+          </div>
         </div>
       }
       related={[

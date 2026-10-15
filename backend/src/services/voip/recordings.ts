@@ -116,10 +116,11 @@ function linkMessage(key: string, exp: number, userId: string): string {
 }
 
 /** A link that works for RECORDING_LINK_TTL_SECONDS and only for the person it was issued to. */
-export async function signRecordingLink(env: Env, key: string, userId: string, nowMs: number = Date.now()): Promise<{ path: string; expiresAt: string }> {
+export async function signRecordingLink(env: Env, key: string, userId: string, nowMs: number = Date.now()): Promise<{ path: string; filePath: string; exp: number; sig: string; expiresAt: string }> {
   const exp = Math.floor(nowMs / 1000) + RECORDING_LINK_TTL_SECONDS;
   const sig = await signMessage(env, linkMessage(key, exp, userId));
-  return { path: `/api/v1/files/${encodeURIComponent(key)}?exp=${exp}&sig=${sig}`, expiresAt: new Date(exp * 1000).toISOString() };
+  const filePath = `/files/${encodeURIComponent(key)}`;
+  return { path: `/api/v1${filePath}?exp=${exp}&sig=${sig}`, filePath, exp, sig, expiresAt: new Date(exp * 1000).toISOString() };
 }
 
 export async function verifyRecordingLink(env: Env, key: string, userId: string, exp: string | undefined, sig: string | undefined, nowMs: number = Date.now()): Promise<boolean> {
@@ -175,6 +176,22 @@ async function releaseStore(db: D1Database, claimKey: string): Promise<void> {
     .prepare('DELETE FROM provider_events WHERE provider = ? AND provider_call_id = ? AND event = ? AND sequence = ?')
     .bind(EVENT_PROVIDER, claimKey, 'job:store_recording', '')
     .run();
+}
+
+/** Flip has_recording on the call's timeline entries (lead activity and contact log) once the recording is stored. */
+async function markTimelineHasRecording(db: D1Database, callId: string): Promise<void> {
+  try {
+    await db
+      .prepare(`UPDATE lead_activities SET metadata = json_set(metadata, '$.has_recording', json('true')) WHERE type = 'call' AND json_valid(metadata) AND json_extract(metadata, '$.call_id') = ?`)
+      .bind(callId)
+      .run();
+    await db
+      .prepare(`UPDATE activity_logs SET details = json_set(details, '$.has_recording', json('true')) WHERE action = 'call' AND details IS NOT NULL AND json_valid(details) AND json_extract(details, '$.call_id') = ?`)
+      .bind(callId)
+      .run();
+  } catch (err) {
+    console.error('[recordings] could not update the timeline entry:', err instanceof Error ? err.message : 'error');
+  }
 }
 
 /** Delete the provider's copy of a recording we already hold; records when the provider confirmed (the URL stays as history, dead). */
@@ -268,6 +285,9 @@ export async function storeRecording(
       .prepare('UPDATE voip_settings SET recording_storage_bytes = COALESCE(recording_storage_bytes, 0) + ?')
       .bind(bytes)
       .run();
+
+    // The timeline entries written when the call ended said "no recording"; now they get their Play button.
+    await markTimelineHasRecording(db, callId);
 
     // Only now is the provider's copy redundant. If deleting fails the job retries it; the audio is already safe.
     await deleteProviderCopy(env, db, callId, { provider: opts.provider });

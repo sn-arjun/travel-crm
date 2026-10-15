@@ -91,6 +91,16 @@ export interface Call {
   providerCallId?: string | null;
   recordingUrl?: string | null;
   recordingDuration?: number | null;
+  /** True once the recording is in our own storage and can be played. */
+  hasRecording?: boolean;
+  /** provider (being copied), stored, failed, expired (deleted after the retention period). */
+  recordingState?: 'provider' | 'stored' | 'failed' | 'expired' | null;
+  recordingBytes?: number | null;
+  recordingExpiresAt?: string | null;
+  /** announced: the caller heard the announcement; given: the agent ticked consent. */
+  recordingConsent?: 'announced' | 'given' | 'none' | null;
+  aiStatus?: 'queued' | 'transcribed' | 'summarised' | 'skipped' | 'failed' | null;
+  aiStatusReason?: string | null;
   notes?: string | null;
   routedTo?: string | null;
   answeredBy?: string | null;
@@ -201,7 +211,63 @@ export interface TransferCallRequest {
   targetNumber: string;
 }
 
+/** GET /calls/:id/recording: a short-lived, signed link (about 5 minutes) bound to the person who asked. */
+export interface RecordingLink {
+  url: string;
+  /** The same link in parts: the file path under the API and its query, for the authenticated client. */
+  filePath: string;
+  exp: number;
+  sig: string;
+  expiresAt: string;
+  contentType: string;
+  bytes: number | null;
+  durationSeconds: number | null;
+  retentionExpiresAt: string | null;
+}
+
+export interface CallSummary {
+  aiStatus: Call['aiStatus'];
+  aiStatusReason: string | null;
+  summary: {
+    extractionId: string;
+    bullets: string[];
+    keyTopics: string[];
+    actionItems: { text: string; assignee?: string; dueDate?: string }[];
+    sentiment: string | null;
+    dealLikelihood: number | null;
+    status: string;
+    model: string | null;
+    createdAt: string;
+  } | null;
+}
+
+export type RecordingConsentMode = 'announce' | 'off' | 'on_request';
+
+/** Per-agency recording, retention and call AI settings. */
+export interface RecordingSettings {
+  configured: boolean;
+  consentMode: RecordingConsentMode;
+  /** The agency's own announcement wording; null means the default. */
+  announcement: string | null;
+  defaultAnnouncement: string;
+  effectiveAnnouncement: string;
+  retentionDays: number;
+  callAiEnabled: boolean;
+  callAiEngine: 'standard' | 'premium';
+  premiumAvailable: boolean;
+  aiIncluded: boolean;
+}
+
+export type UpdateRecordingSettingsRequest = Partial<
+  Pick<RecordingSettings, 'consentMode' | 'retentionDays' | 'callAiEnabled' | 'callAiEngine'> & { announcement: string | null }
+>;
+
 export const voipApi = {
+  recordingSettings: {
+    get: () => client.get<ApiResponse<RecordingSettings>>('/calls/recording-settings'),
+    update: (data: UpdateRecordingSettingsRequest) => client.put<ApiResponse<RecordingSettings>>('/calls/recording-settings', data),
+  },
+
   settings: {
     get: () =>
       client.get<ApiResponse<VoipSettings>>(API_ENDPOINTS.voip.settings),
@@ -274,6 +340,25 @@ export const voipApi = {
 
     getActions: (id: string) =>
       client.get<ApiResponse<{ id: string; label: string }[]>>(`${API_ENDPOINTS.voip.callById(id)}/actions`),
+
+    /** A signed link to the recording. 403 without access, 409 while the copy is pending, 410 after the retention period. */
+    recording: (id: string) =>
+      client.get<ApiResponse<RecordingLink>>(`${API_ENDPOINTS.voip.callById(id)}/recording`),
+
+    /** The audio itself, fetched with the user's login and the signed link. */
+    recordingAudio: (link: Pick<RecordingLink, 'filePath' | 'exp' | 'sig'>) =>
+      client.get<Blob>(link.filePath, { params: { exp: link.exp, sig: link.sig }, responseType: 'blob' }),
+
+    /** The agent has the caller's consent. In "on request" agencies this starts the recording. */
+    recordingConsent: (id: string) =>
+      client.post<ApiResponse<{ consent: 'given'; recording: boolean }>>(`${API_ENDPOINTS.voip.callById(id)}/recording/consent`, {}),
+
+    summary: (id: string) =>
+      client.get<ApiResponse<CallSummary>>(`${API_ENDPOINTS.voip.callById(id)}/summary`),
+
+    /** "Summarise now" / "Try again": 429 when AI credits are used up, 409 when call AI is switched off. */
+    summarise: (id: string) =>
+      client.post<ApiResponse<{ status: string }>>(`${API_ENDPOINTS.voip.callById(id)}/summarise`, {}),
   },
 
   analytics: {

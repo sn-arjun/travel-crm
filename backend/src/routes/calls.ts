@@ -765,6 +765,10 @@ callRoutes.get('/:id/recording', async (c) => {
   });
   return success(c, {
     url: link.path,
+    // The same link in the parts the desktop client needs: it adds the API prefix and its login itself.
+    filePath: link.filePath,
+    exp: link.exp,
+    sig: link.sig,
     expiresAt: link.expiresAt,
     contentType: 'audio/mpeg',
     bytes: call.recording_bytes,
