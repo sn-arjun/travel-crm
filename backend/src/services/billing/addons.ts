@@ -137,9 +137,9 @@ export async function quoteAddon(env: Env, tenant: TenantRow, productKey: string
   let expiresAt: string | null = null;
   let description: string;
   if (product.kind === 'extra_user') {
+    const year = await paidYear(env, tenant, now);
     const yearly = extraUserYearly(catalogue, tenant.plan, market);
     if (!yearly) throw notConfigured;
-    const year = await paidYear(env, tenant, now);
     prorated = Math.round(year.fraction * 10_000) / 10_000;
     unitPrice = ceilToMinorUnit(yearly.price * year.fraction, yearly.currency);
     currency = yearly.currency;
