@@ -43,7 +43,10 @@ describe('Settings API Module', () => {
 
   beforeEach(() => {
     fetchMock = vi.fn();
-    global.fetch = fetchMock;
+    // Saves now re-read settings afterwards, so one mocked Response is read more than once:
+    // hand every call its own copy so each body can be consumed.
+    global.fetch = ((...args: Parameters<typeof fetch>) =>
+      Promise.resolve(fetchMock(...args)).then((res: Response) => (res instanceof Response ? res.clone() : res))) as typeof fetch;
     mockGetState.mockReturnValue({
       accessToken: 'admin-token',
       refreshToken: null,
