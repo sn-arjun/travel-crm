@@ -60,6 +60,7 @@ export 'models/marketing_suggestion_model.dart';
 
 // Utils
 export 'utils/date_utils.dart';
+export 'constants/countries.dart';
 export 'utils/currency_utils.dart';
 export 'utils/validators.dart';
 export 'utils/id_utils.dart';

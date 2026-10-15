@@ -11,11 +11,22 @@ class AgencyInfo {
   final String name;
   final String? logoUrl;
 
+  /// The agency's currency (INR, GBP...), number locale (en-IN), country and the country its phone numbers are
+  /// read in. Null when the server did not send them (an older server).
+  final String? currency;
+  final String? locale;
+  final String? country;
+  final String? phoneCountry;
+
   const AgencyInfo({
     required this.code,
     required this.tenantId,
     required this.name,
     this.logoUrl,
+    this.currency,
+    this.locale,
+    this.country,
+    this.phoneCountry,
   });
 }
 
@@ -48,6 +59,10 @@ class DriverAuthRepository {
       tenantId: data['tenantId'] as String,
       name: data['name'] as String,
       logoUrl: data['logoUrl'] as String?,
+      currency: data['currency'] as String?,
+      locale: data['locale'] as String?,
+      country: data['country'] as String?,
+      phoneCountry: data['phoneDefaultCountry'] as String?,
     );
   }
 

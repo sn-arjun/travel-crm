@@ -47,6 +47,20 @@ class DriverAuthNotifier extends StateNotifier<DriverAuthState> {
       HiveStorage.driverId = data['driver']['id'];
       HiveStorage.driverName = data['driver']['name'];
       HiveStorage.driverPhone = phone;
+      // The sign-in response carries the agency's currency, so fares show in it from the first screen.
+      final tenant = data['tenant'];
+      if (tenant is Map) {
+        try {
+          await HiveStorage.saveAgencyLocale(
+            currency: tenant['currency'] as String?,
+            locale: tenant['locale'] as String?,
+            country: tenant['country'] as String?,
+            phoneCountry: tenant['phoneDefaultCountry'] as String?,
+          );
+        } catch (_) {
+          // Storing the display conventions must never fail a sign-in.
+        }
+      }
       state = state.copyWith(status: AuthStatus.authenticated);
       return true;
     } catch (e) {
@@ -65,6 +79,10 @@ class DriverAuthNotifier extends StateNotifier<DriverAuthState> {
       name: agency.name,
       code: agency.code,
       logoUrl: agency.logoUrl,
+      currency: agency.currency,
+      locale: agency.locale,
+      country: agency.country,
+      phoneCountry: agency.phoneCountry,
     );
     state = const DriverAuthState();
   }

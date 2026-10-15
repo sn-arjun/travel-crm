@@ -66,7 +66,7 @@ void main() {
 
     test('shows a number without a country code as stored', () {
       expect(formatPhoneDisplay('9820144562'), '9820144562');
-      expect(formatPhoneDisplay('+441234567890'), '+441234567890');
+      expect(formatPhoneDisplay('+3538712345678'), '+3538712345678');
     });
   });
 

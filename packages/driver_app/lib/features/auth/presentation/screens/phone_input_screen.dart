@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared/shared.dart' show composePhoneE164, isValidNational;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:driver_app/l10n/app_localizations.dart';
@@ -20,8 +21,28 @@ class PhoneInputScreen extends ConsumerStatefulWidget {
 class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
   final _phoneController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-  Country _country = countryByIso(kDefaultCountryIso);
+  Country _country = _startingCountry();
   String? _error;
+
+  /// The agency's phone country (sent when the agency code was confirmed), else the phone's own region, else India.
+  static Country _startingCountry() {
+    String? agencyIso;
+    try {
+      agencyIso = HiveStorage.agencyPhoneCountry ?? HiveStorage.agencyCountry;
+    } catch (_) {
+      agencyIso = null;
+    }
+    String? deviceIso;
+    try {
+      deviceIso = WidgetsBinding.instance.platformDispatcher.locale.countryCode;
+    } catch (_) {
+      deviceIso = null;
+    }
+    return resolveDefaultCountry(agencyIso: agencyIso, deviceIso: deviceIso);
+  }
+
+  /// E.164 of what is typed: the trunk 0 dropped, the country's calling code in front.
+  String _fullPhone() => composePhoneE164(_country.phone, _phoneController.text);
 
   @override
   void initState() {
@@ -59,7 +80,7 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
       // Ignore updates while the OTP screen is on top (e.g. "Resend OTP").
       if (ModalRoute.of(context)?.isCurrent == false) return;
       if (next.status == AuthStatus.otpSent) {
-        context.push('/login/otp', extra: '${_country.dial}${_phoneController.text.trim()}');
+        context.push('/login/otp', extra: _fullPhone());
       } else if (next.status == AuthStatus.error && next.errorMessage != null) {
         setState(() => _error = next.errorMessage);
         ref.read(driverAuthProvider.notifier).clearError();
@@ -169,7 +190,7 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                               }
                             },
                             validator: (value) {
-                              if (value == null || value.trim().length < 7) {
+                              if (value == null || !isValidNational(_country.phone, value)) {
                                 return l10n.invalidPhone;
                               }
                               return null;
@@ -244,7 +265,7 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
   void _sendOtp() {
     if (_formKey.currentState!.validate()) {
       setState(() => _error = null);
-      final phone = '${_country.dial}${_phoneController.text.trim()}';
+      final phone = _fullPhone();
       ref.read(driverAuthProvider.notifier).sendOtp(phone);
     }
   }

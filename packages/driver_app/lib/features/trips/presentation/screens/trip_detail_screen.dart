@@ -6,6 +6,7 @@ import '../../../../app/theme.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/call_launcher.dart';
 import '../../../../core/utils/map_launcher.dart';
+import '../../../../core/utils/money.dart';
 import '../../../../core/utils/phone.dart';
 import '../../../../core/widgets/app_widgets.dart';
 import '../../data/trip_provider.dart';
@@ -215,12 +216,12 @@ class TripDetailScreen extends ConsumerWidget {
       if (trip['estimatedCost'] is num)
         _InfoRow(
           label: l10n.estimatedCost,
-          value: '₹${(trip['estimatedCost'] as num).toStringAsFixed(0)}',
+          value: formatAgencyMoney(trip['estimatedCost'] as num),
         ),
       if (trip['actualCost'] is num)
         _InfoRow(
           label: l10n.actualCost,
-          value: '₹${(trip['actualCost'] as num).toStringAsFixed(0)}',
+          value: formatAgencyMoney(trip['actualCost'] as num),
         ),
       if (trip['estimatedDistanceKm'] is num)
         _InfoRow(

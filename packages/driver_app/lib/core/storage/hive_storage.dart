@@ -56,23 +56,67 @@ class HiveStorage {
   static String? get agencyLogoUrl => _settings.get('agencyLogoUrl');
   static bool get hasAgency => (tenantId ?? '').isNotEmpty;
 
+  /// The agency's money and number conventions (R204): currency (INR, GBP...), number locale (en-IN), country and
+  /// the country phone numbers typed without a country code are read in. Null until the app has seen them.
+  static String? get agencyCurrency => _settings.get('agencyCurrency');
+  static String? get agencyLocale => _settings.get('agencyLocale');
+  static String? get agencyCountry => _settings.get('agencyCountry');
+  static String? get agencyPhoneCountry => _settings.get('agencyPhoneCountry');
+
+  static Future<void> saveAgencyLocale({
+    String? currency,
+    String? locale,
+    String? country,
+    String? phoneCountry,
+  }) async {
+    if (currency != null && currency.isNotEmpty) await _settings.put('agencyCurrency', currency);
+    if (locale != null && locale.isNotEmpty) await _settings.put('agencyLocale', locale);
+    if (country != null) await _settings.put('agencyCountry', country);
+    if (phoneCountry != null && phoneCountry.isNotEmpty) {
+      await _settings.put('agencyPhoneCountry', phoneCountry);
+    }
+  }
+
   static Future<void> saveAgency({
     required String tenantId,
     required String name,
     required String code,
     String? logoUrl,
+    String? currency,
+    String? locale,
+    String? country,
+    String? phoneCountry,
   }) async {
     await _settings.put('tenantId', tenantId);
     await _settings.put('agencyName', name);
     await _settings.put('agencyCode', code);
     await _settings.put('agencyLogoUrl', logoUrl);
+    await _settings.delete('agencyCurrency');
+    await _settings.delete('agencyLocale');
+    await _settings.delete('agencyCountry');
+    await _settings.delete('agencyPhoneCountry');
+    await saveAgencyLocale(
+      currency: currency,
+      locale: locale,
+      country: country,
+      phoneCountry: phoneCountry,
+    );
   }
 
   /// Signs out AND forgets the agency, cached trips and queued actions, so the
   /// next driver on this phone starts from the agency-code screen.
   static Future<void> clearAgency() async {
     await _auth.clear();
-    for (final k in ['tenantId', 'agencyName', 'agencyCode', 'agencyLogoUrl']) {
+    for (final k in [
+      'tenantId',
+      'agencyName',
+      'agencyCode',
+      'agencyLogoUrl',
+      'agencyCurrency',
+      'agencyLocale',
+      'agencyCountry',
+      'agencyPhoneCountry',
+    ]) {
       await _settings.delete(k);
     }
     await _tripsCache.clear();
