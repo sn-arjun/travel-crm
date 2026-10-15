@@ -68,6 +68,8 @@ describe('Inbound calls are logged and routed on the real schema', () => {
   beforeAll(async () => {
     await applyD1Migrations(testEnv.MASTER_DB, testEnv.TEST_MIGRATIONS);
     expect((await call('POST', '/test/reset', null)).status).toBe(200);
+    // R301: calling is offered only in some countries; these agencies are in the UK.
+    await testEnv.MASTER_DB.prepare("INSERT INTO settings (key, value) VALUES ('country', 'GB') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run();
     const login = await call('POST', '/auth/login', null, { email: 'admin@e2e.test', password: 'password123', tenantId: TENANT_ID });
     admin = ((await login.json()) as any).data.accessToken;
     expect((await call('POST', '/integrations/channels', admin, { channel: 'voice', address: AGENCY_NUMBER, provider: 'twilio', label: 'Inbound line' })).status).toBe(201);
@@ -91,12 +93,12 @@ describe('Inbound calls are logged and routed on the real schema', () => {
     expect(res.status).toBe(200);
     const xml = await res.text();
     // No owner exists for a stranger: the default 'assigned' strategy shares the call among active agents
-    expect(xml).toContain('<Client>user_');
+    expect(xml).toContain('<Client>u_');
 
     const log = (await rows(`SELECT direction, created_by, contact_id, lead_id, routed_to, status FROM call_logs WHERE provider_call_id = 'CA-in-unknown'`))[0];
     expect(log).toMatchObject({ direction: 'inbound', created_by: null, contact_id: null, lead_id: null, status: 'ringing' });
     expect(log.routed_to).toBeTruthy();
-    expect(xml).toContain(`user_${log.routed_to}`);
+    expect(xml).toContain(`<Client>u_${String(log.routed_to).replace(/-/g, '')}</Client>`);
   });
 
   it('a call from a known contact with an open lead is linked to both and goes to the lead owner', async () => {
@@ -104,7 +106,7 @@ describe('Inbound calls are logged and routed on the real schema', () => {
     // The number is stored with spaces and a +; the caller arrives in E.164.
     const res = await webhook('/twiml/inbound', { CallSid: 'CA-in-known', From: '+919000005001', To: AGENCY_NUMBER });
     expect(res.status).toBe(200);
-    expect(await res.text()).toContain(`<Client>user_${ADMIN_ID}</Client>`);
+    expect(await res.text()).toContain(`<Client>u_${ADMIN_ID.replace(/-/g, '')}</Client>`);
 
     const log = (await rows(`SELECT created_by, contact_id, lead_id, routed_to FROM call_logs WHERE provider_call_id = 'CA-in-known'`))[0];
     expect(log).toEqual({ created_by: null, contact_id: contactId, lead_id: leadId, routed_to: ADMIN_ID });

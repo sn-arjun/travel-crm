@@ -56,11 +56,13 @@ export function errorKindForStatus(status: number): VoipErrorKind {
  * The ONE naming rule for a user's softphone identity. The access token grant, the `<Client>` in ring markup
  * and the agent leg of a call all use it, so a call rung to `u_...` always reaches the browser that
  * registered with the token. Hyphens are not allowed in a Twilio client name, so they are dropped.
- * Idempotent: an identity that is already in this form is returned unchanged.
+ * Idempotent: an identity already in this form, or the legacy `user_<id>` form, maps to the same result.
  */
 export function voipClientIdentity(userId: string): string {
-  if (/^u_[A-Za-z0-9]+$/.test(userId)) return userId;
-  return `u_${userId.replace(/-/g, '').replace(/[^A-Za-z0-9_]/g, '_')}`;
+  // The old routing code wrote `user_<id>`; it maps to the same identity as the bare id.
+  const bare = userId.replace(/^user_/, '');
+  if (/^u_[A-Za-z0-9]+$/.test(bare)) return bare;
+  return `u_${bare.replace(/-/g, '').replace(/[^A-Za-z0-9_]/g, '_')}`;
 }
 
 export function escapeXml(str: string): string {

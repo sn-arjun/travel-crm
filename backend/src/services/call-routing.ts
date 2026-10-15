@@ -6,6 +6,7 @@
  */
 
 import type { VoipSettingsRow } from './voip-provider';
+import { voipClientIdentity } from './voip-base';
 
 export interface RoutingResult {
   type: 'assigned_agent' | 'round_robin' | 'least_recent' | 'voicemail' | 'default';
@@ -91,7 +92,7 @@ export async function resolveInboundRouting(
       return {
         type: 'assigned_agent',
         targetUserId: agent.id,
-        targetIdentity: `user_${agent.id}`,
+        targetIdentity: voipClientIdentity(agent.id),
         contactId,
         leadId,
         reason: `Routed to assigned agent ${agent.name}`,
@@ -110,7 +111,7 @@ export async function resolveInboundRouting(
       return {
         type: 'round_robin',
         targetUserId: agent.id,
-        targetIdentity: `user_${agent.id}`,
+        targetIdentity: voipClientIdentity(agent.id),
         contactId,
         leadId,
         reason: `Round-robin: routed to ${agent.name}`,
@@ -124,7 +125,7 @@ export async function resolveInboundRouting(
       return {
         type: 'least_recent',
         targetUserId: agent.id,
-        targetIdentity: `user_${agent.id}`,
+        targetIdentity: voipClientIdentity(agent.id),
         contactId,
         leadId,
         reason: `Least-recent: routed to ${agent.name}`,

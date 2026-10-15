@@ -7,6 +7,7 @@
  * GET  /ai/settings/provider  — Get active AI provider info
  */
 
+import { callingAvailability } from '../services/voip/country-gate';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '../utils/validator';
@@ -94,10 +95,13 @@ aiSettingsRoutes.get('/', async (c) => {
   const router = new AIRouter(env);
   const providerStatus = router.getProviderStatus();
 
+  const voipCalling = await callingAvailability(c.env, db);
+
   // Build AI feature map with enabled/disabled + tier info (tier = the Pro plan's features in the catalogue)
   const proFeatures = planFeaturesFrom(await getCatalogue(c.env), 'pro');
   const aiFeatures = AI_FEATURE_KEYS.map((key) => {
-    const isEnabled = tenantFeatures.features.includes(key);
+    // Calling is also off where the platform does not resell it (country allow-list), whatever the plan says.
+    const isEnabled = tenantFeatures.features.includes(key) && (key !== 'voip_calling' || voipCalling.available);
     const isOverridden = key in tenantFeatures.overrides;
     const tier = proFeatures.includes(key) ? 'pro' : 'enterprise';
 
@@ -112,6 +116,8 @@ aiSettingsRoutes.get('/', async (c) => {
   return success(c, {
     plan: tenantFeatures.plan,
     aiFeatures,
+    // Where calling is offered (R301): the desktop hides calling UI when available is false.
+    voipCalling: { available: voipCalling.available, country: voipCalling.country, reason: voipCalling.reason },
     usageCaps,
     usageSummary: {
       totalRequests: usageSummary?.total_requests ?? 0,
@@ -281,7 +287,8 @@ aiSettingsRoutes.get('/features/check/:featureKey', async (c) => {
   const featureKey = c.req.param('featureKey');
 
   const tenantFeatures = await getTenantFeatures(c.env, tenantId);
-  const isEnabled = tenantFeatures.features.includes(featureKey);
+  const isEnabled = tenantFeatures.features.includes(featureKey)
+    && (featureKey !== 'voip_calling' || (await callingAvailability(c.env, c.get('tenantDb'))).available);
 
   return success(c, {
     featureKey,

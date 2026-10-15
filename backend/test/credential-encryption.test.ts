@@ -45,6 +45,8 @@ describe('Credential encryption at rest', () => {
   beforeAll(async () => {
     await applyD1Migrations(testEnv.MASTER_DB, testEnv.TEST_MIGRATIONS);
     expect((await call('POST', '/test/reset', null)).status).toBe(200);
+    // R301: calling is offered only in some countries; these agencies are in the UK.
+    await testEnv.MASTER_DB.prepare("INSERT INTO settings (key, value) VALUES ('country', 'GB') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run();
     const login = await call('POST', '/auth/login', null, { email: 'admin@e2e.test', password: 'password123', tenantId: TENANT_ID });
     admin = (await data(login)).accessToken;
     superToken = await superAdminToken(testEnv, { id: SA_ID, email: 'owner-r108@platform.test' });

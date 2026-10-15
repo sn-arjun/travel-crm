@@ -80,6 +80,7 @@ import fleetRoutes from './routes/fleet';
 import voipRoutes from './routes/voip';
 import callRoutes from './routes/calls';
 import voipCallbackRoutes from './routes/voip-callbacks';
+import { requireCallingCountry } from './services/voip/country-gate';
 import transcriptRoutes from './routes/transcripts';
 import aiExtractionRoutes from './routes/ai-extractions';
 import aiAssistantRoutes from './routes/ai-assistant';
@@ -236,6 +237,9 @@ app.use('/api/*', apiRateLimit);
 
 // VoIP
 for (const prefix of ['/api/v1', '/api']) {
+  // Calling is resold only in some countries (owner decision 2026-10-15): checked before the plan gate.
+  app.use(`${prefix}/voip/*`, requireCallingCountry());
+  app.use(`${prefix}/calls/*`, requireCallingCountry());
   app.use(`${prefix}/voip/*`, requireFeature('voip_calling'));
   app.use(`${prefix}/calls/*`, requireFeature('voip_calling'));
 }

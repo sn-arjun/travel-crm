@@ -10,6 +10,9 @@ import { listOutbox, clearOutbox } from '../services/mail/transactional';
 import { signAccessToken } from '../utils/jwt';
 import { signSuperAdminToken } from '../services/admin/session';
 import { ingestInbound, type InboundChannel } from '../services/inbound/ingest';
+import { simulateVoipScenario, VOIP_SCENARIOS, type VoipScenario } from '../services/voip/simulator';
+import { MOCK_AUTH_TOKEN } from '../services/voip/mock-provider';
+import { loadVoipSettings } from '../services/voip-provider';
 
 const testApp = new Hono<{ Bindings: Env }>();
 
@@ -138,6 +141,50 @@ testApp.post('/inbound', async (c) => {
         provider: 'simulator',
     });
 
+    return c.json({ success: true, data: result });
+});
+
+/**
+ * Play a whole phone call as the provider would (TEST_MODE only): posts the signed callbacks of a scenario to the
+ * real callback routes in order. inbound_*: from is the caller, to is the agency's number. outbound_*: from is
+ * the agency's number, to is the customer; pass callSid (the id placeCall returned) to update that call's log.
+ * Body: { scenario, to, from, durationSeconds?, callSid?, tenantId? }. tenantId only selects whose provider
+ * token signs the callbacks; without it the platform token does.
+ */
+testApp.post('/voip/simulate', async (c) => {
+    if (!isTestMode(c.env)) return c.json({ error: 'Forbidden: Test mode is not active.' }, 403);
+
+    const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
+    const str = (key: string): string => (body && typeof body[key] === 'string' ? (body[key] as string).trim() : '');
+    const scenario = str('scenario') as VoipScenario;
+    if (!VOIP_SCENARIOS.includes(scenario)) return c.json({ error: `scenario must be one of ${VOIP_SCENARIOS.join(', ')}` }, 400);
+    const e164 = /^\+[1-9][0-9]{7,14}$/;
+    if (!e164.test(str('to')) || !e164.test(str('from'))) {
+        return c.json({ error: 'to and from must be E.164 numbers' }, 400);
+    }
+    const rawDuration = body?.durationSeconds;
+    const durationSeconds = typeof rawDuration === 'number' && Number.isFinite(rawDuration) ? Math.min(Math.max(Math.floor(rawDuration), 0), 7200) : undefined;
+
+    let authToken = c.env.TWILIO_AUTH_TOKEN || MOCK_AUTH_TOKEN;
+    if (str('tenantId')) {
+        const db = await resolveTenantDb(c.env, str('tenantId'));
+        if (!db) return c.json({ error: 'Tenant not found' }, 404);
+        const settings = await loadVoipSettings(c.env, db).catch(() => null);
+        authToken = settings?.providerAuthToken || settings?.twilioAuthToken || authToken;
+    }
+
+    // Deliver to this same worker (dynamic import: index.ts imports this file).
+    const { default: app } = await import('../index');
+    const result = await simulateVoipScenario({
+        scenario,
+        to: str('to'),
+        from: str('from'),
+        durationSeconds,
+        callSid: str('callSid') || undefined,
+        baseUrl: c.env.API_PUBLIC_URL?.trim().replace(/[/]+$/, '') || new URL(c.req.url).origin,
+        authToken,
+        send: (request) => Promise.resolve(app.fetch(request, c.env, c.executionCtx)),
+    });
     return c.json({ success: true, data: result });
 });
 
