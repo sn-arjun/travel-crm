@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-15T13:10+05:30",
+  "updated": "2026-10-15T14:20+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -113,7 +113,8 @@
         "R115": "merged; merged-line gate: backend 83 files / 1592 tests, flutter analyze clean, flutter test 106 passed: agency-code sign-in (slug), stored tenant, full country picker, release signing from key.properties with debug fallback, icons, iOS strings. Branch: backend 82/1582, flutter analyze clean, flutter test 106, release APK 53.5 MB built with throwaway key, agency_login_test passed on emulator-5554.",
         "R201": "merged (Tier 2): tax engine GST/VAT+reverse charge/sales tax/none, stored per invoice and note; tenant 0047. Branch gate: backend 83/1603, desktop 67/1333, lint 0, contacts+invoices e2e 50/50. Merged-line gate run was stopped by Claude Code for low system memory (not a failure); not restarted, owner asked.",
         "R118": "merged: single root workspace install (nested lockfiles removed), CI on master, fresh-clone check, OpenNext build, terraform landing + workers domains + backup/update buckets (validate passed). Main checkout reinstalled from the root lockfile. Merged-line fresh-clone check PASSED: npm ci once; backend tsc + vitest 84/1609; desktop tsc + vitest 67/1333 + lint; super-admin tsc, lint, next build, OpenNext build (.open-next/worker.js); landing link check.",
-        "R122": "starting"
+        "R122": "merged: README, CONTRIBUTING, env examples and backend/.dev.vars.example rewritten from code; fresh-clone check passed (13/13)",
+        "R202": "running (slot 0)"
       },
       "merged": [
         "R101",
@@ -139,8 +140,10 @@
         "R116",
         "R115",
         "R201",
-        "R118"
-      ]
+        "R118",
+        "R122"
+      ],
+      "tier1": "COMPLETE 2026-10-15: R101-R124 merged (incl. orchestrator follow-ups R123, R124); exit test R121 9/9 on the merged line; fresh-clone check passes."
     },
     "W4": {
       "status": "partial",
