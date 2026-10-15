@@ -12,15 +12,20 @@
  * before any tenant database is known.
  */
 
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '../utils/validator';
 import type { AppContext } from '../types';
 import { rbac } from '../middleware/rbac';
 import { generateId } from '../utils/uuid';
-import { hashApiKey } from '../utils/crypto-box';
+import { CredentialsKeyMissing, hashApiKey } from '../utils/crypto-box';
 import { success, created, error, notFound } from '../utils/response';
 import { normalizeAddress } from '../services/inbound/ingest';
+import { isAgencyGateway, testConnection } from '../services/payments/agency-gateway';
+import {
+  isCredentialError, listAccounts, loadAccount, openCredentials, seal, secretAad, webhookKeyFor, webhookSecretAad, webhookUrl,
+  type AccountRow,
+} from '../services/payments/accounts';
 
 const integrationRoutes = new Hono<AppContext>();
 
@@ -63,7 +68,7 @@ integrationRoutes.get('/channels', async (c) => {
   const rows = await c.env.MASTER_DB
     .prepare(
       `SELECT id, channel, address, provider, label, is_active, created_at
-       FROM tenant_channel_addresses WHERE tenant_id = ? ORDER BY channel, created_at`,
+       FROM tenant_channel_addresses WHERE tenant_id = ? AND channel != 'payment_webhook' ORDER BY channel, created_at`,
     )
     .bind(c.get('tenantId'))
     .all<ChannelRow>();
@@ -168,6 +173,126 @@ integrationRoutes.delete('/api-keys/:id', async (c) => {
     .run();
   if (!result.meta.changes) return notFound(c, 'API key');
   return success(c, { revoked: true });
+});
+
+// ── Payment gateways: the agency's OWN Razorpay or Stripe (R207) ─────────────
+//   GET    /integrations/payment-gateways               connected accounts (secrets never returned: last 4 only)
+//   PUT    /integrations/payment-gateways/:gateway      connect or update (keys pasted by the agency)
+//   POST   /integrations/payment-gateways/:gateway/test "Test connection" (an authenticated read at the gateway)
+//   DELETE /integrations/payment-gateways/:gateway      disconnect
+// The webhook URL to paste into the gateway's dashboard is returned with each account.
+
+const keyField = z.string().trim().min(8).max(200);
+
+const connectGatewaySchema = z.object({
+  mode: z.enum(['test', 'live']),
+  keyId: z.string().trim().min(3).max(120).optional(),
+  keySecret: keyField.optional(),
+  webhookSecret: keyField.optional(),
+  isActive: z.boolean().optional(),
+});
+
+function last4(value: string | null | undefined): string | null {
+  return value ? value.slice(-4) : null;
+}
+
+function accountView(c: Context<AppContext>, row: AccountRow, key: string | null) {
+  return {
+    gateway: row.gateway,
+    mode: row.mode,
+    isActive: !!row.is_active,
+    keyConfigured: !!row.secret_enc,
+    keyIdLast4: last4(row.key_id),
+    secretLast4: row.secret_last4,
+    webhookSecretConfigured: !!row.webhook_secret_enc,
+    lastTestedAt: row.last_tested_at,
+    webhookUrl: key ? webhookUrl(c.env, c.req.url, key, row.gateway) : null,
+  };
+}
+
+integrationRoutes.get('/payment-gateways', async (c) => {
+  const rows = await listAccounts(c.get('tenantDb'));
+  const key = rows.length ? await webhookKeyFor(c.env, c.get('tenantId'), true) : null;
+  return success(c, { accounts: rows.map((row) => accountView(c, row, key)) });
+});
+
+integrationRoutes.put('/payment-gateways/:gateway', zValidator('json', connectGatewaySchema), async (c) => {
+  const gateway = c.req.param('gateway');
+  if (!isAgencyGateway(gateway)) return notFound(c, 'Payment gateway');
+  const body = c.req.valid('json');
+  const db = c.get('tenantDb');
+  const existing = await loadAccount(db, gateway);
+
+  const keyId = body.keyId ?? existing?.key_id ?? null;
+  if (gateway === 'razorpay') {
+    if (!keyId) return error(c, 'Enter the Razorpay key id', 400);
+    if (!/^rzp_(test|live)_/.test(keyId)) return error(c, 'A Razorpay key id starts with rzp_test_ or rzp_live_', 400);
+    if (keyId.startsWith('rzp_live_') !== (body.mode === 'live')) return error(c, `This key id is for ${body.mode === 'live' ? 'test' : 'live'} mode`, 400);
+  } else if (body.keySecret) {
+    if (!/^(sk|rk)_(test|live)_/.test(body.keySecret)) return error(c, 'A Stripe secret key starts with sk_test_, sk_live_ or rk_', 400);
+    if (/_live_/.test(body.keySecret) !== (body.mode === 'live')) return error(c, `This key is for ${body.mode === 'live' ? 'test' : 'live'} mode`, 400);
+  }
+  if (!existing?.secret_enc && !body.keySecret) return error(c, 'Enter the secret key', 400);
+  if (body.webhookSecret && gateway === 'stripe' && !body.webhookSecret.startsWith('whsec_')) {
+    return error(c, 'A Stripe webhook signing secret starts with whsec_', 400);
+  }
+
+  const id = existing?.id ?? generateId();
+  try {
+    const secretEnc = body.keySecret ? await seal(c.env, body.keySecret, secretAad(id)) : existing!.secret_enc;
+    const webhookEnc = body.webhookSecret ? await seal(c.env, body.webhookSecret, webhookSecretAad(id)) : existing?.webhook_secret_enc ?? null;
+    const secretLast4 = body.keySecret ? last4(body.keySecret) : existing!.secret_last4;
+    const active = body.isActive === undefined ? existing?.is_active ?? 1 : body.isActive ? 1 : 0;
+    if (existing) {
+      await db
+        .prepare(
+          `UPDATE payment_gateway_accounts SET mode = ?, key_id = ?, secret_enc = ?, secret_last4 = ?, webhook_secret_enc = ?, is_active = ?, updated_at = ? WHERE id = ?`,
+        )
+        .bind(body.mode, keyId, secretEnc, secretLast4, webhookEnc, active, new Date().toISOString(), id)
+        .run();
+    } else {
+      await db
+        .prepare(
+          `INSERT INTO payment_gateway_accounts (id, gateway, mode, key_id, secret_enc, secret_last4, webhook_secret_enc, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(id, gateway, body.mode, keyId, secretEnc, secretLast4, webhookEnc, active)
+        .run();
+    }
+  } catch (e) {
+    if (e instanceof CredentialsKeyMissing) return error(c, 'Credential encryption keys are not configured', 503, { code: 'CREDENTIALS_UNAVAILABLE' });
+    throw e;
+  }
+
+  const key = await webhookKeyFor(c.env, c.get('tenantId'), true);
+  const row = (await loadAccount(db, gateway))!;
+  return success(c, accountView(c, row, key));
+});
+
+integrationRoutes.post('/payment-gateways/:gateway/test', async (c) => {
+  const gateway = c.req.param('gateway');
+  if (!isAgencyGateway(gateway)) return notFound(c, 'Payment gateway');
+  const db = c.get('tenantDb');
+  const row = await loadAccount(db, gateway);
+  if (!row) return notFound(c, 'Payment gateway');
+  let creds;
+  try {
+    creds = await openCredentials(c.env, row);
+  } catch (e) {
+    if (isCredentialError(e)) return error(c, 'Stored keys cannot be opened; enter them again', 503, { code: 'CREDENTIALS_UNAVAILABLE' });
+    throw e;
+  }
+  if (!creds) return error(c, 'No keys saved', 400);
+  const result = await testConnection(creds);
+  if (result.ok) await db.prepare('UPDATE payment_gateway_accounts SET last_tested_at = ? WHERE id = ?').bind(new Date().toISOString(), row.id).run();
+  return success(c, result);
+});
+
+integrationRoutes.delete('/payment-gateways/:gateway', async (c) => {
+  const gateway = c.req.param('gateway');
+  if (!isAgencyGateway(gateway)) return notFound(c, 'Payment gateway');
+  const result = await c.get('tenantDb').prepare('DELETE FROM payment_gateway_accounts WHERE gateway = ?').bind(gateway).run();
+  if (!result.meta.changes) return notFound(c, 'Payment gateway');
+  return success(c, { deleted: true });
 });
 
 export default integrationRoutes;

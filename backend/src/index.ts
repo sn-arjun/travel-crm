@@ -43,6 +43,7 @@ import billingRoutes, { billingPublicRoutes } from './routes/billing';
 import leadWebhookRoutes from './routes/webhook';
 import inboundRoutes from './routes/inbound';
 import integrationRoutes from './routes/integrations';
+import paymentWebhookRoutes from './routes/payment-webhooks';
 import assistantRoutes from './routes/assistant';
 import automationRoutes from './routes/automations';
 import { setRootApp } from './app-ref';
@@ -202,6 +203,10 @@ app.route('/api/public/enquiries', publicEnquiryRoutes);
 // Subscription billing: gateway webhooks (signature is the credential) and the local mock checkout
 app.route('/api/v1/billing', billingPublicRoutes);
 app.route('/api/billing', billingPublicRoutes);
+
+// An agency's own Razorpay / Stripe account: signed by that agency's webhook secret, tenant found from the URL key (R207)
+app.route('/api/v1/webhooks/payments', paymentWebhookRoutes);
+app.route('/api/webhooks/payments', paymentWebhookRoutes);
 
 app.route('/api/v1/webhooks/inbound', inboundRoutes);
 app.route('/api/webhooks/inbound', inboundRoutes);

@@ -15,6 +15,9 @@ import { notifications } from '../db/tenant-schema';
 import { broadcastToTenant } from '../utils/realtime';
 import { tenantToday, tenantTimeZone, sqlOffsetModifier } from '../utils/tz';
 import { formatMoney, loadLocaleContext } from '../utils/money';
+import { cancelPaymentLink, createPaymentLink, type AgencyGatewayId } from '../services/payments/agency-gateway';
+import { isCredentialError, listAccounts, openCredentials, type AccountRow } from '../services/payments/accounts';
+import { GatewayError } from '../services/billing/gateway';
 
 const invoiceRoutes = new Hono<AppContext>();
 
@@ -485,6 +488,7 @@ invoiceRoutes.get('/:id', async (c) => {
           i.total_tax, i.total, i.currency, i.status, i.due_date,
           i.issue_date, i.terms,
           i.paid_amount, i.balance_due, i.notes, i.bank_details, i.created_by,
+          i.payment_link_id, i.payment_link_url, i.payment_link_status, i.payment_link_gateway,
           i.created_at, i.updated_at,
           c.name as contact_name, c.email as contact_email, c.phone as contact_phone
         FROM invoices i
@@ -992,6 +996,151 @@ invoiceRoutes.post('/:id/send', zValidator('json', sendInvoiceSchema), async (c)
     console.error('Error sending invoice:', err);
     return error(c, 'Failed to send invoice', 500);
   }
+});
+
+// ============================================================
+// POST /:id/payment-link — A link the customer pays through the AGENCY's own Razorpay or Stripe (R207)
+// DELETE /:id/payment-link — Stop the current link
+// ============================================================
+// The link is for the balance due, in the invoice currency. The money goes straight to the agency's gateway
+// account; a verified webhook (routes/payment-webhooks.ts) records the payment. Sharing the link with the
+// customer goes through the Communication Hub (SendMessageDialog), never mailto: or wa.me.
+
+const paymentLinkSchema = z.object({
+  gateway: z.enum(['razorpay', 'stripe']).optional(),
+});
+
+/** The gateway to use: the one asked for, else Razorpay for rupees and Stripe for everything else, else whatever is connected. */
+function pickGateway(accounts: AccountRow[], currency: string, asked?: AgencyGatewayId): AccountRow | null {
+  const active = accounts.filter((a) => a.is_active && a.secret_enc);
+  if (asked) return active.find((a) => a.gateway === asked) ?? null;
+  const preferred = currency.toUpperCase() === 'INR' ? 'razorpay' : 'stripe';
+  return active.find((a) => a.gateway === preferred) ?? active[0] ?? null;
+}
+
+invoiceRoutes.post('/:id/payment-link', zValidator('json', paymentLinkSchema), async (c) => {
+  const tenantDb = c.get('tenantDb');
+  const userId = c.get('userId');
+  const invoiceId = c.req.param('id');
+
+  if (!checkInvoicePermission(c.get('role'))) {
+    return forbidden(c, 'Only admin, sales_manager, or accountant can create payment links');
+  }
+
+  const invoice = await tenantDb
+    .prepare(
+      `SELECT i.id, i.invoice_number, i.status, i.currency, i.balance_due, i.payment_link_id, i.payment_link_status, i.payment_link_gateway,
+              c.name as contact_name, c.email as contact_email, c.phone as contact_phone
+       FROM invoices i LEFT JOIN contacts c ON i.contact_id = c.id WHERE i.id = ?1`,
+    )
+    .bind(invoiceId)
+    .first<{
+      id: string; invoice_number: string; status: string; currency: string | null; balance_due: number;
+      payment_link_id: string | null; payment_link_status: string | null; payment_link_gateway: string | null;
+      contact_name: string | null; contact_email: string | null; contact_phone: string | null;
+    }>();
+  if (!invoice) return notFound(c, 'Invoice');
+  if (['void', 'cancelled', 'paid'].includes(invoice.status) || !(invoice.balance_due > 0.01)) {
+    return error(c, 'This invoice has nothing left to collect', 409, { code: 'NOTHING_DUE' });
+  }
+
+  const currency = invoice.currency || (await loadLocaleContext(tenantDb)).currency;
+  const accounts = await listAccounts(tenantDb);
+  const account = pickGateway(accounts, currency, c.req.valid('json').gateway);
+  if (!account) {
+    return error(c, 'Connect Razorpay or Stripe in Settings > Integrations to create payment links', 409, { code: 'NO_GATEWAY' });
+  }
+
+  let creds;
+  try {
+    creds = await openCredentials(c.env, account);
+  } catch (e) {
+    if (isCredentialError(e)) return error(c, 'Stored gateway keys cannot be opened; enter them again in Settings > Integrations', 503, { code: 'CREDENTIALS_UNAVAILABLE' });
+    throw e;
+  }
+  if (!creds) return error(c, 'No gateway keys saved', 409, { code: 'NO_GATEWAY' });
+
+  // One live link per invoice: stop the previous one so it cannot be paid as well as the new one.
+  if (invoice.payment_link_id && invoice.payment_link_status === 'created') {
+    const previous = accounts.find((a) => a.gateway === invoice.payment_link_gateway);
+    try {
+      const old = previous ? await openCredentials(c.env, previous) : null;
+      if (old) await cancelPaymentLink(old, invoice.payment_link_id);
+    } catch {
+      // keys unreadable: the new link still replaces it in the CRM
+    }
+  }
+
+  let link;
+  try {
+    link = await createPaymentLink(creds, {
+      linkRef: generateId(),
+      invoiceId,
+      invoiceNumber: invoice.invoice_number,
+      amount: invoice.balance_due,
+      currency,
+      customerName: invoice.contact_name,
+      customerEmail: invoice.contact_email,
+      customerPhone: invoice.contact_phone,
+    });
+  } catch (e) {
+    if (e instanceof GatewayError) return error(c, `${account.gateway === 'razorpay' ? 'Razorpay' : 'Stripe'}: ${e.message}`, 502, { code: 'GATEWAY_ERROR' });
+    throw e;
+  }
+
+  const now = new Date().toISOString();
+  await tenantDb
+    .prepare(
+      `UPDATE invoices SET payment_link = ?1, payment_link_id = ?2, payment_link_url = ?1, payment_link_status = 'created', payment_link_gateway = ?5, updated_at = ?3 WHERE id = ?4`,
+    )
+    .bind(link.url, link.id, now, invoiceId, account.gateway)
+    .run();
+  await logActivity(drizzle(tenantDb), {
+    userId,
+    action: 'payment_link_created',
+    entityType: 'invoice',
+    entityId: invoiceId,
+    details: JSON.stringify({ gateway: account.gateway, mode: account.mode, linkId: link.id, amount: invoice.balance_due, currency }),
+  });
+
+  return created(c, {
+    invoiceId,
+    gateway: account.gateway,
+    mode: account.mode,
+    linkId: link.id,
+    url: link.url,
+    status: 'created',
+    amount: invoice.balance_due,
+    currency,
+  });
+});
+
+invoiceRoutes.delete('/:id/payment-link', async (c) => {
+  const tenantDb = c.get('tenantDb');
+  const invoiceId = c.req.param('id');
+  if (!checkInvoicePermission(c.get('role'))) {
+    return forbidden(c, 'Only admin, sales_manager, or accountant can cancel payment links');
+  }
+  const invoice = await tenantDb
+    .prepare('SELECT id, payment_link_id, payment_link_status, payment_link_gateway FROM invoices WHERE id = ?1')
+    .bind(invoiceId)
+    .first<{ id: string; payment_link_id: string | null; payment_link_status: string | null; payment_link_gateway: string | null }>();
+  if (!invoice) return notFound(c, 'Invoice');
+  if (!invoice.payment_link_id || invoice.payment_link_status !== 'created') return error(c, 'No open payment link on this invoice', 409);
+
+  // Best effort at the gateway that issued it; the status below stops the CRM offering the link either way.
+  const issuer = (await listAccounts(tenantDb)).find((a) => a.gateway === invoice.payment_link_gateway);
+  try {
+    const creds = issuer ? await openCredentials(c.env, issuer) : null;
+    if (creds) await cancelPaymentLink(creds, invoice.payment_link_id);
+  } catch {
+    // keys unreadable
+  }
+  await tenantDb
+    .prepare(`UPDATE invoices SET payment_link = NULL, payment_link_url = NULL, payment_link_status = 'cancelled', updated_at = ?1 WHERE id = ?2`)
+    .bind(new Date().toISOString(), invoiceId)
+    .run();
+  return success(c, { invoiceId, status: 'cancelled' });
 });
 
 // ============================================================

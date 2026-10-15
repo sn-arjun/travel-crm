@@ -992,6 +992,7 @@ export const TENANT_MIGRATIONS: BundledMigration[] = [
       "-- The payment link currently offered on an invoice.\nALTER TABLE invoices ADD COLUMN payment_link_id TEXT",
       "ALTER TABLE invoices ADD COLUMN payment_link_url TEXT",
       "ALTER TABLE invoices ADD COLUMN payment_link_status TEXT",
+      "ALTER TABLE invoices ADD COLUMN payment_link_gateway TEXT",
       "-- Every verified gateway event is processed once: the event claims its row here before any side effect.\nCREATE TABLE IF NOT EXISTS payment_events (\n  gateway TEXT NOT NULL,\n  event_id TEXT NOT NULL,\n  event_type TEXT,\n  payment_id TEXT,\n  received_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\n  PRIMARY KEY (gateway, event_id)\n)"
     ]
   }

@@ -395,6 +395,7 @@ export const invoices = sqliteTable('invoices', {
   paymentLink: text('payment_link'),
   paymentLinkId: text('payment_link_id'), // the agency's own gateway link (R207)
   paymentLinkUrl: text('payment_link_url'),
+  paymentLinkGateway: text('payment_link_gateway'), // razorpay, stripe
   paymentLinkStatus: text('payment_link_status'), // created, paid, expired, cancelled
   createdBy: text('created_by').references(() => users.id),
   createdAt: text('created_at').default(timestamp),

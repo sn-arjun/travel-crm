@@ -22,6 +22,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS payment_gateway_accounts_gateway_idx ON paymen
 ALTER TABLE invoices ADD COLUMN payment_link_id TEXT;
 ALTER TABLE invoices ADD COLUMN payment_link_url TEXT;
 ALTER TABLE invoices ADD COLUMN payment_link_status TEXT;
+ALTER TABLE invoices ADD COLUMN payment_link_gateway TEXT;
 
 -- Every verified gateway event is processed once: the event claims its row here before any side effect.
 CREATE TABLE IF NOT EXISTS payment_events (
