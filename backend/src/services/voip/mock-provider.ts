@@ -23,6 +23,8 @@ import {
 
 /** The token the mock provider signs webhooks with when neither the workspace row nor the environment names one. */
 export const MOCK_AUTH_TOKEN = 'mock-auth-token';
+/** Searching this area code makes the mock's number search fail (provider-error path in tests and e2e). */
+export const MOCK_FAILING_AREA_CODE = '999';
 
 export interface MockCallRecord {
   providerCallId: string;
@@ -195,6 +197,10 @@ export class MockVoipProvider extends TwilioVoipProvider {
   // ── Numbers ───────────────────────────────────────────────
 
   override async searchAvailableNumbers(country: string, areaCode?: string): Promise<VoipAvailableNumber[]> {
+    // Reserved area code that makes the search fail, so the provider-error path can be exercised end to end.
+    if (areaCode === MOCK_FAILING_AREA_CODE) {
+      throw new VoipProviderError('mock', 'SEARCH_UNAVAILABLE', 'Number search is unavailable right now', 'unavailable');
+    }
     const prefix = COUNTRY_PREFIX[country.toUpperCase()];
     if (!prefix) return [];
     const out: VoipAvailableNumber[] = [];

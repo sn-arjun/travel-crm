@@ -411,15 +411,17 @@ test.describe.serial('C. Phone numbers', () => {
 
   test('provider failure during search surfaces as a toast, not a crash (real backend)', async ({ page }) => {
     if ((await openPage(page, '/settings/phone-numbers', 'Phone Numbers')) === 'gated') return;
-    // Make sure credentials are missing so the backend answers 422 deterministically.
+    // Clear the credentials saved by earlier tests: in test mode with no credentials the backend uses the
+    // mock provider (R301), never real Twilio. Area code 999 makes the mock's number search fail
+    // deterministically (MOCK_FAILING_AREA_CODE), exercising the provider-error path.
     await api('PUT', '/voip/settings', { providerAccountId: null, providerAuthToken: null });
     await page.reload();
     await waitForLoad(page);
     await page.getByRole('button', { name: /^Add Number$|Add First Number/ }).first().click();
     const dialog = page.getByRole('dialog');
-    await dialog.locator('#areaCode').fill('415');
+    await dialog.locator('#areaCode').fill('999');
     await dialog.getByRole('button', { name: /Search/ }).click();
-    await expect(page.locator(TOAST).filter({ hasText: /credentials|configured|Failed to search|search numbers/i }).first())
+    await expect(page.locator(TOAST).filter({ hasText: /credentials|configured|unavailable|Failed to search|search numbers/i }).first())
       .toBeVisible({ timeout: 30_000 });
     await expect(dialog.getByRole('button', { name: 'Purchase' })).toHaveCount(0);
     await expect(page.getByText('Something went wrong')).toHaveCount(0);
