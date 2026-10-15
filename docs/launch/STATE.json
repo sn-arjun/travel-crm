@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-15T12:30+05:30",
+  "updated": "2026-10-15T13:10+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -112,7 +112,8 @@
         "R116": "merged: backend 82 files / 1586 tests; landing link check OK; no unverifiable claims; master 0018_platform_enquiries; enquiries visible to the operator at GET /admin/enquiries",
         "R115": "merged; merged-line gate: backend 83 files / 1592 tests, flutter analyze clean, flutter test 106 passed: agency-code sign-in (slug), stored tenant, full country picker, release signing from key.properties with debug fallback, icons, iOS strings. Branch: backend 82/1582, flutter analyze clean, flutter test 106, release APK 53.5 MB built with throwaway key, agency_login_test passed on emulator-5554.",
         "R201": "merged (Tier 2): tax engine GST/VAT+reverse charge/sales tax/none, stored per invoice and note; tenant 0047. Branch gate: backend 83/1603, desktop 67/1333, lint 0, contacts+invoices e2e 50/50. Merged-line gate run was stopped by Claude Code for low system memory (not a failure); not restarted, owner asked.",
-        "R118": "merged: single root workspace install (nested lockfiles removed), CI on master, fresh-clone check, OpenNext build, terraform landing + workers domains + backup/update buckets (validate passed). Main checkout reinstalled from the root lockfile. Merged-line verification running."
+        "R118": "merged: single root workspace install (nested lockfiles removed), CI on master, fresh-clone check, OpenNext build, terraform landing + workers domains + backup/update buckets (validate passed). Main checkout reinstalled from the root lockfile. Merged-line fresh-clone check PASSED: npm ci once; backend tsc + vitest 84/1609; desktop tsc + vitest 67/1333 + lint; super-admin tsc, lint, next build, OpenNext build (.open-next/worker.js); landing link check.",
+        "R122": "starting"
       },
       "merged": [
         "R101",
