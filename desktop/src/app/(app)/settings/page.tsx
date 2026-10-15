@@ -7,6 +7,7 @@ import {
   Bell,
   Building2,
   Megaphone,
+  CreditCard,
   FileText,
   Globe,
   ListOrdered,
@@ -89,6 +90,7 @@ const groups: SettingsGroup[] = [
   {
     title: 'Account & Security',
     links: [
+      { label: 'Billing', description: 'Plan, users, renewal and invoices', href: '/settings/billing', icon: <CreditCard className="h-5 w-5" aria-hidden="true" /> },
       { label: 'Team', description: 'Manage team members and roles', href: '/settings/team', icon: <Users className="h-5 w-5" aria-hidden="true" /> },
       { label: 'Profile', description: 'Your personal information', href: '/settings/profile', icon: <Users className="h-5 w-5" aria-hidden="true" /> },
       { label: 'Security', description: 'Change your password', href: '/settings/security', icon: <Shield className="h-5 w-5" aria-hidden="true" /> },
