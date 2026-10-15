@@ -11,8 +11,13 @@ variable "project_name" {
 }
 
 variable "domain" {
-  description = "Primary domain name (e.g., travelcrm.com)"
+  description = "PLACEHOLDER until the owner picks a domain (docs/GO-LIVE.md phase 0). Set it ONCE here (terraform.tfvars or TF_VAR_domain); the landing site, API, admin console and agency web app hostnames are all derived from it."
   type        = string
+
+  validation {
+    condition     = !can(regex("(?i)your-domain", var.domain))
+    error_message = "domain is still the YOUR-DOMAIN.example placeholder. Set the real domain in terraform.tfvars."
+  }
 }
 
 variable "environment" {
@@ -21,48 +26,14 @@ variable "environment" {
   default     = "production"
 }
 
-# ─── Oracle Cloud ────────────────────────────────────────────
+# ─── Oracle Cloud (Tier 3, not part of this root) ────────────
+# The WordPress VM is created from terraform/oracle/ (separate state, own oci_* variables). Leave
+# oci_instance_ip empty until that VM exists; then the wildcard DNS record * -> VM is created here.
 
-variable "oci_tenancy_ocid" {
-  description = "OCI Tenancy OCID"
+variable "oci_instance_ip" {
+  description = "Public IP of the Oracle Cloud WordPress VM (output of terraform/oracle). Empty = no wildcard DNS record."
   type        = string
-}
-
-variable "oci_user_ocid" {
-  description = "OCI User OCID"
-  type        = string
-}
-
-variable "oci_fingerprint" {
-  description = "OCI API Key Fingerprint"
-  type        = string
-}
-
-variable "oci_private_key" {
-  description = "OCI API Private Key (PEM format)"
-  type        = string
-  sensitive   = true
-}
-
-variable "oci_compartment_ocid" {
-  description = "OCI Compartment OCID"
-  type        = string
-}
-
-variable "oci_region" {
-  description = "OCI Region"
-  type        = string
-  default     = "ap-mumbai-1"
-}
-
-variable "oci_image_id" {
-  description = "OCI ARM image OCID (Ubuntu 22.04 ARM)"
-  type        = string
-}
-
-variable "ssh_public_key" {
-  description = "SSH public key for OCI instance access"
-  type        = string
+  default     = ""
 }
 
 # ─── Cloudflare ──────────────────────────────────────────────
@@ -79,43 +50,43 @@ variable "cloudflare_api_token" {
 }
 
 # ─── Application Secrets ────────────────────────────────────
-# These are pushed to Cloudflare Workers via `wrangler secret put`
-# Terraform tracks them as the single source of truth.
+# Terraform itself uses none of these. They are optional (default empty) so a plan needs only domain and the
+# Cloudflare values. Real secrets go to the Worker with wrangler secret put (docs/GO-LIVE.md phase 3).
 
 variable "jwt_secret" {
   description = "JWT signing secret (min 32 chars)"
   type        = string
   sensitive   = true
+  default     = ""
 }
 
 variable "jwt_refresh_secret" {
   description = "JWT refresh token secret (min 32 chars)"
   type        = string
   sensitive   = true
+  default     = ""
 }
 
-variable "app_url" {
-  description = "Frontend app URL (e.g., https://travelcrm.com)"
-  type        = string
-  default     = "http://localhost:8080"
-}
 
 # ─── Twilio (SMS, WhatsApp, Voice, OTP) ─────────────────────
 
 variable "twilio_account_sid" {
   description = "Twilio Account SID"
   type        = string
+  default     = ""
 }
 
 variable "twilio_auth_token" {
   description = "Twilio Auth Token"
   type        = string
   sensitive   = true
+  default     = ""
 }
 
 variable "twilio_verify_service_sid" {
   description = "Twilio Verify Service SID (for OTP)"
   type        = string
+  default     = ""
 }
 
 variable "twilio_sms_from_number" {
@@ -163,12 +134,13 @@ variable "sendgrid_api_key" {
   description = "SendGrid API Key"
   type        = string
   sensitive   = true
+  default     = ""
 }
 
 variable "sendgrid_from_email" {
-  description = "Default sender email address"
+  description = "Default sender email address (noreply@<your domain>; the API reads EMAIL_FROM, not this)"
   type        = string
-  default     = "noreply@travelcrm.com"
+  default     = ""
 }
 
 # ─── Firebase (Push Notifications) ──────────────────────────
@@ -177,6 +149,7 @@ variable "fcm_server_key" {
   description = "Firebase Cloud Messaging Server Key"
   type        = string
   sensitive   = true
+  default     = ""
 }
 
 # ─── Deepgram (Transcription) ───────────────────────────────
@@ -205,21 +178,7 @@ variable "google_maps_api_key" {
   default     = ""
 }
 
-# ─── Super Admin ────────────────────────────────────────────
-
-variable "super_admin_email" {
-  description = "Super admin login email"
-  type        = string
-  default     = "admin@travelcrm.com"
-}
-
-variable "super_admin_password" {
-  description = "Super admin login password"
-  type        = string
-  sensitive   = true
-  default     = "SuperAdmin@123"
-}
-
+# ─── Workers hostnames ───────────────────────────────────
 variable "api_worker_name" {
   description = "Name of the API Worker that api.<domain> points at (backend/wrangler.base.toml)"
   type        = string
@@ -230,4 +189,10 @@ variable "admin_worker_name" {
   description = "Name of the super admin OpenNext Worker that admin.<domain> points at (super-admin/wrangler.toml)"
   type        = string
   default     = "travelcrm-super-admin"
+}
+
+variable "app_worker_name" {
+  description = "Name of the agency web app OpenNext Worker that app.<domain> points at (desktop/wrangler.web.toml)"
+  type        = string
+  default     = "travelcrm-app"
 }

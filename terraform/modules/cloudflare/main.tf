@@ -25,8 +25,9 @@ resource "cloudflare_record" "www" {
   proxied = true
 }
 
-# Wildcard -> OCI instance (WordPress sites). Explicit records above and the Workers domains below win.
+# Wildcard -> OCI instance (WordPress sites, Tier 3; only when create_wildcard_dns). Explicit records above and the Workers domains below win.
 resource "cloudflare_record" "wildcard" {
+  count   = var.create_wildcard_dns ? 1 : 0
   zone_id = cloudflare_zone.main.id
   name    = "*"
   content = var.oci_instance_ip
@@ -34,7 +35,7 @@ resource "cloudflare_record" "wildcard" {
   proxied = true
 }
 
-# api.<zone> -> the API Worker, admin.<zone> -> the super admin OpenNext Worker.
+# api.<zone> -> the API Worker, admin.<zone> -> the super admin OpenNext Worker, app.<zone> -> the agency web app.
 # A Workers custom domain creates its own proxied DNS record, so there are no placeholder A records.
 # The Workers must exist before the first apply of these two resources (deploy them once, or apply in two steps).
 resource "cloudflare_workers_domain" "api" {
@@ -49,4 +50,11 @@ resource "cloudflare_workers_domain" "admin" {
   zone_id    = cloudflare_zone.main.id
   hostname   = "admin.${var.zone_name}"
   service    = var.admin_worker_name
+}
+
+resource "cloudflare_workers_domain" "app" {
+  account_id = var.cloudflare_account_id
+  zone_id    = cloudflare_zone.main.id
+  hostname   = "app.${var.zone_name}"
+  service    = var.app_worker_name
 }

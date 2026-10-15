@@ -2,18 +2,6 @@
 # Run `terraform output` to see all values.
 # Run `npm run infra:sync` from project root to auto-generate configs.
 
-# ─── Oracle Cloud ────────────────────────────────────────────
-
-output "oci_instance_ip" {
-  description = "Public IP of the Oracle Cloud WordPress instance"
-  value       = module.oracle_cloud.instance_public_ip
-}
-
-output "oci_instance_id" {
-  description = "OCI Compute Instance OCID"
-  value       = module.oracle_cloud.instance_id
-}
-
 # ─── Cloudflare Infrastructure IDs ──────────────────────────
 
 output "dns_zone_id" {
@@ -59,6 +47,11 @@ output "api_hostname" {
 output "admin_hostname" {
   description = "Super admin custom domain (OpenNext Worker)"
   value       = module.cloudflare.admin_hostname
+}
+
+output "app_hostname" {
+  description = "Agency web app custom domain (OpenNext Worker)"
+  value       = module.cloudflare.app_hostname
 }
 
 output "r2_backups_bucket" {

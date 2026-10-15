@@ -52,3 +52,8 @@ output "r2_desktop_updates_bucket" {
   description = "R2 bucket for the desktop update feed"
   value       = cloudflare_r2_bucket.desktop_updates.name
 }
+
+output "app_hostname" {
+  description = "Agency web app custom domain"
+  value       = cloudflare_workers_domain.app.hostname
+}
