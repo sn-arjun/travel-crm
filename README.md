@@ -32,7 +32,7 @@ Terraform (terraform/) builds the cloud side; oci-provisioner/ runs agency WordP
 | `studio/` | Video studio for demo and marketing films. Separate npm project, not part of the workspace. |
 | `terraform/`, `oci-provisioner/` | Cloudflare and Oracle Cloud infrastructure, and the WordPress site provisioner. |
 
-The old Flutter CRM app was removed. It is kept on the branch `archive/flutter-crm`.
+The earlier all-Flutter agency client was removed; it is kept on the branch `archive/flutter-crm`.
 
 ## Prerequisites
 
