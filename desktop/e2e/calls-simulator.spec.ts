@@ -157,6 +157,7 @@ test.describe('Call simulator', () => {
     // The lead timeline has an enabled Play button (the entry was written before the recording existed)
     await page.goto(`/leads/${lead.id}`);
     await waitForLoad(page);
+    await page.getByRole('tab', { name: 'Activity' }).click();
     const play = page.getByTestId('call-entry-play').first();
     await expect(play).toBeVisible({ timeout: 15_000 });
     await expect(play).toBeEnabled();
