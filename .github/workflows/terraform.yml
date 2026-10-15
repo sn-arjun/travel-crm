@@ -1,10 +1,7 @@
 name: Terraform Infrastructure
 
 on:
-  push:
-    branches: [master]
-    paths:
-      - 'terraform/**'
+  workflow_dispatch:
   pull_request:
     branches: [master]
     paths:
@@ -47,12 +44,18 @@ jobs:
           TF_VAR_oci_private_key: ${{ secrets.OCI_PRIVATE_KEY }}
           TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TF_VAR_jwt_secret: ${{ secrets.JWT_SECRET }}
+          TF_VAR_jwt_refresh_secret: ${{ secrets.JWT_REFRESH_SECRET }}
+          TF_VAR_twilio_account_sid: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TF_VAR_twilio_auth_token: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TF_VAR_sendgrid_api_key: ${{ secrets.SENDGRID_API_KEY }}
+          TF_VAR_fcm_server_key: ${{ secrets.FCM_SERVER_KEY }}
 
       - name: Post Plan to PR
         uses: actions/github-script@v7
         with:
           script: |
-            const output = `#### Terraform Plan 📖
+            const output = `#### Terraform Plan
             \`\`\`
             ${{ steps.plan.outputs.stdout }}
             \`\`\`
@@ -68,7 +71,7 @@ jobs:
   apply:
     name: Terraform Apply
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'workflow_dispatch'
     defaults:
       run:
         working-directory: terraform
@@ -95,3 +98,9 @@ jobs:
           TF_VAR_oci_private_key: ${{ secrets.OCI_PRIVATE_KEY }}
           TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TF_VAR_jwt_secret: ${{ secrets.JWT_SECRET }}
+          TF_VAR_jwt_refresh_secret: ${{ secrets.JWT_REFRESH_SECRET }}
+          TF_VAR_twilio_account_sid: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TF_VAR_twilio_auth_token: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TF_VAR_sendgrid_api_key: ${{ secrets.SENDGRID_API_KEY }}
+          TF_VAR_fcm_server_key: ${{ secrets.FCM_SERVER_KEY }}

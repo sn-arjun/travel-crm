@@ -46,9 +46,9 @@ resource "oci_core_security_list" "main" {
 
   # Ingress: SSH (22)
   ingress_security_rules {
-    protocol    = "6" # TCP
-    source      = "0.0.0.0/0"
-    stateless   = false
+    protocol  = "6" # TCP
+    source    = "0.0.0.0/0"
+    stateless = false
     tcp_options {
       min = 22
       max = 22
@@ -57,9 +57,9 @@ resource "oci_core_security_list" "main" {
 
   # Ingress: HTTP (80)
   ingress_security_rules {
-    protocol    = "6"
-    source      = "0.0.0.0/0"
-    stateless   = false
+    protocol  = "6"
+    source    = "0.0.0.0/0"
+    stateless = false
     tcp_options {
       min = 80
       max = 80
@@ -68,9 +68,9 @@ resource "oci_core_security_list" "main" {
 
   # Ingress: HTTPS (443)
   ingress_security_rules {
-    protocol    = "6"
-    source      = "0.0.0.0/0"
-    stateless   = false
+    protocol  = "6"
+    source    = "0.0.0.0/0"
+    stateless = false
     tcp_options {
       min = 443
       max = 443

@@ -219,3 +219,15 @@ variable "super_admin_password" {
   sensitive   = true
   default     = "SuperAdmin@123"
 }
+
+variable "api_worker_name" {
+  description = "Name of the API Worker that api.<domain> points at (backend/wrangler.base.toml)"
+  type        = string
+  default     = "travelcrm-api"
+}
+
+variable "admin_worker_name" {
+  description = "Name of the super admin OpenNext Worker that admin.<domain> points at (super-admin/wrangler.toml)"
+  type        = string
+  default     = "travelcrm-super-admin"
+}

@@ -85,3 +85,17 @@ resource "cloudflare_queue" "campaign_dlq" {
   account_id = var.cloudflare_account_id
   name       = "${var.project_name}-campaign-dlq"
 }
+
+# ─── R2: backups and desktop update feed ────────────────────
+
+resource "cloudflare_r2_bucket" "backups" {
+  account_id = var.cloudflare_account_id
+  name       = "${var.project_name}-backups"
+  location   = "APAC"
+}
+
+resource "cloudflare_r2_bucket" "desktop_updates" {
+  account_id = var.cloudflare_account_id
+  name       = "${var.project_name}-desktop-updates"
+  location   = "APAC"
+}

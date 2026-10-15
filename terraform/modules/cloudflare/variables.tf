@@ -24,3 +24,15 @@ variable "project_name" {
   type        = string
   default     = "travelcrm"
 }
+
+variable "api_worker_name" {
+  description = "Name of the API Worker (backend/wrangler.base.toml name)"
+  type        = string
+  default     = "travelcrm-api"
+}
+
+variable "admin_worker_name" {
+  description = "Name of the super admin OpenNext Worker (super-admin/wrangler.toml name)"
+  type        = string
+  default     = "travelcrm-super-admin"
+}
