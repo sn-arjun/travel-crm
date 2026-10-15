@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-15T11:00+05:30",
+  "updated": "2026-10-15T12:30+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -116,7 +116,8 @@
         "R122": "merged: README, CONTRIBUTING, env examples and backend/.dev.vars.example rewritten from code; fresh-clone check passed (13/13)",
         "R202": "merged (Tier 2): locale core; backend 85/1629; desktop 68/1353 (exit 0 after a mock fix); lint 0; master 0019_exchange_rates, tenant 0048_user_locale_timezone",
         "R125": "new: go-live blockers from the docs pass; web host for emailed links blocked on owner decision",
-        "R301": "merged (Tier 3): VoipProvider reselling contract, mock provider, country gating (VOIP_CALLING_COUNTRIES, default GB,US,AU,SG; unset country = not offered); backend 86/1678; local stacks pass VOIP_CALLING_COUNTRIES=* (e229395). Merged-line desktop gate + calls/voip-settings e2e running."
+        "R301": "merged (Tier 3): VoipProvider reselling contract, mock provider, country gating (VOIP_CALLING_COUNTRIES, default GB,US,AU,SG; unset country = not offered); backend 86/1678; local stacks pass VOIP_CALLING_COUNTRIES=* (e229395). Merged line: desktop 69/1357, lint 0, calls + voip-settings e2e green after the mock failing-area-code fix (95ab598).",
+        "R302": "merged (Tier 3): provider callbacks exactly once (tenant 0049 provider_events), inbound Dial action -> voicemail and missed once, outbound placeCall with agent leg; backend 87/1692; calls e2e 16/16"
       },
       "merged": [
         "R101",
@@ -145,7 +146,8 @@
         "R118",
         "R122",
         "R202",
-        "R301"
+        "R301",
+        "R302"
       ],
       "tier1": "COMPLETE 2026-10-15: R101-R124 merged (incl. orchestrator follow-ups R123, R124); exit test R121 9/9 on the merged line; fresh-clone check passes."
     },
