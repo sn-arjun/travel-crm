@@ -15,6 +15,7 @@ import { voipApi, type Call, type CreateOutboundCallRequest } from '@/lib/api/vo
 import { defaultCountryCode } from '@/lib/phone';
 import { unwrapList } from '@/lib/api/envelope';
 import { contactsApi } from '@/lib/api/contacts';
+import { CallControlsPanel } from '@/components/domain/call-controls-panel';
 import type { Contact } from '@travelcrm/shared';
 
 const dialPadKeys = [
@@ -50,6 +51,9 @@ function DialPadPage() {
   const leadId = searchParams.get('leadId');
   const [contactId, setContactId] = React.useState<string | null>(searchParams.get('contactId'));
   const [isCalling, setIsCalling] = React.useState(false);
+  // The call in progress: its panel follows the provider's state over the realtime room.
+  const [activeCall, setActiveCall] = React.useState<{ callId: string; name: string; number: string } | null>(null);
+  const [contactName, setContactName] = React.useState<string | null>(null);
 
   const { data: recentCallsResponse, loading: recentLoading } = useApiQuery(
     () => voipApi.calls.list({ limit: 10 }),
@@ -94,6 +98,8 @@ function DialPadPage() {
     const result = await makeCall({ toNumber, contactId: contactId ?? undefined, leadId: leadId ?? undefined });
     if (result) {
       toast.success(`Calling ${number}...`);
+      const callLogId = result.data?.callLogId;
+      if (callLogId) setActiveCall({ callId: callLogId, name: contactName ?? number, number });
     } else {
       toast.error('Failed to initiate call');
     }
@@ -139,6 +145,7 @@ function DialPadPage() {
               value={contactId}
               onChange={(id, item) => {
                 setContactId(id);
+                setContactName(item?.name ?? null);
                 if (item?.phone) setNumber(item.phone);
               }}
               fetcher={async (q, page) => {
@@ -265,6 +272,15 @@ function DialPadPage() {
           </CardContent>
         </Card>
       </div>
+      {activeCall && (
+        <CallControlsPanel
+          key={activeCall.callId}
+          callId={activeCall.callId}
+          callerName={activeCall.name}
+          phoneNumber={activeCall.number}
+          onEndCall={() => setActiveCall(null)}
+        />
+      )}
     </PageContainer>
   );
 }

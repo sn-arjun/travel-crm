@@ -3,11 +3,12 @@
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
-  AlertCircle, Calendar, Clock, FileText, IndianRupee, Pencil, Phone, Plus, Trash2, TrendingUp, Zap,
+  AlertCircle, Calendar, Clock, FileText, IndianRupee, Pencil, Phone, PhoneIncoming, PhoneOutgoing, Plus, Trash2, TrendingUp, Zap,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { DetailPage } from '@/components/domain';
+import { CallEntryDetail, callEntryTitle, parseCallMeta } from '@/components/domain/call-timeline-entry';
 import { PageContainer } from '@/components/layout/page-container';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
@@ -97,6 +98,18 @@ function timelineItems(entries: ContactTimeline[]): TimelineItem[] {
           icon: <Phone aria-hidden="true" />,
         };
       default: {
+        // A finished call, written by the "log call on timeline" automation.
+        const call = e.title === 'call' ? parseCallMeta(e.metadata) : null;
+        if (call) {
+          return {
+            id: e.id,
+            title: callEntryTitle(call),
+            description: <CallEntryDetail meta={call} />,
+            timestamp,
+            tone: call.result === 'completed' ? 'success' : 'warning',
+            icon: call.direction === 'outbound' ? <PhoneOutgoing aria-hidden="true" /> : <PhoneIncoming aria-hidden="true" />,
+          };
+        }
         const action = e.title === 'create' ? 'Contact created' : e.title === 'update' ? 'Contact updated' : humanize(e.title);
         return {
           id: e.id,

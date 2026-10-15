@@ -10,6 +10,7 @@ import { KeyboardShortcutsProvider } from '@/components/domain/keyboard-shortcut
 import { useAuthStore } from '@/stores/auth-store';
 import { LimitReachedHost } from '@/components/domain/allowance-exhausted-dialog';
 import { RealtimeProvider } from '@/components/providers/realtime-provider';
+import { CallScreenPop } from '@/components/domain/call-screen-pop';
 import { isOnboardingPending, onboardingApi } from '@/lib/api/onboarding';
 
 /** Admin-only reminder while the agency setup wizard is unfinished. */
@@ -74,6 +75,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           {children}
           <CommandPalette />
           <LimitReachedHost />
+          <CallScreenPop />
         </AppShell>
       </KeyboardShortcutsProvider>
     </RealtimeProvider>

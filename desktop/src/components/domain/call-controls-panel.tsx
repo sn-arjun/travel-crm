@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { voipApi, type CallOutcome } from '@/lib/api/voip';
+import { useRealtimeStore } from '@/stores/realtime-store';
 
 interface CallControlsPanelProps {
   callId: string;
@@ -18,11 +19,13 @@ interface CallControlsPanelProps {
   phoneNumber: string;
   onEndCall?: () => void;
   onCallStatusChange?: (status: CallStatus) => void;
+  /** Mute and hold are shown only when the provider can really do them; today none can, so they are hidden. */
+  supportsMuteHold?: boolean;
 }
 
 type CallStatus = 'connecting' | 'connected' | 'on_hold' | 'ended';
 
-export function CallControlsPanel({ callId, callerName, phoneNumber, onEndCall, onCallStatusChange }: CallControlsPanelProps) {
+export function CallControlsPanel({ callId, callerName, phoneNumber, onEndCall, onCallStatusChange, supportsMuteHold = false }: CallControlsPanelProps) {
   const [status, setStatus] = React.useState<CallStatus>('connecting');
   const [isMuted, setIsMuted] = React.useState(false);
   const [isOnHold, setIsOnHold] = React.useState(false);
@@ -31,6 +34,26 @@ export function CallControlsPanel({ callId, callerName, phoneNumber, onEndCall, 
   const [callOutcome, setCallOutcome] = React.useState<CallOutcome>('interested');
   const [notes, setNotes] = React.useState('');
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  // The provider's real call state arrives over the realtime room (call:status); the poll below is the fallback.
+  const subscribe = useRealtimeStore((s) => s.subscribe);
+  const statusRef = React.useRef(status);
+  statusRef.current = status;
+  React.useEffect(() => {
+    return subscribe('call:status', (data) => {
+      const event = data as { callId?: string; status?: string };
+      if (event.callId !== callId || !event.status) return;
+      const current = statusRef.current;
+      if (event.status === 'in-progress' && current === 'connecting') {
+        setStatus('connected');
+        onCallStatusChange?.('connected');
+      } else if (['completed', 'busy', 'no-answer', 'canceled', 'failed'].includes(event.status) && current !== 'ended') {
+        setStatus('ended');
+        onCallStatusChange?.('ended');
+        setShowPostCallDialog(true);
+      }
+    });
+  }, [subscribe, callId, onCallStatusChange]);
 
   // Follow the real call state from the provider instead of assuming it connected.
   React.useEffect(() => {
@@ -54,7 +77,7 @@ export function CallControlsPanel({ callId, callerName, phoneNumber, onEndCall, 
       }
     };
     void poll();
-    const timer = setInterval(() => void poll(), 3000);
+    const timer = setInterval(() => void poll(), 5000);
     return () => {
       cancelled = true;
       clearInterval(timer);
@@ -151,7 +174,7 @@ export function CallControlsPanel({ callId, callerName, phoneNumber, onEndCall, 
 
           {/* Control Buttons */}
           <div className="flex items-center justify-center gap-3">
-            <Button
+            {supportsMuteHold && <Button
               onClick={handleMuteToggle}
               size="lg"
               variant={isMuted ? 'destructive' : 'outline'}
@@ -160,9 +183,9 @@ export function CallControlsPanel({ callId, callerName, phoneNumber, onEndCall, 
               aria-label={isMuted ? 'Unmute' : 'Mute'}
             >
               {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-            </Button>
+            </Button>}
 
-            <Button
+            {supportsMuteHold && <Button
               onClick={handleHoldToggle}
               size="lg"
               variant={isOnHold ? 'secondary' : 'outline'}
@@ -171,7 +194,7 @@ export function CallControlsPanel({ callId, callerName, phoneNumber, onEndCall, 
               aria-label={isOnHold ? 'Resume' : 'Hold'}
             >
               {isOnHold ? <Play className="h-5 w-5" /> : <Pause className="h-5 w-5" />}
-            </Button>
+            </Button>}
 
             <Button
               onClick={handleEndCall}

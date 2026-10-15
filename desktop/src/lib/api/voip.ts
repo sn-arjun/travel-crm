@@ -66,13 +66,11 @@ export interface UpdateNumberRequest {
   isDefault?: boolean;
 }
 
+/** GET /voip/caller-info?phone=: who a number belongs to, and their open lead. */
 export interface CallerInfo {
-  number: string;
-  name?: string;
-  contactId?: string;
-  leadId?: string;
-  carrier?: string;
-  lineType?: string;
+  isKnown: boolean;
+  contact: { id: string; name: string; company: string | null; type: string; phone: string | null; email: string | null; lastInteraction: string | null } | null;
+  lead: { id: string; title: string; status: string; value: number | null } | null;
 }
 
 export type CallStatus = 'initiated' | 'ringing' | 'in-progress' | 'completed' | 'busy' | 'no-answer' | 'canceled' | 'failed';

@@ -15,7 +15,7 @@ import { generateId } from '../utils/uuid';
 import { resolveInboundRouting } from '../services/call-routing';
 import { handleMissedCall } from '../services/missed-call-handler';
 import { emitEvent } from '../services/automation/events';
-import { broadcastCallRinging } from '../utils/realtime';
+import { broadcastCallRinging, broadcastCallStatus } from '../utils/realtime';
 import { normalizePhone } from '../utils/phone';
 import { checkBusinessHours, type BusinessHoursConfig } from '../utils/business-hours';
 import { createVoipProvider, escapeXml as escapeXmlUtil, loadVoipSettings } from '../services/voip-provider';
@@ -503,6 +503,12 @@ voipCallbackRoutes.post('/status-callback', async (c) => {
     // Lifecycle events (R303): answered and ended, each once per call.
     const call = await loadLifecycleCall(db, { callSid });
     if (call) {
+      // The agent's in-call panel follows the provider's real state.
+      const panelAgent = call.direction === 'outbound' ? call.created_by : call.routed_to;
+      if (panelAgent) {
+        const tenantId = await tenantForCalledNumber(c.env, agencyNumberOf(call));
+        if (tenantId) await broadcastCallStatus(c.env, tenantId, panelAgent, { callId: call.id, status: call.status ?? status, durationSeconds: call.duration_seconds });
+      }
       if (status === 'in-progress') {
         // Outbound: the agent's leg answered. (An inbound call is answered when the agent picks up; that is
         // reported by the dial result, or at the end when this provider reports only the call's own status.)

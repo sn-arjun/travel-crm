@@ -3,9 +3,10 @@
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
-  Loader2, AlertCircle, Pencil, Trash2, Phone, Plus, FileText, Briefcase, Car,
+  Loader2, AlertCircle, Pencil, Trash2, Phone, Plus, FileText, Briefcase, Car, PhoneIncoming, PhoneOutgoing,
 } from 'lucide-react';
 import { DetailPage } from '@/components/domain';
+import { CallEntryDetail, callEntryTitle, parseCallMeta } from '@/components/domain/call-timeline-entry';
 import {
   Button, Tag, SectionCard, Input, Textarea, Label,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -35,6 +36,8 @@ interface ActivityRow {
   id?: string; type?: string; content?: string; description?: string;
   createdByName?: string; createdBy?: string; createdAt?: string; created_at?: string;
   metadata?: string | Record<string, unknown> | null;
+  /** The same metadata parsed, with camelCase keys (added by the API). */
+  meta?: Record<string, unknown> | null;
 }
 interface FollowUpRow {
   id: string; type?: string; notes?: string; status?: string; completedAt?: string | null;
@@ -306,13 +309,27 @@ export default function LeadDetailPage() {
   const contactEmail = lead.contactEmail || lead.contact?.email || undefined;
   const contactPhone = lead.contactPhone || lead.contact?.phone || undefined;
 
-  const activityItems: TimelineItem[] = activities.map((a, idx) => ({
-    id: a.id || String(idx),
-    title: activityTitle(a),
-    description: a.createdByName || a.createdBy || undefined,
-    timestamp: formatDisplayDateTime(a.createdAt || a.created_at),
-    tone: a.type === 'status_change' ? 'primary' : 'neutral',
-  }));
+  const activityItems: TimelineItem[] = activities.map((a, idx) => {
+    // A finished call: direction, duration, agent, note and (later) the recording.
+    const call = a.type === 'call' ? parseCallMeta(a.meta ?? a.metadata) : null;
+    if (call) {
+      return {
+        id: a.id || String(idx),
+        title: callEntryTitle(call),
+        description: <CallEntryDetail meta={call} />,
+        timestamp: formatDisplayDateTime(a.createdAt || a.created_at),
+        tone: call.result === 'completed' ? 'success' : 'warning',
+        icon: call.direction === 'outbound' ? <PhoneOutgoing aria-hidden="true" /> : <PhoneIncoming aria-hidden="true" />,
+      };
+    }
+    return {
+      id: a.id || String(idx),
+      title: activityTitle(a),
+      description: a.createdByName || a.createdBy || undefined,
+      timestamp: formatDisplayDateTime(a.createdAt || a.created_at),
+      tone: a.type === 'status_change' ? 'primary' : 'neutral',
+    };
+  });
 
   return (
     <>

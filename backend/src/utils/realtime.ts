@@ -72,3 +72,8 @@ export async function broadcastCallRinging(env: Env, tenantId: string, payload: 
   await broadcastToTenant(env, tenantId, { type: 'call:ringing', data: { ...payload } }, { targetUserId: payload.routedTo });
   await broadcastToTenant(env, tenantId, { type: 'call:ringing_for', data: { ...payload, lastInteraction: null } }, { excludeUserId: payload.routedTo });
 }
+
+/** Tells the agent a call is on (in progress), over, or failed, so the in-call panel follows the provider's real state. */
+export async function broadcastCallStatus(env: Env, tenantId: string, agentId: string, data: { callId: string; status: string; durationSeconds: number | null }): Promise<void> {
+  await broadcastToTenant(env, tenantId, { type: 'call:status', data }, { targetUserId: agentId });
+}
