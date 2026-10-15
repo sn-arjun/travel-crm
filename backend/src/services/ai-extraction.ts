@@ -1,13 +1,14 @@
 /**
  * AI Extraction Service — TICKET-399, 402, 403, 406, 407, 409
  *
- * Uses Claude Haiku to extract structured travel data from call transcripts.
+ * Extracts structured travel data from call transcripts through the AI router (R306): metered in the agency's AI credits,
+ * Workers AI JSON model by default. No provider is called directly from here.
  * Combined extraction: lead data + summary + topics + action items +
- * sentiment + deal likelihood + coaching hints — all in a single API call.
+ * sentiment + deal likelihood + coaching hints — all in a single model call.
  */
 
 import type { Env } from '../types';
-import { estimateCostUsd } from './ai-pricing';
+import { AIRouter } from './ai-router';
 
 export interface ExtractionResult {
   // Lead data
@@ -87,14 +88,24 @@ Respond ONLY with valid JSON matching this schema:
 }`;
 
 export class AIExtractionService {
-  constructor(private env: Env) {}
+  private router: AIRouter;
 
   /**
-   * Extract all structured data from a transcript in a single Claude call.
+   * @param tenantId when given, the call checks and charges that agency's AI credits.
+   * @param router injectable for tests; defaults to a router built from the environment.
+   */
+  constructor(private env: Env, tenantId?: string, router?: AIRouter) {
+    this.router = router ?? new AIRouter(env, undefined, tenantId);
+  }
+
+  /**
+   * Extract all structured data from a transcript in a single model call.
+   * `units` is the number of credit units to charge (started 5-minute blocks of the call).
    */
   async extractFromTranscript(
     transcript: string,
     agentName?: string,
+    options: { units?: number } = {},
   ): Promise<ExtractionResult> {
     const userMessage = agentName
       ? `Agent name: ${agentName}\n\nCall transcript:\n${transcript}`
@@ -106,32 +117,11 @@ export class AIExtractionService {
       ? userMessage.substring(0, maxChars) + '\n\n[Transcript truncated]'
       : userMessage;
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': this.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 2048,
-        system: EXTRACTION_SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: truncated }],
-      }),
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Anthropic API error (${response.status}): ${errText}`);
-    }
-
-    const data = await response.json() as any;
-    const text = data.content?.[0]?.text || '{}';
-    const inputTokens = data.usage?.input_tokens || 0;
-    const outputTokens = data.usage?.output_tokens || 0;
-
-    const costEstimate = estimateCostUsd('claude-haiku-4-5-20251001', inputTokens, outputTokens);
+    const response = await this.router.route('call_summary', truncated, EXTRACTION_SYSTEM_PROMPT, { units: options.units ?? 1 });
+    const text = response.result || '{}';
+    const inputTokens = response.inputTokens;
+    const outputTokens = response.outputTokens;
+    const costEstimate = response.cost;
 
     let parsed: any;
     try {
@@ -170,7 +160,7 @@ export class AIExtractionService {
       coachingHints: parsed.coaching_hints || [],
       overallConfidence: parsed.overall_confidence ?? 0,
       fieldConfidences: parsed.field_confidences || {},
-      modelUsed: 'claude-haiku-4-5-20251001',
+      modelUsed: response.model,
       inputTokens,
       outputTokens,
       costEstimate,

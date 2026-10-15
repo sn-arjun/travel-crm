@@ -43,14 +43,23 @@ export function estimateCostUsd(model: string, inputTokens: number, outputTokens
 // ── Credits ────────────────────────────────────────────────────
 // Tenants are metered in credits, sized so one credit is about the same provider cost in every class.
 
-export type AiCreditClass = 'read' | 'understand' | 'scan' | 'create';
+export type AiCreditClass = 'read' | 'understand' | 'scan' | 'create' | 'transcribe_standard' | 'transcribe_premium';
 
 export const CREDIT_WEIGHTS: Record<AiCreditClass, number> = {
   read: 1, // label a message, sentiment, translation
   understand: 5, // extraction, drafted reply, call summary
   scan: 15, // passport, payment proof, business card
   create: 60, // itinerary, briefing, plain-English query
+  // Audio is charged per minute (R306), not per call: the caller passes the number of started minutes as units.
+  transcribe_standard: 3, // per minute, Workers AI Whisper
+  transcribe_premium: 25, // per minute, Deepgram Nova-3 multilingual
 };
+
+/** Provider list price of speech to text, USD per audio minute (Workers AI Whisper large-v3-turbo; Deepgram Nova-3 multilingual pay as you go). */
+export const TRANSCRIBE_USD_PER_MINUTE = { standard: 0.0005, premium: 0.0052 } as const;
+
+/** Workers AI model that transcribes on the standard engine. */
+export const CF_TRANSCRIBE_MODEL = '@cf/openai/whisper-large-v3-turbo';
 
 const READ_TASKS: ReadonlySet<AITask> = new Set<AITask>([
   'sentiment', 'followup_timing', 'followup_channel', 'escalation_detection', 'message_triage',
@@ -69,6 +78,7 @@ const CREATE_TASKS: ReadonlySet<AITask> = new Set<AITask>([
 ]);
 
 export function creditClassFor(task: AITask): AiCreditClass {
+  if (task === 'transcription') return 'transcribe_standard';
   if (SCAN_TASKS.has(task)) return 'scan';
   if (CREATE_TASKS.has(task)) return 'create';
   if (READ_TASKS.has(task)) return 'read';

@@ -67,13 +67,13 @@ export async function getCreditBalance(ref: MasterRef, tenantId: string): Promis
 }
 
 /** Throws AiQuotaExceededError when the tenant cannot afford one call of this class. */
-export async function assertCredits(ref: MasterRef, tenantId: string, creditClass: AiCreditClass): Promise<void> {
+export async function assertCredits(ref: MasterRef, tenantId: string, creditClass: AiCreditClass, units = 1): Promise<void> {
   const balance = await getCreditBalance(ref, tenantId);
-  if (balance.remaining < CREDIT_WEIGHTS[creditClass]) throw new AiQuotaExceededError();
+  if (balance.remaining < CREDIT_WEIGHTS[creditClass] * units) throw new AiQuotaExceededError();
 }
 
 /** Charge one successful call. Never throws: a metering failure must not fail the request it follows. */
-export async function chargeCredits(ref: MasterRef, tenantId: string, creditClass: AiCreditClass): Promise<void> {
+export async function chargeCredits(ref: MasterRef, tenantId: string, creditClass: AiCreditClass, units = 1): Promise<void> {
   try {
     await asCatalogueEnv(ref).MASTER_DB
       .prepare(
@@ -81,7 +81,7 @@ export async function chargeCredits(ref: MasterRef, tenantId: string, creditClas
          SET current_usage = current_usage + ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
          WHERE tenant_id = ? AND cap_key = ?`,
       )
-      .bind(CREDIT_WEIGHTS[creditClass], tenantId, AI_CREDITS_CAP_KEY)
+      .bind(CREDIT_WEIGHTS[creditClass] * units, tenantId, AI_CREDITS_CAP_KEY)
       .run();
     // 80% / 100% alerts go through the same mechanism as the communication channels (needs the full Env).
     if (typeof (ref as D1Database).prepare !== 'function') {

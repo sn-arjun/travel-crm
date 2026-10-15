@@ -1807,6 +1807,10 @@ export const voipSettings = sqliteTable('voip_settings', {
   autoCreateLeadMissedCall: integer('auto_create_lead_missed_call').default(1),
   recordingRetentionDays: integer('recording_retention_days').default(90),
   recordingStorageBytes: integer('recording_storage_bytes').default(0),
+  recordingConsentMode: text('recording_consent_mode').default('announce'), // announce, off, on_request
+  recordingAnnouncement: text('recording_announcement'),
+  callAiEnabled: integer('call_ai_enabled').default(0),
+  callAiEngine: text('call_ai_engine').default('standard'), // standard, premium
   createdAt: text('created_at').default(timestamp),
   updatedAt: text('updated_at').default(timestamp),
 });
@@ -1844,6 +1848,13 @@ export const callLogs = sqliteTable('call_logs', {
   recordingUrl: text('recording_url'),
   recordingR2Key: text('recording_r2_key'),
   recordingDuration: integer('recording_duration'),
+  recordingProviderId: text('recording_provider_id'),
+  recordingBytes: integer('recording_bytes'),
+  recordingExpiresAt: text('recording_expires_at'),
+  recordingState: text('recording_state'), // provider, stored, failed, expired
+  recordingConsent: text('recording_consent'), // announced, given, none
+  aiStatus: text('ai_status'), // queued, transcribed, summarised, skipped, failed
+  aiStatusReason: text('ai_status_reason'),
   notes: text('notes'),
   ivrPath: text('ivr_path'), // JSON array of IVR digits pressed
   routedTo: text('routed_to').references(() => users.id, { onDelete: 'set null' }),
@@ -1861,6 +1872,7 @@ export const callLogs = sqliteTable('call_logs', {
   index('call_logs_provider_call_id_idx').on(table.providerCallId),
   uniqueIndex('call_logs_provider_call_id_uniq').on(table.providerCallId).where(sql`provider_call_id IS NOT NULL`),
   index('call_logs_routed_to_idx').on(table.routedTo),
+  index('call_logs_recording_expires_idx').on(table.recordingExpiresAt),
 ]);
 
 // ============================================================

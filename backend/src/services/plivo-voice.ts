@@ -49,6 +49,8 @@ export class PlivoVoipProvider implements VoipProvider {
   async placeCall(_options: VoipPlaceCallOptions): Promise<VoipCallResult> { throw new NotImplementedForProvider('plivo', 'placeCall'); }
   async fetchUsage(_input: VoipFetchUsageInput): Promise<VoipUsageRecord[]> { throw new NotImplementedForProvider('plivo', 'fetchUsage'); }
   async fetchRecording(_ref: VoipRecordingRef): Promise<VoipRecordingFile> { throw new NotImplementedForProvider('plivo', 'fetchRecording'); }
+  async deleteRecording(_ref: VoipRecordingRef): Promise<void> { throw new NotImplementedForProvider('plivo', 'deleteRecording'); }
+  async startRecording(_providerCallId: string, _callbackBaseUrl: string): Promise<void> { throw new NotImplementedForProvider('plivo', 'startRecording'); }
   clientIdentity(userId: string): string { return voipClientIdentity(userId); }
 
   // ── VoipProvider: Call Management ─────────────────────────

@@ -38,6 +38,8 @@ export interface MockCallRecord {
   ended: boolean;
   held: boolean;
   transferredTo?: string;
+  announcementUrl?: string;
+  recordingStarted?: boolean;
 }
 
 interface MockState {
@@ -47,10 +49,12 @@ interface MockState {
   numbers: Map<string, { providerNumberId: string; phoneNumber: string }>;
   usage: Array<VoipUsageRecord & { subAccountId: string }>;
   recordings: Map<string, { bytes: Uint8Array; durationSeconds: number }>;
+  /** Recording ids deleted through deleteRecording, in order. */
+  deletedRecordings: string[];
 }
 
 function fresh(): MockState {
-  return { counter: 0, calls: [], subAccounts: new Map(), numbers: new Map(), usage: [], recordings: new Map() };
+  return { counter: 0, calls: [], subAccounts: new Map(), numbers: new Map(), usage: [], recordings: new Map(), deletedRecordings: [] };
 }
 
 let state: MockState = fresh();
@@ -78,6 +82,15 @@ export class MockVoipProvider extends TwilioVoipProvider {
 
   static get calls(): readonly MockCallRecord[] {
     return state.calls;
+  }
+
+  /** Recording ids the platform asked the provider to delete (R306). */
+  static get deletedRecordings(): readonly string[] {
+    return state.deletedRecordings;
+  }
+
+  static hasRecording(recordingId: string): boolean {
+    return state.recordings.has(recordingId);
   }
 
   static get subAccounts(): ReadonlyMap<string, { tenantId: string; name: string; closed: boolean }> {
@@ -150,7 +163,7 @@ export class MockVoipProvider extends TwilioVoipProvider {
       throw new VoipProviderError('mock', 'INVALID_MODE', 'mode must be softphone or bridge', 'invalid_request');
     }
     if (!/^\+[1-9]\d{9,14}$/.test(options.to)) throw new VoipProviderError('mock', 21211, 'Invalid phone number format', 'invalid_request');
-    return this.recordCall({ mode: options.mode, from: options.from, to: options.to, agentLeg, record: options.record, callbackBaseUrl: options.callbackBaseUrl });
+    return this.recordCall({ mode: options.mode, from: options.from, to: options.to, agentLeg, record: options.record, callbackBaseUrl: options.callbackBaseUrl, announcementUrl: options.announcementUrl });
   }
 
   private recordCall(call: Omit<MockCallRecord, 'providerCallId' | 'status' | 'ended' | 'held'>): VoipCallResult {
@@ -243,6 +256,16 @@ export class MockVoipProvider extends TwilioVoipProvider {
     if (!rec) throw new VoipProviderError('mock', 404, 'Recording not found', 'not_found');
     const bytes = rec.bytes.buffer.slice(rec.bytes.byteOffset, rec.bytes.byteOffset + rec.bytes.byteLength) as ArrayBuffer;
     return { recordingId: ref.recordingId, contentType: 'audio/mpeg', bytes, durationSeconds: rec.durationSeconds };
+  }
+
+  override async deleteRecording(ref: VoipRecordingRef): Promise<void> {
+    // Like Twilio, deleting a recording that is already gone is not an error.
+    state.recordings.delete(ref.recordingId);
+    state.deletedRecordings.push(ref.recordingId);
+  }
+
+  override async startRecording(providerCallId: string, _callbackBaseUrl: string): Promise<void> {
+    this.findCall(providerCallId).recordingStarted = true;
   }
 
   override async testConnection(): Promise<{ connected: boolean; accountName?: string; error?: string }> {

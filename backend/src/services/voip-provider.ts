@@ -134,6 +134,10 @@ export interface VoipProvider {
   clientIdentity(userId: string): string;
   /** Download a recording's audio. */
   fetchRecording(ref: VoipRecordingRef): Promise<VoipRecordingFile>;
+  /** Delete a recording at the provider (R306): called once the copy in our own storage is safely written. Deleting one that is already gone succeeds. */
+  deleteRecording(ref: VoipRecordingRef): Promise<void>;
+  /** Start recording a call in progress (R306): used when the agency's policy is 'on request' and the agent has the caller's consent. */
+  startRecording(providerCallId: string, callbackBaseUrl: string): Promise<void>;
 
   // Call management (initiateCall is kept for existing routes; placeCall is the contract)
   initiateCall(options: VoipCallOptions): Promise<VoipCallResult>;
@@ -153,7 +157,7 @@ export interface VoipProvider {
   // Call response markup (XML) generation
   generateDialMarkup(number: string, callerId: string, record: boolean): string;
   /** Ring an agent. With actionUrl the provider calls it when the dial ends (answered or not), so a no-answer reaches the fallback. */
-  generateClientDialMarkup(clientIdentity: string, callerId: string, record: boolean, opts?: { actionUrl?: string; timeout?: number }): string;
+  generateClientDialMarkup(clientIdentity: string, callerId: string, record: boolean, opts?: { actionUrl?: string; timeout?: number; announcement?: string }): string;
   generateIvrMarkup(greeting: string, options: IvrOption[], actionUrl: string): string;
   generateVoicemailMarkup(recordingCallbackUrl: string, greetingUrl?: string): string;
   generateTransferMarkup(targetNumber: string, callerId: string): string;

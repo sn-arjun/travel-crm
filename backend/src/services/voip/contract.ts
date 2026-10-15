@@ -43,6 +43,8 @@ export interface VoipPlaceCallOptions {
   /** Public API origin the provider calls back, no trailing slash, e.g. https://api.example.com */
   callbackBaseUrl: string;
   record: boolean;
+  /** R306: TwiML URL played to the customer when they answer, before the agent is connected (the recording announcement). */
+  announcementUrl?: string;
   /** Ring timeout in seconds. */
   timeout?: number;
   machineDetection?: boolean;

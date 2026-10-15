@@ -11,7 +11,8 @@
 
 import type { Env } from '../types';
 import { generateId } from '../utils/uuid';
-import { creditClassFor, estimateCostUsd, priceFor } from './ai-pricing';
+import { CF_TRANSCRIBE_MODEL, TRANSCRIBE_USD_PER_MINUTE, creditClassFor, estimateCostUsd, priceFor, type AiCreditClass } from './ai-pricing';
+import { DeepgramService } from './deepgram';
 import { assertCredits, chargeCredits } from './ai-credits';
 
 export type AITask = 'sentiment' | 'summary' | 'extraction' | 'coaching' | 'deal_likelihood' | 'transcription'
@@ -31,7 +32,7 @@ export type AITask = 'sentiment' | 'summary' | 'extraction' | 'coaching' | 'deal
   | 'social_content_instagram' | 'social_content_facebook' | 'social_content_linkedin'
   | 'social_content_twitter' | 'social_content_blog'
   | 'marketing_suggestion' | 'whatsapp_campaign_template'
-  | 'message_triage' | 'message_understand';
+  | 'message_triage' | 'message_understand' | 'call_summary';
 
 export type AIProvider = 'cloudflare' | 'anthropic';
 
@@ -99,6 +100,8 @@ const CF_CONFIG = modelConfig('cloudflare', CF_TEXT_MODEL, 2048);
 const CF_VISION_CONFIG = modelConfig('cloudflare', CF_VISION_MODEL, 1024);
 const CF_TRIAGE_CONFIG = modelConfig('cloudflare', CF_TRIAGE_MODEL, 256);
 const CF_JSON_CONFIG = modelConfig('cloudflare', CF_JSON_MODEL, 1024);
+// Call summary (R306): the same cheap JSON model, whatever else is configured, so a summary never lands on a pricier model unmetered.
+const CF_CALL_SUMMARY_CONFIG = modelConfig('cloudflare', CF_JSON_MODEL, 1536);
 const CLAUDE_CONFIG = modelConfig('anthropic', CLAUDE_HAIKU, 2048);
 const CLAUDE_VISION_CONFIG = modelConfig('anthropic', CLAUDE_HAIKU, 1024);
 
@@ -116,6 +119,13 @@ function asText(value: unknown): string {
   if (typeof value === 'string') return value;
   if (value === null || value === undefined) return '';
   return JSON.stringify(value);
+}
+
+function base64Of(bytes: ArrayBuffer): string {
+  const view = new Uint8Array(bytes);
+  let binary = '';
+  for (let i = 0; i < view.length; i += 0x8000) binary += String.fromCharCode(...view.subarray(i, i + 0x8000));
+  return btoa(binary);
 }
 
 export class AIRouter {
@@ -138,13 +148,12 @@ export class AIRouter {
     this.tenantId = tenantId;
   }
 
-  /** Check credits, run the call, charge on success. A failed call costs the tenant nothing. */
-  private async metered(task: AITask, call: () => Promise<AIResponse>): Promise<AIResponse> {
+  /** Check credits, run the call, charge on success. A failed call costs the tenant nothing. `units` multiplies the class weight (started minutes of audio, started 5-minute blocks of a call). */
+  private async metered(task: AITask, call: () => Promise<AIResponse>, units = 1, creditClass: AiCreditClass = creditClassFor(task)): Promise<AIResponse> {
     if (!this.tenantId) return call();
-    const creditClass = creditClassFor(task);
-    await assertCredits(this.env, this.tenantId, creditClass);
+    await assertCredits(this.env, this.tenantId, creditClass, units);
     const response = await call();
-    await chargeCredits(this.env, this.tenantId, creditClass);
+    await chargeCredits(this.env, this.tenantId, creditClass, units);
     return response;
   }
 
@@ -165,6 +174,7 @@ export class AIRouter {
     // Triage runs on every message, so it stays on the small model whatever else is configured.
     if (task === 'message_triage') return CF_TRIAGE_CONFIG;
     if (task === 'message_understand') return CF_JSON_CONFIG;
+    if (task === 'call_summary') return CF_CALL_SUMMARY_CONFIG;
 
     const isVision = VISION_TASKS.has(task);
     const preferClaude = PREFER_CLAUDE_TASKS.has(task);
@@ -190,7 +200,7 @@ export class AIRouter {
     input: string,
     systemPrompt: string,
     /** `jsonSchema`: ask the provider to return JSON matching this schema (Workers AI JSON mode). */
-    options: { jsonSchema?: Record<string, unknown> } = {},
+    options: { jsonSchema?: Record<string, unknown>; units?: number } = {},
   ): Promise<AIResponse> {
     const config = this.getModelConfig(task);
 
@@ -198,7 +208,48 @@ export class AIRouter {
       config.provider === 'anthropic'
         ? this.routeAnthropic(config, input, systemPrompt)
         : this.routeCloudflare(config, input, systemPrompt, options.jsonSchema),
+      options.units ?? 1,
     );
+  }
+
+  /**
+   * Speech to text (R306). Charged per started minute of audio: transcribe_standard (Workers AI Whisper, the default) or
+   * transcribe_premium (Deepgram, only when the key is set and the agency chose premium; otherwise the standard engine runs).
+   * Throws AiUnavailableError when no engine can serve it and AiQuotaExceededError before any audio is sent when credits are short.
+   */
+  async transcribe(
+    audio: ArrayBuffer,
+    options: { durationSeconds: number; engine?: 'standard' | 'premium'; mimeType?: string },
+  ): Promise<AIResponse & { language: string | null; confidence: number | null; engine: 'standard' | 'premium' }> {
+    const premium = options.engine === 'premium' && !!this.env.DEEPGRAM_API_KEY;
+    const engine = premium ? 'premium' : 'standard';
+    const minutes = Math.max(1, Math.ceil(options.durationSeconds / 60));
+    let language: string | null = null;
+    let confidence: number | null = null;
+    const response = await this.metered(
+      'transcription',
+      async () => {
+        if (premium) {
+          const out = await new DeepgramService({ DEEPGRAM_API_KEY: this.env.DEEPGRAM_API_KEY }).transcribeAudio(audio, options.mimeType ?? 'audio/mpeg', { diarize: false });
+          language = out.language || null;
+          confidence = out.confidence ?? null;
+          return { result: out.transcript, model: 'deepgram-nova-3', provider: 'cloudflare' as AIProvider, inputTokens: 0, outputTokens: 0, cost: minutes * TRANSCRIBE_USD_PER_MINUTE.premium };
+        }
+        if (!this.env.AI) throw new AiUnavailableError();
+        let out: any;
+        try {
+          out = await this.env.AI.run(CF_TRANSCRIBE_MODEL as any, { audio: base64Of(audio) } as any);
+        } catch (aiErr) {
+          console.warn('[AI Router] Workers AI transcription failed:', (aiErr as Error).message);
+          throw new AiUnavailableError();
+        }
+        language = out?.transcription_info?.language ?? out?.language ?? null;
+        return { result: asText(out?.text ?? out?.response), model: CF_TRANSCRIBE_MODEL, provider: 'cloudflare' as AIProvider, inputTokens: 0, outputTokens: 0, cost: minutes * TRANSCRIBE_USD_PER_MINUTE.standard };
+      },
+      minutes,
+      premium ? 'transcribe_premium' : 'transcribe_standard',
+    );
+    return { ...response, language, confidence, engine };
   }
 
   /**

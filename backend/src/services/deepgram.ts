@@ -89,18 +89,24 @@ export class DeepgramService {
   async transcribeAudio(audioBytes: ArrayBuffer, mimeType: string, options?: {
     language?: string;
     diarize?: boolean;
+    model?: string;
   }): Promise<TranscriptionResult> {
+    // Nova-3 with language=multi follows speakers who switch language mid-call (Hindi/English), the premium engine of R306.
+    const model = options?.model ?? 'nova-3';
     const params = new URLSearchParams({
-      model: 'nova-2',
+      model,
       smart_format: 'true',
       punctuate: 'true',
       diarize: String(options?.diarize ?? true),
-      detect_language: options?.language ? 'false' : 'true',
       utterances: 'true',
     });
 
     if (options?.language) {
       params.set('language', options.language);
+    } else if (model === 'nova-3') {
+      params.set('language', 'multi');
+    } else {
+      params.set('detect_language', 'true');
     }
 
     const response = await fetch(

@@ -985,6 +985,23 @@ export const TENANT_MIGRATIONS: BundledMigration[] = [
     ]
   },
   {
+    "name": "0053_call_recordings.sql",
+    "queries": [
+      "-- R306: recordings kept in our own storage with consent and retention, and the call AI pipeline state.\nALTER TABLE call_logs ADD COLUMN recording_provider_id TEXT",
+      "--> statement-breakpoint\nALTER TABLE call_logs ADD COLUMN recording_bytes INTEGER",
+      "--> statement-breakpoint\nALTER TABLE call_logs ADD COLUMN recording_expires_at TEXT",
+      "--> statement-breakpoint\nALTER TABLE call_logs ADD COLUMN recording_state TEXT",
+      "--> statement-breakpoint\nALTER TABLE call_logs ADD COLUMN recording_consent TEXT",
+      "--> statement-breakpoint\nALTER TABLE call_logs ADD COLUMN ai_status TEXT",
+      "--> statement-breakpoint\nALTER TABLE call_logs ADD COLUMN ai_status_reason TEXT",
+      "--> statement-breakpoint\nALTER TABLE voip_settings ADD COLUMN recording_consent_mode TEXT DEFAULT 'announce'",
+      "--> statement-breakpoint\nALTER TABLE voip_settings ADD COLUMN recording_announcement TEXT",
+      "--> statement-breakpoint\nALTER TABLE voip_settings ADD COLUMN call_ai_enabled INTEGER DEFAULT 0",
+      "--> statement-breakpoint\nALTER TABLE voip_settings ADD COLUMN call_ai_engine TEXT DEFAULT 'standard'",
+      "--> statement-breakpoint\nCREATE INDEX IF NOT EXISTS call_logs_recording_expires_idx ON call_logs(recording_expires_at)"
+    ]
+  },
+  {
     "name": "0054_payment_links.sql",
     "queries": [
       "-- R207: an agency collects from its own customers through its OWN Razorpay or Stripe account.\n-- None of this touches the platform's billing tables: the keys, the links and the events are the agency's.\n\n-- The agency's gateway account. The secret key and the webhook secret are sealed (utils/crypto-box.ts, R108) and\n-- never returned; secret_last4 is the only hint shown back. One account per gateway.\nCREATE TABLE IF NOT EXISTS payment_gateway_accounts (\n  id TEXT PRIMARY KEY,\n  gateway TEXT NOT NULL CHECK (gateway IN ('razorpay', 'stripe')),\n  mode TEXT NOT NULL DEFAULT 'test' CHECK (mode IN ('test', 'live')),\n  key_id TEXT,\n  secret_enc TEXT,\n  secret_last4 TEXT,\n  webhook_secret_enc TEXT,\n  is_active INTEGER NOT NULL DEFAULT 1,\n  last_tested_at TEXT,\n  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\n  updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))\n)",

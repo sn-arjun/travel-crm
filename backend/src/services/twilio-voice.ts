@@ -137,7 +137,7 @@ export class TwilioVoipProvider implements VoipProvider {
       : '';
     const twiml =
       `<Response><Dial callerId="${escapeXml(options.from)}" timeout="${ring}" answerOnBridge="true"${recordAttrs}>` +
-      `<Number>${escapeXml(options.to)}</Number></Dial></Response>`;
+      `<Number${options.announcementUrl ? ` url="${escapeXml(options.announcementUrl)}" method="POST"` : ''}>${escapeXml(options.to)}</Number></Dial></Response>`;
 
     const params = new URLSearchParams({
       From: options.from,
@@ -238,6 +238,26 @@ export class TwilioVoipProvider implements VoipProvider {
       contentType: res.headers.get('Content-Type') || 'audio/mpeg',
       bytes: await res.arrayBuffer(),
     };
+  }
+
+  async deleteRecording(ref: VoipRecordingRef): Promise<void> {
+    const account = ref.subAccountId || this.accountSid;
+    const res = await fetch(`${TWILIO_API}/2010-04-01/Accounts/${account}/Recordings/${ref.recordingId}.json`, {
+      method: 'DELETE',
+      headers: { Authorization: this.authHeader },
+    });
+    // 204 deleted; 404 already gone.
+    if (!res.ok && res.status !== 404) {
+      throw new VoipProviderError('twilio', res.status, `Twilio recording delete failed: ${res.status}`, errorKindForStatus(res.status));
+    }
+  }
+
+  async startRecording(providerCallId: string, callbackBaseUrl: string): Promise<void> {
+    await this.twilioRequest('POST', `/Calls/${providerCallId}/Recordings.json`, new URLSearchParams({
+      RecordingChannels: 'dual',
+      RecordingStatusCallback: `${callbackBaseUrl.replace(/\/+$/, '')}/api/v1/voip/recording-callback`,
+      RecordingStatusCallbackMethod: 'POST',
+    }));
   }
 
   async endCall(providerCallId: string): Promise<void> {
@@ -376,12 +396,15 @@ export class TwilioVoipProvider implements VoipProvider {
 </Response>`;
   }
 
-  generateClientDialMarkup(clientIdentity: string, callerId: string, record = false, opts: { actionUrl?: string; timeout?: number } = {}): string {
+  generateClientDialMarkup(clientIdentity: string, callerId: string, record = false, opts: { actionUrl?: string; timeout?: number; announcement?: string } = {}): string {
     const recordAttr = record ? ' record="record-from-answer-dual"' : '';
+    // R306: the recording announcement is played to the caller before the agent is rung.
+    const say = opts.announcement ? `
+  <Say>${escapeXml(opts.announcement)}</Say>` : '';
     const actionAttr = opts.actionUrl ? ` action="${escapeXml(opts.actionUrl)}" method="POST"` : '';
     const timeoutAttr = opts.timeout ? ` timeout="${Math.floor(opts.timeout)}"` : '';
     return `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
+<Response>${say}
   <Dial callerId="${escapeXml(callerId)}"${recordAttr}${actionAttr}${timeoutAttr}>
     <Client>${escapeXml(voipClientIdentity(clientIdentity))}</Client>
   </Dial>
