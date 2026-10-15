@@ -175,15 +175,19 @@ function PhoneNumbersPageContent() {
     return (
       <div className="flex flex-col gap-ds-4">
         <PageHeader title="Phone Numbers" description="Manage your VoIP phone numbers and their assignments" back={backButton} />
-        <SectionCard title="Phone numbers are not available on your plan">
+        <SectionCard title={reason === 'country_unavailable' ? 'Calling is not available in your country yet' : 'Phone numbers are not available on your plan'}>
           <p className="mb-ds-4 text-sm text-ds-foreground-muted">
-            {reason === 'cap_exceeded'
+            {reason === 'country_unavailable'
+              ? 'Phone calls are offered to agencies in the United Kingdom, United States, Australia and Singapore for now.'
+              : reason === 'cap_exceeded'
               ? 'You have reached your VoIP usage limit for this billing period.'
               : 'Upgrade your plan to purchase and manage VoIP phone numbers.'}
           </p>
-          <Button asChild>
-            <a href={upgradeHref}>{reason === 'cap_exceeded' ? 'View plans' : 'Upgrade to enable'}</a>
-          </Button>
+          {reason !== 'country_unavailable' && (
+            <Button asChild>
+              <a href={upgradeHref}>{reason === 'cap_exceeded' ? 'View plans' : 'Upgrade to enable'}</a>
+            </Button>
+          )}
         </SectionCard>
       </div>
     );

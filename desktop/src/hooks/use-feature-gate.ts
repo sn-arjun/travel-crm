@@ -17,7 +17,7 @@ export type GatedFeature =
   | 'ai_chatbot'
   | 'whatsapp_campaigns';
 
-export type FeatureGateReason = 'ok' | 'not_in_plan' | 'cap_exceeded';
+export type FeatureGateReason = 'ok' | 'not_in_plan' | 'cap_exceeded' | 'country_unavailable';
 
 export interface FeatureGate {
   enabled: boolean;
@@ -56,13 +56,18 @@ export const UPGRADE_HREF = '/settings/ai';
  * return <CallButton />;
  */
 export function useFeatureGate(feature: GatedFeature): FeatureGate {
-  const { features, usageCaps, loading } = useAiSettings();
+  const { features, usageCaps, voipCalling, loading } = useAiSettings();
 
   return React.useMemo(() => {
     // While loading, report disabled but reason 'ok' so callers show a
     // skeleton rather than an upgrade prompt that may be wrong.
     if (loading) {
       return { enabled: false, reason: 'ok' as const, upgradeHref: UPGRADE_HREF, loading: true };
+    }
+
+    // Calling is resold only in some countries: there is nothing to upgrade to elsewhere.
+    if (feature === 'voip_calling' && voipCalling && !voipCalling.available) {
+      return { enabled: false, reason: 'country_unavailable' as const, upgradeHref: UPGRADE_HREF, loading: false };
     }
 
     const flag = features.find((f) => f.key === feature);
@@ -89,7 +94,16 @@ export function useFeatureGate(feature: GatedFeature): FeatureGate {
     }
 
     return { enabled: true, reason: 'ok' as const, upgradeHref: UPGRADE_HREF, loading: false };
-  }, [feature, features, usageCaps, loading]);
+  }, [feature, features, usageCaps, voipCalling, loading]);
+}
+
+/**
+ * False only once settings have loaded and say the agency's country is outside the calling allow-list.
+ * Navigation, settings cards and the call buttons use it to hide calling entirely.
+ */
+export function useCallingOffered(): boolean {
+  const { voipCalling, loading } = useAiSettings();
+  return loading || !voipCalling || voipCalling.available;
 }
 
 /**

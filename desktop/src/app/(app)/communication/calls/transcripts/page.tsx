@@ -19,11 +19,15 @@ export default function TranscriptSearchPage() {
       <div className="flex flex-col items-center justify-center gap-ds-3 p-ds-9 text-center">
         <PhoneOff className="size-10 text-ds-foreground-subtle" aria-hidden="true" />
         <p className="text-sm text-ds-foreground-muted">
-          {reason === 'cap_exceeded' ? 'Call limit reached for your plan.' : 'VoIP calling is not enabled on your plan.'}
+          {reason === 'country_unavailable'
+            ? 'Calling is not available for agencies in your country yet.'
+            : reason === 'cap_exceeded' ? 'Call limit reached for your plan.' : 'VoIP calling is not enabled on your plan.'}
         </p>
-        <Button asChild size="sm">
-          <a href={upgradeHref}>Upgrade to enable</a>
-        </Button>
+        {reason !== 'country_unavailable' && (
+          <Button asChild size="sm">
+            <a href={upgradeHref}>Upgrade to enable</a>
+          </Button>
+        )}
       </div>
     );
   }

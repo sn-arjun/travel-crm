@@ -7,6 +7,7 @@ interface AiFeatureState {
   loading: boolean;
   plan: string | null;
   features: AiFeatureFlag[];
+  voipCalling: AiSettingsData['voipCalling'] | null;
   usageCaps: Record<string, { limit: number; used: number; remaining: number; percentUsed: number }>;
   provider: { anthropic: boolean; cloudflare: boolean; defaultProvider: string } | null;
   error: string | null;
@@ -68,6 +69,7 @@ export function useAiSettings(): AiFeatureState {
     loading,
     plan: settings?.plan ?? null,
     features: settings?.aiFeatures ?? [],
+    voipCalling: settings?.voipCalling ?? null,
     usageCaps: settings?.usageCaps ?? {},
     provider: settings?.provider ?? null,
     error,

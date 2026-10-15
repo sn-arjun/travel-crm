@@ -34,6 +34,7 @@ import { notificationsApi } from '@/lib/api/notifications';
 import { assistantApi } from '@/lib/api/assistant';
 import { useRealtimeEvent, useRealtimeConnected } from '@/hooks/use-realtime-event';
 import { useElectron } from '@/hooks/use-electron';
+import { useCallingOffered } from '@/hooks/use-feature-gate';
 import { ConnectionStatus } from '@/components/layout/connection-status';
 import {
   navigation,
@@ -292,6 +293,12 @@ export function Sidebar() {
   const pathname = usePathname();
   const badgeCounts = useBadgeCounts();
   const { isElectron } = useElectron();
+  const callingOffered = useCallingOffered();
+  // Calling is resold only in some countries: elsewhere its entries are not shown at all.
+  const visibleNavigation = React.useMemo(
+    () => navigation.map((group) => ({ ...group, items: group.items.filter((item) => callingOffered || !item.href.startsWith('/communication/calls')) })),
+    [callingOffered],
+  );
 
   const activeHref = React.useMemo(() => findActiveHref(pathname), [pathname]);
 
@@ -326,7 +333,7 @@ export function Sidebar() {
         {/* Navigation */}
         <ScrollArea className="min-h-0 flex-1 px-3 py-3">
           <nav aria-label="Main" className="space-y-4">
-            {navigation.map((group) => (
+            {visibleNavigation.map((group) => (
               <div key={group.label}>
                 {!isCollapsed && (
                   <p className="mb-1 px-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">

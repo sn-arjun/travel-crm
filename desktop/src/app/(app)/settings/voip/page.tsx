@@ -175,15 +175,19 @@ function VoipSettingsPageContent() {
     return (
       <div className="flex flex-col gap-ds-4">
         <PageHeader title="VoIP Settings" description="Configure your voice-over-IP provider and calling features" back={backButton} />
-        <SectionCard title="VoIP calling is not available on your plan">
+        <SectionCard title={reason === 'country_unavailable' ? 'Calling is not available in your country yet' : 'VoIP calling is not available on your plan'}>
           <p className="mb-ds-4 text-sm text-ds-foreground-muted">
-            {reason === 'cap_exceeded'
+            {reason === 'country_unavailable'
+              ? 'Phone calls are offered to agencies in the United Kingdom, United States, Australia and Singapore for now.'
+              : reason === 'cap_exceeded'
               ? 'You have reached your VoIP usage limit for this billing period.'
               : 'Upgrade your plan to configure a VoIP provider and enable calling.'}
           </p>
-          <Button asChild>
-            <a href={upgradeHref}>{reason === 'cap_exceeded' ? 'View plans' : 'Upgrade to enable'}</a>
-          </Button>
+          {reason !== 'country_unavailable' && (
+            <Button asChild>
+              <a href={upgradeHref}>{reason === 'cap_exceeded' ? 'View plans' : 'Upgrade to enable'}</a>
+            </Button>
+          )}
         </SectionCard>
       </div>
     );

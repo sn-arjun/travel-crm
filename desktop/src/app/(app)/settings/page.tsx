@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { PageHeader, SectionCard } from '@/components/ui';
 import { PageContainer } from '@/components/layout/page-container';
+import { useCallingOffered } from '@/hooks/use-feature-gate';
 
 interface SettingsLink {
   label: string;
@@ -98,12 +99,20 @@ const groups: SettingsGroup[] = [
   },
 ];
 
+const CALLING_SETTINGS_HREFS = new Set(['/settings/voip', '/settings/phone-numbers']);
+
 export default function SettingsPage() {
+  const callingOffered = useCallingOffered();
+  // Calling is resold only in some countries: elsewhere its settings are not shown at all.
+  const visibleGroups = React.useMemo(
+    () => groups.map((g) => ({ ...g, links: g.links.filter((l) => callingOffered || !CALLING_SETTINGS_HREFS.has(l.href)) })),
+    [callingOffered],
+  );
   return (
     <PageContainer>
       <PageHeader title="Settings" description="Manage your company configuration and preferences." />
 
-      {groups.map((group) => (
+      {visibleGroups.map((group) => (
         <SectionCard key={group.title} title={group.title}>
           <div className="grid grid-cols-1 gap-ds-3 sm:grid-cols-2 lg:grid-cols-3">
             {group.links.map((link) => (
