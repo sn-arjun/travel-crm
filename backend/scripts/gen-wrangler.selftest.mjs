@@ -113,6 +113,7 @@ try {
   check(dt.includes("APP_URL = \"https://app.acme.test\"") && dt.includes("API_URL = \"https://api.acme.test\"") && dt.includes("EMAIL_FROM = \"noreply@acme.test\""), "APP_URL, API_URL and EMAIL_FROM derive from DOMAIN");
   const dflt = path.join(tmp, 'dflt.toml');
   run(['--env', 'production', '--registry', sample, '--out', dflt], { ...ids, DOMAIN: '', APP_URL: '', API_URL: '', CORS_ORIGINS: '', EMAIL_FROM: '' });
+  check(dt.includes("TENANT_PROVISIONER = \"cloudflare\"") && dt.includes("CF_WORKER_SCRIPT_NAME = \"travelcrm-api\"") && dt.includes("API_PUBLIC_URL = \"https://api.acme.test\"") && dt.includes("ALLOW_LOOPBACK_ORIGINS = \"true\""), "plain settings (provisioner, worker name, API_PUBLIC_URL, loopback) are written to [vars], not left to secrets");
   check(readFileSync(dflt, "utf8").includes("https://app.YOUR-DOMAIN.example"), "without DOMAIN the clearly marked YOUR-DOMAIN.example placeholder is used");
 } finally {
   rmSync(tmp, { recursive: true, force: true });
