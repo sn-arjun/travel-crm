@@ -148,7 +148,7 @@ testApp.post('/inbound', async (c) => {
  * Play a whole phone call as the provider would (TEST_MODE only): posts the signed callbacks of a scenario to the
  * real callback routes in order. inbound_*: from is the caller, to is the agency's number. outbound_*: from is
  * the agency's number, to is the customer; pass callSid (the id placeCall returned) to update that call's log.
- * Body: { scenario, to, from, durationSeconds?, callSid?, tenantId? }. tenantId only selects whose provider
+ * Body: { scenario, to, from, durationSeconds?, callSid?, tenantId?, withRecording? }. tenantId only selects whose provider
  * token signs the callbacks; without it the platform token does.
  */
 testApp.post('/voip/simulate', async (c) => {
@@ -180,6 +180,7 @@ testApp.post('/voip/simulate', async (c) => {
         to: str('to'),
         from: str('from'),
         durationSeconds,
+        withRecording: body?.withRecording === true,
         callSid: str('callSid') || undefined,
         baseUrl: c.env.API_PUBLIC_URL?.trim().replace(/[/]+$/, '') || new URL(c.req.url).origin,
         authToken,

@@ -9,6 +9,7 @@ import { retryPendingRecordings, runRecordingRetention, signRecordingLink, recor
 import { getCreditBalance } from '../src/services/ai-credits';
 import { CREDIT_WEIGHTS } from '../src/services/ai-pricing';
 import { runTenantJobSet } from '../src/cron/dispatch';
+import { simulateVoipScenario } from '../src/services/voip/simulator';
 
 // R306: recordings in our own storage with a consent announcement and retention; transcription and a call summary through
 // the metered AI router. Everything runs on the mock provider, local R2 and a stand-in Workers AI binding: no real provider,
@@ -254,6 +255,21 @@ describe('storing the recording (calls.store_recording)', () => {
     expect(row.recording_provider_deleted_at).toBeTruthy();
   });
 
+  it('the timeline entries written when the call ended get their Play button once the recording is stored', async () => {
+    const contact = ((await (await call('POST', '/contacts', admin, { name: 'R306 Timeline', phone: '9000030630', type: 'customer' })).json()) as any).data.id;
+    const lead = ((await (await call('POST', '/leads', admin, { contactId: contact, title: 'R306 timeline trip', destinations: ['Goa'], travelDate: FUTURE, tripType: 'family', source: 'website', assignedTo: ADMIN_ID })).json()) as any).data.id;
+    const { id, sid } = await insertCall({ contactId: contact, leadId: lead });
+    // What log_call_activity writes when the call ends: the recording is not there yet.
+    await baseEnv.MASTER_DB
+      .prepare(`INSERT INTO lead_activities (id, lead_id, type, content, metadata, created_by) VALUES (?, ?, 'call', 'Inbound call', ?, ?)`)
+      .bind(uid('act'), lead, JSON.stringify({ call_id: id, direction: 'inbound', result: 'completed', duration_seconds: 125, has_recording: false }), ADMIN_ID)
+      .run();
+    addMockRecording('RE0000r306tline1');
+    await recordingReady(sid, 'RE0000r306tline1', 125);
+    const entry = await one(`SELECT metadata FROM lead_activities WHERE lead_id = ? AND type = 'call'`, lead);
+    expect(JSON.parse(entry.metadata)).toMatchObject({ call_id: id, has_recording: true, duration_seconds: 125 });
+  });
+
   it('a repeated callback, or the same recording again, does not copy or delete twice', async () => {
     const { id, sid } = await insertCall();
     addMockRecording('RE0000r306once1');
@@ -293,6 +309,31 @@ describe('storing the recording (calls.store_recording)', () => {
     expect(row.recording_state).toBe('stored');
     expect(row.recording_r2_key).toBe(recordingKey(TENANT_ID, id));
     expect(deletedNow()).toEqual(['RE0000r306late01']);
+  });
+
+  it('the call simulator can deliver the recording callback, so a local stack stores and plays a recording end to end', async () => {
+    const result = await simulateVoipScenario({
+      scenario: 'inbound_answered',
+      to: AGENCY_NUMBER,
+      from: '+919000030640',
+      durationSeconds: 45,
+      withRecording: true,
+      baseUrl: base(),
+      authToken: baseEnv.TWILIO_AUTH_TOKEN,
+      send: async (request) => {
+        const ctx = createExecutionContext();
+        const res = await worker.fetch(request, envNow(), ctx);
+        await waitOnExecutionContext(ctx);
+        return res;
+      },
+    });
+    expect(result.steps.map((s) => s.path)).toEqual(['/twiml/inbound', '/status-callback', '/status-callback', '/status-callback', '/recording-callback']);
+    expect(result.steps.every((s) => s.status === 200)).toBe(true);
+    const row = await one('SELECT id, recording_state, recording_r2_key, recording_bytes FROM call_logs WHERE provider_call_id = ?', result.callSid);
+    expect(row.recording_state).toBe('stored');
+    expect(row.recording_r2_key).toBe(recordingKey(TENANT_ID, row.id));
+    expect(row.recording_bytes).toBeGreaterThan(1000);
+    expect(deletedNow()).toContain(`RE${result.callSid.slice(2)}`);
   });
 
   it('is retried by the five-minute cron job, which is not paused by the automations switch', async () => {

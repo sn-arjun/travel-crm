@@ -310,15 +310,18 @@ export async function storeRecording(
 /** Every five minutes: recordings whose copy failed or never ran, and stored ones whose provider copy is still there. */
 export async function retryPendingRecordings(env: Env, tenantId: string, db: D1Database, now: Date = new Date()): Promise<{ stored: number; failed: number }> {
   const stale = new Date(now.getTime() - 10 * 60000).toISOString();
+  // A copy that keeps failing is given up on after three days (the retention job then removes the provider copy).
+  const giveUp = new Date(now.getTime() - 3 * 86400000).toISOString();
   const { results } = await db
     .prepare(
       `SELECT id, recording_r2_key FROM call_logs
        WHERE recording_url IS NOT NULL
+         AND created_at >= ?
          AND ((recording_r2_key IS NULL AND (recording_state = 'failed' OR (recording_state = 'provider' AND updated_at <= ?)))
               OR (recording_r2_key IS NOT NULL AND recording_provider_deleted_at IS NULL))
        ORDER BY updated_at LIMIT 10`,
     )
-    .bind(stale)
+    .bind(giveUp, stale)
     .all<{ id: string; recording_r2_key: string | null }>();
   let stored = 0;
   let failed = 0;

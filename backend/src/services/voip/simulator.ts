@@ -8,6 +8,7 @@
  */
 
 import { twilioSignature } from '../../middleware/provider-signature';
+import { MockVoipProvider } from './mock-provider';
 
 export const VOIP_SCENARIOS = [
   'inbound_answered',
@@ -25,6 +26,8 @@ export interface SimulateOptions {
   /** Inbound: the caller. Outbound: the agency's number. */
   from: string;
   durationSeconds?: number;
+  /** Answered scenarios also deliver the provider's "recording ready" callback (as it comes after the call), with audio behind it in the mock provider. */
+  withRecording?: boolean;
   /** Provider call id. Outbound scenarios should pass the id placeCall returned; otherwise one is made up. */
   callSid?: string;
   /** Origin the provider would call, no trailing slash, e.g. API_PUBLIC_URL or http://localhost. */
@@ -47,6 +50,16 @@ export interface SimulationResult {
 }
 
 let simCounter = 0;
+
+/** About one second of silent MPEG audio per 38 frames (128 kbit/s, 44.1 kHz), so a local stack has something real to store and play. */
+export function silentMp3(seconds: number): Uint8Array {
+  const frame = new Uint8Array(417);
+  frame.set([0xff, 0xfb, 0x90, 0x00]);
+  const frames = Math.max(1, Math.min(Math.ceil(seconds), 5)) * 38;
+  const out = new Uint8Array(frames * frame.length);
+  for (let i = 0; i < frames; i++) out.set(frame, i * frame.length);
+  return out;
+}
 
 /** The ordered callbacks of one scenario (paths are relative to /api/v1/voip). */
 export function scenarioSteps(
@@ -112,13 +125,28 @@ export async function simulateVoipScenario(opts: SimulateOptions): Promise<Simul
   const base = opts.baseUrl.replace(/\/+$/, '');
   const defaultDuration = opts.scenario.endsWith('answered') ? 45 : opts.scenario === 'inbound_voicemail' ? 20 : 0;
   const steps: SimulatedStep[] = [];
+  const durationSeconds = opts.durationSeconds ?? defaultDuration;
+  const planned = scenarioSteps(opts.scenario, { callSid, to: opts.to, from: opts.from, durationSeconds });
+  if (opts.withRecording && opts.scenario.endsWith('answered')) {
+    planned.push({
+      path: '/recording-callback',
+      fields: {
+        CallSid: callSid,
+        To: opts.to,
+        From: opts.from,
+        RecordingSid: `RE${callSid.slice(2)}`,
+        RecordingUrl: `https://api.twilio.com/2010-04-01/Accounts/ACsim/Recordings/RE${callSid.slice(2)}`,
+        RecordingDuration: String(Math.max(0, Math.floor(durationSeconds))),
+        RecordingChannels: '2',
+      },
+    });
+  }
 
-  for (const step of scenarioSteps(opts.scenario, {
-    callSid,
-    to: opts.to,
-    from: opts.from,
-    durationSeconds: opts.durationSeconds ?? defaultDuration,
-  })) {
+  for (const step of planned) {
+    if (step.path === '/recording-callback') {
+      // The provider has the audio by the time it says so.
+      MockVoipProvider.addRecording(step.fields.RecordingSid, silentMp3(1), Number(step.fields.RecordingDuration) || 0);
+    }
     const signature = await twilioSignature(`${base}/api/v1/voip${step.path}`, step.fields, opts.authToken);
     const res = await opts.send(
       new Request(`${base}/api/v1/voip${step.path}`, {
