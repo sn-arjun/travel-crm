@@ -106,8 +106,13 @@ console.log('\n=== fresh-clone summary ===');
 for (const r of results) console.log(`${r.outcome.padEnd(8)} ${r.label}${r.secs !== undefined ? ` (${r.secs}s)` : ''}`);
 
 if (!here && !keep) {
-  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
-  console.log(`removed ${dir}`);
+  // A locked file (antivirus, an indexer) must not turn a passed check into a crash: report it and move on.
+  try {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 1000 });
+    console.log(`removed ${dir}`);
+  } catch (err) {
+    console.warn(`WARNING: could not delete ${dir} (${err.code ?? err.message}); remove it by hand`);
+  }
 } else if (!here) {
   console.log(`kept ${dir}`);
 }
