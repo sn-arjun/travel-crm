@@ -7,6 +7,8 @@ ALTER TABLE call_logs ADD COLUMN recording_expires_at TEXT;
 --> statement-breakpoint
 ALTER TABLE call_logs ADD COLUMN recording_state TEXT;
 --> statement-breakpoint
+ALTER TABLE call_logs ADD COLUMN recording_provider_deleted_at TEXT;
+--> statement-breakpoint
 ALTER TABLE call_logs ADD COLUMN recording_consent TEXT;
 --> statement-breakpoint
 ALTER TABLE call_logs ADD COLUMN ai_status TEXT;

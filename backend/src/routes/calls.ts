@@ -5,7 +5,7 @@
  * TICKET-372: Outbound Calling API
  */
 
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '../utils/validator';
 import type { AppContext } from '../types';
@@ -20,6 +20,10 @@ import { logActivity } from '../utils/activity-logger';
 import { emitFromRequest } from '../services/automation/events';
 import { tenantToday, addDaysLocal, localDateStartUtcIso, sqlOffsetModifier } from '../utils/tz';
 import { AllowanceExhausted, allowanceExhaustedResponse, assertAllowance } from '../services/metering/meter';
+import { DEFAULT_ANNOUNCEMENT, autoRecord, canAccessCallData, loadRecordingSettings, signRecordingLink } from '../services/voip/recordings';
+import { CALL_AI_FEATURE_KEY, REASON_CREDITS, requestCallAi } from '../services/voip/call-ai';
+import { AI_QUOTA_EXCEEDED_MESSAGE } from '../services/ai-credits';
+import { getTenantFeatures } from '../middleware/feature-gate';
 
 const callRoutes = new Hono<AppContext>();
 callRoutes.onError(credentialsAwareErrorHandler);
@@ -70,6 +74,13 @@ function parseCallLog(row: Record<string, any>) {
     recordingUrl: row.recording_url,
     recordingR2Key: row.recording_r2_key,
     recordingDuration: row.recording_duration,
+    hasRecording: !!row.recording_r2_key,
+    recordingState: row.recording_state ?? null,
+    recordingBytes: row.recording_bytes ?? null,
+    recordingExpiresAt: row.recording_expires_at ?? null,
+    recordingConsent: row.recording_consent ?? null,
+    aiStatus: row.ai_status ?? null,
+    aiStatusReason: row.ai_status_reason ?? null,
     notes: row.notes,
     ivrPath: row.ivr_path ? JSON.parse(row.ivr_path) : null,
     routedTo: row.routed_to,
@@ -281,6 +292,67 @@ callRoutes.get('/missed', async (c) => {
   return success(c, { count: count?.count || 0 });
 });
 
+// ── Recording and call AI settings (R306) ─────────────────────
+
+const recordingSettingsSchema = z.object({
+  /** announce: record and play the announcement (default); off: never record; on_request: record only when the agent has the caller's consent. */
+  consentMode: z.enum(['announce', 'off', 'on_request']).optional(),
+  /** The wording callers hear; null or empty returns to the default. */
+  announcement: z.string().trim().max(300).nullable().optional(),
+  retentionDays: z.number().int().min(1).max(3650).optional(),
+  callAiEnabled: z.boolean().optional(),
+  callAiEngine: z.enum(['standard', 'premium']).optional(),
+});
+
+async function recordingSettingsPayload(c: Context<AppContext>) {
+  const db = c.get('tenantDb');
+  const settings = await loadRecordingSettings(db);
+  const features = await getTenantFeatures(c.env, c.get('tenantId'));
+  const configured = !!(await db.prepare('SELECT 1 AS hit FROM voip_settings LIMIT 1').first());
+  return {
+    configured,
+    consentMode: settings.consentMode,
+    announcement: settings.customAnnouncement,
+    defaultAnnouncement: DEFAULT_ANNOUNCEMENT,
+    effectiveAnnouncement: settings.announcement,
+    retentionDays: settings.retentionDays,
+    callAiEnabled: settings.callAiEnabled,
+    callAiEngine: settings.callAiEngine,
+    // The premium engine needs the platform's Deepgram key; without it the standard engine runs.
+    premiumAvailable: !!c.env.DEEPGRAM_API_KEY,
+    aiIncluded: features.features.includes(CALL_AI_FEATURE_KEY),
+  };
+}
+
+callRoutes.get('/recording-settings', async (c) => success(c, await recordingSettingsPayload(c)));
+
+callRoutes.put('/recording-settings', rbac(['admin']), zValidator('json', recordingSettingsSchema), async (c) => {
+  const db = c.get('tenantDb');
+  const data = c.req.valid('json');
+  const row = await db.prepare('SELECT id FROM voip_settings LIMIT 1').first<{ id: string }>();
+  if (!row) return error(c, 'Set up calling first (Settings > Calling), then choose how calls are recorded.', 422);
+
+  const sets: string[] = [];
+  const values: (string | number | null)[] = [];
+  if (data.consentMode !== undefined) { sets.push('recording_consent_mode = ?'); values.push(data.consentMode); }
+  if (data.announcement !== undefined) { sets.push('recording_announcement = ?'); values.push(data.announcement?.trim() ? data.announcement.trim() : null); }
+  if (data.retentionDays !== undefined) { sets.push('recording_retention_days = ?'); values.push(data.retentionDays); }
+  if (data.callAiEnabled !== undefined) { sets.push('call_ai_enabled = ?'); values.push(data.callAiEnabled ? 1 : 0); }
+  if (data.callAiEngine !== undefined) { sets.push('call_ai_engine = ?'); values.push(data.callAiEngine); }
+  if (sets.length > 0) {
+    sets.push("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')");
+    await db.prepare(`UPDATE voip_settings SET ${sets.join(', ')} WHERE id = ?`).bind(...values, row.id).run();
+    await logActivity(drizzle(db), {
+      userId: c.get('userId'),
+      action: 'update',
+      entityType: 'call_recording_settings',
+      entityId: row.id,
+      details: JSON.stringify(data),
+    });
+  }
+  return success(c, await recordingSettingsPayload(c));
+});
+
 // ── GET /:id — Single call log detail ─────────────────────────
 
 callRoutes.get('/:id', async (c) => {
@@ -444,7 +516,9 @@ callRoutes.post('/outbound', zValidator('json', outboundCallSchema), async (c) =
     contactId = contactId ?? lead.contact_id;
   }
 
-  const shouldRecord = settings.recordingPolicy === 'all' || settings.recordingPolicy === 'outbound';
+  // R306: recording starts by itself only when the agency announces it; the customer hears the announcement on answer.
+  const recordingSettings = await loadRecordingSettings(db);
+  const shouldRecord = autoRecord(recordingSettings, 'outbound');
   const callerId = settings.defaultCallerId;
 
   const callLogId = generateId();
@@ -487,6 +561,7 @@ callRoutes.post('/outbound', zValidator('json', outboundCallSchema), async (c) =
       agentNumber,
       callbackBaseUrl: baseUrl,
       record: shouldRecord,
+      announcementUrl: shouldRecord ? `${baseUrl}/api/v1/voip/twiml/announce?callLogId=${encodeURIComponent(callLogId)}` : undefined,
     });
 
     await db.prepare('UPDATE call_logs SET twilio_call_sid = ?, provider_call_id = ? WHERE id = ?')
@@ -657,6 +732,139 @@ callRoutes.get('/:id/actions', async (c) => {
     hasTranscript,
     extractionId: extraction?.id || null,
     extractionStatus: extraction?.status || null,
+  });
+});
+
+// ── GET /:id/recording — A short-lived signed link to play the recording (R306) ─
+
+callRoutes.get('/:id/recording', async (c) => {
+  const db = c.get('tenantDb');
+  const id = c.req.param('id');
+  const userId = c.get('userId');
+
+  const call = await db
+    .prepare('SELECT id, recording_r2_key, recording_state, recording_bytes, recording_duration, recording_expires_at FROM call_logs WHERE id = ?')
+    .bind(id)
+    .first<{ id: string; recording_r2_key: string | null; recording_state: string | null; recording_bytes: number | null; recording_duration: number | null; recording_expires_at: string | null }>();
+  if (!call) return notFound(c, 'Call log');
+  if (!(await canAccessCallData(db, c.get('role'), userId, id, 'recording'))) return error(c, 'You do not have access to this recording', 403);
+
+  if (!call.recording_r2_key) {
+    if (call.recording_state === 'expired') return error(c, 'This recording was deleted after the retention period', 410, { code: 'RECORDING_EXPIRED' });
+    if (call.recording_state === 'provider' || call.recording_state === 'failed') return error(c, 'This recording is still being saved. Try again in a few minutes.', 409, { code: 'RECORDING_PENDING' });
+    return notFound(c, 'Recording');
+  }
+
+  const link = await signRecordingLink(c.env, call.recording_r2_key, userId);
+  await logActivity(drizzle(db), {
+    userId,
+    action: 'play_recording',
+    entityType: 'call',
+    entityId: id,
+    details: JSON.stringify({ expiresAt: link.expiresAt }),
+  });
+  return success(c, {
+    url: link.path,
+    expiresAt: link.expiresAt,
+    contentType: 'audio/mpeg',
+    bytes: call.recording_bytes,
+    durationSeconds: call.recording_duration,
+    retentionExpiresAt: call.recording_expires_at,
+  });
+});
+
+// ── POST /:id/recording/consent — The agent has the caller's consent (R306) ──
+// 'On request' agencies record only after this; for the others it notes that the line was read.
+
+callRoutes.post('/:id/recording/consent', async (c) => {
+  const db = c.get('tenantDb');
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const call = await db
+    .prepare('SELECT id, status, provider_call_id, twilio_call_sid, created_by, routed_to, answered_by, recording_r2_key, recording_state FROM call_logs WHERE id = ?')
+    .bind(id)
+    .first<{ id: string; status: string; provider_call_id: string | null; twilio_call_sid: string | null; created_by: string | null; routed_to: string | null; answered_by: string | null; recording_r2_key: string | null; recording_state: string | null }>();
+  if (!call) return notFound(c, 'Call log');
+  const involved = [call.created_by, call.routed_to, call.answered_by].includes(userId);
+  if (!involved && c.get('role') !== 'admin') return error(c, 'Insufficient permissions', 403);
+
+  const settings = await loadRecordingSettings(db);
+  await db.prepare(`UPDATE call_logs SET recording_consent = 'given', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`).bind(id).run();
+  await logActivity(drizzle(db), { userId, action: 'recording_consent', entityType: 'call', entityId: id, details: JSON.stringify({ mode: settings.consentMode }) });
+
+  let recording = false;
+  if (settings.consentMode === 'on_request' && !call.recording_r2_key && !call.recording_state) {
+    const providerCallId = call.provider_call_id || call.twilio_call_sid;
+    if (!providerCallId || !['in-progress', 'ringing', 'initiated', 'queued'].includes(call.status)) {
+      return error(c, 'The call is not in progress, so it cannot be recorded.', 409);
+    }
+    const voip = await loadVoipSettings(c.env, db);
+    if (!voip) return error(c, 'VoIP not configured', 422);
+    const baseUrl = (c.env.API_PUBLIC_URL?.trim() || c.req.url.replace(/\/api\/v1\/calls\/.*$/, '')).replace(/\/+$/, '');
+    try {
+      await createVoipProvider(c.env, voip).startRecording(providerCallId, baseUrl);
+      recording = true;
+    } catch (e: any) {
+      return error(c, e.message || 'Could not start recording', 502);
+    }
+  }
+  return success(c, { consent: 'given', recording });
+});
+
+// ── POST /:id/summarise — "Summarise now" / "Try again" (R306) ─
+// Runs the call AI for this call if the agency has it on, the plan includes it and credits suffice.
+
+callRoutes.post('/:id/summarise', async (c) => {
+  const db = c.get('tenantDb');
+  const id = c.req.param('id');
+  const call = await db.prepare('SELECT id, direction, status, outcome FROM call_logs WHERE id = ?').bind(id).first<{ id: string; direction: string; status: string; outcome: string | null }>();
+  if (!call) return notFound(c, 'Call log');
+  if (!(await canAccessCallData(db, c.get('role'), c.get('userId'), id, 'transcript'))) return error(c, 'You do not have access to this call', 403);
+
+  let waiter: { waitUntil(p: Promise<unknown>): void } | undefined;
+  try { waiter = c.executionCtx; } catch { waiter = undefined; }
+  const result = await requestCallAi(c.env, db, c.get('tenantId'), id, { voicemail: call.outcome === 'voicemail', waiter });
+  if (result.status === 'off') return error(c, 'Call AI is switched off for this workspace.', 409, { code: 'CALL_AI_OFF' });
+  if (result.status === 'skipped' && result.reason === REASON_CREDITS) {
+    return error(c, AI_QUOTA_EXCEEDED_MESSAGE, 429, { code: 'AI_QUOTA_EXCEEDED' });
+  }
+  if (result.status === 'skipped') return error(c, result.reason ?? 'This call cannot be summarised.', 422, { code: 'CALL_AI_SKIPPED' });
+  return c.json({ success: true, data: { status: result.status } }, result.status === 'queued' ? 202 : 200);
+});
+
+// ── GET /:id/summary — The AI summary of a call, for the roles allowed to read it (R306) ─
+
+callRoutes.get('/:id/summary', async (c) => {
+  const db = c.get('tenantDb');
+  const id = c.req.param('id');
+  const call = await db.prepare('SELECT id, ai_status, ai_status_reason FROM call_logs WHERE id = ?').bind(id).first<{ id: string; ai_status: string | null; ai_status_reason: string | null }>();
+  if (!call) return notFound(c, 'Call log');
+  if (!(await canAccessCallData(db, c.get('role'), c.get('userId'), id, 'summary'))) return error(c, 'You do not have access to this summary', 403);
+
+  const row = await db
+    .prepare('SELECT id, summary, key_topics, action_items, sentiment, deal_likelihood, status, model_used, created_at FROM ai_call_extractions WHERE call_log_id = ?')
+    .bind(id)
+    .first<Record<string, any>>();
+  const parse = (value: string | null) => {
+    if (!value) return [];
+    try { return JSON.parse(value); } catch { return []; }
+  };
+  return success(c, {
+    aiStatus: call.ai_status,
+    aiStatusReason: call.ai_status_reason,
+    summary: row
+      ? {
+          extractionId: row.id,
+          bullets: parse(row.summary),
+          keyTopics: parse(row.key_topics),
+          actionItems: parse(row.action_items),
+          sentiment: row.sentiment,
+          dealLikelihood: row.deal_likelihood,
+          status: row.status,
+          model: row.model_used,
+          createdAt: row.created_at,
+        }
+      : null,
   });
 });
 

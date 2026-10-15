@@ -1852,6 +1852,7 @@ export const callLogs = sqliteTable('call_logs', {
   recordingBytes: integer('recording_bytes'),
   recordingExpiresAt: text('recording_expires_at'),
   recordingState: text('recording_state'), // provider, stored, failed, expired
+  recordingProviderDeletedAt: text('recording_provider_deleted_at'), // when the provider's copy was deleted after the copy into our storage
   recordingConsent: text('recording_consent'), // announced, given, none
   aiStatus: text('ai_status'), // queued, transcribed, summarised, skipped, failed
   aiStatusReason: text('ai_status_reason'),

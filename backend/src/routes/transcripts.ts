@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { zValidator } from '../utils/validator';
 import type { AppContext } from '../types';
 import { success, error, notFound, paginated } from '../utils/response';
+import { canAccessCallData } from '../services/voip/recordings';
 
 const transcriptRoutes = new Hono<AppContext>();
 
@@ -17,6 +18,10 @@ const transcriptRoutes = new Hono<AppContext>();
 transcriptRoutes.get('/:callLogId', async (c) => {
   const db = c.get('tenantDb');
   const callLogId = c.req.param('callLogId');
+  // R306 (CALL-AUTOMATION 3.7): admin and sales manager read every transcript, a salesperson their own calls, nobody else.
+  if (!(await canAccessCallData(db, c.get('role'), c.get('userId'), callLogId, 'transcript'))) {
+    return error(c, 'You do not have access to this transcript', 403);
+  }
 
   const row = await db.prepare(`
     SELECT ct.*, u.name as edited_by_name
@@ -56,6 +61,9 @@ transcriptRoutes.put('/:callLogId', zValidator('json', updateTranscriptSchema), 
   const userId = c.get('userId');
   const callLogId = c.req.param('callLogId');
   const { fullTranscript } = c.req.valid('json');
+  if (!(await canAccessCallData(db, c.get('role'), userId, callLogId, 'transcript'))) {
+    return error(c, 'You do not have access to this transcript', 403);
+  }
 
   const existing = await db.prepare(
     'SELECT id FROM call_transcripts WHERE call_log_id = ?'
@@ -92,6 +100,11 @@ transcriptRoutes.get('/', async (c) => {
 
   if (!query || query.trim().length === 0) {
     return error(c, 'Search query required', 400);
+  }
+
+  // R306: searching reads snippets of every transcript, so it is limited to the roles that may read them all.
+  if (c.get('role') !== 'admin' && c.get('role') !== 'sales_manager') {
+    return error(c, 'Only an administrator or sales manager can search all transcripts', 403);
   }
 
   // FTS5 treats characters such as - " : * ( ) as query syntax, so a raw user

@@ -1753,6 +1753,114 @@ const arrivalTransfer: Recipe = {
   },
 };
 
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * R306: the call summary (made by the call AI job, which already charged the credits) becomes suggestions. The recipe only
+ * reads the event payload; it never calls a model. Everything is a suggestion: lead details, tasks, a dated follow-up and a
+ * drafted message the agent reads and sends from the send dialog.
+ */
+const summariseCall: Recipe = {
+  key: 'calls.summarise',
+  area: 'Calls',
+  title: 'Turn a summarised call into suggested next steps',
+  description: 'When the call AI has summarised a call, suggests updating the lead with what was said, tasks for the action items, and a drafted message. Nothing changes until you click.',
+  triggers: ['call.summary_ready'],
+  defaultMode: 'suggest',
+  autoEligible: false,
+  usesAi: true,
+  async evaluate(ctx, event) {
+    const p = event.payload;
+    const callId = event.entityId;
+    const lead = await loadLead(ctx, p.leadId as string | undefined);
+    const contact = await loadContact(ctx, (p.contactId as string | null | undefined) ?? lead?.contact_id);
+    const openLead = lead && isOpenStatus(lead.status) ? lead : null;
+    const assignedTo = (p.routedTo as string | null) ?? lead?.assigned_to ?? null;
+    const day = await today(ctx);
+    const where: Pick<Proposal, 'entityType' | 'entityId' | 'contactId' | 'leadId' | 'sourceType' | 'sourceId' | 'origin' | 'assignedTo'> = {
+      entityType: openLead ? 'lead' : contact ? 'contact' : 'call',
+      entityId: openLead ? openLead.id : contact ? contact.id : callId,
+      contactId: contact?.id ?? null,
+      leadId: openLead?.id ?? null,
+      sourceType: 'call',
+      sourceId: callId,
+      origin: 'ai',
+      assignedTo,
+    };
+    const proposals: Proposal[] = [];
+    const who = contact?.name ?? lead?.title ?? 'this caller';
+
+    // What was said about the trip, as a lead update (only the fields that differ from the lead).
+    if (openLead) {
+      const changes: Record<string, unknown> = {};
+      const destination = typeof p.destination === 'string' ? p.destination.trim().slice(0, 80) : '';
+      if (destination && !parseDestinations(openLead.destination).some((d) => d.toLowerCase() === destination.toLowerCase())) {
+        changes.destinations = [destination];
+      }
+      const dates = (p.travelDates ?? null) as { from?: string; to?: string } | null;
+      if (dates?.from && ISO_DAY.test(dates.from) && dates.from >= day && dates.from !== openLead.travel_date) changes.travelDate = dates.from;
+      if (dates?.to && ISO_DAY.test(dates.to) && dates.to >= day && dates.to !== openLead.return_date) changes.returnDate = dates.to;
+      const pax = (p.paxDetails ?? null) as { adults?: number; children?: number } | null;
+      if (pax && Number.isInteger(pax.adults) && (pax.adults as number) >= 1 && pax.adults !== openLead.pax_adults) {
+        changes.paxAdults = pax.adults;
+        if (Number.isInteger(pax.children) && (pax.children as number) >= 0) changes.paxChildren = pax.children;
+      }
+      if (typeof p.budget === 'number' && p.budget > 0 && p.budget !== openLead.budget) changes.budget = p.budget;
+      if (typeof p.tripType === 'string' && p.tripType.trim() && p.tripType.trim().length <= 40 && !openLead.trip_type) changes.tripType = p.tripType.trim();
+      if (typeof p.specialRequests === 'string' && p.specialRequests.trim() && !openLead.special_requirements) changes.specialRequirements = p.specialRequests.trim().slice(0, 2000);
+      if (Object.keys(changes).length > 0) {
+        proposals.push({
+          ...where,
+          action: 'update_lead',
+          title: `Update "${openLead.title}" with what was said on the call`,
+          reason: 'The call summary mentions trip details the lead does not have',
+          params: { leadId: openLead.id, changes },
+          dedupeKey: `call-summary-lead:${callId}`,
+        });
+      }
+    }
+
+    // One task per action item the summary found.
+    const items = Array.isArray(p.actionItems) ? (p.actionItems as Array<{ text?: string; dueDate?: string }>) : [];
+    items.slice(0, 3).forEach((item, index) => {
+      const text = typeof item?.text === 'string' ? item.text.trim() : '';
+      if (!text) return;
+      proposals.push({
+        ...where,
+        action: 'create_task',
+        title: `Task: ${text.slice(0, 80)}`,
+        reason: `From the call with ${who}`,
+        params: {
+          title: text.slice(0, 200),
+          description: `From the summary of the call with ${who}.`,
+          dueDate: typeof item.dueDate === 'string' && ISO_DAY.test(item.dueDate) && item.dueDate >= day ? item.dueDate : day,
+          priority: 'medium',
+          assignedTo,
+          relatedLeadId: openLead?.id ?? null,
+        },
+        dedupeKey: `call-summary-task:${callId}:${index}`,
+      });
+    });
+
+    // A message the agent reads, edits and sends from the send dialog.
+    const draft = typeof p.draftReply === 'string' ? p.draftReply.trim() : '';
+    if (draft && contact && !contact.opted_out) {
+      const channel = contact.phone ? 'whatsapp' : contact.email ? 'email' : null;
+      if (channel) {
+        proposals.push({
+          ...where,
+          action: 'draft_reply',
+          title: `Send ${contact.name} a follow-up after the call`,
+          reason: 'Drafted from the call summary; review before sending',
+          params: { contactId: contact.id, leadId: openLead?.id ?? null, channel, subject: channel === 'email' ? 'Following up on our call' : null, body: draft },
+          dedupeKey: `call-summary-reply:${callId}`,
+        });
+      }
+    }
+    return proposals;
+  },
+};
+
 export const RECIPES: Recipe[] = [
   readMessages,
   replyAfterCapture,
@@ -1771,6 +1879,7 @@ export const RECIPES: Recipe[] = [
   leadFromMissedCall,
   missedAcknowledgement,
   voicemailTask,
+  summariseCall,
   logCallToTimeline,
   contactedOnCall,
   nextStepPrompt,

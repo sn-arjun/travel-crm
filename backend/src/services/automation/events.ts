@@ -24,6 +24,8 @@ export interface EmitInput {
  *  - call.missed: from, contactId, leadId, routedTo, offerLead
  *  - call.voicemail_left: callId, from, contactId, leadId, routedTo, durationSeconds, recordingUrl
  *  - call.recording_ready: callId, durationSeconds, channels
+ *  - call.transcript_ready (R306): callId, language, wordCount, voicemail
+ *  - call.summary_ready (R306): callId, extractionId, contactId, leadId, routedTo, summary, destination, travelDates, paxDetails, budget, tripType, specialRequests, actionItems, draftReply
  */
 export const CALL_EVENT_TYPES = [
   'call.ringing',
@@ -34,6 +36,8 @@ export const CALL_EVENT_TYPES = [
   'call.missed',
   'call.voicemail_left',
   'call.recording_ready',
+  'call.transcript_ready',
+  'call.summary_ready',
 ] as const;
 export type CallEventType = (typeof CALL_EVENT_TYPES)[number];
 

@@ -498,6 +498,7 @@ describe('Call lifecycle events and recipes', () => {
         'calls.missed_callback',
         'calls.next_step_prompt',
         'calls.retry_task',
+        'calls.summarise',
         'calls.voicemail_task',
         'leads.contacted_on_call',
       ]);

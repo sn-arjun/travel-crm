@@ -32,6 +32,8 @@ export interface ExtractionResult {
   dealLikelihood: number;
   likelihoodSignals: string[];
   coachingHints: string[];
+  /** A short polite message the agent could send after the call (a suggestion; never sent by itself). */
+  draftReply?: string | null;
   // Confidence
   overallConfidence: number;
   fieldConfidences: Record<string, number>;
@@ -59,6 +61,7 @@ Extract the following:
 5. **Sentiment**: overall customer sentiment (positive/neutral/negative/urgent)
 6. **Deal Likelihood**: probability of conversion (0.0-1.0) based on buying signals
 7. **Coaching Hints**: 1-2 specific, constructive tips for the agent's improvement
+8. **Draft Reply**: a warm 2-3 sentence message the agent could send the customer after the call; no prices, no promises about availability; null when nothing needs sending
 
 For confidence scores: 1.0 = explicitly stated, 0.7 = strongly implied, 0.4 = loosely inferred, 0.0 = not mentioned.
 
@@ -83,6 +86,7 @@ Respond ONLY with valid JSON matching this schema:
   "deal_likelihood": 0.0 to 1.0,
   "likelihood_signals": ["signal1", "signal2"],
   "coaching_hints": ["hint1", "hint2"],
+  "draft_reply": "string or null",
   "overall_confidence": 0.0 to 1.0,
   "field_confidences": {"destination": 0.9, "budget": 0.7, ...}
 }`;
@@ -158,6 +162,7 @@ export class AIExtractionService {
       dealLikelihood: parsed.deal_likelihood ?? 0,
       likelihoodSignals: parsed.likelihood_signals || [],
       coachingHints: parsed.coaching_hints || [],
+      draftReply: typeof parsed.draft_reply === 'string' && parsed.draft_reply.trim() ? parsed.draft_reply.trim().slice(0, 1500) : null,
       overallConfidence: parsed.overall_confidence ?? 0,
       fieldConfidences: parsed.field_confidences || {},
       modelUsed: response.model,

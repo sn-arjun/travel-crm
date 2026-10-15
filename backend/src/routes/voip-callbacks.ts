@@ -24,6 +24,8 @@ import type { VoipSettingsRow } from '../services/voip-provider';
 import { candidateTenantDbs, resolveTenantDb, tenancyMode } from '../services/tenant-db';
 import { formParams, publicRequestUrl, unsignedAllowed, verifyTwilioAny } from '../middleware/provider-signature';
 import { recordUsage } from '../services/metering/meter';
+import { autoRecord, loadRecordingSettings, recordingIdFromUrl, storeRecording } from '../services/voip/recordings';
+import { requestCallAi } from '../services/voip/call-ai';
 
 const voipCallbackRoutes = new Hono<AppContext>();
 
@@ -563,23 +565,27 @@ voipCallbackRoutes.post('/recording-callback', async (c) => {
   const url = recordingUrl.endsWith('.mp3') ? recordingUrl : `${recordingUrl}.mp3`;
 
   try {
-    let result = await db.prepare(`
+    // R306: remember the provider's recording id so the copy into our storage knows what to fetch. A call that already
+    // has its recording in our storage keeps it; a late duplicate never brings the provider URL back.
+    const providerRecordingId = (body.RecordingSid as string | undefined) || recordingIdFromUrl(url);
+    const update = `
       UPDATE call_logs
-      SET recording_url = ?, recording_duration = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-      WHERE provider_call_id = ?
-    `).bind(url, recordingDuration, callSid).run();
+      SET recording_url = CASE WHEN recording_r2_key IS NULL THEN ? ELSE recording_url END,
+          recording_duration = COALESCE(recording_duration, ?),
+          recording_provider_id = CASE WHEN recording_r2_key IS NULL THEN ? ELSE recording_provider_id END,
+          recording_state = CASE WHEN recording_r2_key IS NULL THEN 'provider' ELSE recording_state END,
+          updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+    `;
+    let result = await db.prepare(`${update} WHERE provider_call_id = ?`).bind(url, recordingDuration, providerRecordingId ?? null, callSid).run();
     if (!result.meta.changes) {
-      await db.prepare(`
-        UPDATE call_logs
-        SET recording_url = ?, recording_duration = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-        WHERE twilio_call_sid = ?
-      `).bind(url, recordingDuration, callSid).run();
+      await db.prepare(`${update} WHERE twilio_call_sid = ?`).bind(url, recordingDuration, providerRecordingId ?? null, callSid).run();
     }
   } catch (e) {
     console.error('Recording callback error:', e);
   }
 
   // Lifecycle events (R303): the recording is ready, and an inbound recording nobody picked up is a voicemail.
+  let storeFor: { callId: string; tenantId: string; voicemail: boolean } | null = null;
   try {
     const call = await loadLifecycleCall(db, { callSid });
     if (call) {
@@ -588,6 +594,8 @@ voipCallbackRoutes.post('/recording-callback', async (c) => {
         channels: Number(body.RecordingChannels) || 1,
       });
       const answered = !!call.answered_by || (await claimExists(db, call, 'event:call.answered'));
+      const recordingTenant = await tenantForCalledNumber(c.env, agencyNumberOf(call));
+      if (recordingTenant) storeFor = { callId: call.id, tenantId: recordingTenant, voicemail: call.direction === 'inbound' && !answered };
       if (call.direction === 'inbound' && !answered) {
         // A voicemail is a missed call too: record that first so the call-back task exists for the voicemail task to replace.
         await recordMissedCall(c.env, db, { callSid });
@@ -604,6 +612,29 @@ voipCallbackRoutes.post('/recording-callback', async (c) => {
     }
   } catch (e) {
     console.error('Recording lifecycle events failed:', e instanceof Error ? e.message : 'error');
+  }
+
+  // calls.store_recording (R306): copy into our storage once, delete at the provider, then offer the call to the call AI.
+  // It is record-keeping, not an automation, so the automations pause switch does not stop it. Failures are retried by the cron job.
+  if (storeFor) {
+    const job = storeFor;
+    const work = (async () => {
+      try {
+        const stored = await storeRecording(c.env, db, job.tenantId, job.callId, { recordingId: (body.RecordingSid as string | undefined) || null });
+        if (stored.status === 'stored' || stored.status === 'already_stored') {
+          let waiter: { waitUntil(p: Promise<unknown>): void } | undefined;
+          try { waiter = c.executionCtx; } catch { waiter = undefined; }
+          await requestCallAi(c.env, db, job.tenantId, job.callId, { voicemail: job.voicemail, waiter });
+        }
+      } catch (e) {
+        console.error('Recording storage failed:', e instanceof Error ? e.message : 'error');
+      }
+    })();
+    try {
+      c.executionCtx.waitUntil(work);
+    } catch {
+      await work;
+    }
   }
 
   return c.text('<Response/>', 200, { 'Content-Type': 'text/xml' });
@@ -644,6 +675,19 @@ function dialFallback(baseUrl: string, callLogId: string, settings: VoipSettings
     actionUrl: `${baseUrl}/api/v1/voip/twiml/dial-status?callLogId=${encodeURIComponent(callLogId)}`,
     timeout: settings.maxRingDuration || 30,
   };
+}
+
+/**
+ * Does an inbound call record, and what does the caller hear first? (R306) Recording starts by itself only in 'announce'
+ * mode, and then the agency's announcement is played before the agent is rung; the call notes that it was announced.
+ */
+async function inboundRecordingPlan(db: D1Database, callLogId: string): Promise<{ record: boolean; announcement?: string }> {
+  const rec = await loadRecordingSettings(db);
+  const record = autoRecord(rec, 'inbound');
+  if (record && callLogId) {
+    await db.prepare("UPDATE call_logs SET recording_consent = 'announced' WHERE id = ? AND recording_consent IS NULL").bind(callLogId).run();
+  }
+  return { record, announcement: record ? rec.announcement : undefined };
 }
 
 // ── Inbound — Route incoming calls (TICKET-377) ──────────────
@@ -733,13 +777,13 @@ voipCallbackRoutes.post('/twiml/inbound', async (c) => {
     ), 200, { 'Content-Type': 'text/xml' });
   }
 
-  const shouldRecord = settings.recordingPolicy === 'all' || settings.recordingPolicy === 'inbound';
+  const plan = await inboundRecordingPlan(db, callLogId);
 
   // The agent's phone is about to ring: event and screen pop, after the provider has its answer.
   deferRinging(c, c.env, db, callLogId);
 
   return c.text(
-    provider.generateClientDialMarkup(routing.targetIdentity, from, shouldRecord, dialFallback(baseUrl, callLogId, settings)),
+    provider.generateClientDialMarkup(routing.targetIdentity, from, plan.record, { ...dialFallback(baseUrl, callLogId, settings), announcement: plan.announcement }),
     200,
     { 'Content-Type': 'text/xml' },
   );
@@ -813,13 +857,13 @@ voipCallbackRoutes.post('/twiml/ivr-handler', async (c) => {
   // Route based on action
   switch (option.action) {
     case 'extension': {
-      const shouldRecord = settings.recordingPolicy === 'all' || settings.recordingPolicy === 'inbound';
+      const plan = await inboundRecordingPlan(db, callLogId);
       if (callLogId && option.target) {
         await db.prepare('UPDATE call_logs SET routed_to = ? WHERE id = ?').bind(String(option.target), callLogId).run();
         deferRinging(c, c.env, db, callLogId);
       }
       return c.text(
-        provider.generateClientDialMarkup(`user_${option.target}`, from, shouldRecord, dialFallback(baseUrl, callLogId, settings)),
+        provider.generateClientDialMarkup(`user_${option.target}`, from, plan.record, { ...dialFallback(baseUrl, callLogId, settings), announcement: plan.announcement }),
         200, { 'Content-Type': 'text/xml' },
       );
     }
@@ -831,13 +875,13 @@ voipCallbackRoutes.post('/twiml/ivr-handler', async (c) => {
     default: {
       const routing = await resolveInboundRouting(db, from, settings);
       if (routing.targetIdentity) {
-        const shouldRecord = settings.recordingPolicy === 'all' || settings.recordingPolicy === 'inbound';
+        const plan = await inboundRecordingPlan(db, callLogId);
         if (callLogId && routing.targetUserId) {
           await db.prepare('UPDATE call_logs SET routed_to = ? WHERE id = ?').bind(routing.targetUserId, callLogId).run();
           deferRinging(c, c.env, db, callLogId);
         }
         return c.text(
-          provider.generateClientDialMarkup(routing.targetIdentity, from, shouldRecord, dialFallback(baseUrl, callLogId, settings)),
+          provider.generateClientDialMarkup(routing.targetIdentity, from, plan.record, { ...dialFallback(baseUrl, callLogId, settings), announcement: plan.announcement }),
           200, { 'Content-Type': 'text/xml' },
         );
       }
@@ -922,10 +966,13 @@ voipCallbackRoutes.post('/voicemail-callback', async (c) => {
     try {
       await db.prepare(`
         UPDATE call_logs
-        SET recording_url = ?, recording_duration = ?, outcome = 'voicemail',
+        SET recording_url = CASE WHEN recording_r2_key IS NULL THEN ? ELSE recording_url END,
+            recording_duration = COALESCE(recording_duration, ?), outcome = 'voicemail',
+            recording_state = CASE WHEN recording_r2_key IS NULL THEN COALESCE(recording_state, 'provider') ELSE recording_state END,
+            recording_provider_id = COALESCE(recording_provider_id, ?),
             updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
         WHERE id = ?
-      `).bind(`${recordingUrl}.mp3`, recordingDuration, callLogId).run();
+      `).bind(`${recordingUrl}.mp3`, recordingDuration, recordingIdFromUrl(recordingUrl), callLogId).run();
     } catch (e) {
       console.error('Voicemail callback error:', e);
     }
@@ -945,6 +992,22 @@ voipCallbackRoutes.post('/voicemail-complete', async (c) => {
 <Response>
   <Say voice="Polly.Joanna">Thank you for your message. Goodbye.</Say>
   <Hangup/>
+</Response>`, 200, { 'Content-Type': 'text/xml' });
+});
+
+// ── Announcement played to the customer on answer (R306, outbound calls) ──
+
+voipCallbackRoutes.post('/twiml/announce', async (c) => {
+  const callLogId = c.req.query('callLogId') || '';
+  const db = await callDb(c.env, { callLogId });
+  if (!db) return c.text('<Response/>', 200, { 'Content-Type': 'text/xml' });
+  const rec = await loadRecordingSettings(db);
+  if (callLogId) {
+    await db.prepare("UPDATE call_logs SET recording_consent = 'announced' WHERE id = ? AND recording_consent IS NULL").bind(callLogId).run();
+  }
+  return c.text(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say>${escapeXmlUtil(rec.announcement)}</Say>
 </Response>`, 200, { 'Content-Type': 'text/xml' });
 });
 

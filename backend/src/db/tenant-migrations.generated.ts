@@ -991,6 +991,7 @@ export const TENANT_MIGRATIONS: BundledMigration[] = [
       "--> statement-breakpoint\nALTER TABLE call_logs ADD COLUMN recording_bytes INTEGER",
       "--> statement-breakpoint\nALTER TABLE call_logs ADD COLUMN recording_expires_at TEXT",
       "--> statement-breakpoint\nALTER TABLE call_logs ADD COLUMN recording_state TEXT",
+      "--> statement-breakpoint\nALTER TABLE call_logs ADD COLUMN recording_provider_deleted_at TEXT",
       "--> statement-breakpoint\nALTER TABLE call_logs ADD COLUMN recording_consent TEXT",
       "--> statement-breakpoint\nALTER TABLE call_logs ADD COLUMN ai_status TEXT",
       "--> statement-breakpoint\nALTER TABLE call_logs ADD COLUMN ai_status_reason TEXT",

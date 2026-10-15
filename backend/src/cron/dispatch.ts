@@ -29,6 +29,7 @@ import { runBillingDaily } from '../services/billing/subscriptions';
 import { checkFollowUpReminders } from '../services/follow-up-reminders';
 import { runScheduledAutomationsForTenant } from '../services/automation/schedule';
 import { processCampaignScheduler } from './campaign-scheduler';
+import { retryPendingRecordings, runRecordingRetention } from '../services/voip/recordings';
 import { processOverdueTasks } from './overdue-tasks';
 import { processFleetAlerts } from './fleet-alerts';
 import {
@@ -81,6 +82,8 @@ const EVERY5_JOBS: TenantJob[] = [
   { name: 'automations.schedule-tick', period: 'local-day', run: (env, id, db, now) => runScheduledAutomationsForTenant(env, id, db, now) },
   { name: 'marketing.campaign-scheduler', period: 'tick', run: (env, id, db, now) => processCampaignScheduler(env, id, db, now) },
   { name: 'followups.reminders', period: 'tick', run: (env, id, db, now, period) => checkFollowUpReminders(env, id, db, now, period) },
+  // R306: copies that failed (or never ran) are retried, and a provider copy that could not be deleted is deleted. Not paused by automations_paused.
+  { name: 'calls.recordings-retry', period: 'tick', run: (env, id, db, now) => retryPendingRecordings(env, id, db, now) },
 ];
 
 const HOURLY_JOBS: TenantJob[] = [
@@ -94,6 +97,8 @@ const DAILY_JOBS: TenantJob[] = [
   { name: 'visa.passport-expiry', period: 'local-day', run: (env, id, db, now) => processVisaPassportForTenant(env, db, id, now) },
   { name: 'visa.missing-documents', period: 'local-day', run: (env, id, db, now) => processMissingVisaDocsForTenant(env, db, id, now) },
   { name: 'trips.reminders', period: 'local-day', run: (env, id, db, now) => processTripRemindersForTenant(env, db, id, now) },
+  // R306: audio and transcripts older than the agency's retention period are deleted; the call record and the summary stay.
+  { name: 'calls.recording-retention', period: 'local-day', run: (env, id, db, now) => runRecordingRetention(env, id, db, now) },
   { name: 'housekeeping.prune-job-runs', period: 'local-day', run: (_env, _id, db, now) => pruneJobRuns(db, now) },
 ];
 

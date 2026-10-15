@@ -4,6 +4,7 @@ import { generateId } from '../utils/uuid';
 import { success, error } from '../utils/response';
 import { uploadRateLimit } from '../middleware/rate-limit';
 import { verifyPrivacyDownload } from '../services/privacy/export-contact';
+import { RECORDING_ROLES, recordingPrefix, verifyRecordingLink } from '../services/voip/recordings';
 
 const fileRoutes = new Hono<AppContext>();
 
@@ -32,6 +33,16 @@ export function resolveTenantKey(
     return { status: 403, message: 'Access denied' };
   }
   return { key: decoded };
+}
+
+/** A single `bytes=start-end` range, as R2 wants it; anything else is served whole. */
+function parseRange(header: string | undefined): { offset: number; length?: number } | null {
+  const match = /^bytes=(\d+)-(\d*)$/.exec(header ?? '');
+  if (!match) return null;
+  const start = Number(match[1]);
+  if (match[2] === '') return { offset: start };
+  const end = Number(match[2]);
+  return end >= start ? { offset: start, length: end - start + 1 } : null;
 }
 
 function keyFromPath(path: string): string {
@@ -97,17 +108,39 @@ fileRoutes.get('/*', async (c) => {
     }
   }
 
-  const object = await c.env.FILE_STORAGE.get(resolved.key);
+  // R306: call recordings (<tenant>/recordings/...) play only through the short-lived link GET /calls/:id/recording issues,
+  // bound to the person it was issued to. A key typed by hand, an expired link or another person's link is refused.
+  const isRecording = resolved.key.startsWith(recordingPrefix(c.get('tenantId')));
+  if (isRecording) {
+    if (!RECORDING_ROLES.has(c.get('role') as string)) return error(c, 'Access denied', 403);
+    const q = new URL(c.req.url).searchParams;
+    if (!(await verifyRecordingLink(c.env, resolved.key, c.get('userId') as string, q.get('exp') ?? undefined, q.get('sig') ?? undefined))) {
+      return error(c, 'This recording link has expired or is not valid', 403);
+    }
+  }
+
+  const range = isRecording ? parseRange(c.req.header('Range')) : null;
+  const object = await c.env.FILE_STORAGE.get(resolved.key, range ? { range } : undefined);
   if (!object) {
     return error(c, 'File not found', 404);
   }
 
-  return new Response(object.body as ReadableStream, {
-    headers: {
-      'Content-Type': object.httpMetadata?.contentType || 'application/octet-stream',
-      'Cache-Control': isPrivacy ? 'no-store' : 'private, max-age=300',
-    },
-  });
+  const headers: Record<string, string> = {
+    'Content-Type': object.httpMetadata?.contentType || 'application/octet-stream',
+    'Cache-Control': isPrivacy || isRecording ? 'no-store' : 'private, max-age=300',
+  };
+  if (isRecording) {
+    headers['Accept-Ranges'] = 'bytes';
+    headers['Content-Disposition'] = 'inline';
+    if (range) {
+      const start = (range as { offset?: number }).offset ?? 0;
+      const length = (range as { length?: number }).length ?? object.size - start;
+      headers['Content-Range'] = `bytes ${start}-${start + length - 1}/${object.size}`;
+      headers['Content-Length'] = String(length);
+      return new Response(object.body as ReadableStream, { status: 206, headers });
+    }
+  }
+  return new Response(object.body as ReadableStream, { headers });
 });
 
 // ============================================================
@@ -117,6 +150,11 @@ fileRoutes.get('/*', async (c) => {
 fileRoutes.delete('/*', async (c) => {
   const resolved = resolveTenantKey(keyFromPath(c.req.path), c.get('tenantId'));
   if ('status' in resolved) return error(c, resolved.message, resolved.status);
+
+  // R306: recordings leave through the retention job or contact erasure, so the call record never points at a missing file.
+  if (resolved.key.startsWith(recordingPrefix(c.get('tenantId')))) {
+    return error(c, 'Call recordings are removed by the retention period or when a contact is erased', 403);
+  }
 
   const head = await c.env.FILE_STORAGE.head(resolved.key);
   if (!head) return error(c, 'File not found', 404);
