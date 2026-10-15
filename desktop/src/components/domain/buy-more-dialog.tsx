@@ -120,7 +120,7 @@ export function BuyMoreDialog({ open, onClose, focus }: BuyMoreDialogProps) {
   }, [productKey, quantity]);
 
   React.useEffect(() => {
-    if (!open || !productKey) {
+    if (!open || !productKey || !overview?.configured) {
       setQuote(null);
       return;
     }
@@ -139,7 +139,7 @@ export function BuyMoreDialog({ open, onClose, focus }: BuyMoreDialogProps) {
     return () => {
       cancelled = true;
     };
-  }, [open, productKey, quantity]);
+  }, [open, productKey, quantity, overview?.configured]);
 
   const offers = (overview?.products ?? []).filter((p) => matches(p, focus));
   const money = (amount: number, currency: string | null) => formatCurrency(amount, currency ?? 'INR');

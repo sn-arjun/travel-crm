@@ -2,21 +2,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import * as React from 'react';
 
-const toastSuccess = vi.fn();
-const toastError = vi.fn();
+const { toastSuccess, toastError } = vi.hoisted(() => ({ toastSuccess: vi.fn(), toastError: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { success: (...a: unknown[]) => toastSuccess(...a), error: (...a: unknown[]) => toastError(...a), message: vi.fn() } }));
 
-const state = { user: { role: 'admin' as string } };
+const state = vi.hoisted(() => ({ user: { role: 'admin' as string } }));
 vi.mock('@/stores/auth-store', () => ({
   useAuthStore: Object.assign((selector: (s: typeof state) => unknown) => selector(state), { getState: () => state }),
 }));
 
-const api = { addons: vi.fn(), addonQuote: vi.fn(), addonCheckout: vi.fn() };
-const openCheckout = vi.fn();
+const { api, openCheckout } = vi.hoisted(() => ({ api: { addons: vi.fn(), addonQuote: vi.fn(), addonCheckout: vi.fn() }, openCheckout: vi.fn() }));
 vi.mock('@/lib/api/billing', () => ({ billingApi: api, openCheckout: (...a: unknown[]) => openCheckout(...a) }));
 
-const requestUpgrade = vi.fn();
-const usageGet = vi.fn();
+const { requestUpgrade, usageGet } = vi.hoisted(() => ({ requestUpgrade: vi.fn(), usageGet: vi.fn() }));
 vi.mock('@/lib/api/settings', () => ({ usageApi: { get: (...a: unknown[]) => usageGet(...a), requestUpgrade: (...a: unknown[]) => requestUpgrade(...a) } }));
 
 import { BuyMoreDialog } from './buy-more-dialog';
