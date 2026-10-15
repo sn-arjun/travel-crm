@@ -402,6 +402,38 @@ describe('self-serve add-on purchases (R206)', () => {
     expect(forged.status).toBe(400);
   });
 
+  it('end to end on the mock gateway: checkout link, the mock payment page, and the pack arrives once', async () => {
+    testEnv.BILLING_GATEWAY = 'mock';
+    try {
+      const { res, json } = await checkout('sms_100', 1);
+      expect(res.status).toBe(200);
+      expect(json.data.gateway).toBe('mock');
+      expect(fetchCalls).toHaveLength(0);
+      const url = new URL(json.data.url);
+      const before = await getAllowance(testEnv, SEED_TENANT, 'sms');
+
+      const play = async (outcome: string) => {
+        const ctx = createExecutionContext();
+        const r = await worker.fetch(new Request(`http://localhost${url.pathname}${url.search}&outcome=${outcome}`, { redirect: 'manual' }), testEnv, ctx);
+        await waitOnExecutionContext(ctx);
+        return r;
+      };
+      const failed = await play('failed');
+      expect(failed.status).toBe(302);
+      expect(await getAllowance(testEnv, SEED_TENANT, 'sms')).toBe(before);
+      const paid = await play('paid');
+      expect(paid.status).toBe(302);
+      expect(paid.headers.get('location')).toContain('addon=success');
+      expect(await getAllowance(testEnv, SEED_TENANT, 'sms')).toBe(before + 100);
+      // Playing the payment page again sends a new event id but the order is already paid
+      await play('paid');
+      expect(await getAllowance(testEnv, SEED_TENANT, 'sms')).toBe(before + 100);
+      expect((await one('SELECT COUNT(*) AS c FROM platform_invoices WHERE tenant_id = ?', SEED_TENANT)).c).toBe(1);
+    } finally {
+      delete testEnv.BILLING_GATEWAY;
+    }
+  });
+
   it('reports an unconfigured gateway plainly, so the app can fall back to Request top-up', async () => {
     const saved = testEnv.RAZORPAY_KEY_SECRET;
     testEnv.RAZORPAY_KEY_SECRET = '';
