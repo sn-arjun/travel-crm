@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-16T05:00+05:30",
+  "updated": "2026-10-16T05:45+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -126,7 +126,8 @@
         "R208": "merged (Tier 2): append-only contact_consents, consent checked on every marketing send (WhatsApp campaigns had no opt-out check before), contact export (51-table registry with schema completeness test, signed 15-min download), erasure (hard delete + anonymise, invoices kept, R2 files deleted, PII scan test), signed public unsubscribe link + List-Unsubscribe headers, landing cookie notice, contact Privacy section; tenant 0052. Merged line: backend 92/1789, desktop 75/1404, lint 0, landing build + link check OK, e2e contacts + marketing-opt-out + campaigns 53 passed (slot 1). Follow-ups: bulk import/export files in R2 not rewritten on erasure; invoice free-text rewrite is case-sensitive.",
         "R206": "merged (Tier 2): add-on orders (extra users pro rata to the paid year, AI credit pack, SMS/WhatsApp/OTP packs priced unit cost x (1+margin) with a hard floor of cost x 1.2), one-off Stripe Checkout / Razorpay payment links / mock, exactly-once crediting (billing_events + order claim + unique reference), packs scoped to the month paid, Buy more on usage rows, limit dialog and Settings > Billing; master 0021. Merged line: backend 93/1803 (after orchestrator fix: addon_orders added to PRIVACY_NOT_PERSONAL, R208 completeness test saw the master table), desktop 76/1410, lint 0, super-admin tsc 0.",
         "R207": "merged (Tier 2): agency connects own Razorpay/Stripe (secrets sealed, last-4 only), invoice payment links (balance due, invoice currency, replacing a link cancels the old one), sent via Communication Hub templates, per-agency webhook /webhooks/payments/:tenantKey/:gateway (signature with the agency secret over raw body, payment_events claim + payments.reference guard), shared recordInvoicePayment used by manual payments too; tenant 0054. Merged line (identical to the tested branch): backend 94/1823, desktop 79/1421, lint 0; e2e invoices + payments + webhooks-integrations 52 passed (slot 2).",
-        "R306": "merged (Tier 3): recordings copied once to R2 (provider_events claim), provider copy deleted, 5-min signed per-user playback with role rules, consent modes announce/off/on_request, retention job (default 90 days), call AI producer: Whisper 3 credits/min standard, Deepgram Nova-3 premium 25/min, summary 5 credits per 5 min, suggestions only (calls.summarise recipe); Anthropic call removed from ai-extraction; tenant 0053. Merged line (with R206/R207, bundle regenerated): backend 95/1862, desktop 80/1433, lint 0; e2e calls + calls-simulator + invoices + payments 62 passed (slot 1). Follow-ups: transcript FTS index unmaintained (search misses AI transcripts); inbound legacy extract_lead still auto-creates follow-ups."
+        "R306": "merged (Tier 3): recordings copied once to R2 (provider_events claim), provider copy deleted, 5-min signed per-user playback with role rules, consent modes announce/off/on_request, retention job (default 90 days), call AI producer: Whisper 3 credits/min standard, Deepgram Nova-3 premium 25/min, summary 5 credits per 5 min, suggestions only (calls.summarise recipe); Anthropic call removed from ai-extraction; tenant 0053. Merged line (with R206/R207, bundle regenerated): backend 95/1862, desktop 80/1433, lint 0; e2e calls + calls-simulator + invoices + payments 62 passed (slot 1). Follow-ups: transcript FTS index unmaintained (search misses AI transcripts); inbound legacy extract_lead still auto-creates follow-ups.",
+        "R213": "merged (Tier 2): Meta WhatsApp Cloud API provider per agency (text, media, templates; 24h window enforced before send with refund), agency connection (sealed token/app secret, number ownership via tenant_channel_addresses meta_whatsapp), webhook GET handshake + X-Hub-Signature-256 over raw body, tenant by phone_number_id, inbound deduped, statuses once and monotonic, utility/marketing ledger rows, campaigns require {{unsubscribe_url}}; tenant 0055. Merged line: backend 96/1892, desktop 81/1436, lint 0; e2e inbox + whatsapp-campaigns + webhooks-integrations + calls-simulator 60 passed (slot 1). Follow-ups: festival campaign-queue still sends WhatsApp via Twilio; inbound media not downloaded; no template sync from Meta."
       },
       "merged": [
         "R101",
@@ -166,7 +167,8 @@
         "R208",
         "R206",
         "R207",
-        "R306"
+        "R306",
+        "R213"
       ],
       "tier1": "COMPLETE 2026-10-15: R101-R124 merged (incl. orchestrator follow-ups R123, R124); exit test R121 9/9 on the merged line; fresh-clone check passes."
     },
@@ -206,7 +208,8 @@
     "Stale generated .next/types and .next/dev/types in desktop/ and super-admin/ reference deleted routes and break tsc locally after pages are removed; delete those gitignored folders (not a code problem).",
     "Never run npm install/ci inside backend/ or super-admin/: they are root workspaces (R118). Reinstall only at the root.",
     "Root node_modules contains npm workspace links (travelcrm-api, travelcrm-desktop, super-admin, @travelcrm/shared) pointing at the source folders; never delete node_modules recursively through them.",
-    "OpenNext builds inside a junctioned worktree can write partial next/styled-jsx folders into the MAIN desktop/ or super-admin/ node_modules; delete folders there that are not in package-lock.json. Removed desktop/node_modules/{next,styled-jsx} on 2026-10-15."
+    "OpenNext builds inside a junctioned worktree can write partial next/styled-jsx folders into the MAIN desktop/ or super-admin/ node_modules; delete folders there that are not in package-lock.json. Removed desktop/node_modules/{next,styled-jsx} on 2026-10-15.",
+    "2026-10-16: leftover worktree folders R103 R106 R107 R112 R115 R120 R123 R213 R306 under .claude/worktrees could not be deleted (files held open or long paths). Verified 0 links inside; safe to delete by hand after closing editors."
   ],
   "ownerDecisions": {
     "2026-10-14": [
@@ -241,7 +244,8 @@
     "R208: set UNSUB_SECRET (otherwise derived from JWT_SECRET, and rotating JWT_SECRET would break every unsubscribe link already sent). Lawyer review of privacy policy, DPA, erasure scope and consent wording before go-live.",
     "R206: Razorpay webhook events payment_link.paid, payment_link.expired, payment.failed; Stripe events checkout.session.completed, checkout.session.async_payment_succeeded, checkout.session.async_payment_failed, checkout.session.expired. Test-mode purchase of every add-on with the owner test keys. Card fees (~2%) bring the 20% communication margin to ~18%: owner decides margin_pct. Only India has add-on price rows.",
     "R207: CREDENTIALS_KEYS must be set (sealing fails closed). Pilot agency: connect test-mode Razorpay and Stripe, paste the webhook URL shown in Settings > Integrations into each dashboard (Razorpay payment_link.* events, Stripe checkout.session.completed), pay one full and one part-paid invoice.",
-    "R306: DEEPGRAM_API_KEY for premium transcription; Workers AI binding; lawyer consent wording per market; owner decides recording default and Call AI default; 20-call transcription quality test."
+    "R306: DEEPGRAM_API_KEY for premium transcription; Workers AI binding; lawyer consent wording per market; owner decides recording default and Call AI default; 20-call transcription quality test.",
+    "R213: Meta Business verification, WABA + registered number, system-user token (whatsapp_business_messaging + management), app secret, verify token; callback URL <API_PUBLIC_URL>/api/v1/webhooks/inbound/meta/whatsapp subscribed to messages; approved templates named exactly like the CRM templates, marketing ones with {{unsubscribe_url}}; secrets WHATSAPP_META_TOKEN, WHATSAPP_META_PHONE_NUMBER_ID, WHATSAPP_META_APP_SECRET, WHATSAPP_META_VERIFY_TOKEN."
   ],
   "todo": [
     "Leftover folder .claude/worktrees/R114/packages/shared is locked by another program (editor/Dart analyzer); delete by hand later. Not tracked by git.",
