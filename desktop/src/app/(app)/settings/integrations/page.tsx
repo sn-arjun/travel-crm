@@ -13,6 +13,7 @@ import { useApiBaseUrl } from '@/lib/api/use-api-base-url';
 import { PageContainer } from '@/components/layout/page-container';
 import { useApiQuery } from '@/hooks/use-api';
 import { PaymentGateways } from './_payment-gateways';
+import { WhatsAppMeta } from './_whatsapp-meta';
 import {
   integrationsApi,
   type ChannelAddress,
@@ -386,6 +387,7 @@ function IntegrationsSettingsPageContent() {
 
       <ReceivingAddresses />
       <ApiKeys />
+      <WhatsAppMeta />
       <PaymentGateways />
 
       <div className="flex flex-col gap-ds-4">

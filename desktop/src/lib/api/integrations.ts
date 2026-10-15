@@ -54,6 +54,44 @@ export interface SavePaymentGatewayRequest {
   isActive?: boolean;
 }
 
+export type WhatsAppProviderId = 'twilio' | 'meta';
+
+/** The agency's WhatsApp number on Meta's Cloud API. The token and app secret are never returned: only whether they are set. */
+export interface WhatsAppMetaAccount {
+  phoneNumberId: string;
+  wabaId: string | null;
+  displayPhone: string | null;
+  isActive: boolean;
+  tokenConfigured: boolean;
+  tokenLast4: string | null;
+  appSecretConfigured: boolean;
+  lastTestedAt: string | null;
+}
+
+export interface WhatsAppSettings {
+  /** The provider WhatsApp messages go through now. */
+  provider: WhatsAppProviderId;
+  /** False while the default applies (the agency never chose). */
+  providerExplicit: boolean;
+  /** The platform can send on Meta with its own number. */
+  platformConfigured: boolean;
+  platformTokenAvailable: boolean;
+  account: WhatsAppMetaAccount | null;
+  /** Paste into the Meta app's WhatsApp configuration as the callback URL. */
+  webhookUrl: string;
+  /** Paste into the Meta app's WhatsApp configuration as the verify token. */
+  verifyToken: string | null;
+}
+
+export interface SaveWhatsAppMetaRequest {
+  phoneNumberId?: string;
+  wabaId?: string;
+  displayPhone?: string;
+  accessToken?: string;
+  appSecret?: string;
+  isActive?: boolean;
+}
+
 export const integrationsApi = {
   listChannels: () =>
     client.get<ApiResponse<ChannelAddress[]>>(API_ENDPOINTS.integrations.channels),
@@ -81,6 +119,21 @@ export const integrationsApi = {
 
   removePaymentGateway: (gateway: PaymentGatewayId) =>
     client.delete<ApiResponse<{ deleted: boolean }>>(API_ENDPOINTS.integrations.paymentGatewayById(gateway)),
+
+  getWhatsApp: () =>
+    client.get<ApiResponse<WhatsAppSettings>>(API_ENDPOINTS.integrations.whatsapp),
+
+  setWhatsAppProvider: (provider: WhatsAppProviderId) =>
+    client.put<ApiResponse<WhatsAppSettings>>(API_ENDPOINTS.integrations.whatsappProvider, { provider }),
+
+  saveWhatsAppMeta: (data: SaveWhatsAppMetaRequest) =>
+    client.put<ApiResponse<WhatsAppSettings>>(API_ENDPOINTS.integrations.whatsappMeta, data),
+
+  testWhatsAppMeta: () =>
+    client.post<ApiResponse<{ ok: boolean; message: string }>>(API_ENDPOINTS.integrations.whatsappMetaTest),
+
+  removeWhatsAppMeta: () =>
+    client.delete<ApiResponse<{ deleted: boolean }>>(API_ENDPOINTS.integrations.whatsappMeta),
 
   revokeApiKey: (id: string) =>
     client.delete<ApiResponse<{ revoked: boolean }>>(API_ENDPOINTS.integrations.apiKeyById(id)),

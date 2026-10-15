@@ -437,6 +437,10 @@ export const API_ENDPOINTS = {
     paymentGateways: '/integrations/payment-gateways',
     paymentGatewayById: (gateway: string) => `/integrations/payment-gateways/${gateway}`,
     paymentGatewayTest: (gateway: string) => `/integrations/payment-gateways/${gateway}/test`,
+    whatsapp: '/integrations/whatsapp',
+    whatsappProvider: '/integrations/whatsapp/provider',
+    whatsappMeta: '/integrations/whatsapp/meta',
+    whatsappMetaTest: '/integrations/whatsapp/meta/test',
   },
   // Bookmarks & Notes
   bookmarks: {
