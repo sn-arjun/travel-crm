@@ -2,114 +2,72 @@ name: Desktop CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [master]
     paths:
       - 'desktop/**'
       - 'packages/shared-ts/**'
+      - 'package-lock.json'
+      - '.github/workflows/desktop-ci.yml'
   pull_request:
-    branches: [main]
+    branches: [master]
     paths:
       - 'desktop/**'
       - 'packages/shared-ts/**'
+      - 'package-lock.json'
+      - '.github/workflows/desktop-ci.yml'
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 'Build unsigned installers (Windows NSIS, macOS DMG, Linux)'
+        type: boolean
+        default: false
 
 jobs:
-  lint-typecheck:
-    name: Lint & Typecheck
+  check:
+    name: Lint gate, typecheck, tests, build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build shared-ts
-        run: npm run build --prefix packages/shared-ts
-
-      - name: Lint desktop
-        run: npm run lint --prefix desktop
-
-      - name: Typecheck desktop
-        run: npm run typecheck --prefix desktop
-
-  test:
-    name: Unit Tests
-    runs-on: ubuntu-latest
-    needs: lint-typecheck
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build shared-ts
-        run: npm run build --prefix packages/shared-ts
-
-      - name: Run tests
-        run: npm run test --prefix desktop
-
-  build:
-    name: Build Desktop App
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build shared-ts
-        run: npm run build --prefix packages/shared-ts
-
-      - name: Build Next.js
-        run: npm run build --prefix desktop
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm -w @travelcrm/shared run build
+      - name: Lint gate
+        run: node desktop/scripts/lint-gate.mjs
+      - run: npm -w travelcrm-desktop run typecheck
+      - run: npm -w travelcrm-desktop run test
+      - name: Next build
+        run: npm -w travelcrm-desktop run build
         env:
           NODE_ENV: production
 
-  build-electron:
-    name: Build Electron (${{ matrix.os }})
+  package:
+    name: Package (${{ matrix.os }})
+    needs: check
+    if: github.event_name == 'workflow_dispatch' && inputs.package
     runs-on: ${{ matrix.os }}
-    needs: test
-    if: github.ref == 'refs/heads/main'
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build shared-ts
-        run: npm run build --prefix packages/shared-ts
-
-      - name: Build Electron app
-        run: npm run build:desktop --prefix desktop
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm -w @travelcrm/shared run build
+      - name: Build unsigned installer
+        run: npm -w travelcrm-desktop run build:desktop
         env:
           NODE_ENV: production
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
         with:
           name: desktop-${{ matrix.os }}
           path: desktop/release/*

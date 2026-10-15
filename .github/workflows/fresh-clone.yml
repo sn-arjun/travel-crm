@@ -1,0 +1,22 @@
+name: Fresh clone
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  fresh-clone:
+    name: One root npm ci, then every Node check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Run the fresh-clone checks on this checkout
+        run: node scripts/fresh-clone-check.mjs --here

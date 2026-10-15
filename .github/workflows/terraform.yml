@@ -2,11 +2,11 @@ name: Terraform Infrastructure
 
 on:
   push:
-    branches: [main]
+    branches: [master]
     paths:
       - 'terraform/**'
   pull_request:
-    branches: [main]
+    branches: [master]
     paths:
       - 'terraform/**'
 
@@ -68,7 +68,7 @@ jobs:
   apply:
     name: Terraform Apply
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     defaults:
       run:
         working-directory: terraform

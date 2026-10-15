@@ -1,0 +1,54 @@
+name: Landing
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'landing/**'
+      - '.github/workflows/landing.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'landing/**'
+      - '.github/workflows/landing.yml'
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy to Cloudflare Pages after the checks pass'
+        type: boolean
+        default: false
+
+jobs:
+  check:
+    name: Link check and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node landing/scripts/check-links.mjs
+      - name: Assemble site (public/ published at the root)
+        run: node landing/scripts/build.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: landing-dist
+          path: landing/dist
+          retention-days: 7
+
+  deploy:
+    name: Deploy to Cloudflare Pages
+    needs: check
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node landing/scripts/build.mjs
+      - name: wrangler pages deploy
+        run: npx --yes wrangler@3 pages deploy landing/dist --project-name travelcrm-landing --branch master
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
