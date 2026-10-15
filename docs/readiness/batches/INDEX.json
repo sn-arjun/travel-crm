@@ -262,6 +262,17 @@
     "blockedOnOwner": null
   },
   {
+    "id": "R125",
+    "tier": 1,
+    "title": "Go-live blockers found while writing the runbook",
+    "size": "L",
+    "dependsOn": [
+      "R118",
+      "R122"
+    ],
+    "blockedOnOwner": "decision: where the web pages that emails link to are hosted (APP_URL) and the domain name"
+  },
+  {
     "id": "R201",
     "tier": 2,
     "title": "Tax engine: GST, VAT with reverse charge, sales tax or none, stored on every invoice",
