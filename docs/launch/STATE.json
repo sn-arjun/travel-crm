@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-16T01:30+05:30",
+  "updated": "2026-10-16T02:15+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -123,7 +123,8 @@
         "R303": "merged (Tier 3): 7 call events emitted once (provider_events claims), 7 call recipes (client-facing ones suggest-only), timeline entries, incoming-call screen pop + call:status push, analytics on answered_by; merged line: backend 89/1732, desktop 72/1389, lint 0; e2e calls-simulator + calls + assistant-rules 22 passed on the identical batch tree",
         "R209": "merged (Tier 2): TOTP 2FA (WebCrypto, sealed secret, hashed single-use recovery codes, replay-safe step, KV challenge 5 min / 5 attempts + rate limits), admin reset, agency-wide require_2fa with setup-only token, 12-char password policy on change/reset/invite; tenant migration 0051. Merged line: backend 90/1761, desktop 74/1400, lint 0; e2e two-factor + auth-shell + token-refresh + first-login 27 passed (slot 2). Follow-ups: super admin 2FA; KV attempt counter is soft (rate limits back it).",
         "R205": "merged (Tier 2): BillingGateway (Stripe, Razorpay, mock via fetch + WebCrypto), checkout/upgrade/extra users/cancel, signed idempotent ordered webhooks (billing_events), platform invoices PINV-YYYY-n with R201 tax, grace period then read-only (402 on writes, nothing deleted), trial-ending email; master 0020. Merged line: backend 91/1775, desktop 75/1404, lint 0, super-admin tsc 0. Orchestrator review: mock webhook refused when ENVIRONMENT=production. Follow-ups: super-admin tenant page shows billing fields; expired trial cannot log in to reach /billing; AI-credit and communication packs (R206).",
-        "R208": "merged (Tier 2): append-only contact_consents, consent checked on every marketing send (WhatsApp campaigns had no opt-out check before), contact export (51-table registry with schema completeness test, signed 15-min download), erasure (hard delete + anonymise, invoices kept, R2 files deleted, PII scan test), signed public unsubscribe link + List-Unsubscribe headers, landing cookie notice, contact Privacy section; tenant 0052. Merged line: backend 92/1789, desktop 75/1404, lint 0, landing build + link check OK, e2e contacts + marketing-opt-out + campaigns 53 passed (slot 1). Follow-ups: bulk import/export files in R2 not rewritten on erasure; invoice free-text rewrite is case-sensitive."
+        "R208": "merged (Tier 2): append-only contact_consents, consent checked on every marketing send (WhatsApp campaigns had no opt-out check before), contact export (51-table registry with schema completeness test, signed 15-min download), erasure (hard delete + anonymise, invoices kept, R2 files deleted, PII scan test), signed public unsubscribe link + List-Unsubscribe headers, landing cookie notice, contact Privacy section; tenant 0052. Merged line: backend 92/1789, desktop 75/1404, lint 0, landing build + link check OK, e2e contacts + marketing-opt-out + campaigns 53 passed (slot 1). Follow-ups: bulk import/export files in R2 not rewritten on erasure; invoice free-text rewrite is case-sensitive.",
+        "R206": "merged (Tier 2): add-on orders (extra users pro rata to the paid year, AI credit pack, SMS/WhatsApp/OTP packs priced unit cost x (1+margin) with a hard floor of cost x 1.2), one-off Stripe Checkout / Razorpay payment links / mock, exactly-once crediting (billing_events + order claim + unique reference), packs scoped to the month paid, Buy more on usage rows, limit dialog and Settings > Billing; master 0021. Merged line: backend 93/1803 (after orchestrator fix: addon_orders added to PRIVACY_NOT_PERSONAL, R208 completeness test saw the master table), desktop 76/1410, lint 0, super-admin tsc 0."
       },
       "merged": [
         "R101",
@@ -160,7 +161,8 @@
         "R126",
         "R209",
         "R205",
-        "R208"
+        "R208",
+        "R206"
       ],
       "tier1": "COMPLETE 2026-10-15: R101-R124 merged (incl. orchestrator follow-ups R123, R124); exit test R121 9/9 on the merged line; fresh-clone check passes."
     },
@@ -232,7 +234,8 @@
     "R301: set VOIP_CALLING_COUNTRIES (e.g. GB,US,AU,SG); ENVIRONMENT=production must be set on the production Worker or the \"*\" wildcard would be honoured; each agency must have its country set (unset = calling hidden).",
     "R209: existing users with short passwords keep signing in; change Admin@123-style seeds before go-live. Optional per agency: Settings > Security > require two-factor sign-in.",
     "R205: secrets STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET; vars PLATFORM_TAX_COUNTRY/STATE/ID, PLATFORM_GST_RATE (18), PLATFORM_VAT_COUNTRIES/RATE, BILLING_GRACE_DAYS (7). Register webhooks at <API_PUBLIC_URL>/api/v1/billing/webhooks/stripe and /razorpay. NEVER set BILLING_GATEWAY=mock or TEST_MODE on staging or production (the mock secret has a public default). Non-India markets need price rows in the plan catalogue before those agencies can pay (409 PRICE_NOT_CONFIGURED otherwise).",
-    "R208: set UNSUB_SECRET (otherwise derived from JWT_SECRET, and rotating JWT_SECRET would break every unsubscribe link already sent). Lawyer review of privacy policy, DPA, erasure scope and consent wording before go-live."
+    "R208: set UNSUB_SECRET (otherwise derived from JWT_SECRET, and rotating JWT_SECRET would break every unsubscribe link already sent). Lawyer review of privacy policy, DPA, erasure scope and consent wording before go-live.",
+    "R206: Razorpay webhook events payment_link.paid, payment_link.expired, payment.failed; Stripe events checkout.session.completed, checkout.session.async_payment_succeeded, checkout.session.async_payment_failed, checkout.session.expired. Test-mode purchase of every add-on with the owner test keys. Card fees (~2%) bring the 20% communication margin to ~18%: owner decides margin_pct. Only India has add-on price rows."
   ],
   "todo": [
     "Leftover folder .claude/worktrees/R114/packages/shared is locked by another program (editor/Dart analyzer); delete by hand later. Not tracked by git.",
