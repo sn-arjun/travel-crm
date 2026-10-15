@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-15T12:30+05:30",
+  "updated": "2026-10-15T14:20+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -115,7 +115,7 @@
         "R118": "merged: single root workspace install (nested lockfiles removed), CI on master, fresh-clone check, OpenNext build, terraform landing + workers domains + backup/update buckets (validate passed). Main checkout reinstalled from the root lockfile. Merged-line fresh-clone check PASSED: npm ci once; backend tsc + vitest 84/1609; desktop tsc + vitest 67/1333 + lint; super-admin tsc, lint, next build, OpenNext build (.open-next/worker.js); landing link check.",
         "R122": "merged: README, CONTRIBUTING, env examples and backend/.dev.vars.example rewritten from code; fresh-clone check passed (13/13)",
         "R202": "merged (Tier 2): locale core; backend 85/1629; desktop 68/1353 (exit 0 after a mock fix); lint 0; master 0019_exchange_rates, tenant 0048_user_locale_timezone",
-        "R125": "new: go-live blockers from the docs pass; web host for emailed links blocked on owner decision",
+        "R125": "merged: terraform queues + Oracle split into terraform/oracle + app Workers domain; gen-wrangler first-deploy path; safe push-secrets/sync-config with dry-run; update feed baked into the installer; weekly backup workflow; domain placeholder YOUR-DOMAIN.example in one place per toolchain; agency web build (desktop/.open-next/worker.js) with /q/<token>, /download, /quick-start, reset and invite pages (web e2e 9/9); branch fresh-clone 21/21. Merged-line gate running.",
         "R301": "merged (Tier 3): VoipProvider reselling contract, mock provider, country gating (VOIP_CALLING_COUNTRIES, default GB,US,AU,SG; unset country = not offered); backend 86/1678; local stacks pass VOIP_CALLING_COUNTRIES=* (e229395). Merged line: desktop 69/1357, lint 0, calls + voip-settings e2e green after the mock failing-area-code fix (95ab598).",
         "R302": "merged (Tier 3): provider callbacks exactly once (tenant 0049 provider_events), inbound Dial action -> voicemail and missed once, outbound placeCall with agent leg; backend 87/1692; calls e2e 16/16"
       },
@@ -147,7 +147,8 @@
         "R122",
         "R202",
         "R301",
-        "R302"
+        "R302",
+        "R125"
       ],
       "tier1": "COMPLETE 2026-10-15: R101-R124 merged (incl. orchestrator follow-ups R123, R124); exit test R121 9/9 on the merged line; fresh-clone check passes."
     },
@@ -186,7 +187,8 @@
     ".gitattributes forces LF for backend/drizzle/**/*.sql: the D1 migration reader splits CRLF and LF files differently; after adding a tenant migration run node backend/scripts/bundle-tenant-migrations.mjs.",
     "Stale generated .next/types and .next/dev/types in desktop/ and super-admin/ reference deleted routes and break tsc locally after pages are removed; delete those gitignored folders (not a code problem).",
     "Never run npm install/ci inside backend/ or super-admin/: they are root workspaces (R118). Reinstall only at the root.",
-    "Root node_modules contains npm workspace links (travelcrm-api, travelcrm-desktop, super-admin, @travelcrm/shared) pointing at the source folders; never delete node_modules recursively through them."
+    "Root node_modules contains npm workspace links (travelcrm-api, travelcrm-desktop, super-admin, @travelcrm/shared) pointing at the source folders; never delete node_modules recursively through them.",
+    "OpenNext builds inside a junctioned worktree can write partial next/styled-jsx folders into the MAIN desktop/ or super-admin/ node_modules; delete folders there that are not in package-lock.json. Removed desktop/node_modules/{next,styled-jsx} on 2026-10-15."
   ],
   "ownerDecisions": {
     "2026-10-14": [
@@ -222,7 +224,8 @@
     "Refresh docs/FEATURES.md and features.json after Tier 1 (chatbot routes are now public; many statuses changed).",
     "Follow-up batch needed (R124): per-recipient idempotency for scheduled reminders, so a retried daily job never re-sends to recipients already handled (found by R117).",
     "W6: packages/driver_app/integration_test/demo_flow_test.dart (driver recording for the films) must call chooseAgency(tester) from integration_test/helpers/agency_login.dart before entering the phone number; remove its TENANT_ID comment.",
-    "Leftover untracked worktree folders under .claude/worktrees (R106, R107, R112, R114, R115, R123, ...) are locked by an editor or have over-long Flutter paths; delete by hand when the editor is closed (long paths: robocopy an empty folder over them with /MIR)."
+    "Leftover untracked worktree folders under .claude/worktrees (R106, R107, R112, R114, R115, R123, ...) are locked by an editor or have over-long Flutter paths; delete by hand when the editor is closed (long paths: robocopy an empty folder over them with /MIR).",
+    "Update docs/GO-LIVE.md with the R125 changes (phases 0, 2, 3, 4, 7, 10 and a new agency-web-app phase); list is in the R125 agent report summarized in this STATE entry."
   ],
   "e2eBaseline": {
     "date": "2026-10-15",
