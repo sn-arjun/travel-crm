@@ -103,6 +103,7 @@ export const PRIVACY_NOT_PERSONAL: Record<string, string> = {
   ai_usage_log: 'token and cost counters; call_log_id only joins to a call log',
   contact_segments: 'segment definitions (filters), no contact rows',
   driver_otp_log: 'driver (staff) login codes',
+  quotation_links: 'master table; erasure sets is_active = 0 for the contact itineraries (erase-contact.ts step 2)',
   import_errors: 'handled by the import-row scrub in erase-contact.ts (row_data text match)',
 };
 
