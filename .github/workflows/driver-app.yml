@@ -36,6 +36,12 @@ jobs:
       - name: Code generation (shared)
         run: dart run build_runner build --delete-conflicting-outputs
         working-directory: packages/shared
+      - name: Analyze (shared)
+        run: flutter analyze
+        working-directory: packages/shared
+      - name: Test (shared)
+        run: flutter test
+        working-directory: packages/shared
       - run: flutter pub get
         working-directory: packages/driver_app
       - run: flutter analyze

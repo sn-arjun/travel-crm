@@ -57,6 +57,17 @@ const terraformSteps = hasTerraform
     ]
   : [];
 
+// Flutter is optional on a developer machine (the driver-app workflow runs these in CI): the shared-package steps run when `flutter --version` works.
+const hasFlutter = spawnSync('flutter', ['--version'], { stdio: 'ignore', shell: process.platform === 'win32' }).status === 0;
+const flutterSteps = hasFlutter
+  ? [
+      ['flutter pub get (shared)', 'flutter', ['pub', 'get'], 'packages/shared'],
+      ['build_runner (shared)', 'dart', ['run', 'build_runner', 'build', '--delete-conflicting-outputs'], 'packages/shared'],
+      ['flutter analyze (shared)', 'flutter', ['analyze'], 'packages/shared'],
+      ['flutter test (shared)', 'flutter', ['test'], 'packages/shared'],
+    ]
+  : [];
+
 /** [label, command, args, cwd relative to the clone] */
 const steps = [
   ['npm ci (root, once)', npm, ['ci', '--no-audit', '--no-fund'], '.'],
@@ -76,6 +87,7 @@ const steps = [
   ['gen-wrangler self-test', node, ['scripts/gen-wrangler.selftest.mjs'], 'backend'],
   ['deploy scripts self-test', node, ['scripts/shell-scripts.selftest.mjs'], '.'],
   ...terraformSteps,
+  ...flutterSteps,
 ];
 
 const results = [];
@@ -87,7 +99,7 @@ for (const [label, cmd, args, cwd] of steps) {
   }
   console.log(`\n=== ${label} ===`);
   const t0 = Date.now();
-  const r = spawnSync(cmd, args, { cwd: path.join(dir, cwd), stdio: 'inherit', env, shell: process.platform === 'win32' && cmd.endsWith('.cmd') });
+  const r = spawnSync(cmd, args, { cwd: path.join(dir, cwd), stdio: 'inherit', env, shell: process.platform === 'win32' && (cmd.endsWith('.cmd') || cmd === 'flutter' || cmd === 'dart') });
   const secs = Math.round((Date.now() - t0) / 1000);
   let ok = r.status === 0;
   if (ok && label.startsWith('desktop web OpenNext') && !fs.existsSync(path.join(dir, 'desktop', '.open-next', 'worker.js'))) {
