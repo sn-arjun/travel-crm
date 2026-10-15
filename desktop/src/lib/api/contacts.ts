@@ -24,6 +24,8 @@ export interface CreateContactRequest {
   anniversary?: string;
   preferredLanguage?: string;
   customFields?: Record<string, unknown>;
+  /** Consent the contact gave when the record was created (recorded in the consent history). */
+  consent?: { marketing?: Array<'email' | 'whatsapp' | 'sms' | 'call' | 'any'>; source?: 'form' | 'manual' | 'chatbot'; evidence?: Record<string, unknown> };
 }
 
 export interface UpdateContactRequest {
@@ -190,6 +192,32 @@ export interface CreateCustomFieldRequest {
   isRequired?: boolean;
 }
 
+export interface ConsentRecord {
+  id: string;
+  channel: 'email' | 'whatsapp' | 'sms' | 'call' | 'any';
+  purpose: 'marketing' | 'service' | 'recording';
+  status: 'granted' | 'withdrawn';
+  source: string;
+  capturedAt: string;
+  capturedByName?: string | null;
+}
+
+export interface PrivacyExportResult {
+  key: string;
+  downloadPath: string;
+  expiresAt: string;
+  summary: Record<string, number>;
+  fileCount: number;
+}
+
+export interface EraseResult {
+  alreadyErased: boolean;
+  anonymisedAs: string;
+  filesDeleted: number;
+}
+
+export const ERASE_CONFIRMATION_PHRASE = 'ERASE CONTACT';
+
 export const contactsApi = {
   list: (params?: {
     page?: number;
@@ -228,6 +256,22 @@ export const contactsApi = {
       return { data: all.data.slice(0, 20), pagination: { ...all.pagination, total: all.data.length } };
     },
   },
+
+  /** Consent history, newest first (privacy section of the contact page). */
+  getConsents: (id: string) =>
+    client.get<ApiResponse<{ history: ConsentRecord[]; current: Record<string, string> }>>(`/contacts/${id}/consents`),
+
+  /** Admin: builds the JSON export and returns a signed link that works for 15 minutes. */
+  privacyExport: (id: string) =>
+    client.post<ApiResponse<PrivacyExportResult>>(`/contacts/${id}/privacy-export`),
+
+  /** Downloads the file behind a signed export link (needs the signed-in session, so it goes through the API client). */
+  downloadExport: (downloadPath: string) =>
+    client.get<Blob>(downloadPath.replace(/^\/api\/v1/, ''), { responseType: 'blob' }),
+
+  /** Admin: erases the contact's personal data. `confirmation` must be ERASE_CONFIRMATION_PHRASE. */
+  erase: (id: string, confirmation: string) =>
+    client.post<ApiResponse<EraseResult>>(`/contacts/${id}/erase`, { confirmation }),
 
   getTimeline: (id: string) =>
     client.get<ApiResponse<ContactTimeline[]>>(API_ENDPOINTS.contacts.timeline(id)),

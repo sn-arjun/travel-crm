@@ -36,6 +36,7 @@ import { formatCurrency } from '@/lib/utils';
 import {
   formatFileSize, formatRevenue, humanize, invoiceTone, lastInteractionAt, leadTone,
 } from '../_lib/contact-utils';
+import { PrivacySection } from '../_lib/privacy-section';
 import { RelatedTable, ViewAllLink } from '../_lib/related-table';
 
 function dateOrDash(value: string | Date | null | undefined): string {
@@ -275,6 +276,8 @@ export default function ContactDetailPage() {
           </dl>
         </SectionCard>
       )}
+
+      <PrivacySection contactId={contactId} contactName={contact.name} />
 
       <SectionCard title="Record">
         <dl className="grid gap-ds-4 sm:grid-cols-3">
