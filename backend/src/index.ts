@@ -39,6 +39,7 @@ import communicationRoutes from './routes/communications';
 import messageTemplateRoutes from './routes/templates';
 import campaignRoutes from './routes/campaigns';
 import webhookRoutes from './routes/webhooks';
+import billingRoutes, { billingPublicRoutes } from './routes/billing';
 import leadWebhookRoutes from './routes/webhook';
 import inboundRoutes from './routes/inbound';
 import integrationRoutes from './routes/integrations';
@@ -198,6 +199,10 @@ app.route('/api/public/chatbot', publicChatbotRoutes);
 app.route('/api/v1/public/enquiries', publicEnquiryRoutes);
 app.route('/api/public/enquiries', publicEnquiryRoutes);
 
+// Subscription billing: gateway webhooks (signature is the credential) and the local mock checkout
+app.route('/api/v1/billing', billingPublicRoutes);
+app.route('/api/billing', billingPublicRoutes);
+
 app.route('/api/v1/webhooks/inbound', inboundRoutes);
 app.route('/api/webhooks/inbound', inboundRoutes);
 app.route('/api/v1/webhooks', webhookRoutes);
@@ -266,6 +271,7 @@ for (const prefix of ['/api/v1', '/api']) {
 
 const routeMounts: Array<[string, typeof authRoutes]> = [
   ['auth', authRoutes],
+  ['billing', billingRoutes],
   ['users', userRoutes],
   ['activity-logs', activityLogRoutes],
   ['settings', settingsRoutes],

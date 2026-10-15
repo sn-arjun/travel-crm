@@ -53,7 +53,21 @@ export const tenantMiddleware: MiddlewareHandler<AppContext> = async (c, next) =
     return error(c, 'Tenant account is suspended', 403);
   }
   if (tenantInfo.status === 'expired') {
-    return error(c, 'Tenant subscription has expired', 403);
+    // R205: an agency whose paid subscription lapsed (failed renewal past the grace period, or ended) is read-only:
+    // it can still sign in, read everything and reach billing to pay, but cannot change data. Nothing is deleted.
+    // An expired trial has no paid plan to fall back on and stays blocked except for billing and sign-out.
+    const path = c.req.path.replace(/\/+$/, '').replace(/^\/api(\/v1)?/, '');
+    const method = c.req.method.toUpperCase();
+    const alwaysAllowed =
+      path === '/billing' || path.startsWith('/billing/') || path === '/auth/logout' || (path === '/users/me' && method === 'GET');
+    if (!alwaysAllowed) {
+      const row = await c.env.MASTER_DB.prepare('SELECT plan FROM tenants WHERE id = ?').bind(tenantId).first<{ plan: string | null }>();
+      if (!row?.plan || row.plan === 'trial') return error(c, 'Tenant subscription has expired', 403);
+      if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+        const message = 'Your subscription has expired and the workspace is read-only. Pay under Settings > Billing to continue.';
+        return c.json({ success: false, code: 'SUBSCRIPTION_EXPIRED', message, error: { code: 'SUBSCRIPTION_EXPIRED', message } }, 402);
+      }
+    }
   }
   if (tenantInfo.status === 'cancelled') {
     return error(c, 'Tenant account has been cancelled', 403);

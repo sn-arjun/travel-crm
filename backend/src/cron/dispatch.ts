@@ -25,6 +25,7 @@ import { log } from '../utils/logger';
 import { resetUsageCaps } from '../middleware/usage-cap';
 import { expireTrials } from '../services/plans/trial';
 import { refreshExchangeRates } from '../services/exchange-rate';
+import { runBillingDaily } from '../services/billing/subscriptions';
 import { checkFollowUpReminders } from '../services/follow-up-reminders';
 import { runScheduledAutomationsForTenant } from '../services/automation/schedule';
 import { processCampaignScheduler } from './campaign-scheduler';
@@ -240,6 +241,13 @@ export async function runPlatformDailyJobs(env: Env, now: Date): Promise<{ daily
   const dailyCapsReset = await resetUsageCaps(env.MASTER_DB, 'daily', now);
   const monthlyCapsReset = await resetUsageCaps(env.MASTER_DB, 'monthly', now);
   await checkTrialExpiry(env, now);
+  // Subscription billing (R205): failed renewals past the grace period turn read-only, ended subscriptions expire, trial-ending mail.
+  try {
+    await runBillingDaily(env, now);
+  } catch (err) {
+    log('error', 'cron.billing_daily_failed', { error: err instanceof Error ? err.message : String(err) });
+    reportError(env, err, { source: 'scheduled' });
+  }
   // Daily exchange rates (R202); never throws, the last stored rates stay in use when the fetch fails.
   await refreshExchangeRates(env, now);
   return { dailyCapsReset, monthlyCapsReset };

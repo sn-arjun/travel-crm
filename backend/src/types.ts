@@ -89,6 +89,27 @@ export interface Env {
   DAILY_JOB_HOUR?: string;
   APP_VERSION?: string;
 
+  // Subscription billing (R205). Secrets: none of these have a default; a gateway with a missing secret refuses to work.
+  /** 'mock' forces the in-process mock gateway (never in production). */
+  BILLING_GATEWAY?: string;
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  RAZORPAY_KEY_ID?: string;
+  RAZORPAY_KEY_SECRET?: string;
+  RAZORPAY_WEBHOOK_SECRET?: string;
+  /** Signs mock-gateway events; falls back to a fixed local value when the mock gateway is allowed. */
+  BILLING_MOCK_SECRET?: string;
+  /** Platform tax on subscription invoices: where the platform is registered, its GST state / tax id, and the GST rate (default 18). */
+  PLATFORM_TAX_COUNTRY?: string;
+  PLATFORM_TAX_STATE?: string;
+  PLATFORM_TAX_ID?: string;
+  PLATFORM_GST_RATE?: string;
+  /** Optional VAT on subscriptions for these buyer countries (comma list) at PLATFORM_VAT_RATE percent. */
+  PLATFORM_VAT_COUNTRIES?: string;
+  PLATFORM_VAT_RATE?: string;
+  /** Days a failed renewal stays in grace before the agency turns read-only (default 7). */
+  BILLING_GRACE_DAYS?: string;
+
   // Workers Rate Limiting bindings (generated wrangler config; absent in tests and plain wrangler dev)
   API_RATE_LIMITER?: { limit(options: { key: string }): Promise<{ success: boolean }> };
   UPLOAD_RATE_LIMITER?: { limit(options: { key: string }): Promise<{ success: boolean }> };

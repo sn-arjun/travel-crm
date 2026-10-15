@@ -6,7 +6,10 @@ export type TemplateName =
   | 'two_factor_enabled'
   | 'two_factor_disabled'
   | 'platform_enquiry'
-  | 'usage_alert';
+  | 'usage_alert'
+  | 'payment_receipt'
+  | 'payment_failed'
+  | 'trial_ending';
 
 export interface TemplateData {
   appUrl: string;
@@ -136,6 +139,54 @@ ${button(url, 'Reset password')}
         .join('');
       const html = layout(subject, `<p>A new enquiry arrived.</p><table>${rows}</table>`);
       const text = 'A new enquiry arrived.\n\n' + keys.map((k) => `${k}: ${data[k]}`).join('\n') + '\n';
+      return { subject, html, text };
+    }
+    case 'payment_receipt': {
+      const agency = str(data, 'agencyName', 'your agency');
+      const number = str(data, 'invoiceNumber');
+      const amount = str(data, 'amount');
+      const paidUntil = str(data, 'paidUntil');
+      const url = str(data, 'billingUrl', `${data.appUrl}/settings/billing`);
+      const subject = `Payment received: invoice ${number}`;
+      const until = paidUntil ? ` Your subscription is paid until ${esc(paidUntil)}.` : '';
+      const html = layout(
+        subject,
+        `<p>Thank you. We received ${esc(amount)} for ${esc(agency)} (invoice <strong>${esc(number)}</strong>).${until}</p>${button(url, 'View invoices')}`
+      );
+      const text = `Thank you. We received ${amount} for ${agency} (invoice ${number}).${paidUntil ? ` Paid until ${paidUntil}.` : ''}
+
+Invoices: ${url}
+`;
+      return { subject, html, text };
+    }
+    case 'payment_failed': {
+      const agency = str(data, 'agencyName', 'your agency');
+      const days = str(data, 'graceDays', '7');
+      const ends = str(data, 'graceEnds');
+      const url = str(data, 'billingUrl', `${data.appUrl}/settings/billing`);
+      const subject = 'We could not collect your TravelCRM Pro payment';
+      const html = layout(
+        subject,
+        `<p>The renewal payment for <strong>${esc(agency)}</strong> did not go through. Everything keeps working for ${esc(days)} days${ends ? ` (until ${esc(ends)})` : ''}. After that the workspace becomes read-only until the payment is made. No data is deleted.</p>${button(url, 'Update payment')}`
+      );
+      const text = `The renewal payment for ${agency} did not go through. Everything keeps working for ${days} days${ends ? ` (until ${ends})` : ''}. After that the workspace becomes read-only until the payment is made. No data is deleted.
+
+Pay now: ${url}
+`;
+      return { subject, html, text };
+    }
+    case 'trial_ending': {
+      const agency = str(data, 'agencyName', 'your agency');
+      const left = str(data, 'daysLeft', '3');
+      const ends = str(data, 'endsOn');
+      const url = str(data, 'billingUrl', `${data.appUrl}/settings/billing`);
+      const subject = `Your TravelCRM Pro trial ends in ${left} day${left === '1' ? '' : 's'}`;
+      const html = layout(
+        subject,
+        `<p>The free trial for <strong>${esc(agency)}</strong> ends${ends ? ` on ${esc(ends)}` : ''}. Choose a plan to keep working without interruption; your data stays safe.</p>${button(url, 'Choose a plan')}`
+      );
+      const text = `The free trial for ${agency} ends${ends ? ` on ${ends}` : ''}. Choose a plan to keep working: ${url}
+`;
       return { subject, html, text };
     }
     case 'usage_alert': {

@@ -9,6 +9,8 @@
  * Seat limit = users included in the plan's price + extra-user add-ons (which do not expire).
  */
 
+import { normalizeCountry } from '../tax-calculator';
+
 export interface CatalogueEnv {
   MASTER_DB: D1Database;
   CACHE?: KVNamespace;
@@ -26,6 +28,21 @@ export type AllowanceKey = (typeof ALLOWANCE_KEYS)[number];
 
 export const DEFAULT_MARKET = 'IN';
 export const CATALOGUE_CACHE_TTL_SECONDS = 300;
+
+const GULF_COUNTRIES = new Set(['AE', 'SA', 'QA', 'OM', 'KW', 'BH']);
+const MY_TH_COUNTRIES = new Set(['MY', 'TH']);
+const LK_NP_BD_COUNTRIES = new Set(['LK', 'NP', 'BD', 'BT', 'MV']);
+
+/** The catalogue market (plan_prices.market) an agency's country is priced in; no country means the default (IN). */
+export function marketForCountry(country: string | null | undefined): string {
+  const code = normalizeCountry(country);
+  if (!code || code === 'IN') return DEFAULT_MARKET;
+  if (GULF_COUNTRIES.has(code)) return 'GULF';
+  if (code === 'SG') return 'SG';
+  if (MY_TH_COUNTRIES.has(code)) return 'MY_TH';
+  if (LK_NP_BD_COUNTRIES.has(code)) return 'LK_NP_BD';
+  return 'WEST';
+}
 
 export interface PlanPrice {
   id: string;
@@ -292,13 +309,13 @@ export async function getAllowance(
 }
 
 /** Users the agency may have: included users in its plan price + extra-user add-ons. */
-export async function seatLimit(ref: MasterRef, tenantId: string, market: string = DEFAULT_MARKET): Promise<number> {
+export async function seatLimit(ref: MasterRef, tenantId: string, marketOverride?: string): Promise<number> {
   const env = asCatalogueEnv(ref);
   const [catalogue, tenant] = await Promise.all([
     getCatalogue(env),
-    env.MASTER_DB.prepare('SELECT plan, max_users FROM tenants WHERE id = ?').bind(tenantId).first<{ plan: string | null; max_users: number | null }>(),
+    env.MASTER_DB.prepare('SELECT plan, max_users, country FROM tenants WHERE id = ?').bind(tenantId).first<{ plan: string | null; max_users: number | null; country: string | null }>(),
   ]);
-  const price = activePriceFrom(catalogue, tenant?.plan || 'trial', market);
+  const price = activePriceFrom(catalogue, tenant?.plan || 'trial', marketOverride ?? marketForCountry(tenant?.country));
   const included = price?.includedUsers ?? tenant?.max_users ?? 1;
   const extra = await env.MASTER_DB
     .prepare(

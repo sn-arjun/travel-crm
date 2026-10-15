@@ -41,6 +41,13 @@ export const subscriptions = sqliteTable('subscriptions', {
   status: text('status').notNull().default('active'), // active, past_due, cancelled
   paymentGateway: text('payment_gateway'), // razorpay, stripe
   gatewaySubscriptionId: text('gateway_subscription_id'),
+  currentPeriodEnd: text('current_period_end'),
+  pastDueSince: text('past_due_since'), // R205: start of the grace period after a failed renewal
+  lastEventAt: text('last_event_at'), // R205: newest gateway event applied (older events do not change state)
+  extraUsers: integer('extra_users').notNull().default(0),
+  quoteSubtotal: real('quote_subtotal'),
+  quoteTaxLines: text('quote_tax_lines'), // JSON
+  cancelAtPeriodEnd: integer('cancel_at_period_end').notNull().default(0),
   createdAt: text('created_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
   updatedAt: text('updated_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
 }, (table) => [
@@ -474,3 +481,53 @@ export const exchangeRates = sqliteTable('exchange_rates', {
   primaryKey({ columns: [table.base, table.quote, table.asOf] }),
   index('exchange_rates_pair_idx').on(table.base, table.quote, table.asOf),
 ]);
+
+// --- Billing (R205, migration 0020) ---
+export const billingCustomers = sqliteTable('billing_customers', {
+  id: text('id').primaryKey(), // UUIDv7
+  tenantId: text('tenant_id').notNull(),
+  gateway: text('gateway').notNull(), // razorpay, stripe, mock
+  customerId: text('customer_id').notNull(),
+  createdAt: text('created_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+}, (table) => [
+  uniqueIndex('billing_customers_tenant_gateway_idx').on(table.tenantId, table.gateway),
+  index('billing_customers_customer_idx').on(table.gateway, table.customerId),
+]);
+
+export const billingEvents = sqliteTable('billing_events', {
+  id: text('id').primaryKey(), // UUIDv7
+  gateway: text('gateway').notNull(),
+  eventId: text('event_id').notNull(),
+  type: text('type').notNull(),
+  payloadHash: text('payload_hash').notNull(),
+  tenantId: text('tenant_id'),
+  outcome: text('outcome'),
+  receivedAt: text('received_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+  processedAt: text('processed_at'),
+}, (table) => [
+  uniqueIndex('billing_events_gateway_event_idx').on(table.gateway, table.eventId),
+]);
+
+export const platformInvoices = sqliteTable('platform_invoices', {
+  id: text('id').primaryKey(), // UUIDv7
+  number: text('number').notNull(),
+  tenantId: text('tenant_id').notNull(),
+  subscriptionId: text('subscription_id'),
+  period: text('period'),
+  currency: text('currency').notNull(),
+  subtotal: real('subtotal').notNull(),
+  taxLines: text('tax_lines'), // JSON
+  total: real('total').notNull(),
+  status: text('status').notNull().default('paid'),
+  gateway: text('gateway'),
+  gatewayRef: text('gateway_ref'),
+  issuedAt: text('issued_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+}, (table) => [
+  uniqueIndex('platform_invoices_number_idx').on(table.number),
+  index('platform_invoices_tenant_idx').on(table.tenantId, table.issuedAt),
+]);
+
+export const billingCounters = sqliteTable('billing_counters', {
+  key: text('key').primaryKey(),
+  value: integer('value').notNull().default(0),
+});
