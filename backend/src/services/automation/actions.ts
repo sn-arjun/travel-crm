@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { generateId } from '../../utils/uuid';
 import { findOrCreateContact } from '../domain/contacts';
 import { createLead } from '../domain/leads';
+import { markTimelineHasRecording } from '../voip/recordings';
 import type { ActionContext, ActionDefinition, ActionResult, ApiResult } from './types';
 
 function must(result: ApiResult, what: string): ApiResult {
@@ -617,6 +618,10 @@ const logCallActivity: ActionDefinition = {
         .run();
       entities.push({ type: 'contact', id: p.contactId });
     }
+    // The recording callback can land between reading the call and writing this entry; if the audio is stored by now, say so.
+    const stored = await ctx.db.prepare('SELECT recording_r2_key FROM call_logs WHERE id = ?').bind(p.callId).first<{ recording_r2_key: string | null }>();
+    if (stored?.recording_r2_key) await markTimelineHasRecording(ctx.db, p.callId);
+
     return { entities, undo: created, summary: text };
   },
   async undo(ctx, u) {

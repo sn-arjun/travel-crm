@@ -179,7 +179,7 @@ async function releaseStore(db: D1Database, claimKey: string): Promise<void> {
 }
 
 /** Flip has_recording on the call's timeline entries (lead activity and contact log) once the recording is stored. */
-async function markTimelineHasRecording(db: D1Database, callId: string): Promise<void> {
+export async function markTimelineHasRecording(db: D1Database, callId: string): Promise<void> {
   try {
     await db
       .prepare(`UPDATE lead_activities SET metadata = json_set(metadata, '$.has_recording', json('true')) WHERE type = 'call' AND json_valid(metadata) AND json_extract(metadata, '$.call_id') = ?`)

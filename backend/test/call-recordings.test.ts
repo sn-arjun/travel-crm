@@ -10,6 +10,7 @@ import { getCreditBalance } from '../src/services/ai-credits';
 import { CREDIT_WEIGHTS } from '../src/services/ai-pricing';
 import { runTenantJobSet } from '../src/cron/dispatch';
 import { simulateVoipScenario } from '../src/services/voip/simulator';
+import { emitEvent } from '../src/services/automation/events';
 
 // R306: recordings in our own storage with a consent announcement and retention; transcription and a call summary through
 // the metered AI router. Everything runs on the mock provider, local R2 and a stand-in Workers AI binding: no real provider,
@@ -268,6 +269,22 @@ describe('storing the recording (calls.store_recording)', () => {
     await recordingReady(sid, 'RE0000r306tline1', 125);
     const entry = await one(`SELECT metadata FROM lead_activities WHERE lead_id = ? AND type = 'call'`, lead);
     expect(JSON.parse(entry.metadata)).toMatchObject({ call_id: id, has_recording: true, duration_seconds: 125 });
+  });
+
+  it('a call that ends after its recording is already stored gets its timeline entry with the Play button too', async () => {
+    const contact = ((await (await call('POST', '/contacts', admin, { name: 'R306 Late End', phone: '9000030631', type: 'customer' })).json()) as any).data.id;
+    const lead = ((await (await call('POST', '/leads', admin, { contactId: contact, title: 'R306 late end trip', destinations: ['Goa'], travelDate: FUTURE, tripType: 'family', source: 'website', assignedTo: ADMIN_ID })).json()) as any).data.id;
+    const { id, sid } = await insertCall({ contactId: contact, leadId: lead });
+    addMockRecording('RE0000r306lateend');
+    await recordingReady(sid, 'RE0000r306lateend', 125);
+    await emitEvent(envNow(), TENANT_ID, baseEnv.MASTER_DB, {
+      type: 'call.ended',
+      entityType: 'call',
+      entityId: id,
+      payload: { callId: id, direction: 'inbound', result: 'completed', durationSeconds: 125, number: '+919000030631', contactId: contact, leadId: lead, agentId: ADMIN_ID },
+    });
+    const entry = await one(`SELECT metadata FROM lead_activities WHERE lead_id = ? AND type = 'call'`, lead);
+    expect(JSON.parse(entry.metadata)).toMatchObject({ call_id: id, has_recording: true });
   });
 
   it('a repeated callback, or the same recording again, does not copy or delete twice', async () => {

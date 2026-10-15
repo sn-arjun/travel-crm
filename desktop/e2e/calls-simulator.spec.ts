@@ -9,6 +9,7 @@ import { api, seedContact, seedLead } from './helpers/api-seed';
  *  - an inbound call rings: the routed agent's screen shows the pop with the seeded contact
  *  - an inbound call is missed: the call-back task appears
  *  - an inbound call is answered for 45 s on a new lead: the lead moves to Contacted and the call is on its timeline
+ *  - a recorded call: the recording is copied into our own storage, plays from the call page and from the timeline
  */
 
 const AGENCY_NUMBER = '+918047184404';
@@ -36,11 +37,11 @@ async function ensureInboundLine() {
   await api('POST', '/integrations/channels', { channel: 'voice', address: AGENCY_NUMBER, provider: 'twilio', label: 'Simulator line' });
 }
 
-async function simulate(scenario: string, from: string, durationSeconds?: number) {
+async function simulate(scenario: string, from: string, durationSeconds?: number, withRecording = false) {
   const res = await fetch(`${API_URL}/test/voip/simulate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ scenario, to: AGENCY_NUMBER, from, durationSeconds, tenantId: TENANT_ID }),
+    body: JSON.stringify({ scenario, to: AGENCY_NUMBER, from, durationSeconds, tenantId: TENANT_ID, withRecording }),
   });
   const json = (await res.json()) as any;
   expect(res.status, JSON.stringify(json)).toBe(200);
@@ -124,5 +125,40 @@ test.describe('Call simulator', () => {
     await page.goto(`/contacts/${contact.id}`);
     await waitForLoad(page);
     await expect(page.getByText('Inbound call, 45 s').first()).toBeVisible({ timeout: 15_000 });
+  });
+
+  test('a recorded call is stored in our own storage and plays from the call page and the lead timeline', async ({ page }) => {
+    const phone = uniqueNumber();
+    const contact = await seedContact({ name: `Recorded Caller ${Date.now()}`, phone });
+    const lead = await seedLead(contact.id, { title: `Recorded Lead ${Date.now()}`, assignedTo: adminId });
+
+    const { callSid } = await simulate('inbound_answered', phone, 45, true);
+
+    // The recording moved from the provider into our storage: playable, with a retention date
+    let callId = '';
+    await expect
+      .poll(async () => {
+        const res = await api('GET', `/calls?search=${encodeURIComponent(phone)}&limit=10`);
+        const row = (res.data ?? []).find((c: { providerCallId?: string }) => c.providerCallId === callSid);
+        callId = row?.id ?? '';
+        return row?.hasRecording === true && row?.recordingState === 'stored' && !!row?.recordingExpiresAt;
+      }, { timeout: 20_000 })
+      .toBe(true);
+
+    // The call page plays it through the signed link
+    await page.goto(`/communication/calls/${callId}`);
+    await waitForLoad(page);
+    const player = page.getByTestId('call-recording-player');
+    await expect(player).toBeVisible({ timeout: 15_000 });
+    const audio = page.waitForResponse((r) => r.url().includes('/files/') && r.url().includes('recordings') && r.url().includes('sig='), { timeout: 15_000 });
+    await player.getByRole('button', { name: 'Play recording' }).click();
+    expect((await audio).status()).toBe(200);
+
+    // The lead timeline has an enabled Play button (the entry was written before the recording existed)
+    await page.goto(`/leads/${lead.id}`);
+    await waitForLoad(page);
+    const play = page.getByTestId('call-entry-play').first();
+    await expect(play).toBeVisible({ timeout: 15_000 });
+    await expect(play).toBeEnabled();
   });
 });
