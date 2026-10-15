@@ -7,6 +7,7 @@
 import type { Env } from '../types';
 import { resolveTenantDb } from '../services/tenant-db';
 import { refundUsage, tryMeter } from '../services/metering/meter';
+import { marketingBlockedReason, unsubscribeUrl, unsubscribeFooterText } from '../services/privacy/consent';
 
 interface WhatsAppCampaignMessage {
   type: 'whatsapp_campaign';
@@ -45,7 +46,7 @@ export async function processWhatsAppCampaign(
 
   while (true) {
     const recipients = await db.prepare(`
-      SELECT id, phone, name FROM whatsapp_campaign_recipients
+      SELECT id, contact_id, phone, name FROM whatsapp_campaign_recipients
       WHERE campaign_id = ? AND status = 'pending'
       LIMIT ?
     `).bind(campaignId, batchSize).all();
@@ -63,6 +64,13 @@ export async function processWhatsAppCampaign(
     }
 
     for (const recipient of batch) {
+      // R208: consent is checked at send time; an opted-out or withdrawn contact is skipped without using allowance
+      const blocked = await marketingBlockedReason(db, (recipient as any).contact_id, 'whatsapp');
+      if (blocked) {
+        await db.prepare(`UPDATE whatsapp_campaign_recipients SET status = 'opted_out', error_message = ? WHERE id = ?`).bind(blocked, (recipient as any).id).run();
+        continue;
+      }
+
       // R110: a business-initiated WhatsApp message costs money, so it takes one unit of the monthly allowance
       // before the send. At the cap the remaining recipients are skipped (status skipped_allowance), not failed.
       if (!capReached) {
@@ -82,6 +90,10 @@ export async function processWhatsAppCampaign(
         const templateContent = campaign.template_content
           .replace(/\{\{name\}\}/gi, (recipient as any).name || 'there')
           .replace(/\{\{phone\}\}/gi, (recipient as any).phone || '');
+
+        // R208: every marketing WhatsApp message carries the unsubscribe link (the body to hand to the provider)
+        const outgoingBody = templateContent + '\n\n' + unsubscribeFooterText(await unsubscribeUrl(env, tenantId, (recipient as any).contact_id, 'whatsapp'));
+        void outgoingBody;
 
         // TODO: Send via MessagingProvider when WhatsApp integration is configured
         // For now, mark as sent (simulate)

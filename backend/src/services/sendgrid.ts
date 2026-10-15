@@ -1,5 +1,6 @@
 import type { Env } from '../types';
 import { emailFrom } from '../utils/app-urls';
+import { unsubscribeFooterHtml, unsubscribeFooterText } from './privacy/consent';
 
 export interface EmailAttachment {
   filename: string;
@@ -17,6 +18,13 @@ export interface SendEmailParams {
   cc?: string | string[];
   bcc?: string | string[];
   attachments?: EmailAttachment[];
+  /** R208: marketing mail. Adds List-Unsubscribe and List-Unsubscribe-Post headers and a footer link. */
+  unsubscribeUrl?: string;
+}
+
+/** Headers that make the mail client show its own unsubscribe button (RFC 2369 and RFC 8058 one-click). */
+export function unsubscribeHeaders(url: string): Record<string, string> {
+  return { 'List-Unsubscribe': `<${url}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' };
 }
 
 export interface SendWithTemplateParams {
@@ -28,6 +36,8 @@ export interface SendWithTemplateParams {
   cc?: string | string[];
   bcc?: string | string[];
   attachments?: EmailAttachment[];
+  /** R208: marketing mail; adds the headers and exposes `unsubscribeUrl` to the template. */
+  unsubscribeUrl?: string;
 }
 
 export interface SendBulkMessage {
@@ -89,11 +99,17 @@ export async function sendEmail(
     ];
 
     const content = [];
+    const footerUrl = params.unsubscribeUrl;
     if (params.html) {
-      content.push({ type: 'text/html', value: params.html });
+      content.push({ type: 'text/html', value: footerUrl ? params.html + unsubscribeFooterHtml(footerUrl) : params.html });
     }
     if (params.text) {
-      content.push({ type: 'text/plain', value: params.text });
+      content.push({ type: 'text/plain', value: footerUrl ? `${params.text}
+
+${unsubscribeFooterText(footerUrl)}` : params.text });
+    }
+    if (footerUrl && content.length === 0) {
+      content.push({ type: 'text/plain', value: unsubscribeFooterText(footerUrl) });
     }
 
     const requestBody: Record<string, any> = {
@@ -105,6 +121,7 @@ export async function sendEmail(
       subject: params.subject,
       content: content.length > 0 ? content : [{ type: 'text/plain', value: '' }],
     };
+    if (footerUrl) requestBody.headers = unsubscribeHeaders(footerUrl);
 
     if (params.replyTo) {
       requestBody.reply_to = { email: params.replyTo };
@@ -164,7 +181,7 @@ export async function sendWithTemplate(
     const personalizations = [
       {
         to: formatEmailAddress(params.to),
-        dynamic_template_data: params.dynamicData,
+        dynamic_template_data: params.unsubscribeUrl ? { ...params.dynamicData, unsubscribeUrl: params.unsubscribeUrl } : params.dynamicData,
         ...(params.cc && { cc: formatEmailAddress(params.cc) }),
         ...(params.bcc && { bcc: formatEmailAddress(params.bcc) }),
       },
@@ -178,6 +195,7 @@ export async function sendWithTemplate(
       },
       template_id: params.templateId,
     };
+    if (params.unsubscribeUrl) requestBody.headers = unsubscribeHeaders(params.unsubscribeUrl);
 
     if (params.replyTo) {
       requestBody.reply_to = { email: params.replyTo };

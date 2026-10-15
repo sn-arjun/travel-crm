@@ -6,6 +6,7 @@ import { generateId } from '../../utils/uuid';
 import { success, created, paginated, error, notFound } from '../../utils/response';
 import { createCampaignSchema, updateCampaignSchema, campaignListSchema } from '../../validators/marketing';
 import { buildSegmentQuery } from '../../services/segmentation-engine';
+import { marketingConsentSql } from '../../services/privacy/consent';
 
 const mktCampaignRoutes = new Hono<AppContext>();
 
@@ -309,7 +310,8 @@ mktCampaignRoutes.post(
     if (!segment) return error(c, 'Segment not found', 400);
 
     const filtersJson = (segment as any).filters_json;
-    let contactsQuery = 'SELECT id, name, email, phone FROM contacts WHERE is_deleted = 0 AND opted_out = 0';
+    const consentChannel = (campaign as any).type as 'email' | 'whatsapp' | 'sms';
+    let contactsQuery = `SELECT id, name, email, phone FROM contacts WHERE is_deleted = 0 AND opted_out = 0 AND ${marketingConsentSql(consentChannel)}`;
     let bindings: any[] = [];
 
     if (filtersJson) {

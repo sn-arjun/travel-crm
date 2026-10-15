@@ -4,6 +4,7 @@ import type { AppContext } from '../../types';
 import { requirePermission } from '../../middleware/rbac';
 import { generateId } from '../../utils/uuid';
 import { success, created, paginated, error, notFound } from '../../utils/response';
+import { marketingConsentSql, unsubscribeUrl } from '../../services/privacy/consent';
 import {
   createGeneratedFlyerSchema,
   updateGeneratedFlyerSchema,
@@ -272,7 +273,7 @@ flyerRoutes.post(
       if (!segment) return error(c, 'Segment not found', 400);
 
       const contacts = await db
-        .prepare('SELECT id, email, phone FROM contacts WHERE is_deleted = 0 AND opted_out = 0')
+        .prepare(`SELECT id, email, phone FROM contacts WHERE is_deleted = 0 AND opted_out = 0 AND ${marketingConsentSql(body.channel === 'email' ? 'email' : body.channel === 'sms' ? 'sms' : 'whatsapp')}`)
         .all();
       const contactList = contacts.results || [];
       recipientCount = contactList.length;
@@ -299,7 +300,7 @@ flyerRoutes.post(
           // eslint-disable-next-line no-await-in-loop
           await c.env.EMAIL_QUEUE.send({
             type: 'email',
-            data: { to: emailAddr, subject: `Flyer: ${flyerTitle}`, html: `<p>Here's the flyer: <a href="${flyerUrl}">View Flyer</a></p>`, tenantId: c.get('tenantId') },
+            data: { to: emailAddr, subject: `Flyer: ${flyerTitle}`, html: `<p>Here's the flyer: <a href="${flyerUrl}">View Flyer</a></p>`, tenantId: c.get('tenantId'), unsubscribeUrl: await unsubscribeUrl(c.env, c.get('tenantId'), (contact as any).id, 'email', new URL(c.req.url).origin) },
           });
         }
       }

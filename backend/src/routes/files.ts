@@ -3,6 +3,7 @@ import type { AppContext } from '../types';
 import { generateId } from '../utils/uuid';
 import { success, error } from '../utils/response';
 import { uploadRateLimit } from '../middleware/rate-limit';
+import { verifyPrivacyDownload } from '../services/privacy/export-contact';
 
 const fileRoutes = new Hono<AppContext>();
 
@@ -86,6 +87,16 @@ fileRoutes.get('/*', async (c) => {
   const resolved = resolveTenantKey(keyFromPath(c.req.path), c.get('tenantId'));
   if ('status' in resolved) return error(c, resolved.message, resolved.status);
 
+  // R208: privacy exports (<tenant>/privacy/...) are admin-only and need the signed, short-lived link the export returned.
+  const isPrivacy = resolved.key.startsWith(`${c.get('tenantId')}/privacy/`);
+  if (isPrivacy) {
+    if (c.get('role') !== 'admin') return error(c, 'Access denied', 403);
+    const q = new URL(c.req.url).searchParams;
+    if (!(await verifyPrivacyDownload(c.env, resolved.key, q.get('exp') ?? undefined, q.get('sig') ?? undefined))) {
+      return error(c, 'This download link has expired or is not valid', 403);
+    }
+  }
+
   const object = await c.env.FILE_STORAGE.get(resolved.key);
   if (!object) {
     return error(c, 'File not found', 404);
@@ -94,7 +105,7 @@ fileRoutes.get('/*', async (c) => {
   return new Response(object.body as ReadableStream, {
     headers: {
       'Content-Type': object.httpMetadata?.contentType || 'application/octet-stream',
-      'Cache-Control': 'private, max-age=300',
+      'Cache-Control': isPrivacy ? 'no-store' : 'private, max-age=300',
     },
   });
 });

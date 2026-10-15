@@ -8,6 +8,8 @@ import { rateLimit } from '../middleware/rate-limit';
 import { itineraries, itineraryDays, itineraryItems } from '../db/tenant-schema';
 import { getCatalogue } from '../services/plans/catalogue';
 import { publicPlansView } from '../services/plans/view';
+import { verifyUnsubscribeToken } from '../utils/unsubscribe-token';
+import { withdrawMarketing } from '../services/privacy/consent';
 
 // Minimal context — no auth, just Env bindings
 const publicRoutes = new Hono<{ Bindings: Env }>();
@@ -25,6 +27,44 @@ publicRoutes.use(
     keyFn: (c) => `rl:public:${c.req.header('cf-connecting-ip') || 'unknown'}`,
   }) as any
 );
+
+// ---- R208: public unsubscribe (no login) ----------------------------------------------------
+// 20 per minute per IP. A token with a bad signature is a 400; a correctly signed token always gets the same 200 page,
+// whether or not the agency or contact still exists, so the page never tells anyone who is (or is not) on a list.
+const unsubscribeLimit = rateLimit({
+  limit: 20,
+  windowMs: 60 * 1000,
+  keyFn: (c) => `rl:unsub:${c.req.header('cf-connecting-ip') || 'unknown'}`,
+}) as any;
+
+function unsubscribePage(title: string, message: string, status: 200 | 400 = 200): Response {
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${title}</title></head><body style="font-family:system-ui,sans-serif;max-width:32rem;margin:15vh auto;padding:0 1rem;color:#222"><h1 style="font-size:1.4rem">${title}</h1><p>${message}</p></body></html>`;
+  return new Response(html, { status, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' } });
+}
+
+async function handleUnsubscribe(c: any): Promise<Response> {
+  const claims = await verifyUnsubscribeToken(c.env, c.req.param('token'));
+  if (!claims) return unsubscribePage('Link not valid', 'This unsubscribe link is not valid. If you keep receiving messages, reply to one and ask to be removed.', 400);
+  try {
+    const db = await resolveTenantDb(c.env, claims.tenantId);
+    if (db) {
+      const contact = await db.prepare('SELECT id FROM contacts WHERE id = ? AND erased_at IS NULL').bind(claims.contactId).first();
+      if (contact) {
+        await withdrawMarketing(db, claims.contactId, claims.channel, 'unsubscribe_link', {
+          reason: 'Unsubscribed via link',
+          label: claims.channel,
+          evidence: { ip: c.req.header('cf-connecting-ip') || null, userAgent: (c.req.header('user-agent') || '').slice(0, 200), method: c.req.method },
+        });
+      }
+    }
+  } catch (err) {
+    console.error('[unsubscribe] failed', err);
+  }
+  return unsubscribePage('You are unsubscribed', 'You will not receive further marketing messages from us. You can close this page.');
+}
+
+publicRoutes.get('/unsubscribe/:token', unsubscribeLimit, handleUnsubscribe);
+publicRoutes.post('/unsubscribe/:token', unsubscribeLimit, handleUnsubscribe);
 
 // GET /plans?market=IN - the public price list, built from the plan catalogue (cached 5 minutes, 60/min/IP above)
 publicRoutes.get('/plans', async (c) => {

@@ -18,6 +18,8 @@ export interface EmailJob {
   replyTo?: string;
   cc?: string;
   bcc?: string;
+  /** R208: set on marketing mail; sendEmail adds the List-Unsubscribe headers and footer. */
+  unsubscribeUrl?: string;
   /** Owning agency. When present the email counts against its monthly email allowance (system email has none). */
   tenantId?: string;
   /** The sender already took the allowance; do not take it again. */
@@ -58,6 +60,7 @@ export async function handleEmailJob(job: EmailJob, env: Env): Promise<void> {
         cc: job.cc,
         bcc: job.bcc,
         attachments: job.attachments,
+        unsubscribeUrl: job.unsubscribeUrl,
       });
     } else {
       // Send direct email with HTML/text content
@@ -71,6 +74,7 @@ export async function handleEmailJob(job: EmailJob, env: Env): Promise<void> {
         cc: job.cc,
         bcc: job.bcc,
         attachments: job.attachments,
+        unsubscribeUrl: job.unsubscribeUrl,
       });
     }
 

@@ -10,6 +10,7 @@ import { resolveSegment, type SegmentFilter } from '../services/segment-resolver
 import { success, created, paginated, error, notFound } from '../utils/response';
 import { broadcastToTenant } from '../utils/realtime';
 import { AllowanceExhausted, meterUsage } from '../services/metering/meter';
+import { marketingBlockedReason, unsubscribeUrl } from '../services/privacy/consent';
 
 const campaignRoutes = new Hono<AppContext>();
 
@@ -252,6 +253,11 @@ campaignRoutes.post(
             continue;
           }
 
+          // R208: opted out or marketing consent withdrawn: no message, no allowance used
+          if (await marketingBlockedReason(tenantDb, contactId, 'email')) {
+            continue;
+          }
+
           // Every email takes one unit of the monthly email allowance before it is queued (R110).
           // At the cap the remaining recipients are recorded as skipped_allowance; the campaign still completes.
           if (!capReached) {
@@ -293,6 +299,7 @@ campaignRoutes.post(
               html: campaign.body || undefined,
               templateId: campaign.template_id || undefined,
               templateData: { contactName: contact.name },
+              unsubscribeUrl: await unsubscribeUrl(env, c.get('tenantId'), contactId, 'email', new URL(c.req.url).origin),
               from: undefined,
               replyTo: undefined,
               tenantId: c.get('tenantId'),

@@ -2,6 +2,8 @@ import type { Env } from '../types';
 import { resolveTenantDb } from '../services/tenant-db';
 import { emailFrom } from '../utils/app-urls';
 import { refundUsage, tryMeter } from '../services/metering/meter';
+import { marketingBlockedReason, unsubscribeUrl, unsubscribeFooterText, unsubscribeFooterHtml } from '../services/privacy/consent';
+import { unsubscribeHeaders } from '../services/sendgrid';
 
 export interface CampaignJob {
   campaignId: string;
@@ -78,6 +80,18 @@ async function processCampaignBatch(job: CampaignJob, env: Env): Promise<void> {
     const recipientId = (recipient as any).id;
     const now = new Date().toISOString();
 
+    // R208: consent is checked at send time, so an unsubscribe that arrived after the campaign was built is honoured
+    // (and uses no allowance). The recipient is marked opted_out, which the campaign stats already count.
+    const blocked = await marketingBlockedReason(dbBinding, (recipient as any).contact_id, campaignType);
+    if (blocked) {
+      await dbBinding
+        .prepare('UPDATE campaign_recipients SET status = ?, error_message = ? WHERE id = ?')
+        .bind('opted_out', blocked, recipientId)
+        .run();
+      continue;
+    }
+    const unsubUrl = (recipient as any).contact_id ? await unsubscribeUrl(env, tenantId, (recipient as any).contact_id, campaignType) : null;
+
     // R110: each recipient takes one unit of the monthly allowance before the provider is called. At the cap the
     // remaining recipients are marked skipped_allowance and the campaign still finishes (it does not fail).
     if (!capReached) {
@@ -105,13 +119,13 @@ async function processCampaignBatch(job: CampaignJob, env: Env): Promise<void> {
         case 'whatsapp': {
           const phone = (recipient as any).phone;
           if (!phone) throw new Error('No phone number');
-          await sendWhatsApp(env, phone, (campaign as any).message_body || '');
+          await sendWhatsApp(env, phone, withFooter((campaign as any).message_body || '', unsubUrl));
           break;
         }
         case 'sms': {
           const phone = (recipient as any).phone;
           if (!phone) throw new Error('No phone number');
-          await sendSms(env, phone, (campaign as any).message_body || '');
+          await sendSms(env, phone, withFooter((campaign as any).message_body || '', unsubUrl));
           break;
         }
         case 'email': {
@@ -121,7 +135,8 @@ async function processCampaignBatch(job: CampaignJob, env: Env): Promise<void> {
             env,
             email,
             (campaign as any).email_subject || 'Campaign',
-            (campaign as any).message_body || ''
+            (campaign as any).message_body || '',
+            unsubUrl
           );
           break;
         }
@@ -186,6 +201,12 @@ async function processCampaignBatch(job: CampaignJob, env: Env): Promise<void> {
 // Channel send helpers
 // ============================================================
 
+function withFooter(body: string, url: string | null): string {
+  return url ? `${body}
+
+${unsubscribeFooterText(url)}` : body;
+}
+
 async function sendWhatsApp(env: Env, to: string, body: string): Promise<void> {
   const accountSid = env.TWILIO_ACCOUNT_SID;
   const authToken = env.TWILIO_AUTH_TOKEN;
@@ -244,7 +265,8 @@ async function sendEmail(
   env: Env,
   to: string,
   subject: string,
-  htmlBody: string
+  htmlBody: string,
+  unsubUrl: string | null = null
 ): Promise<void> {
   const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
@@ -256,7 +278,8 @@ async function sendEmail(
       personalizations: [{ to: [{ email: to }] }],
       from: emailFrom(env),
       subject,
-      content: [{ type: 'text/html', value: htmlBody }],
+      content: [{ type: 'text/html', value: unsubUrl ? htmlBody + unsubscribeFooterHtml(unsubUrl) : htmlBody }],
+      ...(unsubUrl ? { headers: unsubscribeHeaders(unsubUrl) } : {}),
     }),
   });
 
