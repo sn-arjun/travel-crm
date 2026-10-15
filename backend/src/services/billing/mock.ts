@@ -18,6 +18,7 @@ import {
   type BillingGateway,
   type CheckoutParams,
   type CheckoutResult,
+  type OrderCheckoutParams,
   type VerifyResult,
 } from './gateway';
 import { generateId } from '../../utils/uuid';
@@ -36,6 +37,8 @@ const KIND_BY_TYPE: Record<string, BillingEventKind> = {
   'payment.succeeded': 'payment_succeeded',
   'payment.failed': 'payment_failed',
   'subscription.cancelled': 'subscription_cancelled',
+  'order.paid': 'order_paid',
+  'order.failed': 'order_failed',
 };
 
 export interface MockEventInput {
@@ -45,6 +48,7 @@ export interface MockEventInput {
   tenant_id?: string;
   plan_key?: string;
   extra_users?: number;
+  order_id?: string;
   customer_id?: string;
   subscription_id?: string;
   amount?: number;
@@ -79,6 +83,13 @@ export class MockGateway implements BillingGateway {
     return { url: `${base}/api/v1/billing/mock-checkout?${q.toString()}`, reference, customerId: `mock_cus_${params.tenantId}` };
   }
 
+  /** A one-off payment: a link to this server's mock add-on checkout, which plays the paid (or failed) event. */
+  async createOrderCheckout(params: OrderCheckoutParams): Promise<CheckoutResult> {
+    const base = (this.env.API_PUBLIC_URL || 'http://localhost').replace(/\/+$/, '');
+    const q = new URLSearchParams({ order: params.orderId, success: params.successUrl, cancel: params.cancelUrl });
+    return { url: `${base}/api/v1/billing/mock-addon-checkout?${q.toString()}`, reference: `mock_ord_${params.orderId}`, customerId: `mock_cus_${params.tenantId}` };
+  }
+
   async verifyWebhook(headers: Headers, rawBody: string): Promise<VerifyResult> {
     if (!mockAllowed(this.env)) return { ok: false, reason: 'not_configured' };
     const signature = headers.get('x-mock-signature');
@@ -104,6 +115,7 @@ export class MockGateway implements BillingGateway {
       tenantId: event.tenant_id ?? null,
       planKey: event.plan_key ?? null,
       extraUsers: event.extra_users ?? null,
+      orderId: event.order_id ?? null,
       customerId: event.customer_id ?? null,
       subscriptionId: event.subscription_id ?? null,
       amount: event.amount ?? null,

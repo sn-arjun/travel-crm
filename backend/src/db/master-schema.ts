@@ -393,6 +393,7 @@ export const tenantAddons = sqliteTable('tenant_addons', {
   source: text('source').notNull().default('super_admin_grant'), // super_admin_grant, purchase
   grantedBy: text('granted_by'),
   reference: text('reference'),
+  expiresAt: text('expires_at'), // extra users bought mid-term end with the paid year; NULL = no end
   createdAt: text('created_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
 }, (table) => [index('tenant_addons_tenant_period_idx').on(table.tenantId, table.periodKey)]);
 
@@ -521,6 +522,7 @@ export const platformInvoices = sqliteTable('platform_invoices', {
   status: text('status').notNull().default('paid'),
   gateway: text('gateway'),
   gatewayRef: text('gateway_ref'),
+  description: text('description'),
   issuedAt: text('issued_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
 }, (table) => [
   uniqueIndex('platform_invoices_number_idx').on(table.number),
@@ -531,3 +533,30 @@ export const billingCounters = sqliteTable('billing_counters', {
   key: text('key').primaryKey(),
   value: integer('value').notNull().default(0),
 });
+
+/** R206: one-off purchases of extra users, AI credit packs and communication packs. */
+export const addonOrders = sqliteTable('addon_orders', {
+  id: text('id').primaryKey(), // UUIDv7
+  tenantId: text('tenant_id').notNull(),
+  productKey: text('product_key').notNull(),
+  quantity: integer('quantity').notNull().default(1),
+  unitPrice: real('unit_price').notNull(),
+  currency: text('currency').notNull(),
+  subtotal: real('subtotal').notNull(),
+  taxTotal: real('tax_total').notNull().default(0),
+  taxLines: text('tax_lines'), // JSON
+  total: real('total').notNull(),
+  unitsGranted: integer('units_granted').notNull().default(0),
+  description: text('description'),
+  gateway: text('gateway').notNull(),
+  gatewayRef: text('gateway_ref'),
+  checkoutUrl: text('checkout_url'),
+  status: text('status').notNull().default('pending'), // pending | paid | failed
+  invoiceId: text('invoice_id'),
+  idempotencyKey: text('idempotency_key').notNull(),
+  createdAt: text('created_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+  paidAt: text('paid_at'),
+}, (table) => [
+  uniqueIndex('addon_orders_idempotency_idx').on(table.idempotencyKey),
+  index('addon_orders_tenant_idx').on(table.tenantId, table.createdAt),
+]);

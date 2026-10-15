@@ -19,6 +19,7 @@ import {
   type CheckoutParams,
   type CheckoutResult,
   type FetchLike,
+  type OrderCheckoutParams,
   type VerifyResult,
 } from './gateway';
 
@@ -96,6 +97,38 @@ export class StripeGateway implements BillingGateway {
     return { url: json.url, reference: json.id, customerId: json.customer ?? null };
   }
 
+  /** A one-off payment: Checkout in payment mode. The order id travels in the session and payment intent metadata. */
+  async createOrderCheckout(params: OrderCheckoutParams): Promise<CheckoutResult> {
+    const key = this.env.STRIPE_SECRET_KEY;
+    if (!key) throw new GatewayError('Stripe is not configured');
+    const form = stripeForm({
+      mode: 'payment',
+      success_url: params.successUrl,
+      cancel_url: params.cancelUrl,
+      client_reference_id: params.tenantId,
+      customer: params.customerId ?? undefined,
+      customer_email: params.customerId ? undefined : params.customerEmail ?? undefined,
+      'line_items[0][quantity]': 1,
+      'line_items[0][price_data][currency]': params.currency.toLowerCase(),
+      'line_items[0][price_data][unit_amount]': toMinorUnits(params.total, params.currency),
+      'line_items[0][price_data][product_data][name]': params.description,
+      'metadata[tenant_id]': params.tenantId,
+      'metadata[addon_order_id]': params.orderId,
+      'payment_intent_data[metadata][tenant_id]': params.tenantId,
+      'payment_intent_data[metadata][addon_order_id]': params.orderId,
+    });
+    const res = await this.fetchImpl(`${STRIPE_API}/checkout/sessions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form,
+    });
+    const json = (await res.json().catch(() => ({}))) as { id?: string; url?: string; customer?: string | null; error?: { message?: string } };
+    if (!res.ok || !json.url || !json.id) {
+      throw new GatewayError(json.error?.message ?? `Stripe checkout failed (${res.status})`, res.status);
+    }
+    return { url: json.url, reference: json.id, customerId: json.customer ?? null };
+  }
+
   async verifyWebhook(headers: Headers, rawBody: string, now: Date = new Date()): Promise<VerifyResult> {
     const secret = this.env.STRIPE_WEBHOOK_SECRET;
     if (!secret) return { ok: false, reason: 'not_configured' };
@@ -135,9 +168,28 @@ export class StripeGateway implements BillingGateway {
     };
 
     switch (event.type) {
-      case 'checkout.session.completed': {
+      case 'checkout.session.completed':
+      case 'checkout.session.async_payment_succeeded':
+      case 'checkout.session.async_payment_failed':
+      case 'checkout.session.expired': {
         const meta = metaOf(obj.metadata);
         const paid = obj.payment_status === 'paid' || obj.payment_status === 'no_payment_required';
+        if (obj.mode === 'payment' || meta.addon_order_id) {
+          // An add-on purchase (one-off payment), not the subscription checkout.
+          const ok = event.type !== 'checkout.session.async_payment_failed' && event.type !== 'checkout.session.expired' && paid;
+          const failed = event.type === 'checkout.session.async_payment_failed' || event.type === 'checkout.session.expired';
+          return {
+            ...base,
+            kind: !meta.addon_order_id ? 'ignored' : ok ? 'order_paid' : failed ? 'order_failed' : 'ignored',
+            tenantId: obj.client_reference_id ?? meta.tenant_id ?? null,
+            orderId: meta.addon_order_id ?? null,
+            customerId: typeof obj.customer === 'string' ? obj.customer : null,
+            amount: typeof obj.amount_total === 'number' ? fromMinorUnits(obj.amount_total, obj.currency ?? 'usd') : null,
+            currency: obj.currency ? String(obj.currency).toUpperCase() : null,
+            paymentRef: typeof obj.payment_intent === 'string' ? obj.payment_intent : typeof obj.id === 'string' ? obj.id : null,
+          };
+        }
+        if (event.type !== 'checkout.session.completed') return { ...base, kind: 'ignored' };
         return {
           ...base,
           kind: obj.mode === 'subscription' && paid ? 'checkout_completed' : 'ignored',

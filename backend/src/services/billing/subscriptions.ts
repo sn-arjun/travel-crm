@@ -26,6 +26,7 @@ import { invalidateTenantCache } from '../tenant-db';
 import { sendTransactional } from '../mail/transactional';
 import { computeInvoiceTax, normalizeCountry, type TaxLine, type TaxRegime } from '../tax-calculator';
 import { activePriceFrom, getCatalogue, marketForCountry } from '../plans/catalogue';
+import { applyOrderEvent } from './addons';
 import {
   sha256Hex,
   type BillingEvent,
@@ -96,7 +97,7 @@ export interface SubscriptionRow {
   created_at: string | null;
 }
 
-interface TenantRow {
+export interface TenantRow {
   id: string;
   company_name: string;
   owner_email: string | null;
@@ -149,7 +150,7 @@ export interface PricedQuote extends CheckoutQuote {
   taxTreatment: string;
 }
 
-function roundMoney(value: number): number {
+export function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
@@ -267,7 +268,7 @@ async function resolveTenantId(env: Env, event: BillingEvent): Promise<string | 
   return null;
 }
 
-async function nextInvoiceNumber(env: Env, now: Date): Promise<string> {
+export async function nextInvoiceNumber(env: Env, now: Date): Promise<string> {
   const year = now.getUTCFullYear();
   const row = await env.MASTER_DB
     .prepare(
@@ -279,7 +280,7 @@ async function nextInvoiceNumber(env: Env, now: Date): Promise<string> {
   return `PINV-${year}-${String(row?.value ?? 1).padStart(6, '0')}`;
 }
 
-interface IssuedInvoice {
+export interface IssuedInvoice {
   id: string;
   number: string;
   total: number;
@@ -328,7 +329,7 @@ async function issueInvoice(env: Env, sub: SubscriptionRow, event: BillingEvent,
   return { id, number, total: amount, currency, created: true };
 }
 
-function moneyText(amount: number, currency: string): string {
+export function moneyText(amount: number, currency: string): string {
   const locale = currency === 'INR' ? 'en-IN' : currency === 'GBP' ? 'en-GB' : 'en-US';
   return formatMoney(amount, currency, locale);
 }
@@ -398,6 +399,8 @@ async function recordPayment(env: Env, sub: SubscriptionRow, event: BillingEvent
  */
 export async function applyBillingEvent(env: Env, event: BillingEvent, now: Date = new Date()): Promise<ApplyResult> {
   if (event.kind === 'ignored') return { outcome: 'ignored', tenantId: null };
+  // A one-off add-on payment (R206): credited by its own pipeline, never touches the subscription.
+  if (event.kind === 'order_paid' || event.kind === 'order_failed') return applyOrderEvent(env, event, now);
 
   const tenantId = await resolveTenantId(env, event);
   if (!tenantId) {
@@ -507,7 +510,7 @@ async function expireTenant(env: Env, tenantId: string): Promise<void> {
 // Emails (R102 transactional mail; they never fail the webhook)
 // ----------------------------------------------------------------------------
 
-async function notifyReceipt(env: Env, tenant: TenantRow, invoice: IssuedInvoice, event: BillingEvent): Promise<void> {
+export async function notifyReceipt(env: Env, tenant: TenantRow, invoice: IssuedInvoice, event: Pick<BillingEvent, 'periodEnd'>): Promise<void> {
   if (!tenant.owner_email) return;
   await sendTransactional(env, {
     to: tenant.owner_email,

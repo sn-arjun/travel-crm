@@ -22,6 +22,7 @@ import {
   type CheckoutParams,
   type CheckoutResult,
   type FetchLike,
+  type OrderCheckoutParams,
   type VerifyResult,
 } from './gateway';
 
@@ -94,6 +95,24 @@ export class RazorpayGateway implements BillingGateway {
     return { url: subscription.short_url, reference: subscription.id, customerId };
   }
 
+  /** A one-off payment: a Payment Link whose reference_id and notes carry our order id. */
+  async createOrderCheckout(params: OrderCheckoutParams): Promise<CheckoutResult> {
+    const link = await this.post<{ id: string; short_url?: string }>('/payment_links', {
+      amount: toMinorUnits(params.total, params.currency),
+      currency: params.currency.toUpperCase(),
+      accept_partial: false,
+      reference_id: params.orderId,
+      description: params.description,
+      ...(params.customerEmail ? { customer: { name: params.customerName || undefined, email: params.customerEmail } } : {}),
+      notify: { email: false, sms: false },
+      callback_url: params.successUrl,
+      callback_method: 'get',
+      notes: { tenant_id: params.tenantId, addon_order_id: params.orderId },
+    });
+    if (!link.short_url) throw new GatewayError('Razorpay did not return a payment link');
+    return { url: link.short_url, reference: link.id, customerId: params.customerId ?? null };
+  }
+
   async verifyWebhook(headers: Headers, rawBody: string): Promise<VerifyResult> {
     const secret = this.env.RAZORPAY_WEBHOOK_SECRET;
     if (!secret) return { ok: false, reason: 'not_configured' };
@@ -113,7 +132,14 @@ export class RazorpayGateway implements BillingGateway {
     if (!event || typeof event.event !== 'string') return null;
     const subscription = event.payload?.subscription?.entity;
     const payment = event.payload?.payment?.entity;
-    const notes: Record<string, string> = { ...(payment?.notes && !Array.isArray(payment.notes) ? payment.notes : {}), ...(subscription?.notes && !Array.isArray(subscription.notes) ? subscription.notes : {}) };
+    const paymentLink = event.payload?.payment_link?.entity;
+    const notes: Record<string, string> = {
+      ...(payment?.notes && !Array.isArray(payment.notes) ? payment.notes : {}),
+      ...(paymentLink?.notes && !Array.isArray(paymentLink.notes) ? paymentLink.notes : {}),
+      ...(subscription?.notes && !Array.isArray(subscription.notes) ? subscription.notes : {}),
+    };
+    // An add-on purchase (Payment Link): its events carry our order id and never touch the subscription.
+    const orderId = notes.addon_order_id ?? (paymentLink?.reference_id as string | undefined) ?? null;
     const occurredAt = isoFromSeconds(event.created_at) ?? new Date().toISOString();
     // Razorpay puts the unique id in a header; fall back to a stable id built from the payload.
     const eventId =
@@ -131,6 +157,22 @@ export class RazorpayGateway implements BillingGateway {
       customerId: (subscription?.customer_id ?? payment?.customer_id ?? null) as string | null,
       subscriptionId: (subscription?.id ?? null) as string | null,
     };
+
+    if (orderId && (event.event === 'payment_link.paid' || event.event === 'payment_link.expired' || event.event === 'payment_link.cancelled' || event.event === 'payment.failed')) {
+      const paid = event.event === 'payment_link.paid';
+      const amountMinor = paid ? payment?.amount ?? paymentLink?.amount_paid : payment?.amount ?? paymentLink?.amount;
+      return {
+        ...base,
+        kind: paid ? 'order_paid' : 'order_failed',
+        planKey: null,
+        extraUsers: null,
+        orderId,
+        subscriptionId: null,
+        amount: amountMinor != null ? fromMinorUnits(Number(amountMinor), payment?.currency ?? paymentLink?.currency ?? 'INR') : null,
+        currency: payment?.currency ?? paymentLink?.currency ?? 'INR',
+        paymentRef: payment?.id ?? paymentLink?.id ?? null,
+      };
+    }
 
     switch (event.event) {
       case 'subscription.charged':

@@ -321,9 +321,9 @@ export async function seatLimit(ref: MasterRef, tenantId: string, marketOverride
     .prepare(
       `SELECT SUM(ta.quantity) AS total FROM tenant_addons ta
          JOIN addon_products ap ON ap.key = ta.product_key
-        WHERE ta.tenant_id = ? AND ap.kind = 'extra_user'`,
+        WHERE ta.tenant_id = ? AND ap.kind = 'extra_user' AND (ta.expires_at IS NULL OR ta.expires_at > ?)`,
     )
-    .bind(tenantId)
+    .bind(tenantId, new Date().toISOString())
     .first<{ total: number | null }>();
   return included + Number(extra?.total ?? 0);
 }

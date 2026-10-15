@@ -72,7 +72,29 @@ export type BillingEventKind =
   | 'payment_succeeded'
   | 'payment_failed'
   | 'subscription_cancelled'
+  | 'order_paid'
+  | 'order_failed'
   | 'ignored';
+
+/**
+ * A one-off payment for an add-on (R206): extra users, an AI credit pack or a communication pack.
+ *  order_paid     the one-off payment succeeded (credits the pack, exactly once)
+ *  order_failed   the one-off payment failed or the checkout expired (credits nothing)
+ */
+export interface OrderCheckoutParams {
+  tenantId: string;
+  /** Our addon_orders id: carried through the provider and returned in its webhook. */
+  orderId: string;
+  description: string;
+  currency: string;
+  /** Major units, tax included. */
+  total: number;
+  customerEmail?: string | null;
+  customerName?: string | null;
+  customerId?: string | null;
+  successUrl: string;
+  cancelUrl: string;
+}
 
 export interface BillingEvent {
   gateway: GatewayId;
@@ -86,6 +108,8 @@ export interface BillingEvent {
   tenantId?: string | null;
   planKey?: string | null;
   extraUsers?: number | null;
+  /** Our addon_orders id, on order_paid / order_failed. */
+  orderId?: string | null;
   customerId?: string | null;
   subscriptionId?: string | null;
   /** Major units. */
@@ -102,6 +126,8 @@ export interface BillingGateway {
   /** True when the credentials this gateway needs are present. */
   isConfigured(): boolean;
   createCheckout(params: CheckoutParams): Promise<CheckoutResult>;
+  /** A one-off payment (add-on purchase): Stripe Checkout in payment mode, a Razorpay Payment Link. */
+  createOrderCheckout(params: OrderCheckoutParams): Promise<CheckoutResult>;
   /** Check the signature over the exact raw body. Called before the body is parsed. */
   verifyWebhook(headers: Headers, rawBody: string, now?: Date): Promise<VerifyResult>;
   /** Null when the body is not an event this gateway understands. */

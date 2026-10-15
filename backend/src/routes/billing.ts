@@ -21,6 +21,7 @@ import {
   loadTenant,
   saveQuote,
 } from '../services/billing/subscriptions';
+import { createOrder, listOffers, listOrders, MIN_COMM_MARGIN_PCT, orderView, quoteAddon } from '../services/billing/addons';
 import { generateId } from '../utils/uuid';
 
 /**
@@ -31,6 +32,10 @@ import { generateId } from '../utils/uuid';
  *   GET  /billing/quote                 price of a plan + extra users with tax, before paying
  *   POST /billing/checkout              start paying: returns the gateway's checkout URL (also used to upgrade or change seats)
  *   POST /billing/cancel                stop renewals; access continues to the end of the paid year
+ *   GET  /billing/addons                add-ons on offer with live prices (extra users, AI credit packs, communication packs)
+ *   GET  /billing/addons/quote          price of one add-on with tax
+ *   POST /billing/addons/checkout       buy an add-on: returns the gateway's one-off checkout URL
+ *   GET  /billing/addons/orders         this agency's add-on purchases
  *   GET  /billing/invoices              the platform's invoices to this agency
  *   GET  /billing/invoices/:id/download a printable invoice (HTML)
  *
@@ -103,6 +108,36 @@ billingPublicRoutes.get('/mock-checkout', zValidator('query', mockCheckoutQuery)
     await handleWebhook(c.env, mock, new Headers({ 'x-mock-signature': signature }), body);
   }
   return c.redirect(q.outcome === 'failed' ? safe(q.cancel, home) : safe(q.success, `${home}?checkout=success`), 302);
+});
+
+const mockAddonQuery = z.object({
+  order: z.string().min(1),
+  success: z.string().optional(),
+  cancel: z.string().optional(),
+  outcome: z.enum(['paid', 'failed']).default('paid'),
+});
+
+/** Local only: plays the provider's paid (or failed) event for an add-on order through the real webhook pipeline. */
+billingPublicRoutes.get('/mock-addon-checkout', zValidator('query', mockAddonQuery), async (c) => {
+  if (!mockAllowed(c.env)) return fail(c, 404, 'NOT_FOUND', 'Not found');
+  const q = c.req.valid('query');
+  const order = await c.env.MASTER_DB
+    .prepare('SELECT id, tenant_id, total, currency FROM addon_orders WHERE id = ?')
+    .bind(q.order)
+    .first<{ id: string; tenant_id: string; total: number; currency: string }>();
+  if (!order) return fail(c, 404, 'NOT_FOUND', 'Order not found');
+  const home = `${appUrl(c.env)}/settings/billing`;
+  const safe = (url: string | undefined, fallback: string) => (url && url.startsWith(appUrl(c.env)) ? url : fallback);
+  const { body, signature } = await signedMockEvent(c.env, {
+    type: q.outcome === 'failed' ? 'order.failed' : 'order.paid',
+    tenant_id: order.tenant_id,
+    order_id: order.id,
+    amount: order.total,
+    currency: order.currency,
+    payment_ref: `mock_pay_${generateId()}`,
+  });
+  await handleWebhook(c.env, new MockGateway(c.env), new Headers({ 'x-mock-signature': signature }), body);
+  return c.redirect(q.outcome === 'failed' ? safe(q.cancel, `${home}?addon=cancelled`) : safe(q.success, `${home}?addon=success`), 302);
 });
 
 // ============================================================================
@@ -252,6 +287,83 @@ billingRoutes.post('/checkout', zValidator('json', checkoutSchema), async (c) =>
   }
 });
 
+// ---------------------------------------------------------------------------
+// Add-ons (R206): extra users, AI credit packs and communication packs
+// ---------------------------------------------------------------------------
+
+billingRoutes.get('/addons', async (c) => {
+  const tenantId = c.get('tenantId');
+  const tenant = await loadTenant(c.env, tenantId);
+  if (!tenant) return fail(c, 404, 'NOT_FOUND', 'Agency not found');
+  const gatewayId = gatewayIdForCountry(c.env, tenant.country);
+  const gateway = createGateway(c.env, gatewayId);
+  const catalogue = await getCatalogue(c.env);
+  const purchased = await c.env.MASTER_DB
+    .prepare(
+      `SELECT SUM(quantity) AS users, MAX(expires_at) AS ends FROM tenant_addons
+        WHERE tenant_id = ? AND source = 'purchase' AND product_key IN (SELECT key FROM addon_products WHERE kind = 'extra_user')
+          AND (expires_at IS NULL OR expires_at > ?)`,
+    )
+    .bind(tenantId, new Date().toISOString())
+    .first<{ users: number | null; ends: string | null }>();
+  return success(c, {
+    configured: gateway.isConfigured(),
+    gateway: gatewayId,
+    market: marketForCountry(tenant.country),
+    marginPct: MIN_COMM_MARGIN_PCT,
+    catalogueVersion: catalogue.version,
+    products: await listOffers(c.env, tenant),
+    purchasedUsers: { quantity: Number(purchased?.users ?? 0), endsAt: purchased?.ends ?? null },
+  });
+});
+
+const addonCheckoutSchema = z.object({
+  productKey: z.string().min(1),
+  quantity: z.number().int().min(1).max(500).default(1),
+  idempotencyKey: z.string().min(8).max(80).optional(),
+});
+
+billingRoutes.post('/addons/checkout', zValidator('json', addonCheckoutSchema), async (c) => {
+  const body = c.req.valid('json');
+  const tenant = await loadTenant(c.env, c.get('tenantId'));
+  if (!tenant) return fail(c, 404, 'NOT_FOUND', 'Agency not found');
+  const gateway = gatewayForCountry(c.env, tenant.country);
+  if (!gateway.isConfigured()) return fail(c, 503, 'BILLING_NOT_CONFIGURED', NOT_CONFIGURED);
+  try {
+    const created = await createOrder(c.env, tenant, body);
+    return success(c, {
+      url: created.url,
+      gateway: created.gatewayId,
+      replay: created.replay,
+      order: orderView(created.order),
+      display: formatMoney(created.order.total, created.order.currency, created.order.currency === 'INR' ? 'en-IN' : 'en-US'),
+    });
+  } catch (err) {
+    return billingError(c, err);
+  }
+});
+
+const addonQuoteQuery = z.object({
+  productKey: z.string().min(1),
+  quantity: z.coerce.number().int().min(1).default(1),
+});
+
+billingRoutes.get('/addons/quote', zValidator('query', addonQuoteQuery), async (c) => {
+  const { productKey, quantity } = c.req.valid('query');
+  const tenant = await loadTenant(c.env, c.get('tenantId'));
+  if (!tenant) return fail(c, 404, 'NOT_FOUND', 'Agency not found');
+  try {
+    return success(c, await quoteAddon(c.env, tenant, productKey, quantity));
+  } catch (err) {
+    return billingError(c, err);
+  }
+});
+
+billingRoutes.get('/addons/orders', async (c) => {
+  const rows = await listOrders(c.env, c.get('tenantId'));
+  return success(c, { orders: rows.map(orderView) });
+});
+
 billingRoutes.post('/cancel', async (c) => {
   const tenantId = c.get('tenantId');
   const tenant = await loadTenant(c.env, tenantId);
@@ -280,7 +392,7 @@ billingRoutes.post('/cancel', async (c) => {
 
 billingRoutes.get('/invoices', async (c) => {
   const rows = await c.env.MASTER_DB
-    .prepare('SELECT id, number, period, currency, subtotal, total, status, issued_at FROM platform_invoices WHERE tenant_id = ? ORDER BY issued_at DESC, id DESC LIMIT 100')
+    .prepare('SELECT id, number, period, description, currency, subtotal, total, status, issued_at FROM platform_invoices WHERE tenant_id = ? ORDER BY issued_at DESC, id DESC LIMIT 100')
     .bind(c.get('tenantId'))
     .all<Record<string, unknown>>();
   return success(c, {
@@ -288,6 +400,7 @@ billingRoutes.get('/invoices', async (c) => {
       id: r.id,
       number: r.number,
       period: r.period,
+      description: r.description ?? null,
       currency: r.currency,
       subtotal: r.subtotal,
       total: r.total,
@@ -324,7 +437,7 @@ billingRoutes.get('/invoices/:id/download', async (c) => {
 <h2>Invoice ${esc(inv.number)}</h2>
 <p>Issued: ${esc(String(inv.issued_at).slice(0, 10))}${inv.period ? `<br>Service period: ${esc(inv.period)}` : ''}<br>Billed to: ${esc(tenant?.company_name ?? '')}</p>
 <table style="width:100%;border-collapse:collapse" cellpadding="6">
-<tr><td>Subscription</td><td style="text-align:right">${esc(money(inv.subtotal))}</td></tr>
+<tr><td>${esc(inv.description || 'Subscription')}</td><td style="text-align:right">${esc(money(inv.subtotal))}</td></tr>
 ${taxRows}
 <tr style="border-top:1px solid #999"><td><strong>Total (${esc(inv.currency)})</strong></td><td style="text-align:right"><strong>${esc(money(inv.total))}</strong></td></tr>
 </table>
