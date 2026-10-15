@@ -12,6 +12,7 @@ import { formatCurrency } from '@/lib/utils';
 import { formatDisplayDate } from '@/lib/dates';
 import { billingApi, openCheckout, type BillingQuote, type SubscriptionStatus } from '@/lib/api/billing';
 import type { ApiError } from '@/lib/api/client';
+import { BuyMoreDialog } from '@/components/domain/buy-more-dialog';
 
 const STATUS_LABEL: Record<SubscriptionStatus, string> = {
   none: 'No plan',
@@ -35,7 +36,11 @@ export default function BillingSettingsPage() {
 
   const { data, loading, error, refetch } = useApiQuery(() => billingApi.overview(), []);
   const invoicesQuery = useApiQuery(() => billingApi.invoices(), []);
+  const ordersQuery = useApiQuery(() => billingApi.addonOrders(), []);
+  const addonsQuery = useApiQuery(() => billingApi.addons(), []);
   const overview = data && 'data' in data ? data.data : null;
+  const addons = addonsQuery.data && 'data' in addonsQuery.data ? addonsQuery.data.data : null;
+  const orders = ordersQuery.data && 'data' in ordersQuery.data ? ordersQuery.data.data.orders : [];
   const invoices = invoicesQuery.data && 'data' in invoicesQuery.data ? invoicesQuery.data.data.invoices : [];
 
   const [planKey, setPlanKey] = React.useState<string>('');
@@ -43,6 +48,7 @@ export default function BillingSettingsPage() {
   const [quote, setQuote] = React.useState<BillingQuote | null>(null);
   const [quoteError, setQuoteError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const [buyOpen, setBuyOpen] = React.useState(false);
 
   // Coming back from the payment page: the gateway tells the server, so just refresh.
   React.useEffect(() => {
@@ -53,6 +59,21 @@ export default function BillingSettingsPage() {
       void invoicesQuery.refetch({ silent: true });
     } else if (result === 'cancelled') {
       toast.message('Checkout was cancelled. Nothing was charged.');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
+
+  // Back from an add-on payment page: the pack arrives when the gateway confirms, so refresh what is shown.
+  React.useEffect(() => {
+    const result = params.get('addon');
+    if (result === 'success') {
+      toast.success('Thank you. Your add-on arrives as soon as the payment is confirmed.');
+      void ordersQuery.refetch({ silent: true });
+      void addonsQuery.refetch({ silent: true });
+      void refetch({ silent: true });
+      void invoicesQuery.refetch({ silent: true });
+    } else if (result === 'cancelled') {
+      toast.message('The add-on payment was cancelled. Nothing was charged.');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
@@ -292,6 +313,54 @@ export default function BillingSettingsPage() {
         </SectionCard>
       )}
 
+      <SectionCard title="Add-ons" description="Extra users, AI credits and message packs, paid online. Packs count for the current month.">
+        {!addons?.configured ? (
+          <p className="text-sm text-ds-foreground-muted" data-testid="billing-addons-not-configured">
+            Online payment is not set up yet. Use Request top-up on the Usage and limits page, or contact support.
+          </p>
+        ) : (
+          <div className="space-y-ds-3">
+            <ul className="space-y-ds-1 text-sm" data-testid="billing-addon-list">
+              {addons.products.filter((p) => p.available).map((p) => (
+                <li key={p.key} className="flex items-center justify-between rounded-ds-md border border-ds-border px-ds-3 py-ds-2">
+                  <span>{p.name}</span>
+                  <span className="font-medium">{money(p.unitPrice ?? 0, p.currency)}{p.kind === 'extra_user' ? ' per user' : ''}</span>
+                </li>
+              ))}
+            </ul>
+            {addons.purchasedUsers.quantity > 0 && (
+              <p className="text-sm text-ds-foreground-muted" data-testid="billing-purchased-users">
+                {addons.purchasedUsers.quantity} extra users bought online{addons.purchasedUsers.endsAt ? `, until ${formatDisplayDate(addons.purchasedUsers.endsAt)}` : ''}. To keep them after that, add them to your plan above when you renew.
+              </p>
+            )}
+            <Button onClick={() => setBuyOpen(true)} data-testid="billing-buy-more">Buy more</Button>
+          </div>
+        )}
+        {orders.length > 0 && (
+          <table className="mt-ds-4 w-full text-sm" data-testid="billing-addon-orders">
+            <thead>
+              <tr className="border-b border-ds-border text-left text-ds-foreground-muted">
+                <th className="py-ds-2 font-medium">Purchase</th>
+                <th className="py-ds-2 font-medium">Date</th>
+                <th className="py-ds-2 font-medium">Status</th>
+                <th className="py-ds-2 text-right font-medium">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map((o) => (
+                <tr key={o.id} className="border-b border-ds-border/50 last:border-0">
+                  <td className="py-ds-2">{o.description ?? o.productKey}</td>
+                  <td className="py-ds-2">{formatDisplayDate(o.createdAt)}</td>
+                  <td className="py-ds-2"><Badge variant={o.status === 'paid' ? 'default' : 'secondary'}>{o.status === 'paid' ? 'Paid' : o.status === 'failed' ? 'Failed' : 'Awaiting payment'}</Badge></td>
+                  <td className="py-ds-2 text-right">{money(o.total, o.currency)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </SectionCard>
+      <BuyMoreDialog open={buyOpen} onClose={() => { setBuyOpen(false); void ordersQuery.refetch({ silent: true }); }} />
+
       <SectionCard title="Invoices" flush>
         {invoices.length === 0 ? (
           <p className="p-ds-4 text-sm text-ds-foreground-muted" data-testid="billing-no-invoices">No invoices yet.</p>
@@ -308,7 +377,7 @@ export default function BillingSettingsPage() {
             <tbody>
               {invoices.map((inv) => (
                 <tr key={inv.id} className="border-b border-ds-border/50 last:border-0">
-                  <td className="px-ds-4 py-ds-2">{inv.number}</td>
+                  <td className="px-ds-4 py-ds-2">{inv.number}{inv.description ? <span className="block text-xs text-ds-foreground-muted">{inv.description}</span> : null}</td>
                   <td className="px-ds-4 py-ds-2">{formatDisplayDate(inv.issuedAt)}</td>
                   <td className="px-ds-4 py-ds-2 text-right">{money(inv.total, inv.currency)}</td>
                   <td className="px-ds-4 py-ds-2 text-right">

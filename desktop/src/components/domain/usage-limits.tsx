@@ -8,6 +8,7 @@ import { SectionCard } from '@/components/ui/section-card';
 import { useApiQuery } from '@/hooks/use-api';
 import { usageApi, type UsageLine, type RequestUpgradeInput } from '@/lib/api/settings';
 import { formatCurrency } from '@/lib/utils';
+import { BuyMoreDialog, useCanBuyAddons, type BuyMoreFocus } from './buy-more-dialog';
 
 const BAR_COLOR: Record<UsageLine['state'], string> = {
   ok: 'bg-ds-primary',
@@ -21,7 +22,7 @@ const STATE_NOTE: Record<UsageLine['state'], string | null> = {
   exhausted: 'Used up. New sends are refused until the allowance renews.',
 };
 
-function UsageRow({ line, onRequest, busy }: { line: UsageLine; onRequest: (input: RequestUpgradeInput) => void; busy: boolean }) {
+function UsageRow({ line, onRequest, onBuy, busy }: { line: UsageLine; onRequest: (input: RequestUpgradeInput) => void; onBuy?: (focus: BuyMoreFocus) => void; busy: boolean }) {
   const note = STATE_NOTE[line.state];
   const cheapest = line.addons[0];
   const channel = line.channel as RequestUpgradeInput['channel'];
@@ -50,9 +51,15 @@ function UsageRow({ line, onRequest, busy }: { line: UsageLine; onRequest: (inpu
         </p>
         {line.state !== 'ok' && (
           <div className="flex gap-ds-2">
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => onRequest({ kind: 'top_up', channel })}>
-              Request top-up
-            </Button>
+            {onBuy ? (
+              <Button size="sm" variant="outline" disabled={busy} data-testid={`buy-more-${line.key}`} onClick={() => onBuy({ channel: line.channel })}>
+                Buy more
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => onRequest({ kind: 'top_up', channel })}>
+                Request top-up
+              </Button>
+            )}
             <Button size="sm" disabled={busy} onClick={() => onRequest({ kind: 'plan', channel })}>
               Request upgrade
             </Button>
@@ -67,6 +74,8 @@ function UsageRow({ line, onRequest, busy }: { line: UsageLine; onRequest: (inpu
 export function UsageLimits() {
   const { data, loading, error } = useApiQuery(() => usageApi.get(), []);
   const [busy, setBusy] = React.useState(false);
+  const canBuy = useCanBuyAddons();
+  const [buyFocus, setBuyFocus] = React.useState<BuyMoreFocus | null>(null);
   const overview = data && 'data' in data ? data.data : null;
 
   const request = async (input: RequestUpgradeInput) => {
@@ -93,10 +102,11 @@ export function UsageLimits() {
       ) : (
         <div className="grid gap-ds-6 md:grid-cols-2">
           {overview.lines.map((line) => (
-            <UsageRow key={line.key} line={line} onRequest={request} busy={busy} />
+            <UsageRow key={line.key} line={line} onRequest={request} onBuy={canBuy ? setBuyFocus : undefined} busy={busy} />
           ))}
         </div>
       )}
+      {canBuy && <BuyMoreDialog open={buyFocus !== null} focus={buyFocus ?? undefined} onClose={() => setBuyFocus(null)} />}
     </SectionCard>
   );
 }

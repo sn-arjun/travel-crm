@@ -9,6 +9,7 @@ import {
 import { usageApi } from '@/lib/api/settings';
 import { LIMIT_EVENT, type LimitInfo } from '@/lib/api/limit-events';
 import { formatCurrency } from '@/lib/utils';
+import { BuyMoreDialog, useCanBuyAddons } from './buy-more-dialog';
 
 const CHANNEL_FOR_REQUEST: Record<string, 'ai' | 'sms' | 'whatsapp' | 'otp' | 'call_minute' | 'email'> = {
   ai: 'ai', sms: 'sms', whatsapp: 'whatsapp', otp: 'otp', call_minute: 'call_minute', email: 'email',
@@ -22,15 +23,19 @@ interface AllowanceExhaustedDialogProps {
 /**
  * Shown when the API answers 402 ALLOWANCE_EXHAUSTED (a monthly SMS / WhatsApp / email / login code / call-minute
  * allowance is used up) or SEAT_LIMIT (no free user seat). Offers the two ways on: upgrade the plan, or buy credits
- * (extra users for a seat limit). Until self-serve purchase exists, both send a request to the platform.
+ * (extra users for a seat limit). An administrator on a server with online payment set up can buy the pack right here
+ * (Buy more); otherwise, and for upgrades, the request goes to the platform.
  */
 export function AllowanceExhaustedDialog({ limit, onClose }: AllowanceExhaustedDialogProps) {
   const [sending, setSending] = React.useState<'plan' | 'top_up' | null>(null);
   const [sent, setSent] = React.useState(false);
+  const [buying, setBuying] = React.useState(false);
+  const canBuy = useCanBuyAddons();
 
   React.useEffect(() => {
     setSent(false);
     setSending(null);
+    setBuying(false);
   }, [limit]);
 
   if (!limit) return null;
@@ -88,7 +93,12 @@ export function AllowanceExhaustedDialog({ limit, onClose }: AllowanceExhaustedD
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Close</Button>
-          {canTopUp && (
+          {canTopUp && canBuy && (
+            <Button variant="outline" data-testid="allowance-buy-more" onClick={() => setBuying(true)}>
+              Buy more
+            </Button>
+          )}
+          {canTopUp && !canBuy && (
             <Button variant="outline" disabled={sending !== null || sent} onClick={() => request('top_up')}>
               {isSeat ? 'Request extra users' : 'Request credits'}
             </Button>
@@ -100,6 +110,13 @@ export function AllowanceExhaustedDialog({ limit, onClose }: AllowanceExhaustedD
           )}
         </DialogFooter>
       </DialogContent>
+      {canBuy && (
+        <BuyMoreDialog
+          open={buying}
+          focus={isSeat ? { users: true } : { channel: limit.channel }}
+          onClose={() => setBuying(false)}
+        />
+      )}
     </Dialog>
   );
 }
