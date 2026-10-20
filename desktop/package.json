@@ -16,6 +16,7 @@
     "start": "next start",
     "lint": "eslint .",
     "lint:gate": "node scripts/lint-gate.mjs",
+    "i18n:check": "node scripts/i18n-check.mjs",
     "gates": "node scripts/fix-gates.mjs",
     "typecheck": "tsc --noEmit && tsc -p electron/tsconfig.json --noEmit",
     "test": "vitest run",

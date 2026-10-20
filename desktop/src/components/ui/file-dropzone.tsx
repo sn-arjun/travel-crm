@@ -68,7 +68,7 @@ export function FileDropzone({
       setLocalError(null);
       onFiles(multiple ? incoming : incoming.slice(0, 1));
     },
-    [maxSize, multiple, onFiles],
+    [maxSize, multiple, onFiles, t],
   );
 
   return (

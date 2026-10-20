@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest';
-// @ts-expect-error plain ESM script without types
 import { run, scanFile } from '../../scripts/i18n-check.mjs';
 
 describe('i18n-check (hard-coded strings in the shell, auth screens and shared components)', () => {
