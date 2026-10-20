@@ -1,0 +1,42 @@
+{
+  "id": "R133",
+  "tier": 1,
+  "size": "S",
+  "title": "Find and fix the intermittent invoice request timeouts",
+  "goal": "Invoice list and detail requests never time out under the load of a full e2e run on a local stack.",
+  "why": "Seen in three separate runs (2026-10-20/21): invoices.spec failures in two full suites and the locale spec, all \"Request timeout\" on invoice list/detail, passing when re-run alone.",
+  "dependsOn": [
+    "R129"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [],
+  "files": {
+    "edit": [
+      "backend/src/routes/invoices.ts",
+      "backend/src/middleware/**",
+      "desktop/src/app/(app)/invoices/**",
+      "desktop/src/lib/api/**"
+    ],
+    "create": [],
+    "mustNotTouch": []
+  },
+  "steps": [
+    "Reproduce: run the full e2e suite on a single-tenant stack with request timing logged (API side: per-request duration and the slowest middleware/handler steps; client side: which invoice requests time out and the client timeout value).",
+    "Find the root cause (slow query without an index, N+1 lookups in middleware, a blocking external call, client timeout too short for a legitimately slow call, request storms from the page) and fix it at the cause; add a test that guards it (e.g. query plan uses an index, request count per page load).",
+    "Do not just raise timeouts unless the evidence shows the timeout itself is wrong; say which."
+  ],
+  "migrations": [],
+  "tests": [
+    "a guard for the root cause"
+  ],
+  "acceptance": [
+    "two full e2e runs with no invoice timeouts"
+  ],
+  "gate": [
+    "backend tsc + vitest",
+    "desktop gates",
+    "two full e2e runs on slot 0"
+  ],
+  "goLiveVerify": [],
+  "notes": []
+}

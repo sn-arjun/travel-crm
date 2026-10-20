@@ -597,5 +597,15 @@
       "R111"
     ],
     "blockedOnOwner": null
+  },
+  {
+    "id": "R133",
+    "tier": 1,
+    "title": "Find and fix the intermittent invoice request timeouts",
+    "size": "S",
+    "dependsOn": [
+      "R129"
+    ],
+    "blockedOnOwner": null
   }
 ]
