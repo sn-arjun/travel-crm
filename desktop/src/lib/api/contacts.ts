@@ -89,6 +89,10 @@ export interface ContactTimeline {
 
 /** A contact as returned by GET /contacts/:id (shared Contact plus detail-only fields). */
 export interface ContactRecord extends Contact {
+  /** R128: 1 when the email address hard-bounced; sends to it are blocked until the address is corrected. */
+  emailUndeliverable?: number | boolean | null;
+  emailUndeliverableReason?: string | null;
+  emailUndeliverableAt?: string | null;
   postalCode?: string | null;
   taxId?: string | null;
   /** 1 / 0 from the API (or a boolean). */

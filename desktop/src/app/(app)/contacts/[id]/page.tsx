@@ -225,7 +225,14 @@ export default function ContactDetailPage() {
 
       <SectionCard title="Contact information">
         <dl className="grid gap-ds-4 sm:grid-cols-2">
-          <InfoRow label="Email">{contact.email}</InfoRow>
+          <InfoRow label="Email">
+            {contact.email}
+            {contact.emailUndeliverable ? (
+              <Tag tone="warning" size="sm" className="ml-ds-2" title={contact.emailUndeliverableReason ?? undefined}>
+                Undeliverable
+              </Tag>
+            ) : null}
+          </InfoRow>
           <InfoRow label="Phone">{contact.phone}</InfoRow>
           <InfoRow label="Company">{contact.company}</InfoRow>
           <InfoRow label="Type">
