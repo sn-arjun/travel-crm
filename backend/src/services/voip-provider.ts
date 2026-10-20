@@ -154,7 +154,9 @@ export interface VoipProvider {
   releaseNumber(providerNumberId: string): Promise<void>;
 
   // Client token for browser/app calling
-  generateClientToken(userId: string): Promise<VoipClientToken>;
+  generateClientToken(userId: string, opts?: { ttlSeconds?: number }): Promise<VoipClientToken>;
+  /** R307: create the key that signs softphone tokens inside the account this provider acts as. Only the Twilio adapter has it. */
+  provisionSoftphoneKey?(friendlyName?: string): Promise<{ apiKeyId: string; apiKeySecret: string }>;
 
   // Call response markup (XML) generation
   generateDialMarkup(number: string, callerId: string, record: boolean): string;

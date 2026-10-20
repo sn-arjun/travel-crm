@@ -276,9 +276,15 @@ export class MockVoipProvider extends TwilioVoipProvider {
 
   // ── Token, recordings, connection ─────────────────────────
 
-  override async generateClientToken(userId: string): Promise<VoipClientToken> {
+  override async generateClientToken(userId: string, opts: { ttlSeconds?: number } = {}): Promise<VoipClientToken> {
     const identity = voipClientIdentity(userId);
-    return { token: `mock.${btoa(JSON.stringify({ identity }))}.sig`, identity, expiresIn: 3600 };
+    const expiresIn = Math.min(Math.max(Math.floor(opts.ttlSeconds ?? 900), 60), 3600);
+    return { token: `mock.${btoa(JSON.stringify({ identity }))}.sig`, identity, expiresIn };
+  }
+
+  override async provisionSoftphoneKey(): Promise<{ apiKeyId: string; apiKeySecret: string }> {
+    state.log.push('provisionSoftphoneKey');
+    return { apiKeyId: `SKmock${++state.counter}`, apiKeySecret: 'mock-key-secret' };
   }
 
   override async fetchRecording(ref: VoipRecordingRef): Promise<VoipRecordingFile> {

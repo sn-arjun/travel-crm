@@ -346,13 +346,26 @@ export class TwilioVoipProvider implements VoipProvider {
 
   // ── VoipProvider: Client Token ────────────────────────────
 
-  async generateClientToken(userId: string): Promise<VoipClientToken> {
+  /**
+   * Create the API key of this account that signs softphone access tokens (R307). Called once per agency, as the
+   * agency's sub-account, because Twilio signs an access token with an API key and not with the account token.
+   */
+  async provisionSoftphoneKey(friendlyName = 'TravelCRM softphone'): Promise<{ apiKeyId: string; apiKeySecret: string }> {
+    const data = await this.twilioRequest<any>('POST', '/Keys.json', new URLSearchParams({ FriendlyName: friendlyName }));
+    if (!data?.sid || !data?.secret) {
+      throw new VoipProviderError('twilio', 'BAD_RESPONSE', 'Twilio did not return the new API key', 'provider');
+    }
+    return { apiKeyId: data.sid, apiKeySecret: data.secret };
+  }
+
+  async generateClientToken(userId: string, opts: { ttlSeconds?: number } = {}): Promise<VoipClientToken> {
     if (!this.apiKeySid || !this.apiKeySecret) {
       throw new VoipProviderError('twilio', 'NO_API_KEY', 'Twilio API key not configured', 'auth');
     }
 
     const now = Math.floor(Date.now() / 1000);
-    const expiresIn = 3600; // 1 hour
+    // Short-lived (15 minutes by default): the softphone asks for a new one before this one runs out.
+    const expiresIn = Math.min(Math.max(Math.floor(opts.ttlSeconds ?? 900), 60), 3600);
 
     // Build Twilio Access Token JWT manually (no SDK)
     const header = { alg: 'HS256', typ: 'JWT', cty: 'twilio-fpa;v=1' };
@@ -364,7 +377,9 @@ export class TwilioVoipProvider implements VoipProvider {
       grants: {
         identity: voipClientIdentity(userId),
         voice: {
-          outgoing: { application_sid: this.twimlAppSid || '' },
+          // Calls out of the app are placed by our server (it rings the agent first); the browser only takes calls,
+          // so no TwiML application is needed unless one is configured.
+          ...(this.twimlAppSid ? { outgoing: { application_sid: this.twimlAppSid } } : {}),
           incoming: { allow: true },
         },
       },

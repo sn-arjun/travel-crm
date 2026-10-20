@@ -15,6 +15,7 @@ import type { AppContext } from '../types';
 import { generateId } from '../utils/uuid';
 import { success, error } from '../utils/response';
 import { rbac } from '../middleware/rbac';
+import { rateLimit } from '../middleware/rate-limit';
 import { findContactByPhone, findOpenLeadForContact } from '../services/call-routing';
 import { createVoipProvider, loadVoipSettings, sealVoipSecret } from '../services/voip-provider';
 import { voipErrorHandler } from '../services/voip/http';
@@ -217,30 +218,69 @@ voipRoutes.get('/test-connection', rbac(['admin']), async (c) => {
   }
 });
 
-// ── POST /token — Generate client token for browser/app calling ─
+// ── GET /token — Generate client token for browser/app calling ─
 // TICKET-369
 
-voipRoutes.post('/token', async (c) => {
+// R307: the softphone's access token. Agent roles only; the agency must be allowed calling (country, plan) and
+// have an active sub-account; the identity is derived here from the signed-in user (never from the request);
+// short-lived (SOFTPHONE_TOKEN_TTL_SECONDS), so the app asks again before it runs out.
+export const SOFTPHONE_TOKEN_TTL_SECONDS = 900;
+const AGENT_ROLES = ['admin', 'sales_manager', 'salesperson'] as const;
+
+const tokenRateLimit = rateLimit({ limit: 20, windowMs: 60_000, keyPrefix: 'rl:voip-token' });
+
+function notAvailable(c: Parameters<typeof error>[0], message: string, reason: string, status = 403) {
+  return error(c, message, status, { code: 'CALLING_NOT_AVAILABLE', reason });
+}
+
+voipRoutes.get('/token', rbac([...AGENT_ROLES]), tokenRateLimit, async (c) => {
+  const env = c.env;
   const userId = c.get('userId');
+  const tenantId = c.get('tenantId');
   const db = c.get('tenantDb');
-  const settings = await loadVoipSettings(c.env, db);
 
-  if (!settings) {
-    return error(c, 'VoIP not configured. Please set up credentials in Settings.', 422);
+  const tenant = await loadTenant(env, tenantId);
+  if (!tenant) return error(c, 'Agency not found', 404);
+  const decision = await decisionFor(env, tenant, db);
+  if (!decision.allowed) return notAvailable(c, decision.message ?? 'Calling is not available for this agency.', decision.reason ?? 'not_allowed');
+
+  const account = await getAccount(env, tenantId);
+  if (!account || account.status !== 'active' || !account.sub_account_id) {
+    return notAvailable(c, 'Calling is not turned on for this agency.', account?.status === 'suspended' ? 'suspended' : 'no_account');
   }
 
-  try {
-    const provider = createVoipProvider(c.env, settings);
-    const token = await provider.generateClientToken(userId);
-    return success(c, {
-      token: token.token,
-      identity: token.identity,
-      expiresAt: new Date(Date.now() + token.expiresIn * 1000).toISOString(),
-      provider: settings.voipProvider,
-    });
-  } catch (e: any) {
-    return error(c, e.message || 'Failed to generate VoIP token', 422);
+  let settings = await loadVoipSettings(env, db);
+  // Tokens come from the agency's own sub-account; credentials of another account are never used for them.
+  if (!settings || settings.providerAccountId !== account.sub_account_id) {
+    return notAvailable(c, 'Calling is not turned on for this agency.', 'no_account', 409);
   }
+
+  const user = await db.prepare('SELECT is_active FROM users WHERE id = ?').bind(userId).first<{ is_active: number }>();
+  if (!user || !user.is_active) return error(c, 'User not found', 403);
+
+  // The first token of an agency creates the key that signs them, inside its sub-account.
+  if (!settings.providerApiKeyId || !settings.providerApiKeySecret) {
+    const provider = createVoipProvider(env, settings);
+    if (provider.provisionSoftphoneKey) {
+      const key = await provider.provisionSoftphoneKey();
+      const sealedSecret = await sealVoipSecret(env, settings.id, 'provider_api_key_secret', key.apiKeySecret);
+      await db
+        .prepare(`UPDATE voip_settings SET provider_api_key_id = ?, provider_api_key_secret = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`)
+        .bind(key.apiKeyId, sealedSecret, settings.id)
+        .run();
+      settings = (await loadVoipSettings(env, db)) ?? settings;
+    }
+  }
+
+  const provider = createVoipProvider(env, settings);
+  const token = await provider.generateClientToken(userId, { ttlSeconds: SOFTPHONE_TOKEN_TTL_SECONDS });
+  return success(c, {
+    token: token.token,
+    identity: token.identity,
+    expiresIn: token.expiresIn,
+    expiresAt: new Date(Date.now() + token.expiresIn * 1000).toISOString(),
+    provider: provider.providerName,
+  });
 });
 
 // ── GET /caller-info — Identify caller by phone (TICKET-380) ──
