@@ -134,7 +134,15 @@ const eslintConfig = [
   // ── Rule 4: user-facing copy lives in design-system/copy/ ─
   // Warn-level: flags long literal strings in JSX text position.
   {
-    files: ['src/app/**/*.tsx', 'src/components/domain/**/*.tsx'],
+    // R210: the shell, auth screens and shared components are on the translation catalogue; scripts/i18n-check.mjs
+    // is the hard gate for them, this keeps new literals visible in the editor.
+    files: [
+      'src/app/**/*.tsx',
+      'src/components/domain/**/*.tsx',
+      'src/components/layout/**/*.tsx',
+      'src/components/ui/**/*.tsx',
+      'src/components/auth/**/*.tsx',
+    ],
     rules: {
       'react/jsx-no-literals': [
         'warn',
