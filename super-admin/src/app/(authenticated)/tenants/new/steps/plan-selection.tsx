@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { CatalogueData } from '@/lib/catalogue';
-import { formatMoney } from '@/lib/catalogue';
+import { formatMoney, priceInForce } from '@/lib/catalogue';
 
 interface Props {
   selected: string;
@@ -48,7 +48,7 @@ export function PlanSelectionStep({ selected: initial, onNext, onBack }: Props) 
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             {plans.map((plan) => {
-              const price = plan.prices.find((p) => p.isActive && p.market === 'IN') ?? plan.prices.find((p) => p.isActive);
+              const price = priceInForce(plan.prices, 'IN') ?? plan.prices.find((p) => p.isActive);
               return (
                 <div
                   key={plan.key}

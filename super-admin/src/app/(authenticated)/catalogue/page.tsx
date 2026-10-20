@@ -18,14 +18,17 @@ import {
   type CatalogueUnitCost,
 } from '@/lib/catalogue';
 
-const ALLOWANCE_KEYS = ['ai_credits', 'sms', 'whatsapp', 'otp', 'call_minutes', 'email'] as const;
+const ALLOWANCE_KEYS = ['ai_credits', 'sms', 'whatsapp', 'whatsapp_marketing', 'otp', 'call_minutes', 'email', 'storage_gb', 'websites'] as const;
 const ALLOWANCE_LABELS: Record<string, string> = {
   ai_credits: 'AI credits',
   sms: 'SMS',
   whatsapp: 'WhatsApp',
+  whatsapp_marketing: 'WhatsApp marketing (step B)',
   otp: 'OTP',
   call_minutes: 'Call minutes',
   email: 'Email',
+  storage_gb: 'Storage GB (info)',
+  websites: 'Websites (info)',
 };
 
 /** Same rule as the backend (services/plans/pricing.ts): units x unit cost x (1 + margin), rounded up to the minor unit. */
@@ -225,6 +228,9 @@ function PriceRow({ price, onDone }: { price: CataloguePrice; onDone: Done }) {
   return (
     <div className="flex flex-wrap items-end gap-2 rounded-md border p-2">
       <Badge variant="outline">{price.market} / {price.currency}</Badge>
+      <Badge variant={price.priceKind === 'founder' ? 'default' : 'secondary'} title={`Applies from ${price.validFrom}`}>
+        {price.priceKind === 'founder' ? 'Founder' : 'List'} from {price.validFrom.slice(0, 10)}
+      </Badge>
       <Labeled label="Yearly price"><Input className="w-28" type="number" min={0} value={yearly} onChange={(e) => setYearly(e.target.value)} /></Labeled>
       <Labeled label="Included users"><Input className="w-24" type="number" min={1} value={users} onChange={(e) => setUsers(e.target.value)} /></Labeled>
       <Labeled label="Extra user / year"><Input className="w-28" type="number" min={0} value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="none" /></Labeled>
@@ -253,7 +259,7 @@ function AllowanceCard({ plan, onDone }: { plan: CataloguePlan; onDone: Done }) 
         <CardDescription>Included each month: AI credits, then communication caps per channel.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           {ALLOWANCE_KEYS.map((k) => (
             <Labeled key={k} label={ALLOWANCE_LABELS[k]}>
               <Input type="number" min={0} value={values[k]} onChange={(e) => setValues({ ...values, [k]: e.target.value })} />

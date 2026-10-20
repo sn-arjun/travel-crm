@@ -9,6 +9,21 @@ export interface CataloguePrice {
   includedUsers: number;
   extraUserYearlyPrice: number | null;
   isActive: boolean;
+  /** When this row starts to apply (ISO). */
+  validFrom: string;
+  /** 'founder' rows are the launch discount (24-month lock); 'list' rows the standing price. */
+  priceKind: 'list' | 'founder';
+}
+
+/**
+ * The price row in force for a market: active, started, newest start date; before the first row has started, the first
+ * row (the same rule the backend applies). Null when the market has no active row.
+ */
+export function priceInForce(prices: CataloguePrice[], market: string, now: Date = new Date()): CataloguePrice | null {
+  const rows = prices.filter((p) => p.isActive && p.market === market);
+  const at = now.toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const started = rows.filter((p) => p.validFrom <= at).sort((a, b) => (a.validFrom < b.validFrom ? 1 : -1));
+  return started[0] ?? [...rows].sort((a, b) => (a.validFrom < b.validFrom ? -1 : 1))[0] ?? null;
 }
 
 export interface CataloguePlan {
