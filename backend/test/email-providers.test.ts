@@ -36,9 +36,12 @@ function mockSendgridFetch() {
 describe('email providers: routing by mail kind', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('with the default setting every kind uses SendGrid, even when the binding exists', () => {
+  // R132: the built-in default for platform system mail became Cloudflare (it was SendGrid in R131); agency mail is unchanged.
+  it('with the default setting platform system mail uses Cloudflare when the binding exists, agency mail stays on SendGrid', () => {
     const e = liveEnv({ EMAIL: binding() });
-    for (const kind of KINDS) expect(providerFor(e, kind).name).toBe('sendgrid');
+    expect(providerFor(e, 'platform_system').name).toBe('cloudflare');
+    for (const kind of KINDS.filter((k) => k !== 'platform_system')) expect(providerFor(e, kind).name).toBe('sendgrid');
+    expect(providerFor(liveEnv(), 'platform_system').name).toBe('sendgrid');
   });
 
   it('EMAIL_SYSTEM_PROVIDER=cloudflare moves only platform system mail, and only with the binding', () => {
@@ -117,10 +120,10 @@ describe('email providers: routing by mail kind', () => {
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
-  it('with the default flag the behaviour is unchanged: SendGrid, from the configured sender', async () => {
+  it('EMAIL_SYSTEM_PROVIDER=sendgrid keeps the R131 behaviour: SendGrid, from the configured sender', async () => {
     const b = binding();
     const spy = mockSendgridFetch();
-    const result = await sendTransactional(liveEnv({ EMAIL: b }), { to: 'p@example.com', template: 'password_changed' });
+    const result = await sendTransactional(liveEnv({ EMAIL_SYSTEM_PROVIDER: 'sendgrid', EMAIL: b }), { to: 'p@example.com', template: 'password_changed' });
     expect(result).toMatchObject({ delivered: true, via: 'sendgrid' });
     expect(b.send).not.toHaveBeenCalled();
     const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);

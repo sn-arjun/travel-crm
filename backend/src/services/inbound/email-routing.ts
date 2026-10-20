@@ -15,6 +15,7 @@ import { resolveTenantDb } from '../tenant-db';
 import { ingestInbound, normalizeAddress, parseEmailAddress } from './ingest';
 import { htmlToPlain, parseMime, stripQuotedHistory } from '../mail/mime';
 import { resolveReplyToken, tokenFromAddress } from '../mail/reply-token';
+import { getEmailSettings } from '../mail/settings';
 
 /** Largest message the Worker reads (Cloudflare accepts up to 25 MiB; we do not need that much in memory). */
 export const MAX_INBOUND_BYTES = 5 * 1024 * 1024;
@@ -85,6 +86,11 @@ export async function handleInboundEmail(
   let leadId: string | null = null;
   const token = tokenFromAddress(env, to);
   if (token) {
+    // R132: the console can switch the reply+token addresses off; mail sent to one is refused while it is off.
+    if (!(await getEmailSettings(env)).inboundEnabled) {
+      await logInbound(env, 'unrouted', 'rejected', logPayload, 'Reply addresses are switched off in the console');
+      return reject(message, 'Unknown address');
+    }
     const thread = await resolveReplyToken(env, token);
     if (!thread) {
       await logInbound(env, 'unrouted', 'rejected', logPayload, 'Unknown or expired reply token');

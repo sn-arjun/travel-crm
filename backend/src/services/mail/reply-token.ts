@@ -1,4 +1,5 @@
 import type { Env } from '../../types';
+import { getEmailSettings } from './settings';
 
 /**
  * R131: per-thread reply addresses. Agency mail goes out with Reply-To `reply+<token>@<EMAIL_INBOUND_DOMAIN>`.
@@ -35,6 +36,8 @@ export function inboundDomain(env: Pick<Env, 'EMAIL_INBOUND_DOMAIN'>): string | 
 export async function replyAddressFor(env: Env, thread: ReplyThread): Promise<string | null> {
   const domain = inboundDomain(env);
   if (!domain || !env.CACHE) return null;
+  // R132: switched off in the console -> no new reply+token addresses; the sender's normal reply-to is used.
+  if (!(await getEmailSettings(env)).inboundEnabled) return null;
   try {
     const threadKey = `${THREAD_PREFIX}${thread.tenantId}:${thread.contactId}`;
     let token = await env.CACHE.get(threadKey);

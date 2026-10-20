@@ -4,6 +4,7 @@ import { eq, and } from 'drizzle-orm';
 import type { AppContext } from '../types';
 import { messageLog } from '../db/tenant-schema';
 import { applyEmailEvent, providerMessageIds, type ProviderEvent } from '../services/mail/delivery-events';
+import { applyPlatformEmailEvent } from '../services/mail/platform-log';
 import { error, success } from '../utils/response';
 import { candidateTenantDbs } from '../services/tenant-db';
 import { formParams, publicRequestUrl, unsignedAllowed, verifySendgrid, verifyTwilio } from '../middleware/provider-signature';
@@ -127,12 +128,16 @@ webhookRoutes.post('/sendgrid/events', async (c) => {
         if (ids.length === 0 || !event.email) continue;
 
         // The workspace that sent the message is the one whose rows hold its provider message id (R128).
+        let matched = false;
         for (const tenantDb of tenantDbs) {
           if (await applyEmailEvent(tenantDb, event, ids)) {
             processedCount++;
+            matched = true;
             break;
           }
         }
+        // R132: not an agency's message -> it may be the platform's own mail (platform_email_log, matched by message id).
+        if (!matched && (await applyPlatformEmailEvent(c.env, event, ids))) processedCount++;
       } catch (eventErr: any) {
         console.error('[SENDGRID WEBHOOK] Error processing event:', eventErr.message);
         // Continue processing other events

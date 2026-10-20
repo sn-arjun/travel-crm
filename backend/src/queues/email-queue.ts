@@ -1,5 +1,5 @@
 import type { Env } from '../types';
-import { sendWithTemplate, type SendEmailResponse } from '../services/sendgrid';
+import type { SendEmailResponse } from '../services/sendgrid';
 import { sendMail } from '../services/mail/provider';
 import { refundUsage, tryMeter } from '../services/metering/meter';
 import { resolveTenantDb } from '../services/tenant-db';
@@ -128,36 +128,22 @@ export async function handleEmailJob(job: EmailJob, env: Env): Promise<void> {
   const refundable = !!job.tenantId && (queueMetered || (job.metered === true && job.refundOnFailure === true));
 
   try {
-    if (job.templateId && job.templateData) {
-      // Use SendGrid Dynamic Template
-      result = await sendWithTemplate(env, {
-        to: job.to,
-        templateId: job.templateId,
-        dynamicData: job.templateData,
-        from: job.from,
-        replyTo: job.replyTo,
-        cc: job.cc,
-        bcc: job.bcc,
-        attachments: job.attachments,
-        unsubscribeUrl: job.unsubscribeUrl,
-      });
-    } else {
-      // Send direct email with HTML/text content
-      // R131: agency mail always goes through SendGrid (marketing when it carries an unsubscribe link); never Cloudflare
-      const sent = await sendMail(env, job.unsubscribeUrl ? 'agency_marketing' : 'agency_transactional', {
-        to: job.to,
-        subject: job.subject,
-        html: job.html,
-        text: job.text,
-        from: job.from,
-        replyTo: job.replyTo,
-        cc: job.cc,
-        bcc: job.bcc,
-        attachments: job.attachments,
-        unsubscribeUrl: job.unsubscribeUrl,
-      });
-      result = { success: sent.success, messageId: sent.messageId, error: sent.error };
-    }
+    // R131/R132: every send goes through the mail provider interface. Agency mail is SendGrid (marketing when it carries an
+    // unsubscribe link); never Cloudflare. A job with a SendGrid dynamic template id and data sends that template.
+    const sent = await sendMail(env, job.unsubscribeUrl ? 'agency_marketing' : 'agency_transactional', {
+      to: job.to,
+      subject: job.subject,
+      html: job.html,
+      text: job.text,
+      from: job.from,
+      replyTo: job.replyTo,
+      cc: job.cc,
+      bcc: job.bcc,
+      attachments: job.attachments,
+      unsubscribeUrl: job.unsubscribeUrl,
+      ...(job.templateId && job.templateData ? { templateId: job.templateId, templateData: job.templateData } : {}),
+    });
+    result = { success: sent.success, messageId: sent.messageId, error: sent.error };
 
     if (result.success) {
       console.log(

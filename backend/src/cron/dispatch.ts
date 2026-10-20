@@ -35,6 +35,7 @@ import { retryPendingRecordings, runRecordingRetention } from '../services/voip/
 import { processOverdueTasks } from './overdue-tasks';
 import { sweepWordpressSites } from '../services/wordpress/sites';
 import { processFleetAlerts } from './fleet-alerts';
+import { purgePlatformMailLog } from '../services/mail/platform-log';
 import {
   processBirthdaysForTenant,
   processInvoiceRemindersForTenant,
@@ -264,6 +265,12 @@ export async function runPlatformDailyJobs(env: Env, now: Date): Promise<{ daily
   } catch (err) {
     log('error', 'cron.number_lifecycle_failed', { error: err instanceof Error ? err.message : String(err) });
     reportError(env, err, { source: 'scheduled' });
+  }
+  // Platform email delivery log (R132): rows older than 90 days go.
+  try {
+    await purgePlatformMailLog(env, now);
+  } catch (err) {
+    log('error', 'cron.platform_email_log_purge_failed', { error: err instanceof Error ? err.message : String(err) });
   }
   // Daily exchange rates (R202); never throws, the last stored rates stay in use when the fetch fails.
   await refreshExchangeRates(env, now);

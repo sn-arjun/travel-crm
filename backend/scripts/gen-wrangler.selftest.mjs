@@ -69,11 +69,11 @@ try {
   // R131: email sending binding and provider settings
   check(/\[\[send_email\]\]\s*\r?\nname = "EMAIL"/.test(topText) && /\[\[env\.production\.send_email\]\]\s*\r?\nname = "EMAIL"/.test(envText), 'send_email binding EMAIL at top level and in env section');
   check(!/send_email[^[]*remote\s*=\s*true/.test(text), 'send_email binding is never remote');
-  check(/\[vars\][^[]*EMAIL_SYSTEM_PROVIDER = "sendgrid"/.test(topText) && !/EMAIL_INBOUND_DOMAIN/.test(text), 'EMAIL_SYSTEM_PROVIDER defaults to sendgrid; no inbound domain unless set');
+  check(/\[vars\][^[]*EMAIL_SYSTEM_PROVIDER = "cloudflare"/.test(topText) && !/EMAIL_INBOUND_DOMAIN/.test(text), 'EMAIL_SYSTEM_PROVIDER defaults to cloudflare; no inbound domain unless set');
   const cfOut = path.join(tmp, 'prod-cf.toml');
-  const rcf = run(['--env', 'production', '--registry', sample, '--out', cfOut], { EMAIL_SYSTEM_PROVIDER: 'cloudflare', EMAIL_INBOUND_DOMAIN: 'In.Example.com' });
+  const rcf = run(['--env', 'production', '--registry', sample, '--out', cfOut], { EMAIL_SYSTEM_PROVIDER: 'sendgrid', EMAIL_INBOUND_DOMAIN: 'In.Example.com' });
   const cfText = readFileSync(cfOut, 'utf8');
-  check(rcf.status === 0 && /EMAIL_SYSTEM_PROVIDER = "cloudflare"/.test(cfText) && /EMAIL_INBOUND_DOMAIN = "in\.example\.com"/.test(cfText), 'EMAIL_SYSTEM_PROVIDER=cloudflare and EMAIL_INBOUND_DOMAIN (lower-cased) reach [vars]');
+  check(rcf.status === 0 && /EMAIL_SYSTEM_PROVIDER = "sendgrid"/.test(cfText) && /EMAIL_INBOUND_DOMAIN = "in\.example\.com"/.test(cfText), 'EMAIL_SYSTEM_PROVIDER=sendgrid (explicit) and EMAIL_INBOUND_DOMAIN (lower-cased) reach [vars]');
   check(run(['--env', 'production', '--registry', sample, '--out', path.join(tmp, 'm.toml')], { EMAIL_SYSTEM_PROVIDER: 'mock' }).status !== 0, 'EMAIL_SYSTEM_PROVIDER=mock is refused outside local');
   check(run(['--env', 'production', '--registry', sample, '--out', path.join(tmp, 's.toml')], { EMAIL_SYSTEM_PROVIDER: 'ses' }).status !== 0, 'an unknown EMAIL_SYSTEM_PROVIDER is refused');
 

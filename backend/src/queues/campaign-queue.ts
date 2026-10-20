@@ -1,9 +1,8 @@
 import type { Env } from '../types';
 import { resolveTenantDb } from '../services/tenant-db';
-import { emailFrom } from '../utils/app-urls';
 import { refundUsage, tryMeter } from '../services/metering/meter';
-import { marketingBlockedReason, unsubscribeUrl, unsubscribeFooterText, unsubscribeFooterHtml } from '../services/privacy/consent';
-import { unsubscribeHeaders } from '../services/sendgrid';
+import { marketingBlockedReason, unsubscribeUrl, unsubscribeFooterText } from '../services/privacy/consent';
+import { sendMail } from '../services/mail/provider';
 import { isEmailUndeliverable, resolveReplyTo } from '../services/mail/delivery';
 import { inboundDomain } from '../services/mail/reply-token';
 
@@ -284,25 +283,15 @@ async function sendEmail(
   unsubUrl: string | null = null,
   replyTo?: string
 ): Promise<string | undefined> {
-  const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${env.SENDGRID_API_KEY}`,
-    },
-    body: JSON.stringify({
-      personalizations: [{ to: [{ email: to }] }],
-      from: emailFrom(env),
-      ...(replyTo ? { reply_to: { email: replyTo } } : {}),
-      subject,
-      content: [{ type: 'text/html', value: unsubUrl ? htmlBody + unsubscribeFooterHtml(unsubUrl) : htmlBody }],
-      ...(unsubUrl ? { headers: unsubscribeHeaders(unsubUrl) } : {}),
-    }),
+  // R132: through the provider interface (agency marketing is always SendGrid). The provider appends the footer link and adds
+  // the List-Unsubscribe headers when it is given the unsubscribe URL, as the inline fetch did before.
+  const res = await sendMail(env, 'agency_marketing', {
+    to,
+    subject,
+    html: htmlBody,
+    ...(unsubUrl ? { unsubscribeUrl: unsubUrl } : {}),
+    ...(replyTo ? { replyTo } : {}),
   });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Email send failed: ${errText}`);
-  }
-  return response.headers.get('x-message-id') || undefined;
+  if (!res.success) throw new Error(`Email send failed: ${res.error ?? 'unknown error'}`);
+  return res.messageId;
 }

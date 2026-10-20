@@ -12,7 +12,8 @@ export type TemplateName =
   | 'trial_ending'
   | 'number_release_notice'
   | 'website_ready'
-  | 'voip_spend_alert';
+  | 'voip_spend_alert'
+  | 'console_test';
 
 export interface TemplateData {
   appUrl: string;
@@ -57,6 +58,12 @@ function str(d: TemplateData, key: string, fallback = ''): string {
 
 export function renderTemplate(template: TemplateName, data: TemplateData): RenderedEmail {
   switch (template) {
+    case 'console_test': {
+      const subject = 'TravelCRM Pro test email';
+      const html = layout(subject, `<p>This is a test email sent from the super admin console (Email page).</p><p>If you can read it, platform mail reaches you.</p>`);
+      const text = ['This is a test email sent from the super admin console (Email page).', 'If you can read it, platform mail reaches you.', ''].join('\n');
+      return { subject, html, text };
+    }
     case 'welcome_admin': {
       const agency = str(data, 'agencyName', 'your agency');
       const email = str(data, 'email');

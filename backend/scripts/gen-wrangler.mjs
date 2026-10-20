@@ -14,7 +14,7 @@
  * Env vars (non-local): CF_D1_MASTER_ID, CF_KV_CACHE_ID, CF_KV_SESSIONS_ID, CF_KV_REPORT_CACHE_ID,
  *   Optional plain settings written to [vars]: ALLOW_LOOPBACK_ORIGINS (default true), CREDENTIALS_ACTIVE_KEY_ID (k1),
  *   EMAIL_FROM_NAME, PLATFORM_SUPPORT_EMAIL, QUOTES_URL, EMAIL_INBOUND_DOMAIN (R131: domain for reply+<token>@ addresses).
- *   EMAIL_SYSTEM_PROVIDER (sendgrid | cloudflare, default sendgrid; mock for local only) is always written. Also written: API_PUBLIC_URL, TENANT_PROVISIONER=cloudflare,
+ *   EMAIL_SYSTEM_PROVIDER (sendgrid | cloudflare, default cloudflare with SendGrid fallback; the console Email page overrides it at runtime; mock for local only) is always written. Also written: API_PUBLIC_URL, TENANT_PROVISIONER=cloudflare,
  *   CF_WORKER_SCRIPT_NAME.
  *   DOMAIN (the one place the public domain is set; APP_URL, API_URL, CORS_ORIGINS and EMAIL_FROM default
  *   from it), and the explicit overrides APP_URL, API_URL, CORS_ORIGINS, EMAIL_FROM.
@@ -154,9 +154,9 @@ function replaceKvIds(baseText, env) {
   );
 }
 
-/** R131: provider of the platform's own system mail. 'sendgrid' unless EMAIL_SYSTEM_PROVIDER says otherwise; 'mock' is for local stacks only. */
+/** R131/R132: provider of the platform's own system mail. 'cloudflare' (with automatic SendGrid fallback) unless EMAIL_SYSTEM_PROVIDER says otherwise; 'mock' is for local stacks only. */
 export function emailSystemProvider(env) {
-  const v = (process.env.EMAIL_SYSTEM_PROVIDER || 'sendgrid').trim().toLowerCase();
+  const v = (process.env.EMAIL_SYSTEM_PROVIDER || 'cloudflare').trim().toLowerCase();
   if (!['sendgrid', 'cloudflare', 'mock'].includes(v)) die(`EMAIL_SYSTEM_PROVIDER must be sendgrid, cloudflare or mock (got ${v}).`);
   if (v === 'mock' && env !== 'local') die('EMAIL_SYSTEM_PROVIDER=mock is for local stacks only.');
   return v;

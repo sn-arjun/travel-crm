@@ -3,6 +3,8 @@ import { isTestMode } from '../../utils/test-mode';
 import { providerFor, sendMail, type ProviderName } from './provider';
 import { appUrl, emailFrom } from '../../utils/app-urls';
 import { generateId } from '../../utils/uuid';
+import { getEmailSettings } from './settings';
+import { recordPlatformMail } from './platform-log';
 import { renderTemplate, type TemplateName } from './templates';
 
 export const OUTBOX_PREFIX = 'outbox:';
@@ -44,9 +46,10 @@ export interface TransactionalResult {
 export async function sendTransactional(env: Env, params: TransactionalParams): Promise<TransactionalResult> {
   try {
     const rendered = renderTemplate(params.template, { ...(params.data ?? {}), appUrl: appUrl(env) });
-    const first = providerFor(env, 'platform_system').name;
+    const first = providerFor(env, 'platform_system', await getEmailSettings(env)).name;
     // Test mode and the mock provider write to the outbox; SendGrid with no key does too. Cloudflare needs no SendGrid key.
-    const useOutbox = isTestMode(env) || first === 'mock' || (first === 'sendgrid' && !env.SENDGRID_API_KEY);
+    const outboxReason = isTestMode(env) ? 'test mode' : first === 'mock' ? 'mock provider' : first === 'sendgrid' && !env.SENDGRID_API_KEY ? 'no SendGrid key' : null;
+    const useOutbox = outboxReason !== null;
 
     if (!useOutbox) {
       const from = emailFrom(env);
@@ -74,6 +77,7 @@ export async function sendTransactional(env: Env, params: TransactionalParams): 
       createdAt: new Date().toISOString(),
     };
     await env.CACHE.put(`${OUTBOX_PREFIX}${id}`, JSON.stringify(entry), { expirationTtl: OUTBOX_TTL_SECONDS });
+    await recordPlatformMail(env, { template: params.template, to: params.to, provider: 'outbox', status: 'sent', note: `Written to the local outbox (${outboxReason}); nothing was sent` });
     console.log(`[mail:outbox] ${params.template} -> ${params.to} (${id})`);
     return { delivered: true, via: 'outbox', id };
   } catch (err) {
