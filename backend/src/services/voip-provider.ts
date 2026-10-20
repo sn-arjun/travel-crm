@@ -126,6 +126,8 @@ export interface VoipProvider {
   createSubAccount(input: VoipSubAccountInput): Promise<VoipSubAccount>;
   /** Platform credentials only. Closes the sub-account (the provider releases its numbers). */
   closeSubAccount(subAccountId: string): Promise<void>;
+  /** Platform credentials only. Suspends (calls and numbers stop working, numbers are kept) or reactivates the sub-account. */
+  setSubAccountStatus(subAccountId: string, status: 'active' | 'suspended'): Promise<void>;
   /** Place a call from the agency's account: agent leg first (app or phone), then the customer. */
   placeCall(options: VoipPlaceCallOptions): Promise<VoipCallResult>;
   /** Platform credentials only. Calls the sub-account made or received since a time, normalised. */

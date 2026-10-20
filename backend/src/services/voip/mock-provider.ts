@@ -45,16 +45,17 @@ export interface MockCallRecord {
 interface MockState {
   counter: number;
   calls: MockCallRecord[];
-  subAccounts: Map<string, { tenantId: string; name: string; closed: boolean }>;
+  subAccounts: Map<string, { tenantId: string; name: string; closed: boolean; suspended?: boolean }>;
   numbers: Map<string, { providerNumberId: string; phoneNumber: string }>;
   usage: Array<VoipUsageRecord & { subAccountId: string }>;
   recordings: Map<string, { bytes: Uint8Array; durationSeconds: number }>;
   /** Recording ids deleted through deleteRecording, in order. */
   deletedRecordings: string[];
+  log: string[];
 }
 
 function fresh(): MockState {
-  return { counter: 0, calls: [], subAccounts: new Map(), numbers: new Map(), usage: [], recordings: new Map(), deletedRecordings: [] };
+  return { counter: 0, calls: [], subAccounts: new Map(), numbers: new Map(), usage: [], recordings: new Map(), deletedRecordings: [], log: [] };
 }
 
 let state: MockState = fresh();
@@ -93,8 +94,18 @@ export class MockVoipProvider extends TwilioVoipProvider {
     return state.recordings.has(recordingId);
   }
 
-  static get subAccounts(): ReadonlyMap<string, { tenantId: string; name: string; closed: boolean }> {
+  static get subAccounts(): ReadonlyMap<string, { tenantId: string; name: string; closed: boolean; suspended?: boolean }> {
     return state.subAccounts;
+  }
+
+  /** Phone numbers currently held at the provider (bought and not released). */
+  static get heldNumbers(): string[] {
+    return [...state.numbers.keys()];
+  }
+
+  /** Every provider-side action in order ("createSubAccount", "purchaseNumber:+44...", "releaseNumber:PN..."), for tests that check ordering. */
+  static get log(): readonly string[] {
+    return state.log;
   }
 
   /** Mark a placed call finished and make it show up in fetchUsage, as Twilio would after the call. */
@@ -132,6 +143,7 @@ export class MockVoipProvider extends TwilioVoipProvider {
 
   override async createSubAccount(input: VoipSubAccountInput): Promise<VoipSubAccount> {
     const subAccountId = nextId('AC');
+    state.log.push('createSubAccount');
     state.subAccounts.set(subAccountId, { tenantId: input.tenantId, name: input.name, closed: false });
     const token = `mocktoken${state.counter}`;
     const aad = subAccountSecretAad(input.tenantId, subAccountId);
@@ -143,6 +155,14 @@ export class MockVoipProvider extends TwilioVoipProvider {
     const sub = state.subAccounts.get(subAccountId);
     if (!sub) throw new VoipProviderError('mock', 20404, 'Sub-account not found', 'not_found');
     sub.closed = true;
+    state.log.push(`closeSubAccount:${subAccountId}`);
+  }
+
+  override async setSubAccountStatus(subAccountId: string, status: 'active' | 'suspended'): Promise<void> {
+    const sub = state.subAccounts.get(subAccountId);
+    if (!sub) throw new VoipProviderError('mock', 20404, 'Sub-account not found', 'not_found');
+    sub.suspended = status === 'suspended';
+    state.log.push(`${status === 'suspended' ? 'suspend' : 'resume'}SubAccount:${subAccountId}`);
   }
 
   // ── Calls ─────────────────────────────────────────────────
@@ -231,6 +251,7 @@ export class MockVoipProvider extends TwilioVoipProvider {
     if (state.numbers.has(phoneNumber)) throw new VoipProviderError('mock', 21422, 'Phone number is not available', 'unavailable');
     const providerNumberId = nextId('PN');
     state.numbers.set(phoneNumber, { providerNumberId, phoneNumber });
+    state.log.push(`purchaseNumber:${phoneNumber}`);
     return { providerNumberId, phoneNumber, friendlyName: friendlyName || phoneNumber, capabilities: { voice: true, sms: true } };
   }
 
@@ -238,6 +259,7 @@ export class MockVoipProvider extends TwilioVoipProvider {
     for (const [number, rec] of state.numbers) {
       if (rec.providerNumberId === providerNumberId) {
         state.numbers.delete(number);
+        state.log.push(`releaseNumber:${providerNumberId}`);
         return;
       }
     }

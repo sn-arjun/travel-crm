@@ -186,6 +186,10 @@ export class TwilioVoipProvider implements VoipProvider {
     await this.twilioRequest('POST', `${TWILIO_API}/2010-04-01/Accounts/${subAccountId}.json`, new URLSearchParams({ Status: 'closed' }));
   }
 
+  async setSubAccountStatus(subAccountId: string, status: 'active' | 'suspended'): Promise<void> {
+    await this.twilioRequest('POST', `${TWILIO_API}/2010-04-01/Accounts/${subAccountId}.json`, new URLSearchParams({ Status: status }));
+  }
+
   // ── VoipProvider: Usage (platform credentials) ────────────
 
   async fetchUsage(input: VoipFetchUsageInput): Promise<VoipUsageRecord[]> {

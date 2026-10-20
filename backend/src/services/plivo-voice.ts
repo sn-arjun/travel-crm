@@ -46,6 +46,7 @@ export class PlivoVoipProvider implements VoipProvider {
 
   async createSubAccount(_input: VoipSubAccountInput): Promise<VoipSubAccount> { throw new NotImplementedForProvider('plivo', 'createSubAccount'); }
   async closeSubAccount(_subAccountId: string): Promise<void> { throw new NotImplementedForProvider('plivo', 'closeSubAccount'); }
+  async setSubAccountStatus(_subAccountId: string, _status: 'active' | 'suspended'): Promise<void> { throw new NotImplementedForProvider('plivo', 'setSubAccountStatus'); }
   async placeCall(_options: VoipPlaceCallOptions): Promise<VoipCallResult> { throw new NotImplementedForProvider('plivo', 'placeCall'); }
   async fetchUsage(_input: VoipFetchUsageInput): Promise<VoipUsageRecord[]> { throw new NotImplementedForProvider('plivo', 'fetchUsage'); }
   async fetchRecording(_ref: VoipRecordingRef): Promise<VoipRecordingFile> { throw new NotImplementedForProvider('plivo', 'fetchRecording'); }

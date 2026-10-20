@@ -9,7 +9,8 @@ export type TemplateName =
   | 'usage_alert'
   | 'payment_receipt'
   | 'payment_failed'
-  | 'trial_ending';
+  | 'trial_ending'
+  | 'number_release_notice';
 
 export interface TemplateData {
   appUrl: string;
@@ -186,6 +187,25 @@ Pay now: ${url}
         `<p>The free trial for <strong>${esc(agency)}</strong> ends${ends ? ` on ${esc(ends)}` : ''}. Choose a plan to keep working without interruption; your data stays safe.</p>${button(url, 'Choose a plan')}`
       );
       const text = `The free trial for ${agency} ends${ends ? ` on ${ends}` : ''}. Choose a plan to keep working: ${url}
+`;
+      return { subject, html, text };
+    }
+    case 'number_release_notice': {
+      const agency = str(data, 'agencyName', 'your agency');
+      const numbers = Array.isArray(data.numbers) ? (data.numbers as unknown[]).map(String) : [];
+      const releaseOn = str(data, 'releaseOn');
+      const reason = str(data, 'reason', 'cancelled');
+      const url = str(data, 'billingUrl', `${data.appUrl}/settings/billing`);
+      const why = reason === 'unpaid' ? 'the rental for this month has not been paid' : 'the account was cancelled';
+      const subject = numbers.length === 1 ? `Your phone number ${numbers[0]} will be released` : 'Your phone numbers will be released';
+      const list = numbers.map((n) => `<li>${esc(n)}</li>`).join('');
+      const html = layout(
+        subject,
+        `<p>For <strong>${esc(agency)}</strong>, ${esc(why)}, so these numbers will be released on <strong>${esc(releaseOn)}</strong>:</p><ul>${list}</ul><p>A released number is usually gone for good. To keep it, ${reason === 'unpaid' ? 'buy the phone number add-on' : 'reactivate the account'} before that date.</p>${button(url, 'Open billing')}`
+      );
+      const text = `For ${agency}, ${why}, so these numbers will be released on ${releaseOn}: ${numbers.join(', ')}
+
+A released number is usually gone for good. To keep it, ${reason === 'unpaid' ? 'buy the phone number add-on' : 'reactivate the account'} before that date: ${url}
 `;
       return { subject, html, text };
     }
