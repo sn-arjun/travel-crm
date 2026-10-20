@@ -266,14 +266,15 @@ describe('plan catalogue (R109)', () => {
       const grant = await call(multiEnv, 'POST', `/admin/tenants/${BASIC}/addons`, superToken, { productKey: 'sms_100', quantity: 1 });
       expect(grant.status).toBe(201);
       expect(await getAllowance(testEnv, BASIC, 'sms')).toBe(100);
-      expect(await getAllowance(testEnv, BASIC, 'whatsapp')).toBe(300);
+      expect(await getAllowance(testEnv, BASIC, 'whatsapp')).toBe(250); // step B: utility-only amount (step A was 300)
     });
   });
 
   describe('prices are computed from the catalogue', () => {
     it('commPackPrice(sms, IN, 100) = 100 x 8.14562 x 1.25 = 1018.21, rounded up to the paisa', async () => {
       expect(await commPackPrice(testEnv, 'sms', 'IN', 100)).toBe(1018.21);
-      expect(await commPackPrice(testEnv, 'whatsapp', 'IN', 1000)).toBe(1444.09); // step A: the marketing rate
+      expect(await commPackPrice(testEnv, 'whatsapp', 'IN', 1000)).toBe(171.34); // step B: the utility rate (step A was 1444.09, the marketing rate)
+      expect(await commPackPrice(testEnv, 'whatsapp_marketing', 'IN', 1000)).toBe(1444.09);
       expect(await commPackPrice(testEnv, 'otp', 'IN', 100)).toBe(1630.11);
       expect(await commPackPrice(testEnv, 'sms', 'IN', 1)).toBe(10.19); // 10.182 rounds up
       expect(await commPackPrice(testEnv, 'call_minute', 'IN', 100)).toBeNull(); // no calling in India
@@ -323,10 +324,11 @@ describe('plan catalogue (R109)', () => {
         ['enterprise', 59999, 25, 2400],
       ]);
       expect(data.plans[0]).toMatchObject({ priceKind: 'founder', founderEndsAt: '2027-04-01T00:00:00Z', listYearlyPrice: 14999, founderLockMonths: 24 });
-      expect(data.plans[0].allowances).toMatchObject({ ai_credits: 2500, sms: 0, whatsapp: 300, otp: 10 }); // 2500: raised by the allowance edit above
+      expect(data.plans[0].allowances).toMatchObject({ ai_credits: 2500, sms: 0, whatsapp: 250, whatsapp_marketing: 50, otp: 10 }); // 2500: raised by the allowance edit above
       const price = (key: string) => data.addons.find((a: any) => a.key === key).price;
       expect(price('sms_100')).toBe(1018.21);
-      expect(price('whatsapp_1000')).toBe(1444.09);
+      expect(price('whatsapp_1000')).toBe(171.34);
+      expect(price('whatsapp_marketing_1000_in')).toBe(1444.09);
       expect(price('otp_100')).toBe(1630.11);
       expect(price('ai_credits_10000_in')).toBe(499);
       expect(data.addons.every((a: any) => a.currency === 'INR')).toBe(true); // no UK, EU, ... pack in the India list

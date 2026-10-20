@@ -58,7 +58,7 @@ beforeAll(async () => {
   catalogue = await getCatalogue(testEnv);
 });
 
-describe('catalogue rows equal PRICING.md section 7 (step A)', () => {
+describe('catalogue rows equal PRICING.md section 7 (step A, with the step B switches of migration 0028)', () => {
   it('plan_prices: all 54 rows, 9 markets x 3 plans x (founder, list), with the document ids, currency, users and dates', async () => {
     expect(docPrices).toHaveLength(54);
     const rows = await all<any>('SELECT * FROM plan_prices');
@@ -102,8 +102,8 @@ describe('catalogue rows equal PRICING.md section 7 (step A)', () => {
     }
   });
 
-  it('plan_allowances (step A) and plan_features: the rows and the counts of section 7.3 / 7.4', () => {
-    const cols: Array<[string, string]> = [['ai_credits', 'ai_credits'], ['whatsapp', 'whatsapp (step A)'], ['whatsapp_marketing', 'whatsapp_marketing'], ['sms', 'sms'], ['otp', 'otp'], ['email', 'email'], ['call_minutes', 'call_minutes'], ['storage_gb', 'storage_gb'], ['websites', 'websites']];
+  it('plan_allowances (step B: utility-only whatsapp amounts) and plan_features: the rows and the counts of section 7.3 / 7.4', () => {
+    const cols: Array<[string, string]> = [['ai_credits', 'ai_credits'], ['whatsapp', 'whatsapp (step B)'], ['whatsapp_marketing', 'whatsapp_marketing'], ['sms', 'sms'], ['otp', 'otp'], ['email', 'email'], ['call_minutes', 'call_minutes'], ['storage_gb', 'storage_gb'], ['websites', 'websites']];
     for (const d of docAllowances) {
       const plan = catalogue.plans.find((p) => p.key === d.plan_key)!;
       for (const [key, col] of cols) expect(plan.allowances[key], `${d.plan_key} ${key}`).toBe(Number(d[col]));
@@ -130,16 +130,19 @@ describe('catalogue rows equal PRICING.md section 7 (step A)', () => {
     expect(catalogue.plans.map((p) => p.key).sort()).toEqual(['basic', 'enterprise', 'pro', 'trial']);
   });
 
-  it('comm_unit_costs: all rows with the document ids, units, margins and the step B rows inactive', async () => {
+  it('comm_unit_costs: all rows with the document ids, units, margins; step B rows active, interim WhatsApp rows retired', async () => {
     expect(docCosts.length).toBe(69);
     const rows = await all<any>('SELECT * FROM comm_unit_costs');
     for (const d of docCosts) {
       const row = rows.find((r) => r.id === d.id);
       expect(row, `comm_unit_costs ${d.id}`).toBeTruthy();
-      expect(row).toMatchObject({ channel: d.channel, market: d.market, unit_cost: Number(d.unit_cost), currency: d.currency, margin_pct: Number(d.margin_pct), effective_from: d.effective_from, is_active: Number(d.is_active) });
+      // R130: step B is on. The interim marketing-rate whatsapp rows of step A are off, the step B rows are on.
+      const stepB = d.step.startsWith('B');
+      const interim = /interim/.test(d.provider);
+      expect(row).toMatchObject({ channel: d.channel, market: d.market, unit_cost: Number(d.unit_cost), currency: d.currency, margin_pct: Number(d.margin_pct), effective_from: d.effective_from, is_active: stepB ? 1 : interim ? 0 : Number(d.is_active) });
     }
-    // Step B rows are in, switched off.
-    for (const d of docCosts.filter((x) => x.step.startsWith('B'))) expect(rows.find((r) => r.id === d.id)!.is_active).toBe(0);
+    // Step B rows are in and switched on (0028).
+    for (const d of docCosts.filter((x) => x.step.startsWith('B'))) expect(rows.find((r) => r.id === d.id)!.is_active).toBe(1);
     // Outside India the margin is 30, in India 25.
     for (const r of rows.filter((x) => docCosts.some((d) => d.id === x.id))) {
       expect(r.margin_pct).toBe(r.market === 'IN' ? 25 : 30);
@@ -149,7 +152,7 @@ describe('catalogue rows equal PRICING.md section 7 (step A)', () => {
     for (const id of old) expect(rows.find((r) => r.id === id)!.is_active).toBe(0);
   });
 
-  it('addon_products: 68 new rows, step B marketing packs inactive, the retired packs switched off', async () => {
+  it('addon_products: 68 new rows, step B marketing packs active, the retired packs switched off', async () => {
     expect(docProducts).toHaveLength(68);
     const rows = await all<any>('SELECT * FROM addon_products');
     for (const d of docProducts) {
@@ -157,13 +160,14 @@ describe('catalogue rows equal PRICING.md section 7 (step A)', () => {
       expect(row, `addon_products ${d.key}`).toBeTruthy();
       expect(row).toMatchObject({
         name: d.name, kind: d.kind, channel: d.channel === 'NULL' ? null : d.channel, units: Number(d.units),
-        fixed_price: d.fixed_price === 'NULL' ? null : Number(d.fixed_price), currency: d.currency, market: d.market, is_active: Number(d.is_active),
+        fixed_price: d.fixed_price === 'NULL' ? null : Number(d.fixed_price), currency: d.currency, market: d.market,
+        is_active: d.key.startsWith('whatsapp_marketing_') ? 1 : Number(d.is_active), // R130: step B switches the marketing packs on
       });
     }
     for (const key of ['ai_credit_pack_5000', 'email_1000', 'call_minutes_100_west', 'call_minutes_100_sg']) {
       expect(rows.find((r) => r.key === key)!.is_active).toBe(0);
     }
-    for (const r of rows.filter((x) => x.key.startsWith('whatsapp_marketing_'))) expect(r.is_active).toBe(0);
+    for (const r of rows.filter((x) => x.key.startsWith('whatsapp_marketing_'))) expect(r.is_active).toBe(1);
     expect(rows.find((r) => r.key === 'extra_user')!.is_active).toBe(1);
   });
 
@@ -318,8 +322,9 @@ describe('pack offers are filtered by market (PRICING.md 8.3)', () => {
     }
   });
 
-  it('inactive step B packs and retired packs are never offered', () => {
-    expect(packOffers(catalogue, 'whatsapp_marketing', 'IN', now)).toEqual([]);
+  it('step B marketing packs are offered for their own allowance only; retired packs never', () => {
+    expect(packOffers(catalogue, 'whatsapp_marketing', 'IN', now).map((p) => p.key)).toEqual(['whatsapp_marketing_1000_in']);
+    expect(packOffers(catalogue, 'whatsapp', 'IN', now).map((p) => p.key)).toEqual(['whatsapp_1000']);
     expect(packOffers(catalogue, 'ai_credits', 'IN', now).map((p) => p.key)).toEqual(['ai_credits_10000_in', 'ai_credits_50000_in']);
     expect(packOffers(catalogue, 'email', 'IN', now).map((p) => p.key)).toEqual(['email_5000_in']);
   });
@@ -368,7 +373,8 @@ describe('margin floor (PRICING.md 8.7)', () => {
     expect(price('sms_500_uk')).toBe(28.16);
     expect(price('sms_100')).toBe(1018.21);
     expect(price('call_minutes_1000_west')).toBe(26.65);
-    expect(price('whatsapp_2000_west')).toBe(65); // step A: 2,000 at the marketing rate
+    expect(price('whatsapp_2000_west')).toBe(8.84); // step B: 2,000 at the utility rate (step A was 65, the marketing rate)
+    expect(price('whatsapp_marketing_500_west')).toBe(16.25);
     expect(price('phone_number_uk')).toBe(3.52);
   });
 
