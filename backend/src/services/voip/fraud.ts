@@ -37,6 +37,7 @@ import { sendTransactional } from '../mail/transactional';
 import { agencyCountry } from './subaccounts';
 import { getPlatformSetting } from './country-policy';
 import { allowListMatches, classifyDestination } from './destinations';
+import { callingAllowList } from './country-gate';
 
 export const MAX_CALLS_PER_MINUTE = 10;
 export const MAX_CONCURRENT_CALLS = 3;
@@ -234,7 +235,9 @@ export async function preflightOutbound(env: Env, input: PreflightInput): Promis
   const tenant = await loadTenant(env, tenantId);
   const own = tenant ? await agencyCountry(env, tenant, db) : '';
   const allowed = new Set<string>([...(own ? [own.toUpperCase()] : []), ...(await allowedExtraCountries(env, tenantId))]);
-  if (!dest.country || !allowListMatches(allowed, dest.country)) {
+  // The non-production wildcard (local stacks and demos) skips the destination allow-list, as it skips the country policy (R304).
+  const wildcard = callingAllowList(env).all;
+  if (!wildcard && (!dest.country || !allowListMatches(allowed, dest.country))) {
     await recordFraudEvent(env, tenantId, 'blocked_destination', { detail: { reason: 'country_not_allowed', country: dest.country, userId }, now });
     return {
       status: 403,
