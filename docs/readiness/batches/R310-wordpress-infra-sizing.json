@@ -13,7 +13,7 @@
   "dependsOn": [
     "R118"
   ],
-  "blockedOnOwner": "owner decision Q9 (shared database per VM vs multisite)",
+  "blockedOnOwner": null,
   "parallelSafeWith": [
     "R302"
   ],
@@ -81,6 +81,7 @@
   ],
   "notes": [
     "Before editing read: this batch file, docs/readiness/READINESS-PLAN.md sections 0 and the design note for this area, desktop/audit/fix/FIX-PLAN.md sections 3-4 (executor rules, worktree bootstrap with node_modules junctions; never npm install inside a worktree unless the batch adds a dependency, and then only in the main checkout by the orchestrator).",
-    "Infra only; no backend or provisioner code here."
+    "Infra only; no backend or provisioner code here.",
+    "Owner decision 2026-10-21 (Q9): ONE SHARED WordPress installation (multisite) for now; container-per-agency later if revenue allows. Implement PROVISIONER_MODE=shared in oci-provisioner behind the same POST /sites state document (R309)."
   ]
 }

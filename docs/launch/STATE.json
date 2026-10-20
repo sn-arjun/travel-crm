@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-21T02:00+05:30",
+  "updated": "2026-10-21T04:00+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -234,7 +234,17 @@
       "Domain not decided: single placeholder.",
       "VoIP: Twilio only, skip India calling.",
       "Repo: not private yet; keep holding the push."
-    ]
+    ],
+    "2026-10-21": {
+      "repo": "Stays public for now; owner will make it private later and says the exposed keys are invalid. (Push still needs an explicit go.)",
+      "pricing": "Owner delegates: set prices for good profit and good value for the customer; propose in docs/PRICING.md, then apply to the catalogue.",
+      "trialCalling": "Off on trials by default with the super admin switch (as built).",
+      "featureFlags": "Super admin must switch features on/off per plan (all agencies on that plan) and per agency -> batch R127.",
+      "numberRelease": "14 days after cancel, 7 days unpaid rent: approved.",
+      "spendSpike": "Raise a flag and send email (as built), no automatic block.",
+      "email": "Analyse Cloudflare Email instead of SendGrid: md doc with go/no-go and cost analysis.",
+      "wordpress": "Q9 answered: one shared installation for now; revisit container-per-agency when revenue allows -> R310 unblocked."
+    }
   },
   "goLiveConfig": [
     "R102: APP_URL, QUOTES_URL, EMAIL_FROM, EMAIL_FROM_NAME, PLATFORM_SUPPORT_EMAIL; SENDGRID_API_KEY secret; SendGrid domain authentication (SPF/DKIM); TEST_MODE off in production",

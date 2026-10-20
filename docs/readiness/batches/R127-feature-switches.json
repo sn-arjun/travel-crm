@@ -1,0 +1,60 @@
+{
+  "id": "R127",
+  "tier": 1,
+  "title": "Feature switches in the super admin console: per plan, platform-wide and per agency",
+  "goal": "The super admin turns any feature on or off for a whole plan, for every agency at once, or for one agency, from switches in the console, and the backend enforces the result everywhere.",
+  "why": "Owner decision 2026-10-21. Today plan features are a text box of keys on the Catalogue page; per-agency overrides exist (feature-flags-panel.tsx, admin-tenant-ops.ts) but there is no platform-wide switch and no clear view of where a value comes from.",
+  "dependsOn": [
+    "R109",
+    "R111"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [
+    "R310"
+  ],
+  "size": "M",
+  "files": {
+    "edit": [
+      "backend/src/middleware/feature-gate.ts",
+      "backend/src/services/plans/catalogue.ts",
+      "backend/src/routes/admin-catalogue.ts",
+      "backend/src/routes/admin-tenant-ops.ts",
+      "super-admin/src/app/(authenticated)/catalogue/page.tsx",
+      "super-admin/src/components/tenants/feature-flags-panel.tsx"
+    ],
+    "create": [
+      "backend/drizzle/master/0025_feature_switches.sql",
+      "backend/test/feature-switches.test.ts",
+      "super-admin/src/app/(authenticated)/features/page.tsx"
+    ],
+    "mustNotTouch": [
+      "desktop/src/app/(app)/**"
+    ]
+  },
+  "steps": [
+    "One feature registry (key, name, description, area) as the single list the console shows; every feature-gate key used in backend/src is in it (test).",
+    "Resolution order, enforced in one function used by feature-gate and the login summary: platform switch off -> off for everyone; else agency override (on/off) if set; else the plan has it. Return the source with the value.",
+    "Platform-wide switch per feature (master table), audited, with a reason; turning a feature off platform-wide hides it in the desktop (the existing locked-feature UI) and returns 403 FEATURE_DISABLED from its routes.",
+    "Console: a Features page with a plan x feature grid of switches (one save per change, audited) and the platform switch column; the agency Features panel shows each feature with its effective state and source (plan / override / platform off) and lets the operator set on, off or \"follow plan\".",
+    "Changes apply without a deploy and within a minute (cache with a short TTL or invalidation)."
+  ],
+  "migrations": [
+    "backend/drizzle/master/0025_feature_switches.sql"
+  ],
+  "tests": [
+    "resolution order incl. platform off beating an agency override",
+    "plan grid change applies to every agency on that plan",
+    "audit rows for every change",
+    "registry covers every gated key"
+  ],
+  "acceptance": [
+    "Operator can switch a feature for a plan, platform-wide, or one agency from the console and the desktop/API reflect it within a minute"
+  ],
+  "gate": [
+    "backend tsc + vitest (>= current)",
+    "super-admin tsc + lint + next build",
+    "desktop tsc + vitest + lint-gate + i18n-check if desktop touched"
+  ],
+  "goLiveVerify": [],
+  "notes": []
+}

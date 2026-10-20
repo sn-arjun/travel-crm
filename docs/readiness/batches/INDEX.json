@@ -284,6 +284,17 @@
     "blockedOnOwner": null
   },
   {
+    "id": "R127",
+    "tier": 1,
+    "title": "Feature switches in the super admin console: per plan, platform-wide and per agency",
+    "size": "M",
+    "dependsOn": [
+      "R109",
+      "R111"
+    ],
+    "blockedOnOwner": null
+  },
+  {
     "id": "R201",
     "tier": 2,
     "title": "Tax engine: GST, VAT with reverse charge, sales tax or none, stored on every invoice",
@@ -461,7 +472,7 @@
     "dependsOn": [
       "R118"
     ],
-    "blockedOnOwner": "owner decision Q9 (shared database per VM vs multisite)"
+    "blockedOnOwner": null
   },
   {
     "id": "R303",
