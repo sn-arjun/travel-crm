@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-20T23:00+05:30",
+  "updated": "2026-10-21T02:00+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -187,7 +187,8 @@
       "desktop": "PASS 2026-10-14 on launch-readiness b6eb16e: desktop/release/TravelCRM Pro Setup 0.1.0.exe (167,388,167 bytes, unsigned, sha256 a4fcf6aef9474e98...). Electron smoke: installed app logs in against slot-1 API and stops its server on close; updater reports update-available from a local feed (2 passed). Logs: CRM-backups/2026-10-09/w4-*.log"
     },
     "W5": {
-      "status": "pending"
+      "status": "done",
+      "result": "desktop/e2e/handoff.spec.ts: operator section + 11 steps for 3 agencies (India/Basic/INR/GST, UK/Pro/GBP/VAT, UAE/Enterprise/AED/VAT); green 3 runs in a row on a reset --multi stack (41/41 each); first-login 4/4, tenant-isolation 9/9. docs/HANDOFF-PLAYBOOK.md (operator checklist, done definition, welcome pack, credential sheet template, per-country table, manual staging checks). Bugs fixed: console-created agencies got en-IN/+91/empty country (resolver now maps country names; provisioning seeds locale + phone_default_country); new agencies were billed at the India price in INR (now own market + currency). fix-stack passes BILLING_GATEWAY=mock. Merged line: backend 100/1967, desktop tsc + lint OK. Not automatable locally: real inbox/SPF/DKIM, real payments, real SMS code, Meta test connection, real calls, clean-machine installer, super admin console UI login (spec drives the admin API)."
     },
     "W6": {
       "status": "pending"
