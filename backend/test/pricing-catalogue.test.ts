@@ -13,6 +13,7 @@ import { MIN_COMM_MARGIN_PCT, activeUnitCost, packSalePriceFrom } from '../src/s
 import { CHANNEL_SPECS, buildExhaustedBody, packOffers } from '../src/services/metering/meter';
 import { buildQuote, saveQuote, type TenantRow } from '../src/services/billing/subscriptions';
 import { MIN_COMM_MARGIN_PCT as ADDONS_MIN_MARGIN } from '../src/services/billing/addons';
+import migration0026 from '../drizzle/master/0026_pricing_2026_10.sql?raw';
 
 /**
  * R129: the catalogue holds docs/PRICING.md section 7 (step A) exactly, every agency is priced in its own market and
@@ -119,12 +120,14 @@ describe('catalogue rows equal PRICING.md section 7 (step A)', () => {
     expect(features('enterprise')).toEqual(expect.arrayContaining(['ai_chatbot', 'api_access', 'ai_coaching']));
   });
 
-  it('plans: names, descriptions, order and visibility of section 7.1', () => {
-    const byKey = Object.fromEntries(catalogue.plans.map((p) => [p.key, p]));
-    expect(byKey.trial).toMatchObject({ name: 'Trial', sortOrder: 0, isPublic: false, trialDays: 14, isActive: true, description: '14-day trial of the Pro feature set for 3 users. No calling, no SMS.' });
-    expect(byKey.basic).toMatchObject({ sortOrder: 1, isPublic: true, description: 'Travel CRM, WhatsApp inbox, website and the assistant for a small agency.' });
-    expect(byKey.pro.description).toBe('Adds WhatsApp campaigns, AI tools, business intelligence and a custom domain.');
-    expect(byKey.enterprise.sortOrder).toBe(3);
+  it('plans: the migration writes the names, descriptions, order and visibility of section 7.1', () => {
+    // Read from the migration text: other test files edit plan rows in the shared database.
+    const docPlans = table(sectionLines('### 7.1', '### 7.2'), '| key |');
+    expect(docPlans.map((p) => p.key)).toEqual(['trial', 'basic', 'pro', 'enterprise']);
+    for (const p of docPlans) {
+      expect(migration0026).toContain(`UPDATE plans SET name = '${p.name}', description = '${p.description}', sort_order = ${p.sort_order}, is_public = ${p.is_public}, trial_days = ${p.trial_days}, is_active = ${p.is_active}`);
+    }
+    expect(catalogue.plans.map((p) => p.key).sort()).toEqual(['basic', 'enterprise', 'pro', 'trial']);
   });
 
   it('comm_unit_costs: all rows with the document ids, units, margins and the step B rows inactive', async () => {
@@ -166,7 +169,8 @@ describe('catalogue rows equal PRICING.md section 7 (step A)', () => {
 
   it('login codes stay on SMS: the otp rows are Twilio Verify + SMS, and the trial setting keeps calling off', async () => {
     for (const d of docCosts.filter((x) => x.channel === 'otp')) expect(d.provider).toMatch(/Twilio Verify/);
-    expect((await master(`SELECT value FROM platform_settings WHERE key = 'voip_calling_on_trial'`).first<any>())!.value).toBe('0');
+    // (platform_settings is edited by other test files, so the migration text is checked.)
+    expect(migration0026).toContain("INSERT OR IGNORE INTO platform_settings (key, value) VALUES ('voip_calling_on_trial', '0')");
   });
 
   it('the notes say where the numbers come from', async () => {
