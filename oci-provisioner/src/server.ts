@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { loadConfig, ConfigError, type ProvisionerConfig } from './config.ts';
 import { verifyRequest } from './signature.ts';
 import { SiteManager, SiteError, publicView, validateRequest } from './sites.ts';
+import { createSiteManager } from './shared-sites.ts';
 
 /**
  * WordPress provisioner HTTP API (R309). Plain node:http, no framework, no dependencies.
@@ -115,7 +116,11 @@ function main(): void {
     }
     throw e;
   }
-  const server = createServer(config, new SiteManager(config));
+  if (config.mode === 'shared' && !config.sitesDomain) {
+    console.error('FATAL: WP_SITES_DOMAIN is not set (shared mode creates <slug>.<WP_SITES_DOMAIN> sites).');
+    process.exit(1);
+  }
+  const server = createServer(config, createSiteManager(config));
   server.listen(config.port, () => {
     console.log(`WP Provisioner running on :${config.port} (mode ${config.mode}, up to ${config.maxSites} sites)`);
   });

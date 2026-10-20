@@ -12,10 +12,10 @@ import { setupWordPress, defaultRunner, type Runner } from './wp-setup.ts';
  * The build runs in the background; the CRM learns the outcome from the POST answer on its next delivery or
  * from GET /sites/:slug.
  *
- * Shapes (owner question Q9): this class is the "container per agency" shape. A shared installation would be
- * a second SiteDriver behind the same interface (create a site inside the one WordPress, answer the same
- * state document); the HTTP contract, the signing and the CRM side do not change. PROVISIONER_MODE=shared
- * is reserved and currently refused at the first request.
+ * Shapes (owner question Q9): this class is the "container per agency" shape (PROVISIONER_MODE=container).
+ * The default shape, one shared WordPress Multisite, is SharedSiteManager in shared-sites.ts: it extends
+ * this class, reuses the state files and answers the same state document; the HTTP contract, the signing
+ * and the CRM side do not change.
  */
 
 export type SiteStatus = 'provisioning' | 'active' | 'failed' | 'stopped';
@@ -32,6 +32,10 @@ export interface SiteState {
   port: number | null;
   error: string | null;
   resetEmailSent: boolean | null;
+  /** Additive: which driver built the site. Older state files have no value, which means 'container'. */
+  mode?: 'container' | 'shared';
+  /** Shared mode: the WordPress network's numeric id of the site. */
+  blogId?: number | null;
   createdAt: string;
   updatedAt: string;
   /** Never sent to the CRM: stored on disk only. */
@@ -73,7 +77,7 @@ export function validateRequest(body: unknown): SiteRequest {
   if (!SLUG.test(req.slug)) throw new SiteError('slug must be 3-40 characters: a-z, 0-9 and hyphens', 400);
   if (!HOSTNAME.test(req.domain)) throw new SiteError('domain must be a host name', 400);
   if (req.companyName.length < 1 || req.companyName.length > 120) throw new SiteError('companyName is required (up to 120 characters)', 400);
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(req.adminEmail) || req.adminEmail.length > 200) throw new SiteError('adminEmail is not a valid address', 400);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(req.adminEmail) || req.adminEmail.length > 200 || req.adminEmail.startsWith('-')) throw new SiteError('adminEmail is not a valid address', 400);
   return req;
 }
 
@@ -83,12 +87,12 @@ export function publicView(state: SiteState): Omit<SiteState, 'dbPassword'> {
 }
 
 export class SiteManager {
-  private readonly states = new Map<string, SiteState>();
-  private readonly running = new Set<string>();
+  protected readonly states = new Map<string, SiteState>();
+  protected readonly running = new Set<string>();
 
-  private readonly config: ProvisionerConfig;
-  private readonly run: Runner;
-  private readonly now: () => string;
+  protected readonly config: ProvisionerConfig;
+  protected readonly run: Runner;
+  protected readonly now: () => string;
 
   constructor(config: ProvisionerConfig, run: Runner = defaultRunner, now: () => string = () => new Date().toISOString()) {
     this.config = config;
@@ -96,11 +100,11 @@ export class SiteManager {
     this.now = now;
   }
 
-  private statePath(slug: string): string {
+  protected statePath(slug: string): string {
     return `${this.config.dataDir}/${slug}/state.json`;
   }
 
-  private async load(slug: string): Promise<SiteState | null> {
+  protected async load(slug: string): Promise<SiteState | null> {
     const cached = this.states.get(slug);
     if (cached) return cached;
     try {
@@ -117,7 +121,7 @@ export class SiteManager {
     }
   }
 
-  private async save(state: SiteState): Promise<void> {
+  protected async save(state: SiteState): Promise<void> {
     state.updatedAt = this.now();
     this.states.set(state.slug, state);
     await fs.mkdir(`${this.config.dataDir}/${state.slug}`, { recursive: true });
@@ -129,7 +133,7 @@ export class SiteManager {
     return this.load(slug);
   }
 
-  private async countLive(excludingSlug: string): Promise<number> {
+  protected async countLive(excludingSlug: string): Promise<number> {
     let n = 0;
     for (const [slug, s] of this.states) {
       if (slug !== excludingSlug && (s.status === 'active' || s.status === 'provisioning')) n += 1;
@@ -148,9 +152,6 @@ export class SiteManager {
 
   /** Create the site, or return what already exists. The second value says whether a build was started by this call. */
   async ensure(req: SiteRequest): Promise<{ state: SiteState; started: boolean }> {
-    if (this.config.mode !== 'container') {
-      throw new SiteError('PROVISIONER_MODE=shared is not implemented in this build', 501);
-    }
     const existing = await this.load(req.slug);
     if (existing) {
       if (existing.siteId !== req.siteId) {
@@ -173,6 +174,7 @@ export class SiteManager {
       siteUrl: `https://${req.domain}`,
       adminUrl: `https://${req.domain}/wp-admin/`,
       containerId: `wp-site-${req.slug}`,
+      mode: 'container',
       port: existing?.port ?? null,
       error: null,
       resetEmailSent: null,

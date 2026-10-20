@@ -71,9 +71,9 @@ describe('configuration', () => {
     const gb = 1024 ** 3;
     assert.equal(deriveMaxSites(24 * gb, 2048, 768), 29); // (24576 - 2048) / 768 = 29.3
     assert.equal(deriveMaxSites(1 * gb, 2048, 768), 0);
-    assert.equal(loadConfig({ PROVISIONER_SECRET: SECRET }, 24 * gb).maxSites, 29);
+    assert.equal(loadConfig({ PROVISIONER_SECRET: SECRET, PROVISIONER_MODE: 'container' }, 24 * gb).maxSites, 29);
     assert.equal(loadConfig({ PROVISIONER_SECRET: SECRET, MAX_SITES: '5' }, 24 * gb).maxSites, 5);
-    assert.equal(loadConfig({ PROVISIONER_SECRET: SECRET, RESERVE_MB: '4096', SITE_MEMORY_MB: '1024' }, 8 * gb).maxSites, 4);
+    assert.equal(loadConfig({ PROVISIONER_SECRET: SECRET, RESERVE_MB: '4096', SITE_MEMORY_MB: '1024', PROVISIONER_MODE: 'container' }, 8 * gb).maxSites, 4);
   });
 
   test('the server process exits with code 1 and a message when PROVISIONER_SECRET is missing', () => {
