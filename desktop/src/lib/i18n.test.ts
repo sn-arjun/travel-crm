@@ -90,6 +90,7 @@ describe('real catalogues', () => {
     const names = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
     for (const code of ['hi', 'ar'] as const) {
       for (const [key, value] of Object.entries(catalogues[code])) {
+        if (key.startsWith('_')) continue; // notes such as the native-review flag
         expect(catalogues.en[key], `${code}:${key} has no English source`).toBeDefined();
         expect(names(value), `${code}:${key}`).toBe(names(catalogues.en[key] as string));
       }
