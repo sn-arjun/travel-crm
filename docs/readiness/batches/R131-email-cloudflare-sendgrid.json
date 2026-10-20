@@ -1,0 +1,61 @@
+{
+  "id": "R131",
+  "tier": 1,
+  "size": "L",
+  "title": "Email: Cloudflare for inbound and platform system mail (SendGrid fallback), SendGrid for agency mail",
+  "goal": "Incoming mail is received by Cloudflare Email Routing; the platform's own system mail is sent through Cloudflare's Workers email sending with an automatic and manual fallback to SendGrid; all agency mail stays on SendGrid.",
+  "why": "Owner decision 2026-10-21 (\"cloudflare + sendgrid\") on docs/decisions/ADR-002-email.md.",
+  "dependsOn": [
+    "R128",
+    "R102",
+    "R208"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [],
+  "files": {
+    "edit": [
+      "backend/src/services/email.ts",
+      "backend/src/services/mail/**",
+      "backend/src/routes/webhooks.ts",
+      "backend/src/index.ts",
+      "backend/wrangler.base.toml",
+      "backend/scripts/gen-wrangler.mjs",
+      "backend/src/types.ts",
+      "docs/GO-LIVE.md",
+      "docs/KEYS-AND-ACCOUNTS.md",
+      "docs/INFRA.md"
+    ],
+    "create": [
+      "backend/src/services/mail/providers/*.ts",
+      "backend/test/email-providers.test.ts"
+    ],
+    "mustNotTouch": []
+  },
+  "steps": [
+    "ADR-002 section 6.1: one EmailProvider interface (send, events) with SendGrid, Cloudflare and mock implementations; first with no behaviour change (all mail on SendGrid), proven by the existing tests.",
+    "Routing rule: platform system mail (welcome, invites, reset, receipts, platform alerts) goes to Cloudflare when EMAIL_SYSTEM_PROVIDER=cloudflare and the send_email binding exists; on a Cloudflare error or quota refusal, retry once on SendGrid and record which provider sent it; agency transactional and marketing mail always go to SendGrid.",
+    "Inbound (ADR-002 6.2): an Email Worker handler (the worker's email() export) for Email Routing that files replies to agency threads in the Communication Hub inbox of the right agency (reply-to addresses carry an unguessable per-thread token, building on R128); size limits; spam and auth results recorded; unknown addresses dropped.",
+    "Config: send_email binding and EMAIL_SYSTEM_PROVIDER (sendgrid|cloudflare, default sendgrid) through gen-wrangler; local stacks use the mock provider and the outbox; nothing calls Cloudflare or SendGrid from tests or local stacks.",
+    "Docs: GO-LIVE (DNS records from ADR-002 6.4: Email Routing MX, SPF, DKIM for both providers, DMARC), KEYS-AND-ACCOUNTS (sender verification), INFRA; rollback = EMAIL_SYSTEM_PROVIDER=sendgrid."
+  ],
+  "migrations": [],
+  "tests": [
+    "routing by mail kind",
+    "fallback to SendGrid on a Cloudflare failure",
+    "an inbound reply lands in the right agency and nowhere else",
+    "unknown inbound dropped"
+  ],
+  "acceptance": [],
+  "gate": [
+    "backend tsc + vitest",
+    "gen-wrangler self-test",
+    "e2e communication-inbox + first-login + campaigns on a local stack"
+  ],
+  "goLiveVerify": [
+    "Cloudflare sending onboarding for the platform domain",
+    "a real reply from an external mailbox reaches the agency inbox"
+  ],
+  "notes": [
+    "Cloudflare sending is in beta and transactional-only (ADR-002): agency marketing must never route to it."
+  ]
+}

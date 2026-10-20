@@ -250,6 +250,10 @@
       "spendSpike": "Raise a flag and send email (as built), no automatic block.",
       "email": "Analyse Cloudflare Email instead of SendGrid: md doc with go/no-go and cost analysis.",
       "wordpress": "Q9 answered: one shared installation for now; revisit container-per-agency when revenue allows -> R310 unblocked."
+    },
+    "2026-10-21b": {
+      "pricing": "docs/PRICING.md approved as proposed -> R129 (load step A + market split), R130 (step B). Login codes stay on SMS (2026-10-14 decision) unless the owner changes it.",
+      "email": "Cloudflare + SendGrid: Cloudflare Email Routing for inbound and Cloudflare sending for platform system mail with SendGrid fallback; SendGrid for all agency mail -> R131 after R128."
     }
   },
   "goLiveConfig": [
@@ -321,9 +325,5 @@
       "date": "2026-10-15",
       "what": "A docs sub-agent broke shell quoting and executed document lines; wrangler secret put created a placeholder Worker travelcrm-api with 8 secrets on the owner's real Cloudflare account. Found with a read-only workers_list; owner approved deletion; deleted (wrangler delete). Values were local placeholders or junk (no real secrets exist on this machine). Safeguard: memory cloudflare-account-safety; every agent brief forbids account-touching wrangler commands."
     }
-  ],
-  "decisionsPending": {
-    "pricing": "docs/PRICING.md proposed (founder prices until 2027-03-31, list from 2027-04-01). Owner to check: India prices 14,999/29,999/74,999; Stripe fee assumption 6.3-7% outside India; India OTP by SMS cost (WhatsApp OTP alternative). Load catalogue rows after approval; before selling abroad: split WhatsApp utility/marketing allowances, add UK/EU/ANZ markets, pack offers per market, per-market allowances for Germany.",
-    "email": "docs/decisions/ADR-002-email.md: NO-GO for Cloudflare as full replacement (transactional only, beta); recommended: Cloudflare Email Routing for inbound + Cloudflare sending for platform system mail with fallback, Amazon SES for agency mail; do before ~50 agencies. Found bugs: delivery events never recorded (no message id saved), itinerary email job dropped, invoice/voucher send sends no email, hard bounce erases contact email, inbox mail has no reply-to."
-  }
+  ]
 }

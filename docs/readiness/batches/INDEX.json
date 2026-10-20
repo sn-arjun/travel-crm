@@ -549,5 +549,42 @@
       "R305"
     ],
     "blockedOnOwner": "DROPPED for v1"
+  },
+  {
+    "id": "R129",
+    "tier": 1,
+    "title": "Load the approved pricing (step A) and the market split",
+    "size": "M",
+    "dependsOn": [
+      "R109",
+      "R205",
+      "R206",
+      "R305",
+      "R127"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R130",
+    "tier": 2,
+    "title": "Pricing step B: WhatsApp marketing split, per-market allowances",
+    "size": "M",
+    "dependsOn": [
+      "R129",
+      "R213"
+    ],
+    "blockedOnOwner": null
+  },
+  {
+    "id": "R131",
+    "tier": 1,
+    "title": "Email: Cloudflare inbound + system mail, SendGrid agency mail",
+    "size": "L",
+    "dependsOn": [
+      "R128",
+      "R102",
+      "R208"
+    ],
+    "blockedOnOwner": null
   }
 ]

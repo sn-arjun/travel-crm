@@ -1,0 +1,50 @@
+{
+  "id": "R130",
+  "tier": 2,
+  "size": "M",
+  "title": "Pricing step B: WhatsApp marketing metered on its own, per-market allowances",
+  "goal": "WhatsApp marketing and utility messages have separate allowances and packs (step B rows switched on), and allowances can differ by market where costs require it.",
+  "why": "PRICING.md section 8 changes 2 and 6; required before selling outside India at full allowances.",
+  "dependsOn": [
+    "R129",
+    "R213"
+  ],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [],
+  "files": {
+    "edit": [
+      "backend/src/services/metering/**",
+      "backend/src/services/messaging/**",
+      "backend/src/queues/whatsapp-campaign-queue.ts",
+      "backend/src/queues/sms-queue.ts",
+      "desktop/src/app/(app)/settings/ai-usage/**",
+      "desktop/src/components/domain/usage-limits*"
+    ],
+    "create": [
+      "backend/drizzle/master/0027_pricing_step_b.sql",
+      "backend/test/whatsapp-split.test.ts"
+    ],
+    "mustNotTouch": []
+  },
+  "steps": [
+    "whatsapp_marketing channel in CHANNEL_SPECS and allowanceChannel; marketing templates meter against it, utility against whatsapp (category from metaCategoryForTemplate / recordWhatsAppCategory).",
+    "Migration 0027 switches the step-B rows on and sets the three allowance amounts from PRICING.md section 7.",
+    "Market column on plan_allowances (null = all markets); lookups prefer the agency market row.",
+    "Usage screens show the two WhatsApp allowances separately."
+  ],
+  "migrations": [
+    "backend/drizzle/master/0027_pricing_step_b.sql"
+  ],
+  "tests": [
+    "marketing vs utility metering",
+    "per-market allowance override"
+  ],
+  "acceptance": [],
+  "gate": [
+    "backend tsc + vitest",
+    "desktop gates if touched",
+    "e2e whatsapp-campaigns + communication-inbox"
+  ],
+  "goLiveVerify": [],
+  "notes": []
+}
