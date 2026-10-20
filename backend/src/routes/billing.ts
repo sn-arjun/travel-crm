@@ -229,6 +229,8 @@ billingRoutes.get('/quote', zValidator('query', quoteQuery), async (c) => {
       currency: q.currency,
       extraUsers: q.extraUsers,
       includedUsers: q.includedUsers,
+      priceKind: q.priceKind,
+      lockedUntil: q.lockedUntil,
       subtotal: q.subtotal,
       taxLines: q.taxLines,
       taxTotal: q.taxTotal,

@@ -23,7 +23,7 @@ export function asCatalogueEnv(ref: MasterRef): CatalogueEnv {
   return typeof (ref as D1Database).prepare === 'function' ? { MASTER_DB: ref as D1Database } : (ref as CatalogueEnv);
 }
 
-export const ALLOWANCE_KEYS = ['ai_credits', 'sms', 'whatsapp', 'otp', 'call_minutes', 'email'] as const;
+export const ALLOWANCE_KEYS = ['ai_credits', 'sms', 'whatsapp', 'whatsapp_marketing', 'otp', 'call_minutes', 'email', 'storage_gb', 'websites'] as const;
 export type AllowanceKey = (typeof ALLOWANCE_KEYS)[number];
 
 export const DEFAULT_MARKET = 'IN';
@@ -32,11 +32,24 @@ export const CATALOGUE_CACHE_TTL_SECONDS = 300;
 const GULF_COUNTRIES = new Set(['AE', 'SA', 'QA', 'OM', 'KW', 'BH']);
 const MY_TH_COUNTRIES = new Set(['MY', 'TH']);
 const LK_NP_BD_COUNTRIES = new Set(['LK', 'NP', 'BD', 'BT', 'MV']);
+const ANZ_COUNTRIES = new Set(['AU', 'NZ']);
+/** EU member states, the other EEA countries (IS, LI, NO) and Switzerland: billed in EUR (PRICING.md 2.1). */
+const EU_COUNTRIES = new Set([
+  'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL',
+  'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE', 'IS', 'LI', 'NO', 'CH',
+]);
 
-/** The catalogue market (plan_prices.market) an agency's country is priced in; no country means the default (IN). */
+/**
+ * The catalogue market (plan_prices.market) an agency's country is priced in; no country means the default (IN).
+ * IN -> IN (INR), GB -> UK (GBP), EU/EEA + CH -> EU (EUR), AU + NZ -> ANZ (AUD), the Gulf -> GULF, SG, MY/TH -> MY_TH,
+ * LK/NP/BD/BT/MV -> LK_NP_BD, everything else (US, CA, ...) -> WEST (USD).
+ */
 export function marketForCountry(country: string | null | undefined): string {
   const code = normalizeCountry(country);
   if (!code || code === 'IN') return DEFAULT_MARKET;
+  if (code === 'GB' || code === 'UK') return 'UK';
+  if (EU_COUNTRIES.has(code)) return 'EU';
+  if (ANZ_COUNTRIES.has(code)) return 'ANZ';
   if (GULF_COUNTRIES.has(code)) return 'GULF';
   if (code === 'SG') return 'SG';
   if (MY_TH_COUNTRIES.has(code)) return 'MY_TH';
@@ -54,6 +67,8 @@ export interface PlanPrice {
   extraUserYearlyPrice: number | null;
   isActive: boolean;
   validFrom: string;
+  /** 'founder' rows are the launch discount (PRICING.md 2.2): a list row with a later validFrom takes over after them. */
+  priceKind: 'list' | 'founder';
 }
 
 export interface CataloguePlan {
@@ -127,6 +142,7 @@ async function loadCatalogue(db: D1Database, version: string): Promise<Catalogue
       extraUserYearlyPrice: p.extra_user_yearly_price == null ? null : Number(p.extra_user_yearly_price),
       isActive: !!p.is_active,
       validFrom: p.valid_from,
+      priceKind: p.price_kind === 'founder' ? 'founder' : 'list',
     });
     pricesByPlan.set(p.plan_key, list);
   }
@@ -226,15 +242,55 @@ export async function getPlanFeatures(ref: MasterRef, planKey: string): Promise<
   return planFeaturesFrom(await getCatalogue(ref), planKey);
 }
 
-/** The price row in force: active, started, newest start date; the default market is the fallback. */
+/**
+ * The price row in force: active, started, newest start date; the default market is the fallback.
+ *
+ * Before the FIRST row of a plan in a market has started (the approved prices open on 2026-11-01), that first row is
+ * used, so staging, test and pre-launch environments quote the launch price instead of having no price at all. Once
+ * any row has started, rows that start later are ignored until their date, as before.
+ */
 export function activePriceFrom(catalogue: Catalogue, planKey: string, market: string = DEFAULT_MARKET, now: Date = new Date()): PlanPrice | null {
   const plan = catalogue.plans.find((p) => p.key === planKey);
   if (!plan) return null;
-  const pick = (m: string) =>
-    plan.prices
-      .filter((p) => p.market === m && p.isActive && p.validFrom <= now.toISOString())
-      .sort((a, b) => (a.validFrom < b.validFrom ? 1 : -1))[0] ?? null;
+  const at = now.toISOString().replace(/\.\d{3}Z$/, 'Z'); // whole seconds, like the stored dates
+  const pick = (m: string) => {
+    const rows = plan.prices.filter((p) => p.market === m && p.isActive);
+    return (
+      rows.filter((p) => p.validFrom <= at).sort((a, b) => (a.validFrom < b.validFrom ? 1 : -1))[0] ??
+      rows.sort((a, b) => (a.validFrom < b.validFrom ? -1 : 1))[0] ??
+      null
+    );
+  };
   return pick(market) ?? (market === DEFAULT_MARKET ? null : pick(DEFAULT_MARKET));
+}
+
+/** Months a founder price is locked for an agency that signed inside the founder window (PRICING.md section 6). */
+export const FOUNDER_LOCK_MONTHS = 24;
+
+export function addMonthsIso(iso: string, months: number): string {
+  const d = new Date(iso);
+  d.setUTCMonth(d.getUTCMonth() + months);
+  return d.toISOString();
+}
+
+/**
+ * The founder terms in force at `at` for a plan in a market, or null when the price in force is a list price.
+ * `endsAt` is when the next price row of the plan and market starts (the list price takes over then).
+ */
+export function founderTermsFrom(
+  catalogue: Catalogue,
+  planKey: string,
+  market: string,
+  at: Date = new Date(),
+): { founder: PlanPrice; list: PlanPrice | null; endsAt: string | null } | null {
+  const founder = activePriceFrom(catalogue, planKey, market, at);
+  if (!founder || founder.priceKind !== 'founder') return null;
+  const plan = catalogue.plans.find((p) => p.key === planKey);
+  const list =
+    plan?.prices
+      .filter((p) => p.market === founder.market && p.isActive && p.priceKind === 'list' && p.validFrom > founder.validFrom)
+      .sort((a, b) => (a.validFrom < b.validFrom ? -1 : 1))[0] ?? null;
+  return { founder, list, endsAt: list?.validFrom ?? null };
 }
 
 export async function getActivePrice(ref: MasterRef, planKey: string, market: string = DEFAULT_MARKET): Promise<PlanPrice | null> {
@@ -258,6 +314,19 @@ export function allowanceChannel(key: string): string | null {
   }
 }
 
+/** The tenant_usage_caps.cap_key that counts an allowance key's monthly usage (R110): sms -> sms_per_month, ... */
+export function capKeyForAllowance(allowanceKey: string): string {
+  return `${allowanceKey}_per_month`;
+}
+
+/** 'YYYY-MM' of the month before `periodKey`. */
+export function previousPeriodKey(periodKey: string): string {
+  const year = Number(periodKey.slice(0, 4));
+  const month = Number(periodKey.slice(5, 7));
+  const d = new Date(Date.UTC(year, month - 2, 1));
+  return d.toISOString().slice(0, 7);
+}
+
 export async function tenantPlanKey(ref: MasterRef, tenantId: string): Promise<string> {
   const row = await asCatalogueEnv(ref).MASTER_DB
     .prepare('SELECT plan FROM tenants WHERE id = ?')
@@ -266,17 +335,23 @@ export async function tenantPlanKey(ref: MasterRef, tenantId: string): Promise<s
   return row?.plan || 'trial';
 }
 
-/** Units that add-on packs granted to this agency for one month. */
-export async function packUnitsForPeriod(ref: MasterRef, tenantId: string, allowanceKey: string, periodKey: string): Promise<number> {
-  const db = asCatalogueEnv(ref).MASTER_DB;
+/** Units that add-on packs were granted to this agency in one month (not counting what carries in from the month before). */
+async function packUnitsBoughtIn(
+  db: D1Database,
+  tenantId: string,
+  allowanceKey: string,
+  periodKey: string,
+  onlyPurchases = false,
+): Promise<number> {
   const channel = allowanceChannel(allowanceKey);
+  const source = onlyPurchases ? ` AND ta.source = 'purchase'` : '';
   let row: { total: number | null } | null;
   if (allowanceKey === 'ai_credits') {
     row = await db
       .prepare(
         `SELECT SUM(ta.units_granted) AS total FROM tenant_addons ta
            JOIN addon_products ap ON ap.key = ta.product_key
-          WHERE ta.tenant_id = ? AND ta.period_key = ? AND ap.kind = 'ai_credit_pack'`,
+          WHERE ta.tenant_id = ? AND ta.period_key = ? AND ap.kind = 'ai_credit_pack'${source}`,
       )
       .bind(tenantId, periodKey)
       .first();
@@ -285,7 +360,7 @@ export async function packUnitsForPeriod(ref: MasterRef, tenantId: string, allow
       .prepare(
         `SELECT SUM(ta.units_granted) AS total FROM tenant_addons ta
            JOIN addon_products ap ON ap.key = ta.product_key
-          WHERE ta.tenant_id = ? AND ta.period_key = ? AND ap.kind = 'comm_pack' AND ap.channel = ?`,
+          WHERE ta.tenant_id = ? AND ta.period_key = ? AND ap.kind = 'comm_pack' AND ap.channel = ?${source}`,
       )
       .bind(tenantId, periodKey, channel)
       .first();
@@ -295,7 +370,50 @@ export async function packUnitsForPeriod(ref: MasterRef, tenantId: string, allow
   return Number(row?.total ?? 0);
 }
 
-/** Monthly allowance for one key: the plan's amount plus packs granted for that month (packs do not carry over). */
+/**
+ * Pack validity (PRICING.md section 6/8): a pack BOUGHT online is good for the month it was paid in and the month
+ * after. What is left of it at the end of the month it was bought in carries into the next month; it is computed
+ * here, never stored. Usage takes the plan's own amount first and the packs after it, so
+ *   left over = min(bought, max(0, plan amount + all packs of that month - used in that month)).
+ * The month's usage comes from usage_period_history (written by a trigger when a usage counter moves to a new
+ * month) or, when the counter has not moved yet, from the live counter. Packs granted by a super admin stay
+ * month-only. Only one month carries: a unit never lives past the end of the month after its purchase.
+ */
+export async function packUnitsCarriedIn(ref: MasterRef, tenantId: string, allowanceKey: string, periodKey: string): Promise<number> {
+  const db = asCatalogueEnv(ref).MASTER_DB;
+  const prev = previousPeriodKey(periodKey);
+  const bought = await packUnitsBoughtIn(db, tenantId, allowanceKey, prev, true);
+  if (bought <= 0) return 0;
+  const capKey = capKeyForAllowance(allowanceKey);
+  const history = await db
+    .prepare('SELECT used FROM usage_period_history WHERE tenant_id = ? AND cap_key = ? AND period_key = ?')
+    .bind(tenantId, capKey, prev)
+    .first<{ used: number }>();
+  let used = history ? Number(history.used) : 0;
+  if (!history) {
+    const live = await db
+      .prepare('SELECT current_usage, period_key FROM tenant_usage_caps WHERE tenant_id = ? AND cap_key = ?')
+      .bind(tenantId, capKey)
+      .first<{ current_usage: number | null; period_key: string | null }>();
+    if (live && live.period_key === prev) used = Number(live.current_usage ?? 0);
+  }
+  const [catalogue, planKey, allPacks] = await Promise.all([
+    getCatalogue(ref),
+    tenantPlanKey(ref, tenantId),
+    packUnitsBoughtIn(db, tenantId, allowanceKey, prev),
+  ]);
+  const base = catalogue.plans.find((x) => x.key === planKey)?.allowances[allowanceKey] ?? 0;
+  return Math.min(bought, Math.max(0, base + allPacks - used));
+}
+
+/** Units that add-on packs give this agency for one month: bought in it, plus what carries in from the month before. */
+export async function packUnitsForPeriod(ref: MasterRef, tenantId: string, allowanceKey: string, periodKey: string): Promise<number> {
+  const db = asCatalogueEnv(ref).MASTER_DB;
+  const own = await packUnitsBoughtIn(db, tenantId, allowanceKey, periodKey);
+  return own + (await packUnitsCarriedIn(ref, tenantId, allowanceKey, periodKey));
+}
+
+/** Monthly allowance for one key: the plan's amount plus packs for that month (bought in it, or bought last month and not used up). */
 export async function getAllowance(
   ref: MasterRef,
   tenantId: string,

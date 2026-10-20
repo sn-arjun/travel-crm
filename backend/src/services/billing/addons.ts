@@ -29,7 +29,7 @@ import {
   type AddonProduct,
   type Catalogue,
 } from '../plans/catalogue';
-import { addonPriceFrom, activeUnitCost, ceilToMinorUnit } from '../plans/pricing';
+import { MIN_COMM_MARGIN_PCT, ceilToMinorUnit, packSalePriceFrom } from '../plans/pricing';
 import { appUrl } from '../../utils/app-urls';
 import { gatewayForCountry } from './registry';
 import type { BillingEvent, FetchLike } from './gateway';
@@ -38,14 +38,15 @@ import {
   currentSubscription,
   nextInvoiceNumber,
   notifyReceipt,
+  priceInstant,
   platformTax,
   roundMoney,
   type ApplyResult,
   type TenantRow,
 } from './subscriptions';
 
-/** Owner decision 2026-10-14: communication is sold at provider cost + 20%. No communication pack sells below it. */
-export const MIN_COMM_MARGIN_PCT = 20;
+/** Communication is sold at provider cost + a margin that nets cost x 1.2 after gateway fees; no pack sells below the floor (25, PRICING.md 8). */
+export { MIN_COMM_MARGIN_PCT };
 
 const YEAR_MS = 365 * 86_400_000;
 export const MAX_PACK_QUANTITY = 100;
@@ -85,23 +86,14 @@ function ensureCanBuy(tenant: TenantRow): void {
 }
 
 /** The price of one pack in the agency's market, with the communication margin floor applied. Null when it has no price. */
-function packUnitPrice(catalogue: Catalogue, product: AddonProduct, market: string): { price: number; currency: string } | null {
+function packUnitPrice(catalogue: Catalogue, product: AddonProduct, market: string, now: Date): { price: number; currency: string } | null {
   if (!product.isActive || product.market !== market) return null;
-  const priced = addonPriceFrom(catalogue, product);
-  if (!priced || !(priced.price > 0)) return null;
-  if (product.kind === 'comm_pack' && product.channel) {
-    const cost = activeUnitCost(catalogue, product.channel, product.market);
-    if (cost && cost.unitCost > 0 && cost.currency === priced.currency) {
-      const floor = ceilToMinorUnit(product.units * cost.unitCost * (1 + MIN_COMM_MARGIN_PCT / 100), cost.currency);
-      if (priced.price < floor) return { price: floor, currency: priced.currency };
-    }
-  }
-  return priced;
+  return packSalePriceFrom(catalogue, product, now);
 }
 
 /** Yearly price of one extra user on the agency's plan, from plan_prices for its own market. */
-function extraUserYearly(catalogue: Catalogue, planKey: string, market: string): { price: number; currency: string } | null {
-  const row = activePriceFrom(catalogue, planKey, market);
+function extraUserYearly(catalogue: Catalogue, planKey: string, market: string, pricedAt: Date): { price: number; currency: string } | null {
+  const row = activePriceFrom(catalogue, planKey, market, pricedAt);
   if (!row || row.extraUserYearlyPrice == null || !(row.extraUserYearlyPrice > 0)) return null;
   // A non-India agency is never charged the India (INR) price.
   if (market !== 'IN' && row.market !== market) return null;
@@ -138,7 +130,7 @@ export async function quoteAddon(env: Env, tenant: TenantRow, productKey: string
   let description: string;
   if (product.kind === 'extra_user') {
     const year = await paidYear(env, tenant, now);
-    const yearly = extraUserYearly(catalogue, tenant.plan, market);
+    const yearly = extraUserYearly(catalogue, tenant.plan, market, await priceInstant(env, tenant.id, now));
     if (!yearly) throw notConfigured;
     prorated = Math.round(year.fraction * 10_000) / 10_000;
     unitPrice = ceilToMinorUnit(yearly.price * year.fraction, yearly.currency);
@@ -146,7 +138,7 @@ export async function quoteAddon(env: Env, tenant: TenantRow, productKey: string
     expiresAt = year.periodEnd;
     description = `Extra users x ${quantity} (until ${year.periodEnd.slice(0, 10)})`;
   } else {
-    const priced = packUnitPrice(catalogue, product, market);
+    const priced = packUnitPrice(catalogue, product, market, now);
     if (!priced) throw notConfigured;
     unitPrice = priced.price;
     currency = priced.currency;
@@ -213,7 +205,7 @@ export async function listOffers(env: Env, tenant: TenantRow, now: Date = new Da
     };
     try {
       const q = await quoteAddon(env, tenant, product.key, 1, now);
-      const yearly = product.kind === 'extra_user' ? extraUserYearly(catalogue, tenant.plan, market) : null;
+      const yearly = product.kind === 'extra_user' ? extraUserYearly(catalogue, tenant.plan, market, await priceInstant(env, tenant.id, now)) : null;
       offers.push({ ...base, available: true, reason: null, currency: q.currency, unitPrice: q.unitPrice, yearlyPrice: yearly?.price ?? null, prorated: q.prorated, expiresAt: q.expiresAt });
     } catch (err) {
       if (!(err instanceof BillingError)) throw err;

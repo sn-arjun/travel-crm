@@ -22,10 +22,11 @@ import {
   currentPeriodKey,
   getAllowance,
   getCatalogue,
+  marketForCountry,
   tenantPlanKey,
   type Catalogue,
 } from '../plans/catalogue';
-import { addonPriceFrom } from '../plans/pricing';
+import { packSalePriceFrom } from '../plans/pricing';
 import { checkUsageAlerts } from './usage-alerts';
 
 export type MeterChannel = 'sms' | 'whatsapp' | 'otp' | 'call_minute' | 'email';
@@ -149,19 +150,33 @@ export function nextPlanUp(catalogue: Catalogue, planKey: string, allowanceKey: 
   return higher ? { key: higher.key, name: higher.name, allowance: higher.allowances[allowanceKey] } : null;
 }
 
-/** The packs on sale for one allowance key, with the price computed from the provider unit cost + margin. */
-export function packOffers(catalogue: Catalogue, allowanceKey: string): PackOffer[] {
+/**
+ * The packs on sale for one allowance key IN ONE MARKET, with the price computed from the provider unit cost + margin
+ * (never below the margin floor). A pack of another market is never offered: a UK agency at its limit sees GBP packs only.
+ */
+export function packOffers(catalogue: Catalogue, allowanceKey: string, market: string, now: Date = new Date()): PackOffer[] {
   const channel = allowanceChannel(allowanceKey);
   return catalogue.addons
-    .filter((a) => a.isActive && (allowanceKey === 'ai_credits' ? a.kind === 'ai_credit_pack' : a.kind === 'comm_pack' && a.channel === channel))
-    .map((a) => ({ a, priced: addonPriceFrom(catalogue, a) }))
+    .filter(
+      (a) =>
+        a.isActive &&
+        a.market === market &&
+        (allowanceKey === 'ai_credits' ? a.kind === 'ai_credit_pack' : a.kind === 'comm_pack' && a.channel === channel),
+    )
+    .map((a) => ({ a, priced: packSalePriceFrom(catalogue, a, now) }))
     .filter((x) => x.priced !== null)
     .map(({ a, priced }) => ({ key: a.key, name: a.name, units: a.units, price: priced!.price, currency: priced!.currency }));
 }
 
+/** The catalogue market of an agency (its country decides it; no country means India). */
+async function tenantMarket(env: Env, tenantId: string): Promise<string> {
+  const row = await env.MASTER_DB.prepare('SELECT country FROM tenants WHERE id = ?').bind(tenantId).first<{ country: string | null }>();
+  return marketForCountry(row?.country);
+}
+
 /** Build the 402 body: the numbers, the next plan up, and the packs the agency can buy for this channel. */
 export async function buildExhaustedBody(env: Env, tenantId: string, spec: ChannelSpec, used: number, allowance: number): Promise<AllowanceExhaustedBody> {
-  const [catalogue, planKey] = await Promise.all([getCatalogue(env), tenantPlanKey(env, tenantId)]);
+  const [catalogue, planKey, market] = await Promise.all([getCatalogue(env), tenantPlanKey(env, tenantId), tenantMarket(env, tenantId)]);
   const message =
     allowance > 0
       ? `Your plan includes ${allowance} ${spec.label} per month and all of them are used. Upgrade your plan or buy credits to keep sending.`
@@ -176,7 +191,7 @@ export async function buildExhaustedBody(env: Env, tenantId: string, spec: Chann
     allowance,
     options,
     upgradeTo: nextPlanUp(catalogue, planKey, spec.allowanceKey),
-    addons: packOffers(catalogue, spec.allowanceKey),
+    addons: packOffers(catalogue, spec.allowanceKey, market),
     error: { code: 'ALLOWANCE_EXHAUSTED', message, channel: spec.channel, used, allowance, options },
   };
 }
@@ -310,7 +325,7 @@ export interface UsageLine {
 /** Per channel and AI credits: used, allowance (plan + packs), percent, period end and the packs on sale. */
 export async function getUsageOverview(env: Env, tenantId: string): Promise<{ periodKey: string; periodEnd: string; plan: string; lines: UsageLine[] }> {
   const period = currentPeriodKey();
-  const [catalogue, plan] = await Promise.all([getCatalogue(env), tenantPlanKey(env, tenantId)]);
+  const [catalogue, plan, market] = await Promise.all([getCatalogue(env), tenantPlanKey(env, tenantId), tenantMarket(env, tenantId)]);
   const periodEnd = new Date(Date.UTC(Number(period.slice(0, 4)), Number(period.slice(5, 7)), 1)).toISOString().slice(0, 10);
 
   const defs: Array<{ key: string; channel: MeterChannel | 'ai'; label: string; allowanceKey: string; capKey: string }> = [
@@ -335,7 +350,7 @@ export async function getUsageOverview(env: Env, tenantId: string): Promise<{ pe
       exhausted,
       state: exhausted ? 'exhausted' : percent >= 80 ? 'warning' : 'ok',
       periodEnd,
-      addons: packOffers(catalogue, d.allowanceKey),
+      addons: packOffers(catalogue, d.allowanceKey, market),
       upgradeTo: nextPlanUp(catalogue, plan, d.allowanceKey),
     });
   }

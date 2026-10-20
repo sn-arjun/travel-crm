@@ -25,7 +25,7 @@ import { appUrl } from '../../utils/app-urls';
 import { invalidateTenantCache } from '../tenant-db';
 import { sendTransactional } from '../mail/transactional';
 import { computeInvoiceTax, normalizeCountry, type TaxLine, type TaxRegime } from '../tax-calculator';
-import { activePriceFrom, getCatalogue, marketForCountry } from '../plans/catalogue';
+import { FOUNDER_LOCK_MONTHS, activePriceFrom, addMonthsIso, getCatalogue, marketForCountry } from '../plans/catalogue';
 import { applyOrderEvent } from './addons';
 import {
   sha256Hex,
@@ -95,6 +95,9 @@ export interface SubscriptionRow {
   cancel_at_period_end: number;
   cancelled_at: string | null;
   created_at: string | null;
+  /** Founder price lock (PRICING.md section 6): the instant the founder price was agreed and when the lock ends. */
+  price_locked_from: string | null;
+  price_locked_until: string | null;
 }
 
 export interface TenantRow {
@@ -145,6 +148,10 @@ export async function ensureSubscription(env: Env, tenant: TenantRow, now: Date 
 export interface PricedQuote extends CheckoutQuote {
   market: string;
   includedUsers: number;
+  /** 'founder' when the price is the launch discount; it is then locked for FOUNDER_LOCK_MONTHS months. */
+  priceKind: 'list' | 'founder';
+  /** When the founder lock ends (24 months from signing, or the agency's existing lock); null for a list price. */
+  lockedUntil: string | null;
   taxLines: TaxLine[];
   taxTotal: number;
   taxTreatment: string;
@@ -185,12 +192,31 @@ export function platformTax(env: Env, tenant: Pick<TenantRow, 'country' | 'setti
   });
 }
 
+/** A subscription whose founder lock is still running: it is paying (or in its grace period) and the lock date is ahead. */
+export function founderLockActive(sub: Pick<SubscriptionRow, 'status' | 'price_locked_from' | 'price_locked_until'> | null, now: Date): boolean {
+  return !!sub && (sub.status === 'active' || sub.status === 'past_due') && !!sub.price_locked_from && !!sub.price_locked_until && sub.price_locked_until > now.toISOString();
+}
+
+/**
+ * The moment the catalogue price is read at. An agency inside its founder lock keeps the price in force on the day it
+ * signed (so a plan change or extra seats during the 24 months still use founder prices); everyone else is priced today.
+ */
+export async function priceInstant(env: Env, tenantId: string, now: Date): Promise<Date> {
+  const sub = await currentSubscription(env, tenantId);
+  return founderLockActive(sub, now) ? new Date(sub!.price_locked_from!) : now;
+}
+
 /**
  * What an agency would pay each year for a plan and extra users: prices come from the plan catalogue for the
  * agency's market (never hardcoded), tax from the tax engine. Throws BillingError for an unknown plan, a plan with no
  * price in the agency's market, or an extra-user count the plan cannot price.
+ *
+ * Founder price (PRICING.md 2.2, 6): the catalogue holds a founder row (price_kind 'founder', valid from the window's
+ * start) and a list row that starts when the window ends. An agency that signs while the founder row is in force pays
+ * it and keeps it for FOUNDER_LOCK_MONTHS months (the lock is stored on its subscription by saveQuote); after the
+ * window the list row is the price in force.
  */
-export async function buildQuote(env: Env, tenant: TenantRow, planKey: string, extraUsers: number): Promise<PricedQuote> {
+export async function buildQuote(env: Env, tenant: TenantRow, planKey: string, extraUsers: number, now: Date = new Date()): Promise<PricedQuote> {
   if (!Number.isInteger(extraUsers) || extraUsers < 0 || extraUsers > 5000) {
     throw new BillingError('INVALID_SEATS', 'Extra users must be a whole number from 0 to 5000.');
   }
@@ -200,7 +226,9 @@ export async function buildQuote(env: Env, tenant: TenantRow, planKey: string, e
     throw new BillingError('UNKNOWN_PLAN', 'That plan is not available.', 404);
   }
   const market = marketForCountry(tenant.country);
-  const price = activePriceFrom(catalogue, planKey, market);
+  const sub = await currentSubscription(env, tenant.id);
+  const locked = founderLockActive(sub, now);
+  const price = activePriceFrom(catalogue, planKey, market, locked ? new Date(sub!.price_locked_from!) : now);
   // A non-India agency is never charged the India (INR) price: it needs a price row for its own market.
   if (!price || !(price.yearlyPrice > 0) || (market !== 'IN' && price.market !== market)) {
     throw new BillingError('PRICE_NOT_CONFIGURED', 'Pricing for your region is not available yet. Please contact support.', 409);
@@ -221,17 +249,41 @@ export async function buildQuote(env: Env, tenant: TenantRow, planKey: string, e
     customerName: tenant.owner_name || tenant.company_name,
     market,
     includedUsers: price.includedUsers,
+    priceKind: price.priceKind,
+    lockedUntil: price.priceKind === 'founder' ? (locked ? sub!.price_locked_until : addMonthsIso(now.toISOString(), FOUNDER_LOCK_MONTHS)) : null,
     taxLines: tax.taxLines,
     taxTotal: tax.totalTax,
     taxTreatment: tax.treatment,
   };
 }
 
-/** Remember the quote a checkout was started with, so the invoice for its payment shows the same subtotal and tax. */
-export async function saveQuote(env: Env, subscriptionId: string, quote: PricedQuote): Promise<void> {
+/**
+ * Remember the quote a checkout was started with, so the invoice for its payment shows the same subtotal and tax.
+ * It also stores the founder lock: a founder quote for an agency that is not already inside a lock starts one
+ * (price_locked_from = now, price_locked_until = now + 24 months); a list quote clears a stale lock left by an
+ * abandoned checkout. An agency already paying inside its lock keeps the lock it has.
+ */
+export async function saveQuote(env: Env, subscriptionId: string, quote: PricedQuote, now: Date = new Date()): Promise<void> {
+  const sub = await env.MASTER_DB.prepare('SELECT * FROM subscriptions WHERE id = ?').bind(subscriptionId).first<SubscriptionRow>();
+  const keep = founderLockActive(sub ?? null, now);
+  const founder = quote.priceKind === 'founder';
   await env.MASTER_DB
-    .prepare('UPDATE subscriptions SET quote_subtotal = ?, quote_tax_lines = ?, updated_at = ? WHERE id = ?')
-    .bind(quote.subtotal, JSON.stringify(quote.taxLines), nowIso(new Date()), subscriptionId)
+    .prepare(
+      `UPDATE subscriptions SET quote_subtotal = ?, quote_tax_lines = ?, updated_at = ?,
+              price_locked_from = CASE WHEN ? = 1 THEN price_locked_from ELSE ? END,
+              price_locked_until = CASE WHEN ? = 1 THEN price_locked_until ELSE ? END
+        WHERE id = ?`,
+    )
+    .bind(
+      quote.subtotal,
+      JSON.stringify(quote.taxLines),
+      nowIso(now),
+      keep ? 1 : 0,
+      founder ? nowIso(now) : null,
+      keep ? 1 : 0,
+      founder ? addMonthsIso(nowIso(now), FOUNDER_LOCK_MONTHS) : null,
+      subscriptionId,
+    )
     .run();
 }
 

@@ -4,7 +4,7 @@ import worker from '../src/index';
 import { hashPassword } from '../src/utils/password';
 import { signAccessToken } from '../src/utils/jwt';
 import { superAdminToken } from './utils/super-admin';
-import { getAllowance, getCatalogue, seatLimit, bumpCatalogueVersion, currentPeriodKey } from '../src/services/plans/catalogue';
+import { activePriceFrom, getAllowance, getCatalogue, seatLimit, bumpCatalogueVersion, currentPeriodKey } from '../src/services/plans/catalogue';
 import { commPackPrice, addonPrice } from '../src/services/plans/pricing';
 import { getCreditBalance } from '../src/services/ai-credits';
 import { checkTrialExpiry } from '../src/cron/dispatch';
@@ -89,12 +89,16 @@ async function cleanPool(POOL: D1Database) {
   await POOL.prepare('DELETE FROM users WHERE email LIKE ?').bind('%@r109-%').run();
 }
 
+// PRICING.md 7.2 / 7.5 rows these tests edit (the approved numbers, migration 0026).
+const BASIC_IN_FOUNDER = '01a157e5-2f00-73f2-81bc-235af989ca7d';
+const SMS_IN_COST = '01a157e5-2f39-748a-b07e-98add8e4dc4a';
+
 /** Put the seeded catalogue values back, whatever a test changed. */
 async function restoreSeed() {
-  await master(`UPDATE comm_unit_costs SET unit_cost = 8.06, margin_pct = 20 WHERE channel = 'sms' AND market = 'IN'`).run();
-  await master(`UPDATE plan_prices SET yearly_price = 12000 WHERE plan_key = 'basic' AND market = 'IN'`).run();
+  await master(`UPDATE comm_unit_costs SET unit_cost = 8.14562, margin_pct = 25 WHERE id = '${SMS_IN_COST}'`).run();
+  await master(`UPDATE plan_prices SET yearly_price = 11999 WHERE id = '${BASIC_IN_FOUNDER}'`).run();
   await master(`DELETE FROM plan_features WHERE plan_key = 'basic' AND feature_key = 'ai_copilot'`).run();
-  await master(`UPDATE plan_allowances SET monthly_amount = 1000 WHERE plan_key = 'basic' AND allowance_key = 'ai_credits'`).run();
+  await master(`UPDATE plan_allowances SET monthly_amount = 3000 WHERE plan_key = 'basic' AND allowance_key = 'ai_credits'`).run();
   await bumpCatalogueVersion(testEnv);
 }
 
@@ -132,12 +136,15 @@ describe('plan catalogue (R109)', () => {
   });
 
   describe('seed', () => {
-    it('holds the owner-decided India prices and included users, and no active per-user price', async () => {
+    it('holds the owner-approved India prices (founder price now, list price from 2027-04-01) and included users', async () => {
       const catalogue = await getCatalogue(testEnv);
-      const rows = Object.fromEntries(catalogue.plans.map((p) => [p.key, p.prices.find((x) => x.market === 'IN' && x.isActive)]));
-      expect(rows.basic).toMatchObject({ yearlyPrice: 12000, includedUsers: 5, currency: 'INR' });
-      expect(rows.pro).toMatchObject({ yearlyPrice: 18000, includedUsers: 15 });
-      expect(rows.enterprise).toMatchObject({ yearlyPrice: 24000, includedUsers: 100 });
+      const at = (key: string, when: string) => activePriceFrom(catalogue, key, 'IN', new Date(when));
+      expect(at('basic', '2026-12-01T00:00:00Z')).toMatchObject({ yearlyPrice: 11999, includedUsers: 5, currency: 'INR', priceKind: 'founder' });
+      expect(at('pro', '2026-12-01T00:00:00Z')).toMatchObject({ yearlyPrice: 23999, includedUsers: 10, priceKind: 'founder' });
+      expect(at('enterprise', '2026-12-01T00:00:00Z')).toMatchObject({ yearlyPrice: 59999, includedUsers: 25, priceKind: 'founder' });
+      expect(at('basic', '2027-04-01T00:00:00Z')).toMatchObject({ yearlyPrice: 14999, includedUsers: 5, priceKind: 'list' });
+      expect(at('pro', '2027-04-01T00:00:00Z')).toMatchObject({ yearlyPrice: 29999, includedUsers: 10, priceKind: 'list' });
+      expect(at('enterprise', '2027-04-01T00:00:00Z')).toMatchObject({ yearlyPrice: 74999, includedUsers: 25, priceKind: 'list' });
       expect(catalogue.plans.map((p) => p.key).sort()).toEqual(['basic', 'enterprise', 'pro', 'trial']);
     });
 
@@ -237,39 +244,39 @@ describe('plan catalogue (R109)', () => {
   describe('AI credit allowance', () => {
     it('is the plan amount plus packs granted for the current month only', async () => {
       const month = currentPeriodKey();
-      expect(await getAllowance(testEnv, BASIC, 'ai_credits')).toBe(1000);
+      expect(await getAllowance(testEnv, BASIC, 'ai_credits')).toBe(3000);
 
-      const grant = await call(multiEnv, 'POST', `/admin/tenants/${BASIC}/addons`, superToken, { productKey: 'ai_credit_pack_5000', quantity: 2 });
+      const grant = await call(multiEnv, 'POST', `/admin/tenants/${BASIC}/addons`, superToken, { productKey: 'ai_credits_10000_in', quantity: 2 });
       expect(grant.status).toBe(201);
-      expect(((await grant.json()) as any).data).toMatchObject({ unitsGranted: 10000, periodKey: month, allowanceKey: 'ai_credits', allowanceThisMonth: 11000 });
-      expect(await getAllowance(testEnv, BASIC, 'ai_credits', month)).toBe(11000);
-      expect(await getAllowance(testEnv, BASIC, 'ai_credits', '2020-01')).toBe(1000); // another month: no pack
-      expect(await getAllowance(testEnv, BASIC, 'sms')).toBe(10); // a pack of one kind does not lift another
+      expect(((await grant.json()) as any).data).toMatchObject({ unitsGranted: 20000, periodKey: month, allowanceKey: 'ai_credits', allowanceThisMonth: 23000 });
+      expect(await getAllowance(testEnv, BASIC, 'ai_credits', month)).toBe(23000);
+      expect(await getAllowance(testEnv, BASIC, 'ai_credits', '2020-01')).toBe(3000); // another month: no pack
+      expect(await getAllowance(testEnv, BASIC, 'sms')).toBe(0); // a pack of one kind does not lift another (Basic has no SMS)
 
-      expect(await getCreditBalance(testEnv, BASIC)).toEqual({ limit: 11000, used: 0, remaining: 11000 });
+      expect(await getCreditBalance(testEnv, BASIC)).toEqual({ limit: 23000, used: 0, remaining: 23000 });
     });
 
     it('follows an edit of the plan allowance with no code change', async () => {
       const res = await call(multiEnv, 'PUT', '/admin/catalogue/allowances/basic', superToken, { ai_credits: 2500 });
       expect(res.status).toBe(200);
-      expect(await getAllowance(testEnv, BASIC, 'ai_credits')).toBe(12500);
+      expect(await getAllowance(testEnv, BASIC, 'ai_credits')).toBe(22500); // 2500 + the 20000 granted above
     });
 
     it('a communication pack lifts only its own channel for this month', async () => {
       const grant = await call(multiEnv, 'POST', `/admin/tenants/${BASIC}/addons`, superToken, { productKey: 'sms_100', quantity: 1 });
       expect(grant.status).toBe(201);
-      expect(await getAllowance(testEnv, BASIC, 'sms')).toBe(110);
-      expect(await getAllowance(testEnv, BASIC, 'whatsapp')).toBe(250);
+      expect(await getAllowance(testEnv, BASIC, 'sms')).toBe(100);
+      expect(await getAllowance(testEnv, BASIC, 'whatsapp')).toBe(300);
     });
   });
 
   describe('prices are computed from the catalogue', () => {
-    it('commPackPrice(sms, IN, 100) = 100 x 8.06 x 1.2 = 967.20, rounded up to the paisa', async () => {
-      expect(await commPackPrice(testEnv, 'sms', 'IN', 100)).toBe(967.2);
-      expect(await commPackPrice(testEnv, 'whatsapp', 'IN', 1000)).toBe(714);
-      expect(await commPackPrice(testEnv, 'otp', 'IN', 100)).toBe(1548);
-      expect(await commPackPrice(testEnv, 'sms', 'IN', 1)).toBe(9.68); // 9.672 rounds up
-      expect(await commPackPrice(testEnv, 'call_minute', 'IN', 100)).toBeNull(); // inactive until the ADR addendum
+    it('commPackPrice(sms, IN, 100) = 100 x 8.14562 x 1.25 = 1018.21, rounded up to the paisa', async () => {
+      expect(await commPackPrice(testEnv, 'sms', 'IN', 100)).toBe(1018.21);
+      expect(await commPackPrice(testEnv, 'whatsapp', 'IN', 1000)).toBe(1444.09); // step A: the marketing rate
+      expect(await commPackPrice(testEnv, 'otp', 'IN', 100)).toBe(1630.11);
+      expect(await commPackPrice(testEnv, 'sms', 'IN', 1)).toBe(10.19); // 10.182 rounds up
+      expect(await commPackPrice(testEnv, 'call_minute', 'IN', 100)).toBeNull(); // no calling in India
     });
 
     it('changes when unit_cost or margin_pct changes, with no code change', async () => {
@@ -277,30 +284,30 @@ describe('plan catalogue (R109)', () => {
 
       const costUp = await call(multiEnv, 'PUT', `/admin/catalogue/unit-costs/${cost!.id}`, superToken, { unitCost: 10 });
       expect(costUp.status).toBe(200);
-      expect(await commPackPrice(testEnv, 'sms', 'IN', 100)).toBe(1200);
-      expect(await addonPrice(testEnv, 'sms_100')).toBe(1200);
+      expect(await commPackPrice(testEnv, 'sms', 'IN', 100)).toBe(1250);
+      expect(await addonPrice(testEnv, 'sms_100')).toBe(1250);
 
       const marginUp = await call(multiEnv, 'PUT', `/admin/catalogue/unit-costs/${cost!.id}`, superToken, { marginPct: 50 });
       expect(marginUp.status).toBe(200);
       expect(await commPackPrice(testEnv, 'sms', 'IN', 100)).toBe(1500);
 
-      await call(multiEnv, 'PUT', `/admin/catalogue/unit-costs/${cost!.id}`, superToken, { unitCost: 8.06, marginPct: 20 });
-      expect(await commPackPrice(testEnv, 'sms', 'IN', 100)).toBe(967.2);
+      await call(multiEnv, 'PUT', `/admin/catalogue/unit-costs/${cost!.id}`, superToken, { unitCost: 8.14562, marginPct: 25 });
+      expect(await commPackPrice(testEnv, 'sms', 'IN', 100)).toBe(1018.21);
     });
 
     it('fixed-price products and the extra-user price come from their rows', async () => {
-      expect(await addonPrice(testEnv, 'ai_credit_pack_5000')).toBe(250);
-      expect(await addonPrice(testEnv, 'extra_user', { planKey: 'pro' })).toBe(1800);
-      expect(await addonPrice(testEnv, 'extra_user', { planKey: 'enterprise' })).toBe(1200);
+      expect(await addonPrice(testEnv, 'ai_credits_10000_in')).toBe(499);
+      expect(await addonPrice(testEnv, 'extra_user', { planKey: 'pro' })).toBe(2400);
+      expect(await addonPrice(testEnv, 'extra_user', { planKey: 'enterprise' })).toBe(2400);
     });
 
     it('GET /admin/catalogue returns provider costs, margins and computed add-on prices', async () => {
       const res = await call(multiEnv, 'GET', '/admin/catalogue', superToken);
       expect(res.status).toBe(200);
       const data = ((await res.json()) as any).data;
-      expect(data.unitCosts.find((u: any) => u.channel === 'sms')).toMatchObject({ unitCost: 8.06, marginPct: 20, currency: 'INR' });
-      expect(data.addons.find((a: any) => a.key === 'sms_100').price).toBe(967.2);
-      expect(data.notes).toContain('DRAFT');
+      expect(data.unitCosts.find((u: any) => u.channel === 'sms' && u.market === 'IN' && u.isActive)).toMatchObject({ unitCost: 8.14562, marginPct: 25, currency: 'INR' });
+      expect(data.addons.find((a: any) => a.key === 'sms_100').price).toBe(1018.21);
+      expect(data.notes).toContain('approved by the owner on 2026-10-21');
     });
   });
 
@@ -311,22 +318,23 @@ describe('plan catalogue (R109)', () => {
       const data = ((await res.json()) as any).data;
       expect(data.market).toBe('IN');
       expect(data.plans.map((p: any) => [p.key, p.yearlyPrice, p.includedUsers, p.extraUserYearlyPrice])).toEqual([
-        ['basic', 12000, 5, 2400],
-        ['pro', 18000, 15, 1800],
-        ['enterprise', 24000, 100, 1200],
+        ['basic', 11999, 5, 2400],
+        ['pro', 23999, 10, 2400],
+        ['enterprise', 59999, 25, 2400],
       ]);
-      expect(data.plans[0].allowances).toMatchObject({ ai_credits: 2500, sms: 10, whatsapp: 250, otp: 9 }); // 2500: raised by the allowance edit above
+      expect(data.plans[0]).toMatchObject({ priceKind: 'founder', founderEndsAt: '2027-04-01T00:00:00Z', listYearlyPrice: 14999, founderLockMonths: 24 });
+      expect(data.plans[0].allowances).toMatchObject({ ai_credits: 2500, sms: 0, whatsapp: 300, otp: 10 }); // 2500: raised by the allowance edit above
       const price = (key: string) => data.addons.find((a: any) => a.key === key).price;
-      expect(price('sms_100')).toBe(967.2);
-      expect(price('whatsapp_1000')).toBe(714);
-      expect(price('otp_100')).toBe(1548);
-      expect(price('ai_credit_pack_5000')).toBe(250);
+      expect(price('sms_100')).toBe(1018.21);
+      expect(price('whatsapp_1000')).toBe(1444.09);
+      expect(price('otp_100')).toBe(1630.11);
+      expect(price('ai_credits_10000_in')).toBe(499);
+      expect(data.addons.every((a: any) => a.currency === 'INR')).toBe(true); // no UK, EU, ... pack in the India list
       expect(JSON.stringify(data)).not.toMatch(/unitCost|marginPct|margin_pct|provider/);
     });
 
     it('shows a changed price straight away', async () => {
-      const price = await master(`SELECT id FROM plan_prices WHERE plan_key = 'basic' AND market = 'IN'`).first<{ id: string }>();
-      expect((await call(multiEnv, 'PUT', `/admin/catalogue/prices/${price!.id}`, superToken, { yearlyPrice: 13500 })).status).toBe(200);
+      expect((await call(multiEnv, 'PUT', `/admin/catalogue/prices/${BASIC_IN_FOUNDER}`, superToken, { yearlyPrice: 13500 })).status).toBe(200);
       const data = ((await (await call(multiEnv, 'GET', '/public/plans?market=IN', null)).json()) as any).data;
       expect(data.plans[0].yearlyPrice).toBe(13500);
     });
