@@ -703,6 +703,9 @@ export interface AiFeatureFlag {
   enabled: boolean;
   tier: 'pro' | 'enterprise';
   overridden: boolean;
+  /** Where the value comes from; 'platform' = switched off for every agency (nothing to upgrade to). */
+  source?: 'platform' | 'override' | 'plan';
+  platformDisabled?: boolean;
 }
 
 export interface UsageCap {

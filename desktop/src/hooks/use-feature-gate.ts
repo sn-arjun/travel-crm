@@ -17,7 +17,7 @@ export type GatedFeature =
   | 'ai_chatbot'
   | 'whatsapp_campaigns';
 
-export type FeatureGateReason = 'ok' | 'not_in_plan' | 'cap_exceeded' | 'country_unavailable';
+export type FeatureGateReason = 'ok' | 'platform_disabled' | 'not_in_plan' | 'cap_exceeded' | 'country_unavailable';
 
 export interface FeatureGate {
   enabled: boolean;
@@ -71,6 +71,10 @@ export function useFeatureGate(feature: GatedFeature): FeatureGate {
     }
 
     const flag = features.find((f) => f.key === feature);
+    // Switched off for every agency: show the locked state, but there is no plan to upgrade to.
+    if (flag?.platformDisabled) {
+      return { enabled: false, reason: 'platform_disabled' as const, upgradeHref: UPGRADE_HREF, loading: false };
+    }
     if (!flag?.enabled) {
       return {
         enabled: false,
