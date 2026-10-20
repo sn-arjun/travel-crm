@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleTime, formatLocaleDateTime } from '@/lib/format';
 import * as React from 'react';
 import Link from 'next/link';
 import {
@@ -203,7 +205,7 @@ export function FollowUpsToday({
                 <p className="truncate text-xs text-ds-foreground-muted">{fu.leadTitle}</p>
               </div>
               <span className="shrink-0 text-xs text-ds-foreground-muted">
-                {formatDisplayDate(when, 'short')}, {when.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                {formatDisplayDate(when, 'short')}, {formatLocaleTime(when, { hour: '2-digit', minute: '2-digit' })}
               </span>
             </Link>
           );
@@ -484,7 +486,7 @@ export function UpcomingEventsWidget() {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs font-medium text-ds-foreground">{event.title}</p>
                 <p className="text-xs text-ds-foreground-muted">
-                  {start ? new Date(start).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
+                  {start ? formatLocaleDateTime(start, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
                 </p>
               </div>
             </Link>

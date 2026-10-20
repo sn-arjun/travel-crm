@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatExactCurrency } from '@/lib/format';
 import { PageContainer } from '@/components/layout/page-container';
 import * as React from 'react';
 import Link from 'next/link';
@@ -106,7 +108,7 @@ function BiDashboardContent() {
       key: 'revenue',
       header: 'Revenue',
       align: 'right',
-      cell: (r) => r.revenue.toLocaleString('en-IN', { style: 'currency', currency: 'INR' }),
+      cell: (r) => formatExactCurrency(r.revenue),
     },
     {
       key: 'roi',
@@ -133,7 +135,7 @@ function BiDashboardContent() {
           label="Monthly Revenue"
           value={
             pulse
-              ? pulse.currentMonthRevenue.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })
+              ? formatExactCurrency(pulse.currentMonthRevenue)
               : '--'
           }
           delta={pulse?.momChange}
@@ -223,7 +225,7 @@ function BiDashboardContent() {
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium text-ds-foreground">{deal.reason}</p>
                     <span className="text-sm font-semibold text-ds-danger">
-                      -{deal.estimatedLoss.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                      -{formatExactCurrency(deal.estimatedLoss)}
                     </span>
                   </div>
                   <p className="mt-ds-1 text-xs text-ds-foreground-muted">{deal.preventionStrategy}</p>

@@ -1,5 +1,8 @@
 'use client';
 
+
+import { formatLocaleNumber, formatTightCurrency, formatCalendarDay } from '@/lib/format';
+import { formatCurrency } from '@/lib/utils';
 import * as React from 'react';
 import { AlertCircle, Download, FileSpreadsheet, FileText, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
@@ -55,26 +58,20 @@ export function useReportSemanticColors(): {
 }
 
 // ---------------------------------------------------------------------------
-// Formatting. INR, en-IN grouping, consistent across all report pages.
+// Formatting. The agency's currency and number grouping, consistent across all report pages.
 // ---------------------------------------------------------------------------
 
 export function formatReportCurrency(amount: number | null | undefined): string {
-  const n = Number(amount) || 0;
-  const abs = Math.abs(n);
-  const sign = n < 0 ? '-' : '';
-  if (abs >= 10_000_000) return `${sign}₹${(abs / 10_000_000).toFixed(1)}Cr`;
-  if (abs >= 100_000) return `${sign}₹${(abs / 100_000).toFixed(1)}L`;
-  if (abs >= 1_000) return `${sign}₹${(abs / 1_000).toFixed(0)}K`;
-  return `${sign}₹${abs.toLocaleString('en-IN')}`;
+  return formatTightCurrency(Number(amount) || 0);
 }
 
-/** Full-precision rupee amount for tables ("₹1,80,001.50"). */
+/** Full-precision amount for tables ("₹1,80,001.50" for an en-IN agency). */
 export function formatReportMoney(amount: number | null | undefined): string {
-  return `₹${(Number(amount) || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+  return formatCurrency(Number(amount) || 0);
 }
 
 export function formatCount(n: number | null | undefined): string {
-  return (Number(n) || 0).toLocaleString('en-IN');
+  return formatLocaleNumber(Number(n) || 0);
 }
 
 export function formatPercent(n: number | null | undefined, digits = 1): string {
@@ -82,7 +79,7 @@ export function formatPercent(n: number | null | undefined, digits = 1): string 
 }
 
 export function formatDecimal(n: number | null | undefined, digits = 1): string {
-  return (Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: digits });
+  return formatLocaleNumber(Number(n) || 0, { maximumFractionDigits: digits });
 }
 
 /** "in_progress" -> "In progress". */
@@ -107,13 +104,11 @@ export function formatDestinations(raw: string | null | undefined): string {
   return raw;
 }
 
-const MONTH_FORMAT = new Intl.DateTimeFormat('en-IN', { month: 'short', year: 'numeric' });
-
 /** "2026-08" -> "Aug 2026". */
 export function formatMonthKey(key: string | null | undefined): string {
   if (!key) return 'Unknown';
   const date = parseLocalDate(`${key}-01`);
-  return Number.isNaN(date.getTime()) ? key : MONTH_FORMAT.format(date);
+  return Number.isNaN(date.getTime()) ? key : formatCalendarDay(date, { month: 'short', year: 'numeric' });
 }
 
 export function sumBy<T>(rows: T[], pick: (row: T) => number | null | undefined): number {
@@ -482,7 +477,7 @@ export function ReportSection<T>({
       {children(q.rows)}
       {q.hasMore && (
         <p className="text-center text-sm text-ds-foreground-muted" data-testid="report-more-rows">
-          {`Showing the first ${q.rows.length.toLocaleString('en-IN')} of ${q.total.toLocaleString('en-IN')} rows. Export the report to get every row.`}
+          {`Showing the first ${formatLocaleNumber(q.rows.length)} of ${formatLocaleNumber(q.total)} rows. Export the report to get every row.`}
         </p>
       )}
     </div>

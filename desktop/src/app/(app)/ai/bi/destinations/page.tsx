@@ -1,5 +1,8 @@
 'use client';
 
+
+import { formatExactCurrency } from '@/lib/format';
+import { formatCurrency } from '@/lib/utils';
 import { PageContainer } from '@/components/layout/page-container';
 import * as React from 'react';
 import { Globe, RefreshCw, TrendingUp, TrendingDown, Download } from 'lucide-react';
@@ -77,13 +80,13 @@ function DestinationsContent() {
       header: 'Revenue',
       align: 'right',
       sortable: true,
-      cell: (r) => r.revenue.toLocaleString('en-IN', { style: 'currency', currency: 'INR' }),
+      cell: (r) => formatExactCurrency(r.revenue),
     },
     {
       key: 'costs',
       header: 'Costs',
       align: 'right',
-      cell: (r) => r.costs.toLocaleString('en-IN', { style: 'currency', currency: 'INR' }),
+      cell: (r) => formatExactCurrency(r.costs),
     },
     {
       key: 'profit',
@@ -92,7 +95,7 @@ function DestinationsContent() {
       sortable: true,
       cell: (r) => (
         <span className="font-semibold text-ds-success">
-          {r.profit.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+          {formatExactCurrency(r.profit)}
         </span>
       ),
     },
@@ -224,11 +227,11 @@ function DestinationsContent() {
                     </div>
                     <div className="rounded-ds-md bg-ds-surface-sunken p-ds-2 text-center">
                       <p className="text-xs text-ds-foreground-muted">Revenue</p>
-                      <p className="font-bold text-ds-foreground">₹{dest.revenue.toLocaleString()}</p>
+                      <p className="font-bold text-ds-foreground">{formatCurrency(dest.revenue)}</p>
                     </div>
                     <div className="rounded-ds-md bg-ds-surface-sunken p-ds-2 text-center">
                       <p className="text-xs text-ds-foreground-muted">Avg deal</p>
-                      <p className="font-bold text-ds-foreground">₹{dest.avgDealValue.toLocaleString()}</p>
+                      <p className="font-bold text-ds-foreground">{formatCurrency(dest.avgDealValue)}</p>
                     </div>
                   </div>
                 </SectionCard>

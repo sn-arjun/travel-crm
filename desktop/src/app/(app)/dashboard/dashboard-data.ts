@@ -2,6 +2,8 @@
  * Data layer for the dashboard. Every figure shown on the page is derived from
  * the reports API (period-aware) or from small, server-limited lists.
  */
+
+import { formatTightCurrency, formatCalendarDay } from '@/lib/format';
 import { reportsApi, type DashboardResponse } from '@/lib/api/reports';
 import { unwrapEntity, unwrapReport } from '@/lib/api/envelope';
 import { toLocalDateString } from '@/lib/dates';
@@ -66,11 +68,7 @@ export function periodWindows(period: DashboardPeriod, now: Date): { current: Da
 }
 
 export function formatCurrency(amount: number): string {
-  const abs = Math.abs(amount);
-  if (abs >= 10000000) return `₹${(amount / 10000000).toFixed(1)}Cr`;
-  if (abs >= 100000) return `₹${(amount / 100000).toFixed(1)}L`;
-  if (abs >= 1000) return `₹${(amount / 1000).toFixed(0)}K`;
-  return `₹${Math.round(amount)}`;
+  return formatTightCurrency(amount);
 }
 
 /** Percentage change, or null when there is no previous value to compare against. */
@@ -188,7 +186,7 @@ export async function loadRevenueTrend(): Promise<TrendPoint[]> {
     const last = endOfDay(new Date(first.getFullYear(), first.getMonth() + 1, 0));
     return {
       key: toLocalDateString(first).slice(0, 7),
-      label: first.toLocaleDateString('en-IN', { month: 'short' }),
+      label: formatCalendarDay(first, { month: 'short' }),
       window: { from: first, to: last },
     };
   });

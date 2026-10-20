@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatExactCurrency } from '@/lib/format';
 import { PageContainer } from '@/components/layout/page-container';
 import * as React from 'react';
 import { Users, RefreshCw, Trophy, TrendingUp, DollarSign, Download } from 'lucide-react';
@@ -75,7 +77,7 @@ function TeamPerformanceContent() {
       align: 'right',
       sortable: true,
       cell: (r) => (
-        <span className="font-semibold">{r.revenue.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</span>
+        <span className="font-semibold">{formatExactCurrency(r.revenue)}</span>
       ),
     },
     {
@@ -93,7 +95,7 @@ function TeamPerformanceContent() {
       key: 'avgDealValue',
       header: 'Avg deal',
       align: 'right',
-      cell: (r) => r.avgDealValue.toLocaleString('en-IN', { style: 'currency', currency: 'INR' }),
+      cell: (r) => formatExactCurrency(r.avgDealValue),
     },
   ];
 
@@ -137,7 +139,7 @@ function TeamPerformanceContent() {
       <div className="grid grid-cols-1 gap-ds-4 md:grid-cols-3">
         <Stat
           label="Total revenue"
-          value={totalRevenue.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+          value={formatExactCurrency(totalRevenue)}
           icon={<DollarSign className="size-4" aria-hidden="true" />}
           loading={loading}
         />

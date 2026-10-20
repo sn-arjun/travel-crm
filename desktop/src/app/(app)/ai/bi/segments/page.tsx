@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatExactCurrency } from '@/lib/format';
 import { PageContainer } from '@/components/layout/page-container';
 import * as React from 'react';
 import { Layers, RotateCw, Search } from 'lucide-react';
@@ -79,13 +81,13 @@ function SegmentsContent() {
       header: 'Avg LTV',
       align: 'right',
       sortable: true,
-      cell: (r) => r.avgLtv.toLocaleString('en-IN', { style: 'currency', currency: 'INR' }),
+      cell: (r) => formatExactCurrency(r.avgLtv),
     },
     {
       key: 'totalRevenue',
       header: 'Total revenue',
       align: 'right',
-      cell: (r) => r.totalRevenue.toLocaleString('en-IN', { style: 'currency', currency: 'INR' }),
+      cell: (r) => formatExactCurrency(r.totalRevenue),
     },
     {
       key: 'characteristics',
@@ -168,13 +170,13 @@ function SegmentsContent() {
               <div className="rounded-ds-md border border-ds-border p-ds-3">
                 <p className="text-xs text-ds-foreground-muted">Lifetime value</p>
                 <p className="mt-ds-1 text-lg font-bold text-ds-foreground">
-                  {ltv.lifetimeValue.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                  {formatExactCurrency(ltv.lifetimeValue)}
                 </p>
               </div>
               <div className="rounded-ds-md border border-ds-border p-ds-3">
                 <p className="text-xs text-ds-foreground-muted">Predicted value</p>
                 <p className="mt-ds-1 text-lg font-bold text-ds-foreground">
-                  {ltv.predictedValue.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                  {formatExactCurrency(ltv.predictedValue)}
                 </p>
               </div>
               <div className="rounded-ds-md border border-ds-border p-ds-3">

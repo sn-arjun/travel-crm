@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatExactCurrency } from '@/lib/format';
 import { PageContainer } from '@/components/layout/page-container';
 import * as React from 'react';
 import { Activity, Brain, BarChart3, RefreshCw } from 'lucide-react';
@@ -44,7 +46,7 @@ function UsageContent() {
       header: 'Cost',
       align: 'right',
       sortable: true,
-      cell: (r) => r.totalCost.toLocaleString('en-IN', { style: 'currency', currency: 'INR' }),
+      cell: (r) => formatExactCurrency(r.totalCost),
     },
     {
       key: 'bar',
@@ -81,7 +83,7 @@ function UsageContent() {
         <Stat label="Tokens used" value={totalTokens.toLocaleString()} icon={<Brain className="size-4" aria-hidden="true" />} loading={loading} />
         <Stat
           label="Total cost"
-          value={totalCost.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+          value={formatExactCurrency(totalCost)}
           icon={<BarChart3 className="size-4" aria-hidden="true" />}
           loading={loading}
         />
