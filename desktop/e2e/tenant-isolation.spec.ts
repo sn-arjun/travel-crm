@@ -1,4 +1,5 @@
-import { test, expect } from './fixtures';
+import {
+  test, expect } from './fixtures';
 import { API_URL } from './helpers/auth';
 import {
   type Agency,
@@ -7,7 +8,14 @@ import {
   createAgency,
   createSuperAdminToken,
   signInViaUI,
+  isMultiTenantStack,
+  NEEDS_MULTI,
 } from './helpers/tenants';
+
+// Separate agency databases are needed: skip the whole file on a single-tenant stack.
+test.beforeAll(async () => {
+  test.skip(!(await isMultiTenantStack(API_URL)), NEEDS_MULTI);
+});
 
 /**
  * Tier 1 exit test (R121): three agencies on three plans, provisioned through the real admin API, cannot see each

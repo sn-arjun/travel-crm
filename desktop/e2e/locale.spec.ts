@@ -1,4 +1,5 @@
-import { type Page } from '@playwright/test';
+import {
+  type Page } from '@playwright/test';
 import { test, expect } from './fixtures';
 import { API_URL, loginViaUI } from './helpers/auth';
 import { api, seedContact, seedInvoice } from './helpers/api-seed';
@@ -8,7 +9,14 @@ import {
   createAgency,
   createSuperAdminToken,
   signInViaUI,
+  isMultiTenantStack,
+  NEEDS_MULTI,
 } from './helpers/tenants';
+
+// Separate agency databases are needed: skip the whole file on a single-tenant stack.
+test.beforeAll(async () => {
+  test.skip(!(await isMultiTenantStack(API_URL)), NEEDS_MULTI);
+});
 
 /**
  * R203 exit test: money, numbers, dates and time zones follow each agency's own settings, not India's.

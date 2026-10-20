@@ -1,4 +1,5 @@
-import { type Page } from '@playwright/test';
+import {
+  type Page } from '@playwright/test';
 import { test, expect } from './fixtures';
 import { API_URL } from './helpers/auth';
 import {
@@ -13,7 +14,14 @@ import {
   outboxFor,
   request,
   signInViaUI,
+  isMultiTenantStack,
+  NEEDS_MULTI,
 } from './helpers/tenants';
+
+// Separate agency databases are needed: skip the whole file on a single-tenant stack.
+test.beforeAll(async () => {
+  test.skip(!(await isMultiTenantStack(API_URL)), NEEDS_MULTI);
+});
 
 /**
  * Handoff scenario (W5): a platform super admin creates an agency and hands it over to the client, all the way to

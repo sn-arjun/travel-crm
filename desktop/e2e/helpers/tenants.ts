@@ -28,6 +28,15 @@ export async function createSuperAdminToken(apiUrl: string = API_URL): Promise<s
   return ((await res.json()) as { data: { accessToken: string } }).data.accessToken;
 }
 
+/** True on a multi-tenant stack (`fix-stack up --multi`): specs that need separate agency databases skip otherwise. */
+export async function isMultiTenantStack(apiUrl: string = API_URL): Promise<boolean> {
+  const res = await fetch(`${apiUrl}/test/tenancy`).catch(() => null);
+  if (!res || !res.ok) return false;
+  return ((await res.json()) as { data?: { mode?: string } }).data?.mode === 'multi';
+}
+
+export const NEEDS_MULTI = 'needs a multi-tenant stack: node desktop/scripts/fix-stack.mjs up --slot N --reset-db --multi';
+
 /** POST /admin/tenants (R104), then read the temporary password from the welcome email in the local outbox. */
 export async function createAgency(
   apiUrl: string,

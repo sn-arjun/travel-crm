@@ -245,4 +245,10 @@ testApp.delete('/outbox', async (c) => {
     return c.json({ success: true, data: { cleared } });
 });
 
+/** Which tenancy mode this stack runs (TEST_MODE only): specs that need separate agency databases skip on 'single'. */
+testApp.get('/tenancy', (c) => {
+    if (!isTestMode(c.env)) return c.json({ error: 'Not found' }, 404);
+    return c.json({ success: true, data: { mode: c.env.TENANCY_MODE === 'multi' ? 'multi' : 'single' } });
+});
+
 export default testApp;
