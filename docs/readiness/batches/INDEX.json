@@ -586,5 +586,16 @@
       "R208"
     ],
     "blockedOnOwner": null
+  },
+  {
+    "id": "R132",
+    "tier": 1,
+    "title": "Email: Cloudflare + SendGrid by default, settings in the super admin console, the R131 gaps closed",
+    "size": "M",
+    "dependsOn": [
+      "R131",
+      "R111"
+    ],
+    "blockedOnOwner": null
   }
 ]

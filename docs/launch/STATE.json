@@ -261,6 +261,9 @@
     "2026-10-21b": {
       "pricing": "docs/PRICING.md approved as proposed -> R129 (load step A + market split), R130 (step B). Login codes stay on SMS (2026-10-14 decision) unless the owner changes it.",
       "email": "Cloudflare + SendGrid: Cloudflare Email Routing for inbound and Cloudflare sending for platform system mail with SendGrid fallback; SendGrid for all agency mail -> R131 after R128."
+    },
+    "2026-10-21c": {
+      "email": "Default = Cloudflare + SendGrid (Cloudflare for platform system mail, SendGrid fallback; SendGrid for agency mail); routing editable later from the super admin console; close the R131 gaps -> R132."
     }
   },
   "goLiveConfig": [

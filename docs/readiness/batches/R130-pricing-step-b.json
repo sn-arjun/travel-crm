@@ -21,7 +21,7 @@
       "desktop/src/components/domain/usage-limits*"
     ],
     "create": [
-      "backend/drizzle/master/0027_pricing_step_b.sql",
+      "backend/drizzle/master/0028_pricing_step_b.sql",
       "backend/test/whatsapp-split.test.ts"
     ],
     "mustNotTouch": []
@@ -33,7 +33,7 @@
     "Usage screens show the two WhatsApp allowances separately."
   ],
   "migrations": [
-    "backend/drizzle/master/0027_pricing_step_b.sql"
+    "backend/drizzle/master/0028_pricing_step_b.sql"
   ],
   "tests": [
     "marketing vs utility metering",
