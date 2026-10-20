@@ -40,6 +40,7 @@ export interface MockCallRecord {
   transferredTo?: string;
   announcementUrl?: string;
   recordingStarted?: boolean;
+  maxDurationSeconds?: number;
 }
 
 interface MockState {
@@ -112,7 +113,7 @@ export class MockVoipProvider extends TwilioVoipProvider {
   static completeCall(
     providerCallId: string,
     durationSeconds: number,
-    opts: { subAccountId?: string; direction?: 'inbound' | 'outbound'; startedAt?: string; cost?: number } = {},
+    opts: { subAccountId?: string; direction?: 'inbound' | 'outbound'; startedAt?: string; cost?: number; currency?: string; to?: string; from?: string; leg?: 'agent' | 'customer' | 'dial'; parentCallId?: string } = {},
   ): VoipUsageRecord {
     const call = state.calls.find((c) => c.providerCallId === providerCallId);
     if (!call) throw new VoipProviderError('mock', 'CALL_NOT_FOUND', `No mock call ${providerCallId}`, 'not_found');
@@ -122,16 +123,23 @@ export class MockVoipProvider extends TwilioVoipProvider {
     const record: VoipUsageRecord = {
       providerCallId,
       direction: opts.direction ?? 'outbound',
-      to: call.to,
-      from: call.from,
+      to: opts.to ?? call.to,
+      from: opts.from ?? call.from,
       startedAt: opts.startedAt ?? new Date(Date.UTC(2026, 0, 1, 0, 0, state.counter)).toISOString(),
       durationSeconds,
       billedSeconds,
       cost: opts.cost ?? Math.round((billedSeconds / 60) * 0.014 * 10000) / 10000,
-      currency: 'USD',
+      currency: opts.currency ?? 'USD',
+      ...(opts.leg ? { leg: opts.leg } : {}),
+      ...(opts.parentCallId ? { parentCallId: opts.parentCallId } : {}),
     };
     state.usage.push({ ...record, subAccountId: opts.subAccountId ?? '' });
     return record;
+  }
+
+  /** Put a usage record in front of fetchUsage without a placed call (an inbound call, or a leg). */
+  static addUsage(subAccountId: string, record: VoipUsageRecord): void {
+    state.usage.push({ ...record, subAccountId });
   }
 
   /** Put audio behind a recording id so fetchRecording can return it. */
@@ -183,7 +191,7 @@ export class MockVoipProvider extends TwilioVoipProvider {
       throw new VoipProviderError('mock', 'INVALID_MODE', 'mode must be softphone or bridge', 'invalid_request');
     }
     if (!/^\+[1-9]\d{9,14}$/.test(options.to)) throw new VoipProviderError('mock', 21211, 'Invalid phone number format', 'invalid_request');
-    return this.recordCall({ mode: options.mode, from: options.from, to: options.to, agentLeg, record: options.record, callbackBaseUrl: options.callbackBaseUrl, announcementUrl: options.announcementUrl });
+    return this.recordCall({ mode: options.mode, from: options.from, to: options.to, agentLeg, record: options.record, callbackBaseUrl: options.callbackBaseUrl, announcementUrl: options.announcementUrl, maxDurationSeconds: options.maxDurationSeconds });
   }
 
   private recordCall(call: Omit<MockCallRecord, 'providerCallId' | 'status' | 'ended' | 'held'>): VoipCallResult {

@@ -136,7 +136,7 @@ export class TwilioVoipProvider implements VoipProvider {
       ? ` record="record-from-answer-dual" recordingStatusCallback="${escapeXml(`${base}/api/v1/voip/recording-callback`)}"`
       : '';
     const twiml =
-      `<Response><Dial callerId="${escapeXml(options.from)}" timeout="${ring}" answerOnBridge="true"${recordAttrs}>` +
+      `<Response><Dial callerId="${escapeXml(options.from)}" timeout="${ring}" answerOnBridge="true"${options.maxDurationSeconds ? ` timeLimit="${Math.floor(options.maxDurationSeconds)}"` : ''}${recordAttrs}>` +
       `<Number${options.announcementUrl ? ` url="${escapeXml(options.announcementUrl)}" method="POST"` : ''}>${escapeXml(options.to)}</Number></Dial></Response>`;
 
     const params = new URLSearchParams({
@@ -149,6 +149,7 @@ export class TwilioVoipProvider implements VoipProvider {
       Timeout: String(ring),
     });
     if (options.machineDetection) params.set('MachineDetection', 'Enable');
+    if (options.maxDurationSeconds) params.set('TimeLimit', String(Math.floor(options.maxDurationSeconds)));
     const result = await this.createCall(params);
     return { ...result, direction: 'outbound', from: options.from, to: options.to };
   }
@@ -205,9 +206,13 @@ export class TwilioVoipProvider implements VoipProvider {
         if (Number.isNaN(startedMs) || startedMs < sinceMs) continue;
         const duration = Number.parseInt(call.duration ?? '0', 10) || 0;
         const price = Number.parseFloat(call.price ?? '0');
+        const rawDirection = String(call.direction || '');
         out.push({
           providerCallId: call.sid,
-          direction: String(call.direction || '').startsWith('inbound') ? 'inbound' : 'outbound',
+          direction: rawDirection.startsWith('inbound') ? 'inbound' : 'outbound',
+          // Legs (R305): the click-to-call parent is the agent leg; a dialled child is told apart by its parent's direction.
+          leg: rawDirection === 'outbound-api' ? 'agent' : rawDirection === 'outbound-dial' ? 'dial' : 'customer',
+          parentCallId: call.parent_call_sid || null,
           to: call.to,
           from: call.from,
           startedAt: new Date(startedMs).toISOString(),

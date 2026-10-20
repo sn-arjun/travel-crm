@@ -145,6 +145,29 @@ testApp.post('/inbound', async (c) => {
 });
 
 /**
+ * Give an agency a number in the platform's number registry (TEST_MODE only), as the purchase path would, so a test or a
+ * local stack can register it as a voice line (R305: POST /integrations/channels refuses numbers the agency does not own).
+ * Body: { tenantId, phoneNumber, country? }. Idempotent.
+ */
+testApp.post('/voip/own-number', async (c) => {
+    if (!isTestMode(c.env)) return c.json({ error: 'Forbidden: Test mode is not active.' }, 403);
+    const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
+    const tenantId = typeof body?.tenantId === 'string' ? body.tenantId.trim() : '';
+    const phoneNumber = typeof body?.phoneNumber === 'string' ? body.phoneNumber.trim() : '';
+    if (!tenantId || !/^\+[1-9][0-9]{7,14}$/.test(phoneNumber)) return c.json({ error: 'tenantId and an E.164 phoneNumber are required' }, 400);
+    const country = typeof body?.country === 'string' && body.country ? body.country.toUpperCase() : 'GB';
+    const { generateId } = await import('../utils/uuid');
+    await c.env.MASTER_DB
+        .prepare(
+            `INSERT OR IGNORE INTO voip_number_registry (id, tenant_id, phone_number, country, status, idempotency_key, paid_through)
+             VALUES (?, ?, ?, ?, 'active', ?, ?)`,
+        )
+        .bind(generateId(), tenantId, phoneNumber, country, `test-own:${tenantId}:${phoneNumber}`, new Date().toISOString().slice(0, 7))
+        .run();
+    return c.json({ success: true });
+});
+
+/**
  * Play a whole phone call as the provider would (TEST_MODE only): posts the signed callbacks of a scenario to the
  * real callback routes in order. inbound_*: from is the caller, to is the agency's number. outbound_*: from is
  * the agency's number, to is the customer; pass callSid (the id placeCall returned) to update that call's log.

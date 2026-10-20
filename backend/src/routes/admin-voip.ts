@@ -23,6 +23,22 @@ import {
   suspendAccount,
 } from '../services/voip/subaccounts';
 import {
+
+  SETTING_DAILY_MINUTES,
+  SETTING_PLATFORM_COST,
+  SETTING_SPIKE_MIN,
+  DEFAULT_DAILY_MINUTES,
+  DEFAULT_PLATFORM_DAILY_COST,
+  DEFAULT_SPIKE_MIN_COST,
+  allowedExtraCountries,
+  dailyMinuteCeiling,
+  fraudEventView,
+  liftFraudEvent,
+  tenantDailyMinutesKey,
+  type FraudEventRow,
+} from '../services/voip/fraud';
+import { getPlatformSetting } from '../services/voip/country-policy';
+import {
   getKyc,
   kycView,
   liveNumbers,
@@ -45,6 +61,11 @@ import {
  *   POST    /tenants/:id/voip/enable|suspend|resume|close
  *   PUT     /tenants/:id/voip/documents/:country approve or reject number documents
  *   POST    /tenants/:id/voip/numbers/:numberId/release
+ *   GET     /voip/fraud-events?status=active     fraud limits that fired (blocks and flags), newest first
+ *   POST    /voip/fraud-events/:id/lift          lift a block / dismiss a flag (audited)
+ *   GET/PUT /voip/limits                         platform daily ceilings
+ *   PUT     /tenants/:id/voip/countries          destinations the agency may call besides its own country
+ *   PUT     /tenants/:id/voip/limits             the agency's own daily minute ceiling
  */
 const app = new Hono<AppContext>();
 app.onError(voipErrorHandler);
@@ -101,6 +122,92 @@ app.get('/voip/documents', async (c) => {
   return success(c, (rows.results ?? []).map((r) => ({ tenantId: r.tenant_id, companyName: r.company_name, ...kycView(r) })));
 });
 
+app.get('/voip/fraud-events', async (c) => {
+  const status = c.req.query('status');
+  const filtered = status === 'active' || status === 'lifted';
+  const rows = await c.env.MASTER_DB
+    .prepare(
+      `SELECT e.*, t.company_name FROM voip_fraud_events e LEFT JOIN tenants t ON t.id = e.tenant_id
+        ${filtered ? 'WHERE e.status = ?' : ''} ORDER BY e.blocking DESC, e.created_at DESC LIMIT 200`,
+    )
+    .bind(...(filtered ? [status] : []))
+    .all<FraudEventRow & { company_name: string | null }>();
+  return success(c, (rows.results ?? []).map(fraudEventView));
+});
+
+app.post('/voip/fraud-events/:id/lift', async (c) => {
+  const row = await liftFraudEvent(c.env, c.req.param('id'), actorFrom(c));
+  if (!row) return notFound(c, 'Fraud event');
+  return success(c, fraudEventView(row));
+});
+
+const limitsSchema = z.object({
+  dailyMinutesPerAgency: z.number().int().min(1).max(100000).optional(),
+  platformDailyCostCeiling: z.number().min(0).max(1_000_000).optional(),
+  spikeMinCost: z.number().min(0).max(1_000_000).optional(),
+});
+
+async function platformLimits(env: AppContext['Bindings']) {
+  const num = async (key: string, fallback: number) => {
+    const raw = await getPlatformSetting(env, key);
+    const n = raw === null ? NaN : Number(raw);
+    return Number.isFinite(n) ? n : fallback;
+  };
+  return {
+    dailyMinutesPerAgency: await num(SETTING_DAILY_MINUTES, DEFAULT_DAILY_MINUTES),
+    platformDailyCostCeiling: await num(SETTING_PLATFORM_COST, DEFAULT_PLATFORM_DAILY_COST),
+    spikeMinCost: await num(SETTING_SPIKE_MIN, DEFAULT_SPIKE_MIN_COST),
+  };
+}
+
+app.get('/voip/limits', async (c) => success(c, await platformLimits(c.env)));
+
+app.put('/voip/limits', zValidator('json', limitsSchema), async (c) => {
+  const body = c.req.valid('json');
+  const before = await platformLimits(c.env);
+  const actor = actorFrom(c)?.email ?? null;
+  if (body.dailyMinutesPerAgency !== undefined) await setPlatformSetting(c.env, SETTING_DAILY_MINUTES, String(body.dailyMinutesPerAgency), actor);
+  if (body.platformDailyCostCeiling !== undefined) await setPlatformSetting(c.env, SETTING_PLATFORM_COST, String(body.platformDailyCostCeiling), actor);
+  if (body.spikeMinCost !== undefined) await setPlatformSetting(c.env, SETTING_SPIKE_MIN, String(body.spikeMinCost), actor);
+  const after = await platformLimits(c.env);
+  await logAdminAction(c.env, actorFrom(c), 'voip.limits.update', null, before, after, { entityType: 'platform_setting', entityId: 'voip_limits' });
+  return success(c, after);
+});
+
+const countriesSchema = z.object({ countries: z.array(z.string().trim().length(2)).max(60) });
+
+app.put('/tenants/:id/voip/countries', zValidator('json', countriesSchema), async (c) => {
+  const tenant = await loadTenant(c.env, c.req.param('id'));
+  if (!tenant) return notFound(c, 'Tenant');
+  const next = [...new Set(c.req.valid('json').countries.map((x) => x.toUpperCase()))].filter((x) => /^[A-Z]{2}$/.test(x));
+  const before = await allowedExtraCountries(c.env, tenant.id);
+  const by = actorFrom(c)?.email ?? null;
+  const statements = [
+    c.env.MASTER_DB.prepare('DELETE FROM voip_allowed_countries WHERE tenant_id = ?').bind(tenant.id),
+    ...next.map((country) => c.env.MASTER_DB.prepare('INSERT INTO voip_allowed_countries (tenant_id, country, created_by) VALUES (?, ?, ?)').bind(tenant.id, country, by)),
+  ];
+  await c.env.MASTER_DB.batch(statements);
+  await logAdminAction(c.env, actorFrom(c), 'voip.countries.update', tenant.id, { countries: before }, { countries: next });
+  return success(c, { countries: next });
+});
+
+const tenantLimitSchema = z.object({ dailyMinutes: z.number().int().min(1).max(100000).nullable() });
+
+app.put('/tenants/:id/voip/limits', zValidator('json', tenantLimitSchema), async (c) => {
+  const tenant = await loadTenant(c.env, c.req.param('id'));
+  if (!tenant) return notFound(c, 'Tenant');
+  const { dailyMinutes } = c.req.valid('json');
+  const before = await dailyMinuteCeiling(c.env, tenant.id);
+  if (dailyMinutes === null) {
+    await c.env.MASTER_DB.prepare('DELETE FROM platform_settings WHERE key = ?').bind(tenantDailyMinutesKey(tenant.id)).run();
+  } else {
+    await setPlatformSetting(c.env, tenantDailyMinutesKey(tenant.id), String(dailyMinutes), actorFrom(c)?.email ?? null);
+  }
+  const after = await dailyMinuteCeiling(c.env, tenant.id);
+  await logAdminAction(c.env, actorFrom(c), 'voip.tenant_limits.update', tenant.id, { dailyMinutes: before }, { dailyMinutes: after });
+  return success(c, { dailyMinutes: after });
+});
+
 app.get('/tenants/:id/voip', async (c) => {
   const tenant = await loadTenant(c.env, c.req.param('id'));
   if (!tenant) return notFound(c, 'Tenant');
@@ -115,6 +222,7 @@ app.get('/tenants/:id/voip', async (c) => {
     account: accountView(await getAccount(c.env, tenant.id)),
     documents: (docs.results ?? []).map(kycView),
     numbers: (numbers.results ?? []).map(registryView),
+    ...(await callingSafety(c.env, tenant.id)),
   });
 });
 
@@ -182,5 +290,31 @@ app.post('/tenants/:id/voip/numbers/:numberId/release', async (c) => {
   await logAdminAction(c.env, actorFrom(c), 'voip.number.release', tenant.id, { phoneNumber: row.phone_number }, { status: 'released' });
   return success(c, { released: row.phone_number });
 });
+
+/** R305: minutes charged this month, the import cursor, fraud events and destination limits of one agency. */
+async function callingSafety(env: AppContext['Bindings'], tenantId: string) {
+  const month = new Date().toISOString().slice(0, 7);
+  const [cursor, minutes, events, extra, ceiling] = await Promise.all([
+    env.MASTER_DB.prepare('SELECT cursor_at, last_run_at, last_error, imported_total FROM voip_usage_cursor WHERE tenant_id = ?').bind(tenantId).first<{ cursor_at: string; last_run_at: string | null; last_error: string | null; imported_total: number }>(),
+    env.MASTER_DB.prepare(`SELECT COALESCE(SUM(minutes_counted), 0) AS minutes, COALESCE(SUM(provider_cost), 0) AS cost, COUNT(*) AS calls FROM call_usage WHERE tenant_id = ? AND substr(started_at, 1, 7) = ?`).bind(tenantId, month).first<{ minutes: number; cost: number; calls: number }>(),
+    env.MASTER_DB.prepare('SELECT * FROM voip_fraud_events WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 50').bind(tenantId).all<FraudEventRow>(),
+    allowedExtraCountries(env, tenantId),
+    dailyMinuteCeiling(env, tenantId),
+  ]);
+  return {
+    usage: {
+      month,
+      minutesCounted: Number(minutes?.minutes ?? 0),
+      providerCost: Math.round(Number(minutes?.cost ?? 0) * 10000) / 10000,
+      calls: Number(minutes?.calls ?? 0),
+      cursor: cursor ? { at: cursor.cursor_at, lastRunAt: cursor.last_run_at, lastError: cursor.last_error, imported: cursor.imported_total } : null,
+    },
+    fraud: {
+      events: (events.results ?? []).map(fraudEventView),
+      allowedCountries: extra,
+      dailyMinuteCeiling: ceiling,
+    },
+  };
+}
 
 export default app;

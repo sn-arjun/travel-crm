@@ -11,7 +11,8 @@ export type TemplateName =
   | 'payment_failed'
   | 'trial_ending'
   | 'number_release_notice'
-  | 'website_ready';
+  | 'website_ready'
+  | 'voip_spend_alert';
 
 export interface TemplateData {
   appUrl: string;
@@ -221,6 +222,13 @@ A released number is usually gone for good. To keep it, ${reason === 'unpaid' ? 
         `<p>The website for <strong>${esc(agency)}</strong> is live.</p>${button(url, 'Open your website')}<p>To edit it, sign in at <a href="${esc(adminUrl)}">${esc(adminUrl)}</a>. WordPress sends a separate email with a link to choose your password; we never see or send it.</p>`
       );
       const text = `The website for ${agency} is live: ${url}\nTo edit it, sign in at ${adminUrl}. WordPress sends a separate email with a link to choose your password.\n`;
+      return { subject, html, text };
+    }
+    case 'voip_spend_alert': {
+      const subject = str(data, 'subject', 'Call spend alert');
+      const lines = Array.isArray(data.lines) ? (data.lines as unknown[]).map((l) => String(l)) : [];
+      const html = layout(subject, lines.map((l) => `<p>${esc(l)}</p>`).join('') + button(`${data.appUrl}`, 'Open the console'));
+      const text = [subject, '', ...lines, ''].join('\n');
       return { subject, html, text };
     }
     case 'usage_alert': {

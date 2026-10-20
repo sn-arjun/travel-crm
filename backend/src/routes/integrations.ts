@@ -91,6 +91,22 @@ integrationRoutes.post('/channels', zValidator('json', createChannelSchema), asy
     return error(c, isEmail ? 'Enter a valid email address' : 'Enter a valid phone number with country code', 400);
   }
 
+  // R305: a phone number the platform rents from the provider belongs to the agency that bought it (voip_number_registry,
+  // written only by the purchase path). A voice line can only be registered if this agency owns it there, and no channel
+  // can claim a number another agency (or nobody) holds there: the same answer in every case, so nothing leaks.
+  if (!isEmail) {
+    const owner = await c.env.MASTER_DB
+      .prepare(`SELECT tenant_id FROM voip_number_registry WHERE phone_number = ? AND status <> 'released' LIMIT 1`)
+      .bind(address)
+      .first<{ tenant_id: string }>();
+    if (body.channel === 'voice' && owner?.tenant_id !== tenantId) {
+      return error(c, 'This number is not on your account. Buy a number from Calling settings; numbers cannot be added by hand.', 409, { code: 'NUMBER_NOT_OWNED' });
+    }
+    if (owner && owner.tenant_id !== tenantId) {
+      return error(c, 'This address is registered to another workspace', 409);
+    }
+  }
+
   const taken = await c.env.MASTER_DB
     .prepare('SELECT tenant_id FROM tenant_channel_addresses WHERE channel = ? AND address = ?')
     .bind(body.channel, address)

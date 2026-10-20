@@ -642,3 +642,61 @@ export const voipNumberRegistry = sqliteTable('voip_number_registry', {
   uniqueIndex('voip_number_registry_idempotency_idx').on(table.idempotencyKey),
   index('voip_number_registry_tenant_idx').on(table.tenantId, table.status),
 ]);
+
+// R305: call minutes metered from the provider's records, and the fraud limits around calling.
+export const callUsage = sqliteTable('call_usage', {
+  id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull(),
+  providerCallId: text('provider_call_id').notNull(), // unique: a provider call is charged once
+  subAccountId: text('sub_account_id'),
+  direction: text('direction').notNull(), // inbound | outbound
+  leg: text('leg').notNull().default('customer'), // customer | agent
+  parentCallId: text('parent_call_id'),
+  remoteNumber: text('remote_number'),
+  destinationCountry: text('destination_country'),
+  destinationType: text('destination_type'), // standard | premium | unknown
+  billedSeconds: integer('billed_seconds').notNull().default(0),
+  providerCost: real('provider_cost').notNull().default(0),
+  currency: text('currency').notNull().default('USD'),
+  weight: real('weight').notNull().default(1),
+  minutesCounted: integer('minutes_counted').notNull().default(0),
+  startedAt: text('started_at').notNull(),
+  recordedAt: text('recorded_at').notNull().default(nowText),
+}, (table) => [
+  uniqueIndex('call_usage_provider_call_idx').on(table.providerCallId),
+  index('call_usage_tenant_started_idx').on(table.tenantId, table.startedAt),
+]);
+
+export const voipUsageCursor = sqliteTable('voip_usage_cursor', {
+  tenantId: text('tenant_id').primaryKey(),
+  cursorAt: text('cursor_at').notNull(),
+  lastRunAt: text('last_run_at'),
+  lastError: text('last_error'),
+  importedTotal: integer('imported_total').notNull().default(0),
+});
+
+export const voipAllowedCountries = sqliteTable('voip_allowed_countries', {
+  tenantId: text('tenant_id').notNull(),
+  country: text('country').notNull(),
+  createdAt: text('created_at').notNull().default(nowText),
+  createdBy: text('created_by'),
+}, (table) => [primaryKey({ columns: [table.tenantId, table.country] })]);
+
+export const voipFraudEvents = sqliteTable('voip_fraud_events', {
+  id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull(),
+  kind: text('kind').notNull(), // daily_minutes | spend_spike | platform_ceiling | velocity | blocked_destination
+  dayKey: text('day_key').notNull(),
+  blocking: integer('blocking').notNull().default(0),
+  status: text('status').notNull().default('active'), // active | lifted
+  detail: text('detail'), // JSON
+  occurrences: integer('occurrences').notNull().default(1),
+  createdAt: text('created_at').notNull().default(nowText),
+  updatedAt: text('updated_at').notNull().default(nowText),
+  liftedAt: text('lifted_at'),
+  liftedBy: text('lifted_by'),
+  notifiedAt: text('notified_at'),
+}, (table) => [
+  uniqueIndex('voip_fraud_events_unique_idx').on(table.tenantId, table.kind, table.dayKey),
+  index('voip_fraud_events_status_idx').on(table.status, table.createdAt),
+]);

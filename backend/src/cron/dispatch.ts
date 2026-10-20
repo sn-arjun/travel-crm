@@ -27,6 +27,7 @@ import { expireTrials } from '../services/plans/trial';
 import { refreshExchangeRates } from '../services/exchange-rate';
 import { runBillingDaily } from '../services/billing/subscriptions';
 import { runNumberLifecycle } from '../services/voip/numbers';
+import { importTenantUsage } from '../services/voip/metering';
 import { checkFollowUpReminders } from '../services/follow-up-reminders';
 import { runScheduledAutomationsForTenant } from '../services/automation/schedule';
 import { processCampaignScheduler } from './campaign-scheduler';
@@ -84,6 +85,8 @@ const EVERY5_JOBS: TenantJob[] = [
   { name: 'automations.schedule-tick', period: 'local-day', run: (env, id, db, now) => runScheduledAutomationsForTenant(env, id, db, now) },
   { name: 'marketing.campaign-scheduler', period: 'tick', run: (env, id, db, now) => processCampaignScheduler(env, id, db, now) },
   { name: 'followups.reminders', period: 'tick', run: (env, id, db, now, period) => checkFollowUpReminders(env, id, db, now, period) },
+  // R305: call minutes are charged from the provider's usage records for the agency's sub-account (cursor per agency, once per provider call id). Not paused by automations_paused.
+  { name: 'voip.usage-import', period: 'tick', run: (env, id, _db, now) => importTenantUsage(env, id, now) },
   // R306: copies that failed (or never ran) are retried, and a provider copy that could not be deleted is deleted. Not paused by automations_paused.
   { name: 'calls.recordings-retry', period: 'tick', run: (env, id, db, now) => retryPendingRecordings(env, id, db, now) },
 ];

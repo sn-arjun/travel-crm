@@ -48,6 +48,8 @@ export interface VoipPlaceCallOptions {
   /** Ring timeout in seconds. */
   timeout?: number;
   machineDetection?: boolean;
+  /** R305: the provider ends the call by itself after this many seconds (fraud: a call cannot run for ever). Default none. */
+  maxDurationSeconds?: number;
 }
 
 export type VoipCallDirection = 'inbound' | 'outbound';
@@ -66,6 +68,15 @@ export interface VoipUsageRecord {
   /** What the provider charged, as a positive number (providers report it negative); 0 when not yet priced. */
   cost: number;
   currency: string;
+  /**
+   * R305: which leg of a bridged call this record is. 'agent' = the leg to the agent (their app or phone), never
+   * counted as customer minutes; 'customer' = the leg a customer is on; 'dial' = a child leg whose meaning depends on
+   * its parent (a child of an inbound call is the agent leg, a child of an outbound call is the customer leg).
+   * Absent = 'customer' (one record per call, as the mock reports it).
+   */
+  leg?: 'agent' | 'customer' | 'dial';
+  /** The parent call's id when the provider reports legs as separate calls. */
+  parentCallId?: string | null;
 }
 
 export interface VoipFetchUsageInput {

@@ -23,7 +23,6 @@ import type { VoipSettingsRow } from '../services/voip-provider';
 
 import { candidateTenantDbs, resolveTenantDb, tenancyMode } from '../services/tenant-db';
 import { formParams, publicRequestUrl, unsignedAllowed, verifyTwilioAny } from '../middleware/provider-signature';
-import { recordUsage } from '../services/metering/meter';
 import { autoRecord, loadRecordingSettings, recordingIdFromUrl, storeRecording } from '../services/voip/recordings';
 import { requestCallAi } from '../services/voip/call-ai';
 
@@ -482,20 +481,8 @@ voipCallbackRoutes.post('/status-callback', async (c) => {
         .bind(...values).run();
     }
 
-    // R110 (provisional until R305 meters from provider records): a completed call adds ceil(duration / 60) minutes to
-    // the agency's monthly call-minute usage, once per call (the metering key is the call).
-    if (status === 'completed' && duration && duration > 0) {
-      try {
-        const done = await db
-          .prepare('SELECT direction, from_number, to_number FROM call_logs WHERE provider_call_id = ? OR twilio_call_sid = ?')
-          .bind(callSid, callSid)
-          .first<{ direction: string; from_number: string | null; to_number: string | null }>();
-        const tenantId = done ? await tenantForCalledNumber(c.env, done.direction === 'outbound' ? done.from_number : done.to_number) : null;
-        if (tenantId) await recordUsage(c.env, tenantId, 'call_minute', Math.ceil(duration / 60), `call:${callSid}`);
-      } catch (e) {
-        console.error('Call minute metering failed:', e instanceof Error ? e.message : 'error');
-      }
-    }
+    // Call minutes are NOT counted here (R305): they are charged from the provider's usage records, once per provider
+    // call id, by services/voip/metering.ts (tenant job voip.usage-import). A callback only reports what the call looked like.
 
     // Missed inbound calls (TICKET-381): once per call, whichever of the dial result and this callback comes first.
     if (status === 'no-answer' || status === 'busy' || status === 'canceled') {

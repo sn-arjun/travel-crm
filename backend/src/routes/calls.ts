@@ -20,6 +20,7 @@ import { logActivity } from '../utils/activity-logger';
 import { emitFromRequest } from '../services/automation/events';
 import { tenantToday, addDaysLocal, localDateStartUtcIso, sqlOffsetModifier } from '../utils/tz';
 import { AllowanceExhausted, allowanceExhaustedResponse, assertAllowance } from '../services/metering/meter';
+import { MAX_CALL_SECONDS, preflightOutbound } from '../services/voip/fraud';
 import { DEFAULT_ANNOUNCEMENT, autoRecord, canAccessCallData, loadRecordingSettings, signRecordingLink } from '../services/voip/recordings';
 import { CALL_AI_FEATURE_KEY, REASON_CREDITS, requestCallAi } from '../services/voip/call-ai';
 import { AI_QUOTA_EXCEEDED_MESSAGE } from '../services/ai-credits';
@@ -500,6 +501,13 @@ callRoutes.post('/outbound', zValidator('json', outboundCallSchema), async (c) =
     throw err;
   }
 
+  // R305 fraud limits: blocked prefixes, destination allow-list, per-agent velocity, daily ceiling. Nothing is dialled
+  // and no call row is written when one of them refuses.
+  const refusal = await preflightOutbound(c.env, { tenantId: c.get('tenantId'), db, userId, toNumber: data.toNumber });
+  if (refusal) {
+    return c.json({ success: false, code: refusal.code, message: refusal.message, details: refusal.details ?? null, error: { code: refusal.code, message: refusal.message, details: refusal.details ?? null } }, refusal.status);
+  }
+
   // Validate contact exists if provided
   if (data.contactId) {
     const contact = await db.prepare('SELECT id FROM contacts WHERE id = ? AND is_deleted = 0')
@@ -562,6 +570,7 @@ callRoutes.post('/outbound', zValidator('json', outboundCallSchema), async (c) =
       callbackBaseUrl: baseUrl,
       record: shouldRecord,
       announcementUrl: shouldRecord ? `${baseUrl}/api/v1/voip/twiml/announce?callLogId=${encodeURIComponent(callLogId)}` : undefined,
+      maxDurationSeconds: MAX_CALL_SECONDS,
     });
 
     await db.prepare('UPDATE call_logs SET twilio_call_sid = ?, provider_call_id = ? WHERE id = ?')
