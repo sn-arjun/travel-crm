@@ -32,7 +32,18 @@ export async function createSuperAdminToken(apiUrl: string = API_URL): Promise<s
 export async function createAgency(
   apiUrl: string,
   superAdminToken: string,
-  opts: { plan: PlanKey; slug: string; companyName?: string },
+  opts: {
+    plan: PlanKey;
+    slug: string;
+    companyName?: string;
+    ownerName?: string;
+    /** Defaults to an Indian agency. */
+    country?: string;
+    currency?: string;
+    timezone?: string;
+    taxSystem?: 'gst' | 'vat' | 'sales_tax' | 'none';
+    region?: 'in' | 'eu' | 'uk' | 'us' | 'au' | 'gulf';
+  },
 ): Promise<Agency> {
   const email = `owner-${opts.slug}@isolation.test`;
   const companyName = opts.companyName ?? `Agency ${opts.slug}`;
@@ -42,14 +53,14 @@ export async function createAgency(
     body: JSON.stringify({
       companyName,
       slug: opts.slug,
-      ownerName: 'Isolation Owner',
+      ownerName: opts.ownerName ?? 'Isolation Owner',
       ownerEmail: email,
       plan: opts.plan,
-      country: 'India',
-      currency: 'INR',
-      timezone: 'Asia/Kolkata',
-      taxSystem: 'gst',
-      region: 'in',
+      country: opts.country ?? 'India',
+      currency: opts.currency ?? 'INR',
+      timezone: opts.timezone ?? 'Asia/Kolkata',
+      taxSystem: opts.taxSystem ?? 'gst',
+      region: opts.region ?? 'in',
     }),
   });
   if (res.status !== 201) throw new Error(`provisioning ${opts.slug} failed: ${res.status} ${await res.text()}`);
@@ -100,6 +111,70 @@ export async function completeFirstLogin(apiUrl: string, agency: Agency): Promis
   });
   if (!skip.ok) throw new Error(`skipping onboarding for ${agency.slug} failed: ${skip.status}`);
   return { ...agency, password, accessToken };
+}
+
+export interface ApiResult {
+  status: number;
+  json: any;
+  text: string;
+}
+
+/** One JSON request to the API with an optional bearer token; never throws on an HTTP error status. */
+export async function request(
+  apiUrl: string,
+  method: string,
+  path: string,
+  token: string | null,
+  body?: unknown,
+  extraHeaders: Record<string, string> = {},
+): Promise<ApiResult> {
+  const headers: Record<string, string> = { ...extraHeaders };
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${apiUrl}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  const text = await res.text();
+  let json: any = null;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    /* not JSON */
+  }
+  return { status: res.status, json, text };
+}
+
+export interface OutboxMail {
+  id: string;
+  to: string;
+  subject: string;
+  template: string;
+  text: string;
+  html: string;
+}
+
+/** Emails captured by the local outbox (TEST_MODE) for one address, newest data as the API returns it. */
+export async function outboxFor(apiUrl: string, to: string): Promise<OutboxMail[]> {
+  const res = await request(apiUrl, 'GET', `/test/outbox?to=${encodeURIComponent(to)}`, null);
+  return (res.json?.data ?? []) as OutboxMail[];
+}
+
+export type UserRole = 'admin' | 'sales_manager' | 'salesperson' | 'operations' | 'accountant' | 'view_only';
+
+/** POST /users as the agency admin. Returns the raw result so a caller can assert a refusal (seat limit). */
+export function inviteUser(apiUrl: string, admin: Agency, user: { email: string; name: string; role: UserRole }): Promise<ApiResult> {
+  return request(apiUrl, 'POST', '/users', admin.accessToken!, user);
+}
+
+/** The invitation link in the invitee's email, from the local outbox. */
+export async function inviteTokenFor(apiUrl: string, email: string): Promise<string> {
+  const mail = (await outboxFor(apiUrl, email)).find((m) => m.template === 'invite_user');
+  const token = mail?.text.match(/setup-account\?token=([A-Za-z0-9-]+)/)?.[1];
+  if (!token) throw new Error(`invitation email for ${email} not found in the outbox`);
+  return token;
+}
+
+/** The invitee's side of an invitation, through the API (POST /auth/setup-account). */
+export function acceptInvite(apiUrl: string, token: string, name: string, password: string): Promise<ApiResult> {
+  return request(apiUrl, 'POST', '/auth/setup-account', null, { token, name, password });
 }
 
 /** Sign in through the real login form (email step, then password). Retries the click until the page is hydrated. */
