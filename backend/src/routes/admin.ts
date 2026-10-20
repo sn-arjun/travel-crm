@@ -253,6 +253,7 @@ function buildPlan(plan: CataloguePlan, catalogue: Catalogue) {
     maxTeam: price?.includedUsers ?? 0,
     extraUserYearlyPrice: price?.extraUserYearlyPrice ?? null,
     allowances: plan.allowances,
+    marketAllowances: plan.marketAllowances ?? {},
     features: plan.features,
     isActive: plan.isActive,
     isPublic: plan.isPublic,

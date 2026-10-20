@@ -22,25 +22,28 @@ import {
   currentPeriodKey,
   getAllowance,
   getCatalogue,
-  marketForCountry,
+  planAllowance,
+  tenantMarket,
   tenantPlanKey,
   type Catalogue,
 } from '../plans/catalogue';
 import { packSalePriceFrom } from '../plans/pricing';
 import { checkUsageAlerts } from './usage-alerts';
 
-export type MeterChannel = 'sms' | 'whatsapp' | 'otp' | 'call_minute' | 'email';
+export type MeterChannel = 'sms' | 'whatsapp' | 'whatsapp_marketing' | 'otp' | 'call_minute' | 'email';
 
 export interface ChannelSpec {
   channel: MeterChannel;
-  allowanceKey: 'sms' | 'whatsapp' | 'otp' | 'call_minutes' | 'email';
+  allowanceKey: 'sms' | 'whatsapp' | 'whatsapp_marketing' | 'otp' | 'call_minutes' | 'email';
   capKey: string;
   label: string;
 }
 
 export const CHANNEL_SPECS: Record<MeterChannel, ChannelSpec> = {
   sms: { channel: 'sms', allowanceKey: 'sms', capKey: 'sms_per_month', label: 'SMS' },
-  whatsapp: { channel: 'whatsapp', allowanceKey: 'whatsapp', capKey: 'whatsapp_per_month', label: 'WhatsApp messages' },
+  // R130 (pricing step B): utility / service templates and marketing templates are metered, and bought, separately.
+  whatsapp: { channel: 'whatsapp', allowanceKey: 'whatsapp', capKey: 'whatsapp_per_month', label: 'WhatsApp utility messages' },
+  whatsapp_marketing: { channel: 'whatsapp_marketing', allowanceKey: 'whatsapp_marketing', capKey: 'whatsapp_marketing_per_month', label: 'WhatsApp marketing messages' },
   otp: { channel: 'otp', allowanceKey: 'otp', capKey: 'otp_per_month', label: 'login codes' },
   call_minute: { channel: 'call_minute', allowanceKey: 'call_minutes', capKey: 'call_minutes_per_month', label: 'call minutes' },
   email: { channel: 'email', allowanceKey: 'email', capKey: 'email_per_month', label: 'emails' },
@@ -141,13 +144,13 @@ async function conditionalIncrement(env: Env, tenantId: string, capKey: string, 
 }
 
 /** The cheapest public plan with a larger allowance for this key than the tenant's current plan. */
-export function nextPlanUp(catalogue: Catalogue, planKey: string, allowanceKey: string): PlanOffer | null {
+export function nextPlanUp(catalogue: Catalogue, planKey: string, allowanceKey: string, market?: string): PlanOffer | null {
   const current = catalogue.plans.find((p) => p.key === planKey);
-  const have = current?.allowances[allowanceKey] ?? 0;
+  const have = planAllowance(current, allowanceKey, market);
   const higher = catalogue.plans
-    .filter((p) => p.isActive && p.isPublic && (p.allowances[allowanceKey] ?? 0) > have)
+    .filter((p) => p.isActive && p.isPublic && planAllowance(p, allowanceKey, market) > have)
     .sort((a, b) => a.sortOrder - b.sortOrder)[0];
-  return higher ? { key: higher.key, name: higher.name, allowance: higher.allowances[allowanceKey] } : null;
+  return higher ? { key: higher.key, name: higher.name, allowance: planAllowance(higher, allowanceKey, market) } : null;
 }
 
 /**
@@ -168,12 +171,6 @@ export function packOffers(catalogue: Catalogue, allowanceKey: string, market: s
     .map(({ a, priced }) => ({ key: a.key, name: a.name, units: a.units, price: priced!.price, currency: priced!.currency }));
 }
 
-/** The catalogue market of an agency (its country decides it; no country means India). */
-async function tenantMarket(env: Env, tenantId: string): Promise<string> {
-  const row = await env.MASTER_DB.prepare('SELECT country FROM tenants WHERE id = ?').bind(tenantId).first<{ country: string | null }>();
-  return marketForCountry(row?.country);
-}
-
 /** Build the 402 body: the numbers, the next plan up, and the packs the agency can buy for this channel. */
 export async function buildExhaustedBody(env: Env, tenantId: string, spec: ChannelSpec, used: number, allowance: number): Promise<AllowanceExhaustedBody> {
   const [catalogue, planKey, market] = await Promise.all([getCatalogue(env), tenantPlanKey(env, tenantId), tenantMarket(env, tenantId)]);
@@ -190,7 +187,7 @@ export async function buildExhaustedBody(env: Env, tenantId: string, spec: Chann
     used,
     allowance,
     options,
-    upgradeTo: nextPlanUp(catalogue, planKey, spec.allowanceKey),
+    upgradeTo: nextPlanUp(catalogue, planKey, spec.allowanceKey, market),
     addons: packOffers(catalogue, spec.allowanceKey, market),
     error: { code: 'ALLOWANCE_EXHAUSTED', message, channel: spec.channel, used, allowance, options },
   };
@@ -308,6 +305,16 @@ export async function insideFreeWhatsAppWindow(tenantDb: D1Database, contactId: 
   return !!row;
 }
 
+/**
+ * R130: which WhatsApp allowance a paid message takes. A marketing message (a campaign, or a template whose category
+ * metaCategoryForTemplate treats as promotional) counts against `whatsapp_marketing`; everything else that is paid
+ * (utility templates, documents, free-form text sent outside the free window) against `whatsapp`. The same rule holds
+ * for Meta and Twilio: Twilio has no category of its own, so the CRM template category decides.
+ */
+export function whatsappMeterChannel(category: string | null | undefined): 'whatsapp' | 'whatsapp_marketing' {
+  return category === 'marketing' ? 'whatsapp_marketing' : 'whatsapp';
+}
+
 export interface UsageLine {
   key: string;
   channel: MeterChannel | 'ai';
@@ -351,7 +358,7 @@ export async function getUsageOverview(env: Env, tenantId: string): Promise<{ pe
       state: exhausted ? 'exhausted' : percent >= 80 ? 'warning' : 'ok',
       periodEnd,
       addons: packOffers(catalogue, d.allowanceKey, market),
-      upgradeTo: nextPlanUp(catalogue, plan, d.allowanceKey),
+      upgradeTo: nextPlanUp(catalogue, plan, d.allowanceKey, market),
     });
   }
   return { periodKey: period, periodEnd, plan, lines };

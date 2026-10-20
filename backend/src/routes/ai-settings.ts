@@ -44,6 +44,7 @@ const AI_USAGE_CAP_KEYS = [
   'ai_actions_per_day',
   'ai_tokens_per_month',
   'whatsapp_per_month',
+  'whatsapp_marketing_per_month',
   'email_per_month',
   'otp_per_month',
   'sms_per_month',

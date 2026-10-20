@@ -80,8 +80,21 @@ export interface CataloguePlan {
   trialDays: number;
   isActive: boolean;
   features: string[];
+  /** The amounts that hold in every market (plan_allowances rows with market NULL). */
   allowances: Record<string, number>;
+  /**
+   * R130: amounts that differ in one market (plan_allowances rows with a market), by market then allowance key. Only the
+   * keys that differ are listed; every other key falls back to `allowances`. Use planAllowance(), never read both by hand.
+   */
+  marketAllowances?: Record<string, Record<string, number>>;
   prices: PlanPrice[];
+}
+
+/** One allowance of a plan in one market: the market's own row when there is one, else the all-markets row, else 0. */
+export function planAllowance(plan: Pick<CataloguePlan, 'allowances' | 'marketAllowances'> | undefined | null, key: string, market?: string | null): number {
+  if (!plan) return 0;
+  const own = market ? plan.marketAllowances?.[market]?.[key] : undefined;
+  return own ?? plan.allowances[key] ?? 0;
 }
 
 export interface UnitCost {
@@ -122,7 +135,7 @@ async function loadCatalogue(db: D1Database, version: string): Promise<Catalogue
     db.prepare('SELECT * FROM plans ORDER BY sort_order, key'),
     db.prepare('SELECT * FROM plan_prices ORDER BY plan_key, market, valid_from'),
     db.prepare('SELECT plan_key, feature_key FROM plan_features ORDER BY plan_key, feature_key'),
-    db.prepare('SELECT plan_key, allowance_key, monthly_amount FROM plan_allowances'),
+    db.prepare('SELECT plan_key, allowance_key, monthly_amount, market FROM plan_allowances'),
     db.prepare('SELECT * FROM comm_unit_costs ORDER BY channel, market, effective_from'),
     db.prepare('SELECT * FROM addon_products ORDER BY kind, key'),
   ]);
@@ -153,7 +166,14 @@ async function loadCatalogue(db: D1Database, version: string): Promise<Catalogue
     featuresByPlan.set(f.plan_key, list);
   }
   const allowancesByPlan = new Map<string, Record<string, number>>();
+  const marketAllowancesByPlan = new Map<string, Record<string, Record<string, number>>>();
   for (const a of rows(allowances)) {
+    if (a.market) {
+      const byMarket = marketAllowancesByPlan.get(a.plan_key) ?? {};
+      (byMarket[a.market] ??= {})[a.allowance_key] = Number(a.monthly_amount);
+      marketAllowancesByPlan.set(a.plan_key, byMarket);
+      continue;
+    }
     const map = allowancesByPlan.get(a.plan_key) ?? {};
     map[a.allowance_key] = Number(a.monthly_amount);
     allowancesByPlan.set(a.plan_key, map);
@@ -171,6 +191,7 @@ async function loadCatalogue(db: D1Database, version: string): Promise<Catalogue
       isActive: !!p.is_active,
       features: featuresByPlan.get(p.key) ?? [],
       allowances: allowancesByPlan.get(p.key) ?? {},
+      marketAllowances: marketAllowancesByPlan.get(p.key) ?? {},
       prices: pricesByPlan.get(p.key) ?? [],
     })),
     unitCosts: rows(costs).map((c) => ({
@@ -307,6 +328,7 @@ export function allowanceChannel(key: string): string | null {
   switch (key) {
     case 'sms': return 'sms';
     case 'whatsapp': return 'whatsapp';
+    case 'whatsapp_marketing': return 'whatsapp_marketing';
     case 'otp': return 'otp';
     case 'call_minutes': return 'call_minute';
     case 'email': return 'email';
@@ -333,6 +355,15 @@ export async function tenantPlanKey(ref: MasterRef, tenantId: string): Promise<s
     .bind(tenantId)
     .first<{ plan: string | null }>();
   return row?.plan || 'trial';
+}
+
+/** The catalogue market of an agency (its country decides it; no country means India). */
+export async function tenantMarket(ref: MasterRef, tenantId: string): Promise<string> {
+  const row = await asCatalogueEnv(ref).MASTER_DB
+    .prepare('SELECT country FROM tenants WHERE id = ?')
+    .bind(tenantId)
+    .first<{ country: string | null }>();
+  return marketForCountry(row?.country);
 }
 
 /** Units that add-on packs were granted to this agency in one month (not counting what carries in from the month before). */
@@ -397,12 +428,13 @@ export async function packUnitsCarriedIn(ref: MasterRef, tenantId: string, allow
       .first<{ current_usage: number | null; period_key: string | null }>();
     if (live && live.period_key === prev) used = Number(live.current_usage ?? 0);
   }
-  const [catalogue, planKey, allPacks] = await Promise.all([
+  const [catalogue, planKey, market, allPacks] = await Promise.all([
     getCatalogue(ref),
     tenantPlanKey(ref, tenantId),
+    tenantMarket(ref, tenantId),
     packUnitsBoughtIn(db, tenantId, allowanceKey, prev),
   ]);
-  const base = catalogue.plans.find((x) => x.key === planKey)?.allowances[allowanceKey] ?? 0;
+  const base = planAllowance(catalogue.plans.find((x) => x.key === planKey), allowanceKey, market);
   return Math.min(bought, Math.max(0, base + allPacks - used));
 }
 
@@ -420,9 +452,9 @@ export async function getAllowance(
   allowanceKey: string,
   periodKey: string = currentPeriodKey(),
 ): Promise<number> {
-  const [catalogue, planKey] = await Promise.all([getCatalogue(ref), tenantPlanKey(ref, tenantId)]);
+  const [catalogue, planKey, market] = await Promise.all([getCatalogue(ref), tenantPlanKey(ref, tenantId), tenantMarket(ref, tenantId)]);
   const plan = catalogue.plans.find((p) => p.key === planKey);
-  const base = plan?.allowances[allowanceKey] ?? 0;
+  const base = planAllowance(plan, allowanceKey, market);
   return base + (await packUnitsForPeriod(ref, tenantId, allowanceKey, periodKey));
 }
 

@@ -40,7 +40,8 @@ export function publicPlansView(catalogue: Catalogue, market: string = DEFAULT_M
         listYearlyPrice: founder?.list?.yearlyPrice ?? null,
         founderLockMonths: founder ? FOUNDER_LOCK_MONTHS : null,
         features: p.features,
-        allowances: p.allowances,
+        // R130: the amounts that apply in this market (its own rows over the all-markets ones).
+        allowances: { ...p.allowances, ...(p.marketAllowances?.[market] ?? {}) },
       };
     })
     .filter((p): p is NonNullable<typeof p> => p !== null);

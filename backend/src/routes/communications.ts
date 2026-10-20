@@ -24,10 +24,11 @@ import {
   allowanceExhaustedResponse,
   insideFreeWhatsAppWindow,
   meterUsage,
+  whatsappMeterChannel,
   refundUsage,
   type MeterChannel,
 } from '../services/metering/meter';
-import { whatsappTemplateJob } from '../services/messaging/whatsapp-sender';
+import { metaCategoryForTemplate, whatsappTemplateJob } from '../services/messaging/whatsapp-sender';
 import { resolveReplyTo } from '../services/mail/delivery';
 import { inboundDomain } from '../services/mail/reply-token';
 
@@ -40,13 +41,16 @@ import { inboundDomain } from '../services/mail/reply-token';
 async function meterOutbound(
   c: any,
   channel: 'whatsapp' | 'sms' | 'email',
-  opts: { contactId?: string; template?: boolean } = {},
+  opts: { contactId?: string; template?: boolean; templateCategory?: string | null } = {},
 ): Promise<MeterChannel | null> {
   if (channel === 'whatsapp' && !opts.template && opts.contactId && (await insideFreeWhatsAppWindow(c.get('tenantDb'), opts.contactId))) {
     return null;
   }
-  await meterUsage(c.env, c.get('tenantId'), channel);
-  return channel;
+  // R130: a marketing template takes the marketing WhatsApp allowance, everything else paid the utility one.
+  const meterChannel: MeterChannel =
+    channel === 'whatsapp' ? whatsappMeterChannel(opts.template ? metaCategoryForTemplate(opts.templateCategory) : 'utility') : channel;
+  await meterUsage(c.env, c.get('tenantId'), meterChannel);
+  return meterChannel;
 }
 
 /** R128: where a customer's reply to a Communication Hub email goes: the agency's receiving address, else the sending user. */
@@ -185,6 +189,7 @@ communicationRoutes.post(
           channel: body.channel,
           metered: true,
           refundOnFailure: metered !== null,
+          ...(metered && { meterChannel: metered }),
           ...(body.media_url && { mediaUrl: body.media_url }),
         },
       });
@@ -268,7 +273,7 @@ communicationRoutes.post(
         }
       }
 
-      await meterOutbound(c, template.channel as 'whatsapp' | 'sms' | 'email', { contactId: body.contact_id, template: true });
+      const templateMetered = await meterOutbound(c, template.channel as 'whatsapp' | 'sms' | 'email', { contactId: body.contact_id, template: true, templateCategory: template.category });
 
       // Create message log entry
       const messageId = generateId();
@@ -305,6 +310,7 @@ communicationRoutes.post(
           channel: template.channel,
           metered: true,
           refundOnFailure: true,
+          ...(templateMetered && { meterChannel: templateMetered }),
           // R213: on Meta the approved template is sent by name; other providers ignore this.
           ...(template.channel === 'whatsapp' && { whatsappTemplate: whatsappTemplateJob(template, mergedVariables) }),
         },
@@ -399,7 +405,7 @@ communicationRoutes.post(
         }
       }
 
-      await meterOutbound(c, body.channel, { contactId: body.contact_id, template: true });
+      const documentMetered = await meterOutbound(c, body.channel, { contactId: body.contact_id, template: true });
 
       // Create message log entry
       const messageId = generateId();
@@ -436,6 +442,7 @@ communicationRoutes.post(
           channel: body.channel,
           metered: true,
           refundOnFailure: true,
+          ...(documentMetered && { meterChannel: documentMetered }),
           mediaUrl: mediaUrl,
         },
       });
@@ -529,7 +536,7 @@ communicationRoutes.post(
         let metered: MeterChannel | null = null;
         if (!exhausted) {
           try {
-            metered = await meterOutbound(c, body.channel, { contactId: contact.id, template: !!templateId });
+            metered = await meterOutbound(c, body.channel, { contactId: contact.id, template: !!templateId, templateCategory: bulkTemplate?.category });
           } catch (err) {
             if (!(err instanceof AllowanceExhausted)) throw err;
             exhausted = err;
@@ -578,6 +585,7 @@ communicationRoutes.post(
             channel: body.channel,
             metered: true,
             refundOnFailure: metered !== null,
+            ...(metered && { meterChannel: metered }),
             ...(body.channel === 'whatsapp' && bulkTemplate && { whatsappTemplate: whatsappTemplateJob(bulkTemplate, variables) }),
           },
         });

@@ -139,8 +139,13 @@ const allowancesSchema = z
     message: `Allowance keys must be among ${ALLOWANCE_KEYS.join(', ')}`,
   });
 
-catalogueAdminRoutes.put('/allowances/:plan', zValidator('json', allowancesSchema), async (c) => {
+// ?market=EU edits that market's own amounts (R130); without it the all-markets amounts. ?market=ALL is the same as none.
+const allowanceMarketQuery = z.object({ market: z.string().trim().toUpperCase().regex(/^[A-Z_]{2,12}$/).optional() });
+
+catalogueAdminRoutes.put('/allowances/:plan', zValidator('query', allowanceMarketQuery), zValidator('json', allowancesSchema), async (c) => {
   const planKey = c.req.param('plan');
+  const marketParam = c.req.valid('query').market;
+  const market = marketParam && marketParam !== 'ALL' ? marketParam : null;
   const body = c.req.valid('json');
   const db = c.env.MASTER_DB;
   const plan = await db.prepare('SELECT key FROM plans WHERE key = ?').bind(planKey).first();
@@ -151,16 +156,19 @@ catalogueAdminRoutes.put('/allowances/:plan', zValidator('json', allowancesSchem
     entries.map(([key, amount]) =>
       db
         .prepare(
-          `INSERT INTO plan_allowances (plan_key, allowance_key, monthly_amount) VALUES (?, ?, ?)
-           ON CONFLICT (plan_key, allowance_key) DO UPDATE SET monthly_amount = excluded.monthly_amount`,
+          market
+            ? `INSERT INTO plan_allowances (plan_key, allowance_key, monthly_amount, market) VALUES (?, ?, ?, ?)
+               ON CONFLICT (plan_key, allowance_key, market) WHERE market IS NOT NULL DO UPDATE SET monthly_amount = excluded.monthly_amount`
+            : `INSERT INTO plan_allowances (plan_key, allowance_key, monthly_amount) VALUES (?, ?, ?)
+               ON CONFLICT (plan_key, allowance_key) WHERE market IS NULL DO UPDATE SET monthly_amount = excluded.monthly_amount`,
         )
-        .bind(planKey, key, amount),
+        .bind(...(market ? [planKey, key, amount, market] : [planKey, key, amount])),
     ),
   );
   await bumpCatalogueVersion(c.env);
-  await audit(c, 'catalogue.allowances.update', 'plan', planKey, { changes: body });
+  await audit(c, 'catalogue.allowances.update', 'plan', planKey, { changes: body, market });
   const updated = (await getCatalogue(c.env)).plans.find((p) => p.key === planKey);
-  return success(c, updated?.allowances);
+  return success(c, market ? { ...updated?.allowances, ...(updated?.marketAllowances?.[market] ?? {}) } : updated?.allowances);
 });
 
 const unitCostSchema = z.object({

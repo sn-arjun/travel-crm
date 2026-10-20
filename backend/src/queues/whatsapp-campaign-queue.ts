@@ -93,15 +93,15 @@ export async function processWhatsAppCampaign(
         continue;
       }
 
-      // R110: a business-initiated WhatsApp message costs money, so it takes one unit of the monthly allowance
+      // R110/R130: a campaign message is marketing, so it takes one unit of the monthly WhatsApp marketing allowance
       // before the send. At the cap the remaining recipients are skipped (status skipped_allowance), not failed.
       if (!capReached) {
-        const taken = await tryMeter(env, tenantId, 'whatsapp');
+        const taken = await tryMeter(env, tenantId, 'whatsapp_marketing');
         if (!taken.allowed) capReached = true;
       }
       if (capReached) {
         await db.prepare(`
-          UPDATE whatsapp_campaign_recipients SET status = 'skipped_allowance', error_message = 'Monthly WhatsApp allowance used up'
+          UPDATE whatsapp_campaign_recipients SET status = 'skipped_allowance', error_message = 'Monthly WhatsApp marketing allowance used up'
           WHERE id = ?
         `).bind((recipient as any).id).run();
         skipped++;
@@ -157,7 +157,7 @@ export async function processWhatsAppCampaign(
 
         processed++;
       } catch (e: any) {
-        await refundUsage(env, tenantId, 'whatsapp');
+        await refundUsage(env, tenantId, 'whatsapp_marketing');
         await db.prepare(`
           UPDATE whatsapp_campaign_recipients
           SET status = 'failed', error_message = ?

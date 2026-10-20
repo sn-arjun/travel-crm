@@ -580,7 +580,7 @@ settingsRoutes.get('/usage', rbac(['admin', 'sales_manager', 'accountant']), asy
 
 const requestUpgradeSchema = z.object({
   kind: z.enum(['plan', 'top_up']),
-  channel: z.enum(['ai', 'sms', 'whatsapp', 'otp', 'call_minute', 'email']).optional(),
+  channel: z.enum(['ai', 'sms', 'whatsapp', 'whatsapp_marketing', 'otp', 'call_minute', 'email']).optional(),
   note: z.string().trim().max(500).optional(),
 });
 

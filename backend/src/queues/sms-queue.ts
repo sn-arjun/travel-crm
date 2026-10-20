@@ -6,7 +6,7 @@ import { sendSms, sendWhatsApp, sendMediaMessage } from '../services/twilio-mess
 import { sendEmail } from '../services/email';
 import { emailFrom } from '../utils/app-urls';
 import { resolveTenantDb } from '../services/tenant-db';
-import { insideFreeWhatsAppWindow, refundUsage, tryMeter } from '../services/metering/meter';
+import { insideFreeWhatsAppWindow, refundUsage, tryMeter, whatsappMeterChannel, type MeterChannel } from '../services/metering/meter';
 import { recordWhatsAppCategory, resolveWhatsAppSender, type WhatsAppSender, type WhatsAppTemplateJob } from '../services/messaging/whatsapp-sender';
 
 export interface SmsJob {
@@ -28,6 +28,8 @@ export interface SmsJob {
   metered?: boolean;
   /** With metered: give the unit back if the provider rejects the send. False for free WhatsApp replies. */
   refundOnFailure?: boolean;
+  /** With metered: which allowance the route took the unit from (R130: whatsapp or whatsapp_marketing), so a refund goes back to it. */
+  meterChannel?: MeterChannel;
   /** An approved WhatsApp template to send (Meta provider). Without it a Meta send is free-form text, valid only inside the 24 hour window. */
   whatsappTemplate?: WhatsAppTemplateJob;
 }
@@ -43,7 +45,7 @@ export async function handleSmsJob(job: SmsJob, env: Env): Promise<void> {
   // Jobs from the Communication Hub are metered at the route (so the user gets the 402); everything else here.
   let queueMetered = false;
   if (!job.metered && job.tenantId) {
-    const taken = await tryMeter(env, job.tenantId, channel === 'whatsapp' ? 'whatsapp' : channel === 'email' ? 'email' : 'sms');
+    const taken = await tryMeter(env, job.tenantId, queueMeterChannel(job, channel));
     if (!taken.allowed) {
       await markSkippedForAllowance(job, env, channel);
       return;
@@ -51,7 +53,7 @@ export async function handleSmsJob(job: SmsJob, env: Env): Promise<void> {
     queueMetered = true;
   }
   const refundable = queueMetered || (job.metered === true && job.refundOnFailure === true);
-  const meterChannel = channel === 'whatsapp' ? 'whatsapp' : channel === 'email' ? 'email' : 'sms';
+  const meterChannel = job.metered && job.meterChannel ? job.meterChannel : queueMeterChannel(job, channel);
 
   try {
     console.log(`[SMS QUEUE] Sending ${channel} to ${job.to}...`);
@@ -143,6 +145,15 @@ export async function handleSmsJob(job: SmsJob, env: Env): Promise<void> {
 
     throw err; // Re-throw to trigger queue retry
   }
+}
+
+/**
+ * The allowance a job that was not metered at the route takes its unit from. WhatsApp: the Meta category of the template it
+ * carries (marketing -> whatsapp_marketing); a job without a template is utility. Same rule on Twilio.
+ */
+function queueMeterChannel(job: SmsJob, channel: string): MeterChannel {
+  if (channel === 'whatsapp') return whatsappMeterChannel(job.whatsappTemplate?.category);
+  return channel === 'email' ? 'email' : 'sms';
 }
 
 /** The agency's WhatsApp provider (R213). Twilio unless the agency, or the platform default, is on Meta. */

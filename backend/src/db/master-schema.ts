@@ -377,9 +377,14 @@ export const planFeatures = sqliteTable('plan_features', {
 
 export const planAllowances = sqliteTable('plan_allowances', {
   planKey: text('plan_key').notNull().references(() => plans.key),
-  allowanceKey: text('allowance_key').notNull(), // ai_credits, sms, whatsapp, otp, call_minutes, email
+  allowanceKey: text('allowance_key').notNull(), // ai_credits, sms, whatsapp, whatsapp_marketing, otp, call_minutes, email
   monthlyAmount: integer('monthly_amount').notNull().default(0),
-}, (table) => [primaryKey({ columns: [table.planKey, table.allowanceKey] })]);
+  // R130: NULL = the amount holds in every market; a market key (IN, UK, EU, ...) overrides it for agencies in that market.
+  market: text('market'),
+}, (table) => [
+  uniqueIndex('plan_allowances_all_markets_uq').on(table.planKey, table.allowanceKey).where(sql`${table.market} IS NULL`),
+  uniqueIndex('plan_allowances_market_uq').on(table.planKey, table.allowanceKey, table.market).where(sql`${table.market} IS NOT NULL`),
+]);
 
 export const commUnitCosts = sqliteTable('comm_unit_costs', {
   id: text('id').primaryKey(), // UUIDv7
