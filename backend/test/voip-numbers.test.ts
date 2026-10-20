@@ -245,7 +245,6 @@ describe('number purchase rules', () => {
   });
 
   it('with approved KYC but no number add-on, purchase is 409 NUMBER_ADDON_REQUIRED and nothing is bought', async () => {
-    MockVoipProvider.reset();
     const res = await call('POST', '/voip/numbers/purchase', admin, { phoneNumber: chosen[0] });
     expect(res.status).toBe(409);
     expect((await data(res)).error.details).toMatchObject({ code: 'NUMBER_ADDON_REQUIRED', productKey: 'phone_number_west' });
@@ -267,7 +266,6 @@ describe('number purchase rules', () => {
     const grantId = grant.data.id;
     expect((await data(await call('GET', '/voip/number-offer', admin))).data.addon.freeThisMonth).toBe(1);
 
-    MockVoipProvider.reset();
     const res = await call('POST', '/voip/numbers/purchase', admin, { phoneNumber: chosen[0], friendlyName: 'Main line' }, mockEnv, { 'Idempotency-Key': 'buy-1' });
     expect(res.status).toBe(200);
     const bought = (await data(res)).data;
@@ -465,7 +463,7 @@ describe('monthly number rental', () => {
     await call('DELETE', '/test/outbox', null);
     const unpaid = await runNumberLifecycle(mockEnv, next);
     expect(unpaid).toMatchObject({ renewed: 0, scheduled: 1 });
-    const sched = await one<any>('SELECT status, release_reason, release_at FROM voip_number_registry WHERE phone_number = ?', phone);
+    const sched = await one<any>(`SELECT status, release_reason, release_at FROM voip_number_registry WHERE phone_number = ? AND status <> 'released'`, phone);
     expect(sched).toMatchObject({ status: 'release_scheduled', release_reason: 'unpaid' });
     expect(Date.parse(sched.release_at)).toBeGreaterThan(next.getTime() + 6 * 86_400_000);
     const mails = ((await data(await call('GET', `/test/outbox?to=${encodeURIComponent(OWNER_EMAIL)}`, null))).data as any[]).filter((m) => m.template === 'number_release_notice');
@@ -477,7 +475,7 @@ describe('monthly number rental', () => {
     );
     const restored = await runNumberLifecycle(mockEnv, next);
     expect(restored.restored).toBe(1);
-    expect(await one<any>('SELECT status, paid_through, addon_id FROM voip_number_registry WHERE phone_number = ?', phone)).toEqual({ status: 'active', paid_through: nextKey, addon_id: 'r304-next-grant' });
+    expect(await one<any>(`SELECT status, paid_through, addon_id FROM voip_number_registry WHERE phone_number = ? AND status <> 'released'`, phone)).toEqual({ status: 'active', paid_through: nextKey, addon_id: 'r304-next-grant' });
     expect(MockVoipProvider.heldNumbers).toContain(phone);
 
     // Two months on, with that month's add-on in place, rent simply renews.

@@ -22,7 +22,7 @@ const testApp = new Hono<{ Bindings: Env }>();
  */
 // Plan catalogue tables (R109) are reference data seeded by migration 0015: a reset keeps them,
 // otherwise every plan, price and allowance would vanish and nothing could be gated or priced.
-const CATALOGUE_TABLES = new Set(['plans', 'plan_prices', 'plan_features', 'plan_allowances', 'comm_unit_costs', 'addon_products', 'catalogue_notes']);
+const CATALOGUE_TABLES = new Set(['plans', 'plan_prices', 'plan_features', 'plan_allowances', 'comm_unit_costs', 'addon_products', 'catalogue_notes', 'call_country_policy']);
 
 testApp.post('/reset', async (c) => {
     // Add an extra layer of security: Ensure the custom TEST_MODE binding is true
