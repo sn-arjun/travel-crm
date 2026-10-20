@@ -22,9 +22,13 @@ export interface VoipSettings {
   routingStrategy: VoipRoutingStrategy;
 }
 
+/** GET /voip/token: a short-lived softphone token (R307). provider is 'twilio' or, on local stacks, 'mock'. */
 export interface VoipToken {
   token: string;
   expiresIn: number;
+  identity?: string;
+  expiresAt?: string;
+  provider?: string;
 }
 
 export interface VoipNumber {
