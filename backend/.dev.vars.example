@@ -91,6 +91,14 @@ CF_ACCOUNT_ID=
 CF_API_TOKEN=
 CF_WORKER_SCRIPT_NAME=
 
+# --- WordPress sites (Tier 3, R309) ---
+# Base URL of the provisioner on the Oracle VM (no path) and the secret both sides share (24+ random characters,
+# for example `openssl rand -hex 32`). Blank = "Create website" fails with a visible "not set" message.
+OCI_PROVISIONER_URL=
+PROVISIONER_SECRET=
+# Agency sites live at <subdomain>.<this domain>.
+WP_SITES_DOMAIN=
+
 # --- Operations ---
 # Shared secret for GET /api/v1/health/deep when no super admin token is used.
 HEALTH_TOKEN=
