@@ -34,6 +34,7 @@ import {
   anyTenantDb,
   closeAccount,
   decisionFor,
+  enableCalling,
   getAccount,
   platformProvider,
   type VoipAccountRow,
@@ -234,8 +235,12 @@ export async function searchNumbers(
   if (!tenant) throw new VoipAccountError('TENANT_NOT_FOUND', 'Agency not found.', 404);
   const decision = await decisionFor(env, tenant, db);
   if (!decision.allowed) throw new VoipAccountError('CALLING_NOT_AVAILABLE', decision.message ?? 'Calling is not available.', 403, { reason: decision.reason, country: decision.country });
-  const account = await getAccount(env, tenantId);
-  if (!account || account.status !== 'active') throw new VoipAccountError('CALLING_NOT_ENABLED', 'Turn on calling before searching for numbers.', 409);
+  // The first search turns calling on for an agency the policy allows (one sub-account, created once); a suspended or closed account is not revived here.
+  let account = await getAccount(env, tenantId);
+  if (!account || account.status === 'closed' || account.status === 'pending') {
+    account = (await enableCalling(env, tenantId, { db })).account;
+  }
+  if (account.status !== 'active') throw new VoipAccountError('CALLING_NOT_ENABLED', 'Calling is not active for this agency.', 409);
   // An agency rents numbers in its own country only (fraud control; other countries are switched on by the platform).
   const country = (input.country || decision.country).toUpperCase();
   if (country !== decision.country) throw new VoipAccountError('COUNTRY_MISMATCH', 'You can rent numbers in your own country only.', 403, { country: decision.country });

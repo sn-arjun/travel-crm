@@ -514,8 +514,8 @@ describe('the real Twilio adapter, over a mocked fetch', () => {
 
     await run('DELETE FROM voip_accounts');
     await run('DELETE FROM voip_settings');
-    const enable = await call('POST', '/voip/account/enable', admin, {}, realEnv);
-    expect(enable.status).toBe(200);
+    // No account yet: the first search turns calling on (one sub-account) and then searches inside it.
+    expect((await call('POST', '/voip/numbers/search', admin, {}, realEnv)).status).toBe(200);
     const create = calls.find((c) => c.url.endsWith('/Accounts.json'))!;
     expect(create.method).toBe('POST');
     expect(create.auth).toBe('Basic ' + btoa(`${testEnv.TWILIO_ACCOUNT_SID}:${testEnv.TWILIO_AUTH_TOKEN}`));
@@ -527,6 +527,7 @@ describe('the real Twilio adapter, over a mocked fetch', () => {
 
     // Search and buy run AS the sub-account.
     expect((await call('POST', '/voip/numbers/search', admin, {}, realEnv)).status).toBe(200);
+    expect(calls.filter((c) => c.url.endsWith('/Accounts.json'))).toHaveLength(1);
     const search = calls.find((c) => c.url.includes('/AvailablePhoneNumbers/'))!;
     expect(search.url).toContain(`/Accounts/${SUB}/`);
     expect(search.auth).toBe('Basic ' + btoa(`${SUB}:subtoken0123456789abcdef0123456789`));
