@@ -359,7 +359,7 @@ export const plans = sqliteTable('plans', {
 export const planPrices = sqliteTable('plan_prices', {
   id: text('id').primaryKey(), // UUIDv7
   planKey: text('plan_key').notNull().references(() => plans.key),
-  market: text('market').notNull(), // IN, WEST, GULF, SG, MY_TH, LK_NP_BD
+  market: text('market').notNull(), // IN, UK, EU, ANZ, WEST, GULF, SG, MY_TH, LK_NP_BD
   currency: text('currency').notNull(),
   yearlyPrice: real('yearly_price').notNull(),
   includedUsers: integer('included_users').notNull(),

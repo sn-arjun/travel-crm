@@ -81,27 +81,42 @@ interface Profile {
   region: 'in' | 'uk' | 'gulf';
   locale: string;
   market: string;
-  /** Yearly price the operator puts in the catalogue for this market when it is missing (the owner sets the real ones). */
+  /**
+   * What the agency is billed, from docs/PRICING.md 2.2 / 2.3 / 7.2: the market's currency (the Gulf market bills in USD
+   * although the agency itself works in AED), the founder price (agencies that sign before 2027-04-01) and the list price.
+   */
+  billing: { currency: string; symbol: string };
   price: { yearly: number; users: number; extraUser: number };
   /** A mobile number in this country, for the driver. */
   driverPhone: string;
   invoicePrefix: string;
 }
 
+/** Founder price until 2027-04-01 (PRICING.md 2.2), list price after it; read when the test runs. */
+function priceOf(founder: number, list: number, users: number, extraUser: number): Profile['price'] {
+  return {
+    get yearly() {
+      return Date.now() < Date.parse('2027-04-01T00:00:00Z') ? founder : list;
+    },
+    users,
+    extraUser,
+  };
+}
+
 const PROFILES: Profile[] = [
   {
     key: 'A', plan: 'basic', planName: 'Basic', country: 'India', iso: 'IN', currency: 'INR', symbol: '₹', timezone: 'Asia/Kolkata',
-    taxSystem: 'gst', region: 'in', locale: 'en-IN', market: 'IN', price: { yearly: 12000, users: 5, extraUser: 2400 },
+    taxSystem: 'gst', region: 'in', locale: 'en-IN', market: 'IN', billing: { currency: 'INR', symbol: '₹' }, price: priceOf(11999, 14999, 5, 2400),
     driverPhone: '+919812345601', invoicePrefix: 'INA',
   },
   {
     key: 'B', plan: 'pro', planName: 'Pro', country: 'United Kingdom', iso: 'GB', currency: 'GBP', symbol: '£', timezone: 'Europe/London',
-    taxSystem: 'vat', region: 'uk', locale: 'en-GB', market: 'WEST', price: { yearly: 199, users: 15, extraUser: 20 },
+    taxSystem: 'vat', region: 'uk', locale: 'en-GB', market: 'UK', billing: { currency: 'GBP', symbol: '£' }, price: priceOf(719, 899, 5, 120),
     driverPhone: '+447911123402', invoicePrefix: 'UKB',
   },
   {
     key: 'C', plan: 'enterprise', planName: 'Enterprise', country: 'United Arab Emirates', iso: 'AE', currency: 'AED', symbol: 'AED', timezone: 'Asia/Dubai',
-    taxSystem: 'vat', region: 'gulf', locale: 'en-AE', market: 'GULF', price: { yearly: 4800, users: 100, extraUser: 60 },
+    taxSystem: 'vat', region: 'gulf', locale: 'en-AE', market: 'GULF', billing: { currency: 'USD', symbol: '$' }, price: priceOf(1590, 1990, 10, 120),
     driverPhone: '+971501234503', invoicePrefix: 'AEC',
   },
 ];
@@ -220,7 +235,7 @@ test.describe('Handoff 0: the operator side', () => {
       });
       expect(made.status, made.text).toBe(201);
     }
-    // The public price list now has the plan in the market's currency.
+    // The approved prices (migration 0026) are in the catalogue for all three markets; the public list has the plan in the market's currency.
     const pub = await request(API_URL, 'GET', `/public/plans?market=${PROFILES[1]!.market}`, null);
     expect(pub.status).toBe(200);
   });
@@ -293,7 +308,7 @@ for (const p of PROFILES) {
       // The subscription was opened in the agency's own market and currency (not the India price).
       const subscription = await sa('GET', `/admin/subscriptions?tenantId=${data.tenantId}`);
       expect(subscription.status).toBe(200);
-      expect(JSON.stringify(subscription.json)).toContain(p.currency);
+      expect(JSON.stringify(subscription.json)).toContain(p.billing.currency);
     });
 
     test('2. the owner signs in with the temporary password, chooses a password and completes onboarding', async ({ page }) => {
@@ -400,7 +415,7 @@ for (const p of PROFILES) {
         const email = `${role}-${slug}@handoff.test`;
         const invited = await inviteUser(API_URL, agency, { email, name: `${role} ${p.key}`, role });
         if (invited.status !== 201 && invited.status !== 200) {
-          // Only the Basic plan can run out of seats (5 users: the owner + four invitations).
+          // Only a 5-user plan can run out of seats (India Basic, UK Pro: the owner + four invitations).
           expect(invited.json?.code, invited.text).toBe('SEAT_LIMIT');
           refused = role;
           continue;
@@ -425,7 +440,7 @@ for (const p of PROFILES) {
         accepted.push({ role, email, token: signedIn.json.data.accessToken });
       }
 
-      if (p.plan === 'basic') {
+      if (p.price.users <= 5) {
         expect(refused, 'the fifth user on a 5-user plan is refused').toBe('view_only');
         expect(accepted.map((a) => a.role)).toEqual(['sales_manager', 'salesperson', 'operations', 'accountant']);
         const over = await inviteUser(API_URL, agency, { email: `extra-${slug}@handoff.test`, name: 'Extra', role: 'view_only' });
@@ -645,22 +660,22 @@ for (const p of PROFILES) {
       const overview = await get('/billing/subscription');
       expect(overview.status).toBe(200);
       const b = overview.json.data;
-      expect(b).toMatchObject({ gateway: 'mock', configured: true, market: p.market, currency: p.currency, tenantStatus: 'active' });
+      expect(b).toMatchObject({ gateway: 'mock', configured: true, market: p.market, currency: p.billing.currency, tenantStatus: 'active' });
       expect(b.subscription).toMatchObject({ planKey: p.plan, status: 'active' });
       expect(b.subscription.amount).toBe(p.price.yearly);
       expect(b.seats).toMatchObject({ limit: p.price.users, used: 1 + sub.users.length });
       const own = (b.plans as any[]).find((x) => x.key === p.plan);
-      expect(own).toMatchObject({ available: true, currency: p.currency, yearlyPrice: p.price.yearly });
+      expect(own).toMatchObject({ available: true, currency: p.billing.currency, yearlyPrice: p.price.yearly });
 
       const quote = await get(`/billing/quote?planKey=${p.plan}&extraUsers=0`);
       expect(quote.status, quote.text).toBe(200);
-      expect(quote.json.data).toMatchObject({ currency: p.currency, subtotal: p.price.yearly, planKey: p.plan });
+      expect(quote.json.data).toMatchObject({ currency: p.billing.currency, subtotal: p.price.yearly, planKey: p.plan });
       expect(quote.json.data.total).toBeGreaterThanOrEqual(p.price.yearly);
 
       const checkout = await request(API_URL, 'POST', '/billing/checkout', owner(), { planKey: p.plan, extraUsers: 0 });
       expect(checkout.status, checkout.text).toBe(200);
-      expect(checkout.json.data).toMatchObject({ gateway: 'mock', currency: p.currency, subtotal: p.price.yearly });
-      expect(checkout.json.data.display).toContain(p.symbol);
+      expect(checkout.json.data).toMatchObject({ gateway: 'mock', currency: p.billing.currency, subtotal: p.price.yearly });
+      expect(checkout.json.data.display).toContain(p.billing.symbol);
 
       // The mock payment page plays what the provider would: it signs the payment and sends it to the real webhook.
       const mockUrl = new URL(checkout.json.data.url);
@@ -673,7 +688,7 @@ for (const p of PROFILES) {
       expect(after.subscription.currentPeriodEnd).toBeTruthy();
       const invoices = (await get('/billing/invoices')).json.data.invoices as any[];
       expect(invoices.length).toBeGreaterThanOrEqual(1);
-      expect(invoices[0]).toMatchObject({ currency: p.currency, status: 'paid' });
+      expect(invoices[0]).toMatchObject({ currency: p.billing.currency, status: 'paid' });
       expect(invoices[0].number).toMatch(/^PINV-/);
     });
 
@@ -702,7 +717,7 @@ for (const p of PROFILES) {
       const current = page.getByTestId('billing-current');
       await expect(current).toContainText(p.planName, { timeout: 20_000 });
       await expect(current).toContainText(`${1 + sub.users.length} of ${p.price.users} in use`);
-      await expect(page.getByTestId(`billing-plan-${p.plan}`)).toContainText(p.symbol);
+      await expect(page.getByTestId(`billing-plan-${p.plan}`)).toContainText(p.billing.symbol);
       await expect(page.getByTestId('billing-not-configured')).toHaveCount(0);
       await expect(page.getByText(/PINV-/).first()).toBeVisible();
     });
