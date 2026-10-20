@@ -15,6 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Spinner } from '@/components/ui/spinner';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 /**
  * A page of relation options, as returned by the caller's fetcher.
@@ -78,18 +79,23 @@ export function RelationCombobox<T>({
   getOptionLabel,
   getOptionDescription,
   resolveSelected,
-  placeholder = 'Select…',
-  searchPlaceholder = 'Search…',
-  emptyText = 'No matches found.',
+  placeholder: placeholderProp,
+  searchPlaceholder: searchPlaceholderProp,
+  emptyText: emptyTextProp,
   disabled,
   required,
   error,
   onCreateNew,
-  createNewLabel = 'Create new',
+  createNewLabel: createNewLabelProp,
   pageSize: _pageSize = 20,
   className,
   ...aria
 }: RelationComboboxProps<T>) {
+  const t = useT();
+  const placeholder = placeholderProp ?? t('ui.relationCombobox.placeholder');
+  const searchPlaceholder = searchPlaceholderProp ?? t('ui.relationCombobox.search');
+  const emptyText = emptyTextProp ?? t('ui.relationCombobox.empty');
+  const createNewLabel = createNewLabelProp ?? t('ui.relationCombobox.createNew');
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState('');
   const debouncedQuery = useDebouncedValue(query, 250);
@@ -223,7 +229,7 @@ export function RelationCombobox<T>({
               {loading && items.length === 0 ? (
                 <div className="flex items-center justify-center gap-ds-2 py-ds-6 text-sm text-ds-foreground-muted">
                   <Spinner className="size-4" />
-                  Loading…
+                  {t('ui.relationCombobox.loading')}
                 </div>
               ) : (
                 <>
@@ -265,7 +271,7 @@ export function RelationCombobox<T>({
                         className="flex w-full items-center justify-center gap-ds-2 rounded-ds-sm px-ds-2 py-ds-2 text-xs text-ds-foreground-muted transition-colors hover:bg-ds-surface-sunken focus-visible:ring-2 focus-visible:ring-ds-ring focus-visible:outline-none disabled:opacity-50"
                       >
                         {loading && <Spinner className="size-3" />}
-                        Load more
+                        {t('ui.relationCombobox.loadMore')}
                       </button>
                     </div>
                   )}

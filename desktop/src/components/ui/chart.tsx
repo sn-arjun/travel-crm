@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@/lib/i18n';
 import * as React from 'react';
 import {
   Area,
@@ -93,18 +94,19 @@ function ChartFrame({
 }: {
   loading?: boolean;
   isEmpty: boolean;
-  emptyMessage: string;
+  emptyMessage?: string;
   height: number;
   className?: string;
   children: React.ReactElement;
 }) {
+  const t = useT();
   if (loading) {
     return <Skeleton className={cn('w-full', className)} style={{ height }} />;
   }
   if (isEmpty) {
     return (
       <div className={cn('flex items-center justify-center', className)} style={{ height }}>
-        <EmptyState title={emptyMessage} />
+        <EmptyState title={emptyMessage ?? t('ui.chart.empty')} />
       </div>
     );
   }
@@ -123,7 +125,7 @@ export function LineChart<T>({
   categoryKey,
   height = 280,
   loading,
-  emptyMessage = 'No data to display',
+  emptyMessage,
   valueFormatter,
   showLegend = true,
   showGrid = true,
@@ -167,7 +169,7 @@ export function AreaChart<T>({
   categoryKey,
   height = 280,
   loading,
-  emptyMessage = 'No data to display',
+  emptyMessage,
   valueFormatter,
   showLegend = true,
   showGrid = true,
@@ -214,7 +216,7 @@ export function BarChart<T>({
   categoryKey,
   height = 280,
   loading,
-  emptyMessage = 'No data to display',
+  emptyMessage,
   valueFormatter,
   showLegend = true,
   showGrid = true,
@@ -273,7 +275,7 @@ export function PieChart<T>({
   nameKey,
   height = 280,
   loading,
-  emptyMessage = 'No data to display',
+  emptyMessage,
   valueFormatter,
   showLegend = true,
   donut = false,

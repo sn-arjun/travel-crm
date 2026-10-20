@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@/lib/i18n';
 import { ChevronDown } from 'lucide-react';
 import * as React from 'react';
 
@@ -46,9 +47,10 @@ export function SplitButton({
   size = 'default',
   disabled,
   icon,
-  menuLabel = 'More actions',
+  menuLabel,
   className,
 }: SplitButtonProps) {
+  const t = useT();
   return (
     <div className={cn('inline-flex items-stretch', className)}>
       <Button
@@ -67,7 +69,7 @@ export function SplitButton({
             variant={variant}
             size={size === 'default' ? 'icon' : 'icon-sm'}
             disabled={disabled}
-            aria-label={menuLabel}
+            aria-label={menuLabel ?? t('ui.common.moreActions')}
             className="rounded-l-none border-l border-ds-border/40"
           >
             <ChevronDown aria-hidden="true" />

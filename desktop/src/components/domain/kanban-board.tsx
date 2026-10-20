@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
@@ -23,6 +24,7 @@ interface KanbanBoardProps {
 }
 
 function KanbanColumnHeader({ column, onAdd }: { column: KanbanColumn; onAdd?: () => void }) {
+  const t = useT();
   return (
     <div className="flex items-center justify-between mb-3 px-1">
       <div className="flex items-center gap-2">
@@ -39,7 +41,7 @@ function KanbanColumnHeader({ column, onAdd }: { column: KanbanColumn; onAdd?: (
           </span>
         )}
         {onAdd && (
-          <Button variant="ghost" size="icon-sm" aria-label="Add card" onClick={onAdd} className="h-6 w-6">
+          <Button variant="ghost" size="icon-sm" aria-label={t('ui.kanban.addCard')} onClick={onAdd} className="h-6 w-6">
             <Plus className="h-3.5 w-3.5" />
           </Button>
         )}

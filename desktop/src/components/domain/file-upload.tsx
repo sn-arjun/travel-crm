@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { Upload, File, X, CheckCircle2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 
@@ -40,6 +41,7 @@ export function FileUpload({
   onRemoveFile,
   className,
 }: FileUploadProps) {
+  const t = useT();
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = React.useState(false);
 
@@ -81,7 +83,7 @@ export function FileUpload({
             : 'border-ds-border hover:border-ds-primary hover:bg-ds-surface-sunken/50',
           'focus-visible:ring-2 focus-visible:ring-ds-ring/40 focus-visible:ring-offset-2',
         )}
-        aria-label="Drag and drop file upload area"
+        aria-label={t('ui.fileUpload.area')}
       >
         <input
           ref={inputRef}
@@ -98,11 +100,11 @@ export function FileUpload({
           <Upload className={cn('size-5 text-ds-foreground-muted', isDragging && 'text-ds-primary')} />
         </div>
         <p className="text-sm font-medium text-ds-foreground mb-1">
-          {isDragging ? 'Drop files here' : 'Click to upload or drag & drop'}
+          {isDragging ? t('ui.fileUpload.dropHere') : t('ui.fileUpload.clickOrDrop')}
         </p>
         <p className="text-xs text-ds-foreground-muted">
-          {accept ? `Accepted: ${accept}` : 'Any file type'}
-          {maxSize && ` (max ${formatFileSize(maxSize)})`}
+          {accept ? t('ui.fileUpload.accepted', { types: accept }) : t('ui.fileUpload.anyType')}
+          {maxSize && ` ${t('ui.fileUpload.max', { size: formatFileSize(maxSize) })}`}
         </p>
       </div>
 
@@ -134,7 +136,7 @@ export function FileUpload({
                 )}
               </div>
               {onRemoveFile && (
-                <Button variant="ghost" size="icon-sm" aria-label={`Remove ${file.name}`} onClick={() => onRemoveFile(file.id)} className="shrink-0">
+                <Button variant="ghost" size="icon-sm" aria-label={t('ui.fileDropzone.remove', { name: file.name })} onClick={() => onRemoveFile(file.id)} className="shrink-0">
                   <X className="h-3.5 w-3.5" />
                 </Button>
               )}

@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 import { cva, type VariantProps } from 'class-variance-authority';
 
 const statCardVariants = cva(
@@ -38,7 +39,7 @@ export function StatCard({
   title,
   value,
   change,
-  changeLabel = 'vs last period',
+  changeLabel: changeLabelProp,
   icon,
   sparkline,
   className,
@@ -47,6 +48,8 @@ export function StatCard({
   suffix,
   loading,
 }: StatCardProps) {
+  const t = useT();
+  const changeLabel = changeLabelProp ?? t('ui.statCard.vsLastPeriod');
   const isPositive = change !== undefined && change > 0;
   const isNegative = change !== undefined && change < 0;
   const isNeutral = change !== undefined && change === 0;

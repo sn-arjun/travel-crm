@@ -1,5 +1,6 @@
 'use client';
 
+import { useT } from '@/lib/i18n';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { X } from 'lucide-react';
 import * as React from 'react';
@@ -41,10 +42,11 @@ export function Tag({
   tone,
   size,
   onRemove,
-  removeLabel = 'Remove',
+  removeLabel,
   children,
   ...props
 }: TagProps) {
+  const t = useT();
   return (
     <span className={cn(tagVariants({ tone, size }), onRemove && 'pr-1', className)} {...props}>
       {children}
@@ -52,7 +54,7 @@ export function Tag({
         <button
           type="button"
           onClick={onRemove}
-          aria-label={removeLabel}
+          aria-label={removeLabel ?? t('ui.tag.remove')}
           className="rounded-ds-full p-0.5 transition-colors hover:bg-ds-border focus-visible:ring-2 focus-visible:ring-ds-ring focus-visible:outline-none"
         >
           <X className="size-3" aria-hidden="true" />

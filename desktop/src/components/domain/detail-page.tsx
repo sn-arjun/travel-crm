@@ -2,6 +2,7 @@
 
 import { ArrowLeft, MessageSquare, MoreHorizontal } from 'lucide-react';
 import * as React from 'react';
+import { useT } from '@/lib/i18n';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -112,6 +113,7 @@ export function DetailPage<T>({
   assistant,
   className,
 }: DetailPageProps<T>) {
+  const t = useT();
   const [messageOpen, setMessageOpen] = React.useState(false);
 
   return (
@@ -122,7 +124,7 @@ export function DetailPage<T>({
         status={status}
         back={
           onBack && (
-            <Button variant="ghost" size="icon-sm" onClick={onBack} aria-label="Go back">
+            <Button variant="ghost" size="icon-sm" onClick={onBack} aria-label={t('ui.detailPage.back')}>
               <ArrowLeft aria-hidden="true" />
             </Button>
           )
@@ -137,14 +139,14 @@ export function DetailPage<T>({
                 className="gap-ds-2"
               >
                 <MessageSquare aria-hidden="true" />
-                Send message
+                {t('ui.detailPage.sendMessage')}
               </Button>
             )}
             {primaryActions}
             {actions.length > 0 && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon-sm" aria-label="More actions">
+                  <Button variant="outline" size="icon-sm" aria-label={t('ui.common.moreActions')}>
                     <MoreHorizontal aria-hidden="true" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -173,10 +175,10 @@ export function DetailPage<T>({
 
       <Tabs defaultValue="overview">
         <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          {activity && <TabsTrigger value="activity">Activity</TabsTrigger>}
-          {related && related.length > 0 && <TabsTrigger value="related">Related</TabsTrigger>}
-          {documents && <TabsTrigger value="documents">Documents</TabsTrigger>}
+          <TabsTrigger value="overview">{t('ui.detailPage.overview')}</TabsTrigger>
+          {activity && <TabsTrigger value="activity">{t('ui.detailPage.activity')}</TabsTrigger>}
+          {related && related.length > 0 && <TabsTrigger value="related">{t('ui.detailPage.related')}</TabsTrigger>}
+          {documents && <TabsTrigger value="documents">{t('ui.detailPage.documents')}</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="overview" className="mt-ds-4">
@@ -185,14 +187,14 @@ export function DetailPage<T>({
 
         {activity && (
           <TabsContent value="activity" className="mt-ds-4">
-            <SectionCard title="Activity">
+            <SectionCard title={t('ui.detailPage.activity')}>
               <Timeline
                 items={activity}
                 loading={activityLoading}
                 emptyState={
                   <EmptyState
-                    title="No activity yet"
-                    description="Calls, emails, and updates will appear here."
+                    title={t('ui.detailPage.noActivity')}
+                    description={t('ui.detailPage.noActivityHint')}
                   />
                 }
               />
@@ -214,7 +216,7 @@ export function DetailPage<T>({
 
         {documents && (
           <TabsContent value="documents" className="mt-ds-4">
-            <SectionCard title="Documents">{documents}</SectionCard>
+            <SectionCard title={t('ui.detailPage.documents')}>{documents}</SectionCard>
           </TabsContent>
         )}
       </Tabs>

@@ -19,6 +19,7 @@ import { usersApi } from '@/lib/api/users';
 import { useAuthStore } from '@/stores/auth-store';
 import type { User } from '@travelcrm/shared';
 import { PageContainer } from '@/components/layout/page-container';
+import { LANGUAGES, isEnabledLocale, useI18n } from '@/lib/i18n';
 
 function initialsOf(name?: string) {
   return (name || 'U')
@@ -32,6 +33,7 @@ function initialsOf(name?: string) {
 function ProfileSettingsPageContent() {
   const router = useRouter();
   const { setUser } = useAuthStore();
+  const { locale, setLocale, t } = useI18n();
 
   const { data: meResponse, loading } = useApiQuery(() => usersApi.getMe(), []);
   const me = React.useMemo(() => (meResponse && 'data' in meResponse ? (meResponse.data as User) : null), [meResponse]);
@@ -59,7 +61,8 @@ function ProfileSettingsPageContent() {
         name: form.name,
         phone: form.phone,
         department: form.department,
-        language: form.language,
+        // The interface language chosen on this device is the one saved on the profile.
+        language: locale,
       } as never);
       if (result && 'data' in result) {
         setUser(result.data as unknown as User);
@@ -142,15 +145,24 @@ function ProfileSettingsPageContent() {
           </div>
 
           <div className="flex flex-col gap-ds-1">
-            <Label htmlFor="profile-language">Language</Label>
-            <Select value={form.language} onValueChange={(v) => setForm((p) => ({ ...p, language: v }))}>
+            <Label htmlFor="profile-language">{t('settings.language')}</Label>
+            <Select
+              value={locale}
+              onValueChange={(v) => {
+                if (!isEnabledLocale(v)) return;
+                setLocale(v);
+                setForm((p) => ({ ...p, language: v }));
+              }}
+            >
               <SelectTrigger id="profile-language">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="en">English</SelectItem>
-                <SelectItem value="hi">Hindi</SelectItem>
-                <SelectItem value="ar">Arabic</SelectItem>
+                {LANGUAGES.filter((lang) => lang.enabled).map((lang) => (
+                  <SelectItem key={lang.code} value={lang.code}>
+                    {lang.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

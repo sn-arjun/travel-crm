@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
 import { PageContainer } from '@/components/layout/page-container';
+import { useT } from '@/lib/i18n';
 
 import { FilterBar } from './filter-bar';
 
@@ -133,7 +134,7 @@ export function ListPage<T>({
   defaultSort,
   primaryAction,
   headerActions,
-  searchPlaceholder = 'Search…',
+  searchPlaceholder: searchPlaceholderProp,
   searchValue,
   onSearchChange,
   filters = [],
@@ -146,14 +147,18 @@ export function ListPage<T>({
   onRowClick,
   bulkActions = [],
   onExport,
-  exportLabel = 'Export',
-  emptyTitle = 'Nothing here yet',
+  exportLabel: exportLabelProp,
+  emptyTitle: emptyTitleProp,
   emptyDescription,
   emptyIcon,
   emptyAction,
   limit = 20,
   className,
 }: ListPageProps<T>) {
+  const t = useT();
+  const searchPlaceholder = searchPlaceholderProp ?? t('ui.listPage.searchPlaceholder');
+  const exportLabel = exportLabelProp ?? t('common.export');
+  const emptyTitle = emptyTitleProp ?? t('ui.listPage.emptyTitle');
   const [ownSearch, setOwnSearch] = React.useState('');
   const search = searchValue ?? ownSearch;
   const setSearch = React.useCallback(
@@ -244,7 +249,7 @@ export function ListPage<T>({
     try {
       await onExport(selectedRows.length > 0 ? selectedRows : items);
     } catch {
-      toast.error(`Failed to export ${title.toLowerCase()}`);
+      toast.error(t('ui.listPage.exportFailed', { title: title.toLowerCase() }));
     } finally {
       setExporting(false);
     }
@@ -292,7 +297,7 @@ export function ListPage<T>({
       {selectedIds.size > 0 && bulkActions.length > 0 && (
         <div className="flex items-center gap-ds-3 rounded-ds-md border border-ds-primary bg-ds-primary-subtle px-ds-3 py-ds-2">
           <span className="text-sm font-medium tabular-nums text-ds-primary-on-subtle">
-            {selectedIds.size} selected
+            {t('ui.common.selected', { count: selectedIds.size })}
           </span>
           <div className="flex items-center gap-ds-2">
             {bulkActions.map((action) => (
@@ -314,7 +319,7 @@ export function ListPage<T>({
             onClick={() => setSelectedIds(new Set())}
             className="ml-auto"
           >
-            Clear
+            {t('common.clear')}
           </Button>
         </div>
       )}
@@ -343,11 +348,11 @@ export function ListPage<T>({
           error ? (
             <Alert variant="destructive" data-testid="list-error">
               <AlertCircle aria-hidden="true" />
-              <AlertTitle>{`Couldn't load ${title.toLowerCase()}`}</AlertTitle>
+              <AlertTitle>{t('ui.listPage.loadFailed', { title: title.toLowerCase() })}</AlertTitle>
               <AlertDescription>
                 <p>{error.message}</p>
                 <Button variant="outline" size="sm" onClick={refetch}>
-                  Retry
+                  {t('ui.common.retry')}
                 </Button>
               </AlertDescription>
             </Alert>
@@ -367,10 +372,10 @@ export function ListPage<T>({
               {loadMoreError && (
                 <>
                   <span className="text-sm text-ds-danger">
-                    {`Couldn't load more: ${loadMoreError.message}`}
+                    {t('ui.listPage.loadMoreFailed', { message: loadMoreError.message })}
                   </span>
                   <Button variant="outline" size="sm" onClick={retryLoadMore}>
-                    Retry
+                    {t('ui.common.retry')}
                   </Button>
                 </>
               )}

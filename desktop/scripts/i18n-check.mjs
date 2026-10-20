@@ -49,6 +49,19 @@ export const SCOPE = [
   'src/components/ui/phone-input.tsx',
   'src/components/ui/address-autocomplete.tsx',
   'src/components/ui/rich-text-editor.tsx',
+  'src/components/ui/chart.tsx',
+  'src/components/ui/command.tsx',
+  'src/components/ui/split-button.tsx',
+  'src/components/ui/tag.tsx',
+  'src/components/domain/list-page.tsx',
+  'src/components/domain/data-table.tsx',
+  'src/components/domain/detail-page.tsx',
+  'src/components/domain/entity-form.tsx',
+  'src/components/domain/relation-combobox.tsx',
+  'src/components/domain/file-upload.tsx',
+  'src/components/domain/kanban-board.tsx',
+  'src/components/domain/stat-card.tsx',
+  'src/components/domain/keyboard-shortcuts-provider.tsx',
 ];
 
 const TEXT_PROPS = new Set([

@@ -11,6 +11,7 @@ import {
   ChevronsRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -63,11 +64,13 @@ export function DataTable<T extends Record<string, unknown>>({
   totalItems,
   onPageChange,
   onPageSizeChange,
-  emptyMessage = 'No data found',
+  emptyMessage: emptyMessageProp,
   className,
   onRowClick,
   stickyHeader = true,
 }: DataTableProps<T>) {
+  const t = useT();
+  const emptyMessage = emptyMessageProp ?? t('ui.dataTable.emptyDefault');
   const allSelected = data.length > 0 && data.every((row) => selectedRows.has(getRowId(row)));
   const someSelected = data.some((row) => selectedRows.has(getRowId(row)));
 
@@ -100,11 +103,11 @@ export function DataTable<T extends Record<string, unknown>>({
           <thead className={cn(stickyHeader && 'sticky top-0 z-10')}>
             <tr className="border-b border-ds-border bg-ds-surface-sunken/50">
               {selectable && (
-                <th className="w-12 px-4 py-3" aria-label="Select all rows">
+                <th className="w-12 px-4 py-3" aria-label={t('ui.dataTable.selectAll')}>
                   <Checkbox
                     checked={allSelected ? true : someSelected ? 'indeterminate' : false}
                     onCheckedChange={handleSelectAll}
-                    aria-label="Select all rows"
+                    aria-label={t('ui.dataTable.selectAll')}
                   />
                 </th>
               )}
@@ -119,7 +122,7 @@ export function DataTable<T extends Record<string, unknown>>({
                   )}
                   style={{ width: col.width }}
                   onClick={() => col.sortable && onSort?.(col.key)}
-                  aria-label={col.sortable ? `Sort by ${col.header}` : undefined}
+                  aria-label={col.sortable ? t('ui.dataTable.sortBy', { column: String(col.header) }) : undefined}
                   role={col.sortable ? 'button' : undefined}
                 >
                   <div className={cn('flex items-center gap-1', col.align === 'right' && 'justify-end')}>
@@ -184,7 +187,7 @@ export function DataTable<T extends Record<string, unknown>>({
                       >
                         {selectable && (
                           <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                            <Checkbox checked={isSelected} onCheckedChange={() => handleSelectRow(rowId)} aria-label={`Select row ${rowId}`} />
+                            <Checkbox checked={isSelected} onCheckedChange={() => handleSelectRow(rowId)} aria-label={t('ui.dataTable.selectRow', { id: String(rowId) })} />
                           </td>
                         )}
                         {columns.map((col) => (
@@ -211,16 +214,16 @@ export function DataTable<T extends Record<string, unknown>>({
         <div className="flex items-center justify-between border-t border-ds-border px-4 py-3">
           <div className="flex items-center gap-2 text-sm text-ds-foreground-muted">
             {selectedRows.size > 0 && (
-              <span className="font-medium text-ds-primary">{selectedRows.size} selected</span>
+              <span className="font-medium text-ds-primary">{t('ui.common.selected', { count: selectedRows.size })}</span>
             )}
             {totalItems !== undefined && (
-              <span>{totalItems} total</span>
+              <span>{t('ui.dataTable.total', { count: totalItems })}</span>
             )}
           </div>
           <div className="flex items-center gap-4">
             {onPageSizeChange && (
               <div className="flex items-center gap-2">
-                <span className="text-xs text-ds-foreground-muted">Rows:</span>
+                <span className="text-xs text-ds-foreground-muted">{t('ui.dataTable.rowsLabel')}</span>
                 <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
                   <SelectTrigger className="h-8 w-16 text-xs">
                     <SelectValue />
@@ -236,18 +239,18 @@ export function DataTable<T extends Record<string, unknown>>({
             {onPageChange && (
               <div className="flex items-center gap-1">
                 <span className="text-xs text-ds-foreground-muted mr-2">
-                  Page {page} of {totalPages}
+                  {t('ui.pagination.pageOf', { page, total: totalPages })}
                 </span>
-                <Button variant="outline" size="icon-sm" aria-label="First page" onClick={() => onPageChange(1)} disabled={page <= 1}>
+                <Button variant="outline" size="icon-sm" aria-label={t('ui.pagination.first')} onClick={() => onPageChange(1)} disabled={page <= 1}>
                   <ChevronsLeft className="h-3.5 w-3.5" />
                 </Button>
-                <Button variant="outline" size="icon-sm" aria-label="Previous page" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
+                <Button variant="outline" size="icon-sm" aria-label={t('ui.pagination.previous')} onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
                   <ChevronLeft className="h-3.5 w-3.5" />
                 </Button>
-                <Button variant="outline" size="icon-sm" aria-label="Next page" onClick={() => onPageChange(page + 1)} disabled={page >= totalPages}>
+                <Button variant="outline" size="icon-sm" aria-label={t('ui.pagination.next')} onClick={() => onPageChange(page + 1)} disabled={page >= totalPages}>
                   <ChevronRight className="h-3.5 w-3.5" />
                 </Button>
-                <Button variant="outline" size="icon-sm" aria-label="Last page" onClick={() => onPageChange(totalPages)} disabled={page >= totalPages}>
+                <Button variant="outline" size="icon-sm" aria-label={t('ui.pagination.last')} onClick={() => onPageChange(totalPages)} disabled={page >= totalPages}>
                   <ChevronsRight className="h-3.5 w-3.5" />
                 </Button>
               </div>

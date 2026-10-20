@@ -27,6 +27,7 @@ import { useUnsavedChanges } from '@/hooks/use-unsaved-changes';
 import { PageContainer } from '@/components/layout/page-container';
 import type { ApiError } from '@/lib/api/client';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 export interface FormSection {
   title: string;
@@ -80,12 +81,15 @@ export function EntityForm<T extends FieldValues>({
   prefillFromParams,
   sections,
   renderSections,
-  submitLabel = 'Save',
-  cancelLabel = 'Cancel',
+  submitLabel: submitLabelProp,
+  cancelLabel: cancelLabelProp,
   loading,
   error,
   className,
 }: EntityFormProps<T>) {
+  const t = useT();
+  const submitLabel = submitLabelProp ?? t('common.save');
+  const cancelLabel = cancelLabelProp ?? t('common.cancel');
   const searchParams = useSearchParams();
 
   // Fold URL params into the initial values so prefill happens before first
@@ -151,7 +155,7 @@ export function EntityForm<T extends FieldValues>({
   };
 
   const onInvalid = (invalid: FieldErrors<T>) => {
-    toast.error('Please fix the highlighted fields');
+    toast.error(t('ui.entityForm.fixFields'));
     const first = Object.keys(invalid)[0];
     if (first) {
       form.setFocus(first as Path<T>);

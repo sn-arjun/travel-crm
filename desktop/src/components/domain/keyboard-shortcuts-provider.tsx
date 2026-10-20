@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
+import { useT } from '@/lib/i18n';
 
 /**
  * Section-to-"new" page mapping for Ctrl+N navigation.
@@ -39,6 +40,7 @@ const NEW_PAGE_MAP: Record<string, string> = {
  * re-enters this same listener forever.
  */
 export function KeyboardShortcutsProvider({ children }: { children: React.ReactNode }) {
+  const t = useT();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -46,7 +48,7 @@ export function KeyboardShortcutsProvider({ children }: { children: React.ReactN
     {
       key: 'n',
       ctrl: true,
-      description: 'Create new item for current section',
+      description: t('shell.shortcuts.createNew'),
       action: () => {
         // Find the best matching "new" route for the current pathname.
         // Try longest prefix first for specificity (e.g., /fleet/vehicles before /fleet).
@@ -62,7 +64,7 @@ export function KeyboardShortcutsProvider({ children }: { children: React.ReactN
         }
       },
     },
-  ], [pathname, router]);
+  ], [pathname, router, t]);
 
   useKeyboardShortcuts(shortcuts);
 
