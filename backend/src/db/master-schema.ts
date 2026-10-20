@@ -560,3 +560,72 @@ export const addonOrders = sqliteTable('addon_orders', {
   uniqueIndex('addon_orders_idempotency_idx').on(table.idempotencyKey),
   index('addon_orders_tenant_idx').on(table.tenantId, table.createdAt),
 ]);
+
+// --- VoIP sub-accounts, numbers, KYC and country policy (R304, migration 0022) ---
+const nowText = sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`;
+
+export const platformSettings = sqliteTable('platform_settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  updatedAt: text('updated_at').notNull().default(nowText),
+  updatedBy: text('updated_by'),
+});
+
+export const voipAccounts = sqliteTable('voip_accounts', {
+  tenantId: text('tenant_id').primaryKey(),
+  provider: text('provider').notNull().default('twilio'),
+  subAccountId: text('sub_account_id'),
+  credentialsEnc: text('credentials_enc'), // sub-account auth token sealed with crypto-box
+  status: text('status').notNull().default('pending'), // pending | active | suspended | closed
+  createdAt: text('created_at').notNull().default(nowText),
+  updatedAt: text('updated_at').notNull().default(nowText),
+  suspendedAt: text('suspended_at'),
+  closedAt: text('closed_at'),
+});
+
+export const callCountryPolicy = sqliteTable('call_country_policy', {
+  country: text('country').primaryKey(),
+  position: text('position').notNull(), // resell | bridge | own_account | not_offered
+  provider: text('provider'),
+  kycRequired: integer('kyc_required').notNull().default(0),
+  notes: text('notes'),
+  updatedAt: text('updated_at').notNull().default(nowText),
+});
+
+export const numberDocuments = sqliteTable('number_documents', {
+  id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull(),
+  country: text('country').notNull(),
+  status: text('status').notNull().default('pending'), // pending | approved | rejected
+  details: text('details'), // JSON
+  files: text('files'), // JSON [{ name, url }]
+  reviewNote: text('review_note'),
+  reviewedBy: text('reviewed_by'),
+  reviewedAt: text('reviewed_at'),
+  createdAt: text('created_at').notNull().default(nowText),
+  updatedAt: text('updated_at').notNull().default(nowText),
+}, (table) => [uniqueIndex('number_documents_tenant_country_idx').on(table.tenantId, table.country)]);
+
+export const voipNumberRegistry = sqliteTable('voip_number_registry', {
+  id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull(),
+  phoneNumber: text('phone_number').notNull(),
+  providerNumberId: text('provider_number_id'),
+  subAccountId: text('sub_account_id'),
+  country: text('country').notNull(),
+  status: text('status').notNull().default('pending'), // pending | active | release_scheduled | released
+  idempotencyKey: text('idempotency_key').notNull(),
+  addonId: text('addon_id'),
+  monthlyPrice: real('monthly_price'),
+  currency: text('currency'),
+  paidThrough: text('paid_through'),
+  releaseAt: text('release_at'),
+  releaseReason: text('release_reason'),
+  tenantNumberId: text('tenant_number_id'),
+  createdAt: text('created_at').notNull().default(nowText),
+  updatedAt: text('updated_at').notNull().default(nowText),
+  releasedAt: text('released_at'),
+}, (table) => [
+  uniqueIndex('voip_number_registry_idempotency_idx').on(table.idempotencyKey),
+  index('voip_number_registry_tenant_idx').on(table.tenantId, table.status),
+]);
