@@ -60,6 +60,30 @@ describe('UsageLimits', () => {
     expect(toastSuccess).toHaveBeenCalled();
   });
 
+  it('R130: shows the WhatsApp utility and marketing allowances as two separate lines with their own numbers and packs', async () => {
+    const mk = { key: 'whatsapp_marketing_1000_in', name: '1,000 WhatsApp marketing messages', units: 1000, price: 1444.09, currency: 'INR' };
+    get.mockResolvedValue({
+      data: {
+        ...overview,
+        lines: [
+          { key: 'whatsapp', channel: 'whatsapp', label: 'WhatsApp utility messages', used: 100, allowance: 750, percent: 13, exhausted: false, state: 'ok', periodEnd: '2026-11-01', addons: [], upgradeTo: null },
+          { key: 'whatsapp_marketing', channel: 'whatsapp_marketing', label: 'WhatsApp marketing messages', used: 200, allowance: 200, percent: 100, exhausted: true, state: 'exhausted', periodEnd: '2026-11-01', addons: [mk], upgradeTo: { key: 'enterprise', name: 'Enterprise', allowance: 500 } },
+        ],
+      },
+    });
+    render(<UsageLimits />);
+    await waitFor(() => expect(screen.getByTestId('usage-row-whatsapp_marketing')).toBeTruthy());
+    expect(screen.getByText('WhatsApp utility messages')).toBeTruthy();
+    expect(screen.getByText('WhatsApp marketing messages')).toBeTruthy();
+    expect(screen.getByText('100 / 750')).toBeTruthy();
+    expect(screen.getByText('200 / 200')).toBeTruthy();
+    expect(screen.getByTestId('usage-row-whatsapp').getAttribute('data-state')).toBe('ok');
+    expect(screen.getByTestId('usage-row-whatsapp_marketing').getAttribute('data-state')).toBe('exhausted');
+    // the marketing request names the marketing channel
+    fireEvent.click(screen.getByTestId('usage-row-whatsapp_marketing').querySelectorAll('button')[0]!);
+    await waitFor(() => expect(requestUpgrade).toHaveBeenCalledWith({ kind: 'top_up', channel: 'whatsapp_marketing' }));
+  });
+
   it('says so when the usage cannot be loaded', async () => {
     get.mockRejectedValue({ status: 403, message: 'Forbidden' });
     render(<UsageLimits />);

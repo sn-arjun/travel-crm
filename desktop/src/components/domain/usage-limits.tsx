@@ -8,6 +8,7 @@ import { SectionCard } from '@/components/ui/section-card';
 import { useApiQuery } from '@/hooks/use-api';
 import { usageApi, type UsageLine, type RequestUpgradeInput } from '@/lib/api/settings';
 import { formatCurrency } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 import { BuyMoreDialog, useCanBuyAddons, type BuyMoreFocus } from './buy-more-dialog';
 
 const BAR_COLOR: Record<UsageLine['state'], string> = {
@@ -16,20 +17,35 @@ const BAR_COLOR: Record<UsageLine['state'], string> = {
   exhausted: 'bg-ds-danger',
 };
 
-const STATE_NOTE: Record<UsageLine['state'], string | null> = {
+const STATE_NOTE_KEY: Record<UsageLine['state'], string | null> = {
   ok: null,
-  warning: '80% used. Consider requesting more before it runs out.',
-  exhausted: 'Used up. New sends are refused until the allowance renews.',
+  warning: 'usage.note.warning',
+  exhausted: 'usage.note.exhausted',
+};
+
+/** R130: the two WhatsApp allowances (utility and marketing) are separate lines, each with its own label. */
+const CHANNEL_LABEL_KEY: Record<string, string> = {
+  ai_credits: 'usage.channel.ai_credits',
+  sms: 'usage.channel.sms',
+  whatsapp: 'usage.channel.whatsapp',
+  whatsapp_marketing: 'usage.channel.whatsapp_marketing',
+  otp: 'usage.channel.otp',
+  call_minute: 'usage.channel.call_minute',
+  email: 'usage.channel.email',
 };
 
 function UsageRow({ line, onRequest, onBuy, busy }: { line: UsageLine; onRequest: (input: RequestUpgradeInput) => void; onBuy?: (focus: BuyMoreFocus) => void; busy: boolean }) {
-  const note = STATE_NOTE[line.state];
+  const t = useT();
+  const noteKey = STATE_NOTE_KEY[line.state];
+  const note = noteKey ? t(noteKey) : null;
+  const labelKey = CHANNEL_LABEL_KEY[line.key];
+  const label = labelKey ? t(labelKey) : line.label;
   const cheapest = line.addons[0];
   const channel = line.channel as RequestUpgradeInput['channel'];
   return (
     <div className="space-y-ds-2" data-testid={`usage-row-${line.key}`} data-state={line.state}>
       <div className="flex items-center justify-between text-sm">
-        <span className="font-medium text-ds-foreground">{line.label}</span>
+        <span className="font-medium text-ds-foreground">{label}</span>
         <span className="text-ds-foreground-muted">
           {line.used.toLocaleString()} / {line.allowance.toLocaleString()}
         </span>
@@ -37,7 +53,7 @@ function UsageRow({ line, onRequest, onBuy, busy }: { line: UsageLine; onRequest
       <div
         className="h-2 w-full overflow-hidden rounded-ds-full bg-ds-surface-sunken"
         role="progressbar"
-        aria-label={`${line.label} used`}
+        aria-label={t('usage.progress', { label })}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={line.percent}
@@ -46,22 +62,22 @@ function UsageRow({ line, onRequest, onBuy, busy }: { line: UsageLine; onRequest
       </div>
       <div className="flex flex-wrap items-center justify-between gap-ds-2">
         <p className={`text-xs ${line.state === 'ok' ? 'text-ds-foreground-muted' : line.state === 'warning' ? 'text-ds-warning-on-subtle' : 'text-ds-danger'}`}>
-          {note ?? `Renews ${line.periodEnd}`}
+          {note ?? t('usage.renews', { date: line.periodEnd })}
           {cheapest && line.state !== 'ok' ? ` ${cheapest.name}: ${formatCurrency(cheapest.price, cheapest.currency)}.` : ''}
         </p>
         {line.state !== 'ok' && (
           <div className="flex gap-ds-2">
             {onBuy ? (
               <Button size="sm" variant="outline" disabled={busy} data-testid={`buy-more-${line.key}`} onClick={() => onBuy({ channel: line.channel })}>
-                Buy more
+                {t('usage.buyMore')}
               </Button>
             ) : (
               <Button size="sm" variant="outline" disabled={busy} onClick={() => onRequest({ kind: 'top_up', channel })}>
-                Request top-up
+                {t('usage.requestTopUp')}
               </Button>
             )}
             <Button size="sm" disabled={busy} onClick={() => onRequest({ kind: 'plan', channel })}>
-              Request upgrade
+              {t('usage.requestUpgrade')}
             </Button>
           </div>
         )}
@@ -72,6 +88,7 @@ function UsageRow({ line, onRequest, onBuy, busy }: { line: UsageLine; onRequest
 
 /** Settings > Usage and limits: every metered channel and AI credits against the plan's monthly allowance. */
 export function UsageLimits() {
+  const t = useT();
   const { data, loading, error } = useApiQuery(() => usageApi.get(), []);
   const [busy, setBusy] = React.useState(false);
   const canBuy = useCanBuyAddons();
@@ -82,9 +99,9 @@ export function UsageLimits() {
     setBusy(true);
     try {
       await usageApi.requestUpgrade(input);
-      toast.success('Request sent. We will get back to you shortly.');
+      toast.success(t('usage.requestSent'));
     } catch {
-      toast.error('Could not send the request. Please try again.');
+      toast.error(t('usage.requestFailed'));
     } finally {
       setBusy(false);
     }
@@ -92,13 +109,13 @@ export function UsageLimits() {
 
   return (
     <SectionCard
-      title="Usage and limits"
-      description={overview ? `Plan ${overview.plan}. Allowances renew on ${overview.periodEnd}.` : 'Your monthly allowances'}
+      title={t('usage.title')}
+      description={overview ? t('usage.description.plan', { plan: overview.plan, date: overview.periodEnd }) : t('usage.description.default')}
     >
       {loading ? (
         <Skeleton className="h-40 w-full" />
       ) : error || !overview ? (
-        <p className="text-sm text-ds-foreground-muted">Usage could not be loaded. Only administrators can see it.</p>
+        <p className="text-sm text-ds-foreground-muted">{t('usage.error')}</p>
       ) : (
         <div className="grid gap-ds-6 md:grid-cols-2">
           {overview.lines.map((line) => (

@@ -18,7 +18,7 @@ import type { ApiError } from '@/lib/api/client';
 
 /** What the agency ran out of: narrows the dialog to the packs that fix it. */
 export interface BuyMoreFocus {
-  /** ai, sms, whatsapp, otp, call_minute (the allowance channel names the API uses). */
+  /** ai, sms, whatsapp, whatsapp_marketing, otp, call_minute (the allowance channel names the API uses). */
   channel?: string;
   /** Out of user seats. */
   users?: boolean;

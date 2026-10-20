@@ -11,8 +11,8 @@ import { LIMIT_EVENT, type LimitInfo } from '@/lib/api/limit-events';
 import { formatCurrency } from '@/lib/utils';
 import { BuyMoreDialog, useCanBuyAddons } from './buy-more-dialog';
 
-const CHANNEL_FOR_REQUEST: Record<string, 'ai' | 'sms' | 'whatsapp' | 'otp' | 'call_minute' | 'email'> = {
-  ai: 'ai', sms: 'sms', whatsapp: 'whatsapp', otp: 'otp', call_minute: 'call_minute', email: 'email',
+const CHANNEL_FOR_REQUEST: Record<string, 'ai' | 'sms' | 'whatsapp' | 'whatsapp_marketing' | 'otp' | 'call_minute' | 'email'> = {
+  ai: 'ai', sms: 'sms', whatsapp: 'whatsapp', whatsapp_marketing: 'whatsapp_marketing', otp: 'otp', call_minute: 'call_minute', email: 'email',
 };
 
 interface AllowanceExhaustedDialogProps {

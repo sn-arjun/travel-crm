@@ -458,7 +458,7 @@ export interface UsageOverview {
 
 export interface RequestUpgradeInput {
   kind: 'plan' | 'top_up';
-  channel?: 'ai' | 'sms' | 'whatsapp' | 'otp' | 'call_minute' | 'email';
+  channel?: 'ai' | 'sms' | 'whatsapp' | 'whatsapp_marketing' | 'otp' | 'call_minute' | 'email';
   note?: string;
 }
 

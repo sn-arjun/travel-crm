@@ -61,6 +61,7 @@ export const SCOPE = [
   'src/components/domain/kanban-board.tsx',
   'src/components/domain/stat-card.tsx',
   'src/components/domain/keyboard-shortcuts-provider.tsx',
+  'src/components/domain/usage-limits.tsx',
 ];
 
 const TEXT_PROPS = new Set([
