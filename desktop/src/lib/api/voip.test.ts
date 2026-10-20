@@ -91,6 +91,36 @@ describe('voipApi', () => {
     });
   });
 
+  // ─── calling account, number offer and documents (R304) ────────
+  describe('calling account and number rental', () => {
+    it('reads the account state with GET /voip/account', async () => {
+      vi.mocked(client.get).mockResolvedValue({ data: { available: true, account: { status: 'active' } } });
+      const result = await voipApi.account.get();
+      expect(client.get).toHaveBeenCalledWith('/voip/account');
+      expect(result.data.account?.status).toBe('active');
+    });
+
+    it('turns calling on with POST /voip/account/enable', async () => {
+      vi.mocked(client.post).mockResolvedValue({ data: { created: true } });
+      await voipApi.account.enable();
+      expect(client.post).toHaveBeenCalledWith('/voip/account/enable', {});
+    });
+
+    it('reads the price and requirements with GET /voip/number-offer', async () => {
+      vi.mocked(client.get).mockResolvedValue({ data: { price: { monthly: 1.38, currency: 'USD' } } });
+      const result = await voipApi.numberOffer.get();
+      expect(client.get).toHaveBeenCalledWith('/voip/number-offer');
+      expect(result.data.price?.monthly).toBe(1.38);
+    });
+
+    it('sends business documents with POST /voip/kyc', async () => {
+      vi.mocked(client.post).mockResolvedValue({ data: { document: { status: 'pending' } } });
+      const body = { details: { businessName: 'Acme Travel', address: '1 High Street' }, files: [] };
+      await voipApi.kyc.submit(body);
+      expect(client.post).toHaveBeenCalledWith('/voip/kyc', body);
+    });
+  });
+
   // ─── numbers ───────────────────────────────────────────────────
   describe('numbers', () => {
     describe('list', () => {

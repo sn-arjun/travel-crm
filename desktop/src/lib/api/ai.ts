@@ -736,7 +736,7 @@ export interface AiSettingsData {
   plan: string;
   aiFeatures: AiFeatureFlag[];
   /** Where the platform resells calling (R301): available is false for agencies outside the country allow-list. */
-  voipCalling?: { available: boolean; country: string; reason: 'ok' | 'country_not_set' | 'country_not_supported' };
+  voipCalling?: { available: boolean; country: string; reason: 'ok' | 'country_not_set' | 'country_not_supported' | 'country_not_offered' };
   usageCaps: Record<string, Omit<UsageCap, 'key' | 'isExhausted'>>;
   usageSummary: AiUsageSummary;
   provider: AiProviderStatus;

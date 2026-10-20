@@ -38,6 +38,54 @@ export interface VoipNumber {
   isDefault: boolean;
   monthlyCost?: number | null;
   capabilities?: { sms?: boolean; voice?: boolean } | null;
+  /** Rent state of a number the platform rents for the agency (R304). */
+  rental?: {
+    status: 'active' | 'release_scheduled';
+    paidThrough: string | null;
+    releaseAt: string | null;
+    releaseReason: string | null;
+    currency: string | null;
+    monthlyPrice: number | null;
+  } | null;
+}
+
+/** GET /voip/account: whether calling is on for the agency and what its sub-account looks like (never a secret). */
+export interface VoipAccountState {
+  available: boolean;
+  reason: string | null;
+  message: string | null;
+  country: string;
+  position: 'resell' | 'bridge' | 'own_account' | 'not_offered' | null;
+  notes: string | null;
+  account: { status: 'pending' | 'active' | 'suspended' | 'closed'; provider: string; subAccountId: string | null } | null;
+}
+
+export type KycStatus = 'none' | 'pending' | 'approved' | 'rejected';
+
+export interface NumberKycDocument {
+  id: string;
+  country: string;
+  status: Exclude<KycStatus, 'none'>;
+  details: { businessName?: string; address?: string; registrationNumber?: string; contactName?: string } | null;
+  files: { name: string; url: string }[];
+  reviewNote: string | null;
+  submittedAt: string;
+}
+
+/** GET /voip/number-offer: the price of a number and what is needed before buying one. */
+export interface NumberOffer {
+  calling: { allowed: boolean; reason: string | null; message: string | null; country: string; position: string | null };
+  account: { status: string; provider: string } | null;
+  /** Null when the market has no price yet (priceReason says why). */
+  price: { productKey: string; monthly: number; tax: number; total: number; currency: string; includesMarginPct: number } | null;
+  priceReason: string | null;
+  kyc: { required: boolean; status: KycStatus; document: NumberKycDocument | null };
+  addon: { freeThisMonth: number; productKey: string | null };
+}
+
+export interface SubmitKycRequest {
+  details: { businessName: string; address: string; registrationNumber?: string };
+  files: { name: string; url: string }[];
 }
 
 export interface AvailableNumber {
@@ -282,6 +330,19 @@ export const voipApi = {
   token: {
     get: () =>
       client.get<ApiResponse<VoipToken>>(API_ENDPOINTS.voip.token),
+  },
+
+  account: {
+    get: () => client.get<ApiResponse<VoipAccountState>>('/voip/account'),
+    enable: () => client.post<ApiResponse<{ created: boolean; account: VoipAccountState['account'] }>>('/voip/account/enable', {}),
+  },
+
+  numberOffer: {
+    get: () => client.get<ApiResponse<NumberOffer>>('/voip/number-offer'),
+  },
+
+  kyc: {
+    submit: (data: SubmitKycRequest) => client.post<ApiResponse<{ document: NumberKycDocument }>>('/voip/kyc', data),
   },
 
   numbers: {

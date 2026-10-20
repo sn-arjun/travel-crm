@@ -41,7 +41,7 @@ export interface CallingAvailability {
   /** The agency's country, '' when it has not set one. */
   country: string;
   allowedCountries: string[];
-  reason: 'ok' | 'country_not_set' | 'country_not_supported';
+  reason: 'ok' | 'country_not_set' | 'country_not_supported' | 'country_not_offered';
 }
 
 /** Pure: is calling offered to an agency in `country`? */
@@ -58,7 +58,19 @@ export function callingAvailabilityFor(country: string, list: CallingAllowList):
 /** Is calling offered to this agency (database = the agency's own)? */
 export async function callingAvailability(env: Env, db: D1Database): Promise<CallingAvailability> {
   const locale = await loadLocaleContext(db);
-  return callingAvailabilityFor(locale.country, callingAllowList(env));
+  const list = callingAllowList(env);
+  const base = callingAvailabilityFor(locale.country, list);
+  // R304: the master country policy can say "not offered" for a country the allow-list names (configuration drift); it wins.
+  // The non-production wildcard skips it, like the sub-account checks (services/voip/country-policy.ts).
+  if (base.available && !list.all && base.country) {
+    try {
+      const policy = await env.MASTER_DB.prepare('SELECT position FROM call_country_policy WHERE country = ?').bind(base.country).first<{ position: string }>();
+      if (policy?.position === 'not_offered') return { ...base, available: false, reason: 'country_not_offered' };
+    } catch {
+      // The policy table is missing on an old database: the allow-list alone decides.
+    }
+  }
+  return base;
 }
 
 /** Middleware for the call and VoIP-settings routes: 403 CALLING_NOT_AVAILABLE_IN_COUNTRY outside the allow-list. */
@@ -69,7 +81,9 @@ export function requireCallingCountry(): MiddlewareHandler<AppContext> {
       const message =
         availability.reason === 'country_not_set'
           ? 'Set your agency country in Settings to use calling.'
-          : 'Calling is not available for agencies in your country yet.';
+          : availability.reason === 'country_not_offered'
+            ? 'Calling is not offered in your country.'
+            : 'Calling is not available for agencies in your country yet.';
       const details = { code: CALLING_NOT_AVAILABLE_CODE, country: availability.country, reason: availability.reason };
       return c.json({ success: false, error: { message, code: CALLING_NOT_AVAILABLE_CODE, details } }, 403);
     }

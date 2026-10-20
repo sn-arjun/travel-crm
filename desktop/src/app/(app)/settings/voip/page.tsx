@@ -65,6 +65,28 @@ function VoipSettingsPageContent() {
     [],
   );
 
+  // The agency's own calling account (one provider sub-account, R304). Absent or failed: the card simply does not show.
+  const { data: accountResponse, refetch: refetchAccount } = useApiQuery(() => voipApi.account.get(), []);
+  const callingAccount = React.useMemo(() => {
+    if (!accountResponse || !('data' in accountResponse)) return null;
+    return accountResponse.data ?? null;
+  }, [accountResponse]);
+  const [enabling, setEnabling] = React.useState(false);
+
+  const handleEnableCalling = async () => {
+    setEnabling(true);
+    try {
+      await voipApi.account.enable();
+      toast.success('Calling is on');
+      refetchAccount();
+      refetch();
+    } catch (err) {
+      toast.error((err as { message?: string })?.message || 'Could not turn on calling');
+    } finally {
+      setEnabling(false);
+    }
+  };
+
   const voipSettings = React.useMemo(() => {
     if (!settingsResponse || !('data' in settingsResponse)) return null;
     return settingsResponse.data ?? null;
@@ -210,6 +232,39 @@ function VoipSettingsPageContent() {
           </Badge>
         }
       />
+
+      {callingAccount && (
+        <SectionCard
+          title="Calling account"
+          description={
+            callingAccount.position === 'resell'
+              ? 'Your agency gets its own calling account with us: numbers and minutes are billed to you through your plan.'
+              : 'How calling is provided for your country'
+          }
+        >
+          <div className="flex flex-wrap items-center gap-ds-3" data-testid="calling-account">
+            {callingAccount.account?.status === 'active' ? (
+              <>
+                <Badge className="bg-ds-success-subtle text-ds-success-on-subtle">On</Badge>
+                <span className="text-sm text-ds-foreground-muted">
+                  Calling account {callingAccount.account.subAccountId ? `ending ${callingAccount.account.subAccountId.slice(-6)}` : 'is ready'}. Buy numbers under Phone Numbers.
+                </span>
+              </>
+            ) : callingAccount.account?.status === 'suspended' ? (
+              <span className="text-sm text-ds-foreground-muted">Calling is paused for this account. Contact support.</span>
+            ) : callingAccount.available ? (
+              <>
+                <span className="text-sm text-ds-foreground-muted">Calling is not turned on yet for {callingAccount.country}.</span>
+                <Button size="sm" onClick={handleEnableCalling} disabled={enabling}>
+                  {enabling ? 'Turning on...' : 'Turn on calling'}
+                </Button>
+              </>
+            ) : (
+              <span className="text-sm text-ds-foreground-muted">{callingAccount.message ?? 'Calling is not available for your account.'}</span>
+            )}
+          </div>
+        </SectionCard>
+      )}
 
       <SectionCard
         title="Provider Configuration"
