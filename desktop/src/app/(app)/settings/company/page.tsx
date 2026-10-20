@@ -136,8 +136,8 @@ export default function CompanySettingsPage() {
         state: companySettings?.state ?? '',
         postalCode: companySettings?.postalCode ?? '',
         country: companySettings?.country ?? '',
-        timezone: companySettings?.timezone ?? (getLocaleContext().timeZone || systemTimeZone()),
-        currency: companySettings?.currency ?? getLocaleContext().currency,
+        timezone: companySettings?.timezone || getLocaleContext().timeZone || systemTimeZone(),
+        currency: companySettings?.currency || getLocaleContext().currency,
         language: companySettings?.language ?? 'en',
       }}
       onCancel={() => router.push('/settings')}
