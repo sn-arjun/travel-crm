@@ -109,7 +109,7 @@ describe('CloudflareTenantProvisioner (mocked fetch)', () => {
     expect(user.body.params[3]).toMatch(/^\$2[aby]\$/);
     expect(JSON.stringify(calls.map((c) => c.body))).not.toContain(temporaryPassword);
     const keys = calls.filter((c) => /INTO settings/.test(c.body.sql)).map((c) => c.body.params[0]);
-    expect(keys).toEqual(['company_name', 'company_email', 'country', 'currency', 'timezone', 'tax_system', 'onboarding_completed']);
+    expect(keys).toEqual(['company_name', 'company_email', 'country', 'currency', 'timezone', 'tax_system', 'onboarding_completed', 'locale', 'phone_default_country']);
   });
 
   it('registers the binding through the script settings API and reports active on 2xx', async () => {
