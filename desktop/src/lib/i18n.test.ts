@@ -98,11 +98,11 @@ describe('real catalogues', () => {
 });
 
 describe('languages', () => {
-  it('English is the default and Arabic is described (rtl) but not offered yet', () => {
+  it('English is the default; Hindi and Arabic (rtl) are offered', () => {
     expect(DEFAULT_LOCALE).toBe('en');
     expect(isEnabledLocale('en')).toBe(true);
     expect(isEnabledLocale('hi')).toBe(true);
-    expect(isEnabledLocale('ar')).toBe(false);
+    expect(isEnabledLocale('ar')).toBe(true);
     expect(isEnabledLocale('fr')).toBe(false);
     expect(directionOf('ar')).toBe('rtl');
     expect(directionOf('hi')).toBe('ltr');

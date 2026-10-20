@@ -220,6 +220,7 @@ export function run() {
     for (const k of Object.keys(en)) if (k in cat && String(cat[k]).trim() !== '') translated++;
     coverage[lang] = { translated, total: Object.keys(en).length, percent: Math.round((translated / Object.keys(en).length) * 1000) / 10 };
     for (const k of keys) {
+      if (k.startsWith('_')) continue; // notes (for example a native-review flag), not text
       if (!(k in en)) problems.push(`${lang}.json has key "${k}" that en.json does not`);
       else if (placeholdersOf(cat[k]) !== placeholdersOf(en[k])) problems.push(`${lang}.json "${k}" uses different {placeholders} than en.json`);
     }

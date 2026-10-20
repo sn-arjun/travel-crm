@@ -48,12 +48,28 @@ describe('I18nProvider', () => {
     expect(screen.getByTestId('locale').textContent).toBe('hi');
   });
 
-  it('refuses a language that is not offered yet (Arabic ships in the next batch)', () => {
+  it('switches to Arabic: right-to-left html, Arabic text; switching back restores left-to-right', () => {
     render(<I18nProvider><Probe /></I18nProvider>);
     fireEvent.click(screen.getByText('to-ar'));
-    expect(screen.getByTestId('locale').textContent).toBe('en');
-    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBeNull();
+    expect(screen.getByTestId('locale').textContent).toBe('ar');
+    expect(screen.getByTestId('leads').textContent).toBe(catalogues.ar['nav.items.leads']);
+    expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('ar');
+    expect(document.documentElement.lang).toBe('ar');
+    expect(document.documentElement.dir).toBe('rtl');
+    fireEvent.click(screen.getByText('to-en'));
+    expect(document.documentElement.lang).toBe('en');
+    expect(document.documentElement.dir).toBe('ltr');
   });
+
+  it('keeps the right-to-left html the boot script set when the saved language is Arabic', () => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'ar');
+    document.documentElement.lang = 'ar';
+    document.documentElement.dir = 'rtl';
+    render(<I18nProvider><Probe /></I18nProvider>);
+    expect(screen.getByTestId('locale').textContent).toBe('ar');
+    expect(document.documentElement.dir).toBe('rtl');
+  });
+
 
   it('uses the language saved on the profile of the user who signs in', () => {
     render(<I18nProvider><Probe /></I18nProvider>);

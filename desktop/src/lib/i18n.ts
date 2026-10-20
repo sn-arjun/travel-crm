@@ -4,6 +4,7 @@ import * as React from 'react';
 import en from '@/messages/en.json';
 import hi from '@/messages/hi.json';
 import ar from '@/messages/ar.json';
+import { LOCALE_STORAGE_KEY } from '@/lib/i18n-boot';
 
 /**
  * Interface text (not number/date/currency formatting: that stays on lib/locale.ts, R202).
@@ -21,7 +22,7 @@ export interface LanguageInfo {
   /** Name in its own language, shown in the switch. */
   label: string;
   dir: Direction;
-  /** Only enabled languages are offered in the switch. Arabic ships in R211. */
+  /** Only enabled languages are offered in the switch. Arabic (rtl) ships in R211. */
   enabled: boolean;
 }
 
@@ -30,12 +31,12 @@ export const DEFAULT_LOCALE: Locale = 'en';
 export const LANGUAGES: readonly LanguageInfo[] = [
   { code: 'en', label: 'English', dir: 'ltr', enabled: true },
   { code: 'hi', label: 'हिन्दी', dir: 'ltr', enabled: true },
-  { code: 'ar', label: 'العربية', dir: 'rtl', enabled: false },
+  { code: 'ar', label: 'العربية', dir: 'rtl', enabled: true },
 ];
 
 export const catalogues: Record<Locale, Catalogue> = { en, hi, ar };
 
-export const LOCALE_STORAGE_KEY = 'travelcrm.uiLanguage';
+export { LOCALE_STORAGE_KEY };
 
 export function isLocale(value: unknown): value is Locale {
   return typeof value === 'string' && LANGUAGES.some((l) => l.code === value);

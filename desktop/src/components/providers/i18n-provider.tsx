@@ -42,7 +42,14 @@ export function I18nProvider({ children }: I18nProviderProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
+  // The first pass is always English (it matches the server render); the inline script in <head> has already put
+  // the saved language on <html>, so do not undo it here before the saved language has been read.
+  const readSaved = React.useRef(false);
   React.useEffect(() => {
+    if (!readSaved.current) {
+      readSaved.current = true;
+      if (readStoredLocale() !== locale) return;
+    }
     document.documentElement.lang = locale;
     document.documentElement.dir = directionOf(locale);
   }, [locale]);
