@@ -4,6 +4,7 @@ import { emailFrom } from '../utils/app-urls';
 import { refundUsage, tryMeter } from '../services/metering/meter';
 import { marketingBlockedReason, unsubscribeUrl, unsubscribeFooterText, unsubscribeFooterHtml } from '../services/privacy/consent';
 import { unsubscribeHeaders } from '../services/sendgrid';
+import { isEmailUndeliverable, resolveReplyTo } from '../services/mail/delivery';
 
 export interface CampaignJob {
   campaignId: string;
@@ -75,6 +76,8 @@ async function processCampaignBatch(job: CampaignJob, env: Env): Promise<void> {
   let failedCount = 0;
   let capReached = false;
   let skippedCount = 0;
+  // R128: customer replies to a campaign email reach the agency, not the no-reply sender
+  const replyTo = campaignType === 'email' ? await resolveReplyTo(env, dbBinding, tenantId, (campaign as any).created_by) : undefined;
 
   for (const recipient of recipients) {
     const recipientId = (recipient as any).id;
@@ -88,6 +91,15 @@ async function processCampaignBatch(job: CampaignJob, env: Env): Promise<void> {
         .prepare('UPDATE campaign_recipients SET status = ?, error_message = ? WHERE id = ?')
         .bind('opted_out', blocked, recipientId)
         .run();
+      continue;
+    }
+    // R128: an address that hard-bounced earlier is not sent to again (and uses no allowance)
+    if (campaignType === 'email' && (await isEmailUndeliverable(dbBinding, (recipient as any).email))) {
+      await dbBinding
+        .prepare('UPDATE campaign_recipients SET status = ?, error_message = ? WHERE id = ?')
+        .bind('failed', 'Address bounced earlier (undeliverable)', recipientId)
+        .run();
+      failedCount++;
       continue;
     }
     const unsubUrl = (recipient as any).contact_id ? await unsubscribeUrl(env, tenantId, (recipient as any).contact_id, campaignType) : null;
@@ -108,6 +120,7 @@ async function processCampaignBatch(job: CampaignJob, env: Env): Promise<void> {
     }
 
     try {
+      let emailMessageId: string | undefined;
       // Mark as queued
       await dbBinding
         .prepare('UPDATE campaign_recipients SET status = ? WHERE id = ?')
@@ -131,12 +144,13 @@ async function processCampaignBatch(job: CampaignJob, env: Env): Promise<void> {
         case 'email': {
           const email = (recipient as any).email;
           if (!email) throw new Error('No email');
-          await sendEmail(
+          emailMessageId = await sendEmail(
             env,
             email,
             (campaign as any).email_subject || 'Campaign',
             (campaign as any).message_body || '',
-            unsubUrl
+            unsubUrl,
+            replyTo
           );
           break;
         }
@@ -144,8 +158,8 @@ async function processCampaignBatch(job: CampaignJob, env: Env): Promise<void> {
 
       // Mark as sent
       await dbBinding
-        .prepare('UPDATE campaign_recipients SET status = ?, sent_at = ? WHERE id = ?')
-        .bind('sent', now, recipientId)
+        .prepare('UPDATE campaign_recipients SET status = ?, sent_at = ?, message_id = COALESCE(?, message_id) WHERE id = ?')
+        .bind('sent', now, emailMessageId ?? null, recipientId)
         .run();
       sentCount++;
     } catch (err) {
@@ -266,8 +280,9 @@ async function sendEmail(
   to: string,
   subject: string,
   htmlBody: string,
-  unsubUrl: string | null = null
-): Promise<void> {
+  unsubUrl: string | null = null,
+  replyTo?: string
+): Promise<string | undefined> {
   const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
     headers: {
@@ -277,6 +292,7 @@ async function sendEmail(
     body: JSON.stringify({
       personalizations: [{ to: [{ email: to }] }],
       from: emailFrom(env),
+      ...(replyTo ? { reply_to: { email: replyTo } } : {}),
       subject,
       content: [{ type: 'text/html', value: unsubUrl ? htmlBody + unsubscribeFooterHtml(unsubUrl) : htmlBody }],
       ...(unsubUrl ? { headers: unsubscribeHeaders(unsubUrl) } : {}),
@@ -287,4 +303,5 @@ async function sendEmail(
     const errText = await response.text();
     throw new Error(`Email send failed: ${errText}`);
   }
+  return response.headers.get('x-message-id') || undefined;
 }

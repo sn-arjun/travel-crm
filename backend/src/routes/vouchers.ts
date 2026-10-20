@@ -7,6 +7,7 @@ import { generateId } from '../utils/uuid';
 import { success, created, paginated, error, notFound, forbidden } from '../utils/response';
 import { hasPermission, type Role } from '../constants/permissions';
 import { tenantTimeZone, localDateString } from '../utils/tz';
+import { agencyEmailHtml, isEmailUndeliverable, queueAgencyEmail, textToHtml } from '../services/mail/delivery';
 
 const voucherRoutes = new Hono<AppContext>();
 
@@ -476,17 +477,17 @@ function mapItemToVoucherDetails(type: string, item: any, details: any): Record<
 // GET /:id/pdf — Generate printable PDF for a voucher
 // ============================================================
 
-voucherRoutes.get('/:id/pdf', async (c) => {
-  const tenantDb = c.get('tenantDb');
-  const role = c.get('role');
-  const voucherId = c.req.param('id');
-  const voucherTz = await tenantTimeZone(c);
+interface BuiltVoucherPdf {
+  bytes: Uint8Array;
+  fileName: string;
+  title: string;
+  type: string;
+  contactId: string | null;
+}
 
-  if (!checkPermission(role, 'view')) {
-    return forbidden(c, 'You do not have permission to view vouchers');
-  }
-
-  try {
+/** Render the voucher PDF (shared by GET /:id/pdf and the email send, R128). Null when the voucher does not exist. */
+async function buildVoucherPdf(tenantDb: D1Database, voucherId: string, voucherTz: string): Promise<BuiltVoucherPdf | null> {
+  {
     const voucher = await tenantDb
       .prepare(`
         SELECT v.*,
@@ -500,7 +501,7 @@ voucherRoutes.get('/:id/pdf', async (c) => {
       .bind(voucherId)
       .first<Record<string, any>>();
 
-    if (!voucher) return notFound(c, 'Voucher');
+    if (!voucher) return null;
 
     const details = voucher.details_json ? JSON.parse(voucher.details_json) : {};
     const voucherType = (voucher.type as string) || 'general';
@@ -827,7 +828,54 @@ voucherRoutes.get('/:id/pdf', async (c) => {
     const pdfBytes = await pdfDoc.save();
     const fileName = `voucher-${voucherType}-${voucherId.slice(0, 8)}.pdf`;
 
-    return new Response(pdfBytes, {
+    return { bytes: pdfBytes, fileName, title: String(voucher.title ?? typeLabel), type: voucherType, contactId: (voucher.contact_id as string | null) ?? null };
+  }
+}
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
+/**
+ * R128: email a voucher to the traveller with its PDF attached, through the email queue. 'blocked' when the address
+ * hard-bounced earlier; nothing is queued then.
+ */
+async function emailVoucher(c: any, voucherId: string, to: string): Promise<'queued' | 'blocked' | 'missing'> {
+  const tenantDb = c.get('tenantDb') as D1Database;
+  const built = await buildVoucherPdf(tenantDb, voucherId, await tenantTimeZone(c));
+  if (!built) return 'missing';
+  const typeLabel = built.type.charAt(0).toUpperCase() + built.type.slice(1);
+  const result = await queueAgencyEmail(c.env, tenantDb, { tenantId: c.get('tenantId'), userId: c.get('userId') }, {
+    to,
+    subject: `${typeLabel} voucher: ${built.title}`,
+    contactId: built.contactId,
+    html: agencyEmailHtml({
+      heading: `${typeLabel} voucher`,
+      bodyHtml: textToHtml(`Your ${built.type} voucher for ${built.title} is attached to this email as a PDF. Please keep it with you while you travel.`),
+    }),
+    attachments: [{ filename: built.fileName, content: toBase64(built.bytes), type: 'application/pdf' }],
+  });
+  return result.queued ? 'queued' : 'blocked';
+}
+
+voucherRoutes.get('/:id/pdf', async (c) => {
+  const tenantDb = c.get('tenantDb');
+  const role = c.get('role');
+  const voucherId = c.req.param('id');
+  const voucherTz = await tenantTimeZone(c);
+
+  if (!checkPermission(role, 'view')) {
+    return forbidden(c, 'You do not have permission to view vouchers');
+  }
+
+  try {
+    const built = await buildVoucherPdf(tenantDb, voucherId, voucherTz);
+    if (!built) return notFound(c, 'Voucher');
+    const fileName = built.fileName;
+
+    return new Response(built.bytes, {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `inline; filename="${fileName}"`,
@@ -1103,6 +1151,11 @@ voucherRoutes.post('/:id/send', async (c) => {
 
     if (!voucher) return notFound(c, 'Voucher');
 
+    if (channel === 'email' || channel === 'both') {
+      const emailed = await emailVoucher(c, voucherId, String(to));
+      if (emailed === 'blocked') return error(c, 'This email address bounced earlier and is blocked. Correct the email address on the contact first.', 409);
+    }
+
     const now = new Date().toISOString();
 
     // Determine sent_via (merge if previously sent via different channel)
@@ -1120,8 +1173,7 @@ voucherRoutes.post('/:id/send', async (c) => {
       .bind(now, sentVia, now, voucherId)
       .run();
 
-    // In production, queue email/whatsapp sending here
-    // For now, just update status and log
+    // Email is queued above (R128); WhatsApp and SMS sharing goes through the Communication Hub from the app.
 
     return success(c, {
       id: voucherId,
@@ -1190,7 +1242,13 @@ voucherRoutes.post('/bulk-send', async (c) => {
     const now = new Date().toISOString();
     let sentCount = 0;
 
+    // R128: refuse before any status changes when the address is known to bounce
+    if ((channel === 'email' || channel === 'both') && (await isEmailUndeliverable(tenantDb, String(to)))) {
+      return error(c, 'This email address bounced earlier and is blocked. Correct the email address on the contact first.', 409);
+    }
+
     for (const v of results) {
+      if (channel === 'email' || channel === 'both') await emailVoucher(c, v.id, String(to));
       let sentVia = channel;
       if (v.sent_via && v.sent_via !== channel && channel !== 'both') {
         sentVia = 'both';

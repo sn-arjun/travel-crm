@@ -213,6 +213,9 @@ contactRoutes.get('/', requirePermission('contacts', 'view'), async (c) => {
       birthday: contacts.birthday,
       anniversary: contacts.anniversary,
       preferredLanguage: contacts.preferredLanguage,
+      emailUndeliverable: contacts.emailUndeliverable,
+      emailUndeliverableReason: contacts.emailUndeliverableReason,
+      emailUndeliverableAt: contacts.emailUndeliverableAt,
       createdBy: contacts.createdBy,
       createdAt: contacts.createdAt,
       updatedAt: contacts.updatedAt,
@@ -971,6 +974,9 @@ contactRoutes.get('/:id', requirePermission('contacts', 'view'), async (c) => {
       birthday: contacts.birthday,
       anniversary: contacts.anniversary,
       preferredLanguage: contacts.preferredLanguage,
+      emailUndeliverable: contacts.emailUndeliverable,
+      emailUndeliverableReason: contacts.emailUndeliverableReason,
+      emailUndeliverableAt: contacts.emailUndeliverableAt,
       createdBy: contacts.createdBy,
       createdByName: users.name,
       createdAt: contacts.createdAt,
@@ -1035,9 +1041,13 @@ contactRoutes.put(
 
     const { customFields, tags, ...updateData } = data;
 
+    // R128: a corrected email is a fresh address: the undeliverable flag belongs to the old one
+    const emailChanged = updateData.email !== undefined && (updateData.email ?? '').toLowerCase() !== (existing.email ?? '').toLowerCase();
+
     await db.update(contacts).set({
       ...updateData,
       ...(tags !== undefined && { tags: JSON.stringify(tags) }),
+      ...(emailChanged && { emailUndeliverable: 0, emailUndeliverableReason: null, emailUndeliverableAt: null }),
       updatedAt: new Date().toISOString(),
     }).where(eq(contacts.id, contactId));
 

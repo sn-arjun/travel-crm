@@ -1020,5 +1020,17 @@ export const TENANT_MIGRATIONS: BundledMigration[] = [
       "-- R213: WhatsApp sent and received directly through Meta's Cloud API.\n-- One row per agency: the WhatsApp phone number it sends from and receives on. The access token and the app\n-- secret are sealed (utils/crypto-box.ts, R108) and never returned; only the last 4 characters of the token are\n-- shown back. Both are optional: an agency on the platform's WhatsApp account saves just the phone number id and\n-- the platform token and app secret (Worker secrets) are used.\nCREATE TABLE IF NOT EXISTS whatsapp_meta_accounts (\n  id TEXT PRIMARY KEY,\n  phone_number_id TEXT NOT NULL,\n  waba_id TEXT,\n  display_phone TEXT,\n  access_token_enc TEXT,\n  access_token_last4 TEXT,\n  app_secret_enc TEXT,\n  is_active INTEGER NOT NULL DEFAULT 1,\n  last_tested_at TEXT,\n  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\n  updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))\n)",
       "CREATE UNIQUE INDEX IF NOT EXISTS whatsapp_meta_accounts_phone_idx ON whatsapp_meta_accounts(phone_number_id)"
     ]
+  },
+  {
+    "name": "0056_email_undeliverable.sql",
+    "queries": [
+      "-- R128: a hard bounce no longer blanks the contact's email. The address stays and is flagged undeliverable\n-- (with the provider's reason and the date) so every later send to it is suppressed and the agency can see why.\n-- Editing the contact's email clears the flag.\nALTER TABLE contacts ADD COLUMN email_undeliverable INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE contacts ADD COLUMN email_undeliverable_reason TEXT",
+      "ALTER TABLE contacts ADD COLUMN email_undeliverable_at TEXT",
+      "-- R128: marketing campaign emails keep the provider's message id so the delivery events (delivered, open, click,\n-- bounce) find the recipient row; opened_at and clicked_at make the campaign counters count each recipient once.\nALTER TABLE campaign_recipients ADD COLUMN message_id TEXT",
+      "ALTER TABLE campaign_recipients ADD COLUMN opened_at TEXT",
+      "ALTER TABLE campaign_recipients ADD COLUMN clicked_at TEXT",
+      "CREATE INDEX IF NOT EXISTS campaign_recipients_message_id_idx ON campaign_recipients(message_id)"
+    ]
   }
 ];

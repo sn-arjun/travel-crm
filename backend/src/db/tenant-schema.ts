@@ -67,6 +67,9 @@ export const contacts = sqliteTable('contacts', {
   optOutChannel: text('opt_out_channel'), // email, sms, whatsapp, manual
   optOutReason: text('opt_out_reason'), // user-provided reason for opting out
   erasedAt: text('erased_at'), // R208: set when the personal data was erased (the row stays, anonymised, for invoices)
+  emailUndeliverable: integer('email_undeliverable').notNull().default(0), // R128: 1 = the address hard-bounced; sends to it are suppressed
+  emailUndeliverableReason: text('email_undeliverable_reason'), // the provider's bounce reason
+  emailUndeliverableAt: text('email_undeliverable_at'),
   isDeleted: integer('is_deleted').default(0),
   createdBy: text('created_by').references(() => users.id),
   createdAt: text('created_at').default(timestamp),
@@ -1326,8 +1329,12 @@ export const campaignRecipients = sqliteTable('campaign_recipients', {
   errorMessage: text('error_message'),
   sentAt: text('sent_at'),
   deliveredAt: text('delivered_at'),
+  messageId: text('message_id'), // R128: the provider's message id (email), so delivery events find this row
+  openedAt: text('opened_at'),
+  clickedAt: text('clicked_at'),
   createdAt: text('created_at').default(timestamp),
 }, (table) => [
+  index('campaign_recipients_message_id_idx').on(table.messageId),
   index('campaign_recipients_campaign_id_idx').on(table.campaignId),
   index('campaign_recipients_status_idx').on(table.status),
 ]);

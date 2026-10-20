@@ -14,6 +14,8 @@ export interface SmsJob {
   body?: string; // for SMS/WhatsApp
   subject?: string; // for email
   html?: string; // for email
+  /** R128: where a customer's reply to an email goes (the agency's receiving address or the sending user). */
+  replyTo?: string;
   templateId?: string;
   templateData?: Record<string, string>;
   messageLogId?: string; // DB record ID to update
@@ -78,6 +80,7 @@ export async function handleSmsJob(job: SmsJob, env: Env): Promise<void> {
         subject: job.subject || 'Message',
         html: job.html || '',
         from: emailFrom(env).email,
+        replyTo: job.replyTo,
       });
     } else {
       throw new Error(`Unknown channel: ${channel}`);
@@ -95,7 +98,7 @@ export async function handleSmsJob(job: SmsJob, env: Env): Promise<void> {
             .update(messageLog)
             .set({
               status: 'sent',
-              externalId: (result as any).sid || null,
+              externalId: (result as any).sid || (result as any).messageId || null,
               sentAt: now,
               errorMessage: null,
             })

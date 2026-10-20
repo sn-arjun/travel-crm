@@ -305,6 +305,7 @@ export async function eraseContact(
       sql: `UPDATE contacts SET name = ?, email = NULL, phone = NULL, company = NULL, address = NULL, city = NULL, state = NULL, country = NULL, postal_code = NULL,
               tax_id = NULL, is_business = 0, tags = '[]', notes = NULL, source = NULL, birthday = NULL, anniversary = NULL, preferred_language = 'en',
               dnd_enabled = 0, opted_out = 1, opted_out_at = COALESCE(opted_out_at, ?), opt_out_channel = 'erased', opt_out_reason = NULL,
+              email_undeliverable = 0, email_undeliverable_reason = NULL, email_undeliverable_at = NULL,
               is_deleted = 1, erased_at = ?, updated_at = ? WHERE id = ?`,
       binds: [anonymisedAs, now, now, now, contactId],
     },

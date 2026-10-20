@@ -19,6 +19,8 @@ import { requirePermission } from '../middleware/rbac';
 import { generateId } from '../utils/uuid';
 import { logActivity } from '../utils/activity-logger';
 import { quoteUrl } from '../utils/app-urls';
+import { formatMoney, loadLocaleContext } from '../utils/money';
+import { agencyEmailHtml, escapeHtml, queueAgencyEmail, textToHtml } from '../services/mail/delivery';
 import { success, created, paginated, error, notFound } from '../utils/response';
 
 const itineraryRoutes = new Hono<AppContext>();
@@ -777,19 +779,30 @@ itineraryRoutes.post('/:id/send', requirePermission('itineraries', 'edit'), zVal
   const now = new Date().toISOString();
 
   if (body.channel === 'email') {
-    // Queue email send
+    // R128: a real email job (the queue only knows type 'email'), carrying the secure quotation link
     try {
-      await c.env.EMAIL_QUEUE.send({
-        type: 'itinerary_send',
-        itineraryId: id,
+      const tenantDb = c.get('tenantDb');
+      const lead = await tenantDb.prepare('SELECT contact_id FROM leads WHERE id = ?').bind(itin.leadId).first<{ contact_id: string | null }>();
+      const shareToken = await ensureShareLink(c, db, itin);
+      const locale = await loadLocaleContext(tenantDb);
+      const total = itin.grandTotal ? formatMoney(itin.grandTotal, itin.currency || locale.currency, locale.locale) : '';
+      const subject = body.subject || `Travel Quotation — ${itin.title}`;
+      const queuedMail = await queueAgencyEmail(c.env, tenantDb, { tenantId: c.get('tenantId'), userId }, {
         to: body.to,
-        subject: body.subject || `Travel Quotation — ${itin.title}`,
-        message: body.message,
-        tenantId: c.get('tenantId'),
-        userId,
+        subject,
+        contactId: lead?.contact_id ?? null,
+        html: agencyEmailHtml({
+          heading: itin.title,
+          bodyHtml: textToHtml(body.message) + (total ? `<p>Total: <strong>${escapeHtml(total)}</strong></p>` : ''),
+          button: { label: 'View your quotation', url: quoteUrl(c.env, shareToken) },
+        }),
       });
+      if (!queuedMail.queued) {
+        return error(c, 'This email address bounced earlier and is blocked. Correct the email address on the contact first.', 409);
+      }
     } catch (err) {
       console.error('Failed to queue email:', err);
+      return error(c, 'Failed to queue the email', 500);
     }
   } else if (body.channel === 'whatsapp') {
     // Queue WhatsApp send
@@ -850,6 +863,24 @@ itineraryRoutes.post('/:id/send', requirePermission('itineraries', 'edit'), zVal
 // POST /:id/share-link — Generate shareable link (TICKET-100)
 // ============================================================
 
+/** The itinerary's public quotation token: reuse the existing one or create it, and (re)activate the link. */
+async function ensureShareLink(c: any, db: ReturnType<typeof drizzle>, itin: { id: string; shareToken: string | null }): Promise<string> {
+  const shareToken = itin.shareToken || generateId();
+
+  await db.update(itineraries).set({
+    shareToken,
+    shareLinkActive: 1,
+    updatedAt: new Date().toISOString(),
+  }).where(eq(itineraries.id, itin.id));
+
+  // Store in master DB for cross-tenant lookup
+  await c.env.MASTER_DB.prepare(
+    `INSERT OR REPLACE INTO quotation_links (token, tenant_id, itinerary_id, is_active, created_at)
+     VALUES (?, ?, ?, 1, ?)`
+  ).bind(shareToken, c.get('tenantId'), itin.id, new Date().toISOString()).run();
+  return shareToken;
+}
+
 itineraryRoutes.post('/:id/share-link', requirePermission('itineraries', 'edit'), async (c) => {
   const db = drizzle(c.get('tenantDb'));
   const userId = c.get('userId');
@@ -858,20 +889,7 @@ itineraryRoutes.post('/:id/share-link', requirePermission('itineraries', 'edit')
   const [itin] = await db.select().from(itineraries).where(and(eq(itineraries.id, id), eq(itineraries.isDeleted, 0)));
   if (!itin) return notFound(c, 'Itinerary');
 
-  const shareToken = itin.shareToken || generateId();
-
-  await db.update(itineraries).set({
-    shareToken,
-    shareLinkActive: 1,
-    updatedAt: new Date().toISOString(),
-  }).where(eq(itineraries.id, id));
-
-  // Store in master DB for cross-tenant lookup
-  const masterDb = c.env.MASTER_DB;
-  await masterDb.prepare(
-    `INSERT OR REPLACE INTO quotation_links (token, tenant_id, itinerary_id, is_active, created_at)
-     VALUES (?, ?, ?, 1, ?)`
-  ).bind(shareToken, c.get('tenantId'), id, new Date().toISOString()).run();
+  const shareToken = await ensureShareLink(c, db, itin);
 
   const shareUrl = quoteUrl(c.env, shareToken);
 

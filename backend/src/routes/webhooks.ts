@@ -2,7 +2,8 @@ import { Hono } from 'hono';
 import { drizzle } from 'drizzle-orm/d1';
 import { eq, and } from 'drizzle-orm';
 import type { AppContext } from '../types';
-import { messageLog, emailMessageLog, contacts } from '../db/tenant-schema';
+import { messageLog } from '../db/tenant-schema';
+import { applyEmailEvent, providerMessageIds, type ProviderEvent } from '../services/mail/delivery-events';
 import { error, success } from '../utils/response';
 import { candidateTenantDbs } from '../services/tenant-db';
 import { formParams, publicRequestUrl, unsignedAllowed, verifySendgrid, verifyTwilio } from '../middleware/provider-signature';
@@ -120,97 +121,17 @@ webhookRoutes.post('/sendgrid/events', async (c) => {
     const tenantDbs = await candidateTenantDbs(c.env, c.req.query('tenant'));
     let processedCount = 0;
 
-    for (const event of body) {
+    for (const event of body as ProviderEvent[]) {
       try {
-        const eventType = event.event as string;
-        const messageId = event.message_id as string;
-        const email = event.email as string;
+        const ids = providerMessageIds(event);
+        if (ids.length === 0 || !event.email) continue;
 
-        if (!messageId || !email) {
-          continue;
-        }
-
-        // Find the email message log by message ID, in whichever workspace sent it
-        let db: ReturnType<typeof drizzle> | null = null;
-        let message: typeof emailMessageLog.$inferSelect | undefined;
+        // The workspace that sent the message is the one whose rows hold its provider message id (R128).
         for (const tenantDb of tenantDbs) {
-          const candidate = drizzle(tenantDb);
-          message = await candidate
-            .select()
-            .from(emailMessageLog)
-            .where(eq(emailMessageLog.messageId, messageId))
-            .get();
-          if (message) {
-            db = candidate;
+          if (await applyEmailEvent(tenantDb, event, ids)) {
+            processedCount++;
             break;
           }
-        }
-
-        if (!message || !db) {
-          continue;
-        }
-
-        const now = new Date().toISOString();
-        const updateData: Record<string, any> = {};
-
-        switch (eventType) {
-          case 'processed':
-            updateData.status = 'sent';
-            break;
-
-          case 'delivered':
-            updateData.status = 'delivered';
-            break;
-
-          case 'open':
-            updateData.status = 'opened';
-            updateData.openedAt = now;
-            break;
-
-          case 'click':
-            updateData.status = 'clicked';
-            updateData.clickedAt = now;
-            break;
-
-          case 'bounce':
-            updateData.status = 'bounced';
-            updateData.bounceReason = event.reason || 'Unknown';
-            // Mark contact email as invalid for hard bounces
-            if (event.type === 'permanent') {
-              await db
-                .update(contacts)
-                .set({ email: null, updatedAt: now })
-                .where(eq(contacts.id, message.contactId))
-                .run();
-            }
-            break;
-
-          case 'dropped':
-            updateData.status = 'dropped';
-            updateData.failureReason = event.reason || 'Unknown';
-            break;
-
-          case 'spam_report':
-            updateData.status = 'spam_report';
-            break;
-
-          case 'unsubscribe':
-            updateData.status = 'unsubscribed';
-            break;
-
-          default:
-            continue;
-        }
-
-        if (Object.keys(updateData).length > 0) {
-          updateData.updatedAt = now;
-          await db
-            .update(emailMessageLog)
-            .set(updateData)
-            .where(eq(emailMessageLog.id, message.id))
-            .run();
-
-          processedCount++;
         }
       } catch (eventErr: any) {
         console.error('[SENDGRID WEBHOOK] Error processing event:', eventErr.message);

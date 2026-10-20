@@ -11,6 +11,7 @@ import { success, created, paginated, error, notFound } from '../utils/response'
 import { broadcastToTenant } from '../utils/realtime';
 import { AllowanceExhausted, meterUsage } from '../services/metering/meter';
 import { marketingBlockedReason, unsubscribeUrl } from '../services/privacy/consent';
+import { resolveReplyTo } from '../services/mail/delivery';
 
 const campaignRoutes = new Hono<AppContext>();
 
@@ -239,16 +240,24 @@ campaignRoutes.post(
       let queuedCount = 0;
       let failureCount = 0;
       let skippedAllowance = 0;
+      // R128: customer replies to a campaign reach the agency, not the no-reply sender
+      const replyTo = await resolveReplyTo(env, tenantDb, c.get('tenantId'), userId);
       let capReached = false;
 
       for (const contactId of contactIds) {
         try {
           const contact = await tenantDb
-            .prepare('SELECT id, email, name FROM contacts WHERE id = ?')
+            .prepare('SELECT id, email, name, email_undeliverable FROM contacts WHERE id = ?')
             .bind(contactId)
             .first<any>();
 
           if (!contact || !contact.email) {
+            failureCount++;
+            continue;
+          }
+
+          // R128: the address hard-bounced earlier: no message, no allowance used
+          if (contact.email_undeliverable) {
             failureCount++;
             continue;
           }
@@ -301,7 +310,8 @@ campaignRoutes.post(
               templateData: { contactName: contact.name },
               unsubscribeUrl: await unsubscribeUrl(env, c.get('tenantId'), contactId, 'email', new URL(c.req.url).origin),
               from: undefined,
-              replyTo: undefined,
+              replyTo,
+              emailLogId: logId,
               tenantId: c.get('tenantId'),
               metered: true,
               refundOnFailure: true,

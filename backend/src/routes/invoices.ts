@@ -15,6 +15,7 @@ import { notifications } from '../db/tenant-schema';
 import { broadcastToTenant } from '../utils/realtime';
 import { tenantToday, tenantTimeZone, sqlOffsetModifier } from '../utils/tz';
 import { formatMoney, loadLocaleContext } from '../utils/money';
+import { agencyEmailHtml, escapeHtml, queueAgencyEmail, textToHtml } from '../services/mail/delivery';
 import { cancelPaymentLink, createPaymentLink, type AgencyGatewayId } from '../services/payments/agency-gateway';
 import { isCredentialError, listAccounts, openCredentials, type AccountRow } from '../services/payments/accounts';
 import { GatewayError } from '../services/billing/gateway';
@@ -942,7 +943,8 @@ invoiceRoutes.post('/:id/send', zValidator('json', sendInvoiceSchema), async (c)
   try {
     const invoice = await tenantDb
       .prepare(
-        `SELECT i.id, i.invoice_number, i.status, i.total, i.due_date, i.currency,
+        `SELECT i.id, i.invoice_number, i.status, i.total, i.due_date, i.currency, i.contact_id, i.balance_due,
+                i.payment_link_url, i.payment_link_status,
                 c.name as contact_name, c.email as contact_email, c.phone as contact_phone
          FROM invoices i
          LEFT JOIN contacts c ON i.contact_id = c.id
@@ -953,6 +955,44 @@ invoiceRoutes.post('/:id/send', zValidator('json', sendInvoiceSchema), async (c)
 
     if (!invoice) {
       return notFound(c, 'Invoice');
+    }
+
+    // R128: the email is really sent (queued with the invoice summary and, when the invoice has an open payment link, the
+    // link to pay). A bounced address is refused before anything changes. The invoice PDF is built in the desktop app, so
+    // the email carries the invoice as text and the payment link rather than an attachment.
+    if (data.channel === 'email') {
+      const lines = await tenantDb
+        .prepare('SELECT description, quantity, rate, amount FROM invoice_items WHERE invoice_id = ?1 ORDER BY sort_order')
+        .bind(invoiceId)
+        .all<{ description: string; quantity: number; rate: number; amount: number }>();
+      const locale = await loadLocaleContext(tenantDb);
+      const currency = (invoice.currency as string) || locale.currency;
+      const money = (n: number) => escapeHtml(formatMoney(Number(n) || 0, currency, locale.locale));
+      const rowsHtml = (lines.results ?? [])
+        .map((l) => `<tr><td style="padding:4px 12px 4px 0">${escapeHtml(l.description)}</td><td style="padding:4px 0;text-align:right">${money(l.amount)}</td></tr>`)
+        .join('');
+      const hasLink = !!invoice.payment_link_url && invoice.payment_link_status === 'created';
+      const due = invoice.balance_due != null ? Number(invoice.balance_due) : Number(invoice.total);
+      const queuedMail = await queueAgencyEmail(c.env, tenantDb, { tenantId: c.get('tenantId'), userId }, {
+        to: data.to,
+        subject: `Invoice ${invoice.invoice_number}`,
+        contactId: (invoice.contact_id as string | null) ?? null,
+        html: agencyEmailHtml({
+          heading: `Invoice ${invoice.invoice_number}`,
+          bodyHtml:
+            textToHtml(`Hello ${invoice.contact_name ?? ''},
+
+Please find your invoice below.`) +
+            (rowsHtml ? `<table style="border-collapse:collapse;width:100%">${rowsHtml}</table>` : '') +
+            `<p>Total: <strong>${money(Number(invoice.total))}</strong><br>Balance due: <strong>${money(due)}</strong>` +
+            (invoice.due_date ? `<br>Due date: ${escapeHtml(String(invoice.due_date).slice(0, 10))}` : '') +
+            '</p>',
+          button: hasLink ? { label: 'Pay online', url: invoice.payment_link_url as string } : undefined,
+        }),
+      });
+      if (!queuedMail.queued) {
+        return error(c, 'This email address bounced earlier and is blocked. Correct the email address on the contact first.', 409);
+      }
     }
 
     // Update status to 'sent' if currently draft
