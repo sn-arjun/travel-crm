@@ -145,7 +145,7 @@ function SortableDayCardWrapper({ dayId, children }: { dayId: string; children: 
 
   return (
     <div ref={setNodeRef} style={style}>
-      <div className="absolute left-2 top-4 z-10">
+      <div className="absolute start-2 top-4 z-10">
         <button
           type="button"
           aria-label="Reorder day"
@@ -528,11 +528,11 @@ export default function ItineraryBuilderPage() {
         actions={
           <>
             <Button variant="outline" onClick={() => router.push('/itineraries/templates')} disabled={saving}>
-              <LayoutTemplate className="size-4 mr-1.5" aria-hidden="true" /> Start from a template
+              <LayoutTemplate className="size-4 me-1.5" aria-hidden="true" /> Start from a template
             </Button>
             <Button variant="outline" onClick={() => router.back()} disabled={saving}>Cancel</Button>
             <Button onClick={handleSave} disabled={saving}>
-              {saving ? <Loader2 className="size-4 mr-1.5 animate-spin" aria-hidden="true" /> : <Save className="size-4 mr-1.5" aria-hidden="true" />}
+              {saving ? <Loader2 className="size-4 me-1.5 animate-spin" aria-hidden="true" /> : <Save className="size-4 me-1.5" aria-hidden="true" />}
               {saving ? 'Saving...' : 'Save'}
             </Button>
           </>
@@ -609,7 +609,7 @@ export default function ItineraryBuilderPage() {
             {days.map((day) => (
               <SortableDayCardWrapper key={day.id} dayId={day.id}>
                 <Card className="mb-ds-4">
-                  <CardHeader className="py-3 px-4 pl-10 cursor-pointer" onClick={() => patchDay(day.id, { isExpanded: !day.isExpanded })}>
+                  <CardHeader className="py-3 px-4 ps-10 cursor-pointer" onClick={() => patchDay(day.id, { isExpanded: !day.isExpanded })}>
                     <div className="flex items-center gap-ds-3">
                       <div className="flex size-8 items-center justify-center rounded-full bg-ds-primary text-ds-primary-foreground text-sm font-bold">
                         {day.dayNumber}
@@ -736,7 +736,7 @@ export default function ItineraryBuilderPage() {
         </DndContext>
 
         <Button variant="outline" className="w-full" onClick={addDay}>
-          <Plus className="size-4 mr-1.5" aria-hidden="true" /> Add Day
+          <Plus className="size-4 me-1.5" aria-hidden="true" /> Add Day
         </Button>
 
         <Separator />

@@ -248,14 +248,14 @@ export default function LoginPage() {
           <div className="space-y-2">
             <Label htmlFor="email">{t('auth.fields.email')}</Label>
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Mail className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 id="email"
                 type="email"
                 placeholder="you@company.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="pl-9"
+                className="ps-9"
                 required
                 autoFocus
               />
@@ -263,7 +263,7 @@ export default function LoginPage() {
           </div>
 
           <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isLoading && <Loader2 className="me-2 h-4 w-4 animate-spin" />}
             {t('auth.login.continue')}
           </Button>
         </form>
@@ -287,7 +287,7 @@ export default function LoginPage() {
                 : t('auth.login.twoFactor.codeHelp')}
             </p>
             <div className="relative">
-              <ShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <ShieldCheck className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 id="twoFactorCode"
                 type="text"
@@ -298,7 +298,7 @@ export default function LoginPage() {
                 onChange={(e) =>
                   setTwoFactorCode(useRecoveryCode ? e.target.value.slice(0, 16) : e.target.value.replace(/\D/g, '').slice(0, 6))
                 }
-                className="pl-9 font-mono tracking-widest"
+                className="ps-9 font-mono tracking-widest"
                 autoFocus
                 required
               />
@@ -309,7 +309,7 @@ export default function LoginPage() {
             className="w-full"
             disabled={isLoading || (!useRecoveryCode && twoFactorCode.length !== 6) || (useRecoveryCode && twoFactorCode.trim().length < 10)}
           >
-            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isLoading && <Loader2 className="me-2 h-4 w-4 animate-spin" />}
             {t('auth.login.twoFactor.verify')}
           </Button>
           <button
@@ -378,21 +378,21 @@ export default function LoginPage() {
                     </Link>
                   </div>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Lock className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       id="password"
                       type={showPassword ? 'text' : 'password'}
                       placeholder={t('auth.login.passwordPlaceholder')}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="pl-9 pr-10"
+                      className="ps-9 pe-10"
                       required
                       autoFocus
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                     >
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
@@ -400,7 +400,7 @@ export default function LoginPage() {
                 </div>
 
                 <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {isLoading && <Loader2 className="me-2 h-4 w-4 animate-spin" />}
                   {t('auth.login.signIn')}
                 </Button>
               </form>
@@ -419,21 +419,21 @@ export default function LoginPage() {
                         placeholder="+91"
                       />
                       <div className="relative flex-1">
-                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Phone className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                           id="phone"
                           type="tel"
                           placeholder="9876543210"
                           value={phone}
                           onChange={(e) => setPhone(e.target.value)}
-                          className="pl-9"
+                          className="ps-9"
                           required
                         />
                       </div>
                     </div>
                   </div>
                   <Button type="submit" className="w-full" disabled={isLoading}>
-                    {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {isLoading && <Loader2 className="me-2 h-4 w-4 animate-spin" />}
                     {t('auth.login.sendOtp')}
                   </Button>
                 </form>
@@ -455,7 +455,7 @@ export default function LoginPage() {
                     />
                   </div>
                   <Button type="submit" className="w-full" disabled={isLoading || otp.length !== 6}>
-                    {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {isLoading && <Loader2 className="me-2 h-4 w-4 animate-spin" />}
                     {t('auth.login.verifyOtp')}
                   </Button>
                   <button

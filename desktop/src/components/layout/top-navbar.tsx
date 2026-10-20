@@ -180,7 +180,7 @@ function NotificationBell() {
         <Button variant="ghost" size="icon-sm" className="h-8 w-8 relative" aria-label={t('shell.notifications.title')}>
           <Bell className="h-4 w-4" />
           {unreadCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-ds-primary px-1 text-xs leading-none font-bold text-ds-primary-foreground animate-pulse">
+            <span className="absolute -top-0.5 -end-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-ds-primary px-1 text-xs leading-none font-bold text-ds-primary-foreground animate-pulse">
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           )}
@@ -233,7 +233,7 @@ function NotificationBell() {
                 <li key={n.id}>
                   <button
                     type="button"
-                    className={`w-full text-left flex gap-3 px-4 py-3 hover:bg-muted/50 transition-colors border-b last:border-0 ${
+                    className={`w-full text-start flex gap-3 px-4 py-3 hover:bg-muted/50 transition-colors border-b last:border-0 ${
                       !n.read ? 'bg-primary/5' : ''
                     }`}
                     onClick={() => handleNotificationClick(n)}

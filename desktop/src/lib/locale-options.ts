@@ -30,6 +30,17 @@ export const CURRENCY_NAMES: Record<string, string> = {
   CNY: 'Chinese Yuan',
 };
 
+/**
+ * The interface language the pick-lists are written in. Set by the language provider (components/providers/i18n-provider);
+ * English until then. Names come from the browser's own tables (Intl.DisplayNames and the time-zone names of
+ * Intl.DateTimeFormat), so no second hand-written list has to be kept in step with the English one above.
+ */
+let uiLanguage = 'en';
+
+export function setUiLanguage(lang: string): void {
+  uiLanguage = lang || 'en';
+}
+
 export const TIMEZONE_LABELS: Record<string, string> = {
   'Asia/Kolkata': 'Asia/Kolkata (IST)',
   'Asia/Dubai': 'Asia/Dubai (GST)',
@@ -49,6 +60,28 @@ export const TIMEZONE_LABELS: Record<string, string> = {
   'Africa/Johannesburg': 'Africa/Johannesburg (SAST)',
 };
 
+/** A currency's name in the interface language (English from CURRENCY_NAMES; other languages from Intl, else the English name). */
+export function currencyName(code: string, lang: string = uiLanguage): string {
+  const english = CURRENCY_NAMES[code] ?? code;
+  if (!lang || lang === 'en') return english;
+  try {
+    return new Intl.DisplayNames([lang], { type: 'currency' }).of(code) || english;
+  } catch {
+    return english;
+  }
+}
+
+/** A time zone's label in the interface language. English keeps TIMEZONE_LABELS; other languages show the localized zone name before the zone id. */
+export function timezoneLabel(tz: string, lang: string = uiLanguage): string {
+  if (!lang || lang === 'en') return TIMEZONE_LABELS[tz] ?? tz;
+  try {
+    const part = new Intl.DateTimeFormat(lang, { timeZone: tz, timeZoneName: 'long' }).formatToParts(new Date()).find((p) => p.type === 'timeZoneName');
+    return part?.value ? `${part.value} (${tz})` : (TIMEZONE_LABELS[tz] ?? tz);
+  } catch {
+    return TIMEZONE_LABELS[tz] ?? tz;
+  }
+}
+
 /** Currency codes to offer: the agency's currency first, then the given values, then the standard set. */
 export function currencyCodes(...also: Array<string | null | undefined>): string[] {
   const out: string[] = [];
@@ -61,11 +94,11 @@ export function currencyCodes(...also: Array<string | null | undefined>): string
 
 /** "Indian Rupee (INR)" for a select that shows names. */
 export function currencyOptions(...also: Array<string | null | undefined>): Array<{ value: string; label: string }> {
-  return currencyCodes(...also).map((code) => ({ value: code, label: `${CURRENCY_NAMES[code] ?? code} (${code})` }));
+  return currencyCodes(...also).map((code) => ({ value: code, label: `${currencyName(code)} (${code})` }));
 }
 
 /** The short symbol of a currency in the active locale ("₹", "£", "$"); the code itself when it has none. */
-export function currencySymbol(code: string, locale: string = getLocaleContext().locale): string {
+export function currencySymbol(code: string, locale: string = getLocaleContext().intlLocale): string {
   try {
     return new Intl.NumberFormat(locale, { style: 'currency', currency: code, currencyDisplay: 'narrowSymbol' })
       .formatToParts(0)
@@ -84,7 +117,7 @@ export function currencyLabel(code: string): string {
 export function timezoneOptions(...also: Array<string | null | undefined>): Array<{ value: string; label: string }> {
   const out: Array<{ value: string; label: string }> = [];
   for (const tz of [getLocaleContext().timeZone, ...also, ...Object.keys(TIMEZONE_LABELS)]) {
-    if (tz && !out.some((o) => o.value === tz)) out.push({ value: tz, label: TIMEZONE_LABELS[tz] ?? tz });
+    if (tz && !out.some((o) => o.value === tz)) out.push({ value: tz, label: timezoneLabel(tz) });
   }
   return out;
 }

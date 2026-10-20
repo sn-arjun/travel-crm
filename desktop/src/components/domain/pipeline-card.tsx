@@ -55,14 +55,14 @@ export function PipelineCard({
       {/* Priority indicator strip */}
       <div
         className={cn(
-          'absolute left-0 top-3 bottom-3 w-0.5 rounded-full',
+          'absolute start-0 top-3 bottom-3 w-0.5 rounded-full',
           priority === 'hot' && 'bg-ds-danger',
           priority === 'warm' && 'bg-ds-warning',
           priority === 'cold' && 'bg-ds-info',
         )}
       />
 
-      <div className="pl-3">
+      <div className="ps-3">
         {/* Title */}
         <div className="mb-2 flex items-start justify-between gap-2">
           <h4 className="line-clamp-2 text-sm font-semibold leading-snug text-ds-foreground">

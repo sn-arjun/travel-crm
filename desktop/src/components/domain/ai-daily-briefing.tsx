@@ -87,7 +87,7 @@ export function AIDailyBriefing({
                 </div>
                 <Button size="sm" variant="ghost" className="shrink-0 px-ds-2 text-xs">
                   {item.action}
-                  <ChevronRight className="ml-ds-1 size-3" aria-hidden="true" />
+                  <ChevronRight className="ms-ds-1 size-3" aria-hidden="true" />
                 </Button>
               </div>
             ))
@@ -97,7 +97,7 @@ export function AIDailyBriefing({
         {onAskAI ? (
           <Button onClick={onAskAI} variant="outline" className="w-full justify-center text-xs font-medium text-ds-primary">
             Ask AI for more insights
-            <ChevronRight className="ml-ds-1 size-3" aria-hidden="true" />
+            <ChevronRight className="ms-ds-1 size-3" aria-hidden="true" />
           </Button>
         ) : null}
       </CardContent>

@@ -45,7 +45,7 @@ function QuickAddMenu() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button>
-          <Plus className="mr-ds-2 size-4" aria-hidden="true" /> Quick Add
+          <Plus className="me-ds-2 size-4" aria-hidden="true" /> Quick Add
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">

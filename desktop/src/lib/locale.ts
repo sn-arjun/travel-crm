@@ -13,6 +13,11 @@ export interface LocaleContext {
   currency: string;
   /** BCP 47 tag, e.g. en-IN, en-GB, ar-AE, en-US. */
   locale: string;
+  /**
+   * The tag handed to Intl: `locale` with Latin digits forced for Arabic locales (ar-SA and ar-EG would otherwise
+   * print Arabic-Indic digits). See `intlLocaleOf`.
+   */
+  intlLocale: string;
   /** IANA zone name. '' = the viewer's own system zone (before a session sets one). */
   timeZone: string;
   /** ISO 3166-1 alpha-2 of the agency, '' when unknown. */
@@ -69,13 +74,33 @@ function isValidCurrencyCode(code: string | null | undefined): code is string {
   }
 }
 
-const initial = (): LocaleContext => ({
-  currency: 'USD',
-  locale: systemLocale(),
-  timeZone: '',
-  country: '',
-  phoneDefaultCountry: '',
-});
+/**
+ * Digits decision (R211): business data (money, dates, counts, phone numbers) is written in Latin digits (0-9) in every
+ * language, Arabic included. Gulf agencies, their price lists and the invoices they send use them, and mixed digit
+ * systems in one table are harder to read and to copy into other tools. Arabic locales therefore get the `nu-latn`
+ * numbering-system extension; everything else (month and day names, the currency symbol, grouping, the decimal
+ * separator, the order of the parts) still follows the locale. A tag that already carries its own `-nu-` extension
+ * (for example 'ar-SA-u-nu-arab') keeps it.
+ */
+export function intlLocaleOf(tag: string): string {
+  if (!/^ar(-|$)/i.test(tag)) return tag;
+  const u = tag.match(/-u-(.*)$/i);
+  if (!u) return `${tag}-u-nu-latn`;
+  if (/(^|-)nu-/i.test(u[1] ?? '')) return tag;
+  return `${tag}-nu-latn`;
+}
+
+const initial = (): LocaleContext => {
+  const locale = systemLocale();
+  return {
+    currency: 'USD',
+    locale,
+    intlLocale: intlLocaleOf(locale),
+    timeZone: '',
+    country: '',
+    phoneDefaultCountry: '',
+  };
+};
 
 let current: LocaleContext = initial();
 const listeners = new Set<() => void>();
@@ -89,6 +114,7 @@ export function setLocaleContext(next: Partial<LocaleContext>): void {
   const merged: LocaleContext = { ...current };
   if (isValidCurrencyCode(next.currency)) merged.currency = next.currency.toUpperCase();
   if (isValidLocaleTag(next.locale)) merged.locale = next.locale;
+  merged.intlLocale = intlLocaleOf(merged.locale);
   if (next.timeZone !== undefined && (next.timeZone === '' || isValidTimeZone(next.timeZone))) merged.timeZone = next.timeZone;
   if (next.country !== undefined) merged.country = next.country.toUpperCase();
   if (next.phoneDefaultCountry !== undefined) merged.phoneDefaultCountry = next.phoneDefaultCountry.toUpperCase();

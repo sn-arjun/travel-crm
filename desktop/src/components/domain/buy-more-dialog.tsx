@@ -195,7 +195,7 @@ export function BuyMoreDialog({ open, onClose, focus }: BuyMoreDialogProps) {
                   disabled={!offer.available}
                   data-testid={`buy-more-${offer.key}`}
                   onClick={() => setProductKey(offer.key)}
-                  className={`flex items-center justify-between rounded-ds-md border px-ds-3 py-ds-2 text-left text-sm disabled:opacity-50 ${productKey === offer.key ? 'border-ds-primary bg-ds-primary-subtle' : 'border-ds-border'}`}
+                  className={`flex items-center justify-between rounded-ds-md border px-ds-3 py-ds-2 text-start text-sm disabled:opacity-50 ${productKey === offer.key ? 'border-ds-primary bg-ds-primary-subtle' : 'border-ds-border'}`}
                 >
                   <span>
                     <span className="block font-medium">{offer.name}</span>

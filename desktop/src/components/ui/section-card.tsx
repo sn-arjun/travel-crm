@@ -42,7 +42,7 @@ export function SectionCard({
               <h2 className="text-sm font-semibold text-ds-foreground">
                 {title}
                 {required && (
-                  <span aria-hidden="true" className="ml-1 text-ds-danger">
+                  <span aria-hidden="true" className="ms-1 text-ds-danger">
                     *
                   </span>
                 )}

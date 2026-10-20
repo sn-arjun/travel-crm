@@ -238,7 +238,7 @@ export function ReportPageTemplate({
           actions={
             <>
               <Button variant="outline" size="sm" onClick={() => void handleRefresh()} disabled={refreshing}>
-                <RefreshCw className={refreshing ? 'mr-1.5 h-4 w-4 animate-spin' : 'mr-1.5 h-4 w-4'} aria-hidden="true" />
+                <RefreshCw className={refreshing ? 'me-1.5 h-4 w-4 animate-spin' : 'me-1.5 h-4 w-4'} aria-hidden="true" />
                 Refresh
               </Button>
               {renderExport?.(ctx)}

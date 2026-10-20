@@ -23,7 +23,7 @@ export function CurrencyInput({
 }: CurrencyInputProps) {
   const active = useLocale();
   const currency = currencyProp || active.currency;
-  const locale = localeProp || active.locale;
+  const locale = localeProp || active.intlLocale;
   const [displayValue, setDisplayValue] = React.useState('');
   const [focused, setFocused] = React.useState(false);
 
@@ -67,14 +67,14 @@ export function CurrencyInput({
 
   return (
     <div className="relative">
-      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">{symbol}</span>
+      <span className="absolute start-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">{symbol}</span>
       <Input
         {...props}
         value={displayValue}
         onChange={handleChange}
         onFocus={handleFocus}
         onBlur={handleBlur}
-        className={cn('pl-8 text-right font-medium', className)}
+        className={cn('ps-8 text-end font-medium', className)}
         inputMode="decimal"
       />
     </div>

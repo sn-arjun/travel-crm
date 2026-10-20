@@ -121,7 +121,7 @@ export function PhoneInput({
                       setOpen(false);
                     }}
                   >
-                    <span className="text-base leading-none mr-2">{c.flag}</span>
+                    <span className="text-base leading-none me-2">{c.flag}</span>
                     <span className="flex-1">{c.label}</span>
                     <span className="text-xs text-muted-foreground">{c.code}</span>
                   </CommandItem>

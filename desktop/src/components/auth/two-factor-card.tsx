@@ -246,7 +246,7 @@ export function TwoFactorCard() {
             </div>
             <div className="flex gap-ds-2">
               <Button type="submit" disabled={busy || !password}>
-                {busy && <Loader2 className="mr-2 size-4 animate-spin" />}
+                {busy && <Loader2 className="me-2 size-4 animate-spin" />}
                 Continue
               </Button>
               <Button type="button" variant="ghost" onClick={() => reset()}>
@@ -258,7 +258,7 @@ export function TwoFactorCard() {
 
         {mode === 'scan' && setup && (
           <form onSubmit={confirmSetup} className="space-y-ds-4">
-            <ol className="list-decimal space-y-ds-1 pl-ds-5 text-sm text-ds-foreground-muted">
+            <ol className="list-decimal space-y-ds-1 ps-ds-5 text-sm text-ds-foreground-muted">
               <li>Open your authenticator app and add an account.</li>
               <li>Scan this code, or type the key by hand.</li>
               <li>Enter the 6-digit code the app shows.</li>
@@ -289,7 +289,7 @@ export function TwoFactorCard() {
             </div>
             <div className="flex gap-ds-2">
               <Button type="submit" disabled={busy || code.length !== 6} data-testid="two-factor-confirm">
-                {busy && <Loader2 className="mr-2 size-4 animate-spin" />}
+                {busy && <Loader2 className="me-2 size-4 animate-spin" />}
                 Turn on
               </Button>
               <Button type="button" variant="ghost" onClick={() => reset()}>
@@ -317,10 +317,10 @@ export function TwoFactorCard() {
                 variant="outline"
                 onClick={() => downloadText('travelcrm-recovery-codes.txt', recoveryCodesFile(recoveryCodes, user?.email ?? ''))}
               >
-                <Download className="mr-2 size-4" /> Download
+                <Download className="me-2 size-4" /> Download
               </Button>
               <Button type="button" variant="outline" onClick={() => void copyCodes()}>
-                <Copy className="mr-2 size-4" /> Copy
+                <Copy className="me-2 size-4" /> Copy
               </Button>
             </div>
             <label className="flex items-center gap-ds-2 text-sm">
@@ -335,7 +335,7 @@ export function TwoFactorCard() {
               }}
               data-testid="two-factor-done"
             >
-              <Check className="mr-2 size-4" /> Done
+              <Check className="me-2 size-4" /> Done
             </Button>
           </div>
         )}
@@ -370,7 +370,7 @@ export function TwoFactorCard() {
             </div>
             <div className="flex gap-ds-2">
               <Button type="submit" disabled={busy || !password || !code.trim()} variant={mode === 'disable' ? 'destructive' : 'default'}>
-                {busy && <Loader2 className="mr-2 size-4 animate-spin" />}
+                {busy && <Loader2 className="me-2 size-4 animate-spin" />}
                 {mode === 'disable' ? 'Turn off' : 'Make new codes'}
               </Button>
               <Button type="button" variant="ghost" onClick={() => reset()}>

@@ -241,10 +241,10 @@ export function DataTable<T>({
                       isSorted ? (sortDirection === 'asc' ? 'ascending' : 'descending') : undefined
                     }
                     className={cn(
-                      'px-ds-3 py-ds-2 text-left text-xs font-medium whitespace-nowrap text-ds-foreground-muted',
+                      'px-ds-3 py-ds-2 text-start text-xs font-medium whitespace-nowrap text-ds-foreground-muted',
                       col.minWidth,
                       col.align === 'center' && 'text-center',
-                      col.align === 'right' && 'text-right',
+                      col.align === 'right' && 'text-end',
                     )}
                   >
                     {col.sortable && onSort ? (
@@ -277,7 +277,7 @@ export function DataTable<T>({
               {rowActions && (
                 <th
                   scope="col"
-                  className="sticky right-0 w-20 bg-ds-surface-sunken px-ds-3 py-ds-2"
+                  className="sticky end-0 w-20 bg-ds-surface-sunken px-ds-3 py-ds-2"
                 />
               )}
             </tr>
@@ -362,7 +362,7 @@ export function DataTable<T>({
                             col.wrap ? 'whitespace-normal' : 'whitespace-nowrap',
                             col.minWidth,
                             col.align === 'center' && 'text-center',
-                            col.align === 'right' && 'text-right tabular-nums',
+                            col.align === 'right' && 'text-end tabular-nums',
                           )}
                         >
                           {col.cell
@@ -373,7 +373,7 @@ export function DataTable<T>({
                       {rowActions && (
                         <td
                           className={cn(
-                            'sticky right-0 bg-ds-surface px-ds-3 py-ds-2 transition-colors',
+                            'sticky end-0 bg-ds-surface px-ds-3 py-ds-2 transition-colors',
                             'group-hover:bg-ds-surface-sunken group-data-[state=selected]:bg-ds-primary-subtle',
                           )}
                           onClick={(e) => e.stopPropagation()}

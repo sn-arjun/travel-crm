@@ -103,7 +103,7 @@ export function LeadLostDialog({
                     onClick={() => { setSelectedReason(reason.id); setShowReasonError(false); }}
                     disabled={isLoading}
                     className={cn(
-                      'w-full rounded-ds-lg border-2 p-3 text-left transition-all',
+                      'w-full rounded-ds-lg border-2 p-3 text-start transition-all',
                       selected
                         ? 'border-ds-primary bg-ds-primary-subtle'
                         : 'border-ds-border hover:border-ds-border-strong',

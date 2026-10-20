@@ -129,7 +129,7 @@ export function FileUpload({
                 <p className="text-sm font-medium text-ds-foreground truncate">{file.name}</p>
                 <p className="text-xs text-ds-foreground-muted">
                   {formatFileSize(file.size)}
-                  {file.error && <span className="text-ds-danger ml-2">{file.error}</span>}
+                  {file.error && <span className="text-ds-danger ms-2">{file.error}</span>}
                 </p>
                 {file.status === 'uploading' && (
                   <Progress value={file.progress} className="h-1.5 mt-1.5" />

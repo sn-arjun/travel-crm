@@ -103,13 +103,13 @@ export default function ItineraryPdfPage() {
           actions={
             <>
               <Button variant="outline" size="sm" onClick={() => void handleShare()}>
-                <Share2 className="size-4 mr-1.5" aria-hidden="true" /> Share Link
+                <Share2 className="size-4 me-1.5" aria-hidden="true" /> Share Link
               </Button>
               <Button variant="outline" size="sm" onClick={handlePrint}>
-                <Printer className="size-4 mr-1.5" aria-hidden="true" /> Print
+                <Printer className="size-4 me-1.5" aria-hidden="true" /> Print
               </Button>
               <Button size="sm" onClick={handleDownload}>
-                <Download className="size-4 mr-1.5" aria-hidden="true" /> Download PDF
+                <Download className="size-4 me-1.5" aria-hidden="true" /> Download PDF
               </Button>
             </>
           }
@@ -158,7 +158,7 @@ export default function ItineraryPdfPage() {
                           <div key={item.id ?? itemIdx} className="flex items-center justify-between rounded bg-ds-surface-sunken px-ds-2 py-ds-1 text-sm">
                             <div>
                               <span className="font-medium text-ds-foreground">{item.title}</span>
-                              <Badge variant="outline" className="ml-2 text-xs capitalize">{item.type}</Badge>
+                              <Badge variant="outline" className="ms-2 text-xs capitalize">{item.type}</Badge>
                             </div>
                             {(item.sellingPrice ?? 0) > 0 && (
                               <span className="font-mono text-xs">{money(item.sellingPrice ?? 0)}</span>

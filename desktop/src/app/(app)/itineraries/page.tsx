@@ -189,14 +189,14 @@ export default function ItinerariesPage() {
         actions={
           <>
             <Button variant="outline" onClick={() => router.push('/itineraries/templates')}>
-              <LayoutTemplate className="size-4 mr-1.5" aria-hidden="true" /> Templates
+              <LayoutTemplate className="size-4 me-1.5" aria-hidden="true" /> Templates
             </Button>
             <Button variant="outline" onClick={handleExport} disabled={exporting || total === 0}>
-              {exporting ? <Loader2 className="size-4 mr-1.5 animate-spin" aria-hidden="true" /> : <Download className="size-4 mr-1.5" aria-hidden="true" />}
+              {exporting ? <Loader2 className="size-4 me-1.5 animate-spin" aria-hidden="true" /> : <Download className="size-4 me-1.5" aria-hidden="true" />}
               Export
             </Button>
             <Link href="/itineraries/new">
-              <Button><Plus className="size-4 mr-1.5" aria-hidden="true" /> New Itinerary</Button>
+              <Button><Plus className="size-4 me-1.5" aria-hidden="true" /> New Itinerary</Button>
             </Link>
           </>
         }
@@ -250,7 +250,7 @@ export default function ItinerariesPage() {
             description={search || statusFilter ? 'Try adjusting your search or filters.' : 'Start building your first multi-day itinerary.'}
             action={
               <Link href="/itineraries/new">
-                <Button variant="outline" size="sm"><Plus className="size-4 mr-1" aria-hidden="true" /> Create Itinerary</Button>
+                <Button variant="outline" size="sm"><Plus className="size-4 me-1" aria-hidden="true" /> Create Itinerary</Button>
               </Link>
             }
           />
@@ -264,8 +264,8 @@ export default function ItinerariesPage() {
                 <TableHead>Client</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead>Duration</TableHead>
-                {canSeeCost && <TableHead className="text-right">Cost</TableHead>}
-                {canSeeCost && <TableHead className="text-right">Selling</TableHead>}
+                {canSeeCost && <TableHead className="text-end">Cost</TableHead>}
+                {canSeeCost && <TableHead className="text-end">Selling</TableHead>}
                 <TableHead>Status</TableHead>
                 <TableHead className="w-10"><span className="sr-only">Actions</span></TableHead>
               </TableRow>
@@ -296,12 +296,12 @@ export default function ItinerariesPage() {
                     </TableCell>
                     <TableCell className="text-sm">{durationLabel(it.daysCount)}</TableCell>
                     {canSeeCost && (
-                      <TableCell className="text-right text-sm text-muted-foreground">
+                      <TableCell className="text-end text-sm text-muted-foreground">
                         {formatCurrency(totalCost, currency)}
                       </TableCell>
                     )}
                     {canSeeCost && (
-                      <TableCell className="text-right text-sm font-medium">
+                      <TableCell className="text-end text-sm font-medium">
                         {formatCurrency(totalSelling, currency)}
                       </TableCell>
                     )}
@@ -320,13 +320,13 @@ export default function ItinerariesPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={(e) => { e.stopPropagation(); router.push(`/itineraries/${it.id}`); }}>
-                              <FileText className="size-3.5 mr-2" aria-hidden="true" />View Full Details
+                              <FileText className="size-3.5 me-2" aria-hidden="true" />View Full Details
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={(e) => { e.stopPropagation(); void handleClone(it.id); }} disabled={cloneLoading}>
-                              <Copy className="size-3.5 mr-2" aria-hidden="true" />Duplicate
+                              <Copy className="size-3.5 me-2" aria-hidden="true" />Duplicate
                             </DropdownMenuItem>
                             <DropdownMenuItem variant="destructive" onClick={(e) => { e.stopPropagation(); void handleDelete(it.id); }} disabled={deleteLoading}>
-                              <Trash2 className="size-3.5 mr-2" aria-hidden="true" />Delete
+                              <Trash2 className="size-3.5 me-2" aria-hidden="true" />Delete
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -344,7 +344,7 @@ export default function ItinerariesPage() {
         {loadingMore && (
           <div className="flex items-center justify-center py-ds-4">
             <Loader2 className="size-5 animate-spin text-muted-foreground" aria-hidden="true" />
-            <span className="ml-2 text-sm text-muted-foreground">Loading more...</span>
+            <span className="ms-2 text-sm text-muted-foreground">Loading more...</span>
           </div>
         )}
         {!hasMore && itineraries.length > 0 && (
@@ -360,7 +360,7 @@ export default function ItinerariesPage() {
           {selectedItinerary && (
             <>
               <SheetHeader>
-                <SheetTitle className="pr-6">{selectedItinerary.title}</SheetTitle>
+                <SheetTitle className="pe-6">{selectedItinerary.title}</SheetTitle>
               </SheetHeader>
               <div className="mt-4 space-y-ds-4 px-ds-4">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -401,10 +401,10 @@ export default function ItinerariesPage() {
                 </div>
                 <div className="flex gap-2 pt-4 border-t border-ds-border">
                   <Button className="flex-1" onClick={() => { setDrawerOpen(false); router.push(`/itineraries/${selectedItinerary.id}`); }}>
-                    <FileText className="size-4 mr-1.5" aria-hidden="true" />Full View
+                    <FileText className="size-4 me-1.5" aria-hidden="true" />Full View
                   </Button>
                   <Button variant="outline" onClick={() => { setDrawerOpen(false); router.push(`/itineraries/${selectedItinerary.id}/edit`); }}>
-                    <Pencil className="size-4 mr-1.5" aria-hidden="true" />Edit
+                    <Pencil className="size-4 me-1.5" aria-hidden="true" />Edit
                   </Button>
                 </div>
               </div>

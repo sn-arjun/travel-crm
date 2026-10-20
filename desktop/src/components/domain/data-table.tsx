@@ -115,9 +115,9 @@ export function DataTable<T extends Record<string, unknown>>({
                 <th
                   key={col.key}
                   className={cn(
-                    'px-4 py-3 text-left font-medium text-ds-foreground-muted whitespace-nowrap',
+                    'px-4 py-3 text-start font-medium text-ds-foreground-muted whitespace-nowrap',
                     col.align === 'center' && 'text-center',
-                    col.align === 'right' && 'text-right',
+                    col.align === 'right' && 'text-end',
                     col.sortable && 'cursor-pointer select-none hover:text-ds-foreground transition-colors',
                   )}
                   style={{ width: col.width }}
@@ -128,7 +128,7 @@ export function DataTable<T extends Record<string, unknown>>({
                   <div className={cn('flex items-center gap-1', col.align === 'right' && 'justify-end')}>
                     {col.header}
                     {col.sortable && (
-                      <span className="ml-1">
+                      <span className="ms-1">
                         {sortColumn === col.key ? (
                           sortDirection === 'asc' ? (
                             <ChevronUp className="h-3.5 w-3.5 text-ds-primary" />
@@ -196,7 +196,7 @@ export function DataTable<T extends Record<string, unknown>>({
                             className={cn(
                               'px-4 py-3',
                               col.align === 'center' && 'text-center',
-                              col.align === 'right' && 'text-right tabular-nums',
+                              col.align === 'right' && 'text-end tabular-nums',
                             )}
                           >
                             {col.cell ? col.cell(row, idx) : String(row[col.key] ?? '')}
@@ -238,7 +238,7 @@ export function DataTable<T extends Record<string, unknown>>({
             )}
             {onPageChange && (
               <div className="flex items-center gap-1">
-                <span className="text-xs text-ds-foreground-muted mr-2">
+                <span className="text-xs text-ds-foreground-muted me-2">
                   {t('ui.pagination.pageOf', { page, total: totalPages })}
                 </span>
                 <Button variant="outline" size="icon-sm" aria-label={t('ui.pagination.first')} onClick={() => onPageChange(1)} disabled={page <= 1}>

@@ -55,7 +55,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
 
       {/* Right: Auth Form */}
       <div className="relative flex w-full lg:w-1/2 items-center justify-center p-6 bg-ds-background">
-        <div className="absolute right-4 top-4"><LanguageSwitcher /></div>
+        <div className="absolute end-4 top-4"><LanguageSwitcher /></div>
         <div className="w-full max-w-100">{children}</div>
       </div>
     </div>

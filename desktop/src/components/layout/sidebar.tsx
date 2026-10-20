@@ -15,7 +15,7 @@ import {
 import { cn, getInitials } from '@/lib/utils';
 import { useSidebarStore } from '@/stores/sidebar-store';
 import { useAuthStore } from '@/stores/auth-store';
-import { useT } from '@/lib/i18n';
+import { useInlineSides, useT } from '@/lib/i18n';
 import {
   Tooltip,
   TooltipContent,
@@ -137,6 +137,7 @@ function NavItemLink({
   badgeCounts: BadgeCounts | null;
 }) {
   const t = useT();
+  const sides = useInlineSides();
   const title = t(item.titleKey);
   const badge = item.badgeKey && badgeCounts ? (badgeCounts[item.badgeKey] ?? 0) : 0;
   const badgeDisplay = badge > 0 ? (badge > 99 ? '99+' : badge) : null;
@@ -166,7 +167,7 @@ function NavItemLink({
         <>
           <span className="truncate">{title}</span>
           {badgeDisplay && (
-            <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-ds-full bg-ds-primary px-1.5 text-xs font-bold text-ds-primary-foreground animate-pop-in">
+            <span className="ms-auto flex h-5 min-w-5 items-center justify-center rounded-ds-full bg-ds-primary px-1.5 text-xs font-bold text-ds-primary-foreground animate-pop-in">
               {badgeDisplay}
             </span>
           )}
@@ -179,7 +180,7 @@ function NavItemLink({
     return (
       <Tooltip delayDuration={0}>
         <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
-        <TooltipContent side="right" className="flex items-center gap-2">
+        <TooltipContent side={sides.end} className="flex items-center gap-2">
           {title}
           {badgeDisplay && (
             <span className="flex h-5 min-w-5 items-center justify-center rounded-ds-full bg-ds-primary px-1.5 text-xs font-bold text-ds-primary-foreground">
@@ -197,6 +198,7 @@ function NavItemLink({
 /** Icon-only link used in the compact footer (Help, Settings). */
 function FooterIconLink({ item, isActive }: { item: NavItem; isActive: boolean }) {
   const t = useT();
+  const sides = useInlineSides();
   const title = t(item.titleKey);
   return (
     <Tooltip delayDuration={0}>
@@ -216,13 +218,14 @@ function FooterIconLink({ item, isActive }: { item: NavItem; isActive: boolean }
           <item.icon aria-hidden="true" className="h-4 w-4" />
         </Link>
       </TooltipTrigger>
-      <TooltipContent side="right">{title}</TooltipContent>
+      <TooltipContent side={sides.end}>{title}</TooltipContent>
     </Tooltip>
   );
 }
 
 function SidebarUserMenu({ isCollapsed }: { isCollapsed: boolean }) {
   const t = useT();
+  const sides = useInlineSides();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
 
@@ -238,7 +241,7 @@ function SidebarUserMenu({ isCollapsed }: { isCollapsed: boolean }) {
           aria-label={t('shell.sidebar.accountMenuFor', { name: displayName })}
           data-testid="sidebar-user-menu"
           className={cn(
-            'flex w-full items-center gap-3 rounded-ds-md px-2 py-1.5 text-left transition-colors hover:bg-muted',
+            'flex w-full items-center gap-3 rounded-ds-md px-2 py-1.5 text-start transition-colors hover:bg-muted',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring',
             isCollapsed && 'justify-center px-0',
           )}
@@ -261,7 +264,7 @@ function SidebarUserMenu({ isCollapsed }: { isCollapsed: boolean }) {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
-        side={isCollapsed ? 'right' : 'top'}
+        side={isCollapsed ? sides.end : 'top'}
         align={isCollapsed ? 'end' : 'start'}
         className="w-56"
       >
@@ -318,7 +321,7 @@ export function Sidebar() {
       <aside
         aria-label={t('shell.sidebar.primary')}
         className={cn(
-          'relative flex h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
+          'relative flex h-screen shrink-0 flex-col border-e border-sidebar-border bg-sidebar transition-[width] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
           isCollapsed ? 'w-16' : 'w-60',
         )}
       >
@@ -383,7 +386,7 @@ export function Sidebar() {
           aria-label={isCollapsed ? t('shell.sidebar.expand') : t('shell.sidebar.collapse')}
           aria-expanded={!isCollapsed}
           className={cn(
-            'absolute -right-3 top-16 z-10 flex h-6 w-6 items-center justify-center rounded-ds-full border border-border bg-card shadow-sm hover:shadow-md transition-all',
+            'absolute -end-3 top-16 z-10 flex h-6 w-6 items-center justify-center rounded-ds-full border border-border bg-card shadow-sm hover:shadow-md transition-all',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-ring',
             'active:scale-90',
           )}

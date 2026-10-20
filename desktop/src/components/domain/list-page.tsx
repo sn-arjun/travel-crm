@@ -94,7 +94,7 @@ export interface ListPageProps<T> {
 
   // Row interaction
   rowActions?: (row: T) => React.ReactNode;
-  /** Rendered in a right-hand drawer when a row is clicked. */
+  /** Rendered in a end-hand drawer when a row is clicked. */
   renderDetail?: (row: T) => React.ReactNode;
   detailTitle?: (row: T) => string;
   /** Use instead of `renderDetail` to navigate rather than open a drawer. */
@@ -317,7 +317,7 @@ export function ListPage<T>({
             variant="ghost"
             size="sm"
             onClick={() => setSelectedIds(new Set())}
-            className="ml-auto"
+            className="ms-auto"
           >
             {t('common.clear')}
           </Button>

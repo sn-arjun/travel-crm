@@ -143,12 +143,12 @@ export function SharePanel({
                   <Button size="sm" variant="outline" onClick={handleCopyLink} className="w-full">
                     {copied ? (
                       <>
-                        <Check className="h-4 w-4 mr-1.5" aria-hidden="true" />
+                        <Check className="h-4 w-4 me-1.5" aria-hidden="true" />
                         Copied!
                       </>
                     ) : (
                       <>
-                        <Copy className="h-4 w-4 mr-1.5" aria-hidden="true" />
+                        <Copy className="h-4 w-4 me-1.5" aria-hidden="true" />
                         Copy Link
                       </>
                     )}

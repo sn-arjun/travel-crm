@@ -54,7 +54,7 @@ export function ActivityTimeline({ activities, className, maxItems }: ActivityTi
   return (
     <div role="list" className={cn('relative', className)}>
       {/* Timeline line */}
-      <div aria-hidden="true" className="absolute left-5 top-2 bottom-2 w-px bg-border" />
+      <div aria-hidden="true" className="absolute start-5 top-2 bottom-2 w-px bg-border" />
 
       <div className="space-y-4">
         {items.map((activity, idx) => {

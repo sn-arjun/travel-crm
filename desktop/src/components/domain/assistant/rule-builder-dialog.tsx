@@ -184,7 +184,7 @@ export function RuleBuilderDialog({ open, onOpenChange, options, rule, canAutoma
                     <Input aria-label={`Step ${index + 1}: task title`} className="h-9 basis-full" placeholder="Task title" maxLength={160} value={action.title} onChange={(e) => setAction(index, { title: e.target.value })} />
                     <label className="flex items-center gap-ds-2 text-sm text-ds-foreground-muted">
                       due in
-                      <Input aria-label={`Step ${index + 1}: due in days`} inputMode="numeric" className="h-9 w-16 text-right" value={action.days} onChange={(e) => setAction(index, { days: e.target.value.replace(/\D/g, '') })} />
+                      <Input aria-label={`Step ${index + 1}: due in days`} inputMode="numeric" className="h-9 w-16 text-end" value={action.days} onChange={(e) => setAction(index, { days: e.target.value.replace(/\D/g, '') })} />
                       days
                     </label>
                     <Select value={action.priority} onValueChange={(priority) => setAction(index, { priority: priority as ActionDraft['priority'] })}>
@@ -212,7 +212,7 @@ export function RuleBuilderDialog({ open, onOpenChange, options, rule, canAutoma
                     </Select>
                     <label className="flex items-center gap-ds-2 text-sm text-ds-foreground-muted">
                       in
-                      <Input aria-label={`Step ${index + 1}: in days`} inputMode="numeric" className="h-9 w-16 text-right" value={action.days} onChange={(e) => setAction(index, { days: e.target.value.replace(/\D/g, '') })} />
+                      <Input aria-label={`Step ${index + 1}: in days`} inputMode="numeric" className="h-9 w-16 text-end" value={action.days} onChange={(e) => setAction(index, { days: e.target.value.replace(/\D/g, '') })} />
                       days
                     </label>
                     <Input aria-label={`Step ${index + 1}: note`} className="h-9 min-w-40 flex-1" placeholder="Note (optional)" maxLength={300} value={action.body} onChange={(e) => setAction(index, { body: e.target.value })} />

@@ -48,7 +48,7 @@ export function Tag({
 }: TagProps) {
   const t = useT();
   return (
-    <span className={cn(tagVariants({ tone, size }), onRemove && 'pr-1', className)} {...props}>
+    <span className={cn(tagVariants({ tone, size }), onRemove && 'pe-1', className)} {...props}>
       {children}
       {onRemove && (
         <button

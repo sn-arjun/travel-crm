@@ -108,7 +108,7 @@ export function MultiStepWizard({
       {/* Footer */}
       <div className="flex items-center justify-between px-6 py-3 border-t bg-muted/30">
         <Button variant="outline" onClick={handleBack} disabled={isFirst}>
-          <ChevronLeft className="h-4 w-4 mr-1" /> {t('common.back')}
+          <ChevronLeft className="h-4 w-4 me-1" /> {t('common.back')}
         </Button>
         <div className="flex items-center gap-1.5">
           {steps.map((_, idx) => (
@@ -117,12 +117,12 @@ export function MultiStepWizard({
         </div>
         <Button onClick={handleNext} disabled={isSubmitting}>
           {isSubmitting ? (
-            <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+            <Loader2 className="h-4 w-4 me-1.5 animate-spin" />
           ) : isLast ? null : (
             <></>
           )}
           {isLast ? (completeBtnLabel ?? t('ui.wizard.complete')) : t('common.next')}
-          {!isLast && <ChevronRight className="h-4 w-4 ml-1" />}
+          {!isLast && <ChevronRight className="h-4 w-4 ms-1" />}
         </Button>
       </div>
     </div>

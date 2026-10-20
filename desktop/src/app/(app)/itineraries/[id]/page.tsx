@@ -341,18 +341,18 @@ export default function ItineraryDetailPage() {
         actions={
           <>
             <Button variant="outline" size="sm" onClick={() => router.push(`/itineraries/${id}/edit`)}>
-              <Pencil className="size-4 mr-1" aria-hidden="true" /> Edit
+              <Pencil className="size-4 me-1" aria-hidden="true" /> Edit
             </Button>
             <Button variant="outline" size="sm" disabled={deleteLoading} onClick={() => openSend('email')}>
-              <Mail className="size-4 mr-1" aria-hidden="true" /> Email
+              <Mail className="size-4 me-1" aria-hidden="true" /> Email
             </Button>
             <Button variant="outline" size="sm" disabled={deleteLoading} onClick={() => openSend('whatsapp')}>
-              <MessageSquare className="size-4 mr-1" aria-hidden="true" /> WhatsApp
+              <MessageSquare className="size-4 me-1" aria-hidden="true" /> WhatsApp
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" aria-label="More actions">
-                  <MoreHorizontal className="size-4 mr-1" aria-hidden="true" /> More
+                  <MoreHorizontal className="size-4 me-1" aria-hidden="true" /> More
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -467,7 +467,7 @@ export default function ItineraryDetailPage() {
                       <CardHeader className="pb-3">
                         <CardTitle className="text-base">
                           Day {day.dayNumber ?? idx + 1}{day.title ? ` - ${day.title}` : ''}
-                          {day.city && <span className="ml-2 text-sm font-normal text-ds-foreground-muted">({day.city})</span>}
+                          {day.city && <span className="ms-2 text-sm font-normal text-ds-foreground-muted">({day.city})</span>}
                         </CardTitle>
                         {day.description && (
                           <div
@@ -565,9 +565,9 @@ export default function ItineraryDetailPage() {
                             <TableRow>
                               <TableHead>Day</TableHead>
                               <TableHead>Item</TableHead>
-                              <TableHead className="text-right">Type</TableHead>
-                              <TableHead className="text-right">Cost</TableHead>
-                              <TableHead className="text-right">Selling</TableHead>
+                              <TableHead className="text-end">Type</TableHead>
+                              <TableHead className="text-end">Cost</TableHead>
+                              <TableHead className="text-end">Selling</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -576,9 +576,9 @@ export default function ItineraryDetailPage() {
                                 <TableRow key={`${dayIdx}-${itemIdx}`}>
                                   <TableCell className="text-sm">Day {day.dayNumber ?? dayIdx + 1}</TableCell>
                                   <TableCell className="text-sm">{item.title || 'Item'}</TableCell>
-                                  <TableCell className="text-right text-sm capitalize">{item.type}</TableCell>
-                                  <TableCell className="text-right text-sm">{money(item.costPrice ?? 0)}</TableCell>
-                                  <TableCell className="text-right text-sm">{money(item.sellingPrice ?? 0)}</TableCell>
+                                  <TableCell className="text-end text-sm capitalize">{item.type}</TableCell>
+                                  <TableCell className="text-end text-sm">{money(item.costPrice ?? 0)}</TableCell>
+                                  <TableCell className="text-end text-sm">{money(item.sellingPrice ?? 0)}</TableCell>
                                 </TableRow>
                               )),
                             )}
@@ -599,7 +599,7 @@ export default function ItineraryDetailPage() {
             <div className="mb-ds-4 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-ds-foreground-muted">Version History</h3>
               <Button size="sm" onClick={() => void handleCreateVersion()} disabled={createVersionLoading}>
-                {createVersionLoading ? <Loader2 className="size-4 animate-spin mr-1" aria-hidden="true" /> : <Plus className="size-4 mr-1" aria-hidden="true" />}
+                {createVersionLoading ? <Loader2 className="size-4 animate-spin me-1" aria-hidden="true" /> : <Plus className="size-4 me-1" aria-hidden="true" />}
                 Create New Version
               </Button>
             </div>
@@ -609,7 +609,7 @@ export default function ItineraryDetailPage() {
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-base">
-                      Version {itinerary.version ?? 1} <Badge className="ml-2">Current</Badge>
+                      Version {itinerary.version ?? 1} <Badge className="ms-2">Current</Badge>
                     </CardTitle>
                     <span className="text-xs text-ds-foreground-muted">
                       {itinerary.createdAt ? formatDisplayDate(itinerary.createdAt) : 'Recently'}
@@ -701,11 +701,11 @@ export default function ItineraryDetailPage() {
                     )}
                     <div className="flex gap-ds-2">
                       <Button variant="outline" size="sm" onClick={() => void handleGenerateShareLink()} disabled={shareLinkLoading}>
-                        {shareLinkLoading ? <Loader2 className="size-4 animate-spin mr-1" aria-hidden="true" /> : <Link2 className="size-4 mr-1" aria-hidden="true" />}
+                        {shareLinkLoading ? <Loader2 className="size-4 animate-spin me-1" aria-hidden="true" /> : <Link2 className="size-4 me-1" aria-hidden="true" />}
                         Regenerate Link
                       </Button>
                       <Button variant="outline" size="sm" className="text-ds-danger" onClick={() => void handleRevokeShareLink()} disabled={shareLinkLoading}>
-                        {shareLinkLoading ? <Loader2 className="size-4 animate-spin mr-1" aria-hidden="true" /> : <Link2Off className="size-4 mr-1" aria-hidden="true" />}
+                        {shareLinkLoading ? <Loader2 className="size-4 animate-spin me-1" aria-hidden="true" /> : <Link2Off className="size-4 me-1" aria-hidden="true" />}
                         Revoke Link
                       </Button>
                     </div>
@@ -716,7 +716,7 @@ export default function ItineraryDetailPage() {
                       Generate a public link that clients can use to view this itinerary.
                     </p>
                     <Button size="sm" onClick={() => void handleGenerateShareLink()} disabled={shareLinkLoading}>
-                      {shareLinkLoading ? <Loader2 className="size-4 animate-spin mr-1" aria-hidden="true" /> : <Link2 className="size-4 mr-1" aria-hidden="true" />}
+                      {shareLinkLoading ? <Loader2 className="size-4 animate-spin me-1" aria-hidden="true" /> : <Link2 className="size-4 me-1" aria-hidden="true" />}
                       Generate Share Link
                     </Button>
                   </div>
@@ -732,10 +732,10 @@ export default function ItineraryDetailPage() {
                 </p>
                 <div className="flex gap-ds-2">
                   <Button size="sm" variant="outline" className="flex-1" disabled={!recipient.email} onClick={() => openSend('email')}>
-                    <Mail className="size-4 mr-1" aria-hidden="true" /> Send via Email
+                    <Mail className="size-4 me-1" aria-hidden="true" /> Send via Email
                   </Button>
                   <Button size="sm" variant="outline" className="flex-1" disabled={!recipient.phone} onClick={() => openSend('whatsapp')}>
-                    <MessageSquare className="size-4 mr-1" aria-hidden="true" /> Send via WhatsApp
+                    <MessageSquare className="size-4 me-1" aria-hidden="true" /> Send via WhatsApp
                   </Button>
                 </div>
               </CardContent>
@@ -746,10 +746,10 @@ export default function ItineraryDetailPage() {
               <CardContent className="space-y-ds-2">
                 <div className="flex gap-ds-2">
                   <Button variant="outline" className="flex-1" onClick={handlePdfPreview}>
-                    <FileText className="size-4 mr-2" aria-hidden="true" /> Preview PDF
+                    <FileText className="size-4 me-2" aria-hidden="true" /> Preview PDF
                   </Button>
                   <Button variant="outline" className="flex-1" onClick={handlePdfDownload}>
-                    <Download className="size-4 mr-2" aria-hidden="true" /> Download PDF
+                    <Download className="size-4 me-2" aria-hidden="true" /> Download PDF
                   </Button>
                 </div>
               </CardContent>

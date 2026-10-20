@@ -43,12 +43,12 @@ export function FilterBar({
       <div className="flex items-center gap-3">
         {/* Search */}
         <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Search className="absolute start-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
             value={searchValue}
             onChange={(e) => onSearchChange?.(e.target.value)}
             placeholder={searchPlaceholder ?? t('ui.filterBar.searchPlaceholder')}
-            className="h-9 pl-9"
+            className="h-9 ps-9"
           />
         </div>
 
@@ -58,7 +58,7 @@ export function FilterBar({
             <SlidersHorizontal className="h-4 w-4" />
             {t('ui.filterBar.filters')}
             {activeFilters.length > 0 && (
-              <Badge variant="default" className="ml-1">
+              <Badge variant="default" className="ms-1">
                 {activeFilters.length}
               </Badge>
             )}
@@ -66,7 +66,7 @@ export function FilterBar({
         )}
 
         {/* Actions */}
-        {actions && <div className="flex items-center gap-2 ml-auto">{actions}</div>}
+        {actions && <div className="flex items-center gap-2 ms-auto">{actions}</div>}
       </div>
 
       {/* Active Filters */}
@@ -74,13 +74,13 @@ export function FilterBar({
         <div className="flex items-center gap-2 flex-wrap animate-slide-in-from-top">
           <span className="text-xs text-ds-foreground-muted">{t('ui.filterBar.activeLabel')}</span>
           {activeFilters.map((filter) => (
-            <Badge key={filter.id} variant="outline" className="gap-1 pr-1">
+            <Badge key={filter.id} variant="outline" className="gap-1 pe-1">
               <span className="text-ds-foreground-muted">{filter.label}:</span>
               {filter.value}
               {onRemoveFilter && (
                 <button
                   onClick={() => onRemoveFilter(filter.id)}
-                  className="ml-0.5 rounded-full p-0.5 hover:bg-ds-surface-sunken transition-colors"
+                  className="ms-0.5 rounded-full p-0.5 hover:bg-ds-surface-sunken transition-colors"
                 >
                   <X className="h-3 w-3" />
                 </button>

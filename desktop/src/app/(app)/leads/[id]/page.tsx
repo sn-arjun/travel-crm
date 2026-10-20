@@ -479,7 +479,7 @@ export default function LeadDetailPage() {
                   <TableRow>
                     <TableHead>Invoice #</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead className="text-end">Amount</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -487,7 +487,7 @@ export default function LeadDetailPage() {
                     <TableRow key={inv.id} className="cursor-pointer hover:bg-ds-surface-sunken" onClick={() => router.push(`/invoices/${inv.id}`)}>
                       <TableCell className="text-sm font-medium">{inv.invoiceNumber || inv.invoice_number || '—'}</TableCell>
                       <TableCell><Tag tone="neutral">{inv.status || 'draft'}</Tag></TableCell>
-                      <TableCell className="text-right text-sm">{inv.total ? formatCurrency(inv.total) : '—'}</TableCell>
+                      <TableCell className="text-end text-sm">{inv.total ? formatCurrency(inv.total) : '—'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -589,7 +589,7 @@ export default function LeadDetailPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsStatusDialogOpen(false)} disabled={isUpdatingStatus}>Cancel</Button>
             <Button onClick={handleStatusChange} disabled={isUpdatingStatus || !newStatus || needsItinerary}>
-              {isUpdatingStatus && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+              {isUpdatingStatus && <Loader2 className="h-4 w-4 animate-spin me-1.5" />}
               Update Status
             </Button>
           </DialogFooter>
@@ -643,7 +643,7 @@ export default function LeadDetailPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsFollowUpDialogOpen(false)} disabled={isCreatingFollowUp}>Cancel</Button>
             <Button onClick={handleCreateFollowUp} disabled={isCreatingFollowUp || !followUpForm.scheduledAt}>
-              {isCreatingFollowUp && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+              {isCreatingFollowUp && <Loader2 className="h-4 w-4 animate-spin me-1.5" />}
               Schedule
             </Button>
           </DialogFooter>
@@ -660,7 +660,7 @@ export default function LeadDetailPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)} disabled={isDeleting}>Cancel</Button>
             <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
-              {isDeleting && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+              {isDeleting && <Loader2 className="h-4 w-4 animate-spin me-1.5" />}
               Delete Lead
             </Button>
           </DialogFooter>
@@ -718,7 +718,7 @@ export default function LeadDetailPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsInvoiceDialogOpen(false)} disabled={isCreatingInvoice}>Cancel</Button>
             <Button onClick={handleCreateInvoice} disabled={isCreatingInvoice || !invoiceForm.items.some((i) => i.description && i.rate > 0)}>
-              {isCreatingInvoice && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+              {isCreatingInvoice && <Loader2 className="h-4 w-4 animate-spin me-1.5" />}
               Create Invoice
             </Button>
           </DialogFooter>
@@ -749,7 +749,7 @@ export default function LeadDetailPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsItineraryDialogOpen(false)} disabled={isCreatingItinerary}>Cancel</Button>
             <Button onClick={handleCreateItinerary} disabled={isCreatingItinerary || !itineraryForm.title}>
-              {isCreatingItinerary && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+              {isCreatingItinerary && <Loader2 className="h-4 w-4 animate-spin me-1.5" />}
               Create Itinerary
             </Button>
           </DialogFooter>
@@ -794,7 +794,7 @@ export default function LeadDetailPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDocUploadDialogOpen(false)} disabled={isUploadingDoc}>Cancel</Button>
             <Button onClick={handleUploadDocument} disabled={isUploadingDoc || !docForm.file}>
-              {isUploadingDoc && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+              {isUploadingDoc && <Loader2 className="h-4 w-4 animate-spin me-1.5" />}
               Upload
             </Button>
           </DialogFooter>

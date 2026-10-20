@@ -76,13 +76,13 @@ function ContactPicker({ side, heading, selected, excludeId, onSelect, onClear }
       ) : (
         <div className="flex flex-col gap-ds-2">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ds-foreground-muted" aria-hidden="true" />
+            <Search className="absolute start-3 top-1/2 size-4 -translate-y-1/2 text-ds-foreground-muted" aria-hidden="true" />
             <Input
               aria-label={`Search ${side} contact`}
               placeholder="Search contacts..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-9 pl-9"
+              className="h-9 ps-9"
             />
           </div>
           {search && (
@@ -98,7 +98,7 @@ function ContactPicker({ side, heading, selected, excludeId, onSelect, onClear }
                   role="option"
                   aria-selected={false}
                   onClick={() => { onSelect(c.id); setSearch(''); }}
-                  className="flex w-full items-center gap-ds-3 p-ds-2 text-left hover:bg-ds-surface-sunken"
+                  className="flex w-full items-center gap-ds-3 p-ds-2 text-start hover:bg-ds-surface-sunken"
                 >
                   <Avatar className="size-8">
                     <AvatarFallback className="text-xs">{getInitials(c.name)}</AvatarFallback>
@@ -218,7 +218,7 @@ function ContactMergePage() {
                             aria-pressed={chosen}
                             onClick={() => setSelection((prev) => ({ ...prev, [f.key]: side }))}
                             className={cn(
-                              'flex w-full items-center gap-ds-2 px-ds-4 py-ds-3 text-left text-sm transition-colors',
+                              'flex w-full items-center gap-ds-2 px-ds-4 py-ds-3 text-start text-sm transition-colors',
                               chosen ? 'bg-ds-primary-subtle font-semibold text-ds-primary-on-subtle' : 'hover:bg-ds-surface-sunken',
                             )}
                           >

@@ -35,7 +35,7 @@ function prepare(d: DateInput): { date: Date; timeZone: string | undefined } | n
 /** A number in the active locale's digit grouping (lakh grouping only for an en-IN agency). */
 export function formatLocaleNumber(n: number | null | undefined, options?: Intl.NumberFormatOptions): string {
   const value = typeof n === 'number' && Number.isFinite(n) ? n : 0;
-  return new Intl.NumberFormat(getLocaleContext().locale, options).format(value);
+  return new Intl.NumberFormat(getLocaleContext().intlLocale, options).format(value);
 }
 
 /**
@@ -45,7 +45,7 @@ export function formatLocaleNumber(n: number | null | undefined, options?: Intl.
 export function formatExactCurrency(
   amount: number | null | undefined,
   currency: string = getLocaleContext().currency,
-  locale: string = getLocaleContext().locale,
+  locale: string = getLocaleContext().intlLocale,
 ): string {
   const value = typeof amount === 'number' && Number.isFinite(amount) ? amount : 0;
   return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(value);
@@ -55,7 +55,7 @@ export function formatExactCurrency(
 export function formatWholeCurrency(
   amount: number | null | undefined,
   currency: string = getLocaleContext().currency,
-  locale: string = getLocaleContext().locale,
+  locale: string = getLocaleContext().intlLocale,
 ): string {
   const value = typeof amount === 'number' && Number.isFinite(amount) ? amount : 0;
   return new Intl.NumberFormat(locale, { style: 'currency', currency, maximumFractionDigits: 0 }).format(value);
@@ -68,7 +68,7 @@ export function formatWholeCurrency(
 export function formatTightCurrency(
   amount: number | null | undefined,
   currency: string = getLocaleContext().currency,
-  locale: string = getLocaleContext().locale,
+  locale: string = getLocaleContext().intlLocale,
 ): string {
   const value = typeof amount === 'number' && Number.isFinite(amount) ? amount : 0;
   const abs = Math.abs(value);
@@ -103,21 +103,21 @@ export function formatPdfMoney(amount: number | null | undefined, currency: stri
 export function formatLocaleDate(d: DateInput, options?: Intl.DateTimeFormatOptions): string {
   const p = prepare(d);
   if (!p) return '';
-  return p.date.toLocaleDateString(getLocaleContext().locale, p.timeZone ? { ...options, timeZone: p.timeZone } : options);
+  return p.date.toLocaleDateString(getLocaleContext().intlLocale, p.timeZone ? { ...options, timeZone: p.timeZone } : options);
 }
 
 /** A clock time in the active locale and the user's zone. '' for empty or invalid input. */
 export function formatLocaleTime(d: DateInput, options?: Intl.DateTimeFormatOptions): string {
   const p = prepare(d);
   if (!p) return '';
-  return p.date.toLocaleTimeString(getLocaleContext().locale, p.timeZone ? { ...options, timeZone: p.timeZone } : options);
+  return p.date.toLocaleTimeString(getLocaleContext().intlLocale, p.timeZone ? { ...options, timeZone: p.timeZone } : options);
 }
 
 /** Date and time in the active locale and the user's zone. '' for empty or invalid input. */
 export function formatLocaleDateTime(d: DateInput, options?: Intl.DateTimeFormatOptions): string {
   const p = prepare(d);
   if (!p) return '';
-  return p.date.toLocaleString(getLocaleContext().locale, p.timeZone ? { ...options, timeZone: p.timeZone } : options);
+  return p.date.toLocaleString(getLocaleContext().intlLocale, p.timeZone ? { ...options, timeZone: p.timeZone } : options);
 }
 
 /**
@@ -125,5 +125,5 @@ export function formatLocaleDateTime(d: DateInput, options?: Intl.DateTimeFormat
  * without moving it to another zone.
  */
 export function formatCalendarDay(d: Date, options?: Intl.DateTimeFormatOptions): string {
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(getLocaleContext().locale, options);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(getLocaleContext().intlLocale, options);
 }

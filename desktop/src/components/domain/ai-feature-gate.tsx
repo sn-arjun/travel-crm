@@ -70,7 +70,7 @@ export function AiFeatureGate({
             <p className="mt-ds-1 text-xs text-ds-foreground-muted">
               This AI feature requires the {planName} plan.
               {plan && (
-                <span className="ml-ds-1">
+                <span className="ms-ds-1">
                   You are on the <strong>{plan}</strong> plan.
                 </span>
               )}
@@ -118,7 +118,7 @@ export function AiFeatureGate({
  */
 export function AiTierBadge({ tier }: { tier: 'pro' | 'enterprise' }) {
   return (
-    <Tag tone={tier === 'enterprise' ? 'primary' : 'info'} className="ml-ds-2 uppercase">
+    <Tag tone={tier === 'enterprise' ? 'primary' : 'info'} className="ms-ds-2 uppercase">
       <Sparkles className="size-2.5" aria-hidden="true" />
       {tier}
     </Tag>

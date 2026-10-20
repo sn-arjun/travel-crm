@@ -78,14 +78,14 @@ export function ChangePasswordForm({ onDone, currentLabel, className }: ChangePa
       <div className="space-y-ds-2">
         <Label htmlFor="currentPassword">{currentLabel ?? t('auth.changePassword.current')}</Label>
         <div className="relative">
-          <Lock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ds-foreground-muted" aria-hidden="true" />
+          <Lock className="absolute start-3 top-1/2 size-4 -translate-y-1/2 text-ds-foreground-muted" aria-hidden="true" />
           <Input
             id="currentPassword"
             type={show ? 'text' : 'password'}
             autoComplete="current-password"
             value={current}
             onChange={(e) => setCurrent(e.target.value)}
-            className="pl-9"
+            className="ps-9"
             autoFocus
           />
         </div>
@@ -94,20 +94,20 @@ export function ChangePasswordForm({ onDone, currentLabel, className }: ChangePa
       <div className="space-y-ds-2">
         <Label htmlFor="newPassword">{t('auth.fields.newPassword')}</Label>
         <div className="relative">
-          <Lock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ds-foreground-muted" aria-hidden="true" />
+          <Lock className="absolute start-3 top-1/2 size-4 -translate-y-1/2 text-ds-foreground-muted" aria-hidden="true" />
           <Input
             id="newPassword"
             type={show ? 'text' : 'password'}
             autoComplete="new-password"
             value={next}
             onChange={(e) => setNext(e.target.value)}
-            className="pl-9 pr-10"
+            className="ps-9 pe-10"
           />
           <button
             type="button"
             onClick={() => setShow((v) => !v)}
             aria-label={show ? t('auth.changePassword.hide') : t('auth.changePassword.show')}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-ds-foreground-muted hover:text-ds-foreground"
+            className="absolute end-3 top-1/2 -translate-y-1/2 text-ds-foreground-muted hover:text-ds-foreground"
           >
             {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
           </button>
@@ -122,21 +122,21 @@ export function ChangePasswordForm({ onDone, currentLabel, className }: ChangePa
       <div className="space-y-ds-2">
         <Label htmlFor="confirmPassword">{t('auth.changePassword.confirmNew')}</Label>
         <div className="relative">
-          <Lock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ds-foreground-muted" aria-hidden="true" />
+          <Lock className="absolute start-3 top-1/2 size-4 -translate-y-1/2 text-ds-foreground-muted" aria-hidden="true" />
           <Input
             id="confirmPassword"
             type={show ? 'text' : 'password'}
             autoComplete="new-password"
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
-            className="pl-9"
+            className="ps-9"
           />
         </div>
         {confirm.length > 0 && !matches && <p className="text-xs text-ds-danger">{t('auth.changePassword.mismatch')}</p>}
       </div>
 
       <Button type="submit" className="w-full" disabled={busy || !current || !next || !confirm}>
-        {busy && <Loader2 className="mr-2 size-4 animate-spin" />}
+        {busy && <Loader2 className="me-2 size-4 animate-spin" />}
         {t('auth.changePassword.submit')}
       </Button>
     </form>

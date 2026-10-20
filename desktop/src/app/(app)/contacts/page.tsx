@@ -229,7 +229,7 @@ function ContactDetailPanel({ contactId, onDeleted }: { contactId: string; onDel
               key={lead.id}
               type="button"
               onClick={() => router.push(`/leads/${lead.id}`)}
-              className="flex items-start justify-between gap-ds-2 rounded-ds-md border border-ds-border p-ds-3 text-left hover:bg-ds-surface-sunken"
+              className="flex items-start justify-between gap-ds-2 rounded-ds-md border border-ds-border p-ds-3 text-start hover:bg-ds-surface-sunken"
             >
               <span className="min-w-0">
                 <span className="block truncate text-sm font-medium">{lead.title}</span>

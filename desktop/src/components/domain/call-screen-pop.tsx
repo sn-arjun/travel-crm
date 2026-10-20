@@ -125,7 +125,7 @@ export function CallScreenPop({ canAnswerInApp, onAnswer }: CallScreenPopProps) 
         <div
           data-testid="call-ringing-for"
           role="status"
-          className="fixed bottom-6 right-6 z-50 flex items-center gap-ds-2 rounded-ds-lg border border-ds-border bg-ds-surface-raised px-ds-3 py-ds-2 text-sm text-ds-foreground-muted shadow-lg"
+          className="fixed bottom-6 end-6 z-50 flex items-center gap-ds-2 rounded-ds-lg border border-ds-border bg-ds-surface-raised px-ds-3 py-ds-2 text-sm text-ds-foreground-muted shadow-lg"
         >
           <Phone className="size-4" aria-hidden="true" />
           <span>Ringing for {others.routedToName ?? 'a colleague'}</span>
@@ -140,7 +140,7 @@ export function CallScreenPop({ canAnswerInApp, onAnswer }: CallScreenPopProps) 
           data-testid="call-screen-pop"
           role="alertdialog"
           aria-label="Incoming call"
-          className="fixed right-6 top-20 z-50 w-96 border-0 bg-ds-surface-raised shadow-lg"
+          className="fixed end-6 top-20 z-50 w-96 border-0 bg-ds-surface-raised shadow-lg"
         >
           <CardHeader className="pb-ds-2">
             <div className="flex items-start gap-ds-3">

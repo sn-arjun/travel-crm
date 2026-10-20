@@ -62,7 +62,7 @@ export function CallSummaryCard({ callId }: { callId: string }) {
       <div className="flex flex-col gap-ds-3">
         {summary?.summary ? (
           <>
-            <ul className="list-disc space-y-ds-1 pl-ds-5 text-sm">
+            <ul className="list-disc space-y-ds-1 ps-ds-5 text-sm">
               {summary.summary.bullets.map((line, i) => (
                 <li key={i}>{line}</li>
               ))}
@@ -70,7 +70,7 @@ export function CallSummaryCard({ callId }: { callId: string }) {
             {summary.summary.actionItems.length > 0 && (
               <div>
                 <p className="mb-ds-1 text-xs text-ds-foreground-muted">Next steps</p>
-                <ul className="list-disc space-y-ds-1 pl-ds-5 text-sm">
+                <ul className="list-disc space-y-ds-1 ps-ds-5 text-sm">
                   {summary.summary.actionItems.map((item, i) => (
                     <li key={i}>{item.text}</li>
                   ))}
@@ -135,7 +135,7 @@ export function CallTranscriptPanel({ callId, onCreateLead, onAddFollowUp }: Cal
               <Button
                 variant="ghost"
                 size="icon-sm"
-                className="ml-auto"
+                className="ms-auto"
                 aria-label="Copy transcript"
                 onClick={() => void handleCopyText(transcript.fullTranscript)}
               >

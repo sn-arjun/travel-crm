@@ -76,7 +76,7 @@ export function RateCardPicker({ open, onOpenChange, serviceType, onSelect }: Ra
         </DialogDescription>
         <div className="relative">
           <Search
-            className="absolute left-ds-3 top-1/2 -translate-y-1/2 size-4 text-ds-foreground-subtle"
+            className="absolute start-ds-3 top-1/2 -translate-y-1/2 size-4 text-ds-foreground-subtle"
             aria-hidden="true"
           />
           <Input
@@ -84,7 +84,7 @@ export function RateCardPicker({ open, onOpenChange, serviceType, onSelect }: Ra
             placeholder="Search rate cards..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="pl-9"
+            className="ps-9"
             autoFocus
           />
         </div>
@@ -119,7 +119,7 @@ export function RateCardPicker({ open, onOpenChange, serviceType, onSelect }: Ra
                           .join(' · ')}
                       </p>
                     </div>
-                    <div className="shrink-0 text-right text-xs">
+                    <div className="shrink-0 text-end text-xs">
                       <p className="text-ds-foreground-muted">
                         Cost <span className="font-mono text-ds-foreground">{formatCurrency(rc.costPrice, rc.currency || undefined)}</span>
                       </p>

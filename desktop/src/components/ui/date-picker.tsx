@@ -178,9 +178,9 @@ export function DatePicker({ value, onChange, placeholder, minDate, maxDate, fro
           variant="outline"
           disabled={disabled}
           {...aria}
-          className={cn('w-full justify-start text-left font-normal h-9', !value && 'text-muted-foreground', className)}
+          className={cn('w-full justify-start text-start font-normal h-9', !value && 'text-muted-foreground', className)}
         >
-          <Calendar className="mr-2 h-4 w-4" />
+          <Calendar className="me-2 h-4 w-4" />
           {value ? formatDisplayDate(value) : placeholder}
         </Button>
       </PopoverTrigger>
@@ -245,9 +245,9 @@ export function DateTimePicker({ value, onChange, placeholder, minDate, maxDate,
         <Button
           variant="outline"
           disabled={disabled}
-          className={cn('w-full justify-start text-left font-normal h-9', !value && 'text-muted-foreground', className)}
+          className={cn('w-full justify-start text-start font-normal h-9', !value && 'text-muted-foreground', className)}
         >
-          <Calendar className="mr-2 h-4 w-4" />
+          <Calendar className="me-2 h-4 w-4" />
           {value
             ? `${formatDisplayDate(value)} ${value.getHours().toString().padStart(2, '0')}:${value.getMinutes().toString().padStart(2, '0')}`
             : placeholder}
@@ -290,7 +290,7 @@ export function DateTimePicker({ value, onChange, placeholder, minDate, maxDate,
               <option key={m} value={m}>{m.toString().padStart(2, '0')}</option>
             ))}
           </select>
-          <Button type="button" size="sm" className="ml-auto h-7 text-xs" onClick={() => setOpen(false)}>{t('ui.date.done')}</Button>
+          <Button type="button" size="sm" className="ms-auto h-7 text-xs" onClick={() => setOpen(false)}>{t('ui.date.done')}</Button>
         </div>
       </PopoverContent>
     </Popover>
@@ -340,8 +340,8 @@ export function DateRangePicker({ startDate, endDate, onStartChange, onEndChange
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" className={cn('w-full justify-start text-left font-normal h-9', !startDate && 'text-muted-foreground', className)}>
-          <Calendar className="mr-2 h-4 w-4" />
+        <Button variant="outline" className={cn('w-full justify-start text-start font-normal h-9', !startDate && 'text-muted-foreground', className)}>
+          <Calendar className="me-2 h-4 w-4" />
           {displayText}
         </Button>
       </PopoverTrigger>

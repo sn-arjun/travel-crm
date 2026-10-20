@@ -244,7 +244,7 @@ export function FormRow({ name, label, required, hint, wide, children }: FormRow
       <Label htmlFor={name}>
         {label}
         {required && (
-          <span aria-hidden="true" className="ml-0.5 text-ds-danger">
+          <span aria-hidden="true" className="ms-0.5 text-ds-danger">
             *
           </span>
         )}

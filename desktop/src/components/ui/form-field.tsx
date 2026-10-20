@@ -18,7 +18,7 @@ function FormField({ label, description, error, required, className, children, h
       {label && (
         <Label htmlFor={htmlFor}>
           {label}
-          {required && <span className="text-ds-danger ml-0.5">*</span>}
+          {required && <span className="text-ds-danger ms-0.5">*</span>}
         </Label>
       )}
       {description && (

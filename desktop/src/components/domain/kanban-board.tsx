@@ -36,7 +36,7 @@ function KanbanColumnHeader({ column, onAdd }: { column: KanbanColumn; onAdd?: (
       </div>
       <div className="flex items-center gap-1">
         {column.value && (
-          <span className="text-xs font-medium text-ds-foreground-muted tabular-nums mr-1">
+          <span className="text-xs font-medium text-ds-foreground-muted tabular-nums me-1">
             {column.value}
           </span>
         )}

@@ -122,7 +122,7 @@ export function DriverScheduleCalendar({ driverId }: DriverScheduleCalendarProps
             <div className="border border-ds-border rounded-ds-md overflow-hidden">
               <div className="grid grid-cols-7 bg-ds-surface-sunken">
                 {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-                  <div key={day} className="p-2 text-center text-sm font-semibold border-r border-b border-ds-border last:border-r-0">
+                  <div key={day} className="p-2 text-center text-sm font-semibold border-e border-b border-ds-border last:border-e-0">
                     {day}
                   </div>
                 ))}
@@ -136,7 +136,7 @@ export function DriverScheduleCalendar({ driverId }: DriverScheduleCalendarProps
                     return (
                       <div
                         key={dayIdx}
-                        className={`aspect-square flex items-center justify-center border-r border-b border-ds-border text-sm font-medium cursor-default transition-colors last:border-r-0 ${
+                        className={`aspect-square flex items-center justify-center border-e border-b border-ds-border text-sm font-medium cursor-default transition-colors last:border-e-0 ${
                           day ? color : 'bg-ds-surface-sunken'
                         }`}
                       >

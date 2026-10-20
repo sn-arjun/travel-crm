@@ -71,7 +71,7 @@ export function Pagination({
         )}
 
         <div className="flex items-center gap-ds-1">
-          <span className="mr-ds-2 text-xs tabular-nums text-ds-foreground-muted">
+          <span className="me-ds-2 text-xs tabular-nums text-ds-foreground-muted">
             {t('ui.pagination.pageOf', { page, total: totalPages })}
           </span>
           <Button

@@ -280,7 +280,7 @@ export function ReportTabErrorState({
       <p className="text-sm font-medium text-ds-danger">{message}</p>
       {onRetry && (
         <Button variant="outline" size="sm" onClick={onRetry}>
-          <RefreshCw className="mr-1.5 h-4 w-4" aria-hidden="true" />
+          <RefreshCw className="me-1.5 h-4 w-4" aria-hidden="true" />
           Retry
         </Button>
       )}
@@ -564,9 +564,9 @@ export function ReportExportButton({
         className={className}
       >
         {isExporting ? (
-          <RefreshCw className="mr-1.5 h-4 w-4 animate-spin" aria-hidden="true" />
+          <RefreshCw className="me-1.5 h-4 w-4 animate-spin" aria-hidden="true" />
         ) : (
-          <Download className="mr-1.5 h-4 w-4" aria-hidden="true" />
+          <Download className="me-1.5 h-4 w-4" aria-hidden="true" />
         )}
         {isExporting ? 'Exporting…' : 'Export'}
       </Button>
@@ -578,9 +578,9 @@ export function ReportExportButton({
       label={isExporting ? 'Exporting…' : 'Export Excel'}
       icon={
         isExporting ? (
-          <RefreshCw className="mr-1.5 h-4 w-4 animate-spin" aria-hidden="true" />
+          <RefreshCw className="me-1.5 h-4 w-4 animate-spin" aria-hidden="true" />
         ) : (
-          <FileSpreadsheet className="mr-1.5 h-4 w-4" aria-hidden="true" />
+          <FileSpreadsheet className="me-1.5 h-4 w-4" aria-hidden="true" />
         )
       }
       onClick={() => void runExport('excel')}

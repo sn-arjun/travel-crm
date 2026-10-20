@@ -65,7 +65,7 @@ export function Timeline({ items, loading, emptyState, className }: TimelineProp
             {!isLast && (
               <span
                 aria-hidden="true"
-                className="absolute top-8 left-4 h-[calc(100%+var(--spacing-ds-4)-var(--spacing-ds-6))] w-px -translate-x-1/2 bg-ds-border"
+                className="absolute top-8 start-4 h-[calc(100%+var(--spacing-ds-4)-var(--spacing-ds-6))] w-px -translate-x-1/2 rtl:translate-x-1/2 bg-ds-border"
               />
             )}
 

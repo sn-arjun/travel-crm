@@ -251,7 +251,7 @@ export function AddressAutocomplete({
 
   return (
     <div className={cn('relative', className)}>
-      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
+      <MapPin className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
       <input
         ref={inputRef}
         defaultValue={value}
@@ -270,11 +270,11 @@ export function AddressAutocomplete({
           'placeholder:text-muted-foreground',
           'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
           'disabled:cursor-not-allowed disabled:opacity-50',
-          'pl-9',
+          'ps-9',
         )}
       />
       {isLoading && (
-        <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 animate-spin text-muted-foreground" />
+        <Loader2 className="absolute end-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 animate-spin text-muted-foreground" />
       )}
     </div>
   );

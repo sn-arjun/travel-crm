@@ -53,7 +53,7 @@ export function PageHeader({ title, description, breadcrumbs, actions, className
           {badge}
         </div>
         {actions && (
-          <div className="flex items-center gap-2 shrink-0 animate-slide-in-from-right">
+          <div className="flex items-center gap-2 shrink-0 animate-slide-in-from-right rtl:animate-slide-in-from-left">
             {actions}
           </div>
         )}

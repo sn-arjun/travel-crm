@@ -81,7 +81,7 @@ export function DayImageUploader({ images, onUpload, onRemove }: DayImageUploade
                 type="button"
                 aria-label={`Remove ${img.name}`}
                 onClick={() => onRemove(imgIdx)}
-                className="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-ds-danger text-ds-danger-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+                className="absolute -top-1.5 -end-1.5 size-5 rounded-full bg-ds-danger text-ds-danger-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
               >
                 <X className="size-3" aria-hidden="true" />
               </button>

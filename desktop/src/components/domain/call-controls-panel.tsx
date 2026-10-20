@@ -245,14 +245,14 @@ export function CallControlsPanel({ callId, callerName, phoneNumber, onEndCall, 
 
   return (
     <>
-      <Card className="fixed bottom-6 right-6 w-80 shadow-lg border-0 bg-ds-surface-raised" data-testid="call-panel" data-call-status={status}>
+      <Card className="fixed bottom-6 end-6 w-80 shadow-lg border-0 bg-ds-surface-raised" data-testid="call-panel" data-call-status={status}>
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1">
               <CardTitle className="text-base">{callerName}</CardTitle>
               <p className="text-sm text-muted-foreground">{phoneNumber}</p>
             </div>
-            <Badge className={cn('ml-auto', config.color)}>{config.label}</Badge>
+            <Badge className={cn('ms-auto', config.color)}>{config.label}</Badge>
           </div>
         </CardHeader>
 

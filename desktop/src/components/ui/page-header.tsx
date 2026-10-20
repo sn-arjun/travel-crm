@@ -20,7 +20,7 @@ export interface PageHeaderProps {
   /** Status badge shown beside the title (DetailPage uses this). */
   status?: React.ReactNode;
   breadcrumbs?: Breadcrumb[];
-  /** Primary/secondary actions, right-aligned. */
+  /** Primary/secondary actions, end-aligned. */
   actions?: React.ReactNode;
   /** Back affordance rendered to the left of the title. */
   back?: React.ReactNode;

@@ -1,7 +1,9 @@
 'use client';
 
 import * as React from 'react';
+import { Direction } from 'radix-ui';
 import { useAuthStore } from '@/stores/auth-store';
+import { setUiLanguage } from '@/lib/locale-options';
 import {
   I18nContext,
   catalogues,
@@ -54,6 +56,10 @@ export function I18nProvider({ children }: I18nProviderProps) {
     document.documentElement.dir = directionOf(locale);
   }, [locale]);
 
+  // Currency and time-zone pick-lists are named in the interface language (lib/locale-options.ts). Plain module
+  // state set during render, so a list built by a child in the same pass already uses the new language.
+  setUiLanguage(locale);
+
   const setLocale = React.useCallback((next: Locale) => {
     if (!isEnabledLocale(next)) return;
     storeLocale(next);
@@ -70,5 +76,10 @@ export function I18nProvider({ children }: I18nProviderProps) {
     [locale, setLocale, t],
   );
 
-  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
+  // Radix menus, tabs, sliders and selects read the direction from here (arrow keys, alignment).
+  return (
+    <I18nContext.Provider value={value}>
+      <Direction.Provider dir={value.dir}>{children}</Direction.Provider>
+    </I18nContext.Provider>
+  );
 }

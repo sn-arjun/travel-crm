@@ -525,7 +525,7 @@ export default function ItineraryEditPage() {
             )}
             <Button variant="outline" onClick={() => router.back()} disabled={isSaving}>Cancel</Button>
             <Button onClick={handleSave} disabled={isSaving}>
-              {isSaving ? <Loader2 className="size-4 animate-spin mr-1.5" aria-hidden="true" /> : <Save className="size-4 mr-1.5" aria-hidden="true" />}
+              {isSaving ? <Loader2 className="size-4 animate-spin me-1.5" aria-hidden="true" /> : <Save className="size-4 me-1.5" aria-hidden="true" />}
               Save Changes
             </Button>
           </>
@@ -601,7 +601,7 @@ export default function ItineraryEditPage() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">Day-wise Itinerary ({dayItems.length} days)</CardTitle>
               <Button variant="outline" size="sm" onClick={addDayItem}>
-                <Plus className="size-4 mr-1" aria-hidden="true" /> Add Day
+                <Plus className="size-4 me-1" aria-hidden="true" /> Add Day
               </Button>
             </div>
           </CardHeader>

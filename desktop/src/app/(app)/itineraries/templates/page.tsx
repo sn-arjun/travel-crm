@@ -225,7 +225,7 @@ export default function ItineraryTemplatesPage() {
         refreshKey={refreshKey}
         primaryAction={
           <Button onClick={() => { resetNewTemplate(); setIsNewTemplateOpen(true); }}>
-            <Plus className="mr-ds-1" aria-hidden="true" /> New template
+            <Plus className="me-ds-1" aria-hidden="true" /> New template
           </Button>
         }
         fetcher={({ page, limit, search }) =>
@@ -361,7 +361,7 @@ export default function ItineraryTemplatesPage() {
                     setIsCreateDialogOpen(true);
                   }}
                 >
-                  <Copy className="mr-ds-1" aria-hidden="true" /> Use this template
+                  <Copy className="me-ds-1" aria-hidden="true" /> Use this template
                 </Button>
               </DialogFooter>
             </>
@@ -493,7 +493,7 @@ export default function ItineraryTemplatesPage() {
             </div>
             <div className="space-y-ds-2">
               <Label>Day outline</Label>
-              <div className="max-h-56 space-y-ds-2 overflow-y-auto pr-ds-1">
+              <div className="max-h-56 space-y-ds-2 overflow-y-auto pe-ds-1">
                 {tplOutline.map((title, i) => (
                   <div key={i} className="flex items-center gap-ds-2">
                     <span className="w-14 shrink-0 text-sm text-ds-foreground-muted">Day {i + 1}</span>

@@ -26,7 +26,7 @@ export interface SplitButtonAction {
 }
 
 export interface SplitButtonProps {
-  /** Label of the default (left-hand) action. */
+  /** Label of the default (start-hand) action. */
   label: string;
   onClick: () => void;
   actions: SplitButtonAction[];
@@ -58,7 +58,7 @@ export function SplitButton({
         size={size}
         onClick={onClick}
         disabled={disabled}
-        className="rounded-r-none"
+        className="rounded-e-none"
       >
         {icon}
         {label}
@@ -70,7 +70,7 @@ export function SplitButton({
             size={size === 'default' ? 'icon' : 'icon-sm'}
             disabled={disabled}
             aria-label={menuLabel ?? t('ui.common.moreActions')}
-            className="rounded-l-none border-l border-ds-border/40"
+            className="rounded-s-none border-s border-ds-border/40"
           >
             <ChevronDown aria-hidden="true" />
           </Button>

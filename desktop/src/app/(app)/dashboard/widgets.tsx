@@ -340,7 +340,7 @@ export function TeamPerformance() {
                 <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-ds-surface-sunken">
                   <div className="h-full rounded-full bg-ds-primary transition-all" style={{ width: `${(member.total_revenue / maxRevenue) * 100}%` }} />
                 </div>
-                <span className="w-20 text-right text-xs text-ds-foreground-muted">{member.won_deals}/{member.total_leads} won</span>
+                <span className="w-20 text-end text-xs text-ds-foreground-muted">{member.won_deals}/{member.total_leads} won</span>
               </div>
             </div>
           </div>
@@ -436,7 +436,7 @@ export function UpcomingTravel() {
                 {(lead.paxAdults ?? 0) + (lead.paxChildren ?? 0)} pax · {formatCurrency(lead.budget ?? 0)}
               </p>
             </div>
-            <div className="shrink-0 text-right">
+            <div className="shrink-0 text-end">
               <p className="text-xs font-medium text-ds-foreground">{formatDisplayDate(lead.travelDate, 'medium')}</p>
               <Badge variant="outline" className="text-xs">
                 {LEAD_STATUS_LABELS[lead.status as keyof typeof LEAD_STATUS_LABELS] ?? lead.status}

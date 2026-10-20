@@ -175,7 +175,7 @@ export function StickyNotesWidget() {
                   e.stopPropagation();
                   void deleteNote(note.id);
                 }}
-                className="absolute top-ds-1 right-ds-1 opacity-0 transition-opacity hover:opacity-100 focus-visible:opacity-100"
+                className="absolute top-ds-1 end-ds-1 opacity-0 transition-opacity hover:opacity-100 focus-visible:opacity-100"
                 aria-label="Delete note"
               >
                 <X className={cn('size-3.5', textColorClasses[note.color] || textColorClasses.yellow)} aria-hidden="true" />

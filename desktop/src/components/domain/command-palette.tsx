@@ -239,7 +239,7 @@ export function CommandPalette() {
                       <div className="h-8 w-8 rounded-md bg-muted flex items-center justify-center shrink-0">
                         <Icon className="h-4 w-4" />
                       </div>
-                      <div className="text-left">
+                      <div className="text-start">
                         <p className="font-medium">{item.label}</p>
                         {item.description && <p className="text-xs text-muted-foreground">{item.description}</p>}
                       </div>

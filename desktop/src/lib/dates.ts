@@ -94,7 +94,7 @@ export function formatDisplayDate(
   const date = typeof d === 'string' ? toDisplayDate(d) : d;
   if (Number.isNaN(date.getTime())) return '';
   const timeZone = zoneFor(d);
-  return date.toLocaleDateString(getLocaleContext().locale, timeZone ? { ...DISPLAY_OPTIONS[style], timeZone } : DISPLAY_OPTIONS[style]);
+  return date.toLocaleDateString(getLocaleContext().intlLocale, timeZone ? { ...DISPLAY_OPTIONS[style], timeZone } : DISPLAY_OPTIONS[style]);
 }
 
 /**
@@ -107,7 +107,7 @@ export function formatDisplayDateTime(d: Date | string | null | undefined): stri
   if (typeof d === 'string' && !isTimestampString(d)) return formatDisplayDate(d);
   const date = typeof d === 'string' ? parseTimestamp(d) : d;
   if (Number.isNaN(date.getTime())) return '';
-  const { locale, timeZone: userZone } = getLocaleContext();
+  const { intlLocale: locale, timeZone: userZone } = getLocaleContext();
   const timeZone = typeof d === 'string' ? zoneFor(d) : userZone || undefined;
   const zoned = timeZone ? { timeZone } : {};
   const day = date.toLocaleDateString(locale, { ...DISPLAY_OPTIONS.medium, ...zoned });

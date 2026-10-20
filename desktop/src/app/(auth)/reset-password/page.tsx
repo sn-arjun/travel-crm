@@ -115,21 +115,21 @@ function ResetPasswordPage() {
         <div className="space-y-2">
           <Label htmlFor="password">{t('auth.fields.newPassword')}</Label>
           <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Lock className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               id="password"
               type={showPassword ? 'text' : 'password'}
               placeholder={t('auth.password.placeholder')}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="pl-9 pr-10"
+              className="ps-9 pe-10"
               required
               autoFocus
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
             >
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
@@ -149,21 +149,21 @@ function ResetPasswordPage() {
         <div className="space-y-2">
           <Label htmlFor="confirmPassword">{t('auth.fields.confirmPassword')}</Label>
           <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Lock className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               id="confirmPassword"
               type={showPassword ? 'text' : 'password'}
               placeholder={t('auth.password.reenter')}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="pl-9"
+              className="ps-9"
               required
             />
           </div>
         </div>
 
         <Button type="submit" className="w-full" disabled={isLoading}>
-          {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {isLoading && <Loader2 className="me-2 h-4 w-4 animate-spin" />}
           {t('auth.reset.submit')}
         </Button>
       </form>

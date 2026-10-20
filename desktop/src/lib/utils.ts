@@ -18,7 +18,7 @@ export function cn(...inputs: ClassValue[]) {
 export function formatCurrency(
   amount: number,
   currency: string = getLocaleContext().currency,
-  locale: string = getLocaleContext().locale,
+  locale: string = getLocaleContext().intlLocale,
 ): string {
   return new Intl.NumberFormat(locale, {
     style: 'currency',
@@ -43,7 +43,7 @@ function trimZero(n: number): string {
 export function formatCompactCurrency(
   amount: number,
   currency: string = getLocaleContext().currency,
-  locale: string = getLocaleContext().locale,
+  locale: string = getLocaleContext().intlLocale,
 ): string {
   const value = Number.isFinite(amount) ? amount : 0;
   if (usesLakhCrore(locale)) {
@@ -72,7 +72,7 @@ export function formatDate(
   options?: Intl.DateTimeFormatOptions,
 ): string {
   const d = typeof date === 'string' ? new Date(date) : date;
-  return d.toLocaleDateString(getLocaleContext().locale, {
+  return d.toLocaleDateString(getLocaleContext().intlLocale, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',

@@ -458,7 +458,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .tiptap p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
-  float: left;
+  float: inline-start;
   color: var(--ds-foreground-subtle);
   pointer-events: none;
   height: 0;
@@ -466,7 +466,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .tiptap ul,
 .tiptap ol {
-  padding-left: 1.5rem;
+  padding-inline-start: 1.5rem;
 }
 
 .tiptap ul {
@@ -499,4 +499,53 @@ h1, h2, h3, h4, h5, h6 {
 
 .dark .bg-grid-pattern {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32' fill='none'%3E%3Cpath d='M0 .5H32M.5 0V32' stroke='%2326262F' stroke-opacity='.6'/%3E%3C/svg%3E");
+}
+
+/* ─── Right-to-left (Arabic, R211) ───────────────────────────
+ * Layout mirrors through logical utilities (ms-/me-/ps-/pe-/start-/end-/text-start/text-end/border-s/e/rounded-s/e)
+ * and the rtl: variant; the rules below cover what a utility class cannot. Unlayered, so they win over utilities. */
+html[dir='rtl'] {
+  font-family: var(--font-sans), 'Segoe UI', Tahoma, 'Noto Sans Arabic', 'Noto Naskh Arabic', 'Arial', sans-serif;
+}
+
+/* Letter-spacing breaks the joining of Arabic letters. */
+[dir='rtl'] :where(*) {
+  letter-spacing: normal;
+}
+
+/* Directional icons (previous/next, back/forward, undo/redo, panel toggles) face the other way. Icons that are
+ * already turned with a rotate-* class (an expander chevron, say) keep their own rotation. */
+[dir='rtl'] :is(
+  .lucide-chevron-left, .lucide-chevron-right,
+  .lucide-chevrons-left, .lucide-chevrons-right,
+  .lucide-arrow-left, .lucide-arrow-right,
+  .lucide-arrow-big-left, .lucide-arrow-big-right,
+  .lucide-move-left, .lucide-move-right,
+  .lucide-arrow-left-to-line, .lucide-arrow-right-to-line,
+  .lucide-corner-down-left, .lucide-corner-down-right,
+  .lucide-corner-left-down, .lucide-corner-right-down,
+  .lucide-panel-left, .lucide-panel-right,
+  .lucide-panel-left-close, .lucide-panel-left-open, .lucide-panel-right-close, .lucide-panel-right-open,
+  .lucide-skip-back, .lucide-skip-forward,
+  .lucide-undo, .lucide-undo-2, .lucide-redo, .lucide-redo-2,
+  .lucide-reply, .lucide-forward,
+  .lucide-log-in, .lucide-log-out,
+  .lucide-list-indent-increase, .lucide-list-indent-decrease,
+  .rtl-flip
+):not([class*='rotate-']) {
+  transform: scaleX(-1);
+}
+
+/* Values that are always written left to right stay in order inside right-to-left text. */
+[dir='rtl'] :is(input[type='email'], input[type='tel'], input[type='url'], input[type='number']) {
+  direction: ltr;
+  text-align: right;
+}
+[dir='rtl'] :is(code, kbd, samp, .font-mono, [dir='ltr']) {
+  unicode-bidi: isolate;
+}
+/* A value that must keep its left-to-right order (phone number, e-mail, code, reference) inside right-to-left text. */
+.bidi-ltr {
+  direction: ltr;
+  unicode-bidi: isolate;
 }

@@ -81,7 +81,7 @@ export function AIHealthScore({ overallScore, metrics = [] }: AIHealthScoreProps
                     <div className="h-2 flex-1 overflow-hidden rounded-full bg-ds-surface-sunken">
                       <div className={cn('h-full rounded-full transition-all duration-500', tone.bar)} style={{ width: `${metric.value}%` }} />
                     </div>
-                    <span className={cn('w-12 text-right text-xs font-medium', change >= 0 ? 'text-ds-success' : 'text-ds-danger')}>
+                    <span className={cn('w-12 text-end text-xs font-medium', change >= 0 ? 'text-ds-success' : 'text-ds-danger')}>
                       {change > 0 ? '+' : ''}
                       {change}%
                     </span>

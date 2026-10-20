@@ -154,3 +154,11 @@ export const useI18n = () => React.useContext(I18nContext);
 
 /** `const t = useT(); t('auth.login.title')` */
 export const useT = (): TranslateFn => useI18n().t;
+
+/**
+ * Physical sides for the inline start and end, for Radix popper props (`side="left" | "right"`), which have no
+ * logical value: `<TooltipContent side={useInlineSides().end}>` opens towards the end of the line in either direction.
+ */
+export function useInlineSides(): { start: 'left' | 'right'; end: 'left' | 'right' } {
+  return useI18n().dir === 'rtl' ? { start: 'right', end: 'left' } : { start: 'left', end: 'right' };
+}
