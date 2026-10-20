@@ -1,234 +1,124 @@
-import express from 'express';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import crypto from 'crypto';
-import fs from 'fs/promises';
+import http from 'node:http';
+import { pathToFileURL } from 'node:url';
+import { loadConfig, ConfigError, type ProvisionerConfig } from './config.ts';
+import { verifyRequest } from './signature.ts';
+import { SiteManager, SiteError, publicView, validateRequest } from './sites.ts';
 
-const execAsync = promisify(exec);
-const app = express();
-app.use(express.json());
+/**
+ * WordPress provisioner HTTP API (R309). Plain node:http, no framework, no dependencies.
+ *
+ *   GET    /health               no signature; status only
+ *   POST   /sites                create a site (idempotent per slug). 200 = active, 202 = being built
+ *   GET    /sites/:slug          state of one site
+ *   POST   /sites/:slug/stop     stop the containers
+ *   POST   /sites/:slug/start    start them again
+ *   DELETE /sites/:slug          remove the containers
+ *
+ * Every route except /health needs X-Timestamp and X-Signature (see signature.ts). The server will not
+ * start without PROVISIONER_SECRET.
+ */
 
-const PROVISIONER_SECRET = process.env.PROVISIONER_SECRET || 'change-me';
-const DATA_DIR = process.env.DATA_DIR || '/opt/wp-data';
-const MAX_SITES = parseInt(process.env.MAX_SITES || '50');
+const MAX_BODY_BYTES = 64 * 1024;
 
-// Auth middleware
-app.use('/api', (req, res, next) => {
-  if (req.path === '/health') return next();
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (token !== PROVISIONER_SECRET) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  next();
-});
+function send(res: http.ServerResponse, status: number, body: unknown): void {
+  const text = JSON.stringify(body);
+  res.writeHead(status, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(text) });
+  res.end(text);
+}
 
-// Health check
-app.get('/api/health', async (_req, res) => {
-  try {
-    const { stdout } = await execAsync('docker ps --filter "name=wp-site-" --format "{{.Names}}" | wc -l');
-    res.json({
-      status: 'ok',
-      uptime: process.uptime(),
-      activeSites: parseInt(stdout.trim()) || 0,
-      maxSites: MAX_SITES,
+function readBody(req: http.IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        reject(new SiteError('Request body too large', 413));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
     });
-  } catch (e) {
-    res.json({ status: 'ok', uptime: process.uptime(), activeSites: 0, maxSites: MAX_SITES });
-  }
-});
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
 
-// Deploy new WordPress site
-app.post('/api/deploy', async (req, res) => {
-  const { siteId, subdomain, domain, template, companyName, ownerEmail } = req.body;
-
-  if (!subdomain || !domain) {
-    return res.status(400).json({ error: 'subdomain and domain are required' });
-  }
-
-  const dataDir = `${DATA_DIR}/${subdomain}`;
-  const dbPassword = crypto.randomBytes(16).toString('hex');
-  const wpAdminPassword = crypto.randomBytes(12).toString('base64url');
-
-  try {
-    // Check site limit
-    const { stdout: countStr } = await execAsync('docker ps --filter "name=wp-site-" --format "{{.Names}}" | wc -l');
-    if (parseInt(countStr.trim()) >= MAX_SITES) {
-      return res.status(503).json({ error: 'Maximum site limit reached' });
-    }
-
-    // Create data directories
-    await fs.mkdir(`${dataDir}/db`, { recursive: true });
-    await fs.mkdir(`${dataDir}/uploads`, { recursive: true });
-
-    // Find available port
-    const wpPort = await findAvailablePort(8080, 9000);
-
-    // Generate docker-compose.yml
-    const composeContent = `version: '3.8'
-services:
-  db:
-    image: mariadb:10.11
-    container_name: wp-db-${subdomain}
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: ${dbPassword}
-      MYSQL_DATABASE: wordpress
-      MYSQL_USER: wp_user
-      MYSQL_PASSWORD: ${dbPassword}
-    volumes:
-      - ${dataDir}/db:/var/lib/mysql
-    networks:
-      - wp-network
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-
-  wordpress:
-    image: wordpress:6-php8.2-apache
-    container_name: wp-site-${subdomain}
-    restart: unless-stopped
-    depends_on:
-      - db
-    environment:
-      WORDPRESS_DB_HOST: wp-db-${subdomain}
-      WORDPRESS_DB_USER: wp_user
-      WORDPRESS_DB_PASSWORD: ${dbPassword}
-      WORDPRESS_DB_NAME: wordpress
-    ports:
-      - "${wpPort}:80"
-    volumes:
-      - ${dataDir}/uploads:/var/www/html/wp-content/uploads
-    networks:
-      - wp-network
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-
-networks:
-  wp-network:
-    external: true
-`;
-
-    await fs.writeFile(`${dataDir}/docker-compose.yml`, composeContent);
-
-    // Ensure wp-network exists
+export function createServer(config: ProvisionerConfig, sites: SiteManager, nowMs: () => number = Date.now): http.Server {
+  return http.createServer(async (req, res) => {
     try {
-      await execAsync('docker network create wp-network');
-    } catch {
-      // Network may already exist
+      const target = req.url ?? '/';
+      const method = (req.method ?? 'GET').toUpperCase();
+      const pathname = target.split('?')[0];
+
+      if (method === 'GET' && pathname === '/health') {
+        return send(res, 200, { status: 'ok', uptime: process.uptime(), maxSites: config.maxSites, mode: config.mode });
+      }
+
+      const body = await readBody(req);
+      const check = verifyRequest(config.secret, {
+        method,
+        path: target,
+        body,
+        timestamp: req.headers['x-timestamp'] as string | undefined,
+        signature: req.headers['x-signature'] as string | undefined,
+        nowMs: nowMs(),
+      });
+      if (!check.ok) {
+        console.warn(`Rejected ${method} ${pathname}: ${check.reason}`);
+        return send(res, 401, { error: 'Unauthorized', reason: check.reason });
+      }
+
+      if (method === 'POST' && pathname === '/sites') {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(body || '{}');
+        } catch {
+          return send(res, 400, { error: 'Body must be JSON' });
+        }
+        const { state, started } = await sites.ensure(validateRequest(parsed));
+        return send(res, state.status === 'active' ? 200 : 202, { ...publicView(state), created: started });
+      }
+
+      const match = /^\/sites\/([a-z0-9-]+)(?:\/(stop|start))?$/.exec(pathname);
+      if (match) {
+        const [, slug, action] = match;
+        if (method === 'GET' && !action) {
+          const state = await sites.get(slug);
+          return state ? send(res, 200, publicView(state)) : send(res, 404, { error: 'No such site' });
+        }
+        if (method === 'POST' && action) {
+          const state = action === 'stop' ? await sites.stop(slug) : await sites.start(slug);
+          return state ? send(res, 200, publicView(state)) : send(res, 404, { error: 'No such site' });
+        }
+        if (method === 'DELETE' && !action) {
+          return (await sites.destroy(slug)) ? send(res, 200, { success: true }) : send(res, 404, { error: 'No such site' });
+        }
+      }
+      return send(res, 404, { error: 'Not found' });
+    } catch (e) {
+      if (e instanceof SiteError) return send(res, e.status, { error: e.message });
+      console.error('Unhandled error:', e);
+      return send(res, 500, { error: e instanceof Error ? e.message : String(e) });
     }
-
-    // Start containers
-    await execAsync(`docker compose -f ${dataDir}/docker-compose.yml up -d`);
-
-    // Update Caddy config for this site
-    await updateCaddyConfig(subdomain, domain, wpPort);
-
-    res.json({
-      containerId: `wp-site-${subdomain}`,
-      wpAdminUser: 'admin',
-      wpAdminPassword,
-      port: wpPort,
-    });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ error: message });
-  }
-});
-
-// Stop site containers
-app.post('/api/stop/:subdomain', async (req, res) => {
-  const { subdomain } = req.params;
-  try {
-    await execAsync(`docker stop wp-site-${subdomain} wp-db-${subdomain}`);
-    res.json({ success: true });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ error: message });
-  }
-});
-
-// Start stopped containers
-app.post('/api/start/:subdomain', async (req, res) => {
-  const { subdomain } = req.params;
-  try {
-    await execAsync(`docker start wp-db-${subdomain} wp-site-${subdomain}`);
-    res.json({ success: true });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ error: message });
-  }
-});
-
-// Destroy site containers and volumes
-app.delete('/api/destroy/:subdomain', async (req, res) => {
-  const { subdomain } = req.params;
-  try {
-    await execAsync(`docker rm -f wp-site-${subdomain} wp-db-${subdomain}`);
-    // Remove Caddy config
-    try {
-      await fs.unlink(`/opt/caddy/sites/${subdomain}.caddy`);
-      await execAsync('docker exec caddy-proxy caddy reload --config /etc/caddy/Caddyfile');
-    } catch {
-      // Caddy config may not exist
-    }
-    res.json({ success: true });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ error: message });
-  }
-});
-
-// Get site status
-app.get('/api/status/:subdomain', async (req, res) => {
-  const { subdomain } = req.params;
-  try {
-    const { stdout } = await execAsync(
-      `docker inspect --format '{{.State.Status}}' wp-site-${subdomain}`
-    );
-    res.json({ subdomain, status: stdout.trim() });
-  } catch {
-    res.json({ subdomain, status: 'not found' });
-  }
-});
-
-async function findAvailablePort(start: number, end: number): Promise<number> {
-  const { stdout } = await execAsync("docker ps --format '{{.Ports}}'");
-  const usedPorts = new Set<number>();
-  const portRegex = /0\.0\.0\.0:(\d+)/g;
-  let match;
-  while ((match = portRegex.exec(stdout)) !== null) {
-    usedPorts.add(parseInt(match[1]));
-  }
-  for (let port = start; port <= end; port++) {
-    if (!usedPorts.has(port)) return port;
-  }
-  throw new Error('No available ports');
+  });
 }
 
-async function updateCaddyConfig(subdomain: string, domain: string, port: number) {
-  const caddySnippet = `${domain} {
-  reverse_proxy localhost:${port}
-  encode gzip
-  header {
-    X-Content-Type-Options nosniff
-    X-Frame-Options SAMEORIGIN
-    Referrer-Policy strict-origin-when-cross-origin
-  }
-}
-`;
+function main(): void {
+  let config: ProvisionerConfig;
   try {
-    await fs.mkdir('/opt/caddy/sites', { recursive: true });
-    await fs.writeFile(`/opt/caddy/sites/${subdomain}.caddy`, caddySnippet);
-    await execAsync('docker exec caddy-proxy caddy reload --config /etc/caddy/Caddyfile');
+    config = loadConfig(process.env);
   } catch (e) {
-    console.warn('Failed to update Caddy config:', e);
+    if (e instanceof ConfigError) {
+      console.error(`FATAL: ${e.message}`);
+      process.exit(1);
+    }
+    throw e;
   }
+  const server = createServer(config, new SiteManager(config));
+  server.listen(config.port, () => {
+    console.log(`WP Provisioner running on :${config.port} (mode ${config.mode}, up to ${config.maxSites} sites)`);
+  });
 }
 
-const PORT = parseInt(process.env.PORT || '9090');
-app.listen(PORT, () => {
-  console.log(`WP Provisioner running on :${PORT}`);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
