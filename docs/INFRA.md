@@ -95,7 +95,8 @@ Terraform (`terraform/`, Cloudflare only) creates these resources: DNS zone, rec
 | Service | What it is for | Keyed by | Where it is configured |
 |---|---|---|---|
 | Cloudflare (Workers Paid, D1, R2, KV, Queues, Pages, Workers AI, DNS) | Everything above | Platform | API token for deploys; separate tokens for runtime provisioning (`CF_API_TOKEN`) and backups; see KEYS-AND-ACCOUNTS |
-| SendGrid | System mail (welcome, password reset), agency email through the Communication Hub, delivery event webhook, inbound parse | Platform | `SENDGRID_API_KEY`, `SENDGRID_WEBHOOK_PUBLIC_KEY`, `INBOUND_EMAIL_SECRET`, sender settings; domain authentication in the SendGrid console |
+| Cloudflare Email Service | Inbound: Email Routing catch-all on `in.<domain>` to the Worker's `email()` handler (replies matched by a per-thread token in `reply+<token>@`). Outbound: platform system mail through the `send_email` binding `EMAIL` when `EMAIL_SYSTEM_PROVIDER=cloudflare` (beta, transactional only; SendGrid retry on any error) | Platform | `EMAIL_SYSTEM_PROVIDER`, `EMAIL_INBOUND_DOMAIN` (plain settings), binding `EMAIL`; onboarding in the Cloudflare dashboard |
+| SendGrid | All agency email (Communication Hub, campaigns, reminders; never on Cloudflare), platform system mail by default and as fallback, delivery event webhook, legacy inbound parse | Platform | `SENDGRID_API_KEY`, `SENDGRID_WEBHOOK_PUBLIC_KEY`, `INBOUND_EMAIL_SECRET`, sender settings; domain authentication in the SendGrid console |
 | Twilio | SMS, WhatsApp (via Twilio senders), login codes (Verify), voice (the only calling provider: owner decision 2026-10-15; offered only in the countries of `VOIP_CALLING_COUNTRIES`, default GB, US, AU, SG; not offered in India, the Gulf, Thailand, Sri Lanka, Nepal, Bangladesh) | Platform today. Sub-account per agency is Tier 3 work (VoIP, partly built) | `TWILIO_*` secrets; callback URLs in the Twilio console (all under `<API_PUBLIC_URL>/api/v1/...`) |
 | Plivo | Alternative SMS/voice adapter. Owner could not open an account; the adapter stays in the code, unused and untested | n/a | `PLIVO_*` (leave empty) |
 | Exotel | Dropped by the owner decision of 2026-10-15 (ADR-001): no calling for agencies in India. Not built | n/a | none |
@@ -139,7 +140,9 @@ Names only; values never go in the repository. The authoritative list is `interf
 | `CREDENTIALS_ACTIVE_KEY_ID` | Which key encrypts new values, for example `k1` | Required | Generated var (default `k1`; env var of the same name at generation) |
 | `HEALTH_TOKEN` | Shared secret for `/api/v1/health/deep` (header `X-Health-Token`) | Required for monitoring | secret |
 | `ERROR_REPORTER_DSN` | Sentry-compatible DSN; blank means log lines only | Optional | secret |
-| `SENDGRID_API_KEY` | Sends email | Required | secret |
+| `EMAIL_SYSTEM_PROVIDER` | Provider of platform system mail: `sendgrid` (default) or `cloudflare` (`mock` for local stacks). Agency mail ignores it | Optional | generated `[vars]` |
+| `EMAIL_INBOUND_DOMAIN` | Domain of the per-thread reply addresses `reply+<token>@<domain>` (Cloudflare Email Routing). Unset: agency replies behave as before | Optional | generated `[vars]` |
+| `SENDGRID_API_KEY` | Sends email (all agency mail; platform mail unless Cloudflare is on, then the fallback) | Required | secret |
 | `SENDGRID_WEBHOOK_PUBLIC_KEY` | Verifies SendGrid's signed event webhook | Required once the webhook is on | secret |
 | `INBOUND_EMAIL_SECRET` | Secret path segment in the SendGrid Inbound Parse URL | Optional | secret |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` | Twilio login; the auth token also verifies webhook signatures | Required for SMS, WhatsApp, codes | secret |
