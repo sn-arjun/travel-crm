@@ -8,11 +8,13 @@ import {
   ipcMain,
   globalShortcut,
   dialog,
+  session,
 } from 'electron';
 import path from 'path';
 import { startNextServer, nextServerLogPath, type NextServer } from './next-server';
 import { setupRuntimeConfigIpc } from './runtime-config';
 import { setupUpdater } from './updater';
+import { allowPermission } from './permissions';
 
 // ─── Constants ──────────────────────────────────────────────
 const DEV_URL = 'http://localhost:3100';
@@ -36,6 +38,18 @@ function relaunchApp(): void {
   stopNextServer();
   app.relaunch();
   app.exit(0);
+}
+
+// ─── Permissions ────────────────────────────────────────────
+// The softphone needs the microphone, for the app's own loopback origin only; everything else is refused (R307).
+function installPermissionHandlers(): void {
+  const ses = session.defaultSession;
+  ses.setPermissionRequestHandler((_wc, permission, callback, details) => {
+    callback(allowPermission(permission, details.requestingUrl, appUrl, { mediaTypes: (details as { mediaTypes?: Array<'audio' | 'video' | 'unknown'> }).mediaTypes }));
+  });
+  ses.setPermissionCheckHandler((_wc, permission, requestingOrigin, details) => {
+    return allowPermission(permission, requestingOrigin, appUrl, { mediaType: (details as { mediaType?: 'audio' | 'video' | 'unknown' }).mediaType });
+  });
 }
 
 // ─── Window Creation ────────────────────────────────────────
