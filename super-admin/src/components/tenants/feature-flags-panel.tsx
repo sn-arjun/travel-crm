@@ -4,25 +4,42 @@ import { useEffect, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { RotateCcw, Save } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { RotateCcw } from 'lucide-react';
+
+type Source = 'platform' | 'override' | 'plan';
+type Choice = 'plan' | 'on' | 'off';
 
 interface Feature {
   key: string;
+  name: string;
+  area: string | null;
   enabled: boolean;
-  isOverride: boolean;
+  source: Source;
+  override: boolean | null;
   planDefault: boolean;
+  platformOff: boolean;
 }
 
-function labelFor(key: string): string {
-  return key.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+const SOURCE_LABEL: Record<Source, string> = {
+  platform: 'Off for every agency',
+  override: 'Agency override',
+  plan: 'From plan',
+};
+
+function choiceOf(f: Feature): Choice {
+  return f.override === null ? 'plan' : f.override ? 'on' : 'off';
 }
 
-/** Feature flags per agency (GET/PUT/DELETE /admin/tenants/:id/features). The list comes from the plan catalogue. */
+/**
+ * Feature switches for one agency (GET/PUT/DELETE /admin/tenants/:id/features). Each feature shows its effective state and
+ * where it comes from (plan, agency override, or the platform switch), and can be set to on, off or follow the plan.
+ */
 export function FeatureFlagsPanel({ tenantId }: { tenantId: string }) {
   const [features, setFeatures] = useState<Feature[]>([]);
   const [plan, setPlan] = useState('');
-  const [dirty, setDirty] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState('');
   const [message, setMessage] = useState('');
 
   const fetchFeatures = useCallback(async () => {
@@ -35,33 +52,21 @@ export function FeatureFlagsPanel({ tenantId }: { tenantId: string }) {
     setMessage('');
     setFeatures(data.features || []);
     setPlan(data.plan || '');
-    setDirty(false);
   }, [tenantId]);
 
   useEffect(() => { fetchFeatures(); }, [fetchFeatures]);
 
-  const toggleFeature = (key: string) => {
-    setFeatures(features.map((f) => (f.key === key ? { ...f, enabled: !f.enabled } : f)));
-    setDirty(true);
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    // Only differences from the plan default (or existing overrides) are stored as overrides.
-    const changes: Record<string, boolean> = {};
-    features.forEach((f) => {
-      if (f.isOverride || f.enabled !== f.planDefault) changes[f.key] = f.enabled;
+  const setChoice = async (key: string, choice: Choice) => {
+    setBusy(key);
+    const value = choice === 'plan' ? null : choice === 'on';
+    const res = await fetch(`/api/tenants/${tenantId}/features`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ features: { [key]: value }, ...(reason.trim() ? { reason: reason.trim() } : {}) }),
     });
-    if (Object.keys(changes).length > 0) {
-      const res = await fetch(`/api/tenants/${tenantId}/features`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ features: changes }),
-      });
-      if (!res.ok) setMessage(((await res.json()) as { error?: string }).error || 'Save failed');
-    }
+    if (!res.ok) setMessage(((await res.json().catch(() => ({}))) as { error?: string }).error || 'Save failed');
     await fetchFeatures();
-    setSaving(false);
+    setBusy('');
   };
 
   const handleReset = async () => {
@@ -78,42 +83,40 @@ export function FeatureFlagsPanel({ tenantId }: { tenantId: string }) {
             Current plan: <Badge variant="outline" className="capitalize">{plan}</Badge>
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleReset}>
-            <RotateCcw className="mr-2 h-3.5 w-3.5" /> Reset to Plan Defaults
-          </Button>
-          {dirty && (
-            <Button size="sm" onClick={handleSave} disabled={saving}>
-              <Save className="mr-2 h-3.5 w-3.5" /> {saving ? 'Saving...' : 'Save Changes'}
-            </Button>
-          )}
-        </div>
+        <Button variant="outline" size="sm" onClick={handleReset}>
+          <RotateCcw className="mr-2 h-3.5 w-3.5" /> Follow plan for all
+        </Button>
       </CardHeader>
       <CardContent>
+        <Input
+          className="mb-3 max-w-md"
+          placeholder="Reason for the change (kept in the audit log)"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          aria-label="Reason"
+        />
         {message && <p className="mb-3 text-sm text-destructive">{message}</p>}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           {features.map((feature) => (
-            <div key={feature.key} className="flex items-center justify-between rounded-lg border p-3">
-              <div>
-                <span className="text-sm font-medium">{labelFor(feature.key)}</span>
-                {feature.isOverride && <Badge variant="outline" className="ml-2 text-xs">Custom</Badge>}
+            <div key={feature.key} className="flex items-center justify-between gap-3 rounded-lg border p-3">
+              <div className="min-w-0">
+                <div className="text-sm font-medium truncate">{feature.name}</div>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  <Badge variant={feature.enabled ? 'default' : 'secondary'} className="text-xs">{feature.enabled ? 'On' : 'Off'}</Badge>
+                  <Badge variant="outline" className="text-xs">{SOURCE_LABEL[feature.source]}</Badge>
+                </div>
               </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={feature.enabled}
-                aria-label={labelFor(feature.key)}
-                onClick={() => toggleFeature(feature.key)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  feature.enabled ? 'bg-green-600' : 'bg-gray-300 dark:bg-gray-600'
-                }`}
+              <select
+                className="rounded-md border bg-background px-2 py-1 text-sm"
+                aria-label={`${feature.name} setting`}
+                value={choiceOf(feature)}
+                disabled={busy === feature.key}
+                onChange={(e) => setChoice(feature.key, e.target.value as Choice)}
               >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    feature.enabled ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
+                <option value="plan">Follow plan ({feature.planDefault ? 'on' : 'off'})</option>
+                <option value="on">Always on</option>
+                <option value="off">Always off</option>
+              </select>
             </div>
           ))}
         </div>

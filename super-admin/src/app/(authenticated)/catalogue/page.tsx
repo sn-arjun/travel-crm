@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Breadcrumb } from '@/components/layout/breadcrumb';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -130,13 +131,11 @@ function PlanCard({ plan, onDone }: { plan: CataloguePlan; onDone: Done }) {
   const [trialDays, setTrialDays] = useState(String(plan.trialDays));
   const [isPublic, setIsPublic] = useState(plan.isPublic);
   const [isActive, setIsActive] = useState(plan.isActive);
-  const [features, setFeatures] = useState(plan.features.join('\n'));
   const [newPrice, setNewPrice] = useState({ market: '', currency: '', yearlyPrice: '', includedUsers: '' });
 
   const save = async () => {
-    const list = features.split(/\r?\n/).map((f) => f.trim()).filter(Boolean);
     onDone(
-      await send(`/plans/${plan.key}`, 'PUT', { name, description: description || null, trialDays: Number(trialDays), isPublic, isActive, features: list }),
+      await send(`/plans/${plan.key}`, 'PUT', { name, description: description || null, trialDays: Number(trialDays), isPublic, isActive }),
       `Saved ${plan.key}`,
     );
   };
@@ -173,13 +172,10 @@ function PlanCard({ plan, onDone }: { plan: CataloguePlan; onDone: Done }) {
             <label className="flex items-center gap-2"><input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} /> Active</label>
           </div>
         </div>
-        <Labeled label={`Features (one key per line, ${plan.features.length} now)`}>
-          <textarea
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm font-mono min-h-24"
-            value={features}
-            onChange={(e) => setFeatures(e.target.value)}
-          />
-        </Labeled>
+        <p className="text-sm text-muted-foreground">
+          {plan.features.length} features on this plan.{' '}
+          <Link href="/features" className="underline">Switch features on or off on the Features page</Link>.
+        </p>
         <Button size="sm" onClick={save}>Save plan</Button>
 
         <div>
