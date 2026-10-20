@@ -628,8 +628,10 @@ for (const p of PROFILES) {
           locked.push(probe.feature);
         }
       }
-      // The three plans really differ: Basic has no AI assistant, Enterprise has the intelligence suite.
-      if (p.plan === 'basic') expect(locked).toContain('ai_assistant');
+      // The three plans really differ (PRICING.md 2.6): Basic has the assistant but no campaigns, chatbot or intelligence;
+      // Pro adds campaigns and intelligence; Enterprise has the chatbot too.
+      if (p.plan === 'basic') expect(locked).toEqual(['whatsapp_campaigns', 'ai_chatbot', 'ai_intelligence']);
+      if (p.plan === 'pro') expect(locked).toEqual(['ai_chatbot']);
       if (p.plan === 'enterprise') expect((await get('/ai/intelligence/anything')).status).not.toBe(403);
 
       // The operator opens one locked feature for this agency (one on its own route: AI paths are also behind the assistant gate), then takes the override away again.
