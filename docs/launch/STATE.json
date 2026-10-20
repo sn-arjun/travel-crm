@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-21T18:30+05:30",
+  "updated": "2026-10-21T20:00+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -141,7 +141,8 @@
         "R131": "merged: EmailProvider (SendGrid, Cloudflare send_email, mock) + sendMail routing by kind: platform_system -> Cloudflare when EMAIL_SYSTEM_PROVIDER=cloudflare and EMAIL binding (else SendGrid), one retry on SendGrid on failure; agency_transactional and agency_marketing -> SendGrid always (test: marketing never on Cloudflare). Inbound: Worker email() handler for Email Routing, reply+<24-char token>@EMAIL_INBOUND_DOMAIN (KV 180 days), dependency-free MIME reader, ingestInbound into the one agency, setReject for unknown/expired/oversize, auto-replies ignored. gen-wrangler: [[send_email]] EMAIL, EMAIL_SYSTEM_PROVIDER (default sendgrid), EMAIL_INBOUND_DOMAIN. GO-LIVE 9.1a. Merged line: backend 103/2008 (second run; first run hit the cron-fanout timeout flake, now fixed with a 30 s timeout), gen-wrangler self-test passed; e2e communication-inbox + first-login + campaigns + two-factor 58 passed on the identical batch tree. Gaps: no Cloudflare delivery-event webhook (dashboard logs for system mail); campaign-queue inline SendGrid fetch and the template-send path not yet behind the interface (both stay SendGrid).",
         "R129": "merged: master 0026 loads PRICING.md step A (plans 4, plan_prices 54 founder+list across 9 markets, plan_allowances 36, plan_features 96, comm_unit_costs 69, addon_products 68; step-B rows inactive), markets IN/UK/EU/ANZ/WEST/SG/GULF/MY_TH/LK_NP_BD, founder window 2026-11-01..2027-03-31 with a 24-month lock on the subscription, earliest row used before any window opens, packOffers per market, packs carry into the next month (usage_period_history), MIN_COMM_MARGIN_PCT 25, landing shows founder prices, console shows founder and list rows. Merged line: backend 104/2034, desktop 94/1544, lint 0, super-admin tsc + lint + build OK, landing build + links OK; e2e handoff 41/41 and locale 5/5 (slot 2, multi, pool 8) after orchestrator fix to locale.spec (agency browser clock and agency today). Follow-ups: nothing re-prices the gateway subscription at month 24; UK/AU calling stays off until VOIP_CALLING_COUNTRIES is widened; NZ and non-DE EU call-minute weights fall back to 1.",
         "R132": "merged: default = Cloudflare for platform system mail with SendGrid fallback (gen-wrangler default cloudflare; no binding or refusal -> SendGrid, reason logged; test/local -> outbox); agency mail always SendGrid; resolution console > EMAIL_SYSTEM_PROVIDER > built-in; console Email page (/email): routing per kind, provider status, switches (provider, fallback, reply addresses) with audited reason, test send, delivery log; master platform_email_log (masked addresses, SendGrid events update it, Cloudflare rows \"accepted\", 90-day purge); campaign queue and template sends now through sendMail. Master 0027. Merged line: backend 105/2053, gen-wrangler self-test OK, super-admin tsc + lint + build OK; e2e communication-inbox + campaigns + marketing-opt-out + first-login + two-factor 67 passed (slot 1). Orchestrator: backend network guard (test/setup/network-guard.ts) after finding security-hardening sent 6 real SendGrid requests per run with the test key.",
-        "R130": "merged: whatsapp (utility/service) and whatsapp_marketing meter channels with their own caps, packs (market-filtered) and 402s; category = marketing for campaigns and promotional templates, utility for everything else paid (Meta and Twilio alike); refunds go back to the charged channel; plan_allowances gains a nullable market column (agency market row preferred, admin PUT ?market=), no per-market rows seeded (PRICING.md gives no amounts); master 0028 switches step-B rows on, whatsapp allowances 20/250/750/2000, marketing 10/50/200/500, interim marketing-rate whatsapp unit costs off; usage screen shows the two lines, usage-limits.tsx through t() (en/ar/hi). Merged line (identical to the tested branch): backend 106/2074, desktop 94/1545, lint 0, i18n PASS (ar 811/811), super-admin tsc 0; e2e whatsapp-campaigns + communication-inbox + marketing-opt-out 56 passed (slot 2). Owner: per-market allowance numbers for EU/DE, MY_TH, LK_NP_BD Enterprise when wanted."
+        "R130": "merged: whatsapp (utility/service) and whatsapp_marketing meter channels with their own caps, packs (market-filtered) and 402s; category = marketing for campaigns and promotional templates, utility for everything else paid (Meta and Twilio alike); refunds go back to the charged channel; plan_allowances gains a nullable market column (agency market row preferred, admin PUT ?market=), no per-market rows seeded (PRICING.md gives no amounts); master 0028 switches step-B rows on, whatsapp allowances 20/250/750/2000, marketing 10/50/200/500, interim marketing-rate whatsapp unit costs off; usage screen shows the two lines, usage-limits.tsx through t() (en/ar/hi). Merged line (identical to the tested branch): backend 106/2074, desktop 94/1545, lint 0, i18n PASS (ar 811/811), super-admin tsc 0; e2e whatsapp-campaigns + communication-inbox + marketing-opt-out 56 passed (slot 2). Owner: per-market allowance numbers for EU/DE, MY_TH, LK_NP_BD Enterprise when wanted.",
+        "R133": "merged: root cause of the \"invoice timeouts\" in full runs = test pollution, not slowness: first-login.spec (sorted before invoices.spec) set the shared invoice prefix to TRV on a single-tenant stack, so invoices.spec waited for INV-/PI- numbers. first-login.spec now skips on single-tenant stacks; guard test e2e-single-tenant-guard.test.ts. Client timeout 30 s (not changed). Verify: full run reached 883 with 810 passed and 0 failed before the memory monitor stopped it; second verify not run. Merged line: desktop 95/1548, lint 0. Open: the one-off 30 s \"Couldn't load invoices\" in locale.spec on a multi stack is unexplained; slot API log (desktop/audit/fix/stack/slot0-api.log) was empty, so fix-stack should capture wrangler http.request timings."
       },
       "merged": [
         "R101",
@@ -196,7 +197,8 @@
         "R131",
         "R129",
         "R132",
-        "R130"
+        "R130",
+        "R133"
       ],
       "tier1": "COMPLETE 2026-10-15: R101-R124 merged (incl. orchestrator follow-ups R123, R124); exit test R121 9/9 on the merged line; fresh-clone check passes."
     },
@@ -300,12 +302,12 @@
     "R132: default email routing is Cloudflare for platform mail with SendGrid fallback; it takes effect only after Cloudflare Email Sending onboarding for the platform domain (until then mail goes through SendGrid automatically). Switch or roll back from the console Email page. Note: turning \"customer reply addresses\" off also refuses replies to addresses already sent."
   ],
   "todo": [
-    "Leftover folder .claude/worktrees/R114/packages/shared is locked by another program (editor/Dart analyzer); delete by hand later. Not tracked by git.",
-    "Refresh docs/FEATURES.md and features.json after Tier 1 (chatbot routes are now public; many statuses changed).",
-    "Follow-up batch needed (R124): per-recipient idempotency for scheduled reminders, so a retried daily job never re-sends to recipients already handled (found by R117).",
-    "W6: packages/driver_app/integration_test/demo_flow_test.dart (driver recording for the films) must call chooseAgency(tester) from integration_test/helpers/agency_login.dart before entering the phone number; remove its TENANT_ID comment.",
-    "Leftover untracked worktree folders under .claude/worktrees (R106, R107, R112, R114, R115, R123, ...) are locked by an editor or have over-long Flutter paths; delete by hand when the editor is closed (long paths: robocopy an empty folder over them with /MIR).",
-    "Update docs/GO-LIVE.md with the R125 changes (phases 0, 2, 3, 4, 7, 10 and a new agency-web-app phase); list is in the R125 agent report summarized in this STATE entry."
+    "Full e2e verification of the merged line on slot 0 (the R133 verify run was stopped by the memory monitor; owner to say when to run it).",
+    "fix-stack: capture the wrangler API log (http.request timings) per slot.",
+    "W6 videos (full catalogue) with af_heart, on the final UI; fix packages/driver_app/integration_test/demo_flow_test.dart chooseAgency(tester).",
+    "W4 build re-verification on the final line (installer, APK, super-admin build, landing).",
+    "W7 docs/LAUNCH-REPORT.md (scorecard before/after, what was verified, what remains).",
+    "Push: only on an explicit owner \"push\" (repo is public; owner will make it private later)."
   ],
   "e2eBaseline": {
     "date": "2026-10-15",
