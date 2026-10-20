@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * i18n check for the converted scope (shell, navigation, auth screens, shared components).
  *
