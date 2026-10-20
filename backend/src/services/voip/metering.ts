@@ -15,9 +15,10 @@
  *  - MINUTES: ceil(billed seconds / 60), the provider bills per started minute. Inbound minutes are counted but
  *    never block a caller; an outbound call is only ever refused BEFORE it starts (fraud.ts, assertAllowance).
  *  - WEIGHT (documented rule): a minute to a destination dearer than the agency's base minute counts as more than
- *    one. weight = unit cost of the destination / unit cost of the agency's market (both comm_unit_costs rows of
- *    channel call_minute, same currency), never below 1 and at most MAX_WEIGHT; counted = ceil(minutes x weight).
- *    No row for either side, or different currencies: weight 1. Setting every row to the same cost disables it.
+ *    one. The base minute is the agency's own country row (comm_unit_costs, channel call_minute, market = country),
+ *    else its market's row (WEST, SG). weight = unit cost of the destination country / base unit cost (same currency),
+ *    never below 1 and at most MAX_WEIGHT; counted = ceil(minutes x weight). No row for either side, or different
+ *    currencies: weight 1. Setting every row to the same cost disables the rule.
  *  - LEGS: a bridged call is several provider calls. The leg to the agent is cost only (0 minutes); only the customer
  *    leg is counted. A 'dial' child is the agent leg when its parent is an inbound call, else the customer leg.
  *  - Provider cost is stored for the platform's own spend watch (fraud.ts), not shown to agencies. Costs the provider
@@ -59,9 +60,9 @@ function unitCostFor(catalogue: Catalogue, market: string, now: Date): UnitCost 
 }
 
 /** The weight of one minute to `destination` for an agency in `agencyMarket` (see the header). 1 when it cannot be told. */
-export function minuteWeight(catalogue: Catalogue, agencyMarket: string, destination: string | null, now: Date = new Date()): number {
+export function minuteWeight(catalogue: Catalogue, agency: { country: string | null; market: string }, destination: string | null, now: Date = new Date()): number {
   if (!destination) return 1;
-  const base = unitCostFor(catalogue, agencyMarket, now);
+  const base = (agency.country ? unitCostFor(catalogue, agency.country.toUpperCase(), now) : null) ?? unitCostFor(catalogue, agency.market, now);
   const dest = unitCostFor(catalogue, destination, now);
   if (!base || !dest || base.currency !== dest.currency) return 1;
   const w = dest.unitCost / base.unitCost;
@@ -154,7 +155,7 @@ export async function importTenantUsage(env: Env, tenantId: string, now: Date = 
     const info = classifyDestination(remote);
     const raw = billedMinutes(rec.billedSeconds);
     // The destination's price class matters for outbound; an inbound caller is not a destination we choose.
-    const weight = rec.direction === 'outbound' ? minuteWeight(catalogue, market, info.country, now) : 1;
+    const weight = rec.direction === 'outbound' ? minuteWeight(catalogue, { country: tenant?.country ?? null, market }, info.country, now) : 1;
     const counted = leg === 'customer' ? Math.ceil(raw * weight) : 0;
 
     if (counted > 0) {
