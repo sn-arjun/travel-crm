@@ -104,12 +104,16 @@ aiSettingsRoutes.get('/', async (c) => {
     const isEnabled = tenantFeatures.features.includes(key) && (key !== 'voip_calling' || voipCalling.available);
     const isOverridden = key in tenantFeatures.overrides;
     const tier = proFeatures.includes(key) ? 'pro' : 'enterprise';
+    const source = tenantFeatures.sources[key] ?? 'plan';
 
     return {
       key,
       enabled: isEnabled,
       tier,
       overridden: isOverridden,
+      // Where the value comes from (R127); 'platform' means switched off for every agency, so there is nothing to upgrade to.
+      source,
+      platformDisabled: source === 'platform',
     };
   });
 
@@ -294,6 +298,8 @@ aiSettingsRoutes.get('/features/check/:featureKey', async (c) => {
     featureKey,
     enabled: isEnabled,
     plan: tenantFeatures.plan,
+    source: tenantFeatures.sources[featureKey] ?? 'plan',
+    platformDisabled: tenantFeatures.platformOff.includes(featureKey),
   });
 });
 

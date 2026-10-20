@@ -18,6 +18,8 @@ import {
 import { signImpersonationToken, IMPERSONATION_TTL_SECONDS } from '../services/admin/impersonation';
 import { resumeAccount, suspendAccount } from '../services/voip/subaccounts';
 import { cancelScheduledRelease, scheduleTenantRelease } from '../services/voip/numbers';
+import { FEATURE_KEYS, FEATURE_REGISTRY } from '../services/features/registry';
+import { resolveTenantFeatures } from '../services/features/resolve';
 
 /**
  * Super admin tenant lifecycle and support tools (R111). Mounted by routes/admin.ts, so every route is
@@ -225,7 +227,8 @@ app.put('/tenants/:id/plan', zValidator('json', planSchema), async (c) => {
 
 const featureKey = z.string().regex(/^[a-z][a-z0-9_]{1,63}$/, 'Feature keys are lower case letters, digits and underscores');
 const featuresSchema = z.object({
-  features: z.record(featureKey, z.boolean()).refine((m) => Object.keys(m).length > 0 && Object.keys(m).length <= 200, 'Between 1 and 200 features'),
+  // true / false set an agency override; null removes it (follow the plan)
+  features: z.record(featureKey, z.boolean().nullable()).refine((m) => Object.keys(m).length > 0 && Object.keys(m).length <= 200, 'Between 1 and 200 features'),
   reason: z.string().trim().max(500).optional(),
 });
 
@@ -244,12 +247,18 @@ app.get('/tenants/:id/features', async (c) => {
   const catalogue = await getCatalogue(env);
   const planDefaults = new Set(catalogue.plans.find((p) => p.key === tenant.plan)?.features ?? []);
   const overrides = await featureOverrides(env, tenant.id);
-  const keys = new Set<string>([...catalogue.plans.flatMap((p) => p.features), ...Object.keys(overrides)]);
-  const features = [...keys].sort().map((key) => ({
-    key,
-    enabled: key in overrides ? overrides[key] : planDefaults.has(key),
-    isOverride: key in overrides,
-    planDefault: planDefaults.has(key),
+  const resolved = await resolveTenantFeatures(env, tenant.id, FEATURE_KEYS);
+  const meta = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));
+  const features = resolved.features.map((r) => ({
+    key: r.key,
+    name: meta.get(r.key)?.name ?? r.key,
+    area: meta.get(r.key)?.area ?? null,
+    enabled: r.enabled,
+    source: r.source,
+    isOverride: r.key in overrides,
+    override: r.key in overrides ? overrides[r.key] : null,
+    planDefault: planDefaults.has(r.key),
+    platformOff: r.source === 'platform',
   }));
   return success(c, { plan: tenant.plan, features });
 });
@@ -263,7 +272,9 @@ app.put('/tenants/:id/features', zValidator('json', featuresSchema), async (c) =
   const before = await featureOverrides(env, tenant.id);
   await env.MASTER_DB.batch(
     Object.entries(body.features).map(([key, enabled]) =>
-      env.MASTER_DB
+      enabled === null
+        ? env.MASTER_DB.prepare('DELETE FROM tenant_feature_flags WHERE tenant_id = ? AND feature_key = ?').bind(tenant.id, key)
+        : env.MASTER_DB
         .prepare(
           `INSERT INTO tenant_feature_flags (id, tenant_id, feature_key, is_enabled, updated_by) VALUES (?, ?, ?, ?, ?)
            ON CONFLICT (tenant_id, feature_key) DO UPDATE SET is_enabled = excluded.is_enabled, updated_by = excluded.updated_by`,

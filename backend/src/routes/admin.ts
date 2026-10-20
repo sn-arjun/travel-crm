@@ -13,6 +13,7 @@ import wordpressRoutes from './admin-wordpress';
 import { appUrl, emailFrom, supportEmail } from '../utils/app-urls';
 import { getCatalogue, activePriceFrom, type Catalogue, type CataloguePlan } from '../services/plans/catalogue';
 import { catalogueAdminRoutes, grantAddon } from './admin-catalogue';
+import { featureAdminRoutes } from './admin-features';
 
 /**
  * Platform administration routes, cross-tenant. This file holds the read-only platform views; the writes live in
@@ -38,6 +39,8 @@ app.use('*', requireSuperAdmin);
 
 // Plan catalogue administration (R109) and add-on grants live in routes/admin-catalogue.ts
 app.route('/catalogue', catalogueAdminRoutes);
+// Feature switches per plan and platform-wide (R127)
+app.route('/features', featureAdminRoutes);
 app.post('/tenants/:id/addons', grantAddon);
 
 // Lifecycle, plan, features, caps, usage, impersonation, audit log (R111) and console dashboard/reports/subscriptions

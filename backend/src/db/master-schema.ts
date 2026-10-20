@@ -115,6 +115,15 @@ export const tenantFeatureFlags = sqliteTable('tenant_feature_flags', {
   index('tenant_feature_flags_tenant_idx').on(table.tenantId),
 ]);
 
+// --- Platform feature switches (R127): a row with is_enabled = 0 turns the feature off for every agency ---
+export const platformFeatureSwitches = sqliteTable('platform_feature_switches', {
+  featureKey: text('feature_key').primaryKey(),
+  isEnabled: integer('is_enabled').notNull().default(1),
+  reason: text('reason'),
+  updatedBy: text('updated_by'),
+  updatedAt: text('updated_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+});
+
 // --- Tenant Usage Snapshots ---
 export const tenantUsageSnapshots = sqliteTable('tenant_usage_snapshots', {
   id: text('id').primaryKey(), // UUIDv7

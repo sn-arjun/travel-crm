@@ -1,3 +1,4 @@
+import { getPlatformOffKeys } from '../services/features/resolve';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '../utils/validator';
@@ -151,6 +152,7 @@ app.get('/reports/feature-usage', async (c) => {
     if (!overrideMap.has(o.tenant_id)) overrideMap.set(o.tenant_id, new Map());
     overrideMap.get(o.tenant_id)!.set(o.feature_key, o.is_enabled === 1);
   }
+  const platformOff = await getPlatformOffKeys(c.env);
   const planFeatures = new Map(catalogue.plans.map((p) => [p.key, new Set(p.features)]));
   const allFeatures = new Set<string>([...catalogue.plans.flatMap((p) => p.features), ...(overrides.results ?? []).map((o) => o.feature_key)]);
   const list = tenants.results ?? [];
@@ -159,7 +161,7 @@ app.get('/reports/feature-usage', async (c) => {
     const defaults = planFeatures.get(t.plan) ?? new Set<string>();
     const own = overrideMap.get(t.id);
     for (const f of allFeatures) {
-      const enabled = own?.has(f) ? own.get(f)! : defaults.has(f);
+      const enabled = platformOff.has(f) ? false : own?.has(f) ? own.get(f)! : defaults.has(f);
       if (enabled) counts.set(f, (counts.get(f) ?? 0) + 1);
     }
   }
