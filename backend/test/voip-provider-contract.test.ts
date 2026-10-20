@@ -247,10 +247,10 @@ describe('Twilio adapter request shapes', () => {
     expect(captured[0].headers.Authorization).toBe(basic('ACaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'agency-token'));
 
     expect(records).toEqual([
-      { providerCallId: 'CAfixture0000000000000000000000001', direction: 'outbound', to: CUSTOMER, from: AGENCY_NUMBER, startedAt: '2026-10-15T10:00:00.000Z', durationSeconds: 61, billedSeconds: 120, cost: 0.014, currency: 'USD' },
-      { providerCallId: 'CAfixture0000000000000000000000002', direction: 'inbound', to: AGENCY_NUMBER, from: CUSTOMER, startedAt: '2026-10-15T11:30:00.000Z', durationSeconds: 0, billedSeconds: 0, cost: 0, currency: 'USD' },
-      { providerCallId: 'CAfixture0000000000000000000000003', direction: 'outbound', to: '+61291234567', from: AGENCY_NUMBER, startedAt: '2026-10-14T09:00:00.000Z', durationSeconds: 120, billedSeconds: 120, cost: 0.042, currency: 'USD' },
-      { providerCallId: 'CAfixture0000000000000000000000004', direction: 'outbound', to: CUSTOMER, from: AGENCY_NUMBER, startedAt: '2026-10-14T18:00:00.000Z', durationSeconds: 5, billedSeconds: 60, cost: 0.014, currency: 'GBP' },
+      { providerCallId: 'CAfixture0000000000000000000000001', direction: 'outbound', to: CUSTOMER, from: AGENCY_NUMBER, startedAt: '2026-10-15T10:00:00.000Z', durationSeconds: 61, billedSeconds: 120, cost: 0.014, currency: 'USD', leg: 'agent', parentCallId: null },
+      { providerCallId: 'CAfixture0000000000000000000000002', direction: 'inbound', to: AGENCY_NUMBER, from: CUSTOMER, startedAt: '2026-10-15T11:30:00.000Z', durationSeconds: 0, billedSeconds: 0, cost: 0, currency: 'USD', leg: 'customer', parentCallId: null },
+      { providerCallId: 'CAfixture0000000000000000000000003', direction: 'outbound', to: '+61291234567', from: AGENCY_NUMBER, startedAt: '2026-10-14T09:00:00.000Z', durationSeconds: 120, billedSeconds: 120, cost: 0.042, currency: 'USD', leg: 'dial', parentCallId: null },
+      { providerCallId: 'CAfixture0000000000000000000000004', direction: 'outbound', to: CUSTOMER, from: AGENCY_NUMBER, startedAt: '2026-10-14T18:00:00.000Z', durationSeconds: 5, billedSeconds: 60, cost: 0.014, currency: 'GBP', leg: 'agent', parentCallId: null },
     ]);
   });
 
@@ -515,6 +515,8 @@ describe('call simulator', () => {
     await setCountry('GB');
     const login = await call('POST', '/auth/login', null, { email: 'admin@e2e.test', password: 'password123', tenantId: TENANT_ID });
     admin = ((await login.json()) as any).data.accessToken;
+    await call('POST', '/test/voip/own-number', null, { tenantId: TENANT_ID, phoneNumber: NUMBER });
+    await testEnv.MASTER_DB.prepare("INSERT OR IGNORE INTO voip_allowed_countries (tenant_id, country) VALUES (?, 'US')").bind(TENANT_ID).run(); // the customer here is a US number (R305 destination allow-list)
     expect((await call('POST', '/integrations/channels', admin, { channel: 'voice', address: NUMBER, provider: 'twilio', label: 'Sim line' })).status).toBe(201);
     await testEnv.MASTER_DB.prepare("INSERT INTO voip_settings (id, voip_provider, routing_strategy, default_caller_id) VALUES ('r301-sim', 'twilio', 'assigned', ?)").bind(NUMBER).run();
     expect((await call('POST', '/contacts', admin, { name: 'Simulated Caller', phone: CALLER, type: 'customer' })).status).toBe(201);

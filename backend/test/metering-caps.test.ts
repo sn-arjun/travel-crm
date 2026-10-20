@@ -316,6 +316,7 @@ describe('communication caps (R110)', () => {
 
   describe('call minutes', () => {
     beforeAll(async () => {
+      await call('POST', '/test/voip/own-number', null, { tenantId: TENANT_ID, phoneNumber: AGENCY_NUMBER });
       expect((await call('POST', '/integrations/channels', admin, { channel: 'voice', address: AGENCY_NUMBER, provider: 'twilio', label: 'R110 line' })).status).toBe(201);
       await db(`INSERT OR REPLACE INTO voip_settings (id, voip_provider, routing_strategy, default_caller_id) VALUES ('r110-voip', 'twilio', 'assigned', ?)`, AGENCY_NUMBER).run();
     });
@@ -326,7 +327,7 @@ describe('communication caps (R110)', () => {
         `r110-cm-${units}-${Math.random().toString(16).slice(2)}`, TENANT_ID, units, currentPeriodKey(),
       ).run();
 
-    it('a completed call adds ceil(duration / 60) minutes once, however often the callback repeats', async () => {
+    it('the status callback no longer counts minutes: they are charged from the provider usage records (R305)', async () => {
       await grantMinutes(100);
       await db(
         `INSERT INTO call_logs (id, direction, from_number, to_number, status, provider_call_id) VALUES ('r110-call', 'outbound', ?, '+919000007001', 'in-progress', 'CA-r110')`,
@@ -335,7 +336,7 @@ describe('communication caps (R110)', () => {
       const fields = { CallSid: 'CA-r110', CallStatus: 'completed', CallDuration: '61', To: '+919000007001', From: AGENCY_NUMBER };
       expect((await webhook('/status-callback', fields)).status).toBe(200);
       expect((await webhook('/status-callback', fields)).status).toBe(200);
-      expect(await usage('call_minutes_per_month')).toBe(2);
+      expect(await usage('call_minutes_per_month')).toBe(0);
     });
 
     it('POST /calls/outbound is refused with 402 once the minutes are used up; the call in progress is not cut', async () => {

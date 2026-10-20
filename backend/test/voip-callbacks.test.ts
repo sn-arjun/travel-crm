@@ -68,6 +68,7 @@ describe('VoIP provider webhooks', () => {
     admin = ((await login.json()) as any).data.accessToken;
 
     // The agency's number tells a webhook which workspace a call belongs to.
+    await call('POST', '/test/voip/own-number', null, { tenantId: TENANT_ID, phoneNumber: AGENCY_NUMBER });
     expect((await call('POST', '/integrations/channels', admin, { channel: 'voice', address: AGENCY_NUMBER, provider: 'twilio', label: 'Main line' })).status).toBe(201);
     const created = await call('POST', '/contacts', admin, { name: 'Missed Caller', phone: '9000004001', type: 'customer' });
     contactId = ((await created.json()) as any).data.id;

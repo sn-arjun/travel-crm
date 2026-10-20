@@ -33,6 +33,12 @@ async function ensureInboundLine() {
     providerAuthToken: 'e2e-simulator-token',
     ...(settings?.data?.defaultCallerId ? {} : { defaultCallerId: AGENCY_NUMBER }),
   });
+  // Numbers are registered only for agencies that own them (R305): the test route stands in for the purchase path.
+  await fetch(`${API_URL}/test/voip/own-number`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tenantId: TENANT_ID, phoneNumber: AGENCY_NUMBER }),
+  });
   // 409 when already registered: fine.
   await api('POST', '/integrations/channels', { channel: 'voice', address: AGENCY_NUMBER, provider: 'twilio', label: 'Simulator line' });
 }

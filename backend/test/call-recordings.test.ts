@@ -204,6 +204,8 @@ beforeAll(async () => {
   admin = await login('admin@e2e.test');
   sales = await login('sales@e2e.test');
   viewer = await login('viewer@e2e.test');
+  await call('POST', '/test/voip/own-number', null, { tenantId: TENANT_ID, phoneNumber: AGENCY_NUMBER });
+  await baseEnv.MASTER_DB.prepare("INSERT OR IGNORE INTO voip_allowed_countries (tenant_id, country) VALUES (?, 'IN')").bind(TENANT_ID).run(); // the customers here are Indian numbers (R305 destination allow-list)
   expect((await call('POST', '/integrations/channels', admin, { channel: 'voice', address: AGENCY_NUMBER, provider: 'twilio', label: 'R306 line' })).status).toBe(201);
   await baseEnv.MASTER_DB
     .prepare(`INSERT INTO voip_settings (id, voip_provider, routing_strategy, default_caller_id, voicemail_enabled) VALUES ('voip-r306', 'twilio', 'assigned', ?, 1)`)

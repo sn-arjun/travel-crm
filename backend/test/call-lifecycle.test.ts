@@ -139,6 +139,8 @@ describe('Call lifecycle events and recipes', () => {
     await testEnv.MASTER_DB.prepare("INSERT INTO settings (key, value) VALUES ('country', 'GB') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run();
     const login = await call('POST', '/auth/login', null, { email: 'admin@e2e.test', password: 'password123', tenantId: TENANT_ID });
     admin = ((await login.json()) as any).data.accessToken;
+    await call('POST', '/test/voip/own-number', null, { tenantId: TENANT_ID, phoneNumber: AGENCY_NUMBER });
+    await testEnv.MASTER_DB.prepare("INSERT OR IGNORE INTO voip_allowed_countries (tenant_id, country) VALUES (?, 'IN')").bind(TENANT_ID).run(); // the customers here are Indian numbers (R305 destination allow-list)
     expect((await call('POST', '/integrations/channels', admin, { channel: 'voice', address: AGENCY_NUMBER, provider: 'twilio', label: 'Lifecycle line' })).status).toBe(201);
     await testEnv.MASTER_DB
       .prepare(`INSERT INTO voip_settings (id, voip_provider, routing_strategy, default_caller_id, max_ring_duration, voicemail_enabled) VALUES ('voip-lc', 'twilio', 'assigned', ?, 25, 1)`)

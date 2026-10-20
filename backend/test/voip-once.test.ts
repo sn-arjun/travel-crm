@@ -79,11 +79,14 @@ describe('Provider callbacks are processed once', () => {
     await testEnv.MASTER_DB.prepare("INSERT INTO settings (key, value) VALUES ('country', 'GB') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run();
     const login = await call('POST', '/auth/login', null, { email: 'admin@e2e.test', password: 'password123', tenantId: TENANT_ID });
     admin = ((await login.json()) as any).data.accessToken;
+    await call('POST', '/test/voip/own-number', null, { tenantId: TENANT_ID, phoneNumber: AGENCY_NUMBER });
     expect((await call('POST', '/integrations/channels', admin, { channel: 'voice', address: AGENCY_NUMBER, provider: 'twilio', label: 'Once line' })).status).toBe(201);
     await testEnv.MASTER_DB
       .prepare(`INSERT INTO voip_settings (id, voip_provider, routing_strategy, default_caller_id, max_ring_duration) VALUES ('voip-once', 'twilio', 'assigned', ?, 25)`)
       .bind(AGENCY_NUMBER)
       .run();
+    // The customers in this file are Indian numbers; the agency is in GB, so the platform has switched IN on (R305 fraud allow-list).
+    await testEnv.MASTER_DB.prepare("INSERT OR IGNORE INTO voip_allowed_countries (tenant_id, country) VALUES (?, 'IN')").bind(TENANT_ID).run();
     // A call-minute pack, so placing and finishing calls is allowed.
     await testEnv.MASTER_DB
       .prepare(`INSERT OR IGNORE INTO tenant_addons (id, tenant_id, product_key, quantity, units_granted, period_key, source) VALUES ('0196a302-0000-7000-8000-0000000000c1', ?, 'call_minutes_100', 1, 100, ?, 'super_admin_grant')`)
@@ -143,8 +146,8 @@ describe('Provider callbacks are processed once', () => {
         }
         if (scenario === 'inbound_answered' || scenario === 'outbound_answered') {
           expect(after1.logs[0]).toEqual({ status: 'completed', duration_seconds: 45 });
-          // Call minutes counted once: 45 seconds is one minute.
-          expect(await rows(`SELECT event_key FROM metered_events WHERE event_key = ?`, `call:${callSid}`)).toHaveLength(1);
+          // R305: the callback no longer counts minutes (they come from the provider's usage records, see voip-metering.test.ts).
+          expect(await rows(`SELECT event_key FROM metered_events WHERE event_key = ?`, `call:${callSid}`)).toHaveLength(0);
         }
       });
     });
@@ -164,7 +167,7 @@ describe('Provider callbacks are processed once', () => {
     // And the completed one again.
     await webhook('/status-callback', { ...fields, CallStatus: 'completed', CallDuration: '70', SequenceNumber: '4' });
     expect((await rows('SELECT status, duration_seconds FROM call_logs WHERE id = ?', 'call-late'))[0]).toEqual({ status: 'completed', duration_seconds: 70 });
-    expect(await rows(`SELECT event_key FROM metered_events WHERE event_key = ?`, `call:${callSid}`)).toHaveLength(1);
+    expect(await rows(`SELECT event_key FROM metered_events WHERE event_key = ?`, `call:${callSid}`)).toHaveLength(0);
   });
 
   describe('inbound: the agent leg, the no-answer fallback and the miss', () => {
