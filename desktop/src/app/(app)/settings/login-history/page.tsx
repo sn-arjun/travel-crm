@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDateTime } from '@/lib/format';
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertTriangle, ArrowLeft, CheckCircle2, History, XCircle } from 'lucide-react';
@@ -16,7 +18,7 @@ import { PageContainer } from '@/components/layout/page-container';
 
 function formatDate(iso: string) {
   try {
-    return new Date(iso).toLocaleString('en-IN');
+    return formatLocaleDateTime(iso);
   } catch {
     return iso;
   }

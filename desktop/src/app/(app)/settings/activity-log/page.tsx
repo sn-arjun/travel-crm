@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDateTime } from '@/lib/format';
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Activity, LogIn, LogOut, Pencil, Plus, Settings, Trash2, FileText } from 'lucide-react';
@@ -28,7 +30,7 @@ const ENTITY_OPTIONS = ['contact', 'lead', 'invoice', 'task', 'user', 'settings'
 
 function formatDate(iso: string) {
   try {
-    return new Date(iso).toLocaleString('en-IN');
+    return formatLocaleDateTime(iso);
   } catch {
     return iso;
   }

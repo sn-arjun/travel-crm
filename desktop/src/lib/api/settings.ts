@@ -1,3 +1,4 @@
+import { getLocaleContext } from '@/lib/locale';
 import { client, type ApiResponse } from './client';
 import { API_ENDPOINTS } from './config';
 import { usersApi } from './users';
@@ -259,7 +260,7 @@ function toNumbering(d: NumberingConfig): Raw {
 function fromItineraryDefaults(r: Raw): ItineraryDefaults {
   const list = (v: unknown) => (Array.isArray(v) ? v.map(String) : []);
   return {
-    defaultCurrency: str(r.defaultCurrency, 'INR'),
+    defaultCurrency: str(r.defaultCurrency, getLocaleContext().currency),
     validityDays: num(r.validityDays, 7),
     childPricePercent: num(r.childPricePercent, 50),
     groupDiscountThreshold: num(r.groupDiscountThreshold, 10),

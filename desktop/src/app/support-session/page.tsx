@@ -1,5 +1,6 @@
 'use client';
 
+import { getLocaleContext } from '@/lib/locale';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
@@ -45,8 +46,8 @@ export default function SupportSessionPage() {
           id: session.tenantId,
           name,
           slug: '',
-          currency: 'INR',
-          timezone: 'Asia/Kolkata',
+          currency: getLocaleContext().currency,
+          timezone: getLocaleContext().timeZone,
           language: 'en',
           plan: '',
           isActive: true,

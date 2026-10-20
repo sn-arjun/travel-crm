@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDateTime } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -54,7 +56,7 @@ const statusConfig: Record<string, { label: string; icon: LucideIcon; tone: 'neu
 
 function formatDate(iso?: string) {
   if (!iso) return '-';
-  try { return new Date(iso).toLocaleString('en-IN'); } catch { return iso; }
+  try { return formatLocaleDateTime(iso); } catch { return iso; }
 }
 
 function ExportSettingsPageContent() {

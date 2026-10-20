@@ -1,5 +1,8 @@
 'use client';
 
+import { defaultCountryCode } from '@/lib/phone';
+import { getLocaleContext } from '@/lib/locale';
+import { currencyOptions, timezoneOptions, systemTimeZone } from '@/lib/locale-options';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { z } from 'zod';
@@ -55,20 +58,20 @@ const defaultValues: CompanyForm = {
   state: '',
   postalCode: '',
   country: '',
-  timezone: 'Asia/Kolkata',
-  currency: 'INR',
+  timezone: '',
+  currency: '',
   language: 'en',
 };
 
 // The stored phone is "<country code> <number>"; the form edits the two halves separately.
 function splitPhone(stored: string | undefined): { code: string; number: string } {
   const m = (stored ?? '').trim().match(/^(\+\d{1,4})\s+(.*)$/);
-  return m ? { code: m[1]!, number: m[2]! } : { code: '+91', number: (stored ?? '').trim() };
+  return m ? { code: m[1]!, number: m[2]! } : { code: defaultCountryCode(), number: (stored ?? '').trim() };
 }
 
 export default function CompanySettingsPage() {
   const router = useRouter();
-  const [countryCode, setCountryCode] = React.useState('+91');
+  const [countryCode, setCountryCode] = React.useState(() => defaultCountryCode());
   const { data: settingsResponse, loading, refetch } = useApiQuery(
     () => settingsApi.company.get(),
     [],
@@ -129,8 +132,8 @@ export default function CompanySettingsPage() {
         state: companySettings?.state ?? '',
         postalCode: companySettings?.postalCode ?? '',
         country: companySettings?.country ?? '',
-        timezone: companySettings?.timezone ?? 'Asia/Kolkata',
-        currency: companySettings?.currency ?? 'INR',
+        timezone: companySettings?.timezone ?? (getLocaleContext().timeZone || systemTimeZone()),
+        currency: companySettings?.currency ?? getLocaleContext().currency,
         language: companySettings?.language ?? 'en',
       }}
       onCancel={() => router.push('/settings')}
@@ -244,11 +247,9 @@ export default function CompanySettingsPage() {
                 <Select value={form.watch('currency')} onValueChange={(v) => form.setValue('currency', v, { shouldDirty: true })}>
                   <SelectTrigger id="currency"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="INR">Indian Rupee (INR)</SelectItem>
-                    <SelectItem value="USD">US Dollar (USD)</SelectItem>
-                    <SelectItem value="EUR">Euro (EUR)</SelectItem>
-                    <SelectItem value="GBP">British Pound (GBP)</SelectItem>
-                    <SelectItem value="AED">UAE Dirham (AED)</SelectItem>
+                    {currencyOptions(form.watch('currency')).map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </FormRow>
@@ -256,11 +257,9 @@ export default function CompanySettingsPage() {
                 <Select value={form.watch('timezone')} onValueChange={(v) => form.setValue('timezone', v, { shouldDirty: true })}>
                   <SelectTrigger id="timezone"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Asia/Kolkata">Asia/Kolkata (IST)</SelectItem>
-                    <SelectItem value="Asia/Dubai">Asia/Dubai (GST)</SelectItem>
-                    <SelectItem value="America/New_York">America/New_York (EST)</SelectItem>
-                    <SelectItem value="Europe/London">Europe/London (GMT)</SelectItem>
-                    <SelectItem value="Asia/Bangkok">Asia/Bangkok (ICT)</SelectItem>
+                    {timezoneOptions(form.watch('timezone')).map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </FormRow>

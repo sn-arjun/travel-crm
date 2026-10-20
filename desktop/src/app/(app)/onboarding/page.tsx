@@ -1,5 +1,7 @@
 'use client';
 
+import { getLocaleContext } from '@/lib/locale';
+import { currencyCodes, timezoneOptions, systemTimeZone } from '@/lib/locale-options';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Building2, Globe, Upload, CheckCircle2, Loader2, ArrowRight, ArrowLeft } from 'lucide-react';
@@ -23,18 +25,6 @@ const STEPS = [
   { id: 'done', label: 'All Set', icon: CheckCircle2 },
 ] as const;
 
-const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD', 'THB', 'AUD'];
-const TIMEZONES = [
-  'Asia/Kolkata',
-  'America/New_York',
-  'America/Chicago',
-  'America/Los_Angeles',
-  'Europe/London',
-  'Europe/Paris',
-  'Asia/Dubai',
-  'Asia/Singapore',
-  'Australia/Sydney',
-];
 const TAX_SYSTEMS = [
   { value: 'gst', label: 'GST (India)' },
   { value: 'vat', label: 'VAT' },
@@ -70,8 +60,8 @@ const EMPTY: FormState = {
   company_state: '',
   company_country: '',
   company_postal_code: '',
-  timezone: 'Asia/Kolkata',
-  currency: 'INR',
+  timezone: '',
+  currency: '',
   language: 'en',
   tax_system: 'gst',
 };
@@ -98,7 +88,11 @@ export default function OnboardingPage() {
   const [currentStep, setCurrentStep] = React.useState(0);
   const [isLoading, setIsLoading] = React.useState(false);
   const [loaded, setLoaded] = React.useState(false);
-  const [form, setForm] = React.useState<FormState>(EMPTY);
+  const [form, setForm] = React.useState<FormState>(() => ({
+    ...EMPTY,
+    timezone: getLocaleContext().timeZone || systemTimeZone(),
+    currency: getLocaleContext().currency,
+  }));
   const [invoicePrefix, setInvoicePrefix] = React.useState('INV');
   const [logo, setLogo] = React.useState<File | null>(null);
   const [logoPreview, setLogoPreview] = React.useState<string | null>(null);
@@ -200,8 +194,8 @@ export default function OnboardingPage() {
   }
 
   const stepId = STEPS[currentStep]!.id;
-  const timezones = TIMEZONES.includes(form.timezone) ? TIMEZONES : [form.timezone, ...TIMEZONES];
-  const currencies = CURRENCIES.includes(form.currency) ? CURRENCIES : [form.currency, ...CURRENCIES];
+  const timezones = timezoneOptions(form.timezone).map((o) => o.value);
+  const currencies = currencyCodes(form.currency);
 
   return (
     <PageContainer width="narrow" className="gap-ds-6">

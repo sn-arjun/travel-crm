@@ -72,7 +72,7 @@ const mockNotifications: Notification[] = [
   {
     id: '6',
     title: 'Payment Received',
-    message: '₹45,000 received for Bali trip booking',
+    message: 'Payment received for Bali trip booking',
     type: 'success',
     read: true,
     createdAt: Date.now() - 1800000,

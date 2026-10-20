@@ -1,5 +1,6 @@
 'use client';
 
+import { defaultCountryCode } from '@/lib/phone';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Copy, Check, Webhook, MessageSquare, Mail, Plus, Trash2, KeyRound } from 'lucide-react';
@@ -121,7 +122,7 @@ function ReceivingAddresses() {
 
   const [channel, setChannel] = React.useState<ReceivingChannel>('whatsapp');
   const [phone, setPhone] = React.useState('');
-  const [countryCode, setCountryCode] = React.useState('+91');
+  const [countryCode, setCountryCode] = React.useState(() => defaultCountryCode());
   const [email, setEmail] = React.useState('');
   const [label, setLabel] = React.useState('');
   const [saving, setSaving] = React.useState(false);

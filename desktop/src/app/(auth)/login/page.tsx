@@ -1,5 +1,6 @@
 'use client';
 
+import { defaultCountryCode } from '@/lib/phone';
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -42,7 +43,7 @@ export default function LoginPage() {
 
   // OTP login
   const [phone, setPhone] = React.useState('');
-  const [countryCode, setCountryCode] = React.useState('+91');
+  const [countryCode, setCountryCode] = React.useState(() => defaultCountryCode());
   const [otp, setOtp] = React.useState('');
 
   /** Store the session and leave the login screen: a temporary password or a required 2FA setup comes first. */

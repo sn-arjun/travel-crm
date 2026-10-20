@@ -1,5 +1,7 @@
 'use client';
 
+import { getLocaleContext } from '@/lib/locale';
+import { currencyOptions, CURRENCY_NAMES } from '@/lib/locale-options';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { z } from 'zod';
@@ -65,7 +67,7 @@ export default function ItineraryDefaultsPage() {
       description="Default values applied to newly created itineraries."
       schema={schema}
       defaultValues={{
-        defaultCurrency: d?.defaultCurrency ?? 'INR',
+        defaultCurrency: d?.defaultCurrency ?? getLocaleContext().currency,
         validityDays: String(d?.validityDays ?? 7),
         childPricePercent: String(d?.childPricePercent ?? 50),
         groupDiscountThreshold: String(d?.groupDiscountThreshold ?? 10),
@@ -102,11 +104,9 @@ export default function ItineraryDefaultsPage() {
                 <Select value={form.watch('defaultCurrency')} onValueChange={(v) => form.setValue('defaultCurrency', v, { shouldDirty: true })}>
                   <SelectTrigger id="defaultCurrency"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="INR">INR - Indian Rupee</SelectItem>
-                    <SelectItem value="USD">USD - US Dollar</SelectItem>
-                    <SelectItem value="EUR">EUR - Euro</SelectItem>
-                    <SelectItem value="GBP">GBP - British Pound</SelectItem>
-                    <SelectItem value="AED">AED - UAE Dirham</SelectItem>
+                    {currencyOptions(form.watch('defaultCurrency')).map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.value} - {CURRENCY_NAMES[o.value] ?? o.value}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </FormRow>
