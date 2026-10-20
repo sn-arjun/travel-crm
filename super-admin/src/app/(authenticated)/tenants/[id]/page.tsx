@@ -14,6 +14,7 @@ import { Users, CreditCard, Ban, RotateCcw, LifeBuoy, Target, Receipt } from 'lu
 import { FeatureFlagsPanel } from '@/components/tenants/feature-flags-panel';
 import { UsageStatsPanel } from '@/components/tenants/usage-stats-panel';
 import { AiVoipPanel } from '@/components/tenants/ai-voip-panel';
+import { CallingPanel } from '@/components/tenants/calling-panel';
 import { ImpersonationDialog } from '@/components/impersonation-dialog';
 
 interface TenantDetail {
@@ -169,6 +170,7 @@ export default function TenantDetailPage() {
           <TabsTrigger value="usage">Usage &amp; add-ons</TabsTrigger>
           <TabsTrigger value="features">Features</TabsTrigger>
           <TabsTrigger value="plan">Plan &amp; caps</TabsTrigger>
+          <TabsTrigger value="calling">Calling</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
@@ -216,6 +218,10 @@ export default function TenantDetailPage() {
 
         <TabsContent value="plan">
           <AiVoipPanel tenantId={id} currentPlan={tenant.planId || 'trial'} />
+        </TabsContent>
+
+        <TabsContent value="calling">
+          <CallingPanel tenantId={id} />
         </TabsContent>
       </Tabs>
 
