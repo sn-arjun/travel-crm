@@ -113,13 +113,7 @@ describe('subscription billing webhooks (R205)', () => {
       RAZORPAY_KEY_SECRET: 'rzp_secret_fake',
       RAZORPAY_WEBHOOK_SECRET: RAZORPAY_SECRET,
     });
-    // A UK price for Pro (the seeded draft prices are India only).
-    await master(`DELETE FROM plan_prices WHERE market = 'WEST' AND plan_key = 'pro'`);
-    await master(
-      `INSERT INTO plan_prices (id, plan_key, market, currency, yearly_price, included_users, extra_user_yearly_price, is_active, valid_from)
-       VALUES ('0196a205-9999-7000-8000-000000000001', 'pro', 'WEST', 'GBP', 200, 10, 20, 1, '2026-10-01T00:00:00Z')`,
-    );
-    await bumpCatalogueVersion(testEnv);
+    // The UK (GBP) and India (INR) prices are the approved ones from migration 0026 (PRICING.md 7.2).
     await insertTenant(T_STRIPE, 'GB', 'R205 Stripe Tours');
     await insertTenant(T_RAZOR, 'IN', 'R205 Razorpay Tours');
     await insertTenant(T_ORDER, 'GB', 'R205 Order Tours');
@@ -136,7 +130,7 @@ describe('subscription billing webhooks (R205)', () => {
     expect(s.sub.status).toBe('active');
     expect(s.sub.payment_gateway).toBe('stripe');
     expect(s.sub.gateway_subscription_id).toBe('sub_fixture_1');
-    expect(s.tenant).toMatchObject({ plan: 'pro', status: 'active', max_users: 12 });
+    expect(s.tenant).toMatchObject({ plan: 'pro', status: 'active', max_users: 7 });
     expect((await one('SELECT SUM(quantity) AS q FROM tenant_addons WHERE tenant_id = ? AND source = ?', T_STRIPE, 'subscription')).q).toBe(2);
     expect((await one('SELECT customer_id FROM billing_customers WHERE tenant_id = ? AND gateway = ?', T_STRIPE, 'stripe')).customer_id).toBe('cus_fixture_1');
 
@@ -335,12 +329,6 @@ describe('billing routes (R205)', () => {
       RAZORPAY_WEBHOOK_SECRET: RAZORPAY_SECRET,
     });
     adminToken = await signAccessToken({ userId: '11111111-1111-1111-1111-111111111111', tenantId: SEED_TENANT, role: 'admin', email: 'admin@e2e.test' }, testEnv.JWT_SECRET);
-    await master(`DELETE FROM plan_prices WHERE market = 'WEST' AND plan_key = 'pro'`);
-    await master(
-      `INSERT INTO plan_prices (id, plan_key, market, currency, yearly_price, included_users, extra_user_yearly_price, is_active, valid_from)
-       VALUES ('0196a205-9999-7000-8000-000000000001', 'pro', 'WEST', 'GBP', 200, 10, 20, 1, '2026-10-01T00:00:00Z')`,
-    );
-    await bumpCatalogueVersion(testEnv);
   });
 
   afterEach(async () => {
@@ -358,10 +346,10 @@ describe('billing routes (R205)', () => {
     let data = ((await res.json()) as any).data;
     expect(data.gateway).toBe('razorpay');
     expect(data.url).toBe('https://rzp.io/i/route1');
-    // Rs 18,000 from the catalogue + 18% GST
-    expect(data).toMatchObject({ currency: 'INR', subtotal: 18000, taxTotal: 3240, total: 21240 });
+    // Rs 23,999 (Pro founder price) from the catalogue + 18% GST = 4,319.82
+    expect(data).toMatchObject({ currency: 'INR', subtotal: 23999, taxTotal: 4319.82, total: 28318.82 });
     const plan = fetchCalls.find((c) => c.url.endsWith('/plans'))!;
-    expect(JSON.parse(plan.body).item.amount).toBe(2124000);
+    expect(JSON.parse(plan.body).item.amount).toBe(2831882);
     expect(fetchCalls.every((c) => c.url.startsWith('https://api.razorpay.com/'))).toBe(true);
 
     fetchCalls.length = 0;
@@ -371,13 +359,13 @@ describe('billing routes (R205)', () => {
     data = ((await res.json()) as any).data;
     expect(data.gateway).toBe('stripe');
     expect(data.url).toBe('https://checkout.stripe.test/c/pay/cs_test_1');
-    // GBP 200 + 3 extra users x GBP 20, no platform tax outside India
-    expect(data).toMatchObject({ currency: 'GBP', subtotal: 260, taxTotal: 0, total: 260 });
+    // GBP 719 (UK Pro founder price) + 3 extra users x GBP 120, no platform tax outside India
+    expect(data).toMatchObject({ currency: 'GBP', subtotal: 1079, taxTotal: 0, total: 1079 });
     expect(fetchCalls).toHaveLength(1);
     expect(fetchCalls[0].url).toBe('https://api.stripe.com/v1/checkout/sessions');
     const form = new URLSearchParams(fetchCalls[0].body);
     expect(form.get('mode')).toBe('subscription');
-    expect(form.get('line_items[0][price_data][unit_amount]')).toBe('26000');
+    expect(form.get('line_items[0][price_data][unit_amount]')).toBe('107900');
     expect(form.get('line_items[0][price_data][currency]')).toBe('gbp');
     expect(form.get('metadata[tenant_id]')).toBe(SEED_TENANT);
     expect(form.get('metadata[extra_users]')).toBe('3');
@@ -386,10 +374,19 @@ describe('billing routes (R205)', () => {
   it('never charges a non-India agency the India price, and reports an unconfigured gateway plainly', async () => {
     stubProviders();
     await master(`UPDATE tenants SET country = 'SG' WHERE id = ?`, SEED_TENANT);
-    let res = await call('POST', '/billing/checkout', { planKey: 'pro' });
-    expect(res.status).toBe(409);
-    expect(((await res.json()) as any).code).toBe('PRICE_NOT_CONFIGURED');
-    expect(fetchCalls).toHaveLength(0);
+    // Singapore has its own approved USD price; with that market's rows switched off the agency must not fall back to INR.
+    await master(`UPDATE plan_prices SET is_active = 0 WHERE market = 'SG'`);
+    await bumpCatalogueVersion(testEnv);
+    let res: Response;
+    try {
+      res = await call('POST', '/billing/checkout', { planKey: 'pro' });
+      expect(res.status).toBe(409);
+      expect(((await res.json()) as any).code).toBe('PRICE_NOT_CONFIGURED');
+      expect(fetchCalls).toHaveLength(0);
+    } finally {
+      await master(`UPDATE plan_prices SET is_active = 1 WHERE market = 'SG'`);
+      await bumpCatalogueVersion(testEnv);
+    }
 
     await master(`UPDATE tenants SET country = 'GB' WHERE id = ?`, SEED_TENANT);
     const saved = testEnv.STRIPE_SECRET_KEY;
