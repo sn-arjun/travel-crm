@@ -86,7 +86,10 @@ test.describe('Softphone', () => {
   });
 
   test.afterAll(async () => {
-    await turnCallingOff();
+    // Leave the agency as it was before this spec: no calling account (closed, not suspended), so later specs
+    // see the plain pop and a number search can turn calling on again.
+    const res = await adminPost(`/admin/tenants/${TENANT_ID}/voip/close`);
+    expect([200, 404, 409], await res.clone().text()).toContain(res.status);
   });
 
   test('an agency without calling gets no token and no phone: the pop has no Answer', async ({ page }) => {

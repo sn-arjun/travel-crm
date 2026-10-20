@@ -72,8 +72,8 @@ const COUNTRY_PREFIX: Record<string, string> = { GB: '+4420300', US: '+1415555',
 export class MockVoipProvider extends TwilioVoipProvider {
   override readonly providerName = 'mock' as const;
 
-  constructor(settings: VoipSettingsRow, private mockDeps: VoipProviderDeps = {}) {
-    super({ TWILIO_ACCOUNT_SID: 'ACmock', TWILIO_AUTH_TOKEN: MOCK_AUTH_TOKEN }, settings, mockDeps);
+  constructor(private mockSettings: VoipSettingsRow, private mockDeps: VoipProviderDeps = {}) {
+    super({ TWILIO_ACCOUNT_SID: 'ACmock', TWILIO_AUTH_TOKEN: MOCK_AUTH_TOKEN }, mockSettings, mockDeps);
   }
 
   // ── Test helpers (static: state is per isolate, not per instance) ──
@@ -304,7 +304,16 @@ export class MockVoipProvider extends TwilioVoipProvider {
     this.findCall(providerCallId).recordingStarted = true;
   }
 
+  /**
+   * Like Twilio, refuses an account it does not know: a saved account id that is neither one of the mock's own
+   * sub-accounts nor the mock's root account reports "not connected", so fake credentials never look connected.
+   */
   override async testConnection(): Promise<{ connected: boolean; accountName?: string; error?: string }> {
+    const accountId = this.mockSettings?.providerAccountId || this.mockSettings?.twilioAccountSid || '';
+    const sub = accountId ? state.subAccounts.get(accountId) : undefined;
+    if (accountId && accountId !== 'ACmock' && (!sub || sub.closed)) {
+      return { connected: false, error: 'Authentication failed: the account is not known to the provider' };
+    }
     return { connected: true, accountName: 'Mock provider' };
   }
 }
