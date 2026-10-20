@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { joinPhone, phonePlaceholder, splitPhone } from '@/lib/phone';
 import { COUNTRIES, countryByDial, countryByIso, flagOf } from '@/lib/countries';
 import { useLocale } from '@/lib/locale';
+import { useT } from '@/lib/i18n';
 import {
   Popover,
   PopoverContent,
@@ -57,6 +58,7 @@ export function PhoneInput({
   className,
   disabled,
 }: PhoneInputProps) {
+  const t = useT();
   const [open, setOpen] = React.useState(false);
   // The agency's country decides the code until the user picks another one
   const { phoneDefaultCountry } = useLocale();
@@ -92,9 +94,9 @@ export function PhoneInput({
         </PopoverTrigger>
         <PopoverContent className="w-65 p-0" align="start">
           <Command>
-            <CommandInput placeholder="Search country..." />
+            <CommandInput placeholder={t('ui.phone.searchCountry')} />
             <CommandList>
-              <CommandEmpty>No country found.</CommandEmpty>
+              <CommandEmpty>{t('ui.phone.noCountry')}</CommandEmpty>
               <CommandGroup>
                 {COUNTRY_OPTIONS.map((c) => (
                   <CommandItem

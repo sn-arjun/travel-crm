@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Check, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 export interface WizardStep {
   id: string;
@@ -29,9 +30,10 @@ export function MultiStepWizard({
   onStepChange,
   onComplete,
   children,
-  completeBtnLabel = 'Complete',
+  completeBtnLabel,
   isSubmitting = false,
 }: MultiStepWizardProps) {
+  const t = useT();
   const isFirst = currentStep === 0;
   const isLast = currentStep === steps.length - 1;
 
@@ -92,7 +94,7 @@ export function MultiStepWizard({
         </div>
         <div className="text-center mt-2">
           <p className="text-xs text-muted-foreground">
-            Step {currentStep + 1} of {steps.length}: {steps[currentStep]?.title}
+            {t('ui.wizard.stepOf', { step: currentStep + 1, total: steps.length, title: steps[currentStep]?.title ?? '' })}
             {steps[currentStep]?.description && ` — ${steps[currentStep]?.description}`}
           </p>
         </div>
@@ -106,7 +108,7 @@ export function MultiStepWizard({
       {/* Footer */}
       <div className="flex items-center justify-between px-6 py-3 border-t bg-muted/30">
         <Button variant="outline" onClick={handleBack} disabled={isFirst}>
-          <ChevronLeft className="h-4 w-4 mr-1" /> Back
+          <ChevronLeft className="h-4 w-4 mr-1" /> {t('common.back')}
         </Button>
         <div className="flex items-center gap-1.5">
           {steps.map((_, idx) => (
@@ -119,7 +121,7 @@ export function MultiStepWizard({
           ) : isLast ? null : (
             <></>
           )}
-          {isLast ? completeBtnLabel : 'Next'}
+          {isLast ? (completeBtnLabel ?? t('ui.wizard.complete')) : t('common.next')}
           {!isLast && <ChevronRight className="h-4 w-4 ml-1" />}
         </Button>
       </div>

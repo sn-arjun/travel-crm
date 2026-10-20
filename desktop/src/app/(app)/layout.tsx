@@ -12,9 +12,11 @@ import { LimitReachedHost } from '@/components/domain/allowance-exhausted-dialog
 import { RealtimeProvider } from '@/components/providers/realtime-provider';
 import { CallScreenPop } from '@/components/domain/call-screen-pop';
 import { isOnboardingPending, onboardingApi } from '@/lib/api/onboarding';
+import { useT } from '@/lib/i18n';
 
 /** Admin-only reminder while the agency setup wizard is unfinished. */
 function FinishSetupBanner() {
+  const t = useT();
   return (
     <div
       data-testid="finish-setup-banner"
@@ -22,10 +24,10 @@ function FinishSetupBanner() {
     >
       <span className="flex items-center gap-ds-2 text-ds-foreground">
         <Rocket className="size-4 text-ds-primary" aria-hidden="true" />
-        Your workspace setup is not finished yet.
+        {t('shell.finishSetup.message')}
       </span>
       <Link href="/onboarding" className="font-medium text-ds-primary hover:underline">
-        Finish setting up
+        {t('shell.finishSetup.action')}
       </Link>
     </div>
   );

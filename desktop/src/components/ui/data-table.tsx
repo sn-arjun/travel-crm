@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp, ChevronsUpDown, Settings2 } from 'lucide-react'
 import * as React from 'react';
 
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 import { Button } from './button';
 import { Checkbox } from './checkbox';
@@ -104,6 +105,7 @@ export function DataTable<T>({
   className,
   caption,
 }: DataTableProps<T>) {
+  const t = useT();
   const [hiddenColumns, setHiddenColumns] = React.useState<Set<string>>(
     () => new Set(columns.filter((c) => c.defaultHidden).map((c) => c.key)),
   );
@@ -179,11 +181,11 @@ export function DataTable<T>({
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="gap-ds-2">
                 <Settings2 aria-hidden="true" />
-                Columns
+                {t('ui.dataTable.columns')}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
+              <DropdownMenuLabel>{t('ui.dataTable.toggleColumns')}</DropdownMenuLabel>
               <DropdownMenuSeparator />
               {columns
                 .filter((c) => c.hideable !== false)
@@ -224,7 +226,7 @@ export function DataTable<T>({
                   <Checkbox
                     checked={allSelected ? true : someSelected ? 'indeterminate' : false}
                     onCheckedChange={toggleAll}
-                    aria-label="Select all rows"
+                    aria-label={t('ui.dataTable.selectAll')}
                   />
                 </th>
               )}
@@ -302,7 +304,7 @@ export function DataTable<T>({
               <tr>
                 <td colSpan={colSpan} className="px-ds-3 py-ds-8">
                   {emptyState ?? (
-                    <p className="text-center text-sm text-ds-foreground-muted">No results.</p>
+                    <p className="text-center text-sm text-ds-foreground-muted">{t('ui.dataTable.noResults')}</p>
                   )}
                 </td>
               </tr>
@@ -348,7 +350,7 @@ export function DataTable<T>({
                           <Checkbox
                             checked={isSelected}
                             onCheckedChange={() => toggleRow(id)}
-                            aria-label={`Select row ${id}`}
+                            aria-label={t('ui.dataTable.selectRow', { id })}
                           />
                         </td>
                       )}

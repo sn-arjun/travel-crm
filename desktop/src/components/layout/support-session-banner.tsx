@@ -5,6 +5,7 @@ import { LifeBuoy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/auth-store';
 import { readSupportSession } from '@/lib/support-session';
+import { useT } from '@/lib/i18n';
 
 /**
  * Persistent banner for a support (impersonation) session: "Support session by <name> - ends <time>".
@@ -12,6 +13,7 @@ import { readSupportSession } from '@/lib/support-session';
  * session ends by itself.
  */
 export function SupportSessionBanner() {
+  const t = useT();
   const accessToken = useAuthStore((s) => s.accessToken);
   const session = React.useMemo(() => readSupportSession(accessToken), [accessToken]);
 
@@ -45,11 +47,10 @@ export function SupportSessionBanner() {
     >
       <span className="flex items-center gap-2 text-sm font-medium">
         <LifeBuoy aria-hidden="true" className="h-4 w-4" />
-        Support session by {session.name}
-        {ends ? ` - ends ${ends}` : ''}
+        {ends ? t('shell.support.sessionEnds', { name: session.name, time: ends }) : t('shell.support.session', { name: session.name })}
       </span>
       <Button type="button" variant="outline" size="sm" onClick={endSession}>
-        End session
+        {t('shell.support.end')}
       </Button>
     </div>
   );

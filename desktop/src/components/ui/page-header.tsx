@@ -3,6 +3,7 @@
 import * as React from 'react';
 
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 import { Badge } from './badge';
 
@@ -39,6 +40,7 @@ export function PageHeader({
   sticky = false,
   className,
 }: PageHeaderProps) {
+  const t = useT();
   return (
     <header
       className={cn(
@@ -48,7 +50,7 @@ export function PageHeader({
       )}
     >
       {breadcrumbs && breadcrumbs.length > 0 && (
-        <nav aria-label="Breadcrumb">
+        <nav aria-label={t('ui.breadcrumb')}>
           <ol className="flex items-center gap-ds-2 text-xs text-ds-foreground-muted">
             {breadcrumbs.map((crumb, i) => (
               <li key={`${crumb.label}-${i}`} className="flex items-center gap-ds-2">

@@ -4,6 +4,7 @@ import { FileUp, X } from 'lucide-react';
 import * as React from 'react';
 
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 import { Button } from './button';
 
@@ -38,11 +39,12 @@ export function FileDropzone({
   disabled,
   files = [],
   onRemove,
-  label = 'Drop files here, or browse',
+  label,
   hint,
   error,
   className,
 }: FileDropzoneProps) {
+  const t = useT();
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = React.useState(false);
   const [localError, setLocalError] = React.useState<string | null>(null);
@@ -58,7 +60,7 @@ export function FileDropzone({
       if (maxSize) {
         const tooBig = incoming.find((f) => f.size > maxSize);
         if (tooBig) {
-          setLocalError(`${tooBig.name} exceeds the ${formatBytes(maxSize)} limit.`);
+          setLocalError(t('ui.fileDropzone.tooBig', { name: tooBig.name, limit: formatBytes(maxSize) }));
           return;
         }
       }
@@ -107,7 +109,7 @@ export function FileDropzone({
         )}
       >
         <FileUp className="size-6 text-ds-foreground-subtle" aria-hidden="true" />
-        <p className="text-sm font-medium text-ds-foreground">{label}</p>
+        <p className="text-sm font-medium text-ds-foreground">{label ?? t('ui.fileDropzone.label')}</p>
         {hint && <p className="text-xs text-ds-foreground-muted">{hint}</p>}
         <input
           ref={inputRef}
@@ -146,7 +148,7 @@ export function FileDropzone({
                     variant="ghost"
                     size="icon-xs"
                     onClick={() => onRemove(i)}
-                    aria-label={`Remove ${file.name}`}
+                    aria-label={t('ui.fileDropzone.remove', { name: file.name })}
                   >
                     <X aria-hidden="true" />
                   </Button>

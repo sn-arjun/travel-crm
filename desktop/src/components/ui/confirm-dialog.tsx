@@ -3,6 +3,7 @@
 import * as React from 'react';
 
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 import { Button } from './button';
 import {
@@ -34,11 +35,12 @@ export function ConfirmDialog({
   onOpenChange,
   title,
   description,
-  confirmLabel = 'Confirm',
-  cancelLabel = 'Cancel',
+  confirmLabel,
+  cancelLabel,
   tone = 'default',
   onConfirm,
 }: ConfirmDialogProps) {
+  const t = useT();
   const [pending, setPending] = React.useState(false);
 
   const handleConfirm = async () => {
@@ -60,7 +62,7 @@ export function ConfirmDialog({
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
-            {cancelLabel}
+            {cancelLabel ?? t('common.cancel')}
           </Button>
           <Button
             variant={tone === 'destructive' ? 'destructive' : 'default'}
@@ -69,7 +71,7 @@ export function ConfirmDialog({
             className={cn('gap-ds-2')}
           >
             {pending && <Spinner className="size-4" />}
-            {confirmLabel}
+            {confirmLabel ?? t('common.confirm')}
           </Button>
         </DialogFooter>
       </DialogContent>

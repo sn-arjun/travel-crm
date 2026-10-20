@@ -6,11 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { formatDisplayDate, toLocalDateString } from '@/lib/dates';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 /* ─── Tiny inline calendar (no dependency) ─── */
 
-const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const DAY_NAMES = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+/** Catalogue keys (ui.date.months.*, ui.date.weekdays.*), so the calendar follows the interface language. */
+const MONTH_KEYS = Array.from({ length: 12 }, (_, i) => `ui.date.months.${i}`);
+const DAY_KEYS = Array.from({ length: 7 }, (_, i) => `ui.date.weekdays.${i}`);
 
 function isSameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
@@ -43,6 +45,7 @@ interface MiniCalendarProps {
 }
 
 function MiniCalendar({ selected, onSelect, minDate, maxDate, fromYear, toYear }: MiniCalendarProps) {
+  const t = useT();
   const [viewYear, setViewYear] = React.useState(selected?.getFullYear() ?? new Date().getFullYear());
   const [viewMonth, setViewMonth] = React.useState(selected?.getMonth() ?? new Date().getMonth());
 
@@ -76,22 +79,22 @@ function MiniCalendar({ selected, onSelect, minDate, maxDate, fromYear, toYear }
   return (
     <div className="w-full p-3">
       <div className="mb-3 flex items-center justify-between gap-1">
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Previous month" onClick={prev}>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={t('ui.date.previousMonth')} onClick={prev}>
           <ChevronLeft className="h-4 w-4" />
         </Button>
         <div className="flex items-center gap-1">
           <select
-            aria-label="Month"
+            aria-label={t('ui.date.month')}
             className={selectClass}
             value={viewMonth}
             onChange={(e) => setViewMonth(Number(e.target.value))}
           >
-            {MONTH_NAMES.map((m, i) => (
-              <option key={m} value={i}>{m}</option>
+            {MONTH_KEYS.map((key, i) => (
+              <option key={key} value={i}>{t(key)}</option>
             ))}
           </select>
           <select
-            aria-label="Year"
+            aria-label={t('ui.date.year')}
             className={selectClass}
             value={viewYear}
             onChange={(e) => setViewYear(Number(e.target.value))}
@@ -101,13 +104,13 @@ function MiniCalendar({ selected, onSelect, minDate, maxDate, fromYear, toYear }
             ))}
           </select>
         </div>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Next month" onClick={next}>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={t('ui.date.nextMonth')} onClick={next}>
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
       <div className="grid grid-cols-7 gap-0">
-        {DAY_NAMES.map((d) => (
-          <div key={d} className="text-center text-[0.6875rem] font-medium text-muted-foreground py-1">{d}</div>
+        {DAY_KEYS.map((key) => (
+          <div key={key} className="text-center text-[0.6875rem] font-medium text-muted-foreground py-1">{t(key)}</div>
         ))}
         {Array.from({ length: firstDay }, (_, i) => (
           <div key={`empty-${i}`} />
@@ -163,7 +166,9 @@ export interface DatePickerProps {
   'aria-invalid'?: boolean;
 }
 
-export function DatePicker({ value, onChange, placeholder = 'Pick a date', minDate, maxDate, fromYear, toYear, className, disabled, ...aria }: DatePickerProps) {
+export function DatePicker({ value, onChange, placeholder, minDate, maxDate, fromYear, toYear, className, disabled, ...aria }: DatePickerProps) {
+  const t = useT();
+  placeholder = placeholder ?? t('ui.date.pick');
   const [open, setOpen] = React.useState(false);
 
   return (
@@ -181,7 +186,7 @@ export function DatePicker({ value, onChange, placeholder = 'Pick a date', minDa
       </PopoverTrigger>
       <PopoverContent
         data-slot="date-picker-content"
-        aria-label="Choose date"
+        aria-label={t('ui.date.choose')}
         className={CONTENT_CLASS}
         align="start"
       >
@@ -211,7 +216,9 @@ export interface DateTimePickerProps {
   disabled?: boolean;
 }
 
-export function DateTimePicker({ value, onChange, placeholder = 'Pick date & time', minDate, maxDate, fromYear, toYear, className, disabled }: DateTimePickerProps) {
+export function DateTimePicker({ value, onChange, placeholder, minDate, maxDate, fromYear, toYear, className, disabled }: DateTimePickerProps) {
+  const t = useT();
+  placeholder = placeholder ?? t('ui.date.pickDateTime');
   const [open, setOpen] = React.useState(false);
   const [hours, setHours] = React.useState(value ? value.getHours() : 10);
   const [minutes, setMinutes] = React.useState(value ? value.getMinutes() : 0);
@@ -248,7 +255,7 @@ export function DateTimePicker({ value, onChange, placeholder = 'Pick date & tim
       </PopoverTrigger>
       <PopoverContent
         data-slot="date-picker-content"
-        aria-label="Choose date and time"
+        aria-label={t('ui.date.chooseDateTime')}
         className={CONTENT_CLASS}
         align="start"
       >
@@ -263,7 +270,7 @@ export function DateTimePicker({ value, onChange, placeholder = 'Pick date & tim
         <div className="border-t px-3 py-2 flex items-center gap-2">
           <Calendar className="h-4 w-4 text-muted-foreground" />
           <select
-            aria-label="Hour"
+            aria-label={t('ui.date.hour')}
             value={hours}
             onChange={(e) => handleTimeChange(Number(e.target.value), minutes)}
             className="h-8 rounded-md border bg-background px-2 text-sm"
@@ -274,7 +281,7 @@ export function DateTimePicker({ value, onChange, placeholder = 'Pick date & tim
           </select>
           <span className="text-sm font-medium">:</span>
           <select
-            aria-label="Minute"
+            aria-label={t('ui.date.minute')}
             value={minutes}
             onChange={(e) => handleTimeChange(hours, Number(e.target.value))}
             className="h-8 rounded-md border bg-background px-2 text-sm"
@@ -283,7 +290,7 @@ export function DateTimePicker({ value, onChange, placeholder = 'Pick date & tim
               <option key={m} value={m}>{m.toString().padStart(2, '0')}</option>
             ))}
           </select>
-          <Button type="button" size="sm" className="ml-auto h-7 text-xs" onClick={() => setOpen(false)}>Done</Button>
+          <Button type="button" size="sm" className="ml-auto h-7 text-xs" onClick={() => setOpen(false)}>{t('ui.date.done')}</Button>
         </div>
       </PopoverContent>
     </Popover>
@@ -300,7 +307,9 @@ export interface DateRangePickerProps {
   className?: string;
 }
 
-export function DateRangePicker({ startDate, endDate, onStartChange, onEndChange, placeholder = 'Select date range', className }: DateRangePickerProps) {
+export function DateRangePicker({ startDate, endDate, onStartChange, onEndChange, placeholder, className }: DateRangePickerProps) {
+  const t = useT();
+  placeholder = placeholder ?? t('ui.date.selectRange');
   const [open, setOpen] = React.useState(false);
   const [selecting, setSelecting] = React.useState<'start' | 'end'>('start');
 
@@ -338,12 +347,12 @@ export function DateRangePicker({ startDate, endDate, onStartChange, onEndChange
       </PopoverTrigger>
       <PopoverContent
         data-slot="date-picker-content"
-        aria-label="Choose date range"
+        aria-label={t('ui.date.chooseRange')}
         className={CONTENT_CLASS}
         align="start"
       >
         <div className="p-2 text-xs text-center text-muted-foreground border-b">
-          {selecting === 'start' ? 'Select start date' : 'Select end date'}
+          {selecting === 'start' ? t('ui.date.selectStart') : t('ui.date.selectEnd')}
         </div>
         <MiniCalendar selected={selecting === 'start' ? startDate : endDate} onSelect={handleSelect} />
       </PopoverContent>

@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { MapPin, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 export interface AddressParts {
   address: string;
@@ -112,10 +113,12 @@ export function AddressAutocomplete({
   value,
   onChange,
   onAddressSelect,
-  placeholder = 'Start typing an address...',
+  placeholder: placeholderProp,
   className,
   disabled,
 }: AddressAutocompleteProps) {
+  const t = useT();
+  const placeholder = placeholderProp ?? t('ui.address.placeholder');
   const inputRef = React.useRef<HTMLInputElement>(null);
   const autocompleteRef = React.useRef<GoogleAutocomplete | null>(null);
   const onChangeRef = React.useRef(onChange);

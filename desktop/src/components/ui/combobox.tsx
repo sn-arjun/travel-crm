@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
@@ -36,12 +37,16 @@ export function Combobox({
   value,
   onValueChange,
   onSearch,
-  placeholder = 'Select...',
-  searchPlaceholder = 'Search...',
-  emptyText = 'No results found.',
+  placeholder: placeholderProp,
+  searchPlaceholder: searchPlaceholderProp,
+  emptyText: emptyTextProp,
   disabled,
   className,
 }: ComboboxProps) {
+  const t = useT();
+  const placeholder = placeholderProp ?? t('ui.combobox.select');
+  const searchPlaceholder = searchPlaceholderProp ?? t('ui.combobox.search');
+  const emptyText = emptyTextProp ?? t('ui.combobox.empty');
   const [open, setOpen] = React.useState(false);
 
   // Remember the chosen option: with server-side search the options list is

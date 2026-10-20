@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { useT } from '@/lib/i18n';
 
 interface FilterOption {
   id: string;
@@ -28,7 +29,7 @@ interface FilterBarProps {
 export function FilterBar({
   searchValue,
   onSearchChange,
-  searchPlaceholder = 'Search...',
+  searchPlaceholder,
   activeFilters = [],
   onRemoveFilter,
   onClearFilters,
@@ -36,6 +37,7 @@ export function FilterBar({
   actions,
   className,
 }: FilterBarProps) {
+  const t = useT();
   return (
     <div className={cn('space-y-3 animate-fade-in', className)}>
       <div className="flex items-center gap-3">
@@ -45,7 +47,7 @@ export function FilterBar({
           <Input
             value={searchValue}
             onChange={(e) => onSearchChange?.(e.target.value)}
-            placeholder={searchPlaceholder}
+            placeholder={searchPlaceholder ?? t('ui.filterBar.searchPlaceholder')}
             className="h-9 pl-9"
           />
         </div>
@@ -54,7 +56,7 @@ export function FilterBar({
         {onOpenFilters && (
           <Button variant="outline" size="sm" onClick={onOpenFilters} className="gap-2">
             <SlidersHorizontal className="h-4 w-4" />
-            Filters
+            {t('ui.filterBar.filters')}
             {activeFilters.length > 0 && (
               <Badge variant="default" className="ml-1">
                 {activeFilters.length}
@@ -70,7 +72,7 @@ export function FilterBar({
       {/* Active Filters */}
       {activeFilters.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap animate-slide-in-from-top">
-          <span className="text-xs text-ds-foreground-muted">Filters:</span>
+          <span className="text-xs text-ds-foreground-muted">{t('ui.filterBar.activeLabel')}</span>
           {activeFilters.map((filter) => (
             <Badge key={filter.id} variant="outline" className="gap-1 pr-1">
               <span className="text-ds-foreground-muted">{filter.label}:</span>
@@ -87,7 +89,7 @@ export function FilterBar({
           ))}
           {onClearFilters && (
             <Button variant="ghost" size="sm" onClick={onClearFilters} className="h-6 text-xs text-ds-foreground-muted">
-              Clear all
+              {t('ui.filterBar.clearAll')}
             </Button>
           )}
         </div>

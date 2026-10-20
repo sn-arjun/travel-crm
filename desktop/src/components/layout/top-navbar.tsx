@@ -21,6 +21,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { notificationsApi, type Notification } from '@/lib/api/notifications';
 import { useAuthStore } from '@/stores/auth-store';
 import { getInitials } from '@/lib/utils';
+import { useT, tEn, type TranslateFn } from '@/lib/i18n';
 import { getPageTitle } from '@/components/layout/nav-config';
 import { routeForNotification } from '@/lib/notifications/route';
 import { useRealtimeEvent, useRealtimeConnected } from '@/hooks/use-realtime-event';
@@ -51,19 +52,19 @@ function notificationIcon(type: string) {
 }
 
 /** Format a timestamp into a relative string like "2m ago", "3h ago", "5d ago". */
-function timeAgo(dateStr: string): string {
+function timeAgo(dateStr: string, t: TranslateFn = tEn): string {
   try {
     const now = Date.now();
     const then = new Date(dateStr).getTime();
     const diffMs = now - then;
-    if (diffMs < 0) return 'just now';
+    if (diffMs < 0) return t('shell.time.justNow');
     const mins = Math.floor(diffMs / 60_000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins}m ago`;
+    if (mins < 1) return t('shell.time.justNow');
+    if (mins < 60) return t('shell.time.minutesAgo', { count: mins });
     const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours}h ago`;
+    if (hours < 24) return t('shell.time.hoursAgo', { count: hours });
     const days = Math.floor(hours / 24);
-    if (days < 30) return `${days}d ago`;
+    if (days < 30) return t('shell.time.daysAgo', { count: days });
     return new Date(dateStr).toLocaleDateString();
   } catch {
     return '';
@@ -75,6 +76,7 @@ function timeAgo(dateStr: string): string {
 // ---------------------------------------------------------------------------
 
 function NotificationBell() {
+  const t = useT();
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [unreadCount, setUnreadCount] = React.useState(0);
@@ -175,7 +177,7 @@ function NotificationBell() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon-sm" className="h-8 w-8 relative" aria-label="Notifications">
+        <Button variant="ghost" size="icon-sm" className="h-8 w-8 relative" aria-label={t('shell.notifications.title')}>
           <Bell className="h-4 w-4" />
           {unreadCount > 0 && (
             <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-ds-primary px-1 text-xs leading-none font-bold text-ds-primary-foreground animate-pulse">
@@ -191,7 +193,7 @@ function NotificationBell() {
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b">
-          <h3 className="text-sm font-semibold">Notifications</h3>
+          <h3 className="text-sm font-semibold">{t('shell.notifications.title')}</h3>
           {unreadCount > 0 && (
             <Button
               variant="ghost"
@@ -201,7 +203,7 @@ function NotificationBell() {
               disabled={markingAll}
             >
               <CheckCheck className="h-3.5 w-3.5" />
-              Mark all read
+              {t('shell.notifications.markAllRead')}
             </Button>
           )}
         </div>
@@ -223,7 +225,7 @@ function NotificationBell() {
           ) : notifications.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
               <Bell className="h-8 w-8 mb-2 opacity-40" />
-              <p className="text-sm">No notifications yet</p>
+              <p className="text-sm">{t('shell.notifications.empty')}</p>
             </div>
           ) : (
             <ul>
@@ -253,7 +255,7 @@ function NotificationBell() {
                         </p>
                       )}
                       <p className="text-xs text-muted-foreground mt-1">
-                        {timeAgo(n.createdAt)}
+                        {timeAgo(n.createdAt, t)}
                       </p>
                     </div>
                     {/* Unread dot */}
@@ -276,7 +278,7 @@ function NotificationBell() {
             className="text-xs font-medium text-primary hover:underline"
             onClick={() => setOpen(false)}
           >
-            View all notifications
+            {t('shell.notifications.viewAll')}
           </Link>
         </div>
       </PopoverContent>
@@ -289,6 +291,7 @@ function NotificationBell() {
 // ---------------------------------------------------------------------------
 
 export function TopNavbar() {
+  const t = useT();
   const pathname = usePathname();
   const { user } = useAuthStore();
   const { resolvedTheme, setTheme } = useTheme();
@@ -298,7 +301,7 @@ export function TopNavbar() {
   const isDark = mounted && resolvedTheme === 'dark';
   const toggleTheme = () => setTheme(isDark ? 'light' : 'dark');
 
-  const displayName = user?.name?.trim() || user?.email?.split('@')[0] || 'User';
+  const displayName = user?.name?.trim() || user?.email?.split('@')[0] || t('shell.user.fallbackName');
   const initials = getInitials(displayName) || 'U';
 
   const openSearch = () => window.dispatchEvent(new Event('travelcrm:open-command-palette'));
@@ -306,14 +309,14 @@ export function TopNavbar() {
   return (
     <header className="electron-drag flex items-center justify-between h-12 px-6 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shrink-0">
       <div className="flex items-center gap-4">
-        <p data-slot="topbar-title" className="text-sm font-semibold text-foreground">{getPageTitle(pathname)}</p>
+        <p data-slot="topbar-title" className="text-sm font-semibold text-foreground">{getPageTitle(pathname, t)}</p>
       </div>
 
       <div className="electron-no-drag flex items-center gap-2">
         {/* Search shortcut hint */}
         <Button variant="outline" size="sm" className="h-8 gap-2 text-muted-foreground text-xs hidden md:flex" onClick={openSearch}>
           <Search className="h-3.5 w-3.5" aria-hidden="true" />
-          <span>Search...</span>
+          <span>{t('shell.topbar.search')}</span>
           <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-xs font-medium text-muted-foreground">
             <Command className="h-2.5 w-2.5" aria-hidden="true" />K
           </kbd>
@@ -325,7 +328,7 @@ export function TopNavbar() {
           size="icon-sm"
           onClick={toggleTheme}
           className="h-8 w-8"
-          aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
+          aria-label={isDark ? t('shell.theme.toLight') : t('shell.theme.toDark')}
         >
           {mounted ? (isDark ? <Sun className="h-4 w-4" aria-hidden="true" /> : <Moon className="h-4 w-4" aria-hidden="true" />) : <span className="h-4 w-4" aria-hidden="true" />}
         </Button>
@@ -344,16 +347,16 @@ export function TopNavbar() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem asChild><Link href="/settings/profile">Profile</Link></DropdownMenuItem>
-            <DropdownMenuItem asChild><Link href="/settings">Settings</Link></DropdownMenuItem>
+            <DropdownMenuItem asChild><Link href="/settings/profile">{t('shell.menu.profile')}</Link></DropdownMenuItem>
+            <DropdownMenuItem asChild><Link href="/settings">{t('nav.items.settings')}</Link></DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild><Link href="/help">Help Center</Link></DropdownMenuItem>
+            <DropdownMenuItem asChild><Link href="/help">{t('nav.items.helpCenter')}</Link></DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem className="text-destructive" onClick={() => {
               useAuthStore.getState().logout();
               window.location.href = '/login';
             }}>
-              Sign out
+              {t('shell.menu.signOut')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

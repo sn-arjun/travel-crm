@@ -4,8 +4,10 @@ import * as React from 'react';
 import { useRealtimeStore } from '@/stores/realtime-store';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 export function ConnectionStatus() {
+  const t = useT();
   const connected = useRealtimeStore((s) => s.connected);
   const reconnectAttempts = useRealtimeStore((s) => s.reconnectAttempts);
 
@@ -14,10 +16,10 @@ export function ConnectionStatus() {
   if (!connected && reconnectAttempts === 0) return null;
 
   const label = connected
-    ? 'Live updates connected'
+    ? t('shell.connection.connected')
     : isReconnecting
-      ? 'Reconnecting...'
-      : 'Live updates disconnected';
+      ? t('shell.connection.reconnecting')
+      : t('shell.connection.disconnected');
 
   return (
     <Tooltip delayDuration={0}>
