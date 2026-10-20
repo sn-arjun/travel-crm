@@ -384,7 +384,7 @@ describe('super admin API (R111)', () => {
       const usage = (await json(await call('GET', `/admin/tenants/${agency.id}/usage`, sa))).data;
       expect(usage.plan).toBe('basic');
       expect(usage.allowances.ai_credits).toEqual({ allowance: after, used: 0, remaining: after });
-      expect(Object.keys(usage.allowances).sort()).toEqual(['ai_credits', 'call_minutes', 'email', 'otp', 'sms', 'whatsapp']);
+      expect(Object.keys(usage.allowances).sort()).toEqual(['ai_credits', 'call_minutes', 'email', 'otp', 'sms', 'storage_gb', 'websites', 'whatsapp', 'whatsapp_marketing']);
       expect(usage.seats.limit).toBeGreaterThanOrEqual(5);
       expect(usage.addons.some((a: any) => a.product_key === 'ai_credit_pack_5000' && a.granted_by === SA_EMAIL)).toBe(true);
 

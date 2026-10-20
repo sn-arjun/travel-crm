@@ -60,7 +60,7 @@ If the question can't be answered with a query, return { "sql": null, "explanati
 
     try {
       const sqlParsed = JSON.parse(result.result);
-      generatedSql = sqlParsed.sql;
+      generatedSql = typeof sqlParsed.sql === 'string' ? sqlParsed.sql : null; // a model that answers without "sql" must not reach the database bind as undefined
 
       if (generatedSql) {
         // Safety check

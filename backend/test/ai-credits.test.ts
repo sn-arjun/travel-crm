@@ -6,8 +6,8 @@ import { creditClassFor, estimateCostUsd, CREDIT_WEIGHTS } from '../src/services
 
 const testEnv = env as any;
 const TENANT = 'credits-tenant';
-// Seeded catalogue allowances (migration 0015, plan_allowances.ai_credits)
-const PLAN_AI_CREDITS = { trial: 2000, basic: 1000, pro: 15000, enterprise: 25000 };
+// Seeded catalogue allowances (migration 0026, PRICING.md 7.3, plan_allowances.ai_credits)
+const PLAN_AI_CREDITS = { trial: 500, basic: 3000, pro: 15000, enterprise: 30000 };
 
 /** A Workers AI binding that answers without spending anything. */
 function fakeAi(reply: Record<string, unknown>) {

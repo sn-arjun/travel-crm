@@ -307,30 +307,23 @@ describe('tenant provisioning (POST /admin/tenants)', () => {
     expect(row.db_binding).toBeNull();
     const login = await call(singleEnv, 'POST', '/auth/login', null, { email: json.data.adminEmail, password: json.data.temporaryPassword, tenantId: json.data.tenantId });
     expect(login.status).toBe(200);
-    // An Indian agency is billed at the India price, in rupees.
-    expect(await masterRow('SELECT amount, currency FROM subscriptions WHERE tenant_id = ?', json.data.tenantId)).toEqual({ amount: 18000, currency: 'INR' });
+    // An Indian agency is billed at the India price, in rupees (the founder price of PRICING.md 7.2).
+    expect(await masterRow('SELECT amount, currency FROM subscriptions WHERE tenant_id = ?', json.data.tenantId)).toEqual({ amount: 23999, currency: 'INR' });
     await cleanSharedDb(keysBefore, 'owner-single@r104.test');
   });
 
   it('a UK agency is billed in its own market and currency, and starts with its own locale and phone code', async () => {
     const singleEnv = { ...testEnv, TENANCY_MODE: 'single' };
     const keysBefore = new Set(((await testEnv.MASTER_DB.prepare('SELECT key FROM settings').all()).results as any[]).map((r) => r.key));
-    const priceId = '0196a104-0000-7000-8000-0000000000b1';
-    await testEnv.MASTER_DB
-      .prepare(`INSERT OR REPLACE INTO plan_prices (id, plan_key, market, currency, yearly_price, included_users, extra_user_yearly_price, is_active, valid_from) VALUES (?, 'pro', 'WEST', 'GBP', 199, 15, 20, 1, '2026-10-14T00:00:00Z')`)
-      .bind(priceId)
-      .run();
-    await bumpCatalogueVersion(testEnv);
+    // GB is its own catalogue market (UK, GBP): the approved Pro founder price, no price row added by the test.
     try {
       const { res, json } = await create(singleEnv, agency('uk', { country: 'United Kingdom', currency: 'GBP', timezone: 'Europe/London', taxSystem: 'vat', region: 'uk' }));
       expect(res.status).toBe(201);
-      expect(await masterRow('SELECT amount, currency FROM subscriptions WHERE tenant_id = ?', json.data.tenantId)).toEqual({ amount: 199, currency: 'GBP' });
+      expect(await masterRow('SELECT amount, currency FROM subscriptions WHERE tenant_id = ?', json.data.tenantId)).toEqual({ amount: 719, currency: 'GBP' });
       const login = await call(singleEnv, 'POST', '/auth/login', null, { email: json.data.adminEmail, password: json.data.temporaryPassword, tenantId: json.data.tenantId });
       const tenant = ((await login.json()) as any).data.tenant;
       expect(tenant).toMatchObject({ currency: 'GBP', locale: 'en-GB', country: 'GB', phoneDefaultCountry: 'GB', timezone: 'Europe/London' });
     } finally {
-      await testEnv.MASTER_DB.prepare('DELETE FROM plan_prices WHERE id = ?').bind(priceId).run();
-      await bumpCatalogueVersion(testEnv);
       await cleanSharedDb(keysBefore, 'owner-uk@r104.test');
     }
   });

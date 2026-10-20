@@ -107,7 +107,7 @@ describe('AI Intelligence & BI Routes — E2E Integration Tests', () => {
         expect(body.data).toHaveProperty('id');
         expect(body.data).toHaveProperty('query');
         expect(body.data).toHaveProperty('sql');
-        expect(body.data).toHaveProperty('explanation');
+        expect(body.data).toHaveProperty('narrative');
       }
     });
 
@@ -153,16 +153,13 @@ describe('AI Intelligence & BI Routes — E2E Integration Tests', () => {
       expect(res.status).toBe(200);
       const body: any = await res.json();
       expect(body.success).toBe(true);
-      expect(body.data).toHaveProperty('data');
-      expect(Array.isArray(body.data.data)).toBe(true);
+      expect(Array.isArray(body.data)).toBe(true);
     });
 
-    it('POST /ai/intelligence/insights/generate should trigger generation', async () => {
-      const res = await authRequest('POST', '/ai/intelligence/insights/generate', adminToken, {
-        types: ['lead', 'revenue', 'pipeline'],
-      });
+    it('GET /ai/intelligence/insights/:id should be 404 for an unknown insight', async () => {
+      const res = await authRequest('GET', '/ai/intelligence/insights/nonexistent-insight', adminToken);
       if (res.status === 403) return;
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(404);
     });
 
     it('GET /ai/intelligence/recommendations should return list', async () => {
@@ -177,8 +174,8 @@ describe('AI Intelligence & BI Routes — E2E Integration Tests', () => {
   // ═══════════════════════════════════════════════════════════════
 
   describe('AI Lead Scoring', () => {
-    it('GET /ai/intelligence/lead-scores should return all scores', async () => {
-      const res = await authRequest('GET', '/ai/intelligence/lead-scores', adminToken);
+    it('GET /ai/intelligence/lead-score/:id/history should return a list', async () => {
+      const res = await authRequest('GET', '/ai/intelligence/lead-score/nonexistent-lead/history', adminToken);
       if (res.status === 403) return;
       expect(res.status).toBe(200);
       const body: any = await res.json();
@@ -211,8 +208,8 @@ describe('AI Intelligence & BI Routes — E2E Integration Tests', () => {
       expect(res.status).toBe(404);
     });
 
-    it('GET /ai/intelligence/followup-suggestions should list suggestions', async () => {
-      const res = await authRequest('GET', '/ai/intelligence/followup-suggestions', adminToken);
+    it('GET /ai/intelligence/smart-followups should list suggestions', async () => {
+      const res = await authRequest('GET', '/ai/intelligence/smart-followups', adminToken);
       if (res.status === 403) return;
       expect(res.status).toBe(200);
     });
