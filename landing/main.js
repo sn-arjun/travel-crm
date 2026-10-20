@@ -265,6 +265,11 @@
       price.appendChild(el('span', 'pricing__amount', money(p.yearlyPrice, p.currency)));
       price.appendChild(el('span', 'pricing__period', '/agency/year'));
       card.appendChild(price);
+      if (p.priceKind === 'founder' && p.listYearlyPrice && p.founderEndsAt) {
+        var until = new Date(p.founderEndsAt);
+        var months = p.founderLockMonths || 24;
+        card.appendChild(el('div', 'pricing__note', 'Launch price, locked for ' + months + ' months for agencies that sign before ' + until.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) + '. ' + money(p.listYearlyPrice, p.currency) + ' after that.'));
+      }
       if (p.description) card.appendChild(el('div', 'pricing__desc', p.description));
       var cta = el('a', 'pricing__cta ' + (p.key === popular ? 'pricing__cta--primary' : 'pricing__cta--ghost'), 'Request a free trial');
       cta.setAttribute('href', '#enquire');
@@ -276,6 +281,7 @@
       var a = p.allowances || {};
       if (a.ai_credits > 0) list.appendChild(feature(num(a.ai_credits) + ' AI credits a month'));
       if (a.whatsapp > 0) list.appendChild(feature(num(a.whatsapp) + ' WhatsApp messages a month'));
+      if (a.whatsapp_marketing > 0) list.appendChild(feature(num(a.whatsapp_marketing) + ' WhatsApp marketing messages a month'));
       if (a.sms > 0) list.appendChild(feature(num(a.sms) + ' texts (SMS) a month'));
       if (a.otp > 0) list.appendChild(feature(num(a.otp) + ' login codes a month'));
       if (a.email > 0) list.appendChild(feature(num(a.email) + ' system emails a month'));

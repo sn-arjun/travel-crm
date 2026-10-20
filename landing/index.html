@@ -433,8 +433,9 @@
 
 <!-- ========== PRICING ========== -->
 <!-- The cards inside #pricing-cards are the static fallback. main.js replaces them with GET /api/v1/public/plans?market=IN
-     when the API answers. The numbers are the owner's decided India prices (2026-10-14); allowances and extra-user
-     prices are drafts and only ever come from the live price list. -->
+     when the API answers. The numbers are the owner-approved India prices of docs/PRICING.md (2026-10-21): the launch
+     (founder) price for agencies that sign before 2027-04-01, locked for 24 months, and the list price after it.
+     Allowances and extra-user prices come from the live price list. -->
 <section class="section section--subtle" id="pricing">
   <div class="container">
     <div style="max-width:720px;margin:0 auto;text-align:center">
@@ -445,33 +446,39 @@
     <div class="pricing__cards" id="pricing-cards" data-source="static">
       <div class="pricing__card">
         <div class="pricing__name">Basic</div>
-        <div class="pricing__price"><span class="pricing__amount">₹12,000</span><span class="pricing__period">/agency/year</span></div>
-        <div class="pricing__desc">Core CRM for a small agency getting started.</div>
+        <div class="pricing__price"><span class="pricing__amount">₹11,999</span><span class="pricing__period">/agency/year</span></div>
+        <div class="pricing__note">Launch price, locked for 24 months. ₹14,999 from 1 April 2027.</div>
+        <div class="pricing__desc">Travel CRM, WhatsApp inbox, website and the assistant for a small agency.</div>
         <a href="#enquire" class="pricing__cta pricing__cta--ghost" data-enquire="signup">Request a free trial</a>
         <div class="pricing__features">
-          <div class="pricing__feature"><i data-lucide="check"></i><span>Up to 5 users included</span></div>
+          <div class="pricing__feature"><i data-lucide="check"></i><span>Up to 5 users included, ₹2,400 per extra user per year</span></div>
           <div class="pricing__feature"><i data-lucide="check"></i><span>Inbox, leads, quotes, invoices, vouchers</span></div>
+          <div class="pricing__feature"><i data-lucide="check"></i><span>3,000 AI credits and 300 WhatsApp messages a month</span></div>
         </div>
       </div>
       <div class="pricing__card pricing__card--popular">
         <div class="pricing__badge"><i data-lucide="crown"></i> Most chosen</div>
         <div class="pricing__name">Pro</div>
-        <div class="pricing__price"><span class="pricing__amount">₹18,000</span><span class="pricing__period">/agency/year</span></div>
-        <div class="pricing__desc">Adds advanced reporting and the Pro assistant features.</div>
+        <div class="pricing__price"><span class="pricing__amount">₹23,999</span><span class="pricing__period">/agency/year</span></div>
+        <div class="pricing__note">Launch price, locked for 24 months. ₹29,999 from 1 April 2027.</div>
+        <div class="pricing__desc">Adds WhatsApp campaigns, AI tools, business intelligence and a custom domain.</div>
         <a href="#enquire" class="pricing__cta pricing__cta--primary" data-enquire="signup">Request a free trial</a>
         <div class="pricing__features">
-          <div class="pricing__feature"><i data-lucide="check"></i><span>Up to 15 users included</span></div>
+          <div class="pricing__feature"><i data-lucide="check"></i><span>Up to 10 users included, ₹2,400 per extra user per year</span></div>
           <div class="pricing__feature"><i data-lucide="check"></i><span>Everything in Basic</span></div>
+          <div class="pricing__feature"><i data-lucide="check"></i><span>15,000 AI credits and 950 WhatsApp messages a month</span></div>
         </div>
       </div>
       <div class="pricing__card">
         <div class="pricing__name">Enterprise</div>
-        <div class="pricing__price"><span class="pricing__amount">₹24,000</span><span class="pricing__period">/agency/year</span></div>
-        <div class="pricing__desc">Every feature, for large agencies and tour operators.</div>
+        <div class="pricing__price"><span class="pricing__amount">₹59,999</span><span class="pricing__period">/agency/year</span></div>
+        <div class="pricing__note">Launch price, locked for 24 months. ₹74,999 from 1 April 2027.</div>
+        <div class="pricing__desc">More users and allowances, website chatbot and every AI feature, priority support.</div>
         <a href="#enquire" class="pricing__cta pricing__cta--ghost" data-enquire="signup">Request a free trial</a>
         <div class="pricing__features">
-          <div class="pricing__feature"><i data-lucide="check"></i><span>Up to 100 users included</span></div>
+          <div class="pricing__feature"><i data-lucide="check"></i><span>Up to 25 users included, ₹2,400 per extra user per year</span></div>
           <div class="pricing__feature"><i data-lucide="check"></i><span>Everything in Pro</span></div>
+          <div class="pricing__feature"><i data-lucide="check"></i><span>30,000 AI credits and 2,500 WhatsApp messages a month</span></div>
         </div>
       </div>
     </div>
@@ -479,7 +486,7 @@
       <p><strong>Need more?</strong> Upgrade or add credit packs. Extra users, AI credits, texts and WhatsApp messages are paid extras, never hidden in the plan.</p>
       <ul class="pricing__packs" id="pricing-packs" hidden></ul>
     </div>
-    <div class="pricing__trust">Prices are shown in rupees for India, exclude GST and may change before launch. Tell us about your agency and we will confirm the current price list. Other countries: <a href="#enquire" data-enquire="contact">talk to us</a>.</div>
+    <div class="pricing__trust">Prices are shown in rupees for India and exclude GST. The launch price applies to agencies that sign before 1 April 2027 and stays for 24 months. Other countries (UK, Europe, Australia, the US, the Gulf and more) are billed in their own currency: <a href="#enquire" data-enquire="contact">talk to us</a>.</div>
   </div>
 </section>
 

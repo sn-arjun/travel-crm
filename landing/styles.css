@@ -651,6 +651,7 @@ img { max-width: 100%; display: block; }
 .pricing__period { font-size: 14px; color: var(--text-muted); }
 .pricing__inr { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
 .pricing__desc { font-size: 14px; color: var(--text-secondary); margin-top: 16px; }
+.pricing__note { font-size: 12px; color: var(--text-secondary); margin-top: 8px; }
 .pricing__cta {
   display: block;
   margin-top: 24px;
