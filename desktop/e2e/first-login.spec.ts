@@ -1,6 +1,7 @@
 import { type Page } from '@playwright/test';
 import { test, expect } from './fixtures';
 import { API_URL } from './helpers/auth';
+import { isMultiTenantStack, NEEDS_MULTI } from './helpers/tenants';
 
 /**
  * First login of a brand-new agency (R113), in the multi-tenant stack: the provisioned admin signs in with the
@@ -95,6 +96,9 @@ test.describe('First login: forced password change and onboarding', () => {
   let agency: Agency;
 
   test.beforeAll(async () => {
+    // A single-tenant stack shares one database between all agencies: the wizard would overwrite the shared invoice
+    // prefix (TRV) and break every later spec that expects INV-/PI- numbers. Needs separate agency databases.
+    test.skip(!(await isMultiTenantStack(API_URL)), NEEDS_MULTI);
     agency = await createAgencyThroughAdminApi();
   });
 
