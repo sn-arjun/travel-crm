@@ -197,8 +197,8 @@ describe('number purchase rules', () => {
   it('shows the price before buying: provider cost + 20%, from the catalogue', async () => {
     const offer = (await data(await call('GET', '/voip/number-offer', admin))).data;
     expect(offer.calling).toMatchObject({ allowed: true, country: 'GB', position: 'resell' });
-    expect(offer.price.currency).toBe('USD');
-    expect(offer.price.monthly).toBeCloseTo(1.38, 2); // 1.15 x 1.20
+    expect(offer.price.currency).toBe('GBP');
+    expect(offer.price.monthly).toBeCloseTo(3.52, 2); // GBP 2.70769 x 1.30
     expect(offer.kyc).toMatchObject({ required: true, status: 'none' });
     expect(offer.addon.freeThisMonth).toBe(0);
   });
@@ -247,7 +247,7 @@ describe('number purchase rules', () => {
   it('with approved KYC but no number add-on, purchase is 409 NUMBER_ADDON_REQUIRED and nothing is bought', async () => {
     const res = await call('POST', '/voip/numbers/purchase', admin, { phoneNumber: chosen[0] });
     expect(res.status).toBe(409);
-    expect((await data(res)).error.details).toMatchObject({ code: 'NUMBER_ADDON_REQUIRED', productKey: 'phone_number_west' });
+    expect((await data(res)).error.details).toMatchObject({ code: 'NUMBER_ADDON_REQUIRED', productKey: 'phone_number_uk' });
     expect(MockVoipProvider.heldNumbers).toEqual([]);
     expect(await rows('SELECT 1 FROM voip_number_registry')).toHaveLength(0);
   });
@@ -262,7 +262,7 @@ describe('number purchase rules', () => {
   });
 
   it('purchase consumes the number add-on and registers the address so inbound calls find the agency', async () => {
-    const grant = await data(await asAdmin('POST', `/admin/tenants/${TENANT_ID}/addons`, { productKey: 'phone_number_west', quantity: 1 }));
+    const grant = await data(await asAdmin('POST', `/admin/tenants/${TENANT_ID}/addons`, { productKey: 'phone_number_uk', quantity: 1 }));
     const grantId = grant.data.id;
     expect((await data(await call('GET', '/voip/number-offer', admin))).data.addon.freeThisMonth).toBe(1);
 
@@ -272,7 +272,7 @@ describe('number purchase rules', () => {
     expect(bought.phoneNumber).toBe(chosen[0]);
 
     const reg = await one<any>('SELECT * FROM voip_number_registry WHERE phone_number = ?', chosen[0]);
-    expect(reg).toMatchObject({ tenant_id: TENANT_ID, status: 'active', addon_id: grantId, paid_through: periodNow(), country: 'GB', currency: 'USD' });
+    expect(reg).toMatchObject({ tenant_id: TENANT_ID, status: 'active', addon_id: grantId, paid_through: periodNow(), country: 'GB', currency: 'GBP' });
     expect(reg.sub_account_id).toBe((await one<any>('SELECT sub_account_id FROM voip_accounts')).sub_account_id);
     expect(MockVoipProvider.heldNumbers).toEqual([chosen[0]]);
 
@@ -298,7 +298,7 @@ describe('number purchase rules', () => {
   });
 
   it('a number belongs to exactly one agency: it cannot be bought again and a refused buy does not consume the add-on', async () => {
-    await asAdmin('POST', `/admin/tenants/${TENANT_ID}/addons`, { productKey: 'phone_number_west', quantity: 1 });
+    await asAdmin('POST', `/admin/tenants/${TENANT_ID}/addons`, { productKey: 'phone_number_uk', quantity: 1 });
     const res = await call('POST', '/voip/numbers/purchase', admin, { phoneNumber: chosen[0] }, mockEnv, { 'Idempotency-Key': 'buy-dup' });
     expect(res.status).toBe(409);
     expect((await data(res)).error.details.code).toBe('NUMBER_UNAVAILABLE');
@@ -449,7 +449,7 @@ describe('monthly number rental', () => {
     expect(res.status).toBe(200);
     expect((await data(res)).data.created).toBe(true);
     expect((await one<any>('SELECT status FROM voip_accounts')).status).toBe('active');
-    await asAdmin('POST', `/admin/tenants/${TENANT_ID}/addons`, { productKey: 'phone_number_west', quantity: 1 });
+    await asAdmin('POST', `/admin/tenants/${TENANT_ID}/addons`, { productKey: 'phone_number_uk', quantity: 1 });
     const found = ((await data(await call('POST', '/voip/numbers/search', admin, {}))).data as any[])[0];
     phone = found.phoneNumber;
     expect((await call('POST', '/voip/numbers/purchase', admin, { phoneNumber: phone })).status).toBe(200);
@@ -470,7 +470,7 @@ describe('monthly number rental', () => {
     expect(mails).toHaveLength(1);
 
     await run(
-      `INSERT INTO tenant_addons (id, tenant_id, product_key, quantity, units_granted, period_key, source) VALUES ('r304-next-grant', ?, 'phone_number_west', 1, 1, ?, 'super_admin_grant')`,
+      `INSERT INTO tenant_addons (id, tenant_id, product_key, quantity, units_granted, period_key, source) VALUES ('r304-next-grant', ?, 'phone_number_uk', 1, 1, ?, 'super_admin_grant')`,
       TENANT_ID, nextKey,
     );
     const restored = await runNumberLifecycle(mockEnv, next);
@@ -481,7 +481,7 @@ describe('monthly number rental', () => {
     // Two months on, with that month's add-on in place, rent simply renews.
     const later = monthsAhead(2);
     await run(
-      `INSERT INTO tenant_addons (id, tenant_id, product_key, quantity, units_granted, period_key, source) VALUES ('r304-later-grant', ?, 'phone_number_west', 1, 1, ?, 'super_admin_grant')`,
+      `INSERT INTO tenant_addons (id, tenant_id, product_key, quantity, units_granted, period_key, source) VALUES ('r304-later-grant', ?, 'phone_number_uk', 1, 1, ?, 'super_admin_grant')`,
       TENANT_ID, later.toISOString().slice(0, 7),
     );
     expect(await runNumberLifecycle(mockEnv, later)).toMatchObject({ renewed: 1, scheduled: 0 });
@@ -532,7 +532,7 @@ describe('the real Twilio adapter, over a mocked fetch', () => {
     expect(search.url).toContain(`/Accounts/${SUB}/`);
     expect(search.auth).toBe('Basic ' + btoa(`${SUB}:subtoken0123456789abcdef0123456789`));
 
-    await asAdmin('POST', `/admin/tenants/${TENANT_ID}/addons`, { productKey: 'phone_number_west', quantity: 1 });
+    await asAdmin('POST', `/admin/tenants/${TENANT_ID}/addons`, { productKey: 'phone_number_uk', quantity: 1 });
     const buy = await call('POST', '/voip/numbers/purchase', admin, { phoneNumber: '+442030099777' }, realEnv);
     expect(buy.status).toBe(200);
     const purchase = calls.find((c) => c.url.includes('/IncomingPhoneNumbers.json') && c.method === 'POST')!;
