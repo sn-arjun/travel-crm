@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures';
-import { waitForLoad, navigateTo, API_URL } from './helpers/auth';
+import { waitForLoad, navigateTo, API_URL, TENANT_ID } from './helpers/auth';
 import { api, seedContact } from './helpers/api-seed';
 
 /**
@@ -22,6 +22,24 @@ test.describe('Calls', () => {
   test.beforeAll(async () => {
     await ensureVoipConfigured();
   });
+
+  // The mock provider never reports a placed call ending, but the API allows only 3 open outbound calls per
+  // agent (R305). End open calls the way the provider would, a signed "no answer" for each, before and after
+  // every test.
+  async function endOpenCalls() {
+    const res = await api('GET', '/calls?direction=outbound&limit=50');
+    const rows: any[] = res?.data?.items ?? res?.data ?? [];
+    const open = rows.filter((r) => ['initiated', 'queued', 'ringing', 'in-progress'].includes(r.status) && r.providerCallId);
+    for (const call of open) {
+      await fetch(`${API_URL}/test/voip/simulate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scenario: 'outbound_no_answer', callSid: call.providerCallId, to: call.toNumber, from: call.fromNumber, tenantId: TENANT_ID }),
+      });
+    }
+  }
+  test.beforeEach(endOpenCalls);
+  test.afterEach(endOpenCalls);
 
   // ─────────────────────────────────────────────────────────────
   // Full round trip: dial via form UI → list → detail → edit outcome → delete
