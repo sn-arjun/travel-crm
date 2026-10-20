@@ -128,6 +128,16 @@ export class SiteManager {
     await fs.writeFile(this.statePath(state.slug), JSON.stringify(state, null, 2), { mode: 0o600 });
   }
 
+  /** True for a host name this provisioner serves: the network's main host or a known agency site. Used by Caddy's on-demand TLS check. */
+  async hostKnown(host: string): Promise<boolean> {
+    const h = host.trim().toLowerCase();
+    if (!h) return false;
+    if (this.config.wpHost && h === this.config.wpHost) return true;
+    const slug = h.split('.')[0];
+    const state = await this.get(slug);
+    return !!state && state.domain === h && state.status !== 'failed';
+  }
+
   async get(slug: string): Promise<SiteState | null> {
     if (!SLUG.test(slug)) return null;
     return this.load(slug);

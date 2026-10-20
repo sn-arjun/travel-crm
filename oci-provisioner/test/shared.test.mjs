@@ -24,7 +24,7 @@ function fakeNetwork(calls) {
     const url = (w.find((x) => x.startsWith('--url=')) ?? '').slice(6);
     const arg = (n) => (w.find((x) => x.startsWith(`--${n}=`)) ?? '').slice(n.length + 3);
     const cmd = w.filter((x) => !x.startsWith('--') || x === '--info').join(' ');
-    if (w[0] === '--info' || (w[0] === 'db' && w[1] === 'check')) return '';
+    if (w[0] === '--info' || (w[0] === 'eval' && w[2] === undefined && false)) return '';
     if (w[0] === 'core' && w[1] === 'is-installed') {
       if (w.includes('--network') ? net.multisite : net.installed) return '';
       throw new Error('not installed');
@@ -83,7 +83,7 @@ async function start(extraEnv = {}, mode) {
     return { status: res.status, body: await res.json() };
   };
   const close = async () => { server.close(); await rm(dataDir, { recursive: true, force: true }); };
-  return { call, manager, calls, net, config, close };
+  return { call, manager, calls, net, config, close, port: server.address().port };
 }
 
 const req = (slug = 'acme-travel', over = {}) => ({
@@ -207,6 +207,20 @@ describe('shared mode', () => {
     } finally { await t.close(); }
   });
 
+  test('/tls-check (Caddy on-demand TLS) says yes only for the network host and known sites', async () => {
+    const t = await start();
+    try {
+      await t.call('POST', '/sites', req());
+      await t.manager.settled('acme-travel');
+      const ask = async (d) => (await fetch(`http://127.0.0.1:${t.port}/tls-check?domain=${encodeURIComponent(d)}`)).status;
+      assert.equal(await ask(`acme-travel.${BASE}`), 200);
+      assert.equal(await ask(`network.${BASE}`), 200);
+      assert.equal(await ask(`unknown.${BASE}`), 404);
+      assert.equal(await ask(`acme-travel.evil.test`), 404);
+      assert.equal(await ask(''), 404);
+    } finally { await t.close(); }
+  });
+
   test('a slug that belongs to another site is a 409; a wrong domain is a 400; the limit is a 503', async () => {
     const t = await start();
     try {
@@ -256,7 +270,7 @@ describe('shared mode', () => {
       }
       assert.equal(t.calls.length, before);
       // the login reaches PHP through the environment, not through the PHP text
-      const evalCall = t.calls.find((c) => c.includes('eval'));
+      const evalCall = t.calls.find((c) => c.some((x) => x.includes('retrieve_password')));
       assert.ok(evalCall.includes('-e') && evalCall.some((x) => x.startsWith('PROV_LOGIN=')));
       assert.ok(!evalCall.find((x) => x.includes('retrieve_password')).includes('owner'));
     } finally { await t.close(); }

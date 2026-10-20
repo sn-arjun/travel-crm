@@ -56,6 +56,12 @@ export function createServer(config: ProvisionerConfig, sites: SiteManager, nowM
         return send(res, 200, { status: 'ok', uptime: process.uptime(), maxSites: config.maxSites, mode: config.mode });
       }
 
+      // Caddy on-demand TLS asks "may I get a certificate for this host?" (internal network only; answers yes or no, nothing else).
+      if (method === 'GET' && pathname === '/tls-check') {
+        const domain = new URL(target, 'http://x').searchParams.get('domain') ?? '';
+        return (await sites.hostKnown(domain)) ? send(res, 200, { ok: true }) : send(res, 404, { ok: false });
+      }
+
       const body = await readBody(req);
       const check = verifyRequest(config.secret, {
         method,

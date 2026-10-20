@@ -205,7 +205,7 @@ export class SharedSiteManager extends SiteManager {
     for (;;) {
       try {
         await this.wp(['--info']);
-        await this.wp(['db', 'check']);
+        await this.wp(['eval', 'echo "ready";']);
         return;
       } catch (e) {
         if (Date.now() > deadline) throw new Error(`the shared WordPress container ${this.config.wpContainer} is not ready: ${(e as Error).message}`);
