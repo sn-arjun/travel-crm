@@ -379,6 +379,8 @@ test.describe('Settings — company configuration', () => {
       await page.locator(`#${id}`).fill(value);
     }
     await pick(page, page.locator('#taxSystem'), 'VAT');
+    // The company country is India (set above), which has no standard VAT rate, so the rate must be entered (R201).
+    await page.locator('#vatRate').fill('20');
 
     await save(page);
     await expectToast(page, 'Invoice defaults saved successfully');
@@ -404,14 +406,20 @@ test.describe('Settings — company configuration', () => {
     });
 
     await openSettingsPage(page, '/settings/invoice-defaults', 'Invoice Defaults');
+    // Under VAT the GST-only fields (GSTIN, company state) are hidden; they are checked after switching back to GST.
+    const gstOnly = new Set(['gstin', 'companyState']);
     for (const [id, value] of Object.entries(inv)) {
+      if (gstOnly.has(id)) continue;
       await expect(page.locator(`#${id}`)).toHaveValue(value);
     }
     await expect(page.locator('#taxSystem')).toContainText('VAT');
+    await expect(page.locator('#vatRate')).toHaveValue('20');
 
     // Edit and persist.
     await page.locator('#defaultDueDays').fill('60');
     await pick(page, page.locator('#taxSystem'), 'GST');
+    await expect(page.locator('#gstin')).toHaveValue(inv.gstin);
+    await expect(page.locator('#companyState')).toHaveValue(inv.companyState);
     await save(page);
     await expectToast(page, 'Invoice defaults saved successfully');
     await page.waitForURL(/\/settings$/);
