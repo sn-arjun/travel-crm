@@ -22,12 +22,26 @@ import {
   CommandItem,
 } from '@/components/ui/command';
 
-/** Every country with its own calling code (generated table); the picker searches name, ISO code and +code. */
+/** Short names people type for a country, matched by the search as well as the name, ISO code and +code. */
+const COUNTRY_SEARCH_ALIASES: Record<string, string> = {
+  AE: 'UAE Emirates Dubai Abu Dhabi',
+  GB: 'UK Britain England Scotland Wales',
+  US: 'USA America',
+  SA: 'KSA Saudi',
+  NL: 'Holland',
+  KR: 'Korea',
+  KP: 'Korea',
+  CZ: 'Czech',
+  RU: 'Russia',
+};
+
+/** Every country with its own calling code (generated table); the picker searches name, ISO code, +code and common short names. */
 const COUNTRY_OPTIONS = COUNTRIES.map((c) => ({
   code: `+${c.dial}`,
   iso: c.iso,
   flag: flagOf(c.iso),
   label: c.name,
+  aliases: COUNTRY_SEARCH_ALIASES[c.iso] ?? '',
 }));
 
 export interface PhoneInputProps {
@@ -101,7 +115,7 @@ export function PhoneInput({
                 {COUNTRY_OPTIONS.map((c) => (
                   <CommandItem
                     key={c.iso}
-                    value={`${c.label} ${c.iso} ${c.code}`}
+                    value={`${c.label} ${c.iso} ${c.code} ${c.aliases}`}
                     onSelect={() => {
                       onCountryCodeChange?.(c.code, c.iso);
                       setOpen(false);

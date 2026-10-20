@@ -208,7 +208,7 @@ test.describe('Settings — company configuration', () => {
     await phoneRow.fill(co.phoneLocal);
     await page.getByRole('combobox').filter({ hasText: '+91' }).click();
     await page.getByPlaceholder('Search country...').fill('UAE');
-    await page.getByRole('option', { name: /UAE/ }).click();
+    await page.getByRole('option', { name: /United Arab Emirates/ }).click();
     await expect(page.getByRole('combobox').filter({ hasText: '+971' })).toBeVisible();
 
     await page.locator('#website').fill(co.website);

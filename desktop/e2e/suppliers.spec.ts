@@ -85,7 +85,7 @@ test.describe('Suppliers: CRUD round trip', () => {
     const phoneRow = page.locator('input[type="tel"]');
     await page.locator('button[role="combobox"]').filter({ hasText: '+91' }).click();
     await page.getByPlaceholder('Search country...').fill('UAE');
-    await page.getByRole('option', { name: /UAE/ }).click();
+    await page.getByRole('option', { name: /United Arab Emirates/ }).click();
     await phoneRow.fill(data.phone);
 
     await page.locator('#email').fill(data.email);
