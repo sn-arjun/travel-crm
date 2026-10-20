@@ -295,6 +295,17 @@
     "blockedOnOwner": null
   },
   {
+    "id": "R128",
+    "tier": 1,
+    "title": "Email delivery bugs found by the ADR-002 review",
+    "size": "M",
+    "dependsOn": [
+      "R102",
+      "R208"
+    ],
+    "blockedOnOwner": null
+  },
+  {
     "id": "R201",
     "tier": 2,
     "title": "Tax engine: GST, VAT with reverse charge, sales tax or none, stored on every invoice",
