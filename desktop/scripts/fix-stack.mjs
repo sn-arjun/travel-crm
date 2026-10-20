@@ -309,6 +309,9 @@ async function up() {
       // Local stacks exercise calling for every agency; the real allow-list (R301) applies in production,
       // which refuses '*'. Override with FIX_STACK_CALLING_COUNTRIES to test the country gate end to end.
       '--var', 'VOIP_CALLING_COUNTRIES:' + (process.env.FIX_STACK_CALLING_COUNTRIES || '*'),
+      // No telephony account is ever contacted from a local stack: the in-memory mock provider (R301) serves calls,
+      // sub-accounts and softphone tokens, so the mock softphone (R307) can run end to end. Never set in production.
+      '--var', 'VOIP_PROVIDER:mock',
       '--var', 'SENDGRID_API_KEY:',
       '--var', 'TWILIO_ACCOUNT_SID:',
       '--var', 'TWILIO_AUTH_TOKEN:',

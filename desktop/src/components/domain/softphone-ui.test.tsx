@@ -175,6 +175,19 @@ describe('in-call panel on the softphone', () => {
     await waitFor(() => expect(voipApi.calls.recordingConsent).toHaveBeenCalledWith('call-77'));
   });
 
+  it('an outbound call lets the agent mute as soon as the app is on the line, before the customer picks up; hold waits for the customer', async () => {
+    await startController();
+    act(() => phone.simulateIncoming({ direction: 'outbound', to: '+447700900999' }));
+    act(() => getSoftphoneController().answer());
+    render(<CallControlsPanel callId="call-out" callerName="Out Contact" phoneNumber="+447700900999" direction="outbound" viaSoftphone />);
+    expect(screen.getByTestId('call-panel').getAttribute('data-call-status')).toBe('connecting');
+    const mute = screen.getByTestId('call-panel-mute') as HTMLButtonElement;
+    expect(mute.disabled).toBe(false);
+    expect((screen.getByTestId('call-panel-hold') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(mute);
+    expect(phone.log).toContain('mute:true');
+  });
+
   it('shows no consent tick when the agency announces instead', async () => {
     await answeredCall();
     render(<CallControlsPanel callId="call-77" callerName="Anita Rao" phoneNumber={ring.from} direction="inbound" viaSoftphone />);

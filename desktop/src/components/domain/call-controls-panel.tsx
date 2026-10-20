@@ -272,7 +272,7 @@ export function CallControlsPanel({ callId, callerName, phoneNumber, onEndCall, 
               size="lg"
               variant={isMuted ? 'destructive' : 'outline'}
               className="h-12 w-12 rounded-full p-0"
-              disabled={status === 'connecting' || status === 'ended'}
+              disabled={(status === 'connecting' && !(viaSoftphone && softphone.status === 'in_call')) || status === 'ended'}
               aria-label={isMuted ? 'Unmute' : 'Mute'}
             >
               {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}

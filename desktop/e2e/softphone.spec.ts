@@ -61,7 +61,7 @@ async function turnCallingOn() {
 
 async function turnCallingOff() {
   const res = await adminPost(`/admin/tenants/${TENANT_ID}/voip/suspend`);
-  expect([200, 404]).toContain(res.status);
+  expect([200, 404, 409], await res.clone().text()).toContain(res.status); // 409: no account to suspend
 }
 
 async function simulate(scenario: string, from: string, opts: { durationSeconds?: number; callSid?: string } = {}) {
