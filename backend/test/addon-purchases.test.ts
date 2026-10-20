@@ -138,26 +138,7 @@ describe('self-serve add-on purchases (R206)', () => {
     });
     adminToken = await signAccessToken({ userId: '11111111-1111-1111-1111-111111111111', tenantId: SEED_TENANT, role: 'admin', email: 'admin@e2e.test' }, testEnv.JWT_SECRET);
 
-    // A UK market for the Stripe tests: a Pro price, an SMS provider cost and the packs priced from it.
-    await master(`DELETE FROM plan_prices WHERE id = '0196a206-9999-7000-8000-000000000001'`);
-    await master(`DELETE FROM plan_prices WHERE market = 'WEST' AND plan_key = 'pro'`);
-    await master(
-      `INSERT INTO plan_prices (id, plan_key, market, currency, yearly_price, included_users, extra_user_yearly_price, is_active, valid_from)
-       VALUES ('0196a206-9999-7000-8000-000000000001', 'pro', 'WEST', 'GBP', 200, 10, 20, 1, '2026-10-01T00:00:00Z')`,
-    );
-    await master(`DELETE FROM comm_unit_costs WHERE id = '0196a206-9999-7000-8000-000000000002'`);
-    await master(
-      `INSERT INTO comm_unit_costs (id, channel, market, provider, unit_cost, currency, margin_pct, effective_from, is_active)
-       VALUES ('0196a206-9999-7000-8000-000000000002', 'sms', 'WEST', 'Twilio', 0.05, 'GBP', 20, '2026-10-01T00:00:00Z', 1)`,
-    );
-    await master(`DELETE FROM addon_products WHERE key IN ('sms_100_west', 'ai_credit_pack_5000_west')`);
-    await master(
-      `INSERT INTO addon_products (key, name, kind, channel, units, fixed_price, currency, market, is_active) VALUES ('sms_100_west', '100 SMS', 'comm_pack', 'sms', 100, NULL, 'GBP', 'WEST', 1)`,
-    );
-    await master(
-      `INSERT INTO addon_products (key, name, kind, channel, units, fixed_price, currency, market, is_active) VALUES ('ai_credit_pack_5000_west', '5,000 AI credits', 'ai_credit_pack', NULL, 5000, 4, 'GBP', 'WEST', 1)`,
-    );
-    await bumpCatalogueVersion(testEnv);
+    // The UK (GBP) market, its SMS cost and its packs are the approved ones from migration 0026 (PRICING.md 7.2, 7.5, 7.6).
   });
 
   beforeEach(async () => {
@@ -171,7 +152,7 @@ describe('self-serve add-on purchases (R206)', () => {
     vi.unstubAllGlobals();
     fetchCalls.length = 0;
     // Restore any catalogue edit a test made.
-    await master(`UPDATE comm_unit_costs SET unit_cost = 8.06, margin_pct = 20 WHERE channel = 'sms' AND market = 'IN'`);
+    await master(`UPDATE comm_unit_costs SET unit_cost = 8.14562, margin_pct = 25 WHERE id = '01a157e5-2f39-748a-b07e-98add8e4dc4a'`);
     await master(`UPDATE addon_products SET fixed_price = NULL WHERE key = 'sms_100'`);
     await bumpCatalogueVersion(testEnv);
   });
@@ -180,49 +161,48 @@ describe('self-serve add-on purchases (R206)', () => {
     await resetAddonState();
     await master('DELETE FROM subscriptions WHERE id = ?', SUB_ID);
     await setTenant(null);
-    await master(`DELETE FROM addon_products WHERE key IN ('sms_100_west', 'ai_credit_pack_5000_west')`);
-    await master(`DELETE FROM comm_unit_costs WHERE id = '0196a206-9999-7000-8000-000000000002'`);
-    await master(`DELETE FROM plan_prices WHERE id = '0196a206-9999-7000-8000-000000000001'`);
     await bumpCatalogueVersion(testEnv);
   });
 
-  it('quotes sms_100 in India as 100 x unit cost x 1.2 and follows a unit-cost change (nothing is hardcoded)', async () => {
+  it('quotes sms_100 in India as 100 x unit cost x 1.25 and follows a unit-cost change (nothing is hardcoded)', async () => {
     let res = await call('GET', '/billing/addons/quote?productKey=sms_100&quantity=1');
     expect(res.status).toBe(200);
     let q = ((await res.json()) as any).data;
-    // 100 x Rs 8.06 x 1.2 = Rs 967.20, then 18% GST from the tax engine
+    // 100 x Rs 8.14562 x 1.25 = Rs 1,018.21 (rounded up to the paisa), then 18% GST from the tax engine
     expect(q.currency).toBe('INR');
-    expect(q.unitPrice).toBeCloseTo(100 * 8.06 * 1.2, 2);
-    expect(q.subtotal).toBeCloseTo(967.2, 2);
-    expect(q.taxTotal).toBeCloseTo(967.2 * 0.18, 1);
-    expect(q.total).toBeCloseTo(967.2 * 1.18, 1);
+    expect(q.unitPrice).toBe(1018.21);
+    expect(q.subtotal).toBeCloseTo(1018.21, 2);
+    expect(q.taxTotal).toBeCloseTo(1018.21 * 0.18, 1);
+    expect(q.total).toBeCloseTo(1018.21 * 1.18, 1);
 
     // The provider raised its price: the next quote follows with no code change.
     await master(`UPDATE comm_unit_costs SET unit_cost = 10 WHERE channel = 'sms' AND market = 'IN'`);
     await bumpCatalogueVersion(testEnv);
     res = await call('GET', '/billing/addons/quote?productKey=sms_100&quantity=2');
     q = ((await res.json()) as any).data;
-    expect(q.unitPrice).toBeCloseTo(1200, 2);
-    expect(q.subtotal).toBeCloseTo(2400, 2);
+    expect(q.unitPrice).toBeCloseTo(1250, 2);
+    expect(q.subtotal).toBeCloseTo(2500, 2);
   });
 
-  it('never sells a communication pack below cost + 20%, even if the margin or fixed price is lowered', async () => {
+  it('never sells a communication pack below the margin floor (cost x 1.25), even if the margin or fixed price is lowered', async () => {
     await master(`UPDATE comm_unit_costs SET margin_pct = 2 WHERE channel = 'sms' AND market = 'IN'`);
     await master(`UPDATE addon_products SET fixed_price = 50 WHERE key = 'sms_100'`);
     await bumpCatalogueVersion(testEnv);
     const q = ((await (await call('GET', '/billing/addons/quote?productKey=sms_100&quantity=1')).json()) as any).data;
-    expect(q.unitPrice).toBeCloseTo(967.2, 2);
+    expect(q.unitPrice).toBe(1018.21);
   });
 
   it('lists the add-ons with live prices for the agency market, and nothing for a market with no price rows', async () => {
     const data = ((await (await call('GET', '/billing/addons')).json()) as any).data;
     const keys = data.products.map((p: any) => p.key);
-    expect(keys).toEqual(expect.arrayContaining(['sms_100', 'whatsapp_1000', 'otp_100', 'ai_credit_pack_5000', 'extra_user']));
-    expect(keys).not.toContain('sms_100_west');
-    expect(data.products.find((p: any) => p.key === 'ai_credit_pack_5000')).toMatchObject({ available: true, unitPrice: 250, currency: 'INR' });
+    expect(keys).toEqual(expect.arrayContaining(['sms_100', 'whatsapp_1000', 'otp_100', 'ai_credits_10000_in', 'email_5000_in', 'extra_user']));
+    expect(keys).not.toContain('sms_500_uk'); // packs of other markets are not offered
+    expect(keys).not.toContain('ai_credit_pack_5000'); // retired
+    expect(data.products.every((p: any) => p.kind === 'extra_user' || p.currency === 'INR')).toBe(true);
+    expect(data.products.find((p: any) => p.key === 'ai_credits_10000_in')).toMatchObject({ available: true, unitPrice: 499, currency: 'INR' });
     expect(data.configured).toBe(true);
 
-    // Singapore has no add-on or plan price rows: 409, and the gateway is never called
+    // An India pack is not for sale to a Singapore agency: 409, and the gateway is never called
     await setTenant('SG');
     const { res, json } = await checkout('sms_100', 1);
     expect(res.status).toBe(409);
@@ -289,16 +269,16 @@ describe('self-serve add-on purchases (R206)', () => {
 
   it('Stripe: Checkout in payment mode for an AI credit pack, priced from the UK catalogue; the paid event credits the credits once', async () => {
     await setTenant('GB');
-    const { res, json } = await checkout('ai_credit_pack_5000_west', 3);
+    const { res, json } = await checkout('ai_credits_10000_uk', 3);
     expect(res.status).toBe(200);
     expect(json.data.gateway).toBe('stripe');
     expect(json.data.url).toBe('https://checkout.stripe.test/c/pay/cs_test_addon');
-    // GBP 4 x 3, no platform tax outside India
-    expect(json.data.order).toMatchObject({ currency: 'GBP', subtotal: 12, taxTotal: 0, total: 12, unitsGranted: 15000 });
+    // GBP 7 x 3, no platform tax outside India
+    expect(json.data.order).toMatchObject({ currency: 'GBP', subtotal: 21, taxTotal: 0, total: 21, unitsGranted: 30000 });
     expect(fetchCalls).toHaveLength(1);
     const form = new URLSearchParams(fetchCalls[0].body);
     expect(form.get('mode')).toBe('payment');
-    expect(form.get('line_items[0][price_data][unit_amount]')).toBe('1200');
+    expect(form.get('line_items[0][price_data][unit_amount]')).toBe('2100');
     expect(form.get('line_items[0][price_data][currency]')).toBe('gbp');
     expect(form.get('metadata[addon_order_id]')).toBe(json.data.order.id);
     expect(form.get('payment_intent_data[metadata][addon_order_id]')).toBe(json.data.order.id);
@@ -306,23 +286,23 @@ describe('self-serve add-on purchases (R206)', () => {
 
     const orderId = json.data.order.id;
     const base = await getAllowance(testEnv, SEED_TENANT, 'ai_credits');
-    expect((await stripeSessionEvent('checkout.session.completed', 'evt_r206_stripe_1', orderId, 1200)).status).toBe(200);
-    expect(await getAllowance(testEnv, SEED_TENANT, 'ai_credits')).toBe(base + 15000);
-    expect((await stripeSessionEvent('checkout.session.completed', 'evt_r206_stripe_1', orderId, 1200)).status).toBe(200);
-    expect((await stripeSessionEvent('checkout.session.completed', 'evt_r206_stripe_2', orderId, 1200)).status).toBe(200);
-    expect(await getAllowance(testEnv, SEED_TENANT, 'ai_credits')).toBe(base + 15000);
+    expect((await stripeSessionEvent('checkout.session.completed', 'evt_r206_stripe_1', orderId, 2100)).status).toBe(200);
+    expect(await getAllowance(testEnv, SEED_TENANT, 'ai_credits')).toBe(base + 30000);
+    expect((await stripeSessionEvent('checkout.session.completed', 'evt_r206_stripe_1', orderId, 2100)).status).toBe(200);
+    expect((await stripeSessionEvent('checkout.session.completed', 'evt_r206_stripe_2', orderId, 2100)).status).toBe(200);
+    expect(await getAllowance(testEnv, SEED_TENANT, 'ai_credits')).toBe(base + 30000);
     // A payment-mode session never touches the subscription
     expect((await one('SELECT status FROM subscriptions WHERE id = ?', SUB_ID)).status).toBe('active');
   });
 
-  it('prices a UK communication pack from the UK unit cost x 1.2', async () => {
+  it('prices a UK communication pack from the UK unit cost x 1.30', async () => {
     await setTenant('GB');
-    const q = ((await (await call('GET', '/billing/addons/quote?productKey=sms_100_west&quantity=1')).json()) as any).data;
+    const q = ((await (await call('GET', '/billing/addons/quote?productKey=sms_500_uk&quantity=1')).json()) as any).data;
     expect(q.currency).toBe('GBP');
-    expect(q.unitPrice).toBeCloseTo(100 * 0.05 * 1.2, 2);
+    expect(q.unitPrice).toBe(28.16); // 500 x GBP 0.04332 x 1.30 = 28.158, rounded up
   });
 
-  it('a pack bought this month does not carry into next month', async () => {
+  it('a pack bought this month is still there next month (unused), and gone the month after', async () => {
     const { json } = await checkout('sms_100', 1);
     const order = json.data.order;
     expect((await razorpayPaid(order.id, 'evt_r206_month', order.total)).status).toBe(200);
@@ -330,13 +310,15 @@ describe('self-serve add-on purchases (R206)', () => {
     const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString().slice(0, 7);
     const thisMonthAllowance = await getAllowance(testEnv, SEED_TENANT, 'sms', currentPeriodKey());
     const nextMonthAllowance = await getAllowance(testEnv, SEED_TENANT, 'sms', nextMonth);
-    expect(thisMonthAllowance - nextMonthAllowance).toBe(100);
+    expect(thisMonthAllowance - nextMonthAllowance).toBe(0); // nothing was used: the whole pack carries over
+    const monthAfter = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 2, 1)).toISOString().slice(0, 7);
+    expect(thisMonthAllowance - (await getAllowance(testEnv, SEED_TENANT, 'sms', monthAfter))).toBe(100);
   });
 
   it('extra users: the seat limit rises the moment the payment arrives, priced pro rata from the plan, and lapses with the paid year', async () => {
     const limitBefore = await seatLimit(testEnv, SEED_TENANT);
     const catalogue = await getCatalogue(testEnv);
-    const yearly = catalogue.plans.find((p) => p.key === 'pro')!.prices.find((p) => p.market === 'IN')!.extraUserYearlyPrice!;
+    const yearly = catalogue.plans.find((p) => p.key === 'pro')!.prices.find((p) => p.market === 'IN' && p.isActive)!.extraUserYearlyPrice!;
 
     const { res, json } = await checkout('extra_user', 3);
     expect(res.status).toBe(200);
