@@ -228,7 +228,7 @@ export default function ContactDetailPage() {
           <InfoRow label="Email">
             {contact.email}
             {contact.emailUndeliverable ? (
-              <Tag tone="warning" size="sm" className="ml-ds-2" title={contact.emailUndeliverableReason ?? undefined}>
+              <Tag tone="warning" size="sm" className="ms-ds-2" title={contact.emailUndeliverableReason ?? undefined}>
                 Undeliverable
               </Tag>
             ) : null}
