@@ -1,37 +1,155 @@
 'use client';
 
 import * as React from 'react';
+import en from '@/messages/en.json';
+import hi from '@/messages/hi.json';
+import ar from '@/messages/ar.json';
 
+/**
+ * Interface text (not number/date/currency formatting: that stays on lib/locale.ts, R202).
+ *
+ * Adding a language = one catalogue file in src/messages + one entry in LANGUAGES below
+ * (code, native name, `dir`, enabled). Nothing else changes.
+ */
 export type Locale = 'en' | 'hi' | 'ar';
+export type Direction = 'ltr' | 'rtl';
+export type TranslationVars = Record<string, string | number>;
+export type Catalogue = Record<string, string>;
+
+export interface LanguageInfo {
+  code: Locale;
+  /** Name in its own language, shown in the switch. */
+  label: string;
+  dir: Direction;
+  /** Only enabled languages are offered in the switch. Arabic ships in R211. */
+  enabled: boolean;
+}
+
+export const DEFAULT_LOCALE: Locale = 'en';
+
+export const LANGUAGES: readonly LanguageInfo[] = [
+  { code: 'en', label: 'English', dir: 'ltr', enabled: true },
+  { code: 'hi', label: 'हिन्दी', dir: 'ltr', enabled: true },
+  { code: 'ar', label: 'العربية', dir: 'rtl', enabled: false },
+];
+
+export const catalogues: Record<Locale, Catalogue> = { en, hi, ar };
+
+export const LOCALE_STORAGE_KEY = 'travelcrm.uiLanguage';
+
+export function isLocale(value: unknown): value is Locale {
+  return typeof value === 'string' && LANGUAGES.some((l) => l.code === value);
+}
+
+export function isEnabledLocale(value: unknown): value is Locale {
+  return LANGUAGES.some((l) => l.code === value && l.enabled);
+}
+
+export function directionOf(locale: Locale): Direction {
+  return LANGUAGES.find((l) => l.code === locale)?.dir ?? 'ltr';
+}
+
+/** The language chosen on this device (the users API has no UI-language field), or English. */
+export function readStoredLocale(): Locale {
+  try {
+    const stored = window.localStorage.getItem(LOCALE_STORAGE_KEY);
+    if (isEnabledLocale(stored)) return stored;
+  } catch {
+    // storage blocked: English
+  }
+  return DEFAULT_LOCALE;
+}
+
+export function storeLocale(locale: Locale): void {
+  try {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, locale);
+  } catch {
+    // storage blocked: the choice lasts for this session only
+  }
+}
+
+const reported = new Set<string>();
+
+/** Missing keys are reported once each, in development and test only. */
+function reportMissing(locale: Locale, key: string, inEnglishToo: boolean): void {
+  if (process.env.NODE_ENV === 'production') return;
+  // A key missing from a non-English catalogue is expected while the language is partial: only English gaps are errors.
+  if (!inEnglishToo) return;
+  const id = `${locale}:${key}`;
+  if (reported.has(id)) return;
+  reported.add(id);
+  console.warn(`[i18n] missing key "${key}" (locale ${locale}); showing the key`);
+}
+
+function interpolate(template: string, vars?: TranslationVars): string {
+  if (!vars) return template;
+  return template.replace(/\{(\w+)\}/g, (whole, name: string) => (name in vars ? String(vars[name]) : whole));
+}
+
+function pluralCategory(locale: Locale, count: number): string {
+  try {
+    return new Intl.PluralRules(locale).select(count);
+  } catch {
+    return count === 1 ? 'one' : 'other';
+  }
+}
+
+/**
+ * Look up `key` in `locale`, then in English, then fall back to the key itself.
+ * Plurals: when `vars.count` is a number, `key_one` / `key_other` (or other CLDR categories) are tried
+ * first, then `key_other`, then the plain `key`. `{name}` placeholders are replaced from `vars`.
+ */
+export function translate(
+  locale: Locale,
+  key: string,
+  vars?: TranslationVars,
+  catalogueSet: Record<Locale, Catalogue> = catalogues,
+): string {
+  const own = catalogueSet[locale] ?? {};
+  const english = catalogueSet.en ?? {};
+  const candidates: string[] = [];
+  if (vars && typeof vars.count === 'number') {
+    candidates.push(`${key}_${pluralCategory(locale, vars.count)}`, `${key}_other`);
+  }
+  candidates.push(key);
+
+  for (const k of candidates) {
+    const hit = own[k];
+    if (typeof hit === 'string') return interpolate(hit, vars);
+  }
+  for (const k of candidates) {
+    const hit = english[k];
+    if (typeof hit === 'string') {
+      return interpolate(hit, vars);
+    }
+  }
+  reportMissing(locale, key, true);
+  return interpolate(key, vars);
+}
+
+export type TranslateFn = (key: string, vars?: TranslationVars) => string;
+
+/** English translator for code outside React (data modules, tests). */
+export const tEn: TranslateFn = (key, vars) => translate('en', key, vars);
 
 export interface I18nContextType {
   locale: Locale;
+  dir: Direction;
   setLocale: (locale: Locale) => void;
-  t: (key: string) => string;
-  translations: Record<Locale, Record<string, string>>;
+  t: TranslateFn;
+  translations: Record<Locale, Catalogue>;
 }
 
-// Translation function
-export function t(
-  key: string,
-  locale: Locale,
-  translations: Record<Locale, Record<string, string>>
-): string {
-  return translations[locale]?.[key] ?? translations['en']?.[key] ?? key;
-}
-
-// i18n context
+// Without a provider (unit tests, isolated renders) components still render real English.
 export const I18nContext = React.createContext<I18nContextType>({
-  locale: 'en',
+  locale: DEFAULT_LOCALE,
+  dir: 'ltr',
   setLocale: () => {},
-  t: (key: string) => key,
-  translations: { en: {}, hi: {}, ar: {} },
+  t: tEn,
+  translations: catalogues,
 });
 
-export const useI18n = () => {
-  const context = React.useContext(I18nContext);
-  if (!context) {
-    throw new Error('useI18n must be used within I18nProvider');
-  }
-  return context;
-};
+export const useI18n = () => React.useContext(I18nContext);
+
+/** `const t = useT(); t('auth.login.title')` */
+export const useT = (): TranslateFn => useI18n().t;

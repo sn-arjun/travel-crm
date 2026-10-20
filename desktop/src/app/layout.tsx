@@ -3,6 +3,7 @@ import Script from 'next/script';
 import { DM_Sans, Geist, Geist_Mono } from 'next/font/google';
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from 'sonner';
+import { I18nProvider } from '@/components/providers/i18n-provider';
 import { UpdateToast } from '@/components/electron/update-toast';
 import { isWebTarget } from '@/lib/web-config';
 import './globals.css';
@@ -53,7 +54,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {children}
+          <I18nProvider>{children}</I18nProvider>
           {/* Auto-update is an Electron feature: not rendered on the website. */}
           {!isWebTarget && <UpdateToast />}
           <Toaster
