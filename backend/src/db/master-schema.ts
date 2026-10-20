@@ -82,8 +82,21 @@ export const wordpressSites = sqliteTable('wordpress_sites', {
   wpAdminUrl: text('wp_admin_url'),
   containerId: text('container_id'),
   ociInstanceId: text('oci_instance_id'),
-  status: text('status').notNull().default('provisioning'), // provisioning, active, suspended, deleted
+  status: text('status').notNull().default('provisioning'), // queued, provisioning, active, failed, suspended (R309)
   createdAt: text('created_at').default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+  // 0006
+  domain: text('domain'),
+  errorMessage: text('error_message'), // the last error
+  provisionedAt: text('provisioned_at'),
+  updatedAt: text('updated_at'),
+  // 0023 (R309)
+  attempts: integer('attempts').notNull().default(0),
+  provisionerSiteId: text('provisioner_site_id'),
+  siteUrl: text('site_url'),
+  requestJson: text('request_json'),
+  requestedBy: text('requested_by'),
+  startedAt: text('started_at'),
+  welcomeSentAt: text('welcome_sent_at'),
 }, (table) => [
   uniqueIndex('wp_sites_subdomain_idx').on(table.subdomain),
   index('wp_sites_tenant_id_idx').on(table.tenantId),

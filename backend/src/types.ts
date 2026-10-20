@@ -95,6 +95,12 @@ export interface Env {
   TURNSTILE_SECRET?: string;
   OTP_DELIVERY?: string;
   SUPER_ADMIN_JWT_SECRET?: string;
+  /** R309: base URL of the WordPress provisioner on the Oracle VM, for example https://wp-provisioner.example.com (no path). */
+  OCI_PROVISIONER_URL?: string;
+  /** R309: shared secret for signing requests to the provisioner (a Worker secret; the provisioner holds the same value). */
+  PROVISIONER_SECRET?: string;
+  /** R309: domain under which agency sites live, for example sites.example.com gives acme.sites.example.com. */
+  WP_SITES_DOMAIN?: string;
   ERROR_REPORTER_DSN?: string;
   /** Shared secret for GET /api/v1/health/deep when no super admin token is used. */
   HEALTH_TOKEN?: string;

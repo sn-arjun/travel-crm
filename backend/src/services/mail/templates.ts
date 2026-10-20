@@ -10,7 +10,8 @@ export type TemplateName =
   | 'payment_receipt'
   | 'payment_failed'
   | 'trial_ending'
-  | 'number_release_notice';
+  | 'number_release_notice'
+  | 'website_ready';
 
 export interface TemplateData {
   appUrl: string;
@@ -207,6 +208,19 @@ Pay now: ${url}
 
 A released number is usually gone for good. To keep it, ${reason === 'unpaid' ? 'buy the phone number add-on' : 'reactivate the account'} before that date: ${url}
 `;
+      return { subject, html, text };
+    }
+    case 'website_ready': {
+      // R309: the site address only. The admin password is set by the person through WordPress's own reset email.
+      const agency = str(data, 'agencyName', 'your agency');
+      const url = str(data, 'siteUrl');
+      const adminUrl = str(data, 'adminUrl');
+      const subject = `Your website for ${agency} is ready`;
+      const html = layout(
+        subject,
+        `<p>The website for <strong>${esc(agency)}</strong> is live.</p>${button(url, 'Open your website')}<p>To edit it, sign in at <a href="${esc(adminUrl)}">${esc(adminUrl)}</a>. WordPress sends a separate email with a link to choose your password; we never see or send it.</p>`
+      );
+      const text = `The website for ${agency} is live: ${url}\nTo edit it, sign in at ${adminUrl}. WordPress sends a separate email with a link to choose your password.\n`;
       return { subject, html, text };
     }
     case 'usage_alert': {

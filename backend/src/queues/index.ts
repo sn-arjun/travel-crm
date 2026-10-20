@@ -78,9 +78,15 @@ export async function handleQueue(
         case 'push':
           await handlePushJob(data as PushNotificationJob, env);
           break;
-        case 'wp-provision':
-          await handleWpProvisionJob(data as WpProvisionJob, env);
+        case 'wp-provision': {
+          // R309: the job decides its own retry timing (backoff, polling); an unexpected throw falls to msg.retry() below.
+          const outcome = await handleWpProvisionJob(data as WpProvisionJob, env);
+          if (outcome.retryInSeconds) {
+            msg.retry({ delaySeconds: outcome.retryInSeconds });
+            continue;
+          }
           break;
+        }
         default:
           console.error(`Unknown queue message type: ${type}`);
       }

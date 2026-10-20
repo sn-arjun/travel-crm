@@ -32,6 +32,7 @@ import { runScheduledAutomationsForTenant } from '../services/automation/schedul
 import { processCampaignScheduler } from './campaign-scheduler';
 import { retryPendingRecordings, runRecordingRetention } from '../services/voip/recordings';
 import { processOverdueTasks } from './overdue-tasks';
+import { sweepWordpressSites } from '../services/wordpress/sites';
 import { processFleetAlerts } from './fleet-alerts';
 import {
   processBirthdaysForTenant,
@@ -287,6 +288,15 @@ export async function dispatchScheduled(event: { cron?: string; scheduledTime?: 
     } catch (err) {
       log('error', 'cron.platform_daily_failed', { error: err instanceof Error ? err.message : String(err) });
       reportError(env, err, { source: 'scheduled' });
+    }
+  }
+
+  // R309: WordPress sites that made no progress for 10 minutes (lost queue message) are queued again.
+  if (jobSet === 'every5') {
+    try {
+      await sweepWordpressSites(env, fired);
+    } catch (err) {
+      log('error', 'cron.wordpress_sweep_failed', { error: err instanceof Error ? err.message : String(err) });
     }
   }
 

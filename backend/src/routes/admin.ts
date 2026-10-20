@@ -9,6 +9,7 @@ import { VOIP_SECRET_COLUMNS, voipSecretAad } from '../services/voip-provider';
 import tenantOpsRoutes from './admin-tenant-ops';
 import adminVoipRoutes from './admin-voip';
 import reportRoutes from './admin-reports';
+import wordpressRoutes from './admin-wordpress';
 import { appUrl, emailFrom, supportEmail } from '../utils/app-urls';
 import { getCatalogue, activePriceFrom, type Catalogue, type CataloguePlan } from '../services/plans/catalogue';
 import { catalogueAdminRoutes, grantAddon } from './admin-catalogue';
@@ -42,6 +43,8 @@ app.post('/tenants/:id/addons', grantAddon);
 // Lifecycle, plan, features, caps, usage, impersonation, audit log (R111) and console dashboard/reports/subscriptions
 app.route('/', tenantOpsRoutes);
 app.route('/', reportRoutes);
+// WordPress site provisioning (R309): GET /wordpress, POST /tenants/:id/wordpress, POST /wordpress/:siteId/retry
+app.route('/', wordpressRoutes);
 
 // Calling for agencies: sub-accounts, number documents, country policy, the trial switch (R304)
 app.route('/', adminVoipRoutes);
