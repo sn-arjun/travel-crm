@@ -82,7 +82,9 @@ export function rateLimit(options: {
       const limiter = binding ? (c.env as unknown as Record<string, RateLimitBinding | undefined>)[binding] : undefined;
       if (!binding) {
         allowed = await kvAllow(c.env.CACHE, key, Math.ceil(baseLimit * limitMultiplier(c.env)), windowMs);
-      } else if (limiter && typeof limiter.limit === 'function') {
+      } else if (limiter && typeof limiter.limit === 'function' && limitMultiplier(c.env) === 1) {
+        // Test runs with raised limits (the default) use the scaled in-memory window below: the binding's limit is
+        // fixed in the config and local stacks (fix-stack) bind it too, so long e2e runs would trip it.
         allowed = (await limiter.limit({ key })).success;
       } else {
         allowed = memoryAllow(key, Math.ceil(baseLimit * limitMultiplier(c.env)), windowMs);

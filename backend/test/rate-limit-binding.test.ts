@@ -53,7 +53,7 @@ describe('API rate limit on the Workers Rate Limiting binding', () => {
     const keys: string[] = [];
     let allow = false;
     const limiter = { limit: async ({ key }: { key: string }) => { keys.push(key); return { success: allow }; } };
-    const e = { ...testEnv, API_RATE_LIMITER: limiter };
+    const e = { ...testEnv, RATE_LIMIT_MULTIPLIER: '1', API_RATE_LIMITER: limiter }; // '1' = real limits, so the binding is asked
     const refused = await call('GET', '/contacts', token, undefined, e);
     expect(refused.status).toBe(429);
     expect(refused.headers.get('Retry-After')).toBeTruthy();
@@ -63,7 +63,7 @@ describe('API rate limit on the Workers Rate Limiting binding', () => {
   });
 
   it('fails open when the binding throws', async () => {
-    const e = { ...testEnv, API_RATE_LIMITER: { limit: async () => { throw new Error('limiter down'); } } };
+    const e = { ...testEnv, RATE_LIMIT_MULTIPLIER: '1', API_RATE_LIMITER: { limit: async () => { throw new Error('limiter down'); } } };
     expect((await call('GET', '/contacts', token, undefined, e)).status).toBe(200);
   });
 });
