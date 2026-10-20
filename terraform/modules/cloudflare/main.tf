@@ -25,14 +25,26 @@ resource "cloudflare_record" "www" {
   proxied = true
 }
 
-# Wildcard -> OCI instance (WordPress sites, Tier 3; only when create_wildcard_dns). Explicit records above and the Workers domains below win.
+# Agency websites (shared WordPress Multisite on the Oracle VM, Tier 3; only when create_wildcard_dns).
+# *.<wp_sites_label>.<zone> -> VM. DNS only (not proxied): Caddy asks Let's Encrypt for each site's certificate on demand,
+# and two-level names (<slug>.sites.<zone>) are not covered by Cloudflare's free universal certificate anyway.
 resource "cloudflare_record" "wildcard" {
   count   = var.create_wildcard_dns ? 1 : 0
   zone_id = cloudflare_zone.main.id
-  name    = "*"
+  name    = "*.${var.wp_sites_label}"
   content = var.oci_instance_ip
   type    = "A"
-  proxied = true
+  proxied = false
+}
+
+# wp-api.<zone> -> VM: the provisioner API the CRM backend calls (signed requests; also DNS only).
+resource "cloudflare_record" "wp_api" {
+  count   = var.create_wildcard_dns ? 1 : 0
+  zone_id = cloudflare_zone.main.id
+  name    = "wp-api"
+  content = var.oci_instance_ip
+  type    = "A"
+  proxied = false
 }
 
 # api.<zone> -> the API Worker, admin.<zone> -> the super admin OpenNext Worker, app.<zone> -> the agency web app.

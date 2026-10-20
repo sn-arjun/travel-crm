@@ -97,7 +97,7 @@ resource "oci_core_subnet" "public" {
   security_list_ids = [oci_core_security_list.main.id]
 }
 
-# --- Compute Instance (ARM Always Free) ---
+# --- Compute Instance (ARM; the defaults fit the Always Free allowance: 2 OCPUs, 12 GB, 100 GB boot) ---
 
 resource "oci_core_instance" "wordpress" {
   compartment_id      = var.compartment_ocid
@@ -106,14 +106,14 @@ resource "oci_core_instance" "wordpress" {
   shape               = "VM.Standard.A1.Flex"
 
   shape_config {
-    ocpus         = 4
-    memory_in_gbs = 24
+    ocpus         = var.instance_ocpus
+    memory_in_gbs = var.instance_memory_gb
   }
 
   source_details {
     source_type             = "image"
     source_id               = var.image_id
-    boot_volume_size_in_gbs = 200
+    boot_volume_size_in_gbs = var.boot_volume_gb
   }
 
   create_vnic_details {

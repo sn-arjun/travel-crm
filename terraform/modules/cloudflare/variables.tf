@@ -20,6 +20,12 @@ variable "oci_instance_ip" {
   default     = ""
 }
 
+variable "wp_sites_label" {
+  description = "Sub-domain label under the zone for agency websites: sites are <slug>.<label>.<zone> (WP_SITES_DOMAIN = <label>.<zone>)"
+  type        = string
+  default     = "sites"
+}
+
 variable "create_wildcard_dns" {
   description = "Create the wildcard A record that points at the Oracle VM (Tier 3). A plain bool, not derived from the IP, so the count is known at plan time."
   type        = bool

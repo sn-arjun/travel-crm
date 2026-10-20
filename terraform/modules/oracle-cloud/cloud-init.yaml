@@ -1,131 +1,43 @@
 #cloud-config
+# First boot of the shared WordPress VM: Docker, firewall and the data folders. The stack itself
+# (WordPress Multisite, MariaDB, Caddy, provisioner) is started afterwards from
+# oci-provisioner/docker-compose.shared.yml (docs/ops/WORDPRESS-HOSTING.md, "Go-live on the VM").
 
 package_update: true
 package_upgrade: true
 
 packages:
-  - apt-transport-https
   - ca-certificates
   - curl
   - gnupg
-  - lsb-release
   - unzip
   - git
+  - iptables-persistent
 
 runcmd:
-  # --- Install Docker ---
+  # --- Docker (get.docker.com installs the compose plugin too) ---
   - curl -fsSL https://get.docker.com | sh
   - systemctl enable docker
   - systemctl start docker
   - usermod -aG docker ubuntu
 
-  # --- Install Docker Compose ---
-  - curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-  - chmod +x /usr/local/bin/docker-compose
-
-  # --- Install Caddy ---
-  - curl -fsSL https://caddyserver.com/api/download?os=linux&arch=arm64 -o /usr/bin/caddy
-  - chmod +x /usr/bin/caddy
-  - groupadd --system caddy
-  - useradd --system --gid caddy --create-home --home-dir /var/lib/caddy --shell /usr/sbin/nologin caddy
-  - mkdir -p /etc/caddy /var/log/caddy
-
-  # --- Create Caddy systemd service ---
-  - |
-    cat > /etc/systemd/system/caddy.service << 'EOF'
-    [Unit]
-    Description=Caddy
-    Documentation=https://caddyserver.com/docs/
-    After=network.target network-online.target
-    Requires=network-online.target
-
-    [Service]
-    Type=notify
-    User=caddy
-    Group=caddy
-    ExecStart=/usr/bin/caddy run --environ --config /etc/caddy/Caddyfile
-    ExecReload=/usr/bin/caddy reload --config /etc/caddy/Caddyfile
-    TimeoutStopSec=5s
-    LimitNOFILE=1048576
-    LimitNPROC=512
-    PrivateTmp=true
-    ProtectSystem=full
-    AmbientCapabilities=CAP_NET_BIND_SERVICE
-
-    [Install]
-    WantedBy=multi-user.target
-    EOF
-
-  # --- Create default Caddyfile ---
-  - |
-    cat > /etc/caddy/Caddyfile << 'EOF'
-    # TravelCRM WordPress Reverse Proxy
-    # Tenant sites are added dynamically via the provisioning queue
-    {
-      email admin@travelcrm.com
-    }
-    EOF
-
-  - systemctl daemon-reload
-  - systemctl enable caddy
-  - systemctl start caddy
-
-  # --- Install WP-CLI ---
-  - curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
-  - chmod +x wp-cli.phar
-  - mv wp-cli.phar /usr/local/bin/wp
-
-  # --- Configure Firewall (iptables) ---
+  # --- Firewall: Oracle's Ubuntu images block everything but SSH by default ---
   - iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80 -j ACCEPT
   - iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT
   - netfilter-persistent save
 
-  # --- Create WordPress working directory ---
-  - mkdir -p /opt/wordpress/sites
-  - chown -R ubuntu:ubuntu /opt/wordpress
+  # --- Swap: a safety net against the out-of-memory killer when a plugin update spikes ---
+  - fallocate -l 4G /swapfile
+  - chmod 600 /swapfile
+  - mkswap /swapfile
+  - swapon /swapfile
+  - echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
-  # --- Pull WordPress Docker image ---
-  - docker pull wordpress:latest
-  - docker pull mariadb:latest
+  # --- Data folders used by docker-compose.shared.yml (WP_DATA_DIR) ---
+  - mkdir -p /opt/wp-shared/db /opt/wp-shared/html /opt/wp-shared/provisioner /opt/wp-shared/backups /opt/wp-shared/stack
+  - chown -R ubuntu:ubuntu /opt/wp-shared/stack /opt/wp-shared/backups
 
-write_files:
-  - path: /opt/wordpress/docker-compose.template.yml
-    content: |
-      version: '3.8'
-      services:
-        db-TENANT_SLUG:
-          image: mariadb:latest
-          restart: unless-stopped
-          environment:
-            MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-            MYSQL_DATABASE: wordpress
-            MYSQL_USER: wp_user
-            MYSQL_PASSWORD: ${DB_PASSWORD}
-          volumes:
-            - db-TENANT_SLUG:/var/lib/mysql
-          networks:
-            - wp-network
-
-        wp-TENANT_SLUG:
-          image: wordpress:latest
-          restart: unless-stopped
-          depends_on:
-            - db-TENANT_SLUG
-          environment:
-            WORDPRESS_DB_HOST: db-TENANT_SLUG
-            WORDPRESS_DB_USER: wp_user
-            WORDPRESS_DB_PASSWORD: ${DB_PASSWORD}
-            WORDPRESS_DB_NAME: wordpress
-          volumes:
-            - wp-TENANT_SLUG:/var/www/html
-          networks:
-            - wp-network
-
-      volumes:
-        db-TENANT_SLUG:
-        wp-TENANT_SLUG:
-
-      networks:
-        wp-network:
-          external: true
-    permissions: '0644'
+  # --- Pull the images once so the first start is quick ---
+  - docker pull mariadb:10.11
+  - docker pull wordpress:6-php8.2-apache
+  - docker pull caddy:2
