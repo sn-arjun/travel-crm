@@ -11,6 +11,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { LimitReachedHost } from '@/components/domain/allowance-exhausted-dialog';
 import { RealtimeProvider } from '@/components/providers/realtime-provider';
 import { CallScreenPop } from '@/components/domain/call-screen-pop';
+import { SoftphoneHost } from '@/components/providers/softphone-host';
 import { isOnboardingPending, onboardingApi } from '@/lib/api/onboarding';
 import { useT } from '@/lib/i18n';
 
@@ -85,6 +86,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <CommandPalette />
           <LimitReachedHost />
           <CallScreenPop />
+          <SoftphoneHost />
         </AppShell>
       </KeyboardShortcutsProvider>
     </RealtimeProvider>

@@ -252,6 +252,8 @@ export interface CreateOutboundCallRequest {
   toNumber: string;
   leadId?: string | null;
   contactId?: string | null;
+  /** softphone (default): ring the agent's in-app phone first. bridge: ring the agent's own phone first. */
+  mode?: 'softphone' | 'bridge';
 }
 
 export interface UpdateCallRequest {

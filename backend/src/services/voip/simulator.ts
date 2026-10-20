@@ -17,7 +17,14 @@ export const VOIP_SCENARIOS = [
   'outbound_answered',
   'outbound_no_answer',
 ] as const;
-export type VoipScenario = (typeof VOIP_SCENARIOS)[number];
+/**
+ * Two halves of an answered inbound call (R307), so a test can click Answer between them: inbound_ring rings the
+ * agent and stops; inbound_finish (with the callSid inbound_ring returned) connects and completes the same call.
+ * Not in VOIP_SCENARIOS: those are whole calls, each replayed to prove callbacks are applied once.
+ */
+export const VOIP_PARTIAL_SCENARIOS = ['inbound_ring', 'inbound_finish'] as const;
+export type VoipScenario = (typeof VOIP_SCENARIOS)[number] | (typeof VOIP_PARTIAL_SCENARIOS)[number];
+export const ALL_VOIP_SCENARIOS: readonly VoipScenario[] = [...VOIP_SCENARIOS, ...VOIP_PARTIAL_SCENARIOS];
 
 export interface SimulateOptions {
   scenario: VoipScenario;
@@ -75,6 +82,16 @@ export function scenarioSteps(
   const duration = String(Math.max(0, Math.floor(p.durationSeconds)));
 
   switch (scenario) {
+    case 'inbound_ring':
+      return [
+        { path: '/twiml/inbound', fields: { ...base, CallStatus: 'ringing', Direction: 'inbound' } },
+        status('ringing', { Direction: 'inbound' }),
+      ];
+    case 'inbound_finish':
+      return [
+        status('in-progress', { Direction: 'inbound' }),
+        status('completed', { Direction: 'inbound', CallDuration: duration }),
+      ];
     case 'inbound_answered':
       return [
         { path: '/twiml/inbound', fields: { ...base, CallStatus: 'ringing', Direction: 'inbound' } },
@@ -123,11 +140,11 @@ export function scenarioSteps(
 export async function simulateVoipScenario(opts: SimulateOptions): Promise<SimulationResult> {
   const callSid = opts.callSid || `CAsim${String(++simCounter).padStart(8, '0')}${'0'.repeat(20)}`;
   const base = opts.baseUrl.replace(/\/+$/, '');
-  const defaultDuration = opts.scenario.endsWith('answered') ? 45 : opts.scenario === 'inbound_voicemail' ? 20 : 0;
+  const defaultDuration = opts.scenario.endsWith('answered') || opts.scenario === 'inbound_finish' ? 45 : opts.scenario === 'inbound_voicemail' ? 20 : 0;
   const steps: SimulatedStep[] = [];
   const durationSeconds = opts.durationSeconds ?? defaultDuration;
   const planned = scenarioSteps(opts.scenario, { callSid, to: opts.to, from: opts.from, durationSeconds });
-  if (opts.withRecording && opts.scenario.endsWith('answered')) {
+  if (opts.withRecording && (opts.scenario.endsWith('answered') || opts.scenario === 'inbound_finish')) {
     planned.push({
       path: '/recording-callback',
       fields: {

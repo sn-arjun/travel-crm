@@ -10,7 +10,7 @@ import { listOutbox, clearOutbox } from '../services/mail/transactional';
 import { signAccessToken } from '../utils/jwt';
 import { signSuperAdminToken } from '../services/admin/session';
 import { ingestInbound, type InboundChannel } from '../services/inbound/ingest';
-import { simulateVoipScenario, VOIP_SCENARIOS, type VoipScenario } from '../services/voip/simulator';
+import { simulateVoipScenario, ALL_VOIP_SCENARIOS, type VoipScenario } from '../services/voip/simulator';
 import { MOCK_AUTH_TOKEN } from '../services/voip/mock-provider';
 import { loadVoipSettings } from '../services/voip-provider';
 
@@ -180,7 +180,7 @@ testApp.post('/voip/simulate', async (c) => {
     const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
     const str = (key: string): string => (body && typeof body[key] === 'string' ? (body[key] as string).trim() : '');
     const scenario = str('scenario') as VoipScenario;
-    if (!VOIP_SCENARIOS.includes(scenario)) return c.json({ error: `scenario must be one of ${VOIP_SCENARIOS.join(', ')}` }, 400);
+    if (!ALL_VOIP_SCENARIOS.includes(scenario)) return c.json({ error: `scenario must be one of ${ALL_VOIP_SCENARIOS.join(', ')}` }, 400);
     const e164 = /^\+[1-9][0-9]{7,14}$/;
     if (!e164.test(str('to')) || !e164.test(str('from'))) {
         return c.json({ error: 'to and from must be E.164 numbers' }, 400);

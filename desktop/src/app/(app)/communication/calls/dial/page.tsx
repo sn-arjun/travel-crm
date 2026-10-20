@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Phone, PhoneOff, Delete, Clock, ArrowLeft, User, Loader2 } from 'lucide-react';
+import { Phone, PhoneOff, Delete, Clock, ArrowLeft, User, Loader2, Mic } from 'lucide-react';
 import { Button, Card, CardContent, CardHeader, CardTitle, PhoneInput, SectionCard, Skeleton } from '@/components/ui';
 import { RelationCombobox } from '@/components/domain';
 import { cn } from '@/lib/utils';
@@ -16,6 +16,10 @@ import { defaultCountryCode } from '@/lib/phone';
 import { unwrapList } from '@/lib/api/envelope';
 import { contactsApi } from '@/lib/api/contacts';
 import { CallControlsPanel } from '@/components/domain/call-controls-panel';
+import { MicCheckDialog } from '@/components/domain/mic-check';
+import { leadsApi } from '@/lib/api/leads';
+import { useSoftphone } from '@/lib/softphone/use-softphone';
+import { useT } from '@/lib/i18n';
 import type { Contact } from '@travelcrm/shared';
 
 const dialPadKeys = [
@@ -42,6 +46,9 @@ export default function DialPadPageWrapper() {
 
 function DialPadPage() {
   const router = useRouter();
+  const t = useT();
+  const softphone = useSoftphone();
+  const [micOpen, setMicOpen] = React.useState(false);
   const searchParams = useSearchParams();
   const { enabled, reason, upgradeHref, loading: gateLoading } = useFeatureGate('voip_calling');
   const [number, setNumber] = React.useState(searchParams.get('phone') || '');
@@ -52,8 +59,16 @@ function DialPadPage() {
   const [contactId, setContactId] = React.useState<string | null>(searchParams.get('contactId'));
   const [isCalling, setIsCalling] = React.useState(false);
   // The call in progress: its panel follows the provider's state over the realtime room.
-  const [activeCall, setActiveCall] = React.useState<{ callId: string; name: string; number: string } | null>(null);
+  const [activeCall, setActiveCall] = React.useState<{ callId: string; name: string; number: string; viaSoftphone: boolean } | null>(null);
   const [contactName, setContactName] = React.useState<string | null>(null);
+  // The lead the call is for (arrived from its page): the in-call panel shows and links it.
+  const [leadTitle, setLeadTitle] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (!leadId) return;
+    let cancelled = false;
+    leadsApi.getById(leadId).then((r) => { if (!cancelled) setLeadTitle(r.data?.title ?? null); }).catch(() => { /* the panel still links the lead */ });
+    return () => { cancelled = true; };
+  }, [leadId]);
 
   const { data: recentCallsResponse, loading: recentLoading } = useApiQuery(
     () => voipApi.calls.list({ limit: 10 }),
@@ -95,12 +110,24 @@ function DialPadPage() {
     }
     const toNumber = number.trim().startsWith('+') ? number.trim() : `${countryCode}${digits}`;
     setIsCalling(true);
-    const result = await makeCall({ toNumber, contactId: contactId ?? undefined, leadId: leadId ?? undefined });
+    // With the in-app phone ready, the server rings it first and the app answers that leg itself.
+    const viaSoftphone = softphone.status === 'ready';
+    if (viaSoftphone) softphone.controller.expectOutboundCall({ to: toNumber });
+    const result = await makeCall({
+      toNumber,
+      contactId: contactId ?? undefined,
+      leadId: leadId ?? undefined,
+      ...(viaSoftphone ? { mode: 'softphone' as const } : {}),
+    });
     if (result) {
       toast.success(`Calling ${number}...`);
       const callLogId = result.data?.callLogId;
-      if (callLogId) setActiveCall({ callId: callLogId, name: contactName ?? number, number });
+      if (callLogId) setActiveCall({ callId: callLogId, name: contactName ?? number, number, viaSoftphone });
     } else {
+      if (viaSoftphone) {
+        softphone.controller.cancelExpectedCall();
+        softphone.hangup();
+      }
       toast.error('Failed to initiate call');
     }
     setIsCalling(false);
@@ -136,7 +163,18 @@ function DialPadPage() {
           <h1 className="text-xl font-bold tracking-tight">Dial pad</h1>
           <p className="text-sm text-ds-foreground-muted">Make an outbound call</p>
         </div>
+        {softphone.available && (
+          <div className="ml-auto flex items-center gap-ds-3">
+            <span className="text-xs text-ds-foreground-muted" data-testid="softphone-status" data-softphone-status={softphone.status}>
+              {softphone.status === 'error' ? t('softphone.dial.offline') : t('softphone.dial.ready')}
+            </span>
+            <Button variant="outline" size="sm" onClick={() => setMicOpen(true)} data-testid="softphone-mic-check">
+              <Mic className="size-4" aria-hidden="true" /> {t('softphone.dial.checkMic')}
+            </Button>
+          </div>
+        )}
       </div>
+      <MicCheckDialog open={micOpen} onOpenChange={setMicOpen} />
 
       <div className="mx-auto grid w-full max-w-5xl gap-ds-8 sm:grid-cols-2">
         <div className="flex flex-col gap-ds-6">
@@ -278,6 +316,10 @@ function DialPadPage() {
           callId={activeCall.callId}
           callerName={activeCall.name}
           phoneNumber={activeCall.number}
+          direction="outbound"
+          viaSoftphone={activeCall.viaSoftphone}
+          leadId={leadId}
+          leadTitle={leadTitle}
           onEndCall={() => setActiveCall(null)}
         />
       )}

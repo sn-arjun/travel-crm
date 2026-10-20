@@ -217,3 +217,17 @@ describe('the Twilio access token (SDK-free JWT)', () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe('the two-part inbound simulator scenarios (R307)', () => {
+  it('inbound_ring only rings; inbound_finish connects and completes the same call; neither is a whole-call scenario', async () => {
+    const { scenarioSteps, VOIP_SCENARIOS, VOIP_PARTIAL_SCENARIOS } = await import('../src/services/voip/simulator');
+    const p = { callSid: 'CAx', to: '+442030011001', from: '+447700900111', durationSeconds: 45 };
+    expect(scenarioSteps('inbound_ring', p).map((s) => s.fields.CallStatus)).toEqual(['ringing', 'ringing']);
+    expect(scenarioSteps('inbound_ring', p)[0]!.path).toBe('/twiml/inbound');
+    const finish = scenarioSteps('inbound_finish', p);
+    expect(finish.map((s) => s.fields.CallStatus)).toEqual(['in-progress', 'completed']);
+    expect(finish[1]!.fields.CallDuration).toBe('45');
+    expect(finish.every((s) => s.path === '/status-callback')).toBe(true);
+    for (const partial of VOIP_PARTIAL_SCENARIOS) expect((VOIP_SCENARIOS as readonly string[]).includes(partial)).toBe(false);
+  });
+});
