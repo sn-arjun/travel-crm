@@ -34,6 +34,7 @@ import {
   MessageCircle,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { tEn, type TranslateFn } from '@/lib/i18n';
 
 export type NavBadgeKey =
   | 'unread_notifications'
@@ -43,6 +44,9 @@ export type NavBadgeKey =
   | 'assistant_suggestions';
 
 export interface NavItem {
+  /** Catalogue key of the label (render with t(titleKey)). */
+  titleKey: string;
+  /** English label, for code that has no translator. */
   title: string;
   href: string;
   icon: LucideIcon;
@@ -50,99 +54,112 @@ export interface NavItem {
 }
 
 export interface NavGroup {
+  labelKey: string;
   label: string;
   items: NavItem[];
 }
 
+function navItem(titleKey: string, href: string, icon: LucideIcon, badgeKey?: NavBadgeKey): NavItem {
+  return { titleKey, title: tEn(titleKey), href, icon, ...(badgeKey ? { badgeKey } : {}) };
+}
+
 export const navigation: NavGroup[] = [
   {
-    label: 'Overview',
+    labelKey: 'nav.groups.overview',
+    label: tEn('nav.groups.overview'),
     items: [
-      { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-      { title: 'Calendar', href: '/calendar', icon: Calendar },
-      { title: 'Tasks', href: '/tasks', icon: CheckSquare, badgeKey: 'pending_tasks' },
+      navItem('nav.items.dashboard', '/dashboard', LayoutDashboard),
+      navItem('nav.items.calendar', '/calendar', Calendar),
+      navItem('nav.items.tasks', '/tasks', CheckSquare, 'pending_tasks'),
     ],
   },
   {
-    label: 'CRM',
+    labelKey: 'nav.groups.crm',
+    label: tEn('nav.groups.crm'),
     items: [
-      { title: 'Leads', href: '/leads', icon: Briefcase, badgeKey: 'overdue_followups' },
-      { title: 'Contacts', href: '/contacts', icon: Users },
+      navItem('nav.items.leads', '/leads', Briefcase, 'overdue_followups'),
+      navItem('nav.items.contacts', '/contacts', Users),
     ],
   },
   {
-    label: 'Operations',
+    labelKey: 'nav.groups.operations',
+    label: tEn('nav.groups.operations'),
     items: [
-      { title: 'Fleet', href: '/fleet', icon: Truck },
-      { title: 'Fleet Rate Cards', href: '/fleet/rate-cards', icon: Tag },
-      { title: 'Itineraries', href: '/itineraries', icon: MapIcon },
-      { title: 'Itinerary Templates', href: '/itineraries/templates', icon: Bookmark },
-      { title: 'Rate Cards', href: '/rate-cards', icon: Tag },
-      { title: 'Suppliers', href: '/suppliers', icon: PackageSearch },
-      { title: 'Accounts (Suppliers view)', href: '/accounts', icon: Building2 },
-      { title: 'Rate Comparison', href: '/suppliers/compare', icon: BarChart3 },
-      { title: 'Visa & Travellers', href: '/visa', icon: Stamp },
-      { title: 'Travellers', href: '/travellers', icon: UserRound },
-      { title: 'Vouchers', href: '/vouchers', icon: ClipboardList },
+      navItem('nav.items.fleet', '/fleet', Truck),
+      navItem('nav.items.fleetRateCards', '/fleet/rate-cards', Tag),
+      navItem('nav.items.itineraries', '/itineraries', MapIcon),
+      navItem('nav.items.itineraryTemplates', '/itineraries/templates', Bookmark),
+      navItem('nav.items.rateCards', '/rate-cards', Tag),
+      navItem('nav.items.suppliers', '/suppliers', PackageSearch),
+      navItem('nav.items.accountsSuppliersView', '/accounts', Building2),
+      navItem('nav.items.rateComparison', '/suppliers/compare', BarChart3),
+      navItem('nav.items.visaTravellers', '/visa', Stamp),
+      navItem('nav.items.travellers', '/travellers', UserRound),
+      navItem('nav.items.vouchers', '/vouchers', ClipboardList),
     ],
   },
   {
-    label: 'Revenue',
+    labelKey: 'nav.groups.revenue',
+    label: tEn('nav.groups.revenue'),
     items: [
-      { title: 'Invoices', href: '/invoices', icon: Receipt, badgeKey: 'overdue_invoices' },
-      { title: 'Payments', href: '/payments', icon: CreditCard },
-      { title: 'Credit Notes', href: '/credit-notes', icon: FileText },
-      { title: 'Debit Notes', href: '/debit-notes', icon: FileText },
+      navItem('nav.items.invoices', '/invoices', Receipt, 'overdue_invoices'),
+      navItem('nav.items.payments', '/payments', CreditCard),
+      navItem('nav.items.creditNotes', '/credit-notes', FileText),
+      navItem('nav.items.debitNotes', '/debit-notes', FileText),
     ],
   },
   {
-    label: 'Communication',
+    labelKey: 'nav.groups.communication',
+    label: tEn('nav.groups.communication'),
     items: [
-      { title: 'Inbox', href: '/communication', icon: Inbox },
-      { title: 'Call Log', href: '/communication/calls', icon: Phone },
-      { title: 'Templates', href: '/communication/templates', icon: MessageSquare },
-      { title: 'Bulk Send', href: '/communication/bulk-send', icon: Send },
+      navItem('nav.items.inbox', '/communication', Inbox),
+      navItem('nav.items.callLog', '/communication/calls', Phone),
+      navItem('nav.items.templates', '/communication/templates', MessageSquare),
+      navItem('nav.items.bulkSend', '/communication/bulk-send', Send),
     ],
   },
   {
-    label: 'Intelligence',
+    labelKey: 'nav.groups.intelligence',
+    label: tEn('nav.groups.intelligence'),
     items: [
-      { title: 'Reports', href: '/reports', icon: BarChart3 },
+      navItem('nav.items.reports', '/reports', BarChart3),
       // One entry for everything the assistant does. Its suggestions appear on the records themselves;
       // the individual AI tools and the chatbot are reached from the Tools tab of this page.
-      { title: 'Assistant', href: '/assistant', icon: Sparkles, badgeKey: 'assistant_suggestions' },
-      { title: 'Notifications', href: '/notifications', icon: Bell, badgeKey: 'unread_notifications' },
-      { title: 'Documents', href: '/documents', icon: FileText },
+      navItem('nav.items.assistant', '/assistant', Sparkles, 'assistant_suggestions'),
+      navItem('nav.items.notifications', '/notifications', Bell, 'unread_notifications'),
+      navItem('nav.items.documents', '/documents', FileText),
     ],
   },
   {
-    label: 'Marketing',
+    labelKey: 'nav.groups.marketing',
+    label: tEn('nav.groups.marketing'),
     items: [
-      { title: 'Dashboard', href: '/marketing', icon: LayoutDashboard },
-      { title: 'Campaigns', href: '/marketing/campaigns', icon: Megaphone },
-      { title: 'Segments', href: '/marketing/segments', icon: Users },
-      { title: 'Flyers', href: '/marketing/flyers', icon: Palette },
-      { title: 'Flyer Templates', href: '/marketing/flyers/templates', icon: LayoutTemplate },
-      { title: 'Branding', href: '/marketing/branding', icon: Palette },
-      { title: 'Festival Offers', href: '/marketing/festivals', icon: CalendarClock },
-      { title: 'Opted-Out', href: '/marketing/opted-out', icon: UserCheck },
-      { title: 'Social Content', href: '/marketing/social', icon: Megaphone },
-      { title: 'WhatsApp Campaigns', href: '/marketing/whatsapp', icon: MessageCircle },
+      navItem('nav.items.marketingDashboard', '/marketing', LayoutDashboard),
+      navItem('nav.items.campaigns', '/marketing/campaigns', Megaphone),
+      navItem('nav.items.segments', '/marketing/segments', Users),
+      navItem('nav.items.flyers', '/marketing/flyers', Palette),
+      navItem('nav.items.flyerTemplates', '/marketing/flyers/templates', LayoutTemplate),
+      navItem('nav.items.branding', '/marketing/branding', Palette),
+      navItem('nav.items.festivalOffers', '/marketing/festivals', CalendarClock),
+      navItem('nav.items.optedOut', '/marketing/opted-out', UserCheck),
+      navItem('nav.items.socialContent', '/marketing/social', Megaphone),
+      navItem('nav.items.whatsAppCampaigns', '/marketing/whatsapp', MessageCircle),
     ],
   },
   {
-    label: 'Tools',
+    labelKey: 'nav.groups.tools',
+    label: tEn('nav.groups.tools'),
     items: [
-      { title: 'Follow-ups', href: '/follow-ups', icon: CalendarClock },
-      { title: 'Import / Export', href: '/import', icon: Upload },
-      { title: 'Bookmarks', href: '/bookmarks', icon: Bookmark },
+      navItem('nav.items.followUps', '/follow-ups', CalendarClock),
+      navItem('nav.items.importExport', '/import', Upload),
+      navItem('nav.items.bookmarks', '/bookmarks', Bookmark),
     ],
   },
 ];
 
 export const bottomNav: NavItem[] = [
-  { title: 'Help Center', href: '/help', icon: HelpCircle },
-  { title: 'Settings', href: '/settings', icon: Settings },
+  navItem('nav.items.helpCenter', '/help', HelpCircle),
+  navItem('nav.items.settings', '/settings', Settings),
 ];
 
 /** Every nav href, including the footer entries. */
@@ -209,63 +226,65 @@ export function findActiveHref(pathname: string | null | undefined): string | nu
 // ---------------------------------------------------------------------------
 
 /** Titles that differ from the nav label, or that have no nav item. */
+/** Catalogue keys of the titles that differ from the nav label, or that have no nav item. */
 const STATIC_TITLES: Record<string, string> = {
-  '/accounts': 'Accounts & Suppliers',
-  '/fleet': 'Fleet Management',
-  '/fleet/vehicles': 'Vehicles',
-  '/fleet/drivers': 'Drivers',
-  '/fleet/trips': 'Trips',
-  '/fleet/alerts': 'Fleet alerts',
-  '/fleet/rate-cards': 'Fleet rate cards',
-  '/communication': 'Inbox',
-  '/credit-notes': 'Credit notes',
-  '/debit-notes': 'Debit notes',
-  '/travellers': 'Travellers',
-  '/reports/customer': 'Customer report',
-  '/reports/team': 'Team report',
-  '/reports/visa': 'Visa report',
-  '/help': 'Help Center',
-  '/import': 'Import',
-  '/onboarding': 'Onboarding',
-  '/settings': 'Settings',
-  '/settings/ai-usage': 'Usage and limits',
-  '/campaigns': 'Campaigns',
-  '/marketing': 'Marketing',
-  '/assistant': 'Assistant',
-  '/ai': 'AI tools',
-  '/chatbot': 'Chatbot',
+  '/accounts': 'nav.titles.accounts',
+  '/fleet': 'nav.titles.fleet',
+  '/fleet/vehicles': 'nav.titles.fleetVehicles',
+  '/fleet/drivers': 'nav.titles.fleetDrivers',
+  '/fleet/trips': 'nav.titles.fleetTrips',
+  '/fleet/alerts': 'nav.titles.fleetAlerts',
+  '/fleet/rate-cards': 'nav.titles.fleetRateCards',
+  '/communication': 'nav.titles.communication',
+  '/credit-notes': 'nav.titles.creditNotes',
+  '/debit-notes': 'nav.titles.debitNotes',
+  '/travellers': 'nav.titles.travellers',
+  '/reports/customer': 'nav.titles.reportsCustomer',
+  '/reports/team': 'nav.titles.reportsTeam',
+  '/reports/visa': 'nav.titles.reportsVisa',
+  '/help': 'nav.titles.help',
+  '/import': 'nav.titles.import',
+  '/onboarding': 'nav.titles.onboarding',
+  '/settings': 'nav.titles.settings',
+  '/settings/ai-usage': 'nav.titles.settingsAiUsage',
+  '/campaigns': 'nav.titles.campaigns',
+  '/marketing': 'nav.titles.marketing',
+  '/assistant': 'nav.titles.assistant',
+  '/ai': 'nav.titles.ai',
+  '/chatbot': 'nav.titles.chatbot',
 };
 
 /** Singular noun used to build "New x", "Edit x" and "x details" titles. */
+/** Catalogue keys of the singular noun used to build "New x", "Edit x" and "x details" titles. */
 const ENTITY_NOUNS: Record<string, string> = {
-  '/leads': 'lead',
-  '/contacts': 'contact',
-  '/invoices': 'invoice',
-  '/payments': 'payment',
-  '/itineraries': 'itinerary',
-  '/itineraries/templates': 'itinerary template',
-  '/suppliers': 'supplier',
-  '/travellers': 'traveller',
-  '/visa': 'visa application',
-  '/vouchers': 'voucher',
-  '/credit-notes': 'credit note',
-  '/debit-notes': 'debit note',
-  '/campaigns': 'campaign',
-  '/marketing/campaigns': 'campaign',
-  '/marketing/flyers': 'flyer',
-  '/marketing/flyers/templates': 'flyer template',
-  '/marketing/segments': 'segment',
-  '/marketing/whatsapp': 'WhatsApp campaign',
-  '/communication/templates': 'template',
-  '/communication/calls': 'call',
-  '/fleet/vehicles': 'vehicle',
-  '/fleet/drivers': 'driver',
-  '/fleet/trips': 'trip',
-  '/fleet/rate-cards': 'rate card',
-  '/rate-cards': 'rate card',
-  '/tasks': 'task',
-  '/ai/extractions': 'extraction',
-  '/ai/lead-score': 'lead score',
+  '/leads': 'nav.entity.lead',
+  '/contacts': 'nav.entity.contact',
+  '/invoices': 'nav.entity.invoice',
+  '/payments': 'nav.entity.payment',
+  '/itineraries': 'nav.entity.itinerary',
+  '/itineraries/templates': 'nav.entity.itineraryTemplate',
+  '/suppliers': 'nav.entity.supplier',
+  '/travellers': 'nav.entity.traveller',
+  '/visa': 'nav.entity.visaApplication',
+  '/vouchers': 'nav.entity.voucher',
+  '/credit-notes': 'nav.entity.creditNote',
+  '/debit-notes': 'nav.entity.debitNote',
+  '/campaigns': 'nav.entity.campaign',
+  '/marketing/campaigns': 'nav.entity.campaign',
+  '/marketing/flyers': 'nav.entity.flyer',
+  '/marketing/flyers/templates': 'nav.entity.flyerTemplate',
+  '/marketing/segments': 'nav.entity.segment',
+  '/marketing/whatsapp': 'nav.entity.whatsAppCampaign',
+  '/communication/templates': 'nav.entity.template',
+  '/communication/calls': 'nav.entity.call',
+  '/fleet/vehicles': 'nav.entity.vehicle',
+  '/fleet/drivers': 'nav.entity.driver',
+  '/fleet/trips': 'nav.entity.trip',
+  '/fleet/rate-cards': 'nav.entity.rateCard',
+  '/rate-cards': 'nav.entity.rateCard',
+  '/tasks': 'nav.entity.task',
+  '/ai/extractions': 'nav.entity.extraction',
+  '/ai/lead-score': 'nav.entity.leadScore',
 };
 
 const ACRONYMS: Record<string, string> = {
@@ -277,7 +296,7 @@ const ACRONYMS: Record<string, string> = {
   crm: 'CRM',
 };
 
-const navTitleByHref = new Map(allNavItems.map((item) => [item.href, item.title]));
+const navTitleKeyByHref = new Map(allNavItems.map((item) => [item.href, item.titleKey]));
 
 function titleCaseSegment(segment: string): string {
   const words = decodeURIComponent(segment)
@@ -297,41 +316,48 @@ function capitalise(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-function staticTitle(path: string): string | undefined {
-  return STATIC_TITLES[path] ?? navTitleByHref.get(path);
+function staticTitle(path: string, t: TranslateFn): string | undefined {
+  const key = STATIC_TITLES[path] ?? navTitleKeyByHref.get(path);
+  return key ? t(key) : undefined;
 }
 
-/** Title shown in the top bar. Never returns an empty string. */
-export function getPageTitle(pathname: string | null | undefined): string {
+/** Title shown in the top bar. Never returns an empty string. Pass the active translator; English without one. */
+export function getPageTitle(pathname: string | null | undefined, t: TranslateFn = tEn): string {
   const path = normalise(pathname);
-  const direct = staticTitle(path);
+  const direct = staticTitle(path, t);
   if (direct) return direct;
 
   const segments = path.split('/').filter(Boolean);
-  if (segments.length === 0) return 'Dashboard';
+  if (segments.length === 0) return t('nav.items.dashboard');
 
   const last = segments[segments.length - 1] ?? '';
   const parentOf = (count: number) => `/${segments.slice(0, segments.length - count).join('/')}`;
+  const nounOf = (parentPath: string): string | undefined => {
+    const key = ENTITY_NOUNS[parentPath];
+    return key ? t(key) : undefined;
+  };
 
   if (last === 'new') {
-    const noun = ENTITY_NOUNS[parentOf(1)];
-    if (noun) return `New ${noun}`;
+    const noun = nounOf(parentOf(1));
+    if (noun) return t('nav.pageTitle.new', { noun });
   }
   if (last === 'edit') {
-    const noun = ENTITY_NOUNS[parentOf(2)];
-    if (noun) return `Edit ${noun}`;
+    const noun = nounOf(parentOf(2));
+    if (noun) return t('nav.pageTitle.edit', { noun });
   }
   if (isIdSegment(last)) {
-    const noun = ENTITY_NOUNS[parentOf(1)];
-    if (noun) return `${capitalise(noun)} details`;
+    const noun = nounOf(parentOf(1));
+    if (noun) return t('nav.pageTitle.details', { noun: capitalise(noun) });
   }
   if (last === 'new' || last === 'edit') {
     // Unknown entity: fall back to the section title plus the action.
     const sectionPath = last === 'new' ? parentOf(1) : parentOf(2);
-    const section = staticTitle(sectionPath) ?? titleCaseSegment(segments[Math.max(0, segments.length - (last === 'new' ? 2 : 3))] ?? '');
-    return section ? `${last === 'new' ? 'New' : 'Edit'} ${section.toLowerCase()}` : titleCaseSegment(last);
+    const section = staticTitle(sectionPath, t) ?? titleCaseSegment(segments[Math.max(0, segments.length - (last === 'new' ? 2 : 3))] ?? '');
+    return section
+      ? t(last === 'new' ? 'nav.pageTitle.new' : 'nav.pageTitle.edit', { noun: section.toLowerCase() })
+      : titleCaseSegment(last);
   }
 
   const fallback = titleCaseSegment(isIdSegment(last) ? (segments[segments.length - 2] ?? last) : last);
-  return fallback || 'TravelCRM';
+  return fallback || t('brand.short');
 }
