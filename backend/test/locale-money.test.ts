@@ -83,6 +83,12 @@ describe('resolveTenantLocale and tenantTz', () => {
       currency: 'USD', locale: 'en-US', timezone: 'America/New_York', phoneDefaultCountry: 'US',
     });
   });
+  it('a country stored by name (as provisioning does) resolves to its ISO code', () => {
+    expect(resolveTenantLocale({ country: 'United Kingdom', currency: 'GBP' })).toMatchObject({ country: 'GB', phoneDefaultCountry: 'GB' });
+    expect(resolveTenantLocale({ country: 'united arab emirates' })).toMatchObject({ country: 'AE', phoneDefaultCountry: 'AE' });
+    expect(resolveTenantLocale({ country: 'India' })).toMatchObject({ country: 'IN', phoneDefaultCountry: 'IN' });
+    expect(resolveTenantLocale({ country: 'Atlantis' })).toMatchObject({ country: '', phoneDefaultCountry: 'IN' });
+  });
   it('invalid stored values are skipped, not trusted', () => {
     expect(resolveTenantLocale({ currency: 'nope', locale: 'x', timezone: 'Mars/Base' })).toMatchObject({
       currency: 'INR', locale: 'en-IN', timezone: 'Asia/Kolkata',

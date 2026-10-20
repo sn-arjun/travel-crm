@@ -7,6 +7,7 @@
  * provisioning (R104) and onboarding (R113).
  */
 
+import { COUNTRIES } from './countries';
 import { isValidTimeZone } from './tz';
 
 /** What the settings table implies for an agency that never saved a value. Existing agencies are Indian. */
@@ -53,6 +54,18 @@ export function isValidLocale(tag: string | null | undefined): tag is string {
 
 export function isValidCountryCode(code: string | null | undefined): code is string {
   return !!code && /^[A-Za-z]{2}$/.test(code);
+}
+
+/**
+ * ISO 3166 alpha-2 for a stored country: a code as is, or a country name ("United Kingdom", which is what
+ * provisioning stores from the console form). '' when it is neither.
+ */
+export function countryCodeOf(value: string | null | undefined): string {
+  const v = (value ?? '').trim();
+  if (!v) return '';
+  if (/^[A-Za-z]{2}$/.test(v)) return v.toUpperCase();
+  const lower = v.toLowerCase();
+  return COUNTRIES.find((c) => c.name.toLowerCase() === lower)?.iso ?? '';
 }
 
 export interface FormatMoneyOptions {
@@ -118,8 +131,8 @@ export function resolveTenantLocale(settings: SettingsLike, user?: UserLocaleLik
   const timezone =
     [user?.timezone, text('timezone'), text('company_timezone')].find((v) => isValidTimeZone(v?.trim())) ??
     LEGACY_LOCALE.timezone;
-  const countrySetting = [text('country'), text('company_country')].find((v) => isValidCountryCode(v));
-  const country = countrySetting ? countrySetting.toUpperCase() : '';
+  const countrySetting = [text('country'), text('company_country')].map(countryCodeOf).find((v) => v !== '');
+  const country = countrySetting ?? '';
   const phoneSetting = text('phone_default_country');
   const phoneDefaultCountry = isValidCountryCode(phoneSetting)
     ? phoneSetting.toUpperCase()

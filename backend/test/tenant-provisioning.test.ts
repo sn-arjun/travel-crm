@@ -189,7 +189,7 @@ describe('tenant provisioning (POST /admin/tenants)', () => {
     expect(seeded.results).toEqual([{ email: 'owner-a@r104.test', role: 'admin', must_change_password: 1 }]);
     const settingRows = await testEnv.TENANT_DB_POOL_1.prepare('SELECT key, value FROM settings').all();
     const settings = Object.fromEntries(settingRows.results.map((r: any) => [r.key, r.value]));
-    expect(settings).toMatchObject({ company_name: 'Agency a', country: 'India', currency: 'INR', timezone: 'Asia/Kolkata', tax_system: 'gst', onboarding_completed: 'false' });
+    expect(settings).toMatchObject({ company_name: 'Agency a', country: 'India', currency: 'INR', timezone: 'Asia/Kolkata', tax_system: 'gst', onboarding_completed: 'false', locale: 'en-IN', phone_default_country: 'IN' });
     const inMaster = await masterRow(`SELECT COUNT(*) AS n FROM users WHERE email = 'owner-a@r104.test'`);
     expect(inMaster.n).toBe(0);
   });

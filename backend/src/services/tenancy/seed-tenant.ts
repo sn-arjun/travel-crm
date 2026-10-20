@@ -1,4 +1,5 @@
 import { hashPassword } from '../../utils/password';
+import { countryCodeOf } from '../../utils/money';
 import { generateId } from '../../utils/uuid';
 import type { ProvisionTarget, TenantProvisioner } from './provisioner';
 
@@ -61,6 +62,12 @@ export async function seedTenant(
     ['tax_system', opts.taxSystem],
     ['onboarding_completed', 'false'],
   ];
+  // The console form stores the country by name; dates and numbers, and the phone code assumed for numbers typed
+  // without one, follow the country from the first day (an agency in the UK must not start with en-IN and +91).
+  const iso = countryCodeOf(opts.country);
+  if (iso) {
+    settingRows.push(['locale', `en-${iso}`], ['phone_default_country', iso]);
+  }
 
   await provisioner.execute(target, [
     {
