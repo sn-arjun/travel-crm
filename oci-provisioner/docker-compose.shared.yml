@@ -1,0 +1,102 @@
+# Shared WordPress hosting (owner decision 2026-10-21): ONE WordPress Multisite + ONE MariaDB + Caddy + the provisioner.
+# Used on the Oracle VM (see docs/ops/WORDPRESS-HOSTING.md). Run from this folder:
+#   cp shared.env.example .env   # fill in the passwords and domain names
+#   docker compose -f docker-compose.shared.yml --env-file .env up -d --build
+# Memory limits add up to about 6 GB of the 12 GB free allowance; the rest is the host and the page cache.
+
+name: wp-shared
+
+services:
+  db:
+    image: mariadb:10.11
+    container_name: wp-shared-db
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${WP_DB_ROOT_PASSWORD:?set WP_DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: wordpress
+      MARIADB_USER: wp_user
+      MARIADB_PASSWORD: ${WP_DB_PASSWORD:?set WP_DB_PASSWORD}
+    command:
+      - --innodb-buffer-pool-size=768M
+      - --max-connections=150
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - ${WP_DATA_DIR:-/opt/wp-shared}/db:/var/lib/mysql
+    networks: [wp-net]
+    mem_limit: 1536m
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  wordpress:
+    build:
+      context: .
+      dockerfile: Dockerfile.wordpress
+    container_name: wp-shared
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      WORDPRESS_DB_HOST: wp-shared-db
+      WORDPRESS_DB_USER: wp_user
+      WORDPRESS_DB_PASSWORD: ${WP_DB_PASSWORD}
+      WORDPRESS_DB_NAME: wordpress
+      # Caddy terminates TLS: tell WordPress the request was https. Agencies cannot edit files or add plugins.
+      WORDPRESS_CONFIG_EXTRA: |
+        if ( ( $$_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '' ) === 'https' ) { $$_SERVER['HTTPS'] = 'on'; }
+        define( 'DISALLOW_FILE_EDIT', true );
+        define( 'WP_MEMORY_LIMIT', '128M' );
+        define( 'WP_MAX_MEMORY_LIMIT', '256M' );
+    volumes:
+      - ${WP_DATA_DIR:-/opt/wp-shared}/html:/var/www/html
+    networks: [wp-net]
+    mem_limit: 3072m
+
+  caddy:
+    image: caddy:2
+    container_name: caddy-proxy
+    restart: unless-stopped
+    depends_on: [wordpress, provisioner]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+      PROVISIONER_HOST: ${PROVISIONER_HOST:?set PROVISIONER_HOST}
+    volumes:
+      - ./caddy/Caddyfile.shared:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [wp-net]
+    mem_limit: 256m
+
+  provisioner:
+    build:
+      context: .
+    container_name: wp-provisioner
+    restart: unless-stopped
+    environment:
+      PROVISIONER_MODE: shared
+      PROVISIONER_SECRET: ${PROVISIONER_SECRET:?set PROVISIONER_SECRET}
+      WP_SITES_DOMAIN: ${WP_SITES_DOMAIN:?set WP_SITES_DOMAIN}
+      WP_NETWORK_HOST: ${WP_NETWORK_HOST:-}
+      WP_NETWORK_ADMIN_EMAIL: ${WP_NETWORK_ADMIN_EMAIL:?set WP_NETWORK_ADMIN_EMAIL}
+      WP_CONTAINER: wp-shared
+      MAX_SITES: ${MAX_SITES:-60}
+      DATA_DIR: /data
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${WP_DATA_DIR:-/opt/wp-shared}/provisioner:/data
+    networks: [wp-net]
+    mem_limit: 256m
+
+networks:
+  wp-net:
+
+volumes:
+  caddy-data:
+  caddy-config:

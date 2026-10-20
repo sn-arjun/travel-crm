@@ -1,0 +1,5 @@
+# The official WordPress image plus WP-CLI (the provisioner runs `docker exec wp-shared wp ...`).
+FROM wordpress:6-php8.2-apache
+
+ADD https://github.com/wp-cli/wp-cli/releases/download/v2.11.0/wp-cli-2.11.0.phar /usr/local/bin/wp
+RUN chmod +x /usr/local/bin/wp
