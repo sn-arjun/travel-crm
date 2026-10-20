@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-21T08:00+05:30",
+  "updated": "2026-10-21T10:00+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -135,7 +135,8 @@
         "R307": "merged (Tier 3): Softphone interface with Twilio (@twilio/voice-sdk 2.18.5, lazy) and mock implementations, state machine + controller (token refresh at 70%), GET /voip/token (agent roles, active sub-account, 900 s, 20/min, refuses 2FA setup-only tokens, API key created once in the sub-account and sealed), Electron mic permission for the app loopback origin only, SoftphoneHost registration, screen-pop Answer/Decline, in-call panel (timer, mute, hold, note, lead link, consent tick), mic check; fix-stack runs VOIP_PROVIDER=mock. Merged line: backend 100/1965, desktop 89/1510, lint 0, i18n PASS, super-admin tsc 0; e2e softphone + calls-simulator + calls + voip-settings + auth-shell 52 passed (slot 1). Orchestrator fixes: mock testConnection refuses unknown accounts; softphone.spec closes (not suspends) the account it opened. Go-live: real sub-account token + device ring, mic/permission prompt in packaged app and browser, one real call per resell country, emergency-calling disclaimer in terms.",
         "R203": "merged (Tier 2): ~110 money and ~175 date/number sites moved to lib/format.ts + lib/locale-options.ts helpers, INR/en-IN/Asia/Kolkata literals gone outside an allow-list (locale-literals.test.ts), GSTIN only for IN agencies, invoice currency wins over agency default, e2e locale.spec (UK/UAE/US + Indian demo). Orchestrator: phone search aliases (UAE/UK/USA/KSA), rate limiter uses scaled in-memory window in test mode (binding only when RATE_LIMIT_MULTIPLIER=1), invoice-defaults spec enters a VAT rate for India, multi-tenant specs skip on single stacks (GET /test/tenancy). Full e2e on slot 0: 773 passed; the 21 load timeouts re-ran clean (156 passed); remaining real failure fixed. Multi stack: handoff 41/41, locale + isolation 13/13 (--pool 8).",
         "R127": "merged: feature registry (40), one resolution (platform off > agency override > plan) used by feature-gate, tenant summary, AI settings, automation, reports; FEATURE_DISABLED (no upgrade) vs upgrade:true; /admin/features plan grid + platform switches (audited, reason required to switch off), agency panel with source and follow-plan; KV cache 60 s with invalidation; master 0025. Merged line: backend 101/1978, desktop 91/1527, lint 0, i18n PASS, super-admin tsc + lint + build OK.",
-        "R310": "merged: provisioner SharedSiteManager (WordPress Multisite, default mode; container mode kept), docker-compose.shared.yml (WordPress+WP-CLI, MariaDB, Caddy on-demand TLS with /tls-check, provisioner on Node 22 without build), terraform Oracle VM sized to Always Free 2 OCPU/12 GB/100 GB, DNS-only *.sites + wp-api records, docs/ops/WORDPRESS-HOSTING.md; capacity ~88 sites on 12 GB (assumption). Merged line: provisioner 24/24 + tsc, terraform validate both roots + fmt OK. Go-live: SMTP mu-plugin needed for WordPress password emails; Let's Encrypt ~50 certs/week; Oracle may reclaim idle free instances."
+        "R310": "merged: provisioner SharedSiteManager (WordPress Multisite, default mode; container mode kept), docker-compose.shared.yml (WordPress+WP-CLI, MariaDB, Caddy on-demand TLS with /tls-check, provisioner on Node 22 without build), terraform Oracle VM sized to Always Free 2 OCPU/12 GB/100 GB, DNS-only *.sites + wp-api records, docs/ops/WORDPRESS-HOSTING.md; capacity ~88 sites on 12 GB (assumption). Merged line: provisioner 24/24 + tsc, terraform validate both roots + fmt OK. Go-live: SMTP mu-plugin needed for WordPress password emails; Let's Encrypt ~50 certs/week; Oracle may reclaim idle free instances.",
+        "R128": "merged: provider message ids saved on every outbound email row (email_message_log, message_log.external_id, campaign_recipients.message_id), SendGrid events idempotent and forward-only with counters once; itinerary email really sent (secure quotation link); invoice email (summary + Pay online link) and voucher email (PDF attachment) really sent; hard bounce flags contacts.email_undeliverable instead of erasing, sends suppressed and refunded, flag cleared on edit; Hub/campaign reply-to = agency email address or sender; tenant 0056. Merged line: backend 102/1985 (cron-fanout inline test flaked once, passed alone and on re-run), e2e on the identical batch tree: invoices, vouchers, itineraries, campaigns, communication-inbox, marketing-opt-out 125 passed."
       },
       "merged": [
         "R101",
@@ -184,7 +185,8 @@
         "R307",
         "R203",
         "R127",
-        "R310"
+        "R310",
+        "R128"
       ],
       "tier1": "COMPLETE 2026-10-15: R101-R124 merged (incl. orchestrator follow-ups R123, R124); exit test R121 9/9 on the merged line; fresh-clone check passes."
     },
@@ -226,7 +228,8 @@
     "Never run npm install/ci inside backend/ or super-admin/: they are root workspaces (R118). Reinstall only at the root.",
     "Root node_modules contains npm workspace links (travelcrm-api, travelcrm-desktop, super-admin, @travelcrm/shared) pointing at the source folders; never delete node_modules recursively through them.",
     "OpenNext builds inside a junctioned worktree can write partial next/styled-jsx folders into the MAIN desktop/ or super-admin/ node_modules; delete folders there that are not in package-lock.json. Removed desktop/node_modules/{next,styled-jsx} on 2026-10-15.",
-    "2026-10-16: leftover worktree folders R103 R106 R107 R112 R115 R120 R123 R213 R306 under .claude/worktrees could not be deleted (files held open or long paths). Verified 0 links inside; safe to delete by hand after closing editors."
+    "2026-10-16: leftover worktree folders R103 R106 R107 R112 R115 R120 R123 R213 R306 under .claude/worktrees could not be deleted (files held open or long paths). Verified 0 links inside; safe to delete by hand after closing editors.",
+    "2026-10-21: backend/test/cron-fanout.test.ts \"without a bound queue scheduled() runs agencies inline\" flaked once on a full run (passed alone and on re-run). Watch it."
   ],
   "ownerDecisions": {
     "2026-10-14": [
