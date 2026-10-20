@@ -1,6 +1,7 @@
 'use client';
 
 import { defaultCountryCode } from '@/lib/phone';
+import { useLocale } from '@/lib/locale';
 import { getLocaleContext } from '@/lib/locale';
 import { currencyOptions, timezoneOptions, systemTimeZone } from '@/lib/locale-options';
 import * as React from 'react';
@@ -71,6 +72,9 @@ function splitPhone(stored: string | undefined): { code: string; number: string 
 
 export default function CompanySettingsPage() {
   const router = useRouter();
+  // GSTIN is an India field: shown for an Indian (or not yet located) agency, or when one is already on file.
+  const { country } = useLocale();
+  const indiaAgency = country === 'IN' || country === '';
   const [countryCode, setCountryCode] = React.useState(() => defaultCountryCode());
   const { data: settingsResponse, loading, refetch } = useApiQuery(
     () => settingsApi.company.get(),
@@ -203,9 +207,11 @@ export default function CompanySettingsPage() {
                 <FormRow name="website" label="Website">
                   <Input {...form.register('website')} id="website" placeholder="https://yourcompany.com" />
                 </FormRow>
-                <FormRow name="gstin" label="GSTIN">
-                  <Input {...form.register('gstin')} id="gstin" placeholder="22AAAAA0000A1Z5" />
-                </FormRow>
+                {(indiaAgency || Boolean(form.watch('gstin'))) && (
+                  <FormRow name="gstin" label="GSTIN">
+                    <Input {...form.register('gstin')} id="gstin" placeholder="22AAAAA0000A1Z5" />
+                  </FormRow>
+                )}
               </div>
             </div>
           </SectionCard>
