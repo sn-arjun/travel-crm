@@ -6,7 +6,7 @@ import { MockVoipProvider } from '../src/services/voip/mock-provider';
 import { importTenantUsage, minuteWeight } from '../src/services/voip/metering';
 import { checkSpend } from '../src/services/voip/fraud';
 import { classifyDestination } from '../src/services/voip/destinations';
-import { getCatalogue } from '../src/services/plans/catalogue';
+import { bumpCatalogueVersion, getCatalogue } from '../src/services/plans/catalogue';
 import { JOB_SETS, runTenantJobSet } from '../src/cron/dispatch';
 import { listOutbox } from '../src/services/mail/transactional';
 import { superAdminToken } from './utils/super-admin';
@@ -114,6 +114,9 @@ beforeAll(async () => {
   expect((await call('POST', '/test/reset', null)).status).toBe(200);
   await run("INSERT INTO settings (key, value) VALUES ('country', 'GB') ON CONFLICT(key) DO UPDATE SET value = excluded.value");
   await run("UPDATE tenants SET country = 'GB', plan = 'pro', status = 'active' WHERE id = ?", TENANT_ID);
+  // These tests measure the cap with packs alone: the plan's own 250 Pro minutes (PRICING.md 7.3) are set aside.
+  await run("UPDATE plan_allowances SET monthly_amount = 0 WHERE plan_key = 'pro' AND allowance_key = 'call_minutes'");
+  await bumpCatalogueVersion(testEnv);
   await run('DELETE FROM voip_accounts');
   await run('DELETE FROM voip_number_registry');
   await run(
@@ -131,6 +134,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await run("UPDATE plan_allowances SET monthly_amount = 250 WHERE plan_key = 'pro' AND allowance_key = 'call_minutes'");
+  await bumpCatalogueVersion(testEnv);
   await reset();
   await run('DELETE FROM voip_accounts');
   await run('DELETE FROM voip_number_registry');
@@ -215,20 +220,20 @@ describe('minutes come from the provider records, once per provider call id', ()
   it('weights a dear destination by its unit cost against the agency base minute; weight 1 when no cost is known', async () => {
     await grantMinutes(100);
     const catalogue = await getCatalogue(mockEnv);
-    const gb = { country: 'GB', market: 'WEST' };
+    const gb = { country: 'GB', market: 'UK' };
     expect(minuteWeight(catalogue, gb, 'GB')).toBe(1);
     expect(minuteWeight(catalogue, gb, 'US')).toBe(1); // cheaper than home: never below one minute
-    expect(minuteWeight(catalogue, gb, 'AU')).toBeCloseTo(0.0763 / 0.0213, 1);
+    expect(minuteWeight(catalogue, gb, 'AU')).toBeCloseTo(0.06656 / 0.03259, 1);
     expect(minuteWeight(catalogue, gb, 'ZZ')).toBe(1);
     expect(minuteWeight(catalogue, gb, null)).toBe(1);
     // An agency whose country has no row is measured against its market's row.
-    expect(minuteWeight(catalogue, { country: 'FR', market: 'WEST' }, 'GB')).toBeCloseTo(0.0213 / 0.0136, 1);
+    expect(minuteWeight(catalogue, { country: 'FR', market: 'WEST' }, 'GB')).toBeCloseTo(0.03259 / 0.0205, 1);
 
-    usage({ seconds: 60, to: '+61291234567' }); // Australia from a UK agency: 0.0763 / 0.0213 = 3.58 -> 4 minutes for one
+    usage({ seconds: 60, to: '+61291234567' }); // Australia from a UK agency: 0.06656 / 0.03259 = 2.04 -> 3 minutes for one
     usage({ seconds: 60, to: CUSTOMER }); // home country: 1
     await importTenantUsage(mockEnv, TENANT_ID);
-    expect(await usedMinutes()).toBe(5);
-    expect((await one('SELECT destination_country AS c, minutes_counted AS m FROM call_usage WHERE destination_country = ?', 'AU'))).toMatchObject({ c: 'AU', m: 4 });
+    expect(await usedMinutes()).toBe(4);
+    expect((await one('SELECT destination_country AS c, minutes_counted AS m FROM call_usage WHERE destination_country = ?', 'AU'))).toMatchObject({ c: 'AU', m: 3 });
 
     // Equal costs disable the rule.
     const flat = { ...(await getCatalogue(mockEnv)) };
@@ -269,11 +274,13 @@ describe('the cap: outbound is refused with the way out, an ongoing call is not 
     const body = await json(refused);
     expect(body).toMatchObject({ code: 'ALLOWANCE_EXHAUSTED', channel: 'call_minute', used: 2, allowance: 2 });
     expect(body.options).toEqual(['upgrade', 'top_up']);
-    const pack = body.addons.find((a: any) => a.key === 'call_minutes_100_west');
+    const pack = body.addons.find((a: any) => a.key === 'call_minutes_500_uk');
     expect(pack).toBeTruthy();
-    // 100 minutes x 0.0136 x 1.2 = 1.632, rounded up to the cent; never below cost x 1.2.
-    expect(pack.price).toBe(1.64);
-    expect(pack.price).toBeGreaterThanOrEqual(100 * 0.0136 * 1.2);
+    // The UK market only: 500 minutes x GBP 0.02521 x 1.30 = 16.3865, rounded up to the penny; never below cost x 1.2.
+    expect(pack.price).toBe(16.39);
+    expect(pack.currency).toBe('GBP');
+    expect(pack.price).toBeGreaterThanOrEqual(500 * 0.02521 * 1.2);
+    expect(body.addons.every((a: any) => a.currency === 'GBP')).toBe(true);
     expect(await rows('SELECT id FROM call_logs')).toHaveLength(0);
     expect(MockVoipProvider.calls).toHaveLength(0);
 

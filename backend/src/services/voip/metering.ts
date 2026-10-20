@@ -52,10 +52,13 @@ export interface ImportResult {
 }
 
 function unitCostFor(catalogue: Catalogue, market: string, now: Date): UnitCost | null {
+  const at = now.toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const rows = catalogue.unitCosts.filter((u) => u.channel === 'call_minute' && u.market === market && u.isActive && u.unitCost > 0);
+  // The newest row that has started; before the first row starts (pre-launch), the first row (same rule as activeUnitCost).
   return (
-    catalogue.unitCosts
-      .filter((u) => u.channel === 'call_minute' && u.market === market && u.isActive && u.unitCost > 0 && u.effectiveFrom <= now.toISOString())
-      .sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? 1 : -1))[0] ?? null
+    rows.filter((u) => u.effectiveFrom <= at).sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? 1 : -1))[0] ??
+    rows.sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? -1 : 1))[0] ??
+    null
   );
 }
 
