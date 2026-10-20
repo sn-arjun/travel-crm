@@ -52,10 +52,17 @@ export function SoftphoneHost() {
   if (!eligible) return null;
   return (
     <>
+      <PhoneStateMarker />
       <InboundCallPanel />
       <FirstCallMicCheck />
     </>
   );
+}
+
+/** Invisible: the phone's state for tests and support (`unavailable` for an agency without calling). */
+function PhoneStateMarker() {
+  const softphone = useSoftphone();
+  return <span hidden aria-hidden="true" data-testid="softphone-state" data-softphone-state={softphone.status} data-softphone-kind={softphone.controller.getSoftphone()?.kind ?? ""} />;
 }
 
 /** The in-call panel for a call the agent answered in the app. Outbound calls show theirs on the dial page. */
