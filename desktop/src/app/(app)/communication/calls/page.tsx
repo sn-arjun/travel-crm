@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDateTime } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, Phone, PhoneOff, PhoneIncoming, PhoneOutgoing, Play, Plus, Trash2 } from 'lucide-react';
@@ -131,7 +133,7 @@ export default function CallLogPage() {
         },
         {
           key: 'createdAt', header: 'Date & time', sortable: true,
-          cell: (c) => <span className="text-sm text-ds-foreground-muted">{new Date(c.createdAt).toLocaleString('en-IN')}</span>,
+          cell: (c) => <span className="text-sm text-ds-foreground-muted">{formatLocaleDateTime(c.createdAt)}</span>,
         },
         {
           key: 'status', header: 'Status',

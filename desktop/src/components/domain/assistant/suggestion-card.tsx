@@ -1,5 +1,10 @@
 'use client';
 
+
+import { getLocaleContext } from '@/lib/locale';
+import { currencySymbol } from '@/lib/locale-options';
+import { formatLocaleDate, formatLocaleDateTime } from '@/lib/format';
+import { formatCurrency } from '@/lib/utils';
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -47,11 +52,11 @@ function errorMessage(err: unknown, fallback: string): string {
 function formatDate(value: unknown): string | null {
   if (typeof value !== 'string' || !value) return null;
   const d = new Date(`${value.slice(0, 10)}T00:00:00`);
-  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  return Number.isNaN(d.getTime()) ? null : formatLocaleDate(d, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function formatMoney(value: unknown): string | null {
-  return typeof value === 'number' && value > 0 ? `₹${Math.round(value).toLocaleString('en-IN')}` : null;
+  return typeof value === 'number' && value > 0 ? formatCurrency(Math.round(value)) : null;
 }
 
 /** The facts a person should check before clicking, per kind of action. */
@@ -103,7 +108,7 @@ function describe(suggestion: Suggestion): Array<{ label: string; value: string 
     case 'create_follow_up':
       rows.push({
         label: 'When',
-        value: typeof p.scheduledAt === 'string' ? new Date(p.scheduledAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : null,
+        value: typeof p.scheduledAt === 'string' ? formatLocaleDateTime(p.scheduledAt, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : null,
       });
       break;
     case 'create_task':
@@ -318,7 +323,7 @@ export function SuggestionCard({ suggestion, onChanged, className }: SuggestionC
             <Input id={`${suggestion.id}-date`} type="date" value={draft.travelDate} onChange={(e) => setDraft({ ...draft, travelDate: e.target.value })} />
           </div>
           <div className="flex flex-col gap-ds-1">
-            <Label htmlFor={`${suggestion.id}-budget`}>Budget (₹)</Label>
+            <Label htmlFor={`${suggestion.id}-budget`}>Budget ({currencySymbol(getLocaleContext().currency)})</Label>
             <Input id={`${suggestion.id}-budget`} inputMode="numeric" value={draft.budget} onChange={(e) => setDraft({ ...draft, budget: e.target.value.replace(/[^\d.]/g, '') })} />
           </div>
           <div className="flex flex-col gap-ds-1">

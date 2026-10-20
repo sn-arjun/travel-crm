@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatExactCurrency } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, MapPin, Pencil, Plus, Trash2 } from 'lucide-react';
@@ -120,7 +122,7 @@ export default function TripsPage() {
             header: 'Fare',
             align: 'right',
             sortable: true,
-            cell: (t) => (t.fare ?? 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR' }),
+            cell: (t) => formatExactCurrency(t.fare ?? 0),
           },
           {
             key: 'status',

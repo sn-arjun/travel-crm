@@ -1,5 +1,6 @@
 'use client';
 
+import { formatWholeCurrency } from '@/lib/format';
 import * as React from 'react';
 import { z } from 'zod';
 import type { UseFormReturn } from 'react-hook-form';
@@ -91,8 +92,6 @@ function leadPassenger(lead: LeadOption) {
     phone: lead.contactPhone ?? lead.contact?.phone,
   };
 }
-
-const inrFormat = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
 
 interface FareSuggestion {
   amount: number;
@@ -353,7 +352,7 @@ export function TripFormSections({ form }: { form: UseFormReturn<TripFormValues>
             {suggestion && suggestion.amount !== fare && (
               <p className="flex flex-wrap items-center gap-ds-2 text-xs text-ds-foreground-muted" data-testid="fare-suggestion">
                 <span>
-                  {suggestion.exact ? 'Rate card' : 'Rate card from'} {inrFormat.format(suggestion.amount)} ({suggestion.rateCardName})
+                  {suggestion.exact ? 'Rate card' : 'Rate card from'} {formatWholeCurrency(suggestion.amount)} ({suggestion.rateCardName})
                 </span>
                 <Button
                   type="button"

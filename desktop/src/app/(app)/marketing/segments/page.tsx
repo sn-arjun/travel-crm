@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDate } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Users, Pencil, Trash2, Send, RefreshCw, Mail, Phone } from 'lucide-react';
@@ -143,7 +145,7 @@ function SegmentDetail({ segment, onDelete, onRefresh, refreshing }: {
       </div>
 
       <p className="text-xs text-ds-foreground-subtle">
-        Created {new Date(segment.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+        Created {formatLocaleDate(segment.createdAt, { day: 'numeric', month: 'long', year: 'numeric' })}
       </p>
 
       <Separator />
@@ -248,7 +250,7 @@ export default function SegmentsPage() {
             header: 'Created',
             sortable: true,
             cell: (s) =>
-              new Date(s.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
+              formatLocaleDate(s.createdAt, { day: 'numeric', month: 'short', year: 'numeric' }),
           },
         ]}
         primaryAction={

@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDate } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -415,7 +417,7 @@ export default function FollowUpsPage() {
             cell: (f) => (
               <span className={isOverdue(f) ? 'text-sm font-medium text-ds-danger' : 'text-sm'}>
                 {f.scheduledAt
-                  ? new Date(f.scheduledAt).toLocaleDateString('en-IN', {
+                  ? formatLocaleDate(f.scheduledAt, {
                       day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
                     })
                   : '—'}

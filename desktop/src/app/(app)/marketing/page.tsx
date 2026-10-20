@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleNumber } from '@/lib/format';
 import * as React from 'react';
 import Link from 'next/link';
 import {
@@ -110,7 +112,7 @@ export default function MarketingDashboardPage() {
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-xs text-ds-foreground-muted mb-1">Total Sent</p>
-                      <p className="text-2xl font-bold">{stats.totalSent.toLocaleString('en-IN')}</p>
+                      <p className="text-2xl font-bold">{formatLocaleNumber(stats.totalSent)}</p>
                     </div>
                     <Send className="h-5 w-5 text-ds-info" />
                   </div>
@@ -216,7 +218,7 @@ export default function MarketingDashboardPage() {
                       <span className="text-sm font-medium">{campaign.name}</span>
                     </div>
                     <div className="flex items-center gap-4 text-xs text-ds-foreground-muted">
-                      <span>{(campaign.sentCount ?? 0).toLocaleString('en-IN')} sent</span>
+                      <span>{formatLocaleNumber(campaign.sentCount ?? 0)} sent</span>
                       {(campaign.sentCount ?? 0) > 0 && (
                         <span>{Math.round(((campaign.openedCount ?? 0) / (campaign.sentCount ?? 1)) * 1000) / 10}% open</span>
                       )}
@@ -263,7 +265,7 @@ export default function MarketingDashboardPage() {
                   >
                     <span className="text-sm font-medium">{segment.name}</span>
                     <Badge variant="secondary" className="text-xs">
-                      {(segment.contactCount || 0).toLocaleString('en-IN')} contacts
+                      {formatLocaleNumber(segment.contactCount || 0)} contacts
                     </Badge>
                   </Link>
                 ))}

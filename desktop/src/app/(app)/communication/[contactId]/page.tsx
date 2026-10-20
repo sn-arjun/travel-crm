@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDate, formatLocaleTime } from '@/lib/format';
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Mail, MessageSquare, Phone } from 'lucide-react';
@@ -150,8 +152,8 @@ export default function ContactCommunicationHubPage() {
                       </div>
                       <div className={`mt-ds-1 flex items-center gap-ds-2 ${isOutbound ? 'justify-end' : ''}`}>
                         <span className="text-xs text-ds-foreground-subtle">
-                          {sentDate ? sentDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : ''}{' '}
-                          {sentDate ? sentDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ''}
+                          {sentDate ? formatLocaleDate(sentDate, { day: 'numeric', month: 'short' }) : ''}{' '}
+                          {sentDate ? formatLocaleTime(sentDate, { hour: '2-digit', minute: '2-digit' }) : ''}
                         </span>
                         {isOutbound && <Tag tone={statusTone(log.status)} size="sm">{log.status}</Tag>}
                       </div>

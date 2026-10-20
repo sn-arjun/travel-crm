@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDate } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, Mail, MessageSquare, Pencil, Send, Share2, Bell, Trash2 } from 'lucide-react';
@@ -160,7 +162,7 @@ export default function MarketingCampaignsPage() {
           key: 'createdAt',
           header: 'Created',
           sortable: true,
-          cell: (c) => new Date(c.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+          cell: (c) => formatLocaleDate(c.createdAt, { day: 'numeric', month: 'short' }),
         },
       ]}
       primaryAction={

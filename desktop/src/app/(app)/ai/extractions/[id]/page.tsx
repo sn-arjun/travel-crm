@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDateTime } from '@/lib/format';
 import { AiFeaturePageGate } from '@/components/domain/ai/ai-feature-page-gate';
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -301,14 +303,14 @@ function ExtractionDetailContent({ id }: { id: string }) {
               <div>
                 <dt className="text-xs text-ds-foreground-muted">Received</dt>
                 <dd className="text-sm text-ds-foreground">
-                  {new Date(extraction.createdAt).toLocaleString('en-IN')}
+                  {formatLocaleDateTime(extraction.createdAt)}
                 </dd>
               </div>
               {extraction.reviewedAt && (
                 <div>
                   <dt className="text-xs text-ds-foreground-muted">Reviewed</dt>
                   <dd className="text-sm text-ds-foreground">
-                    {new Date(extraction.reviewedAt).toLocaleString('en-IN')}
+                    {formatLocaleDateTime(extraction.reviewedAt)}
                   </dd>
                 </div>
               )}

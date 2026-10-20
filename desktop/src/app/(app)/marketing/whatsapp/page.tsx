@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDate } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -209,7 +211,7 @@ export default function WhatsappCampaignsPage() {
             header: 'Scheduled',
             cell: (c) =>
               c.scheduledFor
-                ? new Date(c.scheduledFor).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+                ? formatLocaleDate(c.scheduledFor, { day: 'numeric', month: 'short', year: 'numeric' })
                 : '—',
           },
         ]}

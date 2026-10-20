@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDate } from '@/lib/format';
 import * as React from 'react';
 import {
   Sparkles, Copy, Trash2, Instagram, Facebook, Linkedin, Twitter,
@@ -495,7 +497,7 @@ export default function SocialPage() {
           {
             key: 'scheduledFor',
             header: 'Scheduled',
-            cell: (p) => (p.scheduledFor ? new Date(p.scheduledFor).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'),
+            cell: (p) => (p.scheduledFor ? formatLocaleDate(p.scheduledFor, { day: 'numeric', month: 'short', year: 'numeric' }) : '—'),
           },
         ]}
         primaryAction={

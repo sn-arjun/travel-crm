@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDateTime } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Mail, MessageSquare, Phone, Eye, Trash2, Sparkles } from 'lucide-react';
@@ -219,7 +221,7 @@ export default function CommunicationPage() {
           sortable: true,
           cell: (l) => {
             const when = l.sentAt ?? l.createdAt;
-            return when ? new Date(when).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+            return when ? formatLocaleDateTime(when, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
           },
         },
       ]}
@@ -259,7 +261,7 @@ export default function CommunicationPage() {
             </Avatar>
             <div>
               <p className="text-sm font-semibold">{l.recipient ?? 'Unknown contact'}</p>
-              <p className="text-xs text-ds-foreground-muted">{(l.sentAt ?? l.createdAt) ? new Date((l.sentAt ?? l.createdAt) as string).toLocaleString('en-IN') : ''}</p>
+              <p className="text-xs text-ds-foreground-muted">{(l.sentAt ?? l.createdAt) ? formatLocaleDateTime((l.sentAt ?? l.createdAt) as string) : ''}</p>
             </div>
           </div>
           {l.subject && <p className="text-sm font-medium">{l.subject}</p>}

@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDate, formatLocaleTime, formatLocaleDateTime } from '@/lib/format';
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
@@ -164,7 +166,7 @@ export default function ConversationDetailPage() {
     id: m.id,
     title: m.sender === 'bot' ? 'Bot' : (conversation.visitorName || 'Visitor'),
     description: m.text,
-    timestamp: new Date(m.timestamp).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
+    timestamp: formatLocaleDateTime(m.timestamp, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
     icon: m.sender === 'bot' ? <Bot className="size-3.5" aria-hidden="true" /> : <User className="size-3.5" aria-hidden="true" />,
   }));
 
@@ -173,7 +175,7 @@ export default function ConversationDetailPage() {
       <DetailPage<ChatbotConversation>
         entity={conversation}
         title={conversation.visitorName || conversation.visitorEmail || 'Anonymous visitor'}
-        subtitle={`Started ${new Date(conversation.startedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`}
+        subtitle={`Started ${formatLocaleDateTime(conversation.startedAt, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`}
         status={<Tag tone={statusTone(conversation.status)}>{conversation.status.replace('_', ' ')}</Tag>}
         onBack={() => router.back()}
         // Messages go to a CRM contact; an unlinked visitor has none, so the action stays hidden.
@@ -219,7 +221,7 @@ export default function ConversationDetailPage() {
                             {msg.text}
                           </div>
                           <p className="mt-ds-1 text-xs text-ds-foreground-muted">
-                            {new Date(msg.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                            {formatLocaleTime(msg.timestamp, { hour: '2-digit', minute: '2-digit' })}
                           </p>
                         </div>
                       </div>
@@ -268,14 +270,14 @@ export default function ConversationDetailPage() {
                   <div className="flex items-center gap-ds-2">
                     <Clock className="size-3.5 text-ds-foreground-muted" aria-hidden="true" />
                     <span className="text-xs text-ds-foreground-muted">
-                      Started {new Date(conversation.startedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      Started {formatLocaleDate(conversation.startedAt, { day: 'numeric', month: 'short', year: 'numeric' })}
                     </span>
                   </div>
                   {conversation.endedAt && (
                     <div className="flex items-center gap-ds-2">
                       <Clock className="size-3.5 text-ds-foreground-muted" aria-hidden="true" />
                       <span className="text-xs text-ds-foreground-muted">
-                        Ended {new Date(conversation.endedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        Ended {formatLocaleDate(conversation.endedAt, { day: 'numeric', month: 'short', year: 'numeric' })}
                       </span>
                     </div>
                   )}

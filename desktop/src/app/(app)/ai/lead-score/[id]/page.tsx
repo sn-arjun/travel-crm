@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDateTime } from '@/lib/format';
 import { AiFeaturePageGate } from '@/components/domain/ai/ai-feature-page-gate';
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -208,7 +210,7 @@ function LeadScoreDetailContent({ id }: { id: string }) {
       activity={history.map((h) => ({
         id: h.id,
         title: `Score: ${h.score} (${h.category ?? getScoreLabel(h.score)})`,
-        timestamp: new Date(h.createdAt).toLocaleString('en-IN'),
+        timestamp: formatLocaleDateTime(h.createdAt),
       }))}
       activityLoading={historyLoading}
     />

@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDateTime } from '@/lib/format';
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -115,7 +117,7 @@ function ChatbotConversationsContent() {
         },
         {
           key: 'startedAt', header: 'Started', sortable: true,
-          cell: (c) => new Date(c.startedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
+          cell: (c) => formatLocaleDateTime(c.startedAt, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
         },
       ]}
       headerActions={
@@ -216,8 +218,8 @@ function ChatbotConversationsContent() {
               toCsvValue(c.visitorEmail ?? ''),
               toCsvValue(c.channel),
               toCsvValue(c.status),
-              toCsvValue(new Date(c.startedAt).toLocaleString('en-IN')),
-              toCsvValue(c.endedAt ? new Date(c.endedAt).toLocaleString('en-IN') : ''),
+              toCsvValue(formatLocaleDateTime(c.startedAt)),
+              toCsvValue(c.endedAt ? formatLocaleDateTime(c.endedAt) : ''),
               toCsvValue(c.messages?.length ?? 0),
             ].join(','));
           }

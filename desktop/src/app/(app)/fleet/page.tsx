@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatCalendarDay } from '@/lib/format';
 import * as React from 'react';
 import Link from 'next/link';
 import { Plus, Truck, Users, MapPin, DollarSign, AlertTriangle, Star, ArrowUpRight, Calendar, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -11,19 +13,13 @@ import { Tag } from '@/components/ui/tag';
 import { PageHeader } from '@/components/ui/page-header';
 import { PageContainer } from '@/components/layout/page-container';
 import { StatCard } from '@/components/domain/stat-card';
-import { cn } from '@/lib/utils';
+import { cn, formatCompactCurrency, formatCurrency } from '@/lib/utils';
 import { useApiQuery } from '@/hooks/use-api';
 import { fleetApi, type Trip, type VehicleAvailabilityRow } from '@/lib/api/fleet';
 import { toast } from 'sonner';
 import { TRIP_STATUS_LABELS } from '@travelcrm/shared';
 import { formatDisplayDate, parseLocalDate, toLocalDateString } from '@/lib/dates';
 import { tripLabel, formatTripWhenShort } from '@/components/domain/fleet/trip-format';
-
-function formatCurrency(amount: number) {
-  if (amount >= 100000) return `₹${(amount / 100000).toFixed(1)}L`;
-  if (amount >= 1000) return `₹${(amount / 1000).toFixed(0)}K`;
-  return `₹${amount}`;
-}
 
 function tripStatusTone(status: string): 'success' | 'danger' | 'info' {
   if (status === 'completed') return 'success';
@@ -190,7 +186,7 @@ function VehicleAvailabilityCalendar() {
                             isToday ? 'text-ds-primary' : isWeekend ? 'text-ds-foreground-subtle' : 'text-ds-foreground-muted',
                           )}
                         >
-                          <div>{d.toLocaleDateString('en-IN', { weekday: 'short' }).slice(0, 2)}</div>
+                          <div>{formatCalendarDay(d, { weekday: 'short' }).slice(0, 2)}</div>
                           <div className={cn(isToday && 'bg-ds-primary text-ds-primary-foreground rounded-ds-full size-5 flex items-center justify-center mx-auto')}>
                             {d.getDate()}
                           </div>
@@ -256,7 +252,7 @@ function TripRow({ trip }: { trip: Trip }) {
           </div>
         </div>
         <div className="text-right shrink-0">
-          <p className="text-sm font-medium">₹{(trip.fare ?? 0).toLocaleString('en-IN')}</p>
+          <p className="text-sm font-medium">{formatCurrency(trip.fare ?? 0)}</p>
           <p className="text-xs text-ds-foreground-muted">{trip.distance ?? 0} km</p>
         </div>
       </div>
@@ -344,7 +340,7 @@ export default function FleetDashboardPage() {
             <Link href="/fleet/trips">
               <StatCard title="Active Trips" value={activeTripsList.length} icon={<MapPin className="size-5" />} />
             </Link>
-            <StatCard title="Revenue (MTD)" value={formatCurrency(revenueMtd)} icon={<DollarSign className="size-5" />} variant="primary" />
+            <StatCard title="Revenue (MTD)" value={formatCompactCurrency(revenueMtd)} icon={<DollarSign className="size-5" />} variant="primary" />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-ds-6">
@@ -403,7 +399,7 @@ export default function FleetDashboardPage() {
                             <p className="text-xs text-ds-foreground-muted truncate">{trip.startLocation || 'TBD'} → {trip.endLocation || 'TBD'}</p>
                           </div>
                           <div className="text-right shrink-0">
-                            <p className="text-sm font-semibold text-ds-success">₹{(trip.totalCost || trip.fare || 0).toLocaleString('en-IN')}</p>
+                            <p className="text-sm font-semibold text-ds-success">{formatCurrency(trip.totalCost || trip.fare || 0)}</p>
                             <p className="text-xs text-ds-foreground-muted">{formatTripWhenShort(trip.startTime)}</p>
                           </div>
                         </div>

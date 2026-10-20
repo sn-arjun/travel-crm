@@ -1,3 +1,5 @@
+
+import { formatLocaleTime } from '@/lib/format';
 import { FLEET_TRIP_TYPE_LABELS, TRIP_STATUS_LABELS } from '@travelcrm/shared';
 import { formatDisplayDate } from '@/lib/dates';
 
@@ -27,12 +29,12 @@ export function formatTripDateTime(iso?: string | null): string {
   return clock ? `${date} ${clock}` : date;
 }
 
-/** en-IN 12-hour clock, e.g. "3:45 pm". */
+/** 12-hour clock in the active locale, e.g. "3:45 pm". */
 export function formatTripTime12(iso?: string | null): string {
   if (!iso) return '';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
+  return formatLocaleTime(d, { hour: 'numeric', minute: '2-digit', hour12: true });
 }
 
 /** Human date and time, e.g. "4 Oct 2026, 3:45 pm". */

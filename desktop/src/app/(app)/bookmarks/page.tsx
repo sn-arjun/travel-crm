@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDate } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Star, Trash2, ExternalLink } from 'lucide-react';
@@ -34,7 +36,7 @@ function formatDate(dateString: string) {
   const yesterday = new Date(today.getTime() - 86400000);
   if (date.toDateString() === today.toDateString()) return 'Today';
   if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
-  return date.toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' });
+  return formatLocaleDate(date, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function toCsv(rows: Bookmark[]) {

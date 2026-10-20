@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDate, formatLocaleTime } from '@/lib/format';
 import * as React from 'react';
 import {
   ChevronLeft, ChevronRight, Plus, X, Clock, Bell, AlertCircle, Loader2,
@@ -377,7 +379,7 @@ function WeekView({
                         top: pos.top * ROW_HEIGHT,
                         height: Math.max(pos.height * ROW_HEIGHT - 2, 20),
                       }}
-                      title={`${event.title}\n${new Date(event.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} - ${event.endTime ? new Date(event.endTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : ''}`}
+                      title={`${event.title}\n${formatLocaleTime(event.startTime, { hour: '2-digit', minute: '2-digit' })} - ${event.endTime ? formatLocaleTime(event.endTime, { hour: '2-digit', minute: '2-digit' }) : ''}`}
                       onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
                     >
                       <div className="text-xs font-semibold truncate leading-tight">
@@ -385,8 +387,8 @@ function WeekView({
                       </div>
                       {pos.height * ROW_HEIGHT > 30 && (
                         <div className="text-xs opacity-75 truncate">
-                          {new Date(event.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                          {event.endTime && ` - ${new Date(event.endTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`}
+                          {formatLocaleTime(event.startTime, { hour: '2-digit', minute: '2-digit' })}
+                          {event.endTime && ` - ${formatLocaleTime(event.endTime, { hour: '2-digit', minute: '2-digit' })}`}
                         </div>
                       )}
                     </div>
@@ -507,8 +509,8 @@ function DayView({
                   <div className="text-xs font-semibold truncate">{event.title}</div>
                   {pos.height * ROW_HEIGHT > 36 && (
                     <div className="text-xs opacity-75 mt-0.5">
-                      {new Date(event.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                      {event.endTime && ` - ${new Date(event.endTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`}
+                      {formatLocaleTime(event.startTime, { hour: '2-digit', minute: '2-digit' })}
+                      {event.endTime && ` - ${formatLocaleTime(event.endTime, { hour: '2-digit', minute: '2-digit' })}`}
                     </div>
                   )}
                   {pos.height * ROW_HEIGHT > 56 && event.location && (
@@ -1104,7 +1106,7 @@ export default function CalendarPage() {
           <SheetHeader className="px-6 pt-6 pb-4 border-b">
             <SheetTitle>
               {selectedDate
-                ? new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+                ? formatLocaleDate(selectedDate + 'T12:00:00', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
                 : 'Events'}
             </SheetTitle>
           </SheetHeader>
@@ -1134,9 +1136,9 @@ export default function CalendarPage() {
                           {!event.all_day && event.startTime && (
                             <p className="text-xs text-muted-foreground flex items-center gap-1">
                               <Clock className="h-3 w-3" />
-                              {new Date(event.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                              {formatLocaleTime(event.startTime, { hour: '2-digit', minute: '2-digit' })}
                               {event.endTime && ' — '}
-                              {event.endTime && new Date(event.endTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                              {event.endTime && formatLocaleTime(event.endTime, { hour: '2-digit', minute: '2-digit' })}
                             </p>
                           )}
                           {event.location && (
@@ -1197,7 +1199,7 @@ export default function CalendarPage() {
           <DialogHeader>
             <DialogTitle>Create Event</DialogTitle>
             <DialogDescription>
-              {selectedDate && new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+              {selectedDate && formatLocaleDate(selectedDate + 'T12:00:00', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </DialogDescription>
           </DialogHeader>
           <EventForm

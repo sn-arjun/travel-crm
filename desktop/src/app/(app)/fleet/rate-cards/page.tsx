@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatExactCurrency } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
@@ -118,20 +120,20 @@ export default function RateCardsPage() {
           header: 'Base Fare',
           align: 'right',
           sortable: true,
-          cell: (rc) => (rc.baseFare ?? 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR' }),
+          cell: (rc) => formatExactCurrency(rc.baseFare ?? 0),
         },
         {
           key: 'perKmRate',
           header: 'Per Km',
           align: 'right',
           sortable: true,
-          cell: (rc) => (rc.perKmRate ?? 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR' }),
+          cell: (rc) => formatExactCurrency(rc.perKmRate ?? 0),
         },
         {
           key: 'perHourRate',
           header: 'Per Hour',
           align: 'right',
-          cell: (rc) => (rc.perHourRate != null ? rc.perHourRate.toLocaleString('en-IN', { style: 'currency', currency: 'INR' }) : '—'),
+          cell: (rc) => (rc.perHourRate != null ? formatExactCurrency(rc.perHourRate) : '—'),
         },
         {
           key: 'isActive',

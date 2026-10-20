@@ -1,5 +1,9 @@
 'use client';
 
+
+import { getLocaleContext } from '@/lib/locale';
+import { currencySymbol } from '@/lib/locale-options';
+import { formatCurrency } from '@/lib/utils';
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -329,7 +333,7 @@ export default function VehicleDetailPage() {
                           <p className="text-xs text-ds-foreground-muted truncate">{trip.startLocation} → {trip.endLocation}</p>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className="text-sm font-medium">₹{(trip.fare ?? 0).toLocaleString('en-IN')}</p>
+                          <p className="text-sm font-medium">{formatCurrency(trip.fare ?? 0)}</p>
                           <p className="text-xs text-ds-foreground-muted flex items-center gap-ds-1 justify-end">
                             <Calendar className="size-3" aria-hidden="true" />{(trip.startTime || '').split('T')[0] || '—'}
                           </p>
@@ -373,7 +377,7 @@ export default function VehicleDetailPage() {
                       {record.notes && <p className="text-xs text-ds-foreground-muted mt-1">{record.notes}</p>}
                       {record.nextServiceDate && <p className="text-xs text-ds-info mt-1">Next service: {record.nextServiceDate}</p>}
                     </div>
-                    {record.cost != null && <p className="text-sm font-semibold shrink-0">₹{record.cost.toLocaleString('en-IN')}</p>}
+                    {record.cost != null && <p className="text-sm font-semibold shrink-0">{formatCurrency(record.cost)}</p>}
                   </div>
                 ))}
               </div>
@@ -419,7 +423,7 @@ export default function VehicleDetailPage() {
           <div className="flex flex-col gap-ds-6">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-ds-4">
               <Stat label="Total trips" value={vehicleTrips.length} />
-              <Stat label="Total revenue" value={`₹${totalRevenue.toLocaleString('en-IN')}`} />
+              <Stat label="Total revenue" value={formatCurrency(totalRevenue)} />
               <Stat label="Odometer" value={`${odometer.toLocaleString()} km`} icon={<Gauge aria-hidden="true" />} />
             </div>
 
@@ -478,7 +482,7 @@ export default function VehicleDetailPage() {
                 <DatePicker id="serviceDate" value={maintenanceForm.serviceDate ? parseLocalDate(maintenanceForm.serviceDate) : undefined} onChange={(d) => setMaintenanceForm((p) => ({ ...p, serviceDate: d ? toLocalDateString(d) : '' }))} />
               </div>
               <div className="flex flex-col gap-ds-2">
-                <Label htmlFor="maintenanceCost">Cost (₹)</Label>
+                <Label htmlFor="maintenanceCost">Cost ({currencySymbol(getLocaleContext().currency)})</Label>
                 <CurrencyInput id="maintenanceCost" placeholder="0" value={maintenanceForm.cost ? Number(maintenanceForm.cost) : undefined} onChange={(v) => setMaintenanceForm((p) => ({ ...p, cost: v === undefined ? '' : String(v) }))} />
               </div>
             </div>

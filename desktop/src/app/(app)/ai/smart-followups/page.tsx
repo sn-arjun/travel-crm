@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDate } from '@/lib/format';
 import { PageContainer } from '@/components/layout/page-container';
 import { AiFeaturePageGate } from '@/components/domain/ai/ai-feature-page-gate';
 import * as React from 'react';
@@ -169,7 +171,7 @@ function SmartFollowupsContent() {
                             <div className="flex items-center gap-ds-2">
                               <Calendar className="h-4 w-4 text-ds-foreground-muted" />
                               <span className="text-sm font-medium text-ds-foreground">
-                                {new Date(entry.suggestedTiming).toLocaleDateString('en-IN')}
+                                {formatLocaleDate(entry.suggestedTiming)}
                               </span>
                             </div>
                           )}

@@ -1,5 +1,10 @@
 'use client';
 
+
+import { getLocaleContext } from '@/lib/locale';
+import { currencySymbol } from '@/lib/locale-options';
+import { formatLocaleTime } from '@/lib/format';
+import { formatCurrency } from '@/lib/utils';
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -48,7 +53,7 @@ function errorMessage(e: unknown, fallback: string): string {
 }
 
 function formatClock(d: Date) {
-  return d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
+  return formatLocaleTime(d, { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
 }
 
 export default function TripDetailPage() {
@@ -425,7 +430,7 @@ export default function TripDetailPage() {
                       {cost.notes && <p className="text-xs text-ds-foreground-muted">{cost.notes}</p>}
                       <p className="text-xs text-ds-foreground-muted">{formatDisplayDate(cost.createdAt)}</p>
                     </div>
-                    <p className="text-sm font-semibold shrink-0">₹{cost.amount.toLocaleString('en-IN')}</p>
+                    <p className="text-sm font-semibold shrink-0">{formatCurrency(cost.amount)}</p>
                     <Button variant="ghost" size="icon-sm" aria-label="Delete cost" onClick={() => void handleDeleteCost(cost.id)}>
                       <Trash2 />
                     </Button>
@@ -452,8 +457,8 @@ export default function TripDetailPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-ds-4">
               <Stat label="Distance" value={`${trip.distance ?? 0} km`} />
-              <Stat label="Fare" value={`₹${(trip.fare ?? 0).toLocaleString('en-IN')}`} />
-              <Stat label="Total costs" value={`₹${totalCosts.toLocaleString('en-IN')}`} icon={<DollarSign aria-hidden="true" />} />
+              <Stat label="Fare" value={formatCurrency(trip.fare ?? 0)} />
+              <Stat label="Total costs" value={formatCurrency(totalCosts)} icon={<DollarSign aria-hidden="true" />} />
             </div>
 
             <SectionCard title="Route">
@@ -563,7 +568,7 @@ export default function TripDetailPage() {
               </Select>
             </div>
             <div className="flex flex-col gap-ds-2">
-              <Label htmlFor="costAmount">Amount (₹) <span className="text-ds-danger">*</span></Label>
+              <Label htmlFor="costAmount">Amount ({currencySymbol(getLocaleContext().currency)}) <span className="text-ds-danger">*</span></Label>
               <CurrencyInput
                 id="costAmount"
                 placeholder="0"

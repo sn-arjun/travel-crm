@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDate, formatLocaleNumber } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, Pause, Plus, Trash2, Mail, MessageSquare } from 'lucide-react';
@@ -88,7 +90,7 @@ export default function CampaignsPage() {
         },
         {
           key: 'sentCount', header: 'Sent', align: 'right', sortable: true,
-          cell: (c) => (c.sentCount ?? 0).toLocaleString('en-IN'),
+          cell: (c) => formatLocaleNumber(c.sentCount ?? 0),
         },
         {
           key: 'openedCount', header: 'Opened', align: 'right',
@@ -98,7 +100,7 @@ export default function CampaignsPage() {
             const rate = sent > 0 ? ((opened / sent) * 100).toFixed(1) : '0';
             return (
               <span>
-                {opened.toLocaleString('en-IN')}{' '}
+                {formatLocaleNumber(opened)}{' '}
                 <span className="text-xs text-ds-foreground-muted">({rate}%)</span>
               </span>
             );
@@ -112,7 +114,7 @@ export default function CampaignsPage() {
             const rate = sent > 0 ? ((clicked / sent) * 100).toFixed(1) : '0';
             return (
               <span>
-                {clicked.toLocaleString('en-IN')}{' '}
+                {formatLocaleNumber(clicked)}{' '}
                 <span className="text-xs text-ds-foreground-muted">({rate}%)</span>
               </span>
             );
@@ -120,7 +122,7 @@ export default function CampaignsPage() {
         },
         {
           key: 'createdAt', header: 'Created', sortable: true,
-          cell: (c) => (c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'),
+          cell: (c) => (c.createdAt ? formatLocaleDate(c.createdAt, { day: 'numeric', month: 'short', year: 'numeric' }) : '—'),
         },
       ]}
       primaryAction={
@@ -239,7 +241,7 @@ export default function CampaignsPage() {
               toCsvValue(c.deliveredCount ?? 0),
               toCsvValue(c.openedCount ?? 0),
               toCsvValue(c.clickedCount ?? 0),
-              toCsvValue(c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-IN') : ''),
+              toCsvValue(c.createdAt ? formatLocaleDate(c.createdAt) : ''),
             ].join(','));
           }
           const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });

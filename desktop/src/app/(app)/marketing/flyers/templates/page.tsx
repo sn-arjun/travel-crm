@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDate } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
@@ -93,7 +95,7 @@ export default function FlyerTemplatesPage() {
           key: 'createdAt',
           header: 'Created',
           sortable: true,
-          cell: (t) => (t.createdAt ? new Date(t.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'),
+          cell: (t) => (t.createdAt ? formatLocaleDate(t.createdAt, { day: 'numeric', month: 'short' }) : '—'),
         },
       ]}
       primaryAction={

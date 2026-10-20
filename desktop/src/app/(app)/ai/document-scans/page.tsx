@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDateTime } from '@/lib/format';
 import { AiFeaturePageGate } from '@/components/domain/ai/ai-feature-page-gate';
 import * as React from 'react';
 import { BookOpen, Check, DollarSign, FileText, ScanLine, X } from 'lucide-react';
@@ -216,7 +218,7 @@ function DocumentScansContent() {
       key: 'createdAt',
       header: 'Scanned',
       sortable: true,
-      cell: (r) => <span className="text-ds-foreground-muted">{new Date(r.createdAt).toLocaleString('en-IN')}</span>,
+      cell: (r) => <span className="text-ds-foreground-muted">{formatLocaleDateTime(r.createdAt)}</span>,
     },
   ];
 

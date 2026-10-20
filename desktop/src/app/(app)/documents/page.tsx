@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDate, formatLocaleDateTime } from '@/lib/format';
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Download, FileText, Pencil, Plus, Trash2, Upload } from 'lucide-react';
@@ -227,7 +229,7 @@ export default function DocumentsPage() {
             sortable: true,
             cell: (d) =>
               d.createdAt
-                ? new Date(d.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+                ? formatLocaleDate(d.createdAt, { day: 'numeric', month: 'short', year: 'numeric' })
                 : '—',
           },
         ]}
@@ -267,7 +269,7 @@ export default function DocumentsPage() {
               <div>
                 <p className="text-ds-foreground-subtle">Uploaded</p>
                 <p className="text-ds-foreground">
-                  {d.createdAt ? new Date(d.createdAt).toLocaleString('en-IN') : '—'}
+                  {d.createdAt ? formatLocaleDateTime(d.createdAt) : '—'}
                 </p>
               </div>
               {d.leadId && (

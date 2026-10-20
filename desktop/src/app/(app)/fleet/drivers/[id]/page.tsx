@@ -1,5 +1,8 @@
 'use client';
 
+
+import { formatTightCurrency, formatLocaleDate } from '@/lib/format';
+import { formatCurrency } from '@/lib/utils';
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -33,7 +36,7 @@ function licenseTone(licenseExpiry?: string): { tone: 'success' | 'danger' | 'wa
   const days = Math.ceil((new Date(licenseExpiry).getTime() - Date.now()) / 86400000);
   if (days < 0) return { tone: 'danger', label: `Expired ${Math.abs(days)}d ago` };
   if (days < 30) return { tone: 'warning', label: `Expires in ${days}d` };
-  return { tone: 'success', label: `Valid — ${new Date(licenseExpiry).toLocaleDateString('en-IN')}` };
+  return { tone: 'success', label: `Valid — ${formatLocaleDate(licenseExpiry)}` };
 }
 
 const DRIVER_DOC_TYPE_LABELS: Record<string, string> = {
@@ -203,7 +206,7 @@ export default function DriverDetailPage() {
                       </div>
                       <p className="text-xs text-ds-foreground-muted truncate">{trip.startLocation} → {trip.endLocation}</p>
                     </div>
-                    <p className="text-sm font-semibold shrink-0">₹{(trip.fare ?? 0).toLocaleString('en-IN')}</p>
+                    <p className="text-sm font-semibold shrink-0">{formatCurrency(trip.fare ?? 0)}</p>
                   </Link>
                 ))}
               </div>
@@ -262,7 +265,7 @@ export default function DriverDetailPage() {
           <div className="flex flex-col gap-ds-6">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-ds-4">
               <Stat label="Total trips" value={driverTrips.length} icon={<MapPin aria-hidden="true" />} />
-              <Stat label="Revenue" value={`₹${(totalRevenue / 1000).toFixed(0)}K`} />
+              <Stat label="Revenue" value={formatTightCurrency(totalRevenue)} />
               <Stat label="Years experience" value={driver.experience ?? 0} />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-ds-4">
@@ -277,7 +280,7 @@ export default function DriverDetailPage() {
                   </div>
                   {driver.email && <Row label="Email" value={driver.email} />}
                   {driver.address && <Row label="Address" value={driver.address} />}
-                  {driver.dateOfBirth && <Row label="Date of birth" value={new Date(driver.dateOfBirth).toLocaleDateString('en-IN')} />}
+                  {driver.dateOfBirth && <Row label="Date of birth" value={formatLocaleDate(driver.dateOfBirth)} />}
                   <Row label="Rating" value={<span className="flex items-center gap-ds-1"><Star className="h-3.5 w-3.5 text-ds-warning fill-ds-warning" aria-hidden="true" />{driver.rating ? driver.rating.toFixed(1) : '—'}</span>} />
                   {(driver.emergencyContactName) && <Row label="Emergency contact" value={driver.emergencyContactName} />}
                   {(driver.emergencyContactPhone) && <Row label="Emergency phone" value={driver.emergencyContactPhone} />}

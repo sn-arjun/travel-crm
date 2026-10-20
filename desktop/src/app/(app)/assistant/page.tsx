@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDateTime, formatLocaleNumber } from '@/lib/format';
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -48,7 +50,7 @@ function errorMessage(err: unknown, fallback: string): string {
 
 function when(iso: string): string {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return Number.isNaN(d.getTime()) ? '' : formatLocaleDateTime(d, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
 // ── Queue ────────────────────────────────────────────────────
@@ -448,11 +450,11 @@ function UsageTab() {
         {credits ? (
           <div className="flex flex-col gap-ds-3" data-testid="credit-usage">
             <div className="flex items-baseline justify-between">
-              <span className="text-2xl font-semibold text-ds-foreground">{credits.remaining.toLocaleString('en-IN')}</span>
-              <span className="text-sm text-ds-foreground-muted">left of {credits.limit.toLocaleString('en-IN')}</span>
+              <span className="text-2xl font-semibold text-ds-foreground">{formatLocaleNumber(credits.remaining)}</span>
+              <span className="text-sm text-ds-foreground-muted">left of {formatLocaleNumber(credits.limit)}</span>
             </div>
             <Progress value={Math.min(100, credits.percentUsed)} />
-            <p className="text-xs text-ds-foreground-muted">{credits.used.toLocaleString('en-IN')} used. Resets monthly.</p>
+            <p className="text-xs text-ds-foreground-muted">{formatLocaleNumber(credits.used)} used. Resets monthly.</p>
           </div>
         ) : (
           <p className="text-sm text-ds-foreground-muted">Usage appears here once the assistant has read its first message.</p>

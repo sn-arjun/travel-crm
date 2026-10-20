@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleNumber } from '@/lib/format';
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -253,7 +255,7 @@ export default function NewCampaignPage() {
                       }}
                       getOptionId={(s: MarketingSegment) => s.id}
                       getOptionLabel={(s: MarketingSegment) => s.name}
-                      getOptionDescription={(s: MarketingSegment) => `${s.contactCount.toLocaleString('en-IN')} contacts`}
+                      getOptionDescription={(s: MarketingSegment) => `${formatLocaleNumber(s.contactCount)} contacts`}
                       placeholder="Choose a segment"
                       searchPlaceholder="Search segments..."
                       emptyText="No segments found"

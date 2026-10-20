@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDate } from '@/lib/format';
 import * as React from 'react';
 import { Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -286,7 +288,7 @@ function DialPadPage() {
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-mono text-sm font-medium">{displayNumber}</p>
                         <p className="text-xs text-ds-foreground-muted">
-                          {new Date(call.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                          {formatLocaleDate(call.createdAt, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                           {call.durationSeconds > 0 && ` · ${formatDuration(call.durationSeconds)}`}
                         </p>
                       </div>

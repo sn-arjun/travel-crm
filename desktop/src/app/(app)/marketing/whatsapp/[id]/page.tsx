@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDateTime } from '@/lib/format';
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -251,7 +253,7 @@ export default function WhatsappCampaignDetailPage() {
                 <div>
                   <dt className="text-xs text-ds-foreground-muted">Scheduled for</dt>
                   <dd className="text-sm">
-                    {campaign.scheduledFor ? new Date(campaign.scheduledFor).toLocaleString('en-IN') : 'Not scheduled'}
+                    {campaign.scheduledFor ? formatLocaleDateTime(campaign.scheduledFor) : 'Not scheduled'}
                   </dd>
                 </div>
                 <div>
@@ -282,7 +284,7 @@ export default function WhatsappCampaignDetailPage() {
                   {
                     key: 'sentAt',
                     header: 'Sent',
-                    cell: (r) => (r.sentAt ? new Date(r.sentAt).toLocaleString('en-IN') : '—'),
+                    cell: (r) => (r.sentAt ? formatLocaleDateTime(r.sentAt) : '—'),
                   },
                 ]}
                 data={recipients}

@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDate } from '@/lib/format';
 import * as React from 'react';
 import { Ban, Mail, MessageSquare, Smartphone, UserCheck } from 'lucide-react';
 import { toast } from 'sonner';
@@ -142,7 +144,7 @@ export default function OptedOutPage() {
             sortable: true,
             cell: (c) =>
               c.optedOutAt
-                ? new Date(c.optedOutAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+                ? formatLocaleDate(c.optedOutAt, { day: 'numeric', month: 'short', year: 'numeric' })
                 : '—',
           },
           {

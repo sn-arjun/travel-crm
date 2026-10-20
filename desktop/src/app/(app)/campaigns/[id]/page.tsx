@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleTime, formatLocaleDateTime, formatLocaleNumber } from '@/lib/format';
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
@@ -231,21 +233,21 @@ export default function CampaignDetailPage() {
               <div className="grid grid-cols-2 gap-ds-4 sm:grid-cols-4">
                 <div>
                   <p className="mb-ds-1 text-xs text-ds-foreground-muted">Sent</p>
-                  <p className="text-lg font-semibold">{sent.toLocaleString('en-IN')}</p>
+                  <p className="text-lg font-semibold">{formatLocaleNumber(sent)}</p>
                 </div>
                 <div>
                   <p className="mb-ds-1 text-xs text-ds-foreground-muted">Delivered</p>
-                  <p className="text-lg font-semibold">{delivered.toLocaleString('en-IN')}</p>
+                  <p className="text-lg font-semibold">{formatLocaleNumber(delivered)}</p>
                   <p className="text-xs text-ds-foreground-muted">{deliveryRate}%</p>
                 </div>
                 <div>
                   <p className="mb-ds-1 text-xs text-ds-foreground-muted">Opened</p>
-                  <p className="text-lg font-semibold">{opened.toLocaleString('en-IN')}</p>
+                  <p className="text-lg font-semibold">{formatLocaleNumber(opened)}</p>
                   <p className="text-xs text-ds-foreground-muted">{openRate}%</p>
                 </div>
                 <div>
                   <p className="mb-ds-1 text-xs text-ds-foreground-muted">Clicked</p>
-                  <p className="text-lg font-semibold">{clicked.toLocaleString('en-IN')}</p>
+                  <p className="text-lg font-semibold">{formatLocaleNumber(clicked)}</p>
                   <p className="text-xs text-ds-foreground-muted">{clickRate}%</p>
                 </div>
               </div>
@@ -273,7 +275,7 @@ export default function CampaignDetailPage() {
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-ds-foreground-muted">Scheduled for</span>
                     <span className="font-medium">
-                      {new Date(campaign.scheduledAt).toLocaleString('en-IN')}
+                      {formatLocaleDateTime(campaign.scheduledAt)}
                     </span>
                   </div>
                 )}
@@ -315,11 +317,11 @@ export default function CampaignDetailPage() {
                   },
                   {
                     key: 'openedAt', header: 'Opened',
-                    cell: (r) => (r.openedAt ? new Date(r.openedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'),
+                    cell: (r) => (r.openedAt ? formatLocaleTime(r.openedAt, { hour: '2-digit', minute: '2-digit' }) : '—'),
                   },
                   {
                     key: 'clickedAt', header: 'Clicked',
-                    cell: (r) => (r.clickedAt ? new Date(r.clickedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'),
+                    cell: (r) => (r.clickedAt ? formatLocaleTime(r.clickedAt, { hour: '2-digit', minute: '2-digit' }) : '—'),
                   },
                 ]}
                 data={recipients}

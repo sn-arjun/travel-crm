@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDate, formatLocaleDateTime } from '@/lib/format';
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { PhoneForwarded, PhoneOff, Trash2, User, Briefcase } from 'lucide-react';
@@ -35,7 +37,7 @@ function RecordingSection({ call }: { call: Call }) {
     call.recordingConsent === 'announced' ? 'The caller heard the recording announcement.'
     : call.recordingConsent === 'given' ? 'The agent confirmed the caller agreed to be recorded.'
     : null;
-  const expires = call.recordingExpiresAt ? new Date(call.recordingExpiresAt).toLocaleDateString('en-IN') : null;
+  const expires = call.recordingExpiresAt ? formatLocaleDate(call.recordingExpiresAt) : null;
   return (
     <SectionCard title="Recording">
       <div className="flex flex-col gap-ds-3">
@@ -186,7 +188,7 @@ export default function CallDetailPage() {
     <DetailPage<Call>
       entity={call}
       title={`${isInbound ? 'Inbound' : 'Outbound'} call`}
-      subtitle={new Date(call.createdAt).toLocaleString('en-IN')}
+      subtitle={formatLocaleDateTime(call.createdAt)}
       status={<Tag tone={statusTone(call.status)}>{call.status.replace('-', ' ')}</Tag>}
       onBack={() => router.back()}
       primaryActions={
@@ -230,7 +232,7 @@ export default function CallDetailPage() {
               </div>
               <div>
                 <p className="mb-ds-1 text-xs text-ds-foreground-muted">Start time</p>
-                <p className="text-sm">{new Date(call.createdAt).toLocaleString('en-IN')}</p>
+                <p className="text-sm">{formatLocaleDateTime(call.createdAt)}</p>
               </div>
             </div>
             {call.notes && (
