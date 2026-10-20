@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Building2, CreditCard, Globe,
-  ScrollText, Activity, BarChart3, Tags, ToggleRight,
+  ScrollText, Activity, BarChart3, Tags, ToggleRight, Mail,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -14,6 +14,7 @@ const navItems = [
   { href: '/subscriptions', label: 'Subscriptions', icon: CreditCard },
   { href: '/catalogue', label: 'Plans & Pricing', icon: Tags },
   { href: '/features', label: 'Features', icon: ToggleRight },
+  { href: '/email', label: 'Email', icon: Mail },
   { href: '/reports', label: 'Platform Reports', icon: BarChart3 },
   { href: '/wordpress', label: 'WordPress', icon: Globe },
   { href: '/audit-log', label: 'Audit Log', icon: ScrollText },
