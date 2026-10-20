@@ -27,7 +27,7 @@ const testEnv: any = {
   WP_PROVISION_QUEUE: { send: async (m: any) => void queued.push(m) },
 };
 
-const master = (sql: string, ...binds: unknown[]) => (env as any).MASTER_DB.prepare(sql).bind(...binds);
+const master = (sql: string, ...binds: unknown[]): D1PreparedStatement => (env as any).MASTER_DB.prepare(sql).bind(...binds);
 const json = async (res: Response) => (await res.json()) as any;
 
 async function call(method: string, path: string, token: string | null, body?: unknown): Promise<Response> {
