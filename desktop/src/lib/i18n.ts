@@ -162,3 +162,21 @@ export const useT = (): TranslateFn => useI18n().t;
 export function useInlineSides(): { start: 'left' | 'right'; end: 'left' | 'right' } {
   return useI18n().dir === 'rtl' ? { start: 'right', end: 'left' } : { start: 'left', end: 'right' };
 }
+
+/** Placeholders that carry values written left to right (an e-mail address, a phone number). */
+const LTR_VARS = new Set(['email', 'phone']);
+
+/**
+ * In a right-to-left language, wrap values that must keep their left-to-right order in Unicode isolates
+ * (LRI ... PDI), so "user@example.com" or "+971 50 123 4567" inside an Arabic sentence is not reordered or
+ * pulled apart by the surrounding punctuation. Left-to-right languages get the values untouched.
+ */
+export function isolateLtrVars(vars: TranslationVars | undefined, dir: Direction): TranslationVars | undefined {
+  if (!vars || dir !== 'rtl') return vars;
+  const out: TranslationVars = { ...vars };
+  for (const name of Object.keys(out)) {
+    const v = out[name];
+    if (LTR_VARS.has(name) && typeof v === 'string' && v) out[name] = `\u2066${v}\u2069`;
+  }
+  return out;
+}

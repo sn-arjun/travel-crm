@@ -5,6 +5,7 @@ import {
   catalogues,
   directionOf,
   isEnabledLocale,
+  isolateLtrVars,
   tEn,
   translate,
   type Catalogue,
@@ -124,5 +125,15 @@ describe('page titles follow the language', () => {
     const t = (key: string, vars?: Record<string, string | number>) => translate('hi', key, vars);
     expect(getPageTitle('/leads', t)).toBe(catalogues.hi['nav.items.leads']);
     expect(getPageTitle('/leads', t)).not.toBe('Leads');
+  });
+});
+
+describe('isolateLtrVars', () => {
+  it('wraps e-mail and phone values only for a right-to-left language', () => {
+    expect(isolateLtrVars({ email: 'a@b.co', name: 'Sam' }, 'rtl')).toEqual({ email: '\u2066a@b.co\u2069', name: 'Sam' });
+    expect(isolateLtrVars({ phone: '+971 50 123 4567' }, 'rtl')).toEqual({ phone: '\u2066+971 50 123 4567\u2069' });
+    expect(isolateLtrVars({ email: 'a@b.co' }, 'ltr')).toEqual({ email: 'a@b.co' });
+    expect(isolateLtrVars(undefined, 'rtl')).toBeUndefined();
+    expect(isolateLtrVars({ count: 3 }, 'rtl')).toEqual({ count: 3 });
   });
 });

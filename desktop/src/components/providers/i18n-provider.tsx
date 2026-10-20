@@ -8,6 +8,7 @@ import {
   I18nContext,
   catalogues,
   directionOf,
+  isolateLtrVars,
   isEnabledLocale,
   readStoredLocale,
   storeLocale,
@@ -67,7 +68,7 @@ export function I18nProvider({ children }: I18nProviderProps) {
   }, []);
 
   const t = React.useCallback(
-    (key: string, vars?: TranslationVars) => translate(locale, key, vars),
+    (key: string, vars?: TranslationVars) => translate(locale, key, isolateLtrVars(vars, directionOf(locale))),
     [locale],
   );
 

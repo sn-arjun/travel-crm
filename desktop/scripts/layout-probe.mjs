@@ -4,7 +4,7 @@
  *
  *   node scripts/layout-probe.mjs --routes /dashboard,/contacts [--routes-file f] [--slot N]
  *        [--base http://localhost:3100] [--api http://localhost:8787/api/v1]
- *        [--viewports 1366x768,1920x1080] [--themes light,dark] [--out audit/fix/probe/run] [--warn-only]
+ *        [--viewports 1366x768,1920x1080] [--themes light,dark] [--locale ar] [--out audit/fix/probe/run] [--warn-only]
  *
  * --base / --api default to audit/fix/stack/slot<N>.json (written by fix-stack.mjs, slot 0 unless --slot),
  * then to http://localhost:3100 and http://localhost:8787/api/v1.
@@ -182,15 +182,16 @@ try {
       const makeContext = async (withAuth) => {
         const ctx = await browser.newContext({ viewport: vp });
         await ctx.addInitScript(
-          ({ auth, themeName }) => {
+          ({ auth, themeName, uiLocale }) => {
             try {
               if (auth) localStorage.setItem('travelcrm-auth', auth);
               localStorage.setItem('theme', themeName);
+              if (uiLocale) localStorage.setItem('travelcrm.uiLanguage', uiLocale);
             } catch {
               /* storage unavailable */
             }
           },
-          { auth: withAuth ? persistedAuth : null, themeName: theme },
+          { auth: withAuth ? persistedAuth : null, themeName: theme, uiLocale: args.locale || '' },
         );
         return ctx;
       };
