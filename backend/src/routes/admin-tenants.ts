@@ -9,7 +9,7 @@ import { generateId } from '../utils/uuid';
 import { sendTransactional } from '../services/mail/transactional';
 import { appUrl } from '../utils/app-urls';
 import { REGIONS } from '../services/tenancy/provisioner';
-import { getCatalogue, activePriceFrom } from '../services/plans/catalogue';
+import { getCatalogue, activePriceFrom, marketForCountry } from '../services/plans/catalogue';
 import { runProvisioning, type ProvisionOutcome, type TenantRow } from '../services/tenancy/run-provisioning';
 
 /**
@@ -107,7 +107,7 @@ app.post('/', zValidator('json', createSchema), async (c) => {
   // Price, included users and trial length come from the plan catalogue (R109).
   const catalogue = await getCatalogue(env);
   const catalogPlan = catalogue.plans.find((p) => p.key === body.plan);
-  const planPrice = activePriceFrom(catalogue, body.plan);
+  const planPrice = activePriceFrom(catalogue, body.plan, marketForCountry(body.country));
   const next = new Date();
   if (body.plan === 'trial') next.setDate(next.getDate() + (catalogPlan?.trialDays || 14));
   else next.setFullYear(next.getFullYear() + 1);
@@ -134,8 +134,8 @@ app.post('/', zValidator('json', createSchema), async (c) => {
         ),
       env.MASTER_DB
         .prepare(
-          `INSERT INTO subscriptions (id, tenant_id, plan, amount, billing_cycle, start_date, next_billing_date, status, trial_ends_at)
-           VALUES (?, ?, ?, ?, 'yearly', ?, ?, ?, ?)`,
+          `INSERT INTO subscriptions (id, tenant_id, plan, amount, billing_cycle, start_date, next_billing_date, status, trial_ends_at, currency)
+           VALUES (?, ?, ?, ?, 'yearly', ?, ?, ?, ?, ?)`,
         )
         .bind(
           generateId(),
@@ -146,6 +146,7 @@ app.post('/', zValidator('json', createSchema), async (c) => {
           next.toISOString(),
           body.plan === 'trial' ? 'trial' : 'active',
           body.plan === 'trial' ? next.toISOString() : null,
+          planPrice?.currency ?? 'INR',
         ),
     ]);
   } catch (err) {

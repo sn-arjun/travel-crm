@@ -312,6 +312,9 @@ async function up() {
       // No telephony account is ever contacted from a local stack: the in-memory mock provider (R301) serves calls,
       // sub-accounts and softphone tokens, so the mock softphone (R307) can run end to end. Never set in production.
       '--var', 'VOIP_PROVIDER:mock',
+      // Subscription billing runs on the mock gateway locally (R205): no Razorpay or Stripe account is ever contacted,
+      // and the billing page, checkout and receipts can be exercised end to end. Refused in production.
+      '--var', 'BILLING_GATEWAY:mock',
       '--var', 'SENDGRID_API_KEY:',
       '--var', 'TWILIO_ACCOUNT_SID:',
       '--var', 'TWILIO_AUTH_TOKEN:',

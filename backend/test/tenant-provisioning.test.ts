@@ -6,6 +6,7 @@ import { signAccessToken } from '../src/utils/jwt';
 import { LocalTenantProvisioner } from '../src/services/tenancy/local-provisioner';
 import { generateTemporaryPassword } from '../src/services/tenancy/seed-tenant';
 import { TENANT_MIGRATIONS } from '../src/db/tenant-migrations.generated';
+import { bumpCatalogueVersion } from '../src/services/plans/catalogue';
 
 const testEnv = env as any;
 // Binding for the platform pseudo-tenant that carries the super admin's token (tenant middleware needs a database).
@@ -306,13 +307,42 @@ describe('tenant provisioning (POST /admin/tenants)', () => {
     expect(row.db_binding).toBeNull();
     const login = await call(singleEnv, 'POST', '/auth/login', null, { email: json.data.adminEmail, password: json.data.temporaryPassword, tenantId: json.data.tenantId });
     expect(login.status).toBe(200);
-    // The shared database is MASTER_DB: remove what this agency added so other test files see the old state.
-    const user = await masterRow(`SELECT id FROM users WHERE email = 'owner-single@r104.test'`);
+    // An Indian agency is billed at the India price, in rupees.
+    expect(await masterRow('SELECT amount, currency FROM subscriptions WHERE tenant_id = ?', json.data.tenantId)).toEqual({ amount: 18000, currency: 'INR' });
+    await cleanSharedDb(keysBefore, 'owner-single@r104.test');
+  });
+
+  it('a UK agency is billed in its own market and currency, and starts with its own locale and phone code', async () => {
+    const singleEnv = { ...testEnv, TENANCY_MODE: 'single' };
+    const keysBefore = new Set(((await testEnv.MASTER_DB.prepare('SELECT key FROM settings').all()).results as any[]).map((r) => r.key));
+    const priceId = '0196a104-0000-7000-8000-0000000000b1';
+    await testEnv.MASTER_DB
+      .prepare(`INSERT OR REPLACE INTO plan_prices (id, plan_key, market, currency, yearly_price, included_users, extra_user_yearly_price, is_active, valid_from) VALUES (?, 'pro', 'WEST', 'GBP', 199, 15, 20, 1, '2026-10-14T00:00:00Z')`)
+      .bind(priceId)
+      .run();
+    await bumpCatalogueVersion(testEnv);
+    try {
+      const { res, json } = await create(singleEnv, agency('uk', { country: 'United Kingdom', currency: 'GBP', timezone: 'Europe/London', taxSystem: 'vat', region: 'uk' }));
+      expect(res.status).toBe(201);
+      expect(await masterRow('SELECT amount, currency FROM subscriptions WHERE tenant_id = ?', json.data.tenantId)).toEqual({ amount: 199, currency: 'GBP' });
+      const login = await call(singleEnv, 'POST', '/auth/login', null, { email: json.data.adminEmail, password: json.data.temporaryPassword, tenantId: json.data.tenantId });
+      const tenant = ((await login.json()) as any).data.tenant;
+      expect(tenant).toMatchObject({ currency: 'GBP', locale: 'en-GB', country: 'GB', phoneDefaultCountry: 'GB', timezone: 'Europe/London' });
+    } finally {
+      await testEnv.MASTER_DB.prepare('DELETE FROM plan_prices WHERE id = ?').bind(priceId).run();
+      await bumpCatalogueVersion(testEnv);
+      await cleanSharedDb(keysBefore, 'owner-uk@r104.test');
+    }
+  });
+
+  /** In single-database mode the shared database is MASTER_DB: remove what the agency added so other test files see the old state. */
+  async function cleanSharedDb(keysBefore: Set<string>, ownerEmail: string) {
+    const user = await masterRow(`SELECT id FROM users WHERE email = ?`, ownerEmail);
     for (const table of ['login_history', 'activity_logs']) await testEnv.MASTER_DB.prepare(`DELETE FROM ${table} WHERE user_id = ?`).bind(user.id).run();
     await testEnv.MASTER_DB.prepare('DELETE FROM users WHERE id = ?').bind(user.id).run();
     const keysAfter = ((await testEnv.MASTER_DB.prepare('SELECT key FROM settings').all()).results as any[]).map((r) => r.key);
     for (const key of keysAfter.filter((k) => !keysBefore.has(k))) await testEnv.MASTER_DB.prepare('DELETE FROM settings WHERE key = ?').bind(key).run();
-  });
+  }
 
   it('generates 16-character alphanumeric passwords with all three classes', () => {
     const seen = new Set<string>();
