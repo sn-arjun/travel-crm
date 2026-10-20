@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-20T21:00+05:30",
+  "updated": "2026-10-20T23:00+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -132,7 +132,7 @@
         "R304": "merged (Tier 3): voip_accounts (one Twilio sub-account per agency, claimed before provider call, token sealed + mirrored to tenant voip_settings for webhook checks), suspend/resume/close wired to agency suspend/cancel/reactivate (14-day release after cancel), number search/purchase (Idempotency-Key, registry claim)/release (routing first), call_country_policy seeded (IN, AE, SA, QA, TH, LK, NP, BD not offered) enforced server-side, KYC document review (links), trial switch voip_calling_on_trial default off, number rental as R206 add-on at cost +20% renewed monthly (7-day release if unpaid), super admin Calling tab; master 0022. Merged line: backend 97/1918, desktop 84/1463, lint 0, i18n-check PASS, super-admin tsc 0; e2e voip-settings + calls-simulator + auth-shell 32 passed (slot 1). Follow-ups moved to R305: channel-registration ownership check, minute billing.",
         "R309": "merged (Tier 3): signed provisioner requests (HMAC over timestamp, method, path+query, body; 300 s window; provisioner refuses to start without a strong PROVISIONER_SECRET), wordpress_sites status model queued/provisioning/active/failed with attempts, backoff 60/300 s, 3 attempts, 30-min build timeout, cron sweep for lost messages, one site per agency, history table, super admin WordPress page + Website tab with retry, website_ready email without credentials; provisioner rewritten on node:http (express removed), container-per-agency driver, PROVISIONER_MODE=shared reserved (Q9 undecided); master 0023. Merged line (orchestrator resolved mail template and super-admin tab conflicts with R304, typed a test helper): backend 98/1933, super-admin tsc + lint (0 errors) + build OK, provisioner 13/13 + tsc OK, desktop 84/1463. Docker test skipped (engine not running).",
         "R305": "merged (Tier 3): voip.usage-import every 5 min from sub-account fetchUsage (cursor, 3 h overlap, charged once per provider call id, customer leg only, weighting by destination cost), callback metering removed, minute packs at cost x1.2+ (draft costs), 402 at cap (calls in progress not cut, inbound still rings), fraud preflight (premium/satellite prefixes, destination allow-list, 10/min, 3 concurrent, 600 min/day ceiling, 7200 s time limit), spend spike + platform flags emailed, console flags with lift/dismiss, POST /integrations/channels requires an owned number; master 0024. Merged line: backend 99/1955, desktop 84/1463, lint 0, i18n PASS, super-admin tsc 0; e2e calls + calls-simulator + voip-settings + webhooks-integrations 40 passed (slot 2). Orchestrator fixes: non-production wildcard skips the destination allow-list; calls.spec ends its open calls via the simulator. Owner to confirm: plan call-minute caps (all 0), per-minute costs, fraud defaults, spike flag-only vs block.",
-        "R307": "DONE on batch/R307 (worktree .claude/worktrees/R307), NOT merged: softphone (Twilio + mock), GET /voip/token, Electron mic permission, screen-pop Answer, in-call panel, mic check; edited fix-stack.mjs (VOIP_PROVIDER mock). Branch gate passed (backend 1928, desktop 1510, e2e softphone + calls-simulator 10). NEXT: merge after R305 is verified, full gate + e2e, teardown."
+        "R307": "merged (Tier 3): Softphone interface with Twilio (@twilio/voice-sdk 2.18.5, lazy) and mock implementations, state machine + controller (token refresh at 70%), GET /voip/token (agent roles, active sub-account, 900 s, 20/min, refuses 2FA setup-only tokens, API key created once in the sub-account and sealed), Electron mic permission for the app loopback origin only, SoftphoneHost registration, screen-pop Answer/Decline, in-call panel (timer, mute, hold, note, lead link, consent tick), mic check; fix-stack runs VOIP_PROVIDER=mock. Merged line: backend 100/1965, desktop 89/1510, lint 0, i18n PASS, super-admin tsc 0; e2e softphone + calls-simulator + calls + voip-settings + auth-shell 52 passed (slot 1). Orchestrator fixes: mock testConnection refuses unknown accounts; softphone.spec closes (not suspends) the account it opened. Go-live: real sub-account token + device ring, mic/permission prompt in packaged app and browser, one real call per resell country, emergency-calling disclaimer in terms."
       },
       "merged": [
         "R101",
@@ -177,7 +177,8 @@
         "R210",
         "R304",
         "R309",
-        "R305"
+        "R305",
+        "R307"
       ],
       "tier1": "COMPLETE 2026-10-15: R101-R124 merged (incl. orchestrator follow-ups R123, R124); exit test R121 9/9 on the merged line; fresh-clone check passes."
     },
