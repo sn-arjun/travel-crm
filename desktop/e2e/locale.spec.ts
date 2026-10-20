@@ -144,8 +144,11 @@ test.describe('Locale: each agency sees its own currency, numbers, dates and tim
       const usd = await call(agency, 'POST', '/invoices', { contactId, items, currency: foreign, issueDate: ISSUE_DATE, dueDate: DUE_DATE });
       await call(agency, 'POST', '/payments', { invoiceId, amount: 500_000, date: today, method: 'transfer', reference: `LOC-${m.key}-${RUN}` });
       const eventTitle = `Locale Event ${m.label} ${RUN}`;
-      const eventStart = `${today}T${EVENT_ZULU}`;
-      const eventEnd = `${today}T10:00:00.000Z`;
+      // The event goes on the agency's own today (as its users would create it), not the UTC date: near midnight
+      // UTC the two differ, and the calendar's "Today" is the agency's day.
+      const agencyToday = new Intl.DateTimeFormat('en-CA', { timeZone: m.timezone }).format(new Date());
+      const eventStart = `${agencyToday}T${EVENT_ZULU}`;
+      const eventEnd = `${agencyToday}T10:00:00.000Z`;
       await call(agency, 'POST', '/events', { title: eventTitle, event_type: 'meeting', start_at: eventStart, end_at: eventEnd, all_day: false });
       seeded[m.key] = {
         agency,
@@ -160,6 +163,10 @@ test.describe('Locale: each agency sees its own currency, numbers, dates and tim
   });
 
   for (const m of MARKETS) {
+    test.describe(`${m.label} agency browser`, () => {
+    // A user of this agency has a browser on the agency's clock. Without this the browser runs on this machine's
+    // zone (India), and around midnight UTC the calendar's "Today" is a different day from the agency's today.
+    test.use({ timezoneId: m.timezone });
     test(`${m.label} agency (${m.currency}, ${m.locale}, ${m.timezone}) sees its own money, dates and time zone`, async ({ page }) => {
       test.setTimeout(180_000);
       const s = seeded[m.key]!;
@@ -222,6 +229,7 @@ test.describe('Locale: each agency sees its own currency, numbers, dates and tim
       await expect(page.locator('#timezone')).toContainText(m.zoneLabel);
       await expect(page.locator('#gstin')).toHaveCount(0);
     });
+    });
   }
 
   test('the Indian demo agency keeps rupees, lakh grouping, en-IN dates and Asia/Kolkata', async ({ page }) => {
@@ -231,7 +239,7 @@ test.describe('Locale: each agency sees its own currency, numbers, dates and tim
     const invoice = await seedInvoice(contact.id, { items, issueDate: ISSUE_DATE, dueDate: DUE_DATE });
     const invoiceId = invoice.id as string;
     const number = (invoice.invoiceNumber ?? invoice.invoice_number) as string;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: INDIA.timezone }).format(new Date()); // the agency's today
     const eventTitle = `Locale Event IN ${RUN}`;
     const eventStart = `${today}T${EVENT_ZULU}`;
     const eventEnd = `${today}T10:00:00.000Z`;
