@@ -1,5 +1,6 @@
 import type { Env } from '../types';
-import { sendEmail, sendWithTemplate, type SendEmailResponse } from '../services/sendgrid';
+import { sendWithTemplate, type SendEmailResponse } from '../services/sendgrid';
+import { sendMail } from '../services/mail/provider';
 import { refundUsage, tryMeter } from '../services/metering/meter';
 import { resolveTenantDb } from '../services/tenant-db';
 import { isEmailUndeliverable } from '../services/mail/delivery';
@@ -142,7 +143,8 @@ export async function handleEmailJob(job: EmailJob, env: Env): Promise<void> {
       });
     } else {
       // Send direct email with HTML/text content
-      result = await sendEmail(env, {
+      // R131: agency mail always goes through SendGrid (marketing when it carries an unsubscribe link); never Cloudflare
+      const sent = await sendMail(env, job.unsubscribeUrl ? 'agency_marketing' : 'agency_transactional', {
         to: job.to,
         subject: job.subject,
         html: job.html,
@@ -154,6 +156,7 @@ export async function handleEmailJob(job: EmailJob, env: Env): Promise<void> {
         attachments: job.attachments,
         unsubscribeUrl: job.unsubscribeUrl,
       });
+      result = { success: sent.success, messageId: sent.messageId, error: sent.error };
     }
 
     if (result.success) {

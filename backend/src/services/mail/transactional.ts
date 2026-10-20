@@ -1,6 +1,6 @@
 import type { Env } from '../../types';
 import { isTestMode } from '../../utils/test-mode';
-import { sendEmail } from '../sendgrid';
+import { providerFor, sendMail, type ProviderName } from './provider';
 import { appUrl, emailFrom } from '../../utils/app-urls';
 import { generateId } from '../../utils/uuid';
 import { renderTemplate, type TemplateName } from './templates';
@@ -28,7 +28,9 @@ export interface TransactionalParams {
 
 export interface TransactionalResult {
   delivered: boolean;
-  via: 'sendgrid' | 'outbox';
+  via: 'sendgrid' | 'cloudflare' | 'mock' | 'outbox';
+  /** Set when Cloudflare failed and SendGrid sent the mail instead. */
+  fallbackFrom?: ProviderName;
   id?: string;
   error?: string;
 }
@@ -42,19 +44,22 @@ export interface TransactionalResult {
 export async function sendTransactional(env: Env, params: TransactionalParams): Promise<TransactionalResult> {
   try {
     const rendered = renderTemplate(params.template, { ...(params.data ?? {}), appUrl: appUrl(env) });
-    const useOutbox = !env.SENDGRID_API_KEY || isTestMode(env);
+    const first = providerFor(env, 'platform_system').name;
+    // Test mode and the mock provider write to the outbox; SendGrid with no key does too. Cloudflare needs no SendGrid key.
+    const useOutbox = isTestMode(env) || first === 'mock' || (first === 'sendgrid' && !env.SENDGRID_API_KEY);
 
     if (!useOutbox) {
       const from = emailFrom(env);
-      const res = await sendEmail(env, {
+      const res = await sendMail(env, 'platform_system', {
         to: params.to,
         subject: rendered.subject,
         html: rendered.html,
         text: rendered.text,
         from: from.email,
+        category: params.template,
       });
-      if (!res.success) console.error(`[mail] ${params.template} to ${params.to} failed: ${res.error}`);
-      return { delivered: res.success, via: 'sendgrid', error: res.error };
+      if (!res.success) console.error(`[mail] ${params.template} to ${params.to} failed on ${res.provider}: ${res.error}`);
+      return { delivered: res.success, via: res.provider, error: res.error, ...(res.fallbackFrom ? { fallbackFrom: res.fallbackFrom } : {}) };
     }
 
     const id = generateId();

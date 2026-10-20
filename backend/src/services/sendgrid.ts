@@ -18,6 +18,10 @@ export interface SendEmailParams {
   cc?: string | string[];
   bcc?: string | string[];
   attachments?: EmailAttachment[];
+  /** R131: extra headers on the message. */
+  headers?: Record<string, string>;
+  /** R131: a SendGrid category (reports). */
+  category?: string;
   /** R208: marketing mail. Adds List-Unsubscribe and List-Unsubscribe-Post headers and a footer link. */
   unsubscribeUrl?: string;
 }
@@ -121,7 +125,8 @@ ${unsubscribeFooterText(footerUrl)}` : params.text });
       subject: params.subject,
       content: content.length > 0 ? content : [{ type: 'text/plain', value: '' }],
     };
-    if (footerUrl) requestBody.headers = unsubscribeHeaders(footerUrl);
+    if (footerUrl || params.headers) requestBody.headers = { ...(params.headers ?? {}), ...(footerUrl ? unsubscribeHeaders(footerUrl) : {}) };
+    if (params.category) requestBody.categories = [params.category];
 
     if (params.replyTo) {
       requestBody.reply_to = { email: params.replyTo };

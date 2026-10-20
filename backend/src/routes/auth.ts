@@ -1059,7 +1059,7 @@ async function recordFailedLogin(
         to: email,
         subject: 'Account Locked - TravelCRM Pro',
         html: accountLockedEmailHtml(email),
-      });
+      }, 'platform_system');
     } catch {
       // Non-critical — don't fail the request
     }

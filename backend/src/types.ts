@@ -81,6 +81,14 @@ export interface Env {
   APP_URL?: string;
   QUOTES_URL?: string;
   API_PUBLIC_URL?: string;
+  /** R131: Cloudflare Email Service sending binding (`[[send_email]] name = "EMAIL"`). Absent locally unless declared. */
+  EMAIL?: {
+    send(message: Record<string, unknown>): Promise<{ messageId?: string } | undefined>;
+  };
+  /** R131: provider of the platform's own system mail: 'sendgrid' (default), 'cloudflare' or 'mock'. Agency mail is always SendGrid. */
+  EMAIL_SYSTEM_PROVIDER?: string;
+  /** R131: domain that receives agency replies through Cloudflare Email Routing, for example in.example.com. */
+  EMAIL_INBOUND_DOMAIN?: string;
   EMAIL_FROM?: string;
   EMAIL_FROM_NAME?: string;
   PLATFORM_SUPPORT_EMAIL?: string;
