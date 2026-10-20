@@ -1,5 +1,6 @@
 'use client';
 
+import { getLocaleContext } from '@/lib/locale';
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
@@ -244,7 +245,7 @@ export default function ItineraryDetailPage() {
   const days = React.useMemo(() => itinerary?.days ?? [], [itinerary]);
   const daysCount = days.length || 1;
   const nightsCount = Math.max(0, daysCount - 1);
-  const currency = itinerary?.currency ?? 'INR';
+  const currency = itinerary?.currency ?? getLocaleContext().currency;
   const money = (n: number) => formatCurrency(n, currency);
 
   const destination = formatDestination(leadTrip?.destinations ?? leadTrip?.destination ?? itinerary?.lead?.destination);

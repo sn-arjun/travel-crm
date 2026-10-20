@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDate } from '@/lib/format';
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
@@ -23,7 +25,6 @@ import {
   visaApi,
   visaService,
   visaTypeLabel,
-  parseDateOnly,
   type VisaChecklistItem,
   type VisaDocument,
   type VisaRecord,
@@ -69,7 +70,7 @@ function formatFileSize(bytes: number): string {
 }
 
 function formatDate(s?: string) {
-  return s ? parseDateOnly(s).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+  return s ? formatLocaleDate(s, { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 }
 
 export default function VisaDetailPage() {

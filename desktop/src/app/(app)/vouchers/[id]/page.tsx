@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatCalendarDay, formatLocaleDate, formatLocaleTime } from '@/lib/format';
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Download, Pencil, CheckCircle2 } from 'lucide-react';
@@ -17,7 +19,7 @@ const DATE_FMT: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', y
 function fmtDate(s?: string): string | undefined {
   if (!s) return s;
   const d = fromDateOnly(s);
-  return d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString('en-IN', DATE_FMT) : s;
+  return d && !Number.isNaN(d.getTime()) ? formatCalendarDay(d, DATE_FMT) : s;
 }
 
 /** Like fmtDate, but keeps the time of day for stored ISO datetimes ("12 Oct 2026, 10:30 am"). */
@@ -26,7 +28,7 @@ function fmtDateTime(s?: string): string | undefined {
   if (!s.includes('T')) return fmtDate(s);
   const d = new Date(s);
   if (Number.isNaN(d.getTime())) return s;
-  return `${d.toLocaleDateString('en-IN', DATE_FMT)}, ${d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}`;
+  return `${formatLocaleDate(d, DATE_FMT)}, ${formatLocaleTime(d, { hour: 'numeric', minute: '2-digit' })}`;
 }
 
 function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
@@ -56,7 +58,7 @@ function VoucherOverview({ voucher }: { voucher: Voucher }) {
           <DetailRow label="Language" value={voucher.language?.toUpperCase()} />
           <DetailRow
             label="Created"
-            value={new Date(voucher.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+            value={formatLocaleDate(voucher.createdAt, { day: 'numeric', month: 'short', year: 'numeric' })}
           />
           {voucher.sentVia && <DetailRow label="Sent via" value={voucher.sentVia} />}
           {voucher.notes && (

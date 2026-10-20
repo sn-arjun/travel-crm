@@ -1,5 +1,6 @@
 'use client';
 
+import { getLocaleContext } from '@/lib/locale';
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -123,7 +124,7 @@ export default function ItinerariesPage() {
         it.endDate ?? '',
         durationLabel(it.daysCount),
         it.status ?? 'draft',
-        it.currency ?? 'INR',
+        it.currency ?? getLocaleContext().currency,
         String(it.grandTotal ?? it.totalSelling ?? 0),
       ]);
       const csv = [header, ...csvRows]
@@ -271,7 +272,7 @@ export default function ItinerariesPage() {
             </TableHeader>
             <TableBody>
               {itineraries.map((it) => {
-                const currency = it.currency ?? 'INR';
+                const currency = it.currency ?? getLocaleContext().currency;
                 const totalCost = it.totalCost ?? 0;
                 const totalSelling = it.totalSelling ?? it.grandTotal ?? 0;
 
@@ -388,13 +389,13 @@ export default function ItinerariesPage() {
                   {canSeeCost && (
                     <div>
                       <p className="text-muted-foreground">Cost</p>
-                      <p className="font-mono font-medium">{formatCurrency(selectedItinerary.totalCost ?? 0, selectedItinerary.currency ?? 'INR')}</p>
+                      <p className="font-mono font-medium">{formatCurrency(selectedItinerary.totalCost ?? 0, selectedItinerary.currency ?? undefined)}</p>
                     </div>
                   )}
                   <div>
                     <p className="text-muted-foreground">Grand Total</p>
                     <p className="font-mono font-semibold text-ds-success">
-                      {formatCurrency(selectedItinerary.grandTotal ?? selectedItinerary.totalSelling ?? 0, selectedItinerary.currency ?? 'INR')}
+                      {formatCurrency(selectedItinerary.grandTotal ?? selectedItinerary.totalSelling ?? 0, selectedItinerary.currency ?? undefined)}
                     </p>
                   </div>
                 </div>

@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDate } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, Pencil, Trash2, Plus, UserRound } from 'lucide-react';
@@ -22,7 +24,7 @@ function expiryTone(expiry?: string): 'success' | 'warning' | 'danger' | 'neutra
 
 function formatDate(value?: string) {
   return value
-    ? parseDateOnly(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+    ? formatLocaleDate(value, { day: 'numeric', month: 'short', year: 'numeric' })
     : '—';
 }
 

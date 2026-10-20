@@ -46,7 +46,7 @@ function dateOrDash(value: string | Date | null | undefined): string {
 
 function money(amount: number | null | undefined, currency?: string | null): string {
   if (amount === null || amount === undefined) return '-';
-  return formatCurrency(amount, currency || 'INR');
+  return formatCurrency(amount, currency || undefined);
 }
 
 function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {

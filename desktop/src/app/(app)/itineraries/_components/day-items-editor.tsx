@@ -1,5 +1,6 @@
 'use client';
 
+import { getLocaleContext } from '@/lib/locale';
 import * as React from 'react';
 import { BookOpen, Hotel, Plane, Car, Camera, Utensils, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -30,7 +31,7 @@ interface DayItemsEditorProps {
 }
 
 /** Items of one itinerary day: edit name, quantity and prices, apply a rate card, add or remove. */
-export function DayItemsEditor({ items, onChange, currency = 'INR' }: DayItemsEditorProps) {
+export function DayItemsEditor({ items, onChange, currency = getLocaleContext().currency }: DayItemsEditorProps) {
   const [pickerIndex, setPickerIndex] = React.useState<number | null>(null);
 
   function patch(index: number, change: Partial<ItineraryItem>) {

@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDate } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, Pencil, Send, Trash2, Plus, FileText } from 'lucide-react';
@@ -149,7 +151,7 @@ export default function VouchersPage() {
           header: 'Created',
           sortable: true,
           cell: (v) =>
-            new Date(v.createdAt).toLocaleDateString('en-IN', {
+            formatLocaleDate(v.createdAt, {
               day: 'numeric',
               month: 'short',
               year: 'numeric',

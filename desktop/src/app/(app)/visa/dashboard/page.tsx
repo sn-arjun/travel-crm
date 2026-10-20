@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDate } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Globe } from 'lucide-react';
@@ -143,7 +145,7 @@ export default function VisaDashboardPage() {
                             daysUntil <= 7 ? 'font-semibold text-ds-danger' : daysUntil <= 30 ? 'text-ds-warning' : 'text-ds-foreground-muted',
                           )}
                         >
-                          {parseDateOnly(r.expiryDate!).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} ({daysUntil}d)
+                          {formatLocaleDate(r.expiryDate!, { day: 'numeric', month: 'short' })} ({daysUntil}d)
                         </span>
                         <Tag tone={STATUS_TONE[r.status] ?? 'info'} size="sm">{STATUS_LABEL[r.status] ?? r.status}</Tag>
                       </div>

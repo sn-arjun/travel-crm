@@ -1,5 +1,6 @@
 'use client';
 
+import { formatWholeCurrency } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, UserPlus, ArrowLeft } from 'lucide-react';
@@ -8,12 +9,13 @@ import { Button, Tag } from '@/components/ui';
 import { leadsApi } from '@/lib/api/leads';
 import { unwrapList } from '@/lib/api/envelope';
 import { LEAD_STATUS_LABELS } from '@travelcrm/shared';
+
 import { formatDisplayDate } from '@/lib/dates';
 import { LeadAssignDialog } from '../lead-assign-dialog';
 import { leadDestination, priorityLabel, type LeadRow } from '../lead-labels';
 
-function formatCurrency(amount: number, currency = 'INR') {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount);
+function formatCurrency(amount: number, currency?: string | null) {
+  return formatWholeCurrency(amount, currency || undefined);
 }
 
 export default function UnassignedLeadsPage() {

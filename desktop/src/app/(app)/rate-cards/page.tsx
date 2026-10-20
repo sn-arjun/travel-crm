@@ -1,12 +1,15 @@
 'use client';
 
+
+import { formatCurrency } from '@/lib/utils';
+import { formatLocaleDate } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { CreditCard, Pencil, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ListPage } from '@/components/domain';
 import { Badge, Button, SectionCard, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, useConfirm } from '@/components/ui';
-import { fromDateOnly, rateCardsApi, type RateCard } from '@/lib/api/rate-cards';
+import { rateCardsApi, type RateCard } from '@/lib/api/rate-cards';
 import { toLocalDateString } from '@/lib/dates';
 
 const CATEGORY_OPTIONS = [
@@ -28,13 +31,12 @@ function isExpired(validTo?: string | null) {
 
 function formatDate(value?: string | null) {
   return value
-    ? fromDateOnly(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+    ? formatLocaleDate(value, { day: 'numeric', month: 'short', year: 'numeric' })
     : '—';
 }
 
 function formatMoney(value: number, currency: string) {
-  const symbol = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : '₹';
-  return `${symbol}${value.toLocaleString('en-IN')}`;
+  return formatCurrency(value, currency || undefined);
 }
 
 function toCsv(rows: RateCard[]) {

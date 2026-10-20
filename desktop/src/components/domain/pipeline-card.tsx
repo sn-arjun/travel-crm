@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleNumber } from '@/lib/format';
 import * as React from 'react';
 import { MoreHorizontal, Calendar, IndianRupee } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -90,7 +92,7 @@ export function PipelineCard({
             {value !== undefined && (
               <span className="flex items-center gap-1 text-xs font-medium tabular-nums text-ds-foreground">
                 <IndianRupee className="h-3.5 w-3.5 text-ds-foreground-muted" />
-                {value.toLocaleString('en-IN')}
+                {formatLocaleNumber(value)}
               </span>
             )}
             {dueDate && (

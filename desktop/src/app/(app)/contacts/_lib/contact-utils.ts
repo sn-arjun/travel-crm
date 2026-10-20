@@ -1,20 +1,11 @@
-import { formatCurrency } from '@/lib/utils';
+import { formatCompactCurrency } from '@/lib/utils';
 import { joinPhone as joinPhoneNumber, splitPhone as splitPhoneNumber } from '@/lib/phone';
 import type { ContactTimeline } from '@/lib/api/contacts';
 
-const LAKH = 100_000;
-const CRORE = 10_000_000;
-
 /** Money for stat tiles: exact for small amounts, compact lakhs/crores from 1 lakh up. */
-export function formatRevenue(amount: number | null | undefined, currency = 'INR'): string {
+export function formatRevenue(amount: number | null | undefined, currency?: string): string {
   const value = Number.isFinite(amount) ? Number(amount) : 0;
-  if (currency !== 'INR' || Math.abs(value) < LAKH) return formatCurrency(value, currency);
-  if (Math.abs(value) >= CRORE) return `₹${trimZero(value / CRORE)} Cr`;
-  return `₹${trimZero(value / LAKH)} L`;
-}
-
-function trimZero(n: number): string {
-  return n.toFixed(2).replace(/\.?0+$/, '');
+  return formatCompactCurrency(value, currency);
 }
 
 /** Splits a stored phone number ("+919845023117") into the picker code and the national digits (every country). */

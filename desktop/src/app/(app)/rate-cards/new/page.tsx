@@ -1,5 +1,7 @@
 'use client';
 
+import { getLocaleContext } from '@/lib/locale';
+import { currencyCodes } from '@/lib/locale-options';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { z } from 'zod';
@@ -38,7 +40,7 @@ export default function NewRateCardPage() {
         supplierId: null,
         costPrice: undefined as unknown as number,
         sellingPrice: undefined,
-        currency: 'INR',
+        currency: getLocaleContext().currency,
         season: null,
         unit: null,
         validFrom: undefined,
@@ -134,10 +136,9 @@ export default function NewRateCardPage() {
             <Select value={form.watch('currency')} onValueChange={(v) => form.setValue('currency', v, { shouldDirty: true })}>
               <SelectTrigger id="currency"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="INR">INR</SelectItem>
-                <SelectItem value="USD">USD</SelectItem>
-                <SelectItem value="EUR">EUR</SelectItem>
-                <SelectItem value="GBP">GBP</SelectItem>
+                {currencyCodes(form.watch('currency')).map((c) => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </FormRow>

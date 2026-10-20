@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDate } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, Pencil, Plus, Trash2 } from 'lucide-react';
@@ -12,7 +14,7 @@ import type { DataTableColumn } from '@/components/ui/data-table';
 import type { ListFilter } from '@/components/domain/list-page';
 import { useApiMutation } from '@/hooks/use-api';
 import { useConfirm } from '@/components/ui/confirm-dialog';
-import { visaApi, visaService, visaTypeLabel, parseDateOnly, type VisaRecord } from '@/lib/api/visa';
+import { visaApi, visaService, visaTypeLabel, type VisaRecord } from '@/lib/api/visa';
 import { toast } from 'sonner';
 
 const STATUS_OPTIONS = [
@@ -124,7 +126,7 @@ export default function VisaTrackingPage() {
       header: 'Applied',
       cell: (v) =>
         v.applicationDate
-          ? parseDateOnly(v.applicationDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+          ? formatLocaleDate(v.applicationDate, { day: 'numeric', month: 'short', year: 'numeric' })
           : 'N/A',
     },
     {

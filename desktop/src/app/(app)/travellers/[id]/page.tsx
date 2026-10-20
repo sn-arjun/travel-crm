@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleDate } from '@/lib/format';
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
@@ -12,7 +14,7 @@ import {
 } from '@/components/ui';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { travellersApi, visaApi, parseDateOnly, normalizeTraveller, travellerDocumentsApi, visaTypeLabel, type Traveller, type VisaRecord } from '@/lib/api/visa';
+import { travellersApi, visaApi, normalizeTraveller, travellerDocumentsApi, visaTypeLabel, type Traveller, type VisaRecord } from '@/lib/api/visa';
 import { documentsApi, type Document as DocType } from '@/lib/api/documents';
 import { contactsApi } from '@/lib/api/contacts';
 import { unwrapEntity, unwrapList } from '@/lib/api/envelope';
@@ -28,7 +30,7 @@ function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' |
 
 function formatDate(value?: string) {
   return value
-    ? parseDateOnly(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+    ? formatLocaleDate(value, { day: 'numeric', month: 'short', year: 'numeric' })
     : '—';
 }
 

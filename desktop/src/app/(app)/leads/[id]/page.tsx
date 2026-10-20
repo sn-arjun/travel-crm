@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatWholeCurrency } from '@/lib/format';
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
@@ -51,8 +53,8 @@ function rowsOf<T>(res: unknown): T[] {
   return res ? unwrapList<T>(res).data : [];
 }
 
-function formatCurrency(amount: number, currency = 'INR') {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount);
+function formatCurrency(amount: number, currency?: string | null) {
+  return formatWholeCurrency(amount, currency || undefined);
 }
 
 function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
@@ -386,7 +388,7 @@ export default function LeadDetailPage() {
                 </div>
                 <div>
                   <p className="text-xs text-ds-foreground-muted font-semibold">Budget</p>
-                  <p className="text-sm font-medium mt-1">{lead.budget ? formatCurrency(lead.budget, lead.currency || 'INR') : '—'}</p>
+                  <p className="text-sm font-medium mt-1">{lead.budget ? formatCurrency(lead.budget, lead.currency) : '—'}</p>
                 </div>
               </div>
             </SectionCard>

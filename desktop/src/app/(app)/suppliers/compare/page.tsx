@@ -1,5 +1,8 @@
 'use client';
 
+
+import { getLocaleContext } from '@/lib/locale';
+import { formatLocaleNumber } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, BarChart3, Search } from 'lucide-react';
@@ -188,9 +191,9 @@ export default function SupplierComparePage() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right font-mono text-sm font-semibold">
-                        {r.rate.toLocaleString('en-IN')}
+                        {formatLocaleNumber(r.rate)}
                       </TableCell>
-                      <TableCell className="text-sm text-ds-foreground-muted">{r.currency ?? 'INR'}</TableCell>
+                      <TableCell className="text-sm text-ds-foreground-muted">{r.currency ?? getLocaleContext().currency}</TableCell>
                       <TableCell>
                         {idx === sortedResults.length - 1 ? (
                           <span className="text-xs text-ds-foreground-muted">—</span>

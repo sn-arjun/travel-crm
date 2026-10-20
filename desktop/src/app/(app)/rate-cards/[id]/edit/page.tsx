@@ -1,5 +1,6 @@
 'use client';
 
+import { currencyCodes } from '@/lib/locale-options';
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { z } from 'zod';
@@ -175,10 +176,9 @@ export default function EditRateCardPage() {
             <Select value={form.watch('currency')} onValueChange={(v) => form.setValue('currency', v, { shouldDirty: true })}>
               <SelectTrigger id="currency"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="INR">INR</SelectItem>
-                <SelectItem value="USD">USD</SelectItem>
-                <SelectItem value="EUR">EUR</SelectItem>
-                <SelectItem value="GBP">GBP</SelectItem>
+                {currencyCodes(form.watch('currency')).map((c) => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </FormRow>

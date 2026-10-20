@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatWholeCurrency, formatLocaleDate, formatExactCurrency } from '@/lib/format';
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Heart, Pencil, Plus, Star, Trash2 } from 'lucide-react';
@@ -89,7 +91,7 @@ function SupplierDocuments({ supplierId }: { supplierId: string }) {
                 <TableCell className="text-sm font-medium">{doc.name}</TableCell>
                 <TableCell className="text-sm text-ds-foreground-muted">{formatFileSize(doc.size)}</TableCell>
                 <TableCell className="text-sm text-ds-foreground-muted">
-                  {new Date(doc.uploadedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  {formatLocaleDate(doc.uploadedAt, { day: 'numeric', month: 'short', year: 'numeric' })}
                 </TableCell>
                 <TableCell className="text-right">
                   <Button variant="ghost" size="icon-sm" aria-label="Delete" onClick={() => handleDelete(doc.id)}>
@@ -262,8 +264,8 @@ export default function SupplierDetailPage() {
         overview={
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-ds-4">
             <div className="lg:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-ds-4">
-              <Stat label="Total Payments" value={totalPayments.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })} />
-              <Stat label="Outstanding" value={Math.abs(outstanding).toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })} />
+              <Stat label="Total Payments" value={formatWholeCurrency(totalPayments)} />
+              <Stat label="Outstanding" value={formatWholeCurrency(Math.abs(outstanding))} />
               <Stat label="Rating" value={supplier.rating ? `${supplier.rating} ★` : 'N/A'} />
               <Stat label="Rate Cards" value={String(rateCards.length)} />
             </div>
@@ -390,11 +392,11 @@ export default function SupplierDetailPage() {
                   {payments.map((pay) => (
                     <TableRow key={pay.id}>
                       <TableCell className="font-mono font-semibold text-sm">
-                        {pay.amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                        {formatExactCurrency(pay.amount)}
                       </TableCell>
                       <TableCell className="text-sm capitalize">{pay.method.replace(/_/g, ' ')}</TableCell>
                       <TableCell className="text-sm">
-                        {new Date(pay.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        {formatLocaleDate(pay.date, { day: 'numeric', month: 'short', year: 'numeric' })}
                       </TableCell>
                       <TableCell className="font-mono text-xs text-ds-foreground-muted">{pay.reference || '—'}</TableCell>
                     </TableRow>
@@ -422,17 +424,17 @@ export default function SupplierDetailPage() {
                   {ledger.map((entry, idx) => (
                     <TableRow key={entry.id ?? idx}>
                       <TableCell className="text-sm">
-                        {new Date(entry.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        {formatLocaleDate(entry.date, { day: 'numeric', month: 'short', year: 'numeric' })}
                       </TableCell>
                       <TableCell className="text-sm">{entry.description}</TableCell>
                       <TableCell className="text-right font-mono text-sm text-ds-danger">
-                        {entry.debitAmount ? entry.debitAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' }) : '—'}
+                        {entry.debitAmount ? formatExactCurrency(entry.debitAmount) : '—'}
                       </TableCell>
                       <TableCell className="text-right font-mono text-sm text-ds-success">
-                        {entry.creditAmount ? entry.creditAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' }) : '—'}
+                        {entry.creditAmount ? formatExactCurrency(entry.creditAmount) : '—'}
                       </TableCell>
                       <TableCell className="text-right font-mono text-sm font-semibold">
-                        {Math.abs(entry.runningBalance).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                        {formatExactCurrency(Math.abs(entry.runningBalance))}
                       </TableCell>
                     </TableRow>
                   ))}

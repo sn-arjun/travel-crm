@@ -1,5 +1,6 @@
 'use client';
 
+import { getLocaleContext } from '@/lib/locale';
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Download, Printer, Loader2, FileText, Share2 } from 'lucide-react';
@@ -84,7 +85,7 @@ export default function ItineraryPdfPage() {
   const termsConditions = itinerary.termsConditions ?? '';
   const destination = formatDestination(itinerary.lead?.destination);
   const contactName = itinerary.contact?.name;
-  const currency = itinerary.currency ?? 'INR';
+  const currency = itinerary.currency ?? getLocaleContext().currency;
   const money = (n: number) => formatCurrency(n, currency);
   const grandTotal = itinerary.grandTotal ?? 0;
 

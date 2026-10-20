@@ -1,5 +1,6 @@
 'use client';
 
+import { formatWholeCurrency } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, Pencil, Phone, Mail, Trash2, Plus, UserPlus } from 'lucide-react';
@@ -11,12 +12,13 @@ import { exportsApi } from '@/lib/api/exports';
 import { SendMessageDialog } from '@/components/communication/send-message-dialog';
 import { LEAD_STATUS_LABELS } from '@travelcrm/shared';
 import { toast } from 'sonner';
+
 import { formatDisplayDate, toLocalDateString } from '@/lib/dates';
 import { LeadAssignDialog } from './lead-assign-dialog';
 import { PRIORITY_LABELS, leadDestination, priorityLabel, type LeadRow } from './lead-labels';
 
-function formatCurrency(amount: number, currency = 'INR') {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount);
+function formatCurrency(amount: number, currency?: string | null) {
+  return formatWholeCurrency(amount, currency || undefined);
 }
 
 function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {

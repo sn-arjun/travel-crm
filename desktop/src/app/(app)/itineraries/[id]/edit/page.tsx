@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleTime } from '@/lib/format';
 import * as React from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
@@ -509,7 +511,7 @@ export default function ItineraryEditPage() {
             {autoSaveStatus === 'saved' && lastSavedAt && (
               <div className="flex items-center gap-ds-2 text-xs text-ds-success">
                 <Check className="size-3.5" aria-hidden="true" />
-                <span>Saved at {lastSavedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+                <span>Saved at {formatLocaleTime(lastSavedAt, { hour: '2-digit', minute: '2-digit' })}</span>
               </div>
             )}
             {autoSaveStatus === 'error' && (

@@ -1,5 +1,7 @@
 'use client';
 
+import { getLocaleContext } from '@/lib/locale';
+import { currencyCodes } from '@/lib/locale-options';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { z } from 'zod';
@@ -56,7 +58,7 @@ export default function NewLeadPage() {
         paxChildren: 0,
         paxInfants: 0,
         budget: undefined,
-        currency: 'INR',
+        currency: getLocaleContext().currency,
         tripType: 'domestic',
         source: 'manual',
         priority: 'warm',
@@ -194,7 +196,7 @@ export default function NewLeadPage() {
                   <Select value={form.watch('currency')} onValueChange={(v) => form.setValue('currency', v, { shouldDirty: true })}>
                     <SelectTrigger id="currency"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {['INR', 'USD', 'EUR', 'GBP', 'AED'].map((c) => (
+                      {currencyCodes(form.watch('currency')).map((c) => (
                         <SelectItem key={c} value={c}>{c}</SelectItem>
                       ))}
                     </SelectContent>

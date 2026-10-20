@@ -121,10 +121,10 @@ export function RateCardPicker({ open, onOpenChange, serviceType, onSelect }: Ra
                     </div>
                     <div className="shrink-0 text-right text-xs">
                       <p className="text-ds-foreground-muted">
-                        Cost <span className="font-mono text-ds-foreground">{formatCurrency(rc.costPrice, rc.currency || 'INR')}</span>
+                        Cost <span className="font-mono text-ds-foreground">{formatCurrency(rc.costPrice, rc.currency || undefined)}</span>
                       </p>
                       <p className="text-ds-foreground-muted">
-                        Sell <span className="font-mono text-ds-foreground">{formatCurrency(rateCardSelling(rc), rc.currency || 'INR')}</span>
+                        Sell <span className="font-mono text-ds-foreground">{formatCurrency(rateCardSelling(rc), rc.currency || undefined)}</span>
                       </p>
                     </div>
                     <Button size="sm" variant="outline" onClick={() => onSelect(rc)}>

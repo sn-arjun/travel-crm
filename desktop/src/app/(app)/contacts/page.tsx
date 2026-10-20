@@ -234,7 +234,7 @@ function ContactDetailPanel({ contactId, onDeleted }: { contactId: string; onDel
               <span className="min-w-0">
                 <span className="block truncate text-sm font-medium">{lead.title}</span>
                 <span className="block text-xs text-ds-foreground-muted">
-                  {lead.budget ? formatCurrency(lead.budget, lead.currency || 'INR') : 'No budget'}
+                  {lead.budget ? formatCurrency(lead.budget, lead.currency || undefined) : 'No budget'}
                 </span>
               </span>
               <Tag tone={leadTone(lead.status)}>{humanize(lead.status)}</Tag>

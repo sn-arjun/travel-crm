@@ -1,5 +1,7 @@
 'use client';
 
+import { getLocaleContext } from '@/lib/locale';
+import { currencyCodes } from '@/lib/locale-options';
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -187,7 +189,7 @@ export default function ItineraryBuilderPage() {
   const [titleError, setTitleError] = React.useState('');
   const [leadError, setLeadError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
-  const [currency, setCurrency] = React.useState('INR');
+  const [currency, setCurrency] = React.useState(() => getLocaleContext().currency);
 
   // Rate card picker
   const [pickerTarget, setPickerTarget] = React.useState<{ dayId: string; activityId: string; type: ActivityType } | null>(null);
@@ -830,7 +832,7 @@ export default function ItineraryBuilderPage() {
                 <Select value={currency} onValueChange={setCurrency}>
                   <SelectTrigger id="currency" className="h-8 text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {['INR', 'USD', 'EUR', 'GBP', 'AED', 'THB', 'SGD'].map((c) => (
+                    {currencyCodes(currency).map((c) => (
                       <SelectItem key={c} value={c}>{c}</SelectItem>
                     ))}
                   </SelectContent>
