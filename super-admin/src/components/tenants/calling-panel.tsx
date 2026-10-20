@@ -26,7 +26,27 @@ interface NumberRow {
   releaseReason: string | null;
 }
 
+interface FraudEvent {
+  id: string;
+  kind: string;
+  day: string;
+  blocking: boolean;
+  status: 'active' | 'lifted';
+  detail: Record<string, unknown> | null;
+  occurrences: number;
+  createdAt: string;
+  liftedBy: string | null;
+}
+
 interface CallingState {
+  usage?: {
+    month: string;
+    minutesCounted: number;
+    providerCost: number;
+    calls: number;
+    cursor: { at: string; lastRunAt: string | null; lastError: string | null; imported: number } | null;
+  };
+  fraud?: { events: FraudEvent[]; allowedCountries: string[]; dailyMinuteCeiling: number };
   plan: string;
   country: string;
   calling: { allowed: boolean; reason: string | null; message: string | null; position: string | null; kycRequired: boolean };
@@ -34,6 +54,14 @@ interface CallingState {
   documents: Doc[];
   numbers: NumberRow[];
 }
+
+const FRAUD_LABELS: Record<string, string> = {
+  daily_minutes: 'Daily minute ceiling reached - outbound calling is blocked',
+  spend_spike: 'Provider spend more than 3 times the 14-day average',
+  platform_ceiling: 'Platform-wide daily spend ceiling passed',
+  velocity: 'Call rate or concurrency limit hit',
+  blocked_destination: 'Calls to a blocked or not-allowed destination were refused',
+};
 
 const REASONS: Record<string, string> = {
   trial_not_allowed: 'Calling is not included in the free trial.',
@@ -52,6 +80,8 @@ export function CallingPanel({ tenantId }: { tenantId: string }) {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [countries, setCountries] = useState<string | null>(null);
+  const [ceiling, setCeiling] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [res, settings] = await Promise.all([fetch(`/api/tenants/${tenantId}/voip`), fetch('/api/voip/settings')]);
@@ -123,6 +153,85 @@ export function CallingPanel({ tenantId }: { tenantId: string }) {
               </Button>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Minutes and safety limits</CardTitle>
+          <CardDescription>
+            Minutes are counted from the provider call records (every 5 minutes, once per provider call). Limits stop pumped or runaway calling.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4 text-sm">
+          {state.usage && (
+            <p>
+              {state.usage.month}: {state.usage.minutesCounted} minutes counted over {state.usage.calls} provider calls, provider cost {state.usage.providerCost}.
+              {state.usage.cursor
+                ? ` Last import ${state.usage.cursor.lastRunAt ? new Date(state.usage.cursor.lastRunAt).toLocaleString() : 'never'}.`
+                : ' No import has run yet.'}
+              {state.usage.cursor?.lastError && <span className="text-destructive"> Last error: {state.usage.cursor.lastError}</span>}
+            </p>
+          )}
+          {state.fraud && (
+            <>
+              <div className="space-y-2">
+                <p className="font-medium">Limits that fired</p>
+                {state.fraud.events.length === 0 && <p className="text-muted-foreground">None.</p>}
+                {state.fraud.events.map((e) => (
+                  <div key={e.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-2">
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant={e.blocking ? 'destructive' : 'outline'}>{e.blocking ? 'blocked' : e.status}</Badge>
+                        <span>{FRAUD_LABELS[e.kind] ?? e.kind}</span>
+                        <span className="text-muted-foreground">{e.day} x{e.occurrences}</span>
+                      </div>
+                      {e.detail && <p className="font-mono text-xs text-muted-foreground">{JSON.stringify(e.detail)}</p>}
+                      {e.liftedBy && <p className="text-xs text-muted-foreground">Lifted by {e.liftedBy}</p>}
+                    </div>
+                    {e.status === 'active' && (
+                      <Button size="sm" variant="outline" disabled={busy} onClick={() => act(`/api/voip/fraud-events/${e.id}/lift`, 'POST', undefined, e.blocking ? 'Lift this block? The agency can place outbound calls again today.' : undefined)}>
+                        {e.blocking ? 'Lift block' : 'Dismiss'}
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="space-y-2">
+                <p className="font-medium">Countries the agency may call besides its own</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    className="max-w-xs"
+                    placeholder="e.g. FR, DE"
+                    value={countries ?? state.fraud.allowedCountries.join(', ')}
+                    onChange={(e) => setCountries(e.target.value)}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy || countries === null}
+                    onClick={() => act(`/api/tenants/${tenantId}/voip/countries`, 'PUT', { countries: (countries ?? '').split(/[\s,]+/).filter(Boolean) }).then(() => setCountries(null))}
+                  >
+                    Save countries
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="font-medium">Daily outbound minute ceiling</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input className="max-w-[8rem]" inputMode="numeric" value={ceiling ?? String(state.fraud.dailyMinuteCeiling)} onChange={(e) => setCeiling(e.target.value)} />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy || ceiling === null || !/^[0-9]+$/.test(ceiling) || Number(ceiling) < 1}
+                    onClick={() => act(`/api/tenants/${tenantId}/voip/limits`, 'PUT', { dailyMinutes: Number(ceiling) }).then(() => setCeiling(null))}
+                  >
+                    Save ceiling
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
