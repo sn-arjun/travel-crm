@@ -14,7 +14,7 @@ const navItems = [
   { href: '/subscriptions', label: 'Subscriptions', icon: CreditCard },
   { href: '/catalogue', label: 'Plans & Pricing', icon: Tags },
   { href: '/reports', label: 'Platform Reports', icon: BarChart3 },
-  { href: '/wordpress', label: 'WordPress (soon)', icon: Globe },
+  { href: '/wordpress', label: 'WordPress', icon: Globe },
   { href: '/audit-log', label: 'Audit Log', icon: ScrollText },
   { href: '/system-health', label: 'System Health', icon: Activity },
 ];

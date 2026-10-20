@@ -9,7 +9,7 @@ import { backendFetch, errorMessage } from '@/lib/backend';
  *   - a failure returns { error: message } with the backend's status.
  * Only the areas listed here are reachable; the middleware has already required a valid session.
  */
-const ALLOWED_AREAS = new Set(['tenants', 'dashboard', 'reports', 'subscriptions', 'system', 'audit-log', 'catalogue', 'plans', 'impersonation', 'voip']);
+const ALLOWED_AREAS = new Set(['tenants', 'dashboard', 'reports', 'subscriptions', 'system', 'audit-log', 'catalogue', 'plans', 'impersonation', 'voip', 'wordpress']);
 
 async function forward(request: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
   const { path } = await ctx.params;
