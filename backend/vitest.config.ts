@@ -80,6 +80,8 @@ export default async () => {
 
     return defineWorkersConfig({
         test: {
+            // No test may reach a real provider (SendGrid, Twilio, Meta, Stripe, Razorpay, AI, ...): see the file.
+            setupFiles: ['./test/setup/network-guard.ts'],
             poolOptions: {
                 workers: {
                     singleWorker: true,
