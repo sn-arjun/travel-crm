@@ -84,7 +84,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS number_documents_tenant_country_idx ON number_
 -- Every number the platform holds for an agency. A number belongs to exactly one agency (unique phone_number) and a purchase
 -- is claimed here BEFORE the provider is called, so a retry or a race never buys twice.
 --   status: pending (claimed, provider not yet bought), active, release_scheduled (goes at release_at), released
---   addon_id: the tenant_addons grant this number consumed (one grant backs one number-month)
+--   addon_id: the tenant_addons grant this number consumed (a grant of N units backs N numbers for its month; the claim
+--             statements in services/voip/numbers.ts check the count atomically)
 --   paid_through: the period key (yyyy-mm) the rental is paid for
 CREATE TABLE IF NOT EXISTS voip_number_registry (
   id TEXT PRIMARY KEY,
@@ -111,7 +112,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS voip_number_registry_phone_idx ON voip_number_
 --> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS voip_number_registry_idempotency_idx ON voip_number_registry (idempotency_key);
 --> statement-breakpoint
-CREATE UNIQUE INDEX IF NOT EXISTS voip_number_registry_addon_idx ON voip_number_registry (addon_id) WHERE addon_id IS NOT NULL AND status <> 'released';
+CREATE INDEX IF NOT EXISTS voip_number_registry_addon_idx ON voip_number_registry (addon_id) WHERE addon_id IS NOT NULL;
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS voip_number_registry_tenant_idx ON voip_number_registry (tenant_id, status);
 --> statement-breakpoint

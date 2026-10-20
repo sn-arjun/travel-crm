@@ -35,6 +35,7 @@ import {
   closeAccount,
   decisionFor,
   getAccount,
+  platformProvider,
   type VoipAccountRow,
 } from './subaccounts';
 
@@ -179,15 +180,14 @@ export async function numberPrice(env: Env, tenant: TenantRow, country: string):
   }
 }
 
-/** Unused number add-on grants for a month: tenant_addons rows for a phone_number product not already backing a live number. */
+/** Number add-on grants for a month that still have a unit free: units_granted minus the live numbers they back. */
 export async function freeGrants(env: Env, tenantId: string, periodKey: string): Promise<Array<{ id: string; product_key: string }>> {
   const rows = await env.MASTER_DB
     .prepare(
       `SELECT ta.id, ta.product_key FROM tenant_addons ta
          JOIN addon_products ap ON ap.key = ta.product_key
         WHERE ta.tenant_id = ? AND ap.channel = 'phone_number' AND ta.period_key = ?
-          AND ta.units_granted > 0
-          AND ta.id NOT IN (SELECT addon_id FROM voip_number_registry WHERE addon_id IS NOT NULL AND status <> 'released')
+          AND ta.units_granted > (SELECT COUNT(*) FROM voip_number_registry r WHERE r.addon_id = ta.id AND r.status <> 'released')
         ORDER BY ta.created_at, ta.id`,
     )
     .bind(tenantId, periodKey)
@@ -329,15 +329,19 @@ export async function purchaseNumber(
   }
   for (const grant of grants) {
     try {
-      await env.MASTER_DB
+      // One statement checks the grant still has a unit free and claims it, so two requests cannot both take the last one.
+      const claim = await env.MASTER_DB
         .prepare(
           `INSERT INTO voip_number_registry (id, tenant_id, phone_number, sub_account_id, country, status, idempotency_key, addon_id, monthly_price, currency, paid_through, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)`,
+           SELECT ?, ?, ?, ?, ?, 'pending', ?, ta.id, ?, ?, ?, ?, ? FROM tenant_addons ta
+            WHERE ta.id = ? AND ta.units_granted > (SELECT COUNT(*) FROM voip_number_registry r WHERE r.addon_id = ta.id AND r.status <> 'released')`,
         )
-        .bind(registryId, tenantId, phone, account.sub_account_id, country, key, grant.id, price.unitPrice, price.currency, period, now.toISOString(), now.toISOString())
+        .bind(registryId, tenantId, phone, account.sub_account_id, country, key, price.unitPrice, price.currency, period, now.toISOString(), now.toISOString(), grant.id)
         .run();
-      claimed = true;
-      break;
+      if ((claim.meta.changes ?? 0) > 0) {
+        claimed = true;
+        break;
+      }
     } catch (err) {
       if (!isUnique(err)) throw err;
       // Either the number is held (by this or another agency) or another request took this grant; tell them apart.
@@ -404,7 +408,10 @@ export async function releaseRegistered(env: Env, row: RegistryRow, reason: stri
   // 2. Release at the provider.
   const account = await getAccount(env, row.tenant_id);
   if (row.provider_number_id && account?.sub_account_id && account.credentials_enc) {
+    const woke = account.status === 'suspended';
     try {
+      // A suspended sub-account refuses its own credentials: wake it for the release and suspend it again after.
+      if (woke) await platformProvider(env).setSubAccountStatus(account.sub_account_id, 'active');
       const provider = await accountProvider(env, account);
       await provider.releaseNumber(row.provider_number_id);
     } catch (err) {
@@ -415,6 +422,8 @@ export async function releaseRegistered(env: Env, row: RegistryRow, reason: stri
           .run();
         throw err;
       }
+    } finally {
+      if (woke) await platformProvider(env).setSubAccountStatus(account.sub_account_id, 'suspended').catch(() => undefined);
     }
   } else if (row.provider_number_id) {
     // The sub-account is already closed: closing it released the numbers at the provider.
@@ -545,7 +554,10 @@ export async function runNumberLifecycle(env: Env, now: Date = new Date()): Prom
     const grants = await freeGrants(env, row.tenant_id, period);
     if (grants.length > 0) {
       const res = await env.MASTER_DB
-        .prepare(`UPDATE voip_number_registry SET addon_id = ?, paid_through = ?, updated_at = ? WHERE id = ? AND status = 'active'`)
+        .prepare(
+          `UPDATE voip_number_registry SET addon_id = ?1, paid_through = ?2, updated_at = ?3 WHERE id = ?4 AND status = 'active'
+             AND (SELECT units_granted FROM tenant_addons WHERE id = ?1) > (SELECT COUNT(*) FROM voip_number_registry r WHERE r.addon_id = ?1 AND r.status <> 'released')`,
+        )
         .bind(grants[0].id, period, now.toISOString(), row.id)
         .run();
       if ((res.meta.changes ?? 0) > 0) result.renewed++;
@@ -573,10 +585,14 @@ export async function runNumberLifecycle(env: Env, now: Date = new Date()): Prom
     const grants = await freeGrants(env, row.tenant_id, period);
     if (grants.length === 0) continue;
     await env.MASTER_DB
-      .prepare(`UPDATE voip_number_registry SET status = 'active', addon_id = ?, paid_through = ?, release_at = NULL, release_reason = NULL, updated_at = ? WHERE id = ? AND status = 'release_scheduled'`)
+      .prepare(
+        `UPDATE voip_number_registry SET status = 'active', addon_id = ?1, paid_through = ?2, release_at = NULL, release_reason = NULL, updated_at = ?3
+          WHERE id = ?4 AND status = 'release_scheduled'
+            AND (SELECT units_granted FROM tenant_addons WHERE id = ?1) > (SELECT COUNT(*) FROM voip_number_registry r WHERE r.addon_id = ?1 AND r.status <> 'released')`,
+      )
       .bind(grants[0].id, period, now.toISOString(), row.id)
-      .run();
-    result.restored++;
+      .run()
+      .then((r) => { if ((r.meta.changes ?? 0) > 0) result.restored++; });
   }
 
   // Grace over: release (routing was kept until now for unpaid, and was never cut for cancelled; release cuts it).

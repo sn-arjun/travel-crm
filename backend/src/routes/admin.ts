@@ -7,6 +7,7 @@ import { actorFrom, logAdminAction } from '../services/admin/audit';
 import { CredentialsKeyMissing, activeKeyId, decryptSecret, encryptSecret, hashApiKey, isEncrypted, keyIdOf } from '../utils/crypto-box';
 import { VOIP_SECRET_COLUMNS, voipSecretAad } from '../services/voip-provider';
 import tenantOpsRoutes from './admin-tenant-ops';
+import adminVoipRoutes from './admin-voip';
 import reportRoutes from './admin-reports';
 import { appUrl, emailFrom, supportEmail } from '../utils/app-urls';
 import { getCatalogue, activePriceFrom, type Catalogue, type CataloguePlan } from '../services/plans/catalogue';
@@ -41,6 +42,9 @@ app.post('/tenants/:id/addons', grantAddon);
 // Lifecycle, plan, features, caps, usage, impersonation, audit log (R111) and console dashboard/reports/subscriptions
 app.route('/', tenantOpsRoutes);
 app.route('/', reportRoutes);
+
+// Calling for agencies: sub-accounts, number documents, country policy, the trial switch (R304)
+app.route('/', adminVoipRoutes);
 
 // --- Credential maintenance (R108) ---
 

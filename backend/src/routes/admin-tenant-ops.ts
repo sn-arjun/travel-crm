@@ -16,6 +16,8 @@ import {
   seatLimit,
 } from '../services/plans/catalogue';
 import { signImpersonationToken, IMPERSONATION_TTL_SECONDS } from '../services/admin/impersonation';
+import { resumeAccount, suspendAccount } from '../services/voip/subaccounts';
+import { cancelScheduledRelease, scheduleTenantRelease } from '../services/voip/numbers';
 
 /**
  * Super admin tenant lifecycle and support tools (R111). Mounted by routes/admin.ts, so every route is
@@ -68,6 +70,17 @@ async function readBody<T extends z.ZodTypeAny>(c: Context<AppContext>, schema: 
 
 const now = () => new Date().toISOString();
 
+/** Calling follows the agency's lifecycle, but a provider hiccup must never block the lifecycle change itself: report it instead. */
+async function voipLifecycle(step: string, run: () => Promise<void>): Promise<'ok' | 'failed'> {
+  try {
+    await run();
+    return 'ok';
+  } catch (err) {
+    console.error(`[voip] ${step} sub-account follow-up failed:`, err instanceof Error ? err.message : err);
+    return 'failed';
+  }
+}
+
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
 app.post('/tenants/:id/suspend', async (c) => {
@@ -80,8 +93,9 @@ app.post('/tenants/:id/suspend', async (c) => {
   const body = (await readBody(c, reasonSchema)) ?? {};
   await env.MASTER_DB.prepare(`UPDATE tenants SET status = 'suspended', updated_at = ? WHERE id = ?`).bind(now(), tenant.id).run();
   await invalidateTenantCache(env, tenant.id);
-  await logAdminAction(env, actorFrom(c), 'tenant.suspend', tenant.id, { status: tenant.status }, { status: 'suspended' }, { extra: { reason: body.reason ?? null } });
-  return success(c, { id: tenant.id, status: 'suspended', previousStatus: tenant.status });
+  const voip = await voipLifecycle('suspend', () => suspendAccount(env, tenant.id).then(() => undefined));
+  await logAdminAction(env, actorFrom(c), 'tenant.suspend', tenant.id, { status: tenant.status }, { status: 'suspended' }, { extra: { reason: body.reason ?? null, voip } });
+  return success(c, { id: tenant.id, status: 'suspended', previousStatus: tenant.status, voip });
 });
 
 app.post('/tenants/:id/reactivate', async (c) => {
@@ -109,6 +123,11 @@ app.post('/tenants/:id/reactivate', async (c) => {
   }
   await env.MASTER_DB.batch(stmts);
   await invalidateTenantCache(env, tenant.id);
+  // Calling comes back with the agency: the sub-account resumes and a pending release of its numbers is called off.
+  const voip = await voipLifecycle('reactivate', async () => {
+    await resumeAccount(env, tenant.id);
+    await cancelScheduledRelease(env, tenant.id);
+  });
   await logAdminAction(
     env,
     actorFrom(c),
@@ -116,9 +135,9 @@ app.post('/tenants/:id/reactivate', async (c) => {
     tenant.id,
     { status: tenant.status, subscription: sub?.status ?? null },
     { status: target, subscription: sub?.status === 'cancelled' ? target : sub?.status ?? null },
-    { extra: { reason: body.reason ?? null } },
+    { extra: { reason: body.reason ?? null, voip } },
   );
-  return success(c, { id: tenant.id, status: target, previousStatus: tenant.status });
+  return success(c, { id: tenant.id, status: target, previousStatus: tenant.status, voip });
 });
 
 app.post('/tenants/:id/cancel', async (c) => {
@@ -137,8 +156,13 @@ app.post('/tenants/:id/cancel', async (c) => {
       .bind(now(), reason, now(), tenant.id),
   ]);
   await invalidateTenantCache(env, tenant.id);
-  await logAdminAction(env, actorFrom(c), 'tenant.cancel', tenant.id, { status: tenant.status }, { status: 'cancelled', subscriptions: 'cancelled', dataKept: true }, { extra: { reason } });
-  return success(c, { id: tenant.id, status: 'cancelled', previousStatus: tenant.status, dataKept: true });
+  // Calling stops now (sub-account suspended); the numbers are released after a grace period with a notice, then the sub-account closes.
+  const voip = await voipLifecycle('cancel', async () => {
+    await suspendAccount(env, tenant.id);
+    await scheduleTenantRelease(env, tenant.id);
+  });
+  await logAdminAction(env, actorFrom(c), 'tenant.cancel', tenant.id, { status: tenant.status }, { status: 'cancelled', subscriptions: 'cancelled', dataKept: true }, { extra: { reason, voip } });
+  return success(c, { id: tenant.id, status: 'cancelled', previousStatus: tenant.status, dataKept: true, voip });
 });
 
 const planSchema = z.object({ plan: z.string().trim().min(1).max(40), reason: z.string().trim().max(500).optional() });

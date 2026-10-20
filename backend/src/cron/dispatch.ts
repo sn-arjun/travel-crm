@@ -26,6 +26,7 @@ import { resetUsageCaps } from '../middleware/usage-cap';
 import { expireTrials } from '../services/plans/trial';
 import { refreshExchangeRates } from '../services/exchange-rate';
 import { runBillingDaily } from '../services/billing/subscriptions';
+import { runNumberLifecycle } from '../services/voip/numbers';
 import { checkFollowUpReminders } from '../services/follow-up-reminders';
 import { runScheduledAutomationsForTenant } from '../services/automation/schedule';
 import { processCampaignScheduler } from './campaign-scheduler';
@@ -251,6 +252,13 @@ export async function runPlatformDailyJobs(env: Env, now: Date): Promise<{ daily
     await runBillingDaily(env, now);
   } catch (err) {
     log('error', 'cron.billing_daily_failed', { error: err instanceof Error ? err.message : String(err) });
+    reportError(env, err, { source: 'scheduled' });
+  }
+  // Number rental (R304): renew rent from the month's add-on, schedule release of unpaid or cancelled agencies' numbers, release those whose grace ended.
+  try {
+    await runNumberLifecycle(env, now);
+  } catch (err) {
+    log('error', 'cron.number_lifecycle_failed', { error: err instanceof Error ? err.message : String(err) });
     reportError(env, err, { source: 'scheduled' });
   }
   // Daily exchange rates (R202); never throws, the last stored rates stay in use when the fetch fails.
