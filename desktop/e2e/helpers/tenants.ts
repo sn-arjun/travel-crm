@@ -37,7 +37,7 @@ export async function createAgency(
     slug: string;
     companyName?: string;
     ownerName?: string;
-    /** Defaults to an Indian agency. */
+    /** Provisioning defaults: an Indian agency. A spec for another market passes its own. */
     country?: string;
     currency?: string;
     timezone?: string;
