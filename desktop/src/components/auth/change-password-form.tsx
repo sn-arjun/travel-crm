@@ -7,6 +7,7 @@ import { Button, Input, Label } from '@/components/ui';
 import { authApi, passwordPolicyError, PASSWORD_MIN_LENGTH } from '@/lib/api/auth';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 interface ChangePasswordFormProps {
   /** Called after the password was changed and the session carries the fresh token. */
@@ -27,7 +28,8 @@ function Rule({ ok, children }: { ok: boolean; children: React.ReactNode }) {
 }
 
 /** Current / new / confirm password with a live strength hint. Shared by the forced first-login screen and Settings > Security. */
-export function ChangePasswordForm({ onDone, currentLabel = 'Current password', className }: ChangePasswordFormProps) {
+export function ChangePasswordForm({ onDone, currentLabel, className }: ChangePasswordFormProps) {
+  const t = useT();
   const [current, setCurrent] = React.useState('');
   const [next, setNext] = React.useState('');
   const [confirm, setConfirm] = React.useState('');
@@ -43,10 +45,10 @@ export function ChangePasswordForm({ onDone, currentLabel = 'Current password', 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
-    const policy = passwordPolicyError(next);
+    const policy = passwordPolicyError(next, t);
     if (policy) return setError(policy);
-    if (next !== confirm) return setError('The new passwords do not match');
-    if (next === current) return setError('Choose a password different from the current one');
+    if (next !== confirm) return setError(t('auth.changePassword.newMismatch'));
+    if (next === current) return setError(t('auth.changePassword.mustDiffer'));
 
     setBusy(true);
     try {
@@ -55,10 +57,10 @@ export function ChangePasswordForm({ onDone, currentLabel = 'Current password', 
       // The API revoked the other sessions and kept this one; swap in the token without the restriction.
       if (res.data?.accessToken && store.refreshToken) store.setTokens(res.data.accessToken, store.refreshToken);
       store.setMustChangePassword(false);
-      toast.success('Password changed');
+      toast.success(t('auth.changePassword.success'));
       onDone();
     } catch (err) {
-      const message = (err as { message?: string } | null)?.message || 'Could not change the password';
+      const message = (err as { message?: string } | null)?.message || t('auth.changePassword.failed');
       setError(message);
     } finally {
       setBusy(false);
@@ -74,7 +76,7 @@ export function ChangePasswordForm({ onDone, currentLabel = 'Current password', 
       )}
 
       <div className="space-y-ds-2">
-        <Label htmlFor="currentPassword">{currentLabel}</Label>
+        <Label htmlFor="currentPassword">{currentLabel ?? t('auth.changePassword.current')}</Label>
         <div className="relative">
           <Lock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ds-foreground-muted" aria-hidden="true" />
           <Input
@@ -90,7 +92,7 @@ export function ChangePasswordForm({ onDone, currentLabel = 'Current password', 
       </div>
 
       <div className="space-y-ds-2">
-        <Label htmlFor="newPassword">New password</Label>
+        <Label htmlFor="newPassword">{t('auth.fields.newPassword')}</Label>
         <div className="relative">
           <Lock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ds-foreground-muted" aria-hidden="true" />
           <Input
@@ -104,21 +106,21 @@ export function ChangePasswordForm({ onDone, currentLabel = 'Current password', 
           <button
             type="button"
             onClick={() => setShow((v) => !v)}
-            aria-label={show ? 'Hide passwords' : 'Show passwords'}
+            aria-label={show ? t('auth.changePassword.hide') : t('auth.changePassword.show')}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-ds-foreground-muted hover:text-ds-foreground"
           >
             {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
           </button>
         </div>
-        <ul className="space-y-ds-1" aria-label="Password requirements">
-          <Rule ok={longEnough}>At least {PASSWORD_MIN_LENGTH} characters</Rule>
-          <Rule ok={hasLetter}>One letter</Rule>
-          <Rule ok={hasDigit}>One digit</Rule>
+        <ul className="space-y-ds-1" aria-label={t('auth.changePassword.requirements')}>
+          <Rule ok={longEnough}>{t('auth.changePassword.ruleLength', { min: PASSWORD_MIN_LENGTH })}</Rule>
+          <Rule ok={hasLetter}>{t('auth.changePassword.ruleLetter')}</Rule>
+          <Rule ok={hasDigit}>{t('auth.changePassword.ruleDigit')}</Rule>
         </ul>
       </div>
 
       <div className="space-y-ds-2">
-        <Label htmlFor="confirmPassword">Confirm new password</Label>
+        <Label htmlFor="confirmPassword">{t('auth.changePassword.confirmNew')}</Label>
         <div className="relative">
           <Lock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ds-foreground-muted" aria-hidden="true" />
           <Input
@@ -130,12 +132,12 @@ export function ChangePasswordForm({ onDone, currentLabel = 'Current password', 
             className="pl-9"
           />
         </div>
-        {confirm.length > 0 && !matches && <p className="text-xs text-ds-danger">The passwords do not match</p>}
+        {confirm.length > 0 && !matches && <p className="text-xs text-ds-danger">{t('auth.changePassword.mismatch')}</p>}
       </div>
 
       <Button type="submit" className="w-full" disabled={busy || !current || !next || !confirm}>
         {busy && <Loader2 className="mr-2 size-4 animate-spin" />}
-        Change password
+        {t('auth.changePassword.submit')}
       </Button>
     </form>
   );

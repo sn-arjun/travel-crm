@@ -8,9 +8,11 @@ import { ChangePasswordForm } from '@/components/auth/change-password-form';
 import { useAuthStore } from '@/stores/auth-store';
 import { authApi } from '@/lib/api/auth';
 import { isOnboardingPending, onboardingApi } from '@/lib/api/onboarding';
+import { useT } from '@/lib/i18n';
 
 /** Shown after a first login with a temporary password: nothing else in the app is reachable until this is done. */
 export default function ChangePasswordPage() {
+  const t = useT();
   const router = useRouter();
   const isLoading = useAuthStore((s) => s.isLoading);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -60,17 +62,17 @@ export default function ChangePasswordPage() {
     <div className="space-y-ds-6">
       <div>
         <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-          Choose your password
+          {t('auth.changePassword.title')}
         </h2>
         <p className="mt-1 text-sm text-ds-foreground-muted">
-          You signed in with a temporary password. Set your own to continue.
+          {t('auth.changePassword.subtitle')}
         </p>
       </div>
 
-      <ChangePasswordForm currentLabel="Temporary password" onDone={() => void handleDone()} />
+      <ChangePasswordForm currentLabel={t('auth.changePassword.temporary')} onDone={() => void handleDone()} />
 
       <Button type="button" variant="ghost" className="w-full" onClick={() => void signOut()}>
-        Sign out
+        {t('shell.menu.signOut')}
       </Button>
     </div>
   );

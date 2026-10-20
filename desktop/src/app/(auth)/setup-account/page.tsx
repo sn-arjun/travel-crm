@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/auth-store';
 import { passwordPolicyError } from '@/lib/api/auth';
+import { useT } from '@/lib/i18n';
 import { client, type ApiResponse } from '@/lib/api/client';
 import type { User, Tenant } from '@travelcrm/shared';
 
@@ -34,6 +35,7 @@ export default function SetupAccountPageWrapper() {
 }
 
 function SetupAccountPage() {
+  const t = useT();
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams?.get('token') || '';
@@ -54,9 +56,9 @@ function SetupAccountPage() {
     if (/[A-Z]/.test(password)) score++;
     if (/[0-9]/.test(password)) score++;
     if (/[^A-Za-z0-9]/.test(password)) score++;
-    const labels = ['', 'Weak', 'Fair', 'Good', 'Strong'];
+    const labels = ['', t('auth.password.strength.weak'), t('auth.password.strength.fair'), t('auth.password.strength.good'), t('auth.password.strength.strong')];
     return { score, label: labels[score] || '' };
-  }, [password]);
+  }, [password, t]);
 
   if (!token) {
     return (
@@ -66,14 +68,14 @@ function SetupAccountPage() {
         </div>
         <div>
           <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-            Invalid Setup Link
+            {t('auth.setup.invalidTitle')}
           </h2>
           <p className="text-muted-foreground text-sm mt-2">
-            This setup link is missing a token. Please use the link from your invitation email.
+            {t('auth.setup.invalidBody')}
           </p>
         </div>
         <Button className="w-full" onClick={() => router.push('/login')}>
-          Go to Sign In
+          {t('auth.setup.goToSignIn')}
         </Button>
       </div>
     );
@@ -82,16 +84,16 @@ function SetupAccountPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) {
-      setError('Please enter your full name');
+      setError(t('auth.setup.nameRequired'));
       return;
     }
-    const policy = passwordPolicyError(password);
+    const policy = passwordPolicyError(password, t);
     if (policy) {
       setError(policy);
       return;
     }
     if (password !== confirmPassword) {
-      setError('Passwords do not match');
+      setError(t('auth.password.mismatch'));
       return;
     }
 
@@ -107,11 +109,11 @@ function SetupAccountPage() {
         const { accessToken, refreshToken, user, tenant } = response.data;
         setAuth({ accessToken, refreshToken, user, tenant });
         setSuccess(true);
-        toast.success('Account created successfully!');
+        toast.success(t('auth.setup.success'));
         setTimeout(() => router.push('/'), 2000);
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to set up account. The invitation may have expired.';
+      const msg = err instanceof Error ? err.message : t('auth.setup.failed');
       setError(msg);
       toast.error(msg);
     } finally {
@@ -127,10 +129,10 @@ function SetupAccountPage() {
         </div>
         <div>
           <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-            Welcome aboard!
+            {t('auth.setup.doneTitle')}
           </h2>
           <p className="text-muted-foreground text-sm mt-2">
-            Your account has been created. Redirecting to dashboard...
+            {t('auth.setup.doneBody')}
           </p>
         </div>
       </div>
@@ -141,10 +143,10 @@ function SetupAccountPage() {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-          Set up your account
+          {t('auth.setup.title')}
         </h2>
         <p className="text-muted-foreground text-sm mt-1">
-          Complete your profile to get started with TravelCRM Pro
+          {t('auth.setup.subtitle')}
         </p>
       </div>
 
@@ -156,13 +158,13 @@ function SetupAccountPage() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="name">Full name</Label>
+          <Label htmlFor="name">{t('auth.fields.fullName')}</Label>
           <div className="relative">
             <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               id="name"
               type="text"
-              placeholder="John Doe"
+              placeholder={t('auth.setup.namePlaceholder')}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="pl-9"
@@ -173,13 +175,13 @@ function SetupAccountPage() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="password">Password</Label>
+          <Label htmlFor="password">{t('auth.fields.password')}</Label>
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               id="password"
               type={showPassword ? 'text' : 'password'}
-              placeholder="At least 12 characters"
+              placeholder={t('auth.password.placeholder')}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="pl-9 pr-10"
@@ -217,13 +219,13 @@ function SetupAccountPage() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="confirmPassword">Confirm password</Label>
+          <Label htmlFor="confirmPassword">{t('auth.fields.confirmPassword')}</Label>
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               id="confirmPassword"
               type={showPassword ? 'text' : 'password'}
-              placeholder="Re-enter your password"
+              placeholder={t('auth.password.reenter')}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               className="pl-9"
@@ -234,14 +236,14 @@ function SetupAccountPage() {
 
         <Button type="submit" className="w-full" disabled={isLoading}>
           {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Create Account
+          {t('auth.setup.submit')}
         </Button>
       </form>
 
       <div className="text-center text-sm text-muted-foreground">
-        Already have an account?{' '}
+        {t('auth.setup.haveAccount')}{' '}
         <a href="/login" className="text-primary hover:underline">
-          Sign in
+          {t('auth.login.signIn')}
         </a>
       </div>
     </div>

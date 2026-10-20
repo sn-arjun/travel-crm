@@ -7,9 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { getApiBaseUrl } from '@/lib/api/config';
+import { useT } from '@/lib/i18n';
 
 /** "Advanced > Server address": only in the packaged desktop app. Saving relaunches the app. */
 export function ServerAddress() {
+  const t = useT();
   const [available, setAvailable] = React.useState(false);
   const [open, setOpen] = React.useState(false);
   const [value, setValue] = React.useState('');
@@ -30,12 +32,12 @@ export function ServerAddress() {
     try {
       const result = await window.electronAPI?.setApiUrl(value.trim());
       if (result && !result.ok) {
-        toast.error(result.error ?? 'Could not save the server address');
+        toast.error(result.error ?? t('auth.serverAddress.saveFailed'));
         setSaving(false);
       }
       // On success the app relaunches.
     } catch {
-      toast.error('Could not save the server address');
+      toast.error(t('auth.serverAddress.saveFailed'));
       setSaving(false);
     }
   }
@@ -49,11 +51,11 @@ export function ServerAddress() {
         className="flex items-center gap-ds-1 text-ds-foreground-muted hover:text-ds-foreground"
       >
         <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
-        Advanced
+        {t('auth.serverAddress.advanced')}
       </button>
       {open && (
         <form onSubmit={save} className="mt-ds-2 space-y-ds-2">
-          <Label htmlFor="server-address">Server address</Label>
+          <Label htmlFor="server-address">{t('auth.serverAddress.label')}</Label>
           <Input
             id="server-address"
             type="url"
@@ -63,10 +65,10 @@ export function ServerAddress() {
             required
           />
           <p className="text-xs text-ds-foreground-muted">
-            The API address of your TravelCRM server, ending in /api/v1. The app restarts after saving.
+            {t('auth.serverAddress.help')}
           </p>
           <Button type="submit" size="sm" disabled={saving}>
-            Save and restart
+            {t('auth.serverAddress.save')}
           </Button>
         </form>
       )}

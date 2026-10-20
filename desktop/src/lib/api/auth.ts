@@ -1,6 +1,7 @@
 import { client, type ApiResponse } from './client';
 import { API_ENDPOINTS } from './config';
 import type { User, Tenant } from '@travelcrm/shared';
+import { tEn, type TranslateFn } from '@/lib/i18n';
 
 export interface LoginRequest {
   email: string;
@@ -101,10 +102,10 @@ export interface ChangePasswordResponse {
 
 /** The API's rule, minus the common-password list it also checks: 12+ characters with a letter and a digit. */
 export const PASSWORD_MIN_LENGTH = 12;
-export function passwordPolicyError(password: string): string | null {
-  if (password.length < PASSWORD_MIN_LENGTH) return `Use at least ${PASSWORD_MIN_LENGTH} characters`;
-  if (!/[A-Za-z]/.test(password)) return 'Include at least one letter';
-  if (!/[0-9]/.test(password)) return 'Include at least one digit';
+export function passwordPolicyError(password: string, t: TranslateFn = tEn): string | null {
+  if (password.length < PASSWORD_MIN_LENGTH) return t('auth.password.minLength', { min: PASSWORD_MIN_LENGTH });
+  if (!/[A-Za-z]/.test(password)) return t('auth.password.needLetter');
+  if (!/[0-9]/.test(password)) return t('auth.password.needDigit');
   return null;
 }
 

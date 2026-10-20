@@ -8,8 +8,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { authApi, type ForgotPasswordRequest } from '@/lib/api/auth';
+import { useT } from '@/lib/i18n';
 
 export default function ForgotPasswordPage() {
+  const t = useT();
   const [email, setEmail] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(false);
   const [sent, setSent] = React.useState(false);
@@ -21,7 +23,7 @@ export default function ForgotPasswordPage() {
     setError('');
     try {
       if (!email) {
-        setError('Please enter your email address');
+        setError(t('auth.login.emailRequired'));
         setIsLoading(false);
         return;
       }
@@ -30,12 +32,12 @@ export default function ForgotPasswordPage() {
       await authApi.forgotPassword(request);
 
       setSent(true);
-      toast.success('Reset link sent to your email');
+      toast.success(t('auth.forgot.sent'));
     } catch (error) {
       const errorMessage =
         error instanceof Error
           ? error.message
-          : 'Failed to send reset link. Please try again.';
+          : t('auth.forgot.failed');
       setError(errorMessage);
       toast.error(errorMessage);
     } finally {
@@ -50,18 +52,18 @@ export default function ForgotPasswordPage() {
           <CheckCircle2 className="h-8 w-8 text-ds-success" />
         </div>
         <div>
-          <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Check your email</h2>
+          <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>{t('auth.forgot.checkEmailTitle')}</h2>
           <p className="text-muted-foreground text-sm mt-2">
-            We sent a password reset link to<br />
+            {t('auth.forgot.checkEmailBody')}<br />
             <span className="font-medium text-foreground">{email}</span>
           </p>
         </div>
         <div className="space-y-3">
           <Button variant="outline" className="w-full" onClick={() => setSent(false)}>
-            Try a different email
+            {t('auth.forgot.tryDifferent')}
           </Button>
           <Link href="/login" className="block text-sm text-primary hover:underline">
-            Back to sign in
+            {t('auth.common.backToSignIn')}
           </Link>
         </div>
       </div>
@@ -71,13 +73,13 @@ export default function ForgotPasswordPage() {
   return (
     <div className="space-y-6">
       <Link href="/login" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-4 w-4" /> Back to sign in
+        <ArrowLeft className="h-4 w-4" /> {t('auth.common.backToSignIn')}
       </Link>
 
       <div>
-        <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Forgot password?</h2>
+        <h2 className="text-2xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>{t('auth.login.forgotPassword')}</h2>
         <p className="text-muted-foreground text-sm mt-1">
-          Enter your email and we'll send you a reset link
+          {t('auth.forgot.subtitle')}
         </p>
       </div>
 
@@ -89,7 +91,7 @@ export default function ForgotPasswordPage() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="email">Email address</Label>
+          <Label htmlFor="email">{t('auth.fields.email')}</Label>
           <div className="relative">
             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -107,7 +109,7 @@ export default function ForgotPasswordPage() {
 
         <Button type="submit" className="w-full" disabled={isLoading}>
           {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Send reset link
+          {t('auth.forgot.submit')}
         </Button>
       </form>
     </div>
