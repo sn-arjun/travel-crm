@@ -271,7 +271,7 @@ describe('cron fan-out through TENANT_JOBS_QUEUE', () => {
     await (worker as any).scheduled({ cron: '*/5 * * * *', scheduledTime: Date.UTC(2026, 9, 20, 9, 5) }, e, ctx);
     await waitOnExecutionContext(ctx);
     expect(await count(testEnv.MASTER_DB, `SELECT COUNT(*) n FROM cron_job_runs WHERE period_key = ?`, 'tick:2026-10-20T09:05Z')).toBeGreaterThanOrEqual(3);
-  });
+  }, 30_000); // runs every scheduled job for every agency inline; under a full parallel run this can pass 5 s
 
   it('a scheduled campaign becomes pending recipients plus one CAMPAIGN_QUEUE message, once', async () => {
     const db = testEnv[POOL.A] as D1Database;
