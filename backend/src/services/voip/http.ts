@@ -15,7 +15,7 @@ export function voipErrorHandler(err: Error, c: Context): Response {
   if (err instanceof VoipAccountError) return body(c, err.status, err.message, err.code, err.details);
   if (err instanceof BillingError) return body(c, err.status, err.message, err.code);
   if (err instanceof VoipProviderError) {
-    if (err.kind === 'unavailable') return body(c, 409, 'That number is not available. Search again.', 'NUMBER_UNAVAILABLE');
+    if (err.kind === 'unavailable' && err.code !== 'SEARCH_UNAVAILABLE') return body(c, 409, 'That number is not available. Search again.', 'NUMBER_UNAVAILABLE');
     if (err.kind === 'invalid_request') return body(c, 400, err.message, 'PROVIDER_REJECTED');
     return body(c, 502, err.message || 'The phone provider did not respond.', 'PROVIDER_ERROR');
   }
