@@ -5,6 +5,7 @@ import { refundUsage, tryMeter } from '../services/metering/meter';
 import { marketingBlockedReason, unsubscribeUrl, unsubscribeFooterText, unsubscribeFooterHtml } from '../services/privacy/consent';
 import { unsubscribeHeaders } from '../services/sendgrid';
 import { isEmailUndeliverable, resolveReplyTo } from '../services/mail/delivery';
+import { inboundDomain } from '../services/mail/reply-token';
 
 export interface CampaignJob {
   campaignId: string;
@@ -150,7 +151,7 @@ async function processCampaignBatch(job: CampaignJob, env: Env): Promise<void> {
             (campaign as any).email_subject || 'Campaign',
             (campaign as any).message_body || '',
             unsubUrl,
-            replyTo
+            inboundDomain(env) ? await resolveReplyTo(env, dbBinding, tenantId, (campaign as any).created_by, { contactId: (recipient as any).contact_id }) : replyTo
           );
           break;
         }

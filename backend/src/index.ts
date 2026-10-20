@@ -14,6 +14,7 @@ import { checkMasterDb, runDeepHealth } from './services/health';
 import { authenticateSuperAdmin } from './middleware/require-super-admin';
 import { timingSafeEqual } from './middleware/provider-signature';
 import { RealtimeRoom } from './durable-objects/realtime';
+import { handleInboundEmail } from './services/inbound/email-routing';
 import { authMiddleware } from './middleware/auth';
 import { tenantMiddleware } from './middleware/tenant';
 import { requireFeature } from './middleware/feature-gate';
@@ -416,6 +417,18 @@ export default {
         throw err;
       }),
     );
+  },
+  // R131: mail received by Cloudflare Email Routing (reply+<token>@<inbound domain> and agency receiving addresses).
+  async email(message: ForwardableEmailMessage, env: Env, ctx: ExecutionContext) {
+    try {
+      const outcome = await handleInboundEmail(message, env, ctx);
+      log('info', 'email.inbound', { status: outcome.status, reason: outcome.reason });
+    } catch (err) {
+      reportError(env, err, { source: 'email' });
+      log('error', 'email.inbound.failed', {});
+      // A temporary failure: Email Routing reports it to the sender, who can retry.
+      message.setReject('Temporary failure, please try again later');
+    }
   },
   async queue(batch: MessageBatch<QueueMessage>, env: Env) {
     try {

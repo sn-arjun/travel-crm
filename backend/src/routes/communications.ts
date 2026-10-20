@@ -29,6 +29,7 @@ import {
 } from '../services/metering/meter';
 import { whatsappTemplateJob } from '../services/messaging/whatsapp-sender';
 import { resolveReplyTo } from '../services/mail/delivery';
+import { inboundDomain } from '../services/mail/reply-token';
 
 /**
  * Take one unit of the agency's allowance for an outbound message before it is queued (R110).
@@ -49,8 +50,8 @@ async function meterOutbound(
 }
 
 /** R128: where a customer's reply to a Communication Hub email goes: the agency's receiving address, else the sending user. */
-async function hubReplyTo(c: any): Promise<string | undefined> {
-  return resolveReplyTo(c.env, c.get('tenantDb'), c.get('tenantId'), c.get('userId'));
+async function hubReplyTo(c: any, contactId?: string | null, leadId?: string | null): Promise<string | undefined> {
+  return resolveReplyTo(c.env, c.get('tenantDb'), c.get('tenantId'), c.get('userId'), { contactId, leadId });
 }
 
 const communicationRoutes = new Hono<AppContext>();
@@ -176,7 +177,7 @@ communicationRoutes.post(
         type: body.channel === 'email' ? 'email' : 'sms',
         data: {
           to: destination,
-          ...(body.channel === 'email' && { subject: 'Message', html: body.message, replyTo: await hubReplyTo(c) }),
+          ...(body.channel === 'email' && { subject: 'Message', html: body.message, replyTo: await hubReplyTo(c, body.contact_id, body.lead_id) }),
           ...(body.channel !== 'email' && { body: body.message }),
           messageLogId: messageId,
           contactId: body.contact_id,
@@ -296,7 +297,7 @@ communicationRoutes.post(
         type: template.channel === 'email' ? 'email' : 'sms',
         data: {
           to: destination,
-          ...(template.channel === 'email' && { subject: subject || 'Message', html: content, replyTo: await hubReplyTo(c) }),
+          ...(template.channel === 'email' && { subject: subject || 'Message', html: content, replyTo: await hubReplyTo(c, body.contact_id) }),
           ...(template.channel !== 'email' && { body: content }),
           messageLogId: messageId,
           contactId: body.contact_id,
@@ -569,7 +570,7 @@ communicationRoutes.post(
           type: body.channel === 'email' ? 'email' : 'sms',
           data: {
             to: destination,
-            ...(body.channel === 'email' && { subject: 'Message', html: content, replyTo: bulkReplyTo }),
+            ...(body.channel === 'email' && { subject: 'Message', html: content, replyTo: inboundDomain(c.env) ? await hubReplyTo(c, contact.id) : bulkReplyTo }),
             ...(body.channel !== 'email' && { body: content }),
             messageLogId: messageId,
             contactId: contact.id,

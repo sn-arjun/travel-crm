@@ -1,5 +1,6 @@
 import type { Env } from '../../types';
 import { generateId } from '../../utils/uuid';
+import { replyAddressFor } from './reply-token';
 
 /**
  * R128: the pieces every agency email shares.
@@ -22,7 +23,18 @@ export async function isEmailUndeliverable(tenantDb: D1Database, email: string |
  * Where a customer's reply should go: the agency's own receiving address when it has one (replies then land in the
  * inbox), otherwise the email of the user who sent the message. Undefined when neither is known.
  */
-export async function resolveReplyTo(env: Env, tenantDb: D1Database, tenantId: string, userId?: string | null): Promise<string | undefined> {
+export async function resolveReplyTo(
+  env: Env,
+  tenantDb: D1Database,
+  tenantId: string,
+  userId?: string | null,
+  /** R131: the customer thread; with EMAIL_INBOUND_DOMAIN set the reply goes to a per-thread token address. */
+  thread?: { contactId?: string | null; leadId?: string | null },
+): Promise<string | undefined> {
+  if (thread?.contactId) {
+    const tokenAddress = await replyAddressFor(env, { tenantId, contactId: thread.contactId, leadId: thread.leadId });
+    if (tokenAddress) return tokenAddress;
+  }
   try {
     const agency = await env.MASTER_DB
       .prepare("SELECT address FROM tenant_channel_addresses WHERE tenant_id = ? AND channel = 'email' AND is_active = 1 ORDER BY created_at, id LIMIT 1")
@@ -66,7 +78,7 @@ export async function queueAgencyEmail(
 ): Promise<QueueAgencyEmailResult> {
   if (await isEmailUndeliverable(tenantDb, mail.to)) return { queued: false, reason: 'undeliverable' };
 
-  const replyTo = await resolveReplyTo(env, tenantDb, ctx.tenantId, ctx.userId);
+  const replyTo = await resolveReplyTo(env, tenantDb, ctx.tenantId, ctx.userId, { contactId: mail.contactId });
 
   let logId: string | undefined;
   if (mail.contactId) {

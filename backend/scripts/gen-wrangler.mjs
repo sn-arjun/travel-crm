@@ -13,7 +13,8 @@
  * Registry JSON: [{ tenantId, binding, databaseName, databaseId, status }]
  * Env vars (non-local): CF_D1_MASTER_ID, CF_KV_CACHE_ID, CF_KV_SESSIONS_ID, CF_KV_REPORT_CACHE_ID,
  *   Optional plain settings written to [vars]: ALLOW_LOOPBACK_ORIGINS (default true), CREDENTIALS_ACTIVE_KEY_ID (k1),
- *   EMAIL_FROM_NAME, PLATFORM_SUPPORT_EMAIL, QUOTES_URL. Also written: API_PUBLIC_URL, TENANT_PROVISIONER=cloudflare,
+ *   EMAIL_FROM_NAME, PLATFORM_SUPPORT_EMAIL, QUOTES_URL, EMAIL_INBOUND_DOMAIN (R131: domain for reply+<token>@ addresses).
+ *   EMAIL_SYSTEM_PROVIDER (sendgrid | cloudflare, default sendgrid; mock for local only) is always written. Also written: API_PUBLIC_URL, TENANT_PROVISIONER=cloudflare,
  *   CF_WORKER_SCRIPT_NAME.
  *   DOMAIN (the one place the public domain is set; APP_URL, API_URL, CORS_ORIGINS and EMAIL_FROM default
  *   from it), and the explicit overrides APP_URL, API_URL, CORS_ORIGINS, EMAIL_FROM.
@@ -153,6 +154,14 @@ function replaceKvIds(baseText, env) {
   );
 }
 
+/** R131: provider of the platform's own system mail. 'sendgrid' unless EMAIL_SYSTEM_PROVIDER says otherwise; 'mock' is for local stacks only. */
+export function emailSystemProvider(env) {
+  const v = (process.env.EMAIL_SYSTEM_PROVIDER || 'sendgrid').trim().toLowerCase();
+  if (!['sendgrid', 'cloudflare', 'mock'].includes(v)) die(`EMAIL_SYSTEM_PROVIDER must be sendgrid, cloudflare or mock (got ${v}).`);
+  if (v === 'mock' && env !== 'local') die('EMAIL_SYSTEM_PROVIDER=mock is for local stacks only.');
+  return v;
+}
+
 /** Build the full TOML text. `tenantSchemaMaster` points MASTER_DB at the tenant migrations (local single mode). */
 export function buildConfig({ env, registry, pool, single, tenantSchemaMaster = false }) {
   const base = readFileSync(path.join(backendDir, 'wrangler.base.toml'), 'utf8');
@@ -203,6 +212,8 @@ export function buildConfig({ env, registry, pool, single, tenantSchemaMaster = 
     `CORS_ORIGINS = ${q(process.env.CORS_ORIGINS || (env === "local" ? appUrl : `${appUrl},https://${domain},https://www.${domain}`))}`,
     `EMAIL_FROM = ${q(process.env.EMAIL_FROM || (env === 'local' ? 'noreply@travelcrm.example' : `noreply@${domain}`))}`,
   ];
+  vars.push(`EMAIL_SYSTEM_PROVIDER = ${q(emailSystemProvider(env))}`);
+  if (process.env.EMAIL_INBOUND_DOMAIN) vars.push(`EMAIL_INBOUND_DOMAIN = ${q(process.env.EMAIL_INBOUND_DOMAIN.trim().toLowerCase())}`);
   if (env !== 'local') {
     // Plain settings live here, not in secrets (scripts/push-secrets.sh pushes real secrets only).
     const workerName = env === 'production' ? 'travelcrm-api' : `travelcrm-api-${env}`;

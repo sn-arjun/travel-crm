@@ -12,6 +12,7 @@ import { broadcastToTenant } from '../utils/realtime';
 import { AllowanceExhausted, meterUsage } from '../services/metering/meter';
 import { marketingBlockedReason, unsubscribeUrl } from '../services/privacy/consent';
 import { resolveReplyTo } from '../services/mail/delivery';
+import { inboundDomain } from '../services/mail/reply-token';
 
 const campaignRoutes = new Hono<AppContext>();
 
@@ -310,7 +311,7 @@ campaignRoutes.post(
               templateData: { contactName: contact.name },
               unsubscribeUrl: await unsubscribeUrl(env, c.get('tenantId'), contactId, 'email', new URL(c.req.url).origin),
               from: undefined,
-              replyTo,
+              replyTo: inboundDomain(env) ? await resolveReplyTo(env, tenantDb, c.get('tenantId'), userId, { contactId }) : replyTo,
               emailLogId: logId,
               tenantId: c.get('tenantId'),
               metered: true,

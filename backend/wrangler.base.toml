@@ -30,6 +30,12 @@ id = "a0000000-0000-0000-0000-000000000003"
 binding = "REPORT_CACHE"
 id = "a0000000-0000-0000-0000-000000000004"
 
+# --- Email sending (Cloudflare Email Service, public beta) ---
+# Platform system mail only, and only when EMAIL_SYSTEM_PROVIDER=cloudflare (default sendgrid). Never add remote = true:
+# a remote binding sends real mail from wrangler dev. Agency mail and marketing never use this binding.
+[[send_email]]
+name = "EMAIL"
+
 # --- Rate limiting (Workers Rate Limiting binding; needs wrangler >= 4.36) ---
 # Counted at the edge, no KV traffic. period must be 10 or 60 seconds. Limits are per Cloudflare location and
 # eventually consistent. namespace_id is a positive integer string, unique in the account.
