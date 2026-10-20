@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleNumber } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { z } from 'zod';
@@ -26,7 +28,7 @@ interface LineItem {
 let lineIdCounter = 1;
 
 function formatCurrency(amount: number) {
-  return formatMoney(amount, 'INR');
+  return formatMoney(amount);
 }
 
 const schema = z.object({
@@ -150,7 +152,7 @@ export default function NewDebitNotePage() {
                       <SelectItem value="28">28%</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Input value={(item.quantity * item.rate).toLocaleString('en-IN')} readOnly className="bg-ds-surface-sunken text-right font-medium" />
+                  <Input value={formatLocaleNumber(item.quantity * item.rate)} readOnly className="bg-ds-surface-sunken text-right font-medium" />
                   <Button type="button" variant="ghost" size="icon-sm" aria-label="Remove item" onClick={() => removeLineItem(item.id)} className="text-ds-foreground-muted hover:text-ds-danger">
                     <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                   </Button>

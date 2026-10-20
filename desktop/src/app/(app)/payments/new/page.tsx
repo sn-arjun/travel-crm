@@ -1,5 +1,6 @@
 'use client';
 
+import { getLocaleContext } from '@/lib/locale';
 import * as React from 'react';
 import { z } from 'zod';
 import { useRouter } from 'next/navigation';
@@ -108,7 +109,7 @@ export default function NewPaymentPage() {
                 <CurrencyInput
                   value={form.watch('amount')}
                   onChange={(v) => form.setValue('amount', v as number, { shouldDirty: true, shouldValidate: true })}
-                  currency={selectedInvoice?.currency ?? 'INR'}
+                  currency={selectedInvoice?.currency ?? getLocaleContext().currency}
                 />
               </FormRow>
               <FormRow name="paymentDate" label="Payment date" required>

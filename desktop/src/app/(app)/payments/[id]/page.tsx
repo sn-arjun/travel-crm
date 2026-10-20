@@ -66,7 +66,7 @@ export default function PaymentDetailPage() {
     );
   }
 
-  const money = (amount: number) => formatCurrency(amount, payment.currency ?? 'INR');
+  const money = (amount: number) => formatCurrency(amount, payment.currency ?? undefined);
   const received = formatDisplayDate(payment.paidAt ?? payment.date, 'long');
   const clientName = payment.clientName ?? contact?.name ?? null;
 

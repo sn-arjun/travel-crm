@@ -13,7 +13,7 @@ import { formatDisplayDate, toLocalDateString } from '@/lib/dates';
 import { formatCurrency as formatMoney } from '@/lib/utils';
 
 function formatCurrency(amount: number) {
-  return formatMoney(amount, 'INR');
+  return formatMoney(amount);
 }
 
 function statusTone(status: string): 'neutral' | 'primary' | 'success' | 'warning' | 'danger' {

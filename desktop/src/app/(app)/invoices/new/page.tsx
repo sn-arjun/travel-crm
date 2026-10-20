@@ -1,5 +1,7 @@
 'use client';
 
+import { getLocaleContext } from '@/lib/locale';
+import { currencyCodes, currencyLabel, currencySymbol } from '@/lib/locale-options';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { z } from 'zod';
@@ -70,7 +72,7 @@ export default function NewInvoicePage() {
         invoiceType: 'tax_invoice',
         issueDate: new Date(),
         dueDate: new Date(Date.now() + 30 * 86400000),
-        currency: 'INR',
+        currency: getLocaleContext().currency,
         discountType: 'percentage',
         discountValue: undefined,
         gstRate: '18',
@@ -190,12 +192,9 @@ export default function NewInvoicePage() {
                   <Select value={currency} onValueChange={(v) => form.setValue('currency', v, { shouldDirty: true })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="INR">INR ({'₹'})</SelectItem>
-                      <SelectItem value="USD">USD ($)</SelectItem>
-                      <SelectItem value="EUR">EUR ({'€'})</SelectItem>
-                      <SelectItem value="GBP">GBP ({'£'})</SelectItem>
-                      <SelectItem value="AED">AED ({'د.إ'})</SelectItem>
-                      <SelectItem value="THB">THB ({'฿'})</SelectItem>
+                      {currencyCodes(currency).map((c) => (
+                        <SelectItem key={c} value={c}>{currencyLabel(c)}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </FormRow>
@@ -227,7 +226,7 @@ export default function NewInvoicePage() {
                         <SelectTrigger className="w-20 h-8 text-xs" aria-label="Discount type"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="percentage">%</SelectItem>
-                          <SelectItem value="fixed">{'₹'}</SelectItem>
+                          <SelectItem value="fixed">{currencySymbol(currency)}</SelectItem>
                         </SelectContent>
                       </Select>
                       <CurrencyInput

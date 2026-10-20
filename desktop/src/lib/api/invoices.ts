@@ -1,3 +1,4 @@
+import { getLocaleContext } from '@/lib/locale';
 import { client, type ApiResponse, type PaginatedResponse } from './client';
 import { unwrapEntity } from './envelope';
 import { API_ENDPOINTS } from './config';
@@ -250,7 +251,7 @@ export function normalizeInvoiceDetail(input: unknown): InvoiceDetail | null {
     invoiceNumber: String(pick(raw, 'invoiceNumber', 'invoice_number') ?? ''),
     type: String(raw.type ?? 'tax_invoice'),
     status: String(raw.status ?? 'draft'),
-    currency: String(raw.currency ?? 'INR'),
+    currency: String(raw.currency ?? getLocaleContext().currency),
     contactId: String(pick(raw, 'contactId', 'contact_id') ?? ''),
     contactName: String(pick(raw, 'contactName', 'contact_name') ?? ''),
     contactEmail: strOrNull(pick(raw, 'contactEmail', 'contact_email')),

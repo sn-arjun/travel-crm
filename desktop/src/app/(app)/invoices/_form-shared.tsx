@@ -1,5 +1,7 @@
 'use client';
 
+
+import { formatLocaleNumber } from '@/lib/format';
 import * as React from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import {
@@ -265,7 +267,7 @@ export function LineItemsEditor({ items, currency, priceErrors, onChange, onAdd,
           </div>
           <Input
             aria-label="Line amount"
-            value={(item.quantity * item.unitPrice).toLocaleString('en-IN')}
+            value={formatLocaleNumber(item.quantity * item.unitPrice)}
             readOnly
             className="bg-ds-surface-sunken text-right font-medium"
           />

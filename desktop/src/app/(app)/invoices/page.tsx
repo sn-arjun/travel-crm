@@ -1,5 +1,6 @@
 'use client';
 
+import { formatWholeCurrency } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, Pencil, Trash2, Plus, Send, Download, DollarSign } from 'lucide-react';
@@ -12,10 +13,11 @@ import { invoicesApi, normalizeInvoiceDetail, type InvoiceDetail } from '@/lib/a
 import { exportsApi } from '@/lib/api/exports';
 import { toast } from 'sonner';
 import { unwrapList } from '@/lib/api/envelope';
+
 import { formatDisplayDate, toLocalDateString } from '@/lib/dates';
 
-function formatCurrency(amount: number, currency = 'INR') {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount);
+function formatCurrency(amount: number, currency?: string | null) {
+  return formatWholeCurrency(amount, currency || undefined);
 }
 
 interface ExportJob {

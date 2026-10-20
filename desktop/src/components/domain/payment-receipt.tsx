@@ -5,6 +5,7 @@ import { Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { formatDisplayDate } from '@/lib/dates';
+import { formatCurrency as formatMoney } from '@/lib/utils';
 
 interface PaymentReceiptProps {
   payment: {
@@ -24,12 +25,8 @@ interface PaymentReceiptProps {
   onClose: () => void;
 }
 
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 2,
-  }).format(amount);
+function formatCurrency(amount: number, currency?: string | null) {
+  return formatMoney(amount, currency || undefined);
 }
 
 function numberToWords(num: number): string {

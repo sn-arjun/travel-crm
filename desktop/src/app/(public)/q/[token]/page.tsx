@@ -1,5 +1,6 @@
 'use client';
 
+import { getLocaleContext } from '@/lib/locale';
 import * as React from 'react';
 import { useParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
@@ -47,7 +48,7 @@ type State =
 function money(amount: number | null | undefined, currency: string | null | undefined): string {
   const value = typeof amount === 'number' ? amount : 0;
   try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency || 'INR' }).format(value);
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency || getLocaleContext().currency }).format(value);
   } catch {
     return `${currency ?? ''} ${value.toFixed(2)}`.trim();
   }

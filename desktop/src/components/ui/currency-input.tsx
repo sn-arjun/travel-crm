@@ -3,6 +3,8 @@
 import * as React from 'react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { useLocale } from '@/lib/locale';
+import { currencySymbol } from '@/lib/locale-options';
 
 export interface CurrencyInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'value'> {
   value: number | undefined;
@@ -14,15 +16,18 @@ export interface CurrencyInputProps extends Omit<React.InputHTMLAttributes<HTMLI
 export function CurrencyInput({
   value,
   onChange,
-  currency = 'INR',
-  locale = 'en-IN',
+  currency: currencyProp,
+  locale: localeProp,
   className,
   ...props
 }: CurrencyInputProps) {
+  const active = useLocale();
+  const currency = currencyProp || active.currency;
+  const locale = localeProp || active.locale;
   const [displayValue, setDisplayValue] = React.useState('');
   const [focused, setFocused] = React.useState(false);
 
-  const symbol = currency === 'INR' ? '₹' : currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : currency;
+  const symbol = currencySymbol(currency, locale);
 
   React.useEffect(() => {
     if (!focused && value !== undefined) {

@@ -142,7 +142,7 @@ export function BuyMoreDialog({ open, onClose, focus }: BuyMoreDialogProps) {
   }, [open, productKey, quantity, overview?.configured]);
 
   const offers = (overview?.products ?? []).filter((p) => matches(p, focus));
-  const money = (amount: number, currency: string | null) => formatCurrency(amount, currency ?? 'INR');
+  const money = (amount: number, currency: string | null) => formatCurrency(amount, currency ?? undefined);
   const selected = offers.find((p) => p.key === productKey);
 
   async function pay() {

@@ -1,5 +1,7 @@
 'use client';
 
+import { getLocaleContext } from '@/lib/locale';
+import { currencySymbol } from '@/lib/locale-options';
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { z } from 'zod';
@@ -37,7 +39,7 @@ export default function EditInvoicePage() {
   const invoiceId = params.id as string;
 
   const [lineItems, setLineItems] = React.useState<LineItem[]>([]);
-  const [currency, setCurrency] = React.useState('INR');
+  const [currency, setCurrency] = React.useState(() => getLocaleContext().currency);
   const [initialized, setInitialized] = React.useState(false);
   const [defaultValues, setDefaultValues] = React.useState<InvoiceFormValues | null>(null);
   const [priceErrors, setPriceErrors] = React.useState<Set<number>>(new Set());
@@ -57,7 +59,7 @@ export default function EditInvoicePage() {
         }))
       : [newLineItem(lineIdCounter++)];
     setLineItems(items);
-    setCurrency(invoice.currency || 'INR');
+    setCurrency(invoice.currency || getLocaleContext().currency);
 
     setDefaultValues({
       contactId: invoice.contactId,
@@ -230,7 +232,7 @@ export default function EditInvoicePage() {
                         <SelectTrigger className="w-20 h-8 text-xs" aria-label="Discount type"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="percentage">%</SelectItem>
-                          <SelectItem value="fixed">{'₹'}</SelectItem>
+                          <SelectItem value="fixed">{currencySymbol(currency)}</SelectItem>
                         </SelectContent>
                       </Select>
                       <CurrencyInput

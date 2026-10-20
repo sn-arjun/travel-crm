@@ -1,10 +1,11 @@
+
+import { formatPdfMoney } from '@/lib/format';
 import type { InvoiceDetail } from '@/lib/api/invoices';
 import { formatDisplayDate } from '@/lib/dates';
 
-/** The standard PDF fonts have no rupee glyph, so amounts in the PDF use "Rs.". */
+/** The standard PDF fonts only hold Latin-1 glyphs, so a currency whose symbol is outside it is written as its code. */
 function pdfMoney(amount: number, currency: string): string {
-  const prefix = currency === 'INR' ? 'Rs. ' : `${currency} `;
-  return `${prefix}${amount.toLocaleString('en-IN')}`;
+  return formatPdfMoney(amount, currency);
 }
 
 export async function buildInvoicePdf(inv: InvoiceDetail) {

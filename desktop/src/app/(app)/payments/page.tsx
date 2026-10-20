@@ -98,7 +98,7 @@ export default function PaymentsPage() {
           },
           {
             key: 'amount', header: 'Amount', align: 'right', sortable: true,
-            cell: (p) => <span className="font-medium text-ds-success">{formatCurrency(p.amount ?? 0, p.currency ?? 'INR')}</span>,
+            cell: (p) => <span className="font-medium text-ds-success">{formatCurrency(p.amount ?? 0, p.currency ?? undefined)}</span>,
           },
           {
             key: 'method', header: 'Method',
