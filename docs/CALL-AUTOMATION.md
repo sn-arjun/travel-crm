@@ -401,3 +401,12 @@ In order:
 6. Minutes metering from the provider's own call records, with the cap enforced before dialling.
 7. Connect the transcription queue in `wrangler.toml`, or run transcription from the existing background mechanism.
 8. Tests for the inbound and outbound endpoints. Today's eight tests insert the call record by hand and so never exercise the broken parts.
+
+## 5. Minutes and fraud limits (built in R305)
+
+- **Minutes** are counted only from the provider's usage records for the agency's sub-account: tenant job `voip.usage-import` every 5 minutes, one cursor per agency (`voip_usage_cursor`), each provider call id charged once (`call_usage.provider_call_id` is unique and the meter key is `call-minutes:<id>`). The status callback and the agent's outcome no longer count anything.
+- **Weighting**: a minute to a country dearer than the agency's own country (else its market base) counts as more than one, from the `call_minute` rows in `comm_unit_costs`. Equal costs switch it off.
+- **At the cap** a new outbound call is refused with 402 `ALLOWANCE_EXHAUSTED` (upgrade and minute packs at provider cost + 20%); a running call is never cut and inbound calls still ring and are counted.
+- **Fraud preflight** on `POST /calls/outbound` (`services/voip/fraud.ts`): active block, premium and satellite prefixes, destination country allow-list (own country plus what the platform switches on), 10 calls a minute and 3 at once per agent, daily outbound minute ceiling per agency (blocking event, lifted by a super admin). The provider ends any call after 2 hours.
+- **Spend alerts**: a day above 3 times the 14-day average, or the whole platform above its ceiling, raises a flag and one email to `SUPER_ADMIN_EMAIL`.
+- Super admin: `/admin/voip/fraud-events`, `/admin/voip/limits`, per agency `/admin/tenants/:id/voip/countries` and `/limits`; shown on the dashboard and the agency Calling tab.
