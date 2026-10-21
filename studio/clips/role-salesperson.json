@@ -1,0 +1,33 @@
+{
+  "id": "role-salesperson",
+  "title": "A day as a salesperson",
+  "voice": "af_heart",
+  "recording": "role-salesperson",
+  "scenes": [
+    { "type": "logo", "dur": 2.6 },
+    { "type": "title", "kicker": "Roles", "title": "A day as a salesperson", "subtitle": "Sneha sells domestic holidays", "chapter": "Introduction", "short": false,
+      "narration": "Sneha is a travel consultant. She sees her own leads, her follow-ups and her customers' messages, and spends her day turning enquiries into trips." },
+    { "type": "screen", "step": "sp-today", "chapter": "What is due today",
+      "narration": "Her follow-ups list shows what is due today and anything overdue, with a reminder when each one comes up.",
+      "lowerThird": { "feature": "My follow-ups", "role": "Salesperson", "plan": "All plans" },
+      "features": ["followups.list", "followups.reminders"] },
+    { "type": "screen", "step": "sp-lead", "chapter": "Working a lead",
+      "narration": "She opens the Desai family's Goa lead, adds a note from this morning's call, and schedules the next follow-up.",
+      "lowerThird": { "feature": "Notes and follow-ups", "role": "Salesperson", "plan": "All plans" },
+      "features": ["leads.notes", "followups.schedule"] },
+    { "type": "screen", "step": "sp-quote", "chapter": "A quote from a template",
+      "narration": "The Goa package template fits, so she creates the itinerary from it in one click, already priced.",
+      "lowerThird": { "feature": "Itinerary from a template", "role": "Salesperson", "plan": "All plans" },
+      "features": ["itineraries.use-template"] },
+    { "type": "screen", "step": "sp-share", "chapter": "Customers and colleagues",
+      "narration": "A customer of hers is travelling abroad, so she shares the contact with Farhan from the international desk. She also sees which customers have a birthday or anniversary coming up.",
+      "lowerThird": { "feature": "Share a contact, occasions", "role": "Salesperson", "plan": "All plans" },
+      "features": ["contacts.share", "contacts.occasions"] },
+    { "type": "screen", "step": "sp-inbox",
+      "narration": "Finally the inbox: a WhatsApp from a customer, answered with a template in a few seconds.",
+      "lowerThird": { "feature": "Inbox", "role": "Salesperson", "plan": "All plans" },
+      "features": ["inbox.list", "inbox.send-dialog"] },
+    { "type": "end", "headline": "More time selling trips.", "cta": "Give your consultants a head start", "chapter": "Thank you", "short": false,
+      "narration": "TravelCRM Pro. More time selling trips." }
+  ]
+}

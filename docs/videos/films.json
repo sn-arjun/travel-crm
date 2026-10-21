@@ -1,0 +1,32 @@
+{
+  "about": "The video catalogue (docs/videos/CATALOGUE.md). Read by scripts/showcase/record-films.mjs and docs/videos/coverage.mjs. stack: single = fix-stack single-agency + demo seed; multi = fix-stack --multi + console; driver = Android emulator on the single stack; ai = gated live-AI session (owner approval, at most 12 requests); cut = edited from other recordings, nothing recorded.",
+  "films": [
+    { "id": "role-admin", "title": "A day as the agency admin", "stack": "single", "targetSec": 150, "shorts": true },
+    { "id": "role-sales-manager", "title": "A day as the sales manager", "stack": "single", "targetSec": 120, "shorts": true },
+    { "id": "role-salesperson", "title": "A day as a salesperson", "stack": "single", "targetSec": 130, "shorts": true },
+    { "id": "role-operations", "title": "A day in operations", "stack": "single", "targetSec": 120, "shorts": true },
+    { "id": "role-accountant", "title": "A day as the accountant", "stack": "single", "targetSec": 110, "shorts": true },
+    { "id": "role-view-only", "title": "Read-only access", "stack": "single", "targetSec": 60, "shorts": false },
+    { "id": "area-leads", "title": "Leads, follow-ups and tasks", "stack": "single", "targetSec": 210, "shorts": true },
+    { "id": "area-contacts", "title": "Contacts, travellers and documents", "stack": "single", "targetSec": 170, "shorts": true },
+    { "id": "area-itineraries", "title": "Itineraries, quotes and suppliers", "stack": "single", "targetSec": 200, "shorts": true },
+    { "id": "area-bookings", "title": "Bookings, vouchers and visas", "stack": "single", "targetSec": 140, "shorts": true },
+    { "id": "area-finance", "title": "Invoices, payments and payment links", "stack": "single", "targetSec": 190, "shorts": true },
+    { "id": "area-comms", "title": "Inbox: WhatsApp, email, SMS and chat", "stack": "single", "targetSec": 180, "shorts": true },
+    { "id": "area-marketing", "title": "Campaigns and marketing", "stack": "single", "targetSec": 170, "shorts": true },
+    { "id": "area-automations", "title": "The assistant and automations", "stack": "single", "targetSec": 210, "shorts": true },
+    { "id": "automations-calls", "title": "Calls that set up the next step", "stack": "single", "targetSec": 150, "shorts": true },
+    { "id": "area-calls", "title": "Calls: screen pop, softphone, recordings and minutes", "stack": "single", "targetSec": 170, "shorts": true },
+    { "id": "area-fleet", "title": "Fleet, drivers and trips", "stack": "single", "targetSec": 170, "shorts": true },
+    { "id": "area-reports", "title": "Dashboard, reports and your data", "stack": "single", "targetSec": 160, "shorts": true },
+    { "id": "area-settings", "title": "Settings, team, two-factor and privacy", "stack": "single", "targetSec": 190, "shorts": true },
+    { "id": "driver", "title": "The driver app", "stack": "driver", "targetSec": 90, "shorts": true },
+    { "id": "platform-owner", "title": "Running the platform: from new customer to their own agency", "stack": "multi", "targetSec": 270, "shorts": true },
+    { "id": "plans", "title": "Basic, Pro and Enterprise", "stack": "multi", "targetSec": 150, "shorts": true },
+    { "id": "international", "title": "Built for every country: currency, tax, language", "stack": "multi", "targetSec": 140, "shorts": true },
+    { "id": "website", "title": "Your website and the landing page", "stack": "multi", "targetSec": 110, "shorts": true },
+    { "id": "ai-session", "title": "AI assistance", "stack": "ai", "targetSec": 150, "shorts": true, "gated": "Live Workers AI: needs the owner's yes and a stack started with --ai; budget 12 requests, never retried automatically." },
+    { "id": "hero", "title": "TravelCRM Pro in 90 seconds", "stack": "cut", "targetSec": 90, "shorts": false },
+    { "id": "master", "title": "TravelCRM Pro, end to end", "stack": "cut", "targetSec": 3600, "shorts": false }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "id": "role-sales-manager",
+  "title": "A day as the sales manager",
+  "voice": "af_heart",
+  "recording": "role-sales-manager",
+  "scenes": [
+    { "type": "logo", "dur": 2.6 },
+    { "type": "title", "kicker": "Roles", "title": "A day as the sales manager", "subtitle": "Rahul keeps the pipeline moving", "chapter": "Introduction", "short": false,
+      "narration": "Rahul manages the sales team. His job is to see where every deal stands and get the right lead to the right person." },
+    { "type": "screen", "step": "sm-pipeline", "chapter": "The pipeline",
+      "narration": "He starts with the deals in negotiation, the ones closest to booking, and checks who owns each one.",
+      "lowerThird": { "feature": "Pipeline by stage", "role": "Sales manager", "plan": "All plans" },
+      "features": ["leads.list"] },
+    { "type": "screen", "step": "sm-assign", "chapter": "Assigning work",
+      "narration": "New enquiries nobody owns yet wait in Unassigned. He gives them to the consultant with the right destination knowledge.",
+      "lowerThird": { "feature": "Assign leads", "role": "Sales manager", "plan": "All plans" },
+      "features": ["leads.unassigned", "leads.bulk-actions"] },
+    { "type": "screen", "step": "sm-margin", "chapter": "Checking margins",
+      "narration": "Before a big quote goes out, he checks the cost, the price and the margin of each item.",
+      "lowerThird": { "feature": "Quote margins", "role": "Sales manager", "plan": "All plans" },
+      "features": ["itineraries.cost-estimate"] },
+    { "type": "screen", "step": "sm-report", "chapter": "Team performance",
+      "narration": "The team report shows leads, conversions and revenue per consultant, so his one-to-ones start from facts.",
+      "lowerThird": { "feature": "Team report", "role": "Sales manager", "plan": "All plans" },
+      "features": ["reports.hub", "reports.date-compare"] },
+    { "type": "screen", "step": "sm-export",
+      "narration": "And when the owner asks for the numbers, he exports the lead list to a spreadsheet.",
+      "lowerThird": { "feature": "Export leads", "role": "Sales manager", "plan": "All plans" },
+      "features": ["leads.export"] },
+    { "type": "end", "headline": "Every deal, in view.", "cta": "Give your team one pipeline", "chapter": "Thank you", "short": false,
+      "narration": "TravelCRM Pro. Every deal, in view." }
+  ]
+}

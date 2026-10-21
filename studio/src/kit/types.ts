@@ -11,5 +11,6 @@ export type Scene =
   | (SceneBase & { type: 'screen'; src: string; in: number; out: number; cropBottom: number; lowerThird?: LowerThirdSpec; zoom?: Zoom; callout?: CalloutSpec })
   | (SceneBase & { type: 'flow'; steps: FlowStep[]; heading?: string })
   | (SceneBase & { type: 'plans'; heading?: string; rows: PlanRowSpec[] })
-  | (SceneBase & { type: 'end'; headline: string; cta: string; url?: string });
+  | (SceneBase & { type: 'end'; headline: string; cta: string; url?: string })
+  | (SceneBase & { type: 'phone'; src: string; in: number; out: number; srcW?: number; srcH?: number; heading?: string; sub?: string; lowerThird?: LowerThirdSpec });
 export type Timeline = { fps: number; width: number; height: number; totalFrames: number; scenes: Scene[]; captions: CaptionChunk[] };

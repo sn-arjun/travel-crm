@@ -9,6 +9,11 @@ export function ff(args, loglevel = 'error') {
   if (r.status !== 0) throw new Error(`ffmpeg failed: ${args.join(' ').slice(0, 200)}\n${(r.stderr || '').slice(-800)}`);
   return r;
 }
+export function probeSize(file) {
+  const r = spawnSync(FFPROBE, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', file], { encoding: 'utf8' });
+  const [w, h] = (r.stdout || '').trim().split(',').map(Number);
+  return { width: w || 1920, height: h || 1080 };
+}
 export function probeDuration(file) {
   const r = spawnSync(FFPROBE, ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file], { encoding: 'utf8' });
   return parseFloat(r.stdout);

@@ -1,0 +1,16 @@
+{
+  "about": "Features with status works or partial in docs/features.json that no film shows, each with the reason. docs/videos/coverage.mjs accepts these and fails on any other works/partial feature without a chapter. Stubs and removed features are never filmed and need no entry.",
+  "features": {
+    "leads.kanban": "No pipeline board on the leads page in the current build: the board component is used only by Tasks (features.json says a toggle exists; the inventory should be corrected). Film it once the board ships.",
+    "inbox.plivo-inbound": "Plivo is not a launch provider (owner decision 2026-10-15: Twilio only).",
+    "inbox.send-document": "API only: no screen sends a stored document by message yet.",
+    "payments.link-invoice": "API only: no control in the payments screens links an advance to an invoice.",
+    "ai.suggest-replies": "API only: no screen calls it.",
+    "ai.invoice-generate": "API only: no screen calls the AI invoice draft.",
+    "ai.bi-forecast": "API only: no screen links to the cash-flow forecast or revenue pulse.",
+    "marketing.suggestions": "API only: no page links to the AI marketing suggestions.",
+    "marketing.legacy-campaigns": "Older duplicate of Marketing > Campaigns (/campaigns); left out so the films show one way to run a campaign.",
+    "notifications.push": "Nothing to show: the push queue exists, but no app receives a push yet (the driver app has no push SDK).",
+    "landing.reviews": "The reviews section is written copy, not quotes from real customers; it is not filmed until the quotes are verified."
+  }
+}

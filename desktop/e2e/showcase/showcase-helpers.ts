@@ -218,6 +218,11 @@ export async function scrollSteps(page: Page, steps = 3, dy = 500): Promise<void
 
 const CHROME_ALLOW = /Test connection|Test Connection|Send test|Test webhook/g;
 const NET_ALLOW: RegExp[] = [/\/auth\/refresh$/, /\/photo(\?|$)/, /maps\.googleapis\.com|maps\.gstatic\.com|google\.com\/maps/];
+/** Refusals a film shows on purpose (a locked feature's 403, a seat limit's 402): not a violation. Empty unless a film adds one. */
+const EXPECTED_HTTP: { re: RegExp; statuses: number[] }[] = [];
+export function allowHttp(re: RegExp, statuses: number[] = [402, 403, 409]): void {
+  EXPECTED_HTTP.push({ re, statuses });
+}
 
 /** Wire console/pageerror/response listeners; violations are thrown at the next assertClean(). */
 export function attachListeners(page: Page): void {
@@ -236,6 +241,7 @@ export function attachListeners(page: Page): void {
     if (s < 400) return;
     const url = r.url();
     if (NET_ALLOW.some((re) => re.test(url))) return;
+    if (EXPECTED_HTTP.some((e) => e.statuses.includes(s) && e.re.test(url))) return;
     // AI endpoints answer 503 AI_UNAVAILABLE on a stack with no AI provider; the pages say so on screen (shown honestly in the AI chapter)
     if (s === 503 && /\/ai\//.test(url)) return;
     violations.push(`HTTP ${s} ${r.request().method()} ${url.slice(0, 160)}`);

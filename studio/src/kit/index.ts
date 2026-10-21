@@ -10,3 +10,4 @@ export { Captions, chunkCaptions } from './Captions';
 export { PlanMatrix } from './PlanMatrix';
 export { FlowDiagram } from './FlowDiagram';
 export { EndCard } from './EndCard';
+export { PhoneClip } from './PhoneClip';

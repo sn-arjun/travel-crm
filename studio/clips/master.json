@@ -1,0 +1,31 @@
+{
+  "id": "master",
+  "about": "Master end-to-end cut (studio/src/master.mjs). Not a clip: it stitches the rendered films below, in this order, with one chapter per film plus each film's own chapters. Nothing is recorded or rendered again. Films that are not rendered yet must be removed from the list (or rendered) first; ai-session only after the owner-approved live session.",
+  "films": [
+    "hero",
+    "platform-owner",
+    "plans",
+    "role-admin",
+    "role-sales-manager",
+    "role-salesperson",
+    "role-operations",
+    "role-accountant",
+    "role-view-only",
+    "area-leads",
+    "area-contacts",
+    "area-comms",
+    "area-automations",
+    "area-itineraries",
+    "area-bookings",
+    "area-finance",
+    "area-marketing",
+    "area-calls",
+    "automations-calls",
+    "area-fleet",
+    "driver",
+    "area-reports",
+    "area-settings",
+    "international",
+    "website"
+  ]
+}

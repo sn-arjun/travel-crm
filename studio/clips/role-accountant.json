@@ -1,0 +1,33 @@
+{
+  "id": "role-accountant",
+  "title": "A day as the accountant",
+  "voice": "af_heart",
+  "recording": "role-accountant",
+  "scenes": [
+    { "type": "logo", "dur": 2.6 },
+    { "type": "title", "kicker": "Roles", "title": "A day as the accountant", "subtitle": "Vikram keeps the books straight", "chapter": "Introduction", "short": false,
+      "narration": "Vikram handles accounts. He invoices, records what comes in and pays suppliers, without asking sales for anything." },
+    { "type": "screen", "step": "acc-overdue", "chapter": "Who owes us",
+      "narration": "First the overdue invoices, sorted so the oldest and largest are on top.",
+      "lowerThird": { "feature": "Overdue invoices", "role": "Accountant", "plan": "All plans" },
+      "features": ["invoices.list"] },
+    { "type": "screen", "step": "acc-ageing",
+      "narration": "The receivables report breaks what is owed into age bands, customer by customer.",
+      "lowerThird": { "feature": "Ageing report", "role": "Accountant", "plan": "All plans" },
+      "features": ["reports.outstanding-ageing"] },
+    { "type": "screen", "step": "acc-payment", "chapter": "Money in",
+      "narration": "A bank transfer has arrived. He records it against the invoice with the bank reference.",
+      "lowerThird": { "feature": "Record a payment", "role": "Accountant", "plan": "All plans" },
+      "features": ["payments.record"] },
+    { "type": "screen", "step": "acc-hsn",
+      "narration": "New invoices pick their HSN and SAC codes from a built-in library, so the GST is right first time.",
+      "lowerThird": { "feature": "HSN and SAC codes", "role": "Accountant", "plan": "All plans" },
+      "features": ["hsn.codes", "invoices.gst"] },
+    { "type": "screen", "step": "acc-supplier", "chapter": "Money out",
+      "narration": "Then supplier payments: he records what was paid to the houseboat company, and their ledger updates.",
+      "lowerThird": { "feature": "Supplier payments", "role": "Accountant", "plan": "All plans" },
+      "features": ["suppliers.payments"] },
+    { "type": "end", "headline": "Books that keep themselves straight.", "cta": "Show your accountant", "chapter": "Thank you", "short": false,
+      "narration": "TravelCRM Pro. Books that keep themselves straight." }
+  ]
+}

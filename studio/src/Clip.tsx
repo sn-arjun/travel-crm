@@ -2,7 +2,7 @@ import React from 'react';
 import { AbsoluteFill, Audio, Sequence, staticFile } from 'remotion';
 import '@fontsource-variable/dm-sans';
 import '@fontsource-variable/geist';
-import { Captions, EndCard, FlowDiagram, LogoSting, PlanMatrix, ScreenClip, TitleCard } from './kit';
+import { Captions, EndCard, FlowDiagram, LogoSting, PhoneClip, PlanMatrix, ScreenClip, TitleCard } from './kit';
 import type { Scene, Timeline } from './kit/types';
 
 export type ClipProps = { timeline: Timeline; /** OPTIONAL background music file under public/ (UNUSED by default). */ music?: string; musicVolume?: number };
@@ -15,6 +15,7 @@ const SceneBody: React.FC<{ s: Scene }> = ({ s }) => {
     case 'flow': return <FlowDiagram steps={s.steps} heading={s.heading} />;
     case 'plans': return <PlanMatrix rows={s.rows} heading={s.heading} />;
     case 'end': return <EndCard headline={s.headline} cta={s.cta} url={s.url} />;
+    case 'phone': return <PhoneClip src={s.src} in={s.in} out={s.out} srcW={s.srcW} srcH={s.srcH} heading={s.heading} sub={s.sub} lowerThird={s.lowerThird} />;
   }
 };
 
