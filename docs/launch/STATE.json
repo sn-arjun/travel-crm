@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-21T22:13:45.845Z",
+  "updated": "2026-10-21T22:33:17.320Z",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -294,6 +294,12 @@
           "head": "5b47703",
           "what": "departures desktop: group tours switch + Settings > Group tours, tours list/form, departures list/page (bookings, waitlist, stops, prices, costs), hold-seats dialog, bulk confirm/move/cancel/offer, passengers editor; open: seatNumber/documentsStatus not in passenger schema, no realtime seat events (carry to R146)",
           "gates": "merged line desktop 102/1617, lint PASS, i18n PASS; e2e 32/32 on multi stack"
+        },
+        "R142": {
+          "status": "merged",
+          "head": "2551a16",
+          "what": "agency mail to local outbox in TEST_MODE (tenant-tagged), createInvoice domain function, mock agency gateway (iDEAL/card/Bancontact EUR, UPI INR) through shared applyEvent, tenant 0058 link amount/purpose, deposit/balance/custom link dialog + send via hub, Stripe method types per currency",
+          "gates": "merged line backend 120/2337, desktop 103/1622, lint PASS, i18n PASS; e2e 109 passed"
         }
       }
     }
