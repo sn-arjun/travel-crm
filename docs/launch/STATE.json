@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-21T18:48:45.250Z",
+  "updated": "2026-10-21T19:42:30.302Z",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -264,6 +264,12 @@
           "head": "6b1a9ab",
           "what": "Dutch foundation: catalogue split per namespace, nl 811 keys, i18n-check en+nl, backend i18n en/nl, driver app nl + no INR/+91 defaults, NL-REVIEW.md",
           "gates": "merged line backend 110/2147, desktop 98/1568, lint PASS, i18n PASS; e2e 52 passed"
+        },
+        "R139": {
+          "status": "merged",
+          "head": "26608f3",
+          "what": "departures model: tenant 0057, master 0030 feature keys, tours/departures API, capacity by vehicles, calendar sync, privacy registry + erasure, shared types",
+          "gates": "merged line backend 111/2167; e2e calendar+super-admin 15/15"
         }
       }
     }
