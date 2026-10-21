@@ -105,7 +105,9 @@ describe('Custom rules: building blocks', () => {
   });
 
   it('describes a rule in one sentence', () => {
-    expect(describeRule(base)).toBe('When a lead is created, and budget is more than 2,00,000: create the task "Call {{customer_name}}".');
+    expect(describeRule(base, 'en-IN')).toBe('When a lead is created, and budget is more than 2,00,000: create the task "Call {{customer_name}}".');
+    // The number grouping follows the agency locale, not India's.
+    expect(describeRule(base, 'en-GB')).toContain('more than 200,000:');
   });
 });
 

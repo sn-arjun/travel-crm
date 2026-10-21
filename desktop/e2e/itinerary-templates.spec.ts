@@ -1,7 +1,9 @@
 import { type Page } from '@playwright/test';
 import { test, expect } from './fixtures';
-import { waitForLoad } from './helpers/auth';
+import { API_URL, waitForLoad } from './helpers/auth';
 import { api, seedItineraryTemplate, seedContact, seedLead } from './helpers/api-seed';
+import { isMultiTenantStack, NEEDS_MULTI, signInViaUI } from './helpers/tenants';
+import { createEuroAgency, seedEuroLead } from './helpers/eur-agency';
 
 const TEMPLATES_API = '/itinerary-templates';
 const RAW_MESSAGING_ANCHORS = 'a[href^="tel:"], a[href^="mailto:"], a[href^="https://wa.me"], a[href^="wa.me"]';
@@ -262,5 +264,31 @@ test.describe('Itinerary Templates — create', () => {
     await row.click();
     await expect(page.getByRole('dialog').getByText('2 day items')).toBeVisible();
     await expect(page.getByRole('dialog').getByText('Arrive in Madikeri')).toBeVisible();
+  });
+});
+
+// R138: a quote made from a template follows the agency currency (euro agency, multi-tenant stack only).
+test.describe('Itinerary Templates: a euro agency', () => {
+  test.use({ storageState: undefined });
+
+  test('create-from without a template currency gives a euro quote; a template with its own currency keeps it', async ({ page }) => {
+    test.setTimeout(240_000);
+    test.skip(!(await isMultiTenantStack(API_URL)), NEEDS_MULTI);
+    const { agency, call } = await createEuroAgency('tpl');
+    const { leadId } = await seedEuroLead(call);
+    const day = { dayNumber: 1, title: 'Day 1', items: [{ type: 'activity', title: 'Tram 28', costPrice: 10, sellingPrice: 20 }] };
+    const plain = await call('POST', TEMPLATES_API, { title: 'Plain template', templateData: JSON.stringify({ days: [day] }) });
+    const own = await call('POST', TEMPLATES_API, { title: 'Dirham template', templateData: JSON.stringify({ currency: 'AED', days: [day] }) });
+
+    const fromPlain = await call('POST', `${TEMPLATES_API}/create-from`, { templateId: plain.data.id, leadId });
+    const fromOwn = await call('POST', `${TEMPLATES_API}/create-from`, { templateId: own.data.id, leadId });
+    expect((await call('GET', `/itineraries/${fromPlain.data.id}`)).data.currency).toBe('EUR');
+    expect((await call('GET', `/itineraries/${fromOwn.data.id}`)).data.currency).toBe('AED');
+
+    await signInViaUI(page, agency);
+    await page.goto(`/itineraries/${fromPlain.data.id}`);
+    await waitForLoad(page);
+    await expect.poll(async () => (await page.locator('body').innerText()).includes('€'), { timeout: 20_000 }).toBe(true);
+    expect(await page.locator('body').innerText()).not.toContain('₹');
   });
 });

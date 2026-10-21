@@ -1,7 +1,9 @@
 import { test, expect } from './fixtures';
-import { waitForLoad } from './helpers/auth';
+import { API_URL, waitForLoad } from './helpers/auth';
 import { pickDate } from './helpers/date-picker';
 import { seedContact, seedLead, seedItinerary, seedRateCard, api } from './helpers/api-seed';
+import { isMultiTenantStack, NEEDS_MULTI, signInViaUI } from './helpers/tenants';
+import { createEuroAgency, seedEuroLead } from './helpers/eur-agency';
 
 // ---------------------------------------------------------------------------
 // Full round trip: create via form -> list -> detail -> edit prefill -> edit
@@ -463,5 +465,36 @@ test.describe('Itinerary — rate cards and quotation email', () => {
     const subject = await page.locator('#msg-subject').inputValue();
     expect(`${subject}\n${body}`).not.toMatch(/\{\{[a-z_]+\}\}/);
     await expect(page.getByTestId('placeholder-warning')).toHaveCount(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R138: a euro agency never gets the rupee from a default.
+// Needs the multi-tenant stack (fix-stack up --multi); skipped on a single-tenant stack.
+// ---------------------------------------------------------------------------
+test.describe('Itinerary: a euro agency sees euros', () => {
+  test.use({ storageState: undefined });
+
+  test('POST /itineraries without a currency is in euro, and the detail page shows the euro amount', async ({ page }) => {
+    test.setTimeout(240_000);
+    test.skip(!(await isMultiTenantStack(API_URL)), NEEDS_MULTI);
+    const { agency, call } = await createEuroAgency('itin');
+    const { leadId, leadCurrency } = await seedEuroLead(call);
+    expect(leadCurrency).toBe('EUR');
+
+    const created = await call('POST', '/itineraries', {
+      leadId,
+      title: 'Lisbon week',
+      days: [{ dayNumber: 1, title: 'Arrival', items: [{ type: 'hotel', title: 'Hotel Baixa', costPrice: 800, sellingPrice: 1234.5 }] }],
+    });
+    expect(created.data.currency).toBe('EUR');
+
+    await signInViaUI(page, agency);
+    await page.goto(`/itineraries/${created.data.id}`);
+    await waitForLoad(page);
+    await expect.poll(async () => (await page.locator('body').innerText()).includes('€'), { timeout: 20_000 }).toBe(true);
+    const text = await page.locator('body').innerText();
+    expect(text).not.toContain('₹');
+    expect(text).not.toMatch(/\bINR\b/);
   });
 });
