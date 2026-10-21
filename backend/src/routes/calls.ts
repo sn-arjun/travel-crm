@@ -21,7 +21,7 @@ import { emitFromRequest } from '../services/automation/events';
 import { tenantToday, addDaysLocal, localDateStartUtcIso, sqlOffsetModifier } from '../utils/tz';
 import { AllowanceExhausted, allowanceExhaustedResponse, assertAllowance } from '../services/metering/meter';
 import { MAX_CALL_SECONDS, preflightOutbound } from '../services/voip/fraud';
-import { DEFAULT_ANNOUNCEMENT, autoRecord, canAccessCallData, loadRecordingSettings, signRecordingLink } from '../services/voip/recordings';
+import { autoRecord, canAccessCallData, loadRecordingSettings, signRecordingLink } from '../services/voip/recordings';
 import { CALL_AI_FEATURE_KEY, REASON_CREDITS, requestCallAi } from '../services/voip/call-ai';
 import { AI_QUOTA_EXCEEDED_MESSAGE } from '../services/ai-credits';
 import { getTenantFeatures } from '../middleware/feature-gate';
@@ -307,15 +307,16 @@ const recordingSettingsSchema = z.object({
 
 async function recordingSettingsPayload(c: Context<AppContext>) {
   const db = c.get('tenantDb');
-  const settings = await loadRecordingSettings(db);
+  const settings = await loadRecordingSettings(db, c.env);
   const features = await getTenantFeatures(c.env, c.get('tenantId'));
   const configured = !!(await db.prepare('SELECT 1 AS hit FROM voip_settings LIMIT 1').first());
   return {
     configured,
     consentMode: settings.consentMode,
     announcement: settings.customAnnouncement,
-    defaultAnnouncement: DEFAULT_ANNOUNCEMENT,
+    defaultAnnouncement: settings.defaultAnnouncement,
     effectiveAnnouncement: settings.announcement,
+    language: settings.language,
     retentionDays: settings.retentionDays,
     callAiEnabled: settings.callAiEnabled,
     callAiEngine: settings.callAiEngine,
@@ -525,7 +526,7 @@ callRoutes.post('/outbound', zValidator('json', outboundCallSchema), async (c) =
   }
 
   // R306: recording starts by itself only when the agency announces it; the customer hears the announcement on answer.
-  const recordingSettings = await loadRecordingSettings(db);
+  const recordingSettings = await loadRecordingSettings(db, c.env);
   const shouldRecord = autoRecord(recordingSettings, 'outbound');
   const callerId = settings.defaultCallerId;
 
@@ -801,7 +802,7 @@ callRoutes.post('/:id/recording/consent', async (c) => {
   const involved = [call.created_by, call.routed_to, call.answered_by].includes(userId);
   if (!involved && c.get('role') !== 'admin') return error(c, 'Insufficient permissions', 403);
 
-  const settings = await loadRecordingSettings(db);
+  const settings = await loadRecordingSettings(db, c.env);
   await db.prepare(`UPDATE call_logs SET recording_consent = 'given', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`).bind(id).run();
   await logActivity(drizzle(db), { userId, action: 'recording_consent', entityType: 'call', entityId: id, details: JSON.stringify({ mode: settings.consentMode }) });
 

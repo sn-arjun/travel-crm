@@ -25,6 +25,8 @@ import { candidateTenantDbs, resolveTenantDb, tenancyMode } from '../services/te
 import { formParams, publicRequestUrl, unsignedAllowed, verifyTwilioAny } from '../middleware/provider-signature';
 import { autoRecord, loadRecordingSettings, recordingIdFromUrl, storeRecording } from '../services/voip/recordings';
 import { requestCallAi } from '../services/voip/call-ai';
+import { agencyPromptLanguage, promptText, sayElement, voiceAttributes, type PromptLanguage } from '../services/voip/prompts';
+import { callbackTokens, applyProviderStatus, tenantForRegulatoryKey } from '../services/voip/regulatory';
 
 const voipCallbackRoutes = new Hono<AppContext>();
 
@@ -40,6 +42,8 @@ voipCallbackRoutes.use('/*', cors({ origin: '*' }));
  */
 voipCallbackRoutes.use('/*', async (c, next) => {
   if (c.req.method === 'OPTIONS') return next();
+  // R137: the number regulatory callback finds its agency from the key in its URL and checks the signature itself.
+  if (/\/regulatory-callback\//.test(c.req.path)) return next();
   const signature = c.req.header('X-Twilio-Signature');
   const anySignature = signature || c.req.header('X-Plivo-Signature-V3');
   if (unsignedAllowed(c.env, anySignature)) return next();
@@ -668,13 +672,13 @@ function dialFallback(baseUrl: string, callLogId: string, settings: VoipSettings
  * Does an inbound call record, and what does the caller hear first? (R306) Recording starts by itself only in 'announce'
  * mode, and then the agency's announcement is played before the agent is rung; the call notes that it was announced.
  */
-async function inboundRecordingPlan(db: D1Database, callLogId: string): Promise<{ record: boolean; announcement?: string }> {
-  const rec = await loadRecordingSettings(db);
+async function inboundRecordingPlan(env: Env, db: D1Database, callLogId: string): Promise<{ record: boolean; announcement?: string; language: PromptLanguage }> {
+  const rec = await loadRecordingSettings(db, env);
   const record = autoRecord(rec, 'inbound');
   if (record && callLogId) {
     await db.prepare("UPDATE call_logs SET recording_consent = 'announced' WHERE id = ? AND recording_consent IS NULL").bind(callLogId).run();
   }
-  return { record, announcement: record ? rec.announcement : undefined };
+  return { record, announcement: record ? rec.announcement : undefined, language: rec.language };
 }
 
 // ── Inbound — Route incoming calls (TICKET-377) ──────────────
@@ -692,10 +696,11 @@ voipCallbackRoutes.post('/twiml/inbound', async (c) => {
   if (!db) return c.text('<Response/>', 200, { 'Content-Type': 'text/xml' });
   const settings = await loadSettings(c.env, db);
 
+  const lang = await agencyPromptLanguage(db);
   if (!settings) {
     return c.text(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna">We're sorry, this service is not currently available. Please try again later.</Say>
+  ${sayElement(lang, promptText(lang, 'unavailable'))}
   <Hangup/>
 </Response>`, 200, { 'Content-Type': 'text/xml' });
   }
@@ -738,6 +743,8 @@ voipCallbackRoutes.post('/twiml/inbound', async (c) => {
     if (!isOpen) {
       return c.text(provider.generateVoicemailMarkup(
         `${baseUrl}/api/v1/voip/recording-callback`,
+        undefined,
+        lang,
       ), 200, { 'Content-Type': 'text/xml' });
     }
   }
@@ -746,9 +753,10 @@ voipCallbackRoutes.post('/twiml/inbound', async (c) => {
   const ivrConfig = safeJsonParse(settings.ivrConfig);
   if (settings.ivrEnabled && ivrConfig) {
     return c.text(provider.generateIvrMarkup(
-      ivrConfig.greeting || 'Welcome. Please select an option.',
+      ivrConfig.greeting || promptText(lang, 'ivrWelcome'),
       ivrConfig.options || [],
       `${baseUrl}/api/v1/voip/twiml/ivr-handler?callLogId=${callLogId}`,
+      lang,
     ), 200, { 'Content-Type': 'text/xml' });
   }
 
@@ -761,16 +769,18 @@ voipCallbackRoutes.post('/twiml/inbound', async (c) => {
   if (routing.type === 'voicemail' || !routing.targetIdentity) {
     return c.text(provider.generateVoicemailMarkup(
       `${baseUrl}/api/v1/voip/recording-callback`,
+      undefined,
+      lang,
     ), 200, { 'Content-Type': 'text/xml' });
   }
 
-  const plan = await inboundRecordingPlan(db, callLogId);
+  const plan = await inboundRecordingPlan(c.env, db, callLogId);
 
   // The agent's phone is about to ring: event and screen pop, after the provider has its answer.
   deferRinging(c, c.env, db, callLogId);
 
   return c.text(
-    provider.generateClientDialMarkup(routing.targetIdentity, from, plan.record, { ...dialFallback(baseUrl, callLogId, settings), announcement: plan.announcement }),
+    provider.generateClientDialMarkup(routing.targetIdentity, from, plan.record, { ...dialFallback(baseUrl, callLogId, settings), announcement: plan.announcement, language: plan.language }),
     200,
     { 'Content-Type': 'text/xml' },
   );
@@ -798,12 +808,13 @@ voipCallbackRoutes.post('/twiml/ivr-handler', async (c) => {
 
   const provider = createVoipProvider(c.env as any, settings);
   const ivrConfig = safeJsonParse(settings.ivrConfig);
+  const lang = await agencyPromptLanguage(db);
 
   if (!ivrConfig?.options) {
     // No IVR config — route directly via redirect (TwiML/XML fallback)
     return c.text(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna">Please hold while we connect you.</Say>
+  ${sayElement(lang, promptText(lang, 'hold'))}
   <Redirect>${escapeXml(baseUrl)}/api/v1/voip/twiml/inbound?From=${escapeXml(from)}</Redirect>
 </Response>`, 200, { 'Content-Type': 'text/xml' });
   }
@@ -811,9 +822,10 @@ voipCallbackRoutes.post('/twiml/ivr-handler', async (c) => {
   // No input — repeat or voicemail
   if (noInput || !digits) {
     return c.text(provider.generateIvrMarkup(
-      ivrConfig.greeting || 'Please select an option.',
+      ivrConfig.greeting || promptText(lang, 'ivrSelect'),
       ivrConfig.options || [],
       `${baseUrl}/api/v1/voip/twiml/ivr-handler?callLogId=${callLogId}`,
+      lang,
     ), 200, { 'Content-Type': 'text/xml' });
   }
 
@@ -835,45 +847,50 @@ voipCallbackRoutes.post('/twiml/ivr-handler', async (c) => {
   if (!option) {
     // Invalid — re-prompt
     return c.text(provider.generateIvrMarkup(
-      'Invalid selection. ' + (ivrConfig.greeting || 'Please select an option.'),
+      promptText(lang, 'ivrInvalid') + ' ' + (ivrConfig.greeting || promptText(lang, 'ivrSelect')),
       ivrConfig.options || [],
       `${baseUrl}/api/v1/voip/twiml/ivr-handler?callLogId=${callLogId}`,
+      lang,
     ), 200, { 'Content-Type': 'text/xml' });
   }
 
   // Route based on action
   switch (option.action) {
     case 'extension': {
-      const plan = await inboundRecordingPlan(db, callLogId);
+      const plan = await inboundRecordingPlan(c.env, db, callLogId);
       if (callLogId && option.target) {
         await db.prepare('UPDATE call_logs SET routed_to = ? WHERE id = ?').bind(String(option.target), callLogId).run();
         deferRinging(c, c.env, db, callLogId);
       }
       return c.text(
-        provider.generateClientDialMarkup(`user_${option.target}`, from, plan.record, { ...dialFallback(baseUrl, callLogId, settings), announcement: plan.announcement }),
+        provider.generateClientDialMarkup(`user_${option.target}`, from, plan.record, { ...dialFallback(baseUrl, callLogId, settings), announcement: plan.announcement, language: plan.language }),
         200, { 'Content-Type': 'text/xml' },
       );
     }
     case 'voicemail':
       return c.text(provider.generateVoicemailMarkup(
         `${baseUrl}/api/v1/voip/recording-callback`,
+        undefined,
+        lang,
       ), 200, { 'Content-Type': 'text/xml' });
     case 'queue':
     default: {
       const routing = await resolveInboundRouting(db, from, settings);
       if (routing.targetIdentity) {
-        const plan = await inboundRecordingPlan(db, callLogId);
+        const plan = await inboundRecordingPlan(c.env, db, callLogId);
         if (callLogId && routing.targetUserId) {
           await db.prepare('UPDATE call_logs SET routed_to = ? WHERE id = ?').bind(routing.targetUserId, callLogId).run();
           deferRinging(c, c.env, db, callLogId);
         }
         return c.text(
-          provider.generateClientDialMarkup(routing.targetIdentity, from, plan.record, { ...dialFallback(baseUrl, callLogId, settings), announcement: plan.announcement }),
+          provider.generateClientDialMarkup(routing.targetIdentity, from, plan.record, { ...dialFallback(baseUrl, callLogId, settings), announcement: plan.announcement, language: plan.language }),
           200, { 'Content-Type': 'text/xml' },
         );
       }
       return c.text(provider.generateVoicemailMarkup(
         `${baseUrl}/api/v1/voip/recording-callback`,
+        undefined,
+        lang,
       ), 200, { 'Content-Type': 'text/xml' });
     }
   }
@@ -919,19 +936,22 @@ voipCallbackRoutes.post('/twiml/dial-status', async (c) => {
 
   // The fallback: voicemail (the workspace's greeting), or a polite goodbye when voicemail is switched off.
   const settings = await loadSettings(c.env, db);
+  const lang = await agencyPromptLanguage(db);
   if (settings) {
     const provider = createVoipProvider(c.env as any, settings);
     if (!settings.voicemailEnabled) {
-      return c.text(provider.generateHangupMarkup('Nobody is available to take your call right now. Please try again later.'), 200, { 'Content-Type': 'text/xml' });
+      return c.text(provider.generateHangupMarkup(promptText(lang, 'nobodyAvailable'), lang), 200, { 'Content-Type': 'text/xml' });
     }
     return c.text(provider.generateVoicemailMarkup(
       `${baseUrl}/api/v1/voip/recording-callback`,
+      undefined,
+      lang,
     ), 200, { 'Content-Type': 'text/xml' });
   }
   // Fallback TwiML
   return c.text(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna">The person you are trying to reach is unavailable. Please leave a message after the beep.</Say>
+  ${sayElement(lang, promptText(lang, 'unreachable'))}
   <Record maxLength="120" playBeep="true" timeout="5"
     action="${escapeXml(baseUrl)}/api/v1/voip/voicemail-callback?callLogId=${escapeXml(callLogId)}"
     recordingStatusCallback="${escapeXml(baseUrl)}/api/v1/voip/recording-callback" />
@@ -947,9 +967,11 @@ voipCallbackRoutes.post('/voicemail-callback', async (c) => {
   const recordingUrl = body.RecordingUrl as string;
   const recordingDuration = body.RecordingDuration ? Number(body.RecordingDuration) : 0;
 
+  let lang: PromptLanguage = 'en';
   if (callLogId && recordingUrl) {
     const db = await callDb(c.env, { number: body.To as string, callLogId });
     if (!db) return c.text('<Response/>', 200, { 'Content-Type': 'text/xml' });
+    lang = await agencyPromptLanguage(db);
     try {
       await db.prepare(`
         UPDATE call_logs
@@ -967,7 +989,7 @@ voipCallbackRoutes.post('/voicemail-callback', async (c) => {
 
   return c.text(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna">Thank you for your message. Goodbye.</Say>
+  ${sayElement(lang, promptText(lang, 'goodbye'))}
   <Hangup/>
 </Response>`, 200, { 'Content-Type': 'text/xml' });
 });
@@ -975,9 +997,13 @@ voipCallbackRoutes.post('/voicemail-callback', async (c) => {
 // ── Voicemail Complete ────────────────────────────────────────
 
 voipCallbackRoutes.post('/voicemail-complete', async (c) => {
+  // The provider posts the caller's number and the number called; the workspace is found from the called number.
+  const body = await c.req.parseBody().catch(() => ({} as Record<string, unknown>));
+  const db = await callDb(c.env, { number: body.To as string, callSid: body.CallSid as string });
+  const lang: PromptLanguage = db ? await agencyPromptLanguage(db) : 'en';
   return c.text(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna">Thank you for your message. Goodbye.</Say>
+  ${sayElement(lang, promptText(lang, 'goodbye'))}
   <Hangup/>
 </Response>`, 200, { 'Content-Type': 'text/xml' });
 });
@@ -988,14 +1014,38 @@ voipCallbackRoutes.post('/twiml/announce', async (c) => {
   const callLogId = c.req.query('callLogId') || '';
   const db = await callDb(c.env, { callLogId });
   if (!db) return c.text('<Response/>', 200, { 'Content-Type': 'text/xml' });
-  const rec = await loadRecordingSettings(db);
+  const rec = await loadRecordingSettings(db, c.env);
   if (callLogId) {
     await db.prepare("UPDATE call_logs SET recording_consent = 'announced' WHERE id = ? AND recording_consent IS NULL").bind(callLogId).run();
   }
+  // English keeps the plain <Say> of before R137; any other language names its voice (prompts.ts sayAttributes).
+  const attrs = rec.language === 'en' ? '' : voiceAttributes(rec.language);
   return c.text(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say>${escapeXmlUtil(rec.announcement)}</Say>
+  <Say${attrs}>${escapeXmlUtil(rec.announcement)}</Say>
 </Response>`, 200, { 'Content-Type': 'text/xml' });
+});
+
+// ── Number regulatory bundle status (R137) ────────────────────
+// The provider posts here when a bundle's status changes. The agency is found from the unguessable key in the URL (before
+// any tenant database is opened); the signature is checked with that agency's sub-account token, then the platform's.
+// An unknown key, a bad signature and a bundle we do not know all answer without revealing which agencies exist.
+
+voipCallbackRoutes.post('/regulatory-callback/:tenantKey', async (c) => {
+  const signature = c.req.header('X-Twilio-Signature');
+  const tenantId = await tenantForRegulatoryKey(c.env, c.req.param('tenantKey'));
+  if (!tenantId) return c.json({ error: 'Not found' }, 404);
+  const params = await formParams(c);
+  if (!unsignedAllowed(c.env, signature)) {
+    if (!signature) return c.json({ error: 'Missing webhook signature' }, 403);
+    const tokens = await callbackTokens(c.env, tenantId);
+    if (!(await verifyTwilioAny(publicRequestUrl(c), params, tokens, signature))) return c.json({ error: 'Invalid Twilio signature' }, 403);
+  }
+  const bundleSid = params.BundleSid || '';
+  const status = params.Status || '';
+  if (!bundleSid || !status) return c.json({ success: true, data: { received: true, ignored: true } });
+  await applyProviderStatus(c.env, tenantId, bundleSid, { status, failureReason: params.FailureReason || null });
+  return c.json({ success: true, data: { received: true } });
 });
 
 // escapeXml is imported from voip-provider.ts as escapeXmlUtil

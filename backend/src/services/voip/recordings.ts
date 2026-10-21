@@ -15,8 +15,12 @@
 import type { Env } from '../../types';
 import { createVoipProvider, loadVoipSettings, type VoipProvider } from '../voip-provider';
 import { signMessage } from '../../utils/unsubscribe-token';
+import { loadLocaleContext } from '../../utils/money';
+import { getCountryPolicy } from './country-policy';
+import { agencyPromptLanguage, promptText, type PromptLanguage } from './prompts';
 
-export const DEFAULT_ANNOUNCEMENT = 'This call may be recorded for quality and training purposes.';
+/** The English default notice; an agency in another language hears that language's version (prompts.ts) unless it wrote its own. */
+export const DEFAULT_ANNOUNCEMENT = promptText('en', 'recordingAnnouncement');
 export const CONSENT_MODES = ['announce', 'off', 'on_request'] as const;
 export type ConsentMode = (typeof CONSENT_MODES)[number];
 /** How long a playback link lives. */
@@ -32,6 +36,10 @@ export interface RecordingSettings {
   announcement: string;
   /** The agency's own wording, null when the default is used. */
   customAnnouncement: string | null;
+  /** The default notice in the agency's language (R137). */
+  defaultAnnouncement: string;
+  /** The language its callers hear fixed prompts in (R137). */
+  language: PromptLanguage;
   retentionDays: number;
   callAiEnabled: boolean;
   callAiEngine: 'standard' | 'premium';
@@ -45,8 +53,15 @@ export function recordingPrefix(tenantId: string): string {
   return `${tenantId}/recordings/`;
 }
 
-/** The agency's recording and call AI settings; defaults when VoIP has not been set up. */
-export async function loadRecordingSettings(db: D1Database): Promise<RecordingSettings> {
+/**
+ * The agency's recording and call AI settings; defaults when VoIP has not been set up.
+ *
+ * R137: with `env`, an agency that has not chosen a consent mode gets its country's default (call_country_policy.recording_default;
+ * the Netherlands: announce). "Not chosen" is a stored value that is empty, unknown or the column default 'announce', because the
+ * agency column cannot tell a default from a choice; so an explicit 'off' or 'on_request' always wins, and an explicit
+ * 'announce' only differs from a country default other than announce. Without `env` the earlier default (announce) applies.
+ */
+export async function loadRecordingSettings(db: D1Database, env?: Pick<Env, 'MASTER_DB'>): Promise<RecordingSettings> {
   const row = await db
     .prepare(
       `SELECT recording_policy, recording_retention_days, recording_consent_mode, recording_announcement, call_ai_enabled, call_ai_engine
@@ -60,14 +75,28 @@ export async function loadRecordingSettings(db: D1Database): Promise<RecordingSe
       call_ai_enabled: number | null;
       call_ai_engine: string | null;
     }>();
-  const mode = CONSENT_MODES.find((m) => m === row?.recording_consent_mode) ?? 'announce';
+  const chosen = CONSENT_MODES.find((m) => m === row?.recording_consent_mode);
+  let mode: ConsentMode = chosen ?? 'announce';
+  if (env && (!chosen || chosen === 'announce')) {
+    try {
+      const country = (await loadLocaleContext(db)).country;
+      const policy = country ? await getCountryPolicy(env, country) : null;
+      if (policy) mode = policy.recordingDefault;
+    } catch {
+      // no country policy available: the earlier default stands
+    }
+  }
+  const language = await agencyPromptLanguage(db);
+  const defaultAnnouncement = promptText(language, 'recordingAnnouncement');
   const custom = row?.recording_announcement?.trim() || null;
   const days = Number(row?.recording_retention_days);
   return {
     recordingPolicy: row?.recording_policy || 'all',
     consentMode: mode,
-    announcement: custom ?? DEFAULT_ANNOUNCEMENT,
+    announcement: custom ?? defaultAnnouncement,
     customAnnouncement: custom,
+    defaultAnnouncement,
+    language,
     retentionDays: Number.isFinite(days) && days >= 1 ? Math.floor(days) : DEFAULT_RETENTION_DAYS,
     callAiEnabled: row?.call_ai_enabled === 1,
     callAiEngine: row?.call_ai_engine === 'premium' ? 'premium' : 'standard',
