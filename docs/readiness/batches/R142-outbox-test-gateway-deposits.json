@@ -1,0 +1,156 @@
+{
+  "id": "R142",
+  "tier": 4,
+  "step": 4,
+  "title": "Pay online, working locally: customer email in the local outbox (test mode), a test gateway for agency payment links, deposit and balance links, Stripe local methods such as iDEAL, and invoice creation as a domain function",
+  "lane": "fullstack",
+  "backend": true,
+  "goal": "On a local stack an agency can create a deposit link on an invoice, open the payment page, pay with a method suited to the currency, and see the payment recorded; customer emails land in the local outbox instead of SendGrid. Production paths are unchanged.",
+  "why": "Gap 3 and brief item 12 (TOUR-OPERATOR-DESIGN.md sections 8 and 13.4). There is no test gateway for agency links (only the subscription mock), so the payment page cannot be shown; links are always for the full balance; iDEAL availability was never checked; and sendMail sends every agency email through SendGrid even in TEST_MODE (checked 2026-10-21), so a customer email cannot be opened locally.",
+  "featuresToWorks": ["payments.gateway", "payments.link-invoice", "payments.deposit-link", "inbox.local-outbox"],
+  "featureKeys": [],
+  "dependsOn": ["R138", "R140"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": ["R143"],
+  "size": "M",
+  "newDependencies": [],
+  "migrations": ["backend/drizzle/tenant/0058_payment_link_amounts.sql"],
+  "files": {
+    "edit": [
+      "backend/src/services/mail/provider.ts",
+      "backend/src/services/mail/transactional.ts",
+      "backend/src/routes/test.ts",
+      "backend/src/services/payments/agency-gateway.ts",
+      "backend/src/services/payments/accounts.ts",
+      "backend/src/routes/payment-webhooks.ts",
+      "backend/src/routes/invoices.ts",
+      "backend/src/routes/integrations.ts",
+      "backend/src/routes/settings.ts (payment_defaults key only)",
+      "backend/src/db/tenant-schema.ts",
+      "backend/src/db/tenant-migrations.generated.ts (regenerated)",
+      "backend/test/payment-links.test.ts",
+      "desktop/src/app/(app)/invoices/[id]/page.tsx (pay online card only)",
+      "desktop/src/app/(app)/settings/integrations/page.tsx (gateway cards only)",
+      "desktop/src/app/(app)/settings/invoice-defaults/page.tsx (Payments card only)",
+      "desktop/src/lib/api/invoices.ts",
+      "desktop/src/lib/api/integrations.ts",
+      "desktop/src/messages/en/payments.json",
+      "desktop/src/messages/nl/payments.json"
+    ],
+    "create": [
+      "backend/drizzle/tenant/0058_payment_link_amounts.sql",
+      "backend/src/services/domain/invoices.ts",
+      "backend/src/services/payments/mock-agency.ts",
+      "backend/test/agency-mock-gateway.test.ts",
+      "backend/test/agency-mail-outbox.test.ts",
+      "desktop/src/app/(app)/invoices/[id]/_components/payment-link-dialog.tsx",
+      "desktop/e2e/pay-online.spec.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/services/billing/**",
+      "backend/src/routes/billing.ts",
+      "backend/src/index.ts",
+      "backend/src/routes/leads.ts",
+      "desktop/src/hooks/use-feature-gate.ts",
+      "backend/src/routes/departures.ts",
+      "backend/src/routes/tours.ts",
+      "backend/src/services/departures/**",
+      "backend/src/services/automation/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "prospects/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "items": [
+    {
+      "id": "R142-outbox",
+      "what": "Customer email in the local outbox",
+      "steps": [
+        "provider.ts sendMail: for kinds agency_transactional and agency_marketing, when isTestMode(env), write an entry to the KV outbox (OUTBOX_PREFIX from transactional.ts, same TTL) with {kind, tenantId (when the message carries it; add an optional tenantId to OutgoingEmail and pass it from the email queue), to, subject, html, text, attachmentNames, createdAt} and return {success: true, provider: 'outbox'} without calling SendGrid.",
+        "GET /test/outbox gains ?tenantId= and ?kind=agency|system filters (system mail unchanged).",
+        "Production and non-test environments: unchanged; a test proves SendGrid fetch is still called with TEST_MODE off."
+      ]
+    },
+    {
+      "id": "R142-domain-invoice",
+      "what": "Invoice creation as a domain function",
+      "steps": [
+        "Move the body of the create-invoice route (numbering, tax engine call, items, totals, activity, events) into services/domain/invoices.ts createInvoice(env, tenantId, db, input, actor); the route calls it and answers exactly as before (existing invoice tests are the guard). R148, R150 and R152 build on it."
+      ]
+    },
+    {
+      "id": "R142-mock",
+      "what": "Test gateway for agency links",
+      "steps": [
+        "AgencyGatewayId gains 'mock', accepted only when mockAllowed(env) (import from services/billing/gateway.ts; do not edit billing files).",
+        "integrations.ts: GET payment gateways reports mockAvailable; connecting 'mock' stores a payment_gateway_accounts row with no secrets; in production 'mock' is refused (400).",
+        "mock-agency.ts: createPaymentLink for mock stores {tenantId, invoiceId, amount, currency, linkRef, purpose} in KV mockpay:<linkRef> (7 days) and returns `${API_PUBLIC_URL || request origin}/api/v1/webhooks/payments/mock-pay/<tenantKey>/<linkRef>` (build from the API's own base URL, like R135-7).",
+        "payment-webhooks.ts: GET /mock-pay/:tenantKey/:linkRef serves a small HTML page (agency name from settings, amount in the agency locale, methods by currency: EUR iDEAL / card / Bancontact, GBP card / Pay by bank, INR UPI / card, else card; Pay, Fail, Cancel); POST /mock-pay/:tenantKey/:linkRef signs a mock event with mockSecret and runs it through the same handler as POST /:tenantKey/mock (verify, claim event id, recordInvoicePayment once, emit payment.recorded); then redirects to ?return= when it starts with APP_URL, else shows 'Payment received'. Both answer 404 when mock is not allowed.",
+        "The mock pay page text uses the backend i18n catalogue (en, nl) from R136."
+      ]
+    },
+    {
+      "id": "R142-amounts",
+      "what": "Deposit, balance and custom amounts",
+      "steps": [
+        "0058: invoices ADD payment_link_amount REAL, payment_link_purpose TEXT; schema and bundle.",
+        "POST /invoices/:id/payment-link accepts {gateway?, amount?, purpose?: deposit|balance|custom}; deposit = payment_defaults.deposit (percent of total or fixed) unless an amount is given; amount must be > 0 and <= balance_due (400 otherwise); stored with the link. A paid deposit leaves the invoice partially_paid; one live link per invoice stays the rule.",
+        "settings.ts: payment_defaults key (design 4.3) with GET/PUT under /settings/payment-defaults; Invoice defaults page gains a Payments card (deposit type and value; Stripe methods; bank reference format).",
+        "Invoice page 'Pay online' card: Create link opens payment-link-dialog (Deposit, Balance, Custom amount), shows the link with Copy and 'Send to customer' through SendMessageDialog (never mailto or wa.me)."
+      ]
+    },
+    {
+      "id": "R142-stripe",
+      "what": "Stripe local methods",
+      "steps": [
+        "Keep dynamic payment methods by default (no payment_method_types sent) and assert it in a test.",
+        "When payment_defaults.stripeMethodTypes is set, send payment_method_types[i]; validate per currency (ideal and bancontact only for EUR; sepa_debit EUR); a mismatch is a readable 400.",
+        "Integrations Stripe card hint: 'Customers see the methods enabled in your Stripe dashboard. For euro invoices, enable iDEAL there.' (t())."
+      ]
+    }
+  ],
+  "tests": [
+    "backend/test/agency-mail-outbox.test.ts: in TEST_MODE a hub email (communications send email, and the email queue) is written to the outbox with the tenant id and no fetch to SendGrid; with TEST_MODE off and a key, the mocked fetch is called; GET /test/outbox?tenantId= filters.",
+    "backend/test/agency-mock-gateway.test.ts: connect mock; deposit link 30% on a EUR invoice; GET mock-pay page lists iDEAL for EUR and UPI for INR; POST pay records exactly one payment of the link amount and the invoice becomes partially_paid; a replay does nothing; ENVIRONMENT=production -> 404 and connect refused; return URL outside APP_URL is ignored.",
+    "backend/test/payment-links.test.ts: amount above balance 400; Stripe body has no payment_method_types by default and the explicit list for EUR; ideal on GBP 400.",
+    "Existing invoice tests unchanged and green after the createInvoice extraction.",
+    "desktop vitest: payment-link-dialog amounts (deposit percent, fixed, custom bounds).",
+    "e2e/pay-online.spec.ts: connect the test gateway in Settings > Integrations, create a deposit link on an invoice, open it, pay with iDEAL, return, see the payment and the balance; read the customer email of a sent invoice from GET /test/outbox?tenantId=."
+  ],
+  "acceptance": [
+    "The payment page opens and completes on a local stack; the payment appears once.",
+    "Customer emails in test mode are readable in the outbox; nothing reaches SendGrid in test mode.",
+    "Production behaviour (real gateways, SendGrid) is unchanged."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # 0 failed files; passed >= the count at the last merge",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # 0 failing files; passed >= the count at the last merge",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && node scripts/i18n-check.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/pay-online.spec.ts e2e/invoices.spec.ts e2e/payments.spec.ts e2e/webhooks-integrations.spec.ts e2e/communication-inbox.spec.ts e2e/settings-team.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": { "typecheck": true, "unit": true, "lint": true, "build": false, "backendTests": true, "flutter": false, "specs": ["e2e/pay-online.spec.ts", "e2e/invoices.spec.ts", "e2e/payments.spec.ts", "e2e/webhooks-integrations.spec.ts", "e2e/communication-inbox.spec.ts", "e2e/settings-team.spec.ts"] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere.",
+    "Test-only paths are fenced by isTestMode / mockAllowed and are unreachable in production (tests prove it).",
+    "Payment links reach customers only through the Communication Hub (SendMessageDialog).",
+    "Backend: tenant migration 0058 only; regenerate the bundle; UUIDv7 ids; money through utils/money.ts.",
+    "Desktop: CONTRACT.md; t() with en and nl keys in messages/<lang>/payments.json only; RTL-safe classes; money through lib/format.ts.",
+    "Never weaken, skip or delete an existing test."
+  ],
+  "notes": [
+    "Before editing read: this file, TOUR-OPERATOR-DESIGN.md sections 8 and 13.4, the R207 batch file, backend/src/services/billing/mock.ts and routes/billing.ts (mock checkout pattern, do not edit), services/mail/transactional.ts.",
+    "R143 runs in parallel and owns services/departures and the automation files; do not edit them.",
+    "Check that no existing e2e relied on agency emails failing in test mode; if one did, it was asserting a bug: report it."
+  ],
+  "goLiveVerify": ["An EUR payment link from a Stripe test account with iDEAL enabled shows iDEAL; a Razorpay INR link still works."]
+}

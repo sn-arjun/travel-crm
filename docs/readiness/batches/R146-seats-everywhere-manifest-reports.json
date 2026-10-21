@@ -1,0 +1,122 @@
+{
+  "id": "R146",
+  "tier": 4,
+  "step": 6,
+  "title": "Group departures, part 4: seats left on the calendar, the lead and the quote; the manifest with pickup and rooming lists (CSV and PDF); seats-sold, tour-sales and extras reports; coach trips from the departure page",
+  "lane": "fullstack",
+  "backend": true,
+  "goal": "Wherever staff look at a departure (calendar, lead, quote, departure page) they see seats left; the departure's manifest exports as a pickup list and a rooming list; reports show seats sold per departure and per tour.",
+  "why": "Gap 1's visibility and manifest parts. Design: TOUR-OPERATOR-DESIGN.md sections 9.4 and 10.",
+  "featuresToWorks": ["departures.calendar", "departures.manifest", "reports.departure-seats", "reports.tour-sales", "leads.departure-card", "itineraries.departure-seats"],
+  "featureKeys": ["group_departures"],
+  "dependsOn": ["R144", "R145"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": ["R147"],
+  "size": "M",
+  "newDependencies": [],
+  "migrations": [],
+  "files": {
+    "edit": [
+      "backend/src/routes/planner.ts",
+      "backend/src/routes/departures.ts (manifest routes only)",
+      "backend/src/routes/itineraries.ts (GET /:id departure and seats fields only)",
+      "backend/src/services/report-registry.ts",
+      "desktop/src/app/(app)/calendar/page.tsx",
+      "desktop/src/app/(app)/leads/[id]/page.tsx (Departure card only)",
+      "desktop/src/app/(app)/itineraries/[id]/page.tsx (departure and seats panel only)",
+      "desktop/src/app/(app)/departures/[id]/page.tsx (Manifest tab and Create coach trips button)",
+      "desktop/src/app/(app)/reports/**",
+      "desktop/src/lib/api/departures.ts",
+      "desktop/src/messages/en/departures.json",
+      "desktop/src/messages/nl/departures.json",
+      "desktop/src/messages/en/reports.json",
+      "desktop/src/messages/nl/reports.json"
+    ],
+    "create": [
+      "backend/src/services/departures/manifest.ts",
+      "backend/src/services/reports/tour-reports.ts",
+      "backend/test/departure-manifest.test.ts",
+      "backend/test/tour-reports.test.ts",
+      "desktop/src/app/(app)/leads/[id]/_components/departure-card.tsx",
+      "desktop/src/app/(app)/departures/_components/manifest-tab.tsx",
+      "desktop/e2e/departure-manifest.spec.ts"
+    ],
+    "mustNotTouch": [
+      "packages/**",
+      "backend/src/db/tenant-schema.ts",
+      "backend/drizzle/**",
+      "backend/src/routes/driver.ts",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "prospects/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "items": [
+    {
+      "id": "R146-1",
+      "what": "Seats left everywhere",
+      "steps": [
+        "planner.ts GET events: rows with related_departure_id carry departure {id, code, status, seats} from one aggregate query; the calendar shows a seats-left chip ('12 left', 'Full', 'Waitlist 3') and clicking opens a departure drawer with a link to the page.",
+        "Lead page: Departure card (when the lead has departure_id or seat bookings): departure, seats held/confirmed for this lead, seats left on the departure, hold expiry, actions Hold seats / Confirm / Open departure; a 'Link a departure' action (RelationCombobox over open departures, filtered by the lead destination when set).",
+        "Itinerary page: when departure_id is set, a panel with the departure, seats requested and seats left; a 'Link departure' action (RelationCombobox) that sets departure_id and seats_requested."
+      ]
+    },
+    {
+      "id": "R146-2",
+      "what": "Manifest and exports",
+      "steps": [
+        "manifest.ts and GET /departures/:id/manifest?view=pickup|rooming|full&format=json|csv|pdf: pickup list (stops in order with time and documents-check flag, then passengers boarding there with name, seats, phone, documents status); rooming list (room groups or unassigned, names, gender, room type, sharing notes, meal); full (every passenger field the agency collects; document numbers only for roles with travellers export).",
+        "PDF with the agency branding and locale (reuse the PDF helpers other documents use); CSV with a UTF-8 BOM for spreadsheet apps.",
+        "Manifest tab on the departure page: view switch, FilterBar (pickup point, room type, documents status), Export menu (CSV, PDF), 'Auto-group rooms' helper that pairs sharing passengers by gender and room type (staff confirm before saving room_group).",
+        "'Create coach trips' button on the departure page calling POST /departures/:id/trips (R145) and linking to the trips."
+      ]
+    },
+    {
+      "id": "R146-3",
+      "what": "Reports",
+      "steps": [
+        "tour-reports.ts registered in report-registry.ts (category 'tours', roles admin, sales_manager, operations, accountant; requires feature group_departures): departure_seats, tour_sales, extras_sales (reads passenger_extras; empty until R150) as in design section 10, with date range filters and money in the agency currency.",
+        "Reports hub: a Tours group shown only with the feature and the agency switch on."
+      ]
+    }
+  ],
+  "tests": [
+    "backend/test/departure-manifest.test.ts: pickup list order and grouping; rooming list grouping; full view hides document numbers for a salesperson; CSV and PDF return the right content types; feature off 403.",
+    "backend/test/tour-reports.test.ts: seats and load per departure, revenue and collected from linked invoices, tour totals.",
+    "planner events include the departure seats summary.",
+    "e2e/departure-manifest.spec.ts: calendar chip shows seats left; lead Departure card holds seats and shows them; itinerary linked to a departure shows seats left; manifest pickup list export downloads a CSV with the right rows; departure_seats report lists the departure."
+  ],
+  "acceptance": [
+    "Seats left are visible on the calendar, the lead and the quote without opening the departure.",
+    "Pickup and rooming lists export as CSV and PDF."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # 0 failed files; passed >= the count at the last merge",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # 0 failing files; passed >= the count at the last merge",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && node scripts/i18n-check.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/departure-manifest.spec.ts e2e/calendar.spec.ts e2e/leads.spec.ts e2e/itineraries.spec.ts e2e/reports.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": { "typecheck": true, "unit": true, "lint": true, "build": false, "backendTests": true, "flutter": false, "specs": ["e2e/departure-manifest.spec.ts", "e2e/calendar.spec.ts", "e2e/leads.spec.ts", "e2e/itineraries.spec.ts", "e2e/reports.spec.ts"] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere.",
+    "Feature switch: group_departures plus the agency switch; departure cards, chips and report groups render only when both are on.",
+    "Desktop: CONTRACT.md; RelationCombobox; t() with en and nl keys in departures.json and reports.json only; RTL-safe classes; money and dates through lib/format.ts and lib/dates.ts.",
+    "Backend: no migration; exports respect role permissions; money through utils/money.ts.",
+    "Never weaken, skip or delete an existing test."
+  ],
+  "notes": [
+    "Before editing read: this file, TOUR-OPERATOR-DESIGN.md sections 9.4 and 10, services/report-registry.ts and one existing report module, an existing PDF route (vouchers or invoices) for the branding helpers.",
+    "R147 runs in parallel and touches only packages/; nothing collides."
+  ],
+  "goLiveVerify": []
+}

@@ -1,0 +1,121 @@
+{
+  "id": "R149",
+  "tier": 4,
+  "step": 7,
+  "title": "Age-band pricing: agency and template age bands, quotes that fill quantities from travellers' ages or the children's ages read from a message, one shared band resolver",
+  "lane": "fullstack",
+  "backend": true,
+  "goal": "An agency defines its age bands (labels and ages) once, a template can override them, and a quote fills its band quantities from the travellers' dates of birth or from 'two adults and kids aged 8 and 5' in one step instead of editing lines.",
+  "why": "Gap 7: every family quote with children's age bands is edited line by line today. Design: TOUR-OPERATOR-DESIGN.md sections 4.2 and 14.",
+  "featuresToWorks": ["itineraries.age-bands", "itineraries.fill-quantities", "automation.itineraries.suggest_template"],
+  "featureKeys": ["age_band_pricing"],
+  "dependsOn": ["R140", "R146"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": ["R148"],
+  "size": "M",
+  "newDependencies": [],
+  "migrations": ["backend/drizzle/tenant/0060_age_bands.sql"],
+  "files": {
+    "edit": [
+      "backend/src/db/tenant-schema.ts",
+      "backend/src/db/tenant-migrations.generated.ts (regenerated)",
+      "backend/src/routes/itinerary-templates.ts",
+      "backend/src/routes/itineraries.ts",
+      "backend/src/routes/settings.ts (pricing.age_bands key only)",
+      "backend/src/services/automation/actions.ts (create_itinerary_from_template params only)",
+      "backend/src/services/automation/recipes.ts (itineraries.suggest_template params only)",
+      "backend/src/services/departures/passengers.ts (switch to the shared resolver)",
+      "desktop/src/app/(app)/itineraries/templates/**",
+      "desktop/src/app/(app)/itineraries/[id]/** (builder line band select and the Fill quantities action only)",
+      "desktop/src/app/(app)/itineraries/_components/**",
+      "desktop/src/app/(app)/settings/itinerary-defaults/page.tsx (Age bands card only)",
+      "desktop/src/lib/api/itineraries.ts",
+      "desktop/src/messages/en/ageBands.json",
+      "desktop/src/messages/nl/ageBands.json",
+      "desktop/src/messages/en/itineraries.json",
+      "desktop/src/messages/nl/itineraries.json"
+    ],
+    "create": [
+      "backend/drizzle/tenant/0060_age_bands.sql",
+      "backend/src/services/pricing/age-bands.ts",
+      "backend/test/age-bands.test.ts",
+      "desktop/src/lib/age-bands.ts",
+      "desktop/src/lib/age-bands.test.ts",
+      "desktop/src/app/(app)/itineraries/[id]/_components/fill-quantities-dialog.tsx",
+      "desktop/e2e/age-bands.spec.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/db/master-schema.ts",
+      "backend/drizzle/master/**",
+      "backend/src/routes/public-booking.ts",
+      "backend/src/routes/departures.ts",
+      "backend/src/index.ts",
+      "desktop/src/app/(public)/**",
+      "desktop/src/app/(app)/departures/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "prospects/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "items": [
+    {
+      "id": "R149-1",
+      "what": "Shared resolver",
+      "steps": [
+        "backend services/pricing/age-bands.ts and desktop lib/age-bands.ts with the same tests: bandsFor(templateBands?, agencyBands), bandForAge(bands, age) where each band covers [minAge, next minAge), ageOn(dob, date) in whole years (and fractional for display), fillQuantities(items, bands, {adults, ages}) -> changes per line (band lines -> count in band; per_person lines -> total pax; others unchanged).",
+        "Default agency bands adult 12+, child 2-11, infant 0-1 (design 4.2) under settings key pricing.age_bands (GET/PUT /settings/age-bands); existing pax_type values adult, child and infant keep working.",
+        "R143's local resolver in services/departures/passengers.ts is replaced by this module (behaviour identical for default bands; its tests stay green)."
+      ]
+    },
+    {
+      "id": "R149-2",
+      "what": "Templates and quotes",
+      "steps": [
+        "0060: itinerary_templates ADD age_bands; itineraries ADD age_bands, pax_ages; schema; bundle.",
+        "Template editor: an Age bands card (inherit agency bands, or a custom list with label and minimum age); item rows pick a band or 'per person' for pax_type.",
+        "POST /itinerary-templates/create-from accepts {adults?, ages?} and fills quantities on creation; copies the bands snapshot.",
+        "POST /itineraries/:id/fill-quantities {source: ages|travellers|lead, ages?, travellerIds?} returns a preview; ?apply=1 applies and recomputes totals. 'lead' uses the lead's pax counts and the latest message analysis childAges (R140).",
+        "Itinerary page: a 'Fill quantities' action opening fill-quantities-dialog (enter ages, or pick travellers of the lead's contact, or use the lead) with the preview diff before applying.",
+        "The assistant's create_itinerary_from_template action passes {adults, ages} from the analysis so the one-click quote already has the right quantities; the suggestion reason mentions them ('2 adults, children 8 and 5')."
+      ]
+    }
+  ],
+  "tests": [
+    "backend/test/age-bands.test.ts: band boundaries (11.9 -> child, 12 -> adult with default bands; a four-band list), age on the travel date, fill from ages, travellers' DOBs and the lead with childAges; per-person lines; feature age_band_pricing off -> the routes answer 403 and create-from ignores ages; the assistant action creates a quote with filled quantities.",
+    "desktop vitest: lib/age-bands.ts (same table as the backend).",
+    "e2e/age-bands.spec.ts: set four agency bands, a template with band lines, create a quote from it for a lead with 'kids aged 8 and 5' in its message (rule reader), quantities and total match; refill from travellers changes them."
+  ],
+  "acceptance": [
+    "A family quote from a template has correct band quantities without editing lines.",
+    "Agencies that never set bands see the same quotes as before."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # 0 failed files; passed >= the count at the last merge",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # 0 failing files; passed >= the count at the last merge",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && node scripts/i18n-check.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 2 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3120 E2E_API_URL=http://localhost:8807/api/v1 npx playwright test e2e/age-bands.spec.ts e2e/itinerary-templates.spec.ts e2e/itineraries.spec.ts e2e/assistant-rules.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 2"
+  ],
+  "gates": { "typecheck": true, "unit": true, "lint": true, "build": false, "backendTests": true, "flutter": false, "specs": ["e2e/age-bands.spec.ts", "e2e/itinerary-templates.spec.ts", "e2e/itineraries.spec.ts", "e2e/assistant-rules.spec.ts"] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere.",
+    "Feature switch: age_band_pricing (all plans) on the new routes and UI.",
+    "Backend: tenant migration 0060 only; regenerate the bundle; settings defaults in code.",
+    "Desktop: CONTRACT.md; RelationCombobox for travellers; t() with en and nl keys in ageBands.json and itineraries.json; RTL-safe classes; money through lib/format.ts.",
+    "Never weaken, skip or delete an existing test."
+  ],
+  "notes": [
+    "Before editing read: this file, TOUR-OPERATOR-DESIGN.md sections 4.2 and 14, routes/itinerary-templates.ts create-from, the itinerary builder components, services/automation/actions.ts create_itinerary_from_template.",
+    "R148 runs in parallel and owns the master schema, public booking and departures routes; do not edit them."
+  ],
+  "goLiveVerify": []
+}

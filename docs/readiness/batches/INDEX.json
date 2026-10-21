@@ -607,5 +607,41 @@
       "R129"
     ],
     "blockedOnOwner": null
-  }
+  },
+  {
+    "id": "R135",
+    "tier": 3,
+    "title": "Bugs found while recording the video catalogue",
+    "size": "M",
+    "dependsOn": [],
+    "blockedOnOwner": null,
+    "status": "merged 2026-10-21"
+  },
+  { "id": "R136", "tier": 4, "step": 1, "parallelWith": "R137", "title": "Dutch interface foundation: nl language, split catalogues, complete-nl gate, Dutch system emails and voucher labels, driver app in Dutch", "size": "L", "dependsOn": [], "migrations": [], "blockedOnOwner": null },
+  { "id": "R137", "tier": 4, "step": 1, "parallelWith": "R136", "title": "Calling ready to switch on in the EU, Netherlands first: backend, pricing, regulatory bundles, recording defaults, Dutch prompts, docs", "size": "L", "dependsOn": [], "migrations": ["master/0029_calling_eu_nl.sql"], "blockedOnOwner": "OPEN Q1 (default VOIP_CALLING_COUNTRIES US,NL assumed); real Twilio NL prices stay draft until the owner enters them" },
+  { "id": "R138", "tier": 4, "step": 2, "parallelWith": "R139", "title": "No rupee or India defaults for a non-India agency (B1-B4, B7 and the sweep) with a guard test", "size": "M", "dependsOn": ["R136"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R139", "tier": 4, "step": 2, "parallelWith": "R138", "title": "Group departures 1: data model, the wave's feature keys, permissions, tours and departures API, calendar sync", "size": "L", "dependsOn": ["R136"], "migrations": ["tenant/0057_group_departures.sql", "master/0030_tour_operator_features.sql"], "blockedOnOwner": "OPEN Q2 (plan placement: group_departures and public_booking on trial, pro, enterprise assumed)" },
+  { "id": "R140", "tier": 4, "step": 3, "parallelWith": "R141", "title": "Bank details by country, payment methods by country, message reader currencies and children's ages (B5, B6)", "size": "M", "dependsOn": ["R138"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R141", "tier": 4, "step": 3, "parallelWith": "R140", "title": "Calling in the Netherlands, screens: number requirements and pending states, recording default, super admin bundle review, NL phone formats", "size": "M", "dependsOn": ["R137", "R136"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R142", "tier": 4, "step": 4, "parallelWith": "R143", "title": "Pay online locally: customer email in the local outbox, test gateway for agency links, deposit and balance links, Stripe local methods, invoice creation as a domain function", "size": "M", "dependsOn": ["R138", "R140"], "migrations": ["tenant/0058_payment_link_amounts.sql"], "blockedOnOwner": null },
+  { "id": "R143", "tier": 4, "step": 4, "parallelWith": "R142", "title": "Group departures 2: seat holds, confirmation, waitlist, expiry, passengers, lead link, events and recipes", "size": "L", "dependsOn": ["R139"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R144", "tier": 4, "step": 5, "parallelWith": "R145", "title": "Group departures 3: desktop tours, departures, seat bookings, waitlist, passengers, Group tours settings and the agency switch", "size": "L", "dependsOn": ["R143"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R145", "tier": 4, "step": 5, "parallelWith": "R144", "title": "Coach trips with ordered stops and passenger check-in: backend, driver API, desktop; tour leaders as crew", "size": "L", "dependsOn": ["R143"], "migrations": ["tenant/0059_coach_trip_stops.sql"], "blockedOnOwner": null },
+  { "id": "R146", "tier": 4, "step": 6, "parallelWith": "R147", "title": "Group departures 4: seats left on calendar, lead and quote; manifest pickup and rooming lists; seats-sold reports; coach trips from the departure", "size": "M", "dependsOn": ["R144", "R145"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R147", "tier": 4, "step": 6, "parallelWith": "R146", "title": "Driver app: ordered stops, passenger ticks, head count, documents checked, tour leader role, offline ticks", "size": "M", "dependsOn": ["R145", "R136"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R148", "tier": 4, "step": 7, "parallelWith": "R149", "title": "Public booking page per departure, with booking invoice and deposit link", "size": "L", "dependsOn": ["R146", "R142"], "migrations": ["master/0031_public_links.sql"], "blockedOnOwner": null },
+  { "id": "R149", "tier": 4, "step": 7, "parallelWith": "R148", "title": "Age-band pricing on templates and quotes, quantities from ages", "size": "M", "dependsOn": ["R140", "R146"], "migrations": ["tenant/0060_age_bands.sql"], "blockedOnOwner": null },
+  { "id": "R150", "tier": 4, "step": 8, "parallelWith": "R151", "title": "Extras catalogue and the traveller self-service page (details, extras, pay)", "size": "L", "dependsOn": ["R148", "R149"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R151", "tier": 4, "step": 8, "parallelWith": "R150", "title": "Website chat widget asks for contact details so a chat can become a lead", "size": "S", "dependsOn": ["R136"], "migrations": ["tenant/0061_chatbot_contact_capture.sql"], "blockedOnOwner": null },
+  { "id": "R152", "tier": 4, "step": 9, "parallelWith": "R153", "title": "Margin-scheme invoices with configurable wording and a margin report", "size": "M", "dependsOn": ["R150"], "migrations": ["tenant/0062_margin_scheme.sql"], "blockedOnOwner": null },
+  { "id": "R153", "tier": 4, "step": 9, "parallelWith": "R152", "title": "Leads pipeline board with drag and drop", "size": "M", "dependsOn": ["R146"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R154", "tier": 4, "step": 10, "parallelWith": "R155", "title": "Departure-relative messages with per-person fields through the Communication Hub", "size": "M", "dependsOn": ["R150"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R155", "tier": 4, "step": 10, "parallelWith": "R154", "title": "Accept and book on the shared quote page", "size": "M", "dependsOn": ["R150"], "migrations": ["tenant/0063_quote_acceptance.sql"], "blockedOnOwner": null },
+  { "id": "R156", "tier": 4, "step": 11, "parallelWith": "R157", "title": "Interface sweep A (en and nl): leads, contacts, dashboard, calendar, tasks, follow-ups", "size": "M", "dependsOn": ["R155"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R157", "tier": 4, "step": 11, "parallelWith": "R156", "title": "Interface sweep B (en and nl): fleet, travellers, visa, documents, rate cards, suppliers", "size": "L", "dependsOn": ["R155"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R158", "tier": 4, "step": 12, "parallelWith": "R159", "title": "Interface sweep C (en and nl): itineraries, invoices, payments, credit and debit notes, vouchers", "size": "L", "dependsOn": ["R156", "R157"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R159", "tier": 4, "step": 12, "parallelWith": "R158", "title": "Interface sweep D (en and nl): marketing, campaigns, communication", "size": "L", "dependsOn": ["R156", "R157"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R160", "tier": 4, "step": 13, "parallelWith": "R161", "title": "Interface sweep E (en and nl): settings", "size": "L", "dependsOn": ["R158", "R159"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R161", "tier": 4, "step": 13, "parallelWith": "R160", "title": "Interface sweep F (en and nl): AI, assistant, chatbot, reports", "size": "L", "dependsOn": ["R158", "R159"], "migrations": [], "blockedOnOwner": null },
+  { "id": "R162", "tier": 4, "step": 14, "parallelWith": null, "title": "Interface sweep G (en and nl): shared components and the rest; i18n-check over the whole app", "size": "M", "dependsOn": ["R160", "R161"], "migrations": [], "blockedOnOwner": null }
 ]

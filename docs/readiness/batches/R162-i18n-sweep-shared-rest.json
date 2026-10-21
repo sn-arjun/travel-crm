@@ -1,0 +1,86 @@
+{
+  "id": "R162",
+  "tier": 4,
+  "step": 14,
+  "title": "Interface sweep G (English and Dutch): shared domain components and every remaining page (import, onboarding, help, notifications, accounts, bookmarks, public pages, auth and electron components); i18n-check scope becomes all of src/app and src/components",
+  "lane": "desktop",
+  "backend": false,
+  "goal": "No hard-coded English remains anywhere in the desktop app; i18n-check enforces the whole of src/app and src/components with complete English and Dutch.",
+  "why": "About 900 strings remain in shared components and smaller pages (scanFile count 2026-10-21). After this batch the Dutch interface is complete. Design: TOUR-OPERATOR-DESIGN.md section 17.",
+  "featuresToWorks": ["platform.i18n-nl"],
+  "featureKeys": [],
+  "dependsOn": ["R160", "R161"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": [],
+  "size": "M",
+  "newDependencies": [],
+  "migrations": [],
+  "scope": [
+    "desktop/src/components",
+    "desktop/src/app/(app)/import",
+    "desktop/src/app/(app)/onboarding",
+    "desktop/src/app/(app)/help",
+    "desktop/src/app/(app)/notifications",
+    "desktop/src/app/(app)/accounts",
+    "desktop/src/app/(app)/bookmarks",
+    "desktop/src/app/(public)",
+    "desktop/src/app/support-session",
+    "desktop/src/app/layout.tsx"
+  ],
+  "namespaces": ["ui", "import", "onboarding", "help", "notifications", "accounts", "bookmarks", "publicPages", "auth"],
+  "files": {
+    "edit": [
+      "every .tsx/.ts file under the scope (strings only)",
+      "desktop/src/messages/{en,nl,hi,ar}/{ui,import,onboarding,help,notifications,accounts,bookmarks,publicPages,auth}.json",
+      "desktop/scripts/i18n-check.mjs (only to support a whole-tree scope entry, if needed)"
+    ],
+    "create": [
+      "docs/i18n/nl-review/R162.md",
+      "desktop/scripts/i18n-scope/all.json",
+      "desktop/e2e/i18n-nl-full.spec.ts"
+    ],
+    "mustNotTouch": [
+      "backend/**",
+      "desktop/src/messages/index.ts",
+      "product-requirment/**",
+      "prospects/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "items": [
+    { "id": "R162-1", "what": "Convert every remaining i18n-check finding in the scope to t(), keeping English identical; the booking, trip and quote public pages already converted stay as they are." },
+    { "id": "R162-2", "what": "Complete nl for every new key; list the files in docs/i18n/nl-review/R162.md; update docs/i18n/NL-REVIEW.md's summary line to 'all interface text is translatable; Dutch is machine-made pending review'." },
+    { "id": "R162-3", "what": "desktop/scripts/i18n-scope/all.json = ['src/app', 'src/components']; i18n-check over the whole tree reports zero findings (example values and brands carry i18n-ignore with a reason)." },
+    { "id": "R162-4", "what": "e2e/i18n-nl-full.spec.ts: Nederlands, visit every sidebar route and the public pages (quote, booking, trip, download, quick start), no missing-key warnings, no overflow; switch back to English." }
+  ],
+  "tests": [
+    "i18n-check passes with the whole-tree scope.",
+    "Full desktop e2e on one slot (single-tenant mode) passes in English: at least the passed count of the last full run, 0 failed.",
+    "e2e/i18n-nl-full.spec.ts."
+  ],
+  "acceptance": ["The whole desktop app can be used in Dutch; English is unchanged; i18n-check prevents regressions everywhere."],
+  "gate": [
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # 0 failing files; passed >= the count at the last merge",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && node scripts/i18n-check.mjs",
+    "cd desktop && npm run build",
+    "node desktop/scripts/fix-stack.mjs up --slot 0 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3100 E2E_API_URL=http://localhost:8787/api/v1 npx playwright test   # full suite, 0 failed",
+    "node desktop/scripts/fix-stack.mjs down --slot 0"
+  ],
+  "gates": { "typecheck": true, "unit": true, "lint": true, "build": true, "backendTests": false, "flutter": false, "specs": ["(full suite)"] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere.",
+    "No behaviour change: strings only (plus layout fixes for longer Dutch text).",
+    "Keys only in this batch's namespace files; never edit messages/index.ts.",
+    "RTL-safe classes in any layout fix.",
+    "Never weaken, skip or delete an existing test."
+  ],
+  "notes": ["Before editing read: this file, TOUR-OPERATOR-DESIGN.md section 17, desktop/scripts/i18n-check.mjs.", "Runs alone: it touches shared components every page uses."],
+  "goLiveVerify": ["Native review of every Dutch file listed under docs/i18n/nl-review/ before a Dutch agency goes live."]
+}

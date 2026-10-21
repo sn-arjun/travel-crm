@@ -1,0 +1,117 @@
+{
+  "id": "R141",
+  "tier": 4,
+  "step": 3,
+  "title": "Calling in the Netherlands, screens: the agency's number requirements form and pending states, recording default and Dutch announcement, super admin bundle review, NL phone formats in the desktop",
+  "lane": "fullstack",
+  "backend": false,
+  "goal": "An NL agency can follow the whole number set-up on screen: what the provider needs, upload it, see it pass the platform's review and the provider's review, then buy a number. The super admin reviews and submits bundles and sees draft prices flagged.",
+  "why": "R137 adds the regulatory bundle flow and NL policy in the backend; without screens the agency sees only an error. Design: TOUR-OPERATOR-DESIGN.md sections 5.6 and 16.",
+  "featuresToWorks": ["calls.regulatory-bundle", "calls.recording-consent-by-country", "platform.phone-by-country"],
+  "featureKeys": ["voip_calling (existing)"],
+  "dependsOn": ["R137", "R136"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": ["R140"],
+  "size": "M",
+  "newDependencies": [],
+  "migrations": [],
+  "files": {
+    "edit": [
+      "desktop/src/app/(app)/settings/phone-numbers/page.tsx",
+      "desktop/src/app/(app)/settings/voip/page.tsx",
+      "desktop/src/lib/api/voip.ts",
+      "desktop/src/components/ui/phone-input.tsx (only if the NL tests show a defect)",
+      "desktop/src/messages/en/calling.json",
+      "desktop/src/messages/nl/calling.json",
+      "super-admin/src/components/tenants/calling-panel.tsx",
+      "super-admin/src/app/(authenticated)/catalogue/page.tsx (draft flag only)",
+      "super-admin/src/lib/api.ts (or the file the calling panel calls through)",
+      "desktop/e2e/voip-settings.spec.ts"
+    ],
+    "create": [
+      "desktop/src/app/(app)/settings/phone-numbers/_components/requirements-form.tsx",
+      "desktop/src/app/(app)/settings/phone-numbers/_components/bundle-status.tsx",
+      "desktop/src/components/ui/phone-input.nl.test.tsx",
+      "desktop/e2e/calling-nl.spec.ts"
+    ],
+    "mustNotTouch": [
+      "backend/**",
+      "desktop/src/app/(app)/settings/invoice-defaults/**",
+      "desktop/src/app/(app)/payments/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "prospects/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "items": [
+    {
+      "id": "R141-1",
+      "what": "Agency: Settings > Phone numbers",
+      "steps": [
+        "Requirements form rendered from GET /voip/numbers/requirements (fields of kyc_requirements: text, address with AddressAutocomplete and a manual fallback, date, file via the existing FileUpload); countries without a list keep the current upload.",
+        "Status chips for each state of design 5.6 (Not started, Submitted, Platform review, Provider review, Approved, Rejected with the reason and a Resubmit action); a clear pending message: 'Under review by the phone provider. We will email you when it is approved.' (no duration is claimed).",
+        "The Buy number button is disabled with the reason until approved; the price shows, or 'Price not set yet for your country' for PRICE_NOT_CONFIGURED.",
+        "Every string through t('calling.*'), en and nl."
+      ]
+    },
+    {
+      "id": "R141-2",
+      "what": "Agency: Settings > Calling",
+      "steps": [
+        "Recording: shows the country default ('In your country recordings are announced by default') and the current mode; the announcement preview in the agency language with the default Dutch text for an nl agency; a short privacy note ('Recording calls needs a lawful basis and a notice to callers under the GDPR. Check with your adviser.')."
+      ]
+    },
+    {
+      "id": "R141-3",
+      "what": "Super admin",
+      "steps": [
+        "Tenant calling panel: for a bundle country, the submitted fields and files, Approve and submit to provider, Refresh status, Reset; the provider status and failure reason.",
+        "Catalogue page: rows whose provider text starts with 'DRAFT' are flagged 'Draft price' and cannot be activated without editing the unit cost (client-side guard; the backend accepts the edit as today)."
+      ]
+    },
+    {
+      "id": "R141-4",
+      "what": "NL phone formats in the desktop",
+      "steps": [
+        "phone-input.nl.test.tsx: with agency country NL, '0612345678', '06 1234 5678' and '+31 6 1234 5678' all give +31612345678; '0852080400' gives +31852080400; display uses the national format. Fix PhoneInput only if a case fails."
+      ]
+    }
+  ],
+  "tests": [
+    "desktop vitest: requirements form renders each field type and validates required ones; bundle-status shows the right chip and action per state; phone-input NL cases.",
+    "e2e/calling-nl.spec.ts (multi mode, VOIP_PROVIDER=mock, an NL agency on a plan with voip_calling): the agency fills the requirements and uploads a file; the super admin API approves; the mock provider approves; the agency sees Approved and buys a number when the NL price is activated off camera through the super admin API; with the price inactive the button shows 'Price not set yet'.",
+    "super-admin: tsc, lint and build pass."
+  ],
+  "acceptance": [
+    "Every bundle state is visible to the agency with a next step; nothing fails silently.",
+    "The super admin can review, submit and track a bundle."
+  ],
+  "gate": [
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # 0 failing files; passed >= the count at the last merge",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && node scripts/i18n-check.mjs",
+    "cd super-admin && npx tsc --noEmit && npm run lint && npm run build",
+    "node desktop/scripts/fix-stack.mjs up --slot 2 --reset-db --multi",
+    "cd desktop && E2E_BASE_URL=http://localhost:3120 E2E_API_URL=http://localhost:8807/api/v1 npx playwright test e2e/calling-nl.spec.ts e2e/voip-settings.spec.ts e2e/super-admin.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 2"
+  ],
+  "gates": { "typecheck": true, "unit": true, "lint": true, "build": false, "backendTests": false, "flutter": false, "specs": ["e2e/calling-nl.spec.ts", "e2e/voip-settings.spec.ts", "e2e/super-admin.spec.ts"] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere.",
+    "Feature switch: voip_calling plus the country gate (useCallingOffered); calling UI stays hidden where calling is not offered.",
+    "Desktop: CONTRACT.md; PhoneInput for phones; FileUpload for documents; t() with en and nl keys only in messages/<lang>/calling.json; RTL-safe classes.",
+    "Env-dependent features degrade gracefully (no provider configured: the form still saves and shows 'waiting for review').",
+    "Never weaken, skip or delete an existing test."
+  ],
+  "notes": [
+    "Before editing read: this file, TOUR-OPERATOR-DESIGN.md sections 5.6 and 16, R137's routes (voip.ts, admin-voip.ts), desktop/audit/remake/CONTRACT.md, super-admin calling panel.",
+    "The fix-stack start for the e2e needs VOIP_PROVIDER=mock and NL in the calling countries (FIX_STACK_CALLING_COUNTRIES=GB,US,AU,SG,NL)."
+  ],
+  "goLiveVerify": ["The provider's review e-mail or callback reaches the agency in production."]
+}

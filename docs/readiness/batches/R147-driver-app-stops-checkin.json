@@ -1,0 +1,115 @@
+{
+  "id": "R147",
+  "tier": 4,
+  "step": 6,
+  "title": "Driver app: ordered stops, passengers per stop, boarded / no-show ticks, head count, documents checked, tour leader role, offline ticks",
+  "lane": "flutter",
+  "backend": false,
+  "goal": "A tour leader (or a driver allowed to) opens today's coach trip on the phone, sees the stops in order with times, ticks each passenger boarded or no-show, marks documents checked, sees the head count, and completes each stop, also without signal.",
+  "why": "Gap 4 on the phone: the app today shows one trip per leg with passengers in the notes. Design: TOUR-OPERATOR-DESIGN.md sections 5.3 and 11; API from R145.",
+  "featuresToWorks": ["driver.coach-stops", "driver.passenger-checkin", "driver.tour-leader"],
+  "featureKeys": ["coach_trips", "driver_app"],
+  "dependsOn": ["R145", "R136"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": ["R146"],
+  "size": "M",
+  "newDependencies": [],
+  "migrations": [],
+  "files": {
+    "edit": [
+      "packages/driver_app/lib/features/trips/data/trip_repository.dart",
+      "packages/driver_app/lib/features/trips/data/trip_provider.dart",
+      "packages/driver_app/lib/features/trips/data/trip_state.dart",
+      "packages/driver_app/lib/features/trips/data/trip_view.dart",
+      "packages/driver_app/lib/features/trips/presentation/screens/my_trips_screen.dart",
+      "packages/driver_app/lib/features/trips/presentation/screens/trip_detail_screen.dart",
+      "packages/driver_app/lib/features/trips/presentation/widgets/trip_card.dart",
+      "packages/driver_app/lib/features/profile/data/profile_repository.dart",
+      "packages/driver_app/lib/core/storage/hive_storage.dart",
+      "packages/driver_app/lib/app/router.dart",
+      "packages/driver_app/lib/l10n/intl_en.arb",
+      "packages/driver_app/lib/l10n/intl_hi.arb",
+      "packages/driver_app/lib/l10n/intl_ar.arb",
+      "packages/driver_app/lib/l10n/intl_nl.arb",
+      "packages/shared/lib/api_client/api_endpoints.dart",
+      "packages/shared/lib/models/** (trip stop and passenger models only)",
+      "packages/shared/lib/shared.dart"
+    ],
+    "create": [
+      "packages/driver_app/lib/features/trips/presentation/screens/stop_screen.dart",
+      "packages/driver_app/lib/features/trips/presentation/widgets/stop_timeline.dart",
+      "packages/driver_app/lib/features/trips/presentation/widgets/passenger_tile.dart",
+      "packages/driver_app/lib/features/trips/presentation/widgets/headcount_bar.dart",
+      "packages/driver_app/lib/features/trips/data/checkin_queue.dart",
+      "packages/driver_app/test/coach_stops_test.dart",
+      "packages/driver_app/test/checkin_queue_test.dart",
+      "packages/shared/test/trip_stop_model_test.dart"
+    ],
+    "mustNotTouch": [
+      "backend/**",
+      "desktop/**",
+      "super-admin/**",
+      "packages/driver_app/integration_test/prospect_*",
+      "product-requirment/**",
+      "prospects/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**"
+    ]
+  },
+  "items": [
+    {
+      "id": "R147-1",
+      "what": "Models and API",
+      "steps": [
+        "packages/shared: TripStop and TripPassenger models (freezed + json, nullable-safe), endpoints for stops arrive/depart, passengers PUT, headcount; regenerate code with build_runner through x86 PowerShell.",
+        "trip_repository.dart: fetch trip with stops and passengers (passengers absent when the server does not send them), arrive/depart, tick, headcount; profile_repository reads crew_role."
+      ]
+    },
+    {
+      "id": "R147-2",
+      "what": "Screens",
+      "steps": [
+        "Trip card: for coach trips 'N stops, M passengers' and the next stop with its time; tour-leader trips show a crew badge.",
+        "Trip detail: stop_timeline (time, name, documents-check badge, status) with Arrived / Depart actions and navigate / call buttons (existing helpers).",
+        "stop_screen: passengers boarding here with passenger_tile (Boarded / No-show toggle, Documents checked toggle shown when the stop has documents_check and from the menu elsewhere), headcount_bar (boarded / expected at this stop and overall), 'Complete stop'. Shown to tour leaders, and to drivers when the server sends passengers.",
+        "Keys for integration tests: stop-card-{id}, passenger-{id}-boarded, passenger-{id}-no-show, passenger-{id}-documents, headcount, complete-stop.",
+        "All text through the ARB files in en, hi, ar and nl (hi and ar may copy English where no translation is available, as the app does today)."
+      ]
+    },
+    {
+      "id": "R147-3",
+      "what": "Offline ticks",
+      "steps": [
+        "checkin_queue.dart: a tick updates the screen at once, is stored in Hive with an opId (uuid) and 'at' timestamp, and is sent in order when online; failures retry with backoff; a server 409/404 drops the op and refreshes the trip. The trip cache keeps the last stops and passengers for offline viewing."
+      ]
+    }
+  ],
+  "tests": [
+    "coach_stops_test.dart: timeline order and statuses; stop screen ticks update the head count; documents toggle visible on a documents-check stop; a driver without passengers sees stops only; nl locale renders.",
+    "checkin_queue_test.dart: ticks queued offline are sent in order with their opIds once online; a replayed op is harmless; a 404 drops the op.",
+    "trip_stop_model_test.dart: JSON parsing with and without passengers.",
+    "Existing driver app and shared tests stay green."
+  ],
+  "acceptance": [
+    "A tour leader can run a seven-stop pickup with ticks and head count on the emulator against the local stack.",
+    "Ticks made without signal reach the office once the phone is back online."
+  ],
+  "gate": [
+    "tasklist | findstr /i \"java.exe dart.exe flutter\"   # must show no Gradle/Flutter build in progress (the owner may be building)",
+    "x86 PowerShell: \"C:/Windows/SysWOW64/WindowsPowerShell/v1.0/powershell.exe\" -Command \"cd C:/Users/Admin/Downloads/pro/CRM/packages/shared; dart run build_runner build --delete-conflicting-outputs; flutter analyze; flutter test; cd ../driver_app; flutter gen-l10n; flutter analyze; flutter test\""
+  ],
+  "gates": { "typecheck": false, "unit": false, "lint": false, "build": false, "backendTests": false, "flutter": true, "specs": [] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere (tests use invented stops).",
+    "Flutter only through x86 PowerShell; never run Flutter from bash.",
+    "Feature switch: the server decides (403 or absent fields); the app hides what the server does not send.",
+    "Phones and money through the shared helpers with the agency country and currency (R136).",
+    "Never weaken, skip or delete an existing test."
+  ],
+  "notes": [
+    "Before editing read: this file, TOUR-OPERATOR-DESIGN.md sections 5.3, 6.3 and 11, R145's driver routes, packages/driver_app/test/trip_cache_test.dart and trip_actions_test.dart for patterns.",
+    "An emulator run is optional for the gate (unit and widget tests are the gate); scripts/record-driver.ps1 integration flows are not part of this batch."
+  ],
+  "goLiveVerify": ["The release APK with the new screens on a real phone against staging."]
+}

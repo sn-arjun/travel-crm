@@ -1,0 +1,91 @@
+{
+  "id": "R157",
+  "tier": 4,
+  "step": 11,
+  "title": "Interface sweep B (English and Dutch): fleet, travellers, visa, documents, rate cards, suppliers",
+  "lane": "desktop",
+  "backend": false,
+  "goal": "Every user-visible string on these pages comes from the catalogue with complete English and Dutch, and i18n-check enforces it.",
+  "why": "About 1,270 hard-coded strings remain in these folders (scanFile count 2026-10-21). Design: TOUR-OPERATOR-DESIGN.md section 17.",
+  "featuresToWorks": ["platform.i18n-nl"],
+  "featureKeys": [],
+  "dependsOn": ["R155"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": ["R156"],
+  "size": "L",
+  "newDependencies": [],
+  "migrations": [],
+  "scope": [
+    "desktop/src/app/(app)/fleet",
+    "desktop/src/app/(app)/travellers",
+    "desktop/src/app/(app)/visa",
+    "desktop/src/app/(app)/documents",
+    "desktop/src/app/(app)/rate-cards",
+    "desktop/src/app/(app)/suppliers"
+  ],
+  "namespaces": ["fleet", "travellers", "visa", "documents", "rateCards", "suppliers"],
+  "files": {
+    "edit": [
+      "every .tsx/.ts file under the scope folders (strings only)",
+      "desktop/src/messages/{en,nl,hi,ar}/{fleet,travellers,visa,documents,rateCards,suppliers}.json"
+    ],
+    "create": [
+      "docs/i18n/nl-review/R157.md",
+      "desktop/scripts/i18n-scope/operations.json",
+      "desktop/e2e/i18n-nl-operations.spec.ts"
+    ],
+    "mustNotTouch": [
+      "backend/**",
+      "desktop/src/messages/index.ts",
+      "desktop/src/messages/*/{leads,contacts,dashboard,calendar,tasks,followUps}.json",
+      "desktop/src/app/(app)/leads/**",
+      "desktop/src/app/(app)/contacts/**",
+      "desktop/src/app/(app)/dashboard/**",
+      "desktop/src/app/(app)/calendar/**",
+      "desktop/src/app/(app)/tasks/**",
+      "desktop/src/app/(app)/follow-ups/**",
+      "desktop/src/components/**",
+      "product-requirment/**",
+      "prospects/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "items": [
+    { "id": "R157-1", "what": "Convert every i18n-check finding in the scope folders to t() in the page's namespace (fleet.*, travellers.*, visa.*, documents.*, rateCards.*, suppliers.*), keeping English text identical; the coach trip components converted in R145 stay as they are." },
+    { "id": "R157-2", "what": "Complete nl for every new key (machine translation, placeholders identical); list the files in docs/i18n/nl-review/R157.md." },
+    { "id": "R157-3", "what": "Add desktop/scripts/i18n-scope/operations.json with the scope folders." },
+    { "id": "R157-4", "what": "e2e/i18n-nl-operations.spec.ts: Nederlands, open every page in scope (fleet dashboard, vehicles, drivers, trips, alerts, fleet rate cards, travellers, visa list and dashboard, documents, rate cards, suppliers: lists, details, forms), no missing-key warnings, no layout overflow (fix layout, not translations)." }
+  ],
+  "tests": [
+    "i18n-check passes with zero findings in the scope folders.",
+    "Existing e2e for fleet, travellers, visa, documents, rate cards and suppliers pass unchanged in English.",
+    "e2e/i18n-nl-operations.spec.ts."
+  ],
+  "acceptance": ["No hard-coded English remains in the scope folders; Dutch is complete; English text unchanged."],
+  "gate": [
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # 0 failing files; passed >= the count at the last merge",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && node scripts/i18n-check.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 2 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3120 E2E_API_URL=http://localhost:8807/api/v1 npx playwright test e2e/i18n-nl-operations.spec.ts e2e/fleet-dashboard.spec.ts e2e/fleet-vehicles.spec.ts e2e/fleet-drivers.spec.ts e2e/fleet-trips.spec.ts e2e/fleet-rate-cards.spec.ts e2e/coach-trips.spec.ts e2e/travellers.spec.ts e2e/visa.spec.ts e2e/documents.spec.ts e2e/rate-cards.spec.ts e2e/suppliers.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 2"
+  ],
+  "gates": { "typecheck": true, "unit": true, "lint": true, "build": false, "backendTests": false, "flutter": false, "specs": ["e2e/i18n-nl-operations.spec.ts", "e2e/fleet-dashboard.spec.ts", "e2e/fleet-vehicles.spec.ts", "e2e/fleet-drivers.spec.ts", "e2e/fleet-trips.spec.ts", "e2e/fleet-rate-cards.spec.ts", "e2e/coach-trips.spec.ts", "e2e/travellers.spec.ts", "e2e/visa.spec.ts", "e2e/documents.spec.ts", "e2e/rate-cards.spec.ts", "e2e/suppliers.spec.ts"] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere.",
+    "No behaviour change: strings only (plus layout fixes for longer Dutch text).",
+    "Keys only in this batch's namespace files; never edit messages/index.ts.",
+    "RTL-safe classes in any layout fix.",
+    "Never weaken, skip or delete an existing test."
+  ],
+  "notes": [
+    "Before editing read: this file, TOUR-OPERATOR-DESIGN.md section 17, desktop/scripts/i18n-check.mjs, the R210 batch file.",
+    "If the batch runs long, finish whole folders and report the rest; never leave a folder half converted (its scope file entry would fail)."
+  ],
+  "goLiveVerify": ["Native review of the Dutch files listed in docs/i18n/nl-review/R157.md."]
+}

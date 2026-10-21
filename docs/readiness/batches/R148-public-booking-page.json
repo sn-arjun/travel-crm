@@ -1,0 +1,147 @@
+{
+  "id": "R148",
+  "tier": 4,
+  "step": 7,
+  "title": "Public booking page per departure: age bands, pickup point, room type and sharing, gender, preferred seat, terms; creates the contact, lead, passengers and a held seat booking, and its invoice with a deposit link",
+  "lane": "fullstack",
+  "backend": true,
+  "goal": "An agency switches on a public page for a departure, links it from its website (or embeds it), and every booking made there arrives as a contact, a lead, passengers and held seats, with the deposit invoice and payment link when the agency asks for a deposit.",
+  "why": "Gap 2, first half: the agency's website form today sends only an enquiry and seats are confirmed by hand. Design: TOUR-OPERATOR-DESIGN.md sections 7, 8.4, 13.",
+  "featuresToWorks": ["departures.public-booking", "departures.booking-invoice"],
+  "featureKeys": ["public_booking", "group_departures"],
+  "dependsOn": ["R146", "R142"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": ["R149"],
+  "size": "L",
+  "newDependencies": [],
+  "migrations": ["backend/drizzle/master/0031_public_links.sql"],
+  "files": {
+    "edit": [
+      "backend/src/db/master-schema.ts",
+      "backend/src/index.ts (mount the public booking routes before auth)",
+      "backend/src/utils/app-urls.ts",
+      "backend/src/types.ts (PUBLIC_PAGES_URL, TURNSTILE_SECRET_KEY optional)",
+      "backend/src/services/privacy/registry.ts",
+      "backend/src/services/privacy/erase-contact.ts",
+      "backend/src/routes/departures.ts (public link create/revoke only)",
+      "backend/src/routes/seat-bookings.ts (POST /:id/invoice only)",
+      "desktop/src/app/(app)/departures/[id]/page.tsx (Public page card only)",
+      "desktop/src/app/(app)/departures/_components/booking-drawer.tsx (Create invoice action only)",
+      "desktop/src/lib/api/departures.ts",
+      "desktop/src/messages/en/booking.json",
+      "desktop/src/messages/nl/booking.json",
+      "desktop/src/messages/en/departures.json",
+      "desktop/src/messages/nl/departures.json"
+    ],
+    "create": [
+      "backend/drizzle/master/0031_public_links.sql",
+      "backend/src/services/public-links.ts",
+      "backend/src/routes/public-booking.ts",
+      "backend/src/services/departures/booking-invoice.ts",
+      "backend/test/public-booking.test.ts",
+      "backend/test/booking-invoice.test.ts",
+      "desktop/src/app/(public)/book/[token]/page.tsx",
+      "desktop/src/app/(public)/book/[token]/_components/*.tsx",
+      "desktop/src/lib/booking-form.ts",
+      "desktop/src/lib/booking-form.test.ts",
+      "desktop/scripts/i18n-scope/public-booking.json",
+      "desktop/e2e/public-booking.spec.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/db/tenant-schema.ts",
+      "backend/drizzle/tenant/**",
+      "backend/src/routes/itineraries.ts",
+      "backend/src/routes/itinerary-templates.ts",
+      "backend/src/services/automation/actions.ts",
+      "backend/src/services/departures/passengers.ts (call it; R149 edits it in parallel)",
+      "backend/src/services/pricing/**",
+      "desktop/src/app/(app)/itineraries/**",
+      "desktop/src/app/(app)/settings/itinerary-defaults/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "prospects/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "items": [
+    {
+      "id": "R148-1",
+      "what": "Public links (master 0031)",
+      "steps": [
+        "public_links as in design section 7; services/public-links.ts: createLink(kind, entityId, tenantId) with a 128-bit random base64url token (crypto.getRandomValues; never UUIDv7), resolve(token, kind) -> {tenantId, entityId} or a uniform not-found, revoke, touch last_used_at at most once a minute.",
+        "Staff routes: POST /departures/:id/public-link (enables public_booking_enabled, returns {url} built with bookingUrl(env, token)), DELETE revokes. app-urls.ts gains bookingUrl and tripUrl (PUBLIC_PAGES_URL else `${appUrl}/book|/trip`).",
+        "Privacy: public_links in PRIVACY_NOT_PERSONAL; erase-contact.ts deactivates links of the contact's seat bookings (self-service kinds; the departure link is not personal)."
+      ]
+    },
+    {
+      "id": "R148-2",
+      "what": "Public API (routes/public-booking.ts, mounted at /api/v1/public/departures and /api/public/departures before auth)",
+      "steps": [
+        "GET /:token: resolve the tenant from master first; 404 unless feature public_booking (requireFeature for the resolved tenant as public-chatbot.ts does), group_tours.enabled, departure.public_booking_enabled and status open (closed -> 200 with state 'closed'); the fixed projection of design section 7 (agency name, logo and colours, tour, dates, day titles, prices by band, room supplements, seat surcharge, stops with times, terms, passenger fields to collect at booking, seatsLeft per showSeatsLeft); headers noindex and no-store.",
+        "POST /:token/bookings: honeypot + minimum fill time; Turnstile when TURNSTILE_SECRET_KEY is set (verify with fetch; skipped otherwise); Idempotency-Key in KV 24 h; validates passengers against the effective passenger fields (collectOn booking), bands from age or DOB on the departure date, room types and sharing with gender, preferred seat; findOrCreateContact + createLead (source website, departure currency, travel_date) + requestSeats (R143) with source public_page; consents (terms; marketing only when ticked) through services/privacy/consent.ts with source form; answers {status: held|confirmed|waitlisted, reference, holdExpiresAt, payment?: {url}|bank?: {...}}; events lead.created and seat_booking.held fire so assignment and follow-up recipes run.",
+        "Rate limits (KV, middleware/rate-limit.ts): GET 60/min/IP; POST 5 per 10 minutes per IP and 30 per hour per token.",
+        "frame-ancestors for the page from the chatbot allowed_origins list (set by the Next page's headers via the projection), else 'self'."
+      ]
+    },
+    {
+      "id": "R148-3",
+      "what": "Booking invoice",
+      "steps": [
+        "booking-invoice.ts createBookingInvoice(seatBookingId) with services/domain/invoices.ts createInvoice (R142): lines per band (count x price), room supplements per passenger, seat surcharge; currency of the departure; linked to the lead and seat_bookings.invoice_id; refresh while draft when passengers change.",
+        "When the effective deposit is not 'none': the public booking creates the invoice and, if a gateway (or the test gateway) is connected, a deposit payment link (R142 rules); otherwise the answer carries the bank details (country-shaped, R140) and the reference.",
+        "Staff: POST /seat-bookings/:id/invoice and a 'Create invoice' action in the booking drawer."
+      ]
+    },
+    {
+      "id": "R148-4",
+      "what": "The page (desktop/src/app/(public)/book/[token])",
+      "steps": [
+        "Mobile-first form in the agency's branding: tour summary and dates, seats left per setting, party builder (adults and children by age band with live price), per passenger name, gender, DOB or age (per settings), pickup point, room type and willing to share, meal, preferred seat; contact (name, email, PhoneInput with the agency country); terms checkbox and optional marketing opt-in; summary with total and deposit; submit -> confirmation screen with the reference, hold expiry, and Pay deposit or bank details.",
+        "Language: the agency default language with a switch between enabled languages; strings through t('booking.*') in en and nl.",
+        "Closed, full (waitlist offered) and expired-link states; no crash without network (retry message).",
+        "Embedding: works inside an iframe of an allowed origin; a copyable link and iframe snippet on the departure page's Public page card (staff)."
+      ]
+    }
+  ],
+  "tests": [
+    "backend/test/public-booking.test.ts: unknown, revoked and wrong-kind tokens give the same 404 body; feature off, agency switch off and departure not public each 404; closed state; projection has no internal fields (no cost prices, no other bookings, no ids except the token); booking creates contact, lead (source website, departure currency), passengers with bands and a held booking; full -> waitlisted; honeypot and too-fast submit rejected; idempotency key returns the same result; rate limit after 5 posts; consents recorded; deposit invoice and a test-gateway link when configured; bank details when no gateway.",
+    "backend/test/booking-invoice.test.ts: lines and totals for bands, single supplement and seat surcharge in EUR; refresh while draft.",
+    "desktop vitest: booking-form price calculation and validation helpers.",
+    "e2e/public-booking.spec.ts: staff enables the public page; an anonymous browser opens /book/<token>, books 2 adults and 2 children with pickup point, sharing and a preferred seat, accepts the terms, gets the confirmation and pays the deposit on the test gateway; staff sees the lead, the held (or confirmed per settings) booking, the passengers and the payment."
+  ],
+  "acceptance": [
+    "A booking made on the public page needs no retyping by staff.",
+    "The page never shows data of other customers and cannot be used to discover agencies or bookings."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # 0 failed files; passed >= the count at the last merge",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # 0 failing files; passed >= the count at the last merge",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && node scripts/i18n-check.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db --multi",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/public-booking.spec.ts e2e/departures.spec.ts e2e/web-pages.spec.ts e2e/tenant-isolation.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": { "typecheck": true, "unit": true, "lint": true, "build": false, "backendTests": true, "flutter": false, "specs": ["e2e/public-booking.spec.ts", "e2e/departures.spec.ts", "e2e/web-pages.spec.ts", "e2e/tenant-isolation.spec.ts"] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere.",
+    "Feature switch: public_booking (and group_departures) checked for the resolved tenant on every public request; the agency switch and the departure switch too.",
+    "Public routes: tenant resolved from the master token before any tenant DB is opened; uniform 404; rate limits; fixed projection; noindex; random 128-bit tokens.",
+    "Backend: master migration 0031 only; UUIDv7 ids for rows; personal data registered in the privacy registry; consent records written.",
+    "Desktop: CONTRACT.md for staff screens; PhoneInput on the public form; t() with en and nl keys in booking.json and departures.json; RTL-safe classes; money and dates through lib/format.ts and lib/dates.ts with the agency locale.",
+    "Payment links and confirmations reach customers through the page itself or the Communication Hub, never mailto or wa.me.",
+    "Never weaken, skip or delete an existing test."
+  ],
+  "notes": [
+    "Before editing read: this file, TOUR-OPERATOR-DESIGN.md sections 7, 8, 13.3 and 18, routes/public.ts and routes/public-chatbot.ts (tenant resolution, rate limits), desktop/src/app/(public)/q/[token]/page.tsx (public page pattern), services/domain/contacts.ts and leads.ts.",
+    "R149 runs in parallel and owns itinerary routes, template routes and the itinerary pages; this batch resolves bands through R143's passengers service (which R149 switches to the shared age-band module) and does not edit that service.",
+    "Run a short security review of public-booking.ts (everything-claude-code:security-review or the reviewer agent) before the gate; fix findings."
+  ],
+  "goLiveVerify": ["Turnstile keys set in production (or the owner accepts honeypot only); PUBLIC_PAGES_URL points at the agency web app."]
+}

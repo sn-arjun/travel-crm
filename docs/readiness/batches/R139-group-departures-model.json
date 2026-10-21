@@ -1,0 +1,160 @@
+{
+  "id": "R139",
+  "tier": 4,
+  "step": 2,
+  "title": "Group departures, part 1: data model, the wave's feature keys, permissions, tours and departures API, stops, vehicles, prices, costs, calendar sync",
+  "lane": "backend",
+  "backend": true,
+  "goal": "An agency can define tours (products) with default stops and age-band prices, create dated departures with coaches and capacity, and see each departure on the calendar. All tables of the group-tours domain exist so later batches add behaviour without further migrations.",
+  "why": "There is no seat inventory: departures live as calendar events and custom fields (TOUR-OPERATOR-DESIGN.md section 0 and gap 1). This is the foundation of R143, R144, R146, R148, R150 and R154.",
+  "featuresToWorks": ["tours.list", "tours.edit", "departures.list", "departures.edit", "departures.calendar"],
+  "featureKeys": ["group_departures", "public_booking", "coach_trips", "age_band_pricing", "margin_scheme", "quote_acceptance"],
+  "dependsOn": ["R136"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": ["R138"],
+  "size": "L",
+  "newDependencies": [],
+  "migrations": ["backend/drizzle/tenant/0057_group_departures.sql", "backend/drizzle/master/0030_tour_operator_features.sql"],
+  "files": {
+    "edit": [
+      "backend/src/db/tenant-schema.ts",
+      "backend/src/db/tenant-migrations.generated.ts (regenerated)",
+      "backend/src/index.ts",
+      "backend/src/constants/permissions.ts",
+      "backend/src/services/features/registry.ts",
+      "backend/src/routes/ai-settings.ts",
+      "backend/src/services/privacy/registry.ts",
+      "backend/src/services/privacy/erase-contact.ts",
+      "backend/src/types.ts",
+      "packages/shared-ts/src/index.ts"
+    ],
+    "create": [
+      "backend/drizzle/tenant/0057_group_departures.sql",
+      "backend/drizzle/master/0030_tour_operator_features.sql",
+      "backend/src/routes/tours.ts",
+      "backend/src/routes/departures.ts",
+      "backend/src/services/departures/settings.ts",
+      "backend/src/services/departures/tours.ts",
+      "backend/src/services/departures/departures.ts",
+      "backend/src/services/departures/capacity.ts",
+      "backend/src/services/departures/calendar.ts",
+      "backend/src/validators/departures.ts",
+      "backend/test/departures-model.test.ts",
+      "packages/shared-ts/src/types/departures.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/routes/planner.ts",
+      "backend/src/routes/itineraries.ts",
+      "backend/src/routes/leads.ts",
+      "backend/src/services/domain/leads.ts",
+      "backend/src/routes/settings.ts",
+      "desktop/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "prospects/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**"
+    ]
+  },
+  "items": [
+    {
+      "id": "R139-1",
+      "what": "Tenant migration 0057_group_departures.sql",
+      "steps": [
+        "Create every table of TOUR-OPERATOR-DESIGN.md section 3.1 exactly as named there: tours, tour_stops, departures, departure_vehicles, departure_stops, tour_prices, seat_bookings, seat_passengers, tour_extras, passenger_extras, departure_costs, departure_message_rules, departure_message_sends, with their indexes (including the unique partial index on seat_bookings (departure_id, lead_id) for active statuses and the unique send key on departure_message_sends).",
+        "ALTER TABLE itineraries ADD departure_id, seats_requested; leads ADD departure_id; events ADD related_departure_id; indexes on the three.",
+        "Mirror everything in tenant-schema.ts (sqliteTable, text/real/integer, index); regenerate the bundle with node backend/scripts/bundle-tenant-migrations.mjs."
+      ]
+    },
+    {
+      "id": "R139-2",
+      "what": "Feature keys and plans (master 0030_tour_operator_features.sql)",
+      "steps": [
+        "registry.ts: add the six keys of design section 2.1 with names and descriptions; FeatureDef.area gains 'Tours'.",
+        "0030: INSERT OR IGNORE INTO plan_features the placement of section 2.1 (group_departures and public_booking: trial, pro, enterprise; coach_trips, age_band_pricing, margin_scheme, quote_acceptance: trial, basic, pro, enterprise). Bump the catalogue version the way R127 does if the catalogue is cached.",
+        "ai-settings.ts AI_FEATURE_KEYS gains the six keys so the desktop gate can read them (the list's AI name is historical).",
+        "backend/test/feature-switches.test.ts must stay green (it checks every key is registered)."
+      ]
+    },
+    {
+      "id": "R139-3",
+      "what": "Permissions",
+      "steps": [
+        "Module 'departures' with the matrix of design section 6 (admin ALL, sales_manager ALL, salesperson view/create/edit, operations ALL, accountant view/export, view_only view)."
+      ]
+    },
+    {
+      "id": "R139-4",
+      "what": "Settings service",
+      "steps": [
+        "services/departures/settings.ts: getGroupToursSettings(db) returns the group_tours JSON merged over the defaults of design 4.1; putGroupToursSettings validates with zod. Route GET/PUT /departures/settings (admin for PUT). Effective values for a departure = departure override ?? tour override ?? setting (one function, unit tested)."
+      ]
+    },
+    {
+      "id": "R139-5",
+      "what": "Tours API (/tours, feature group_departures)",
+      "steps": [
+        "CRUD with cursor pagination and filters (q, status, destination); archive instead of delete when departures exist; code unique (409 on clash).",
+        "PUT /tours/:id/stops (ordered list replace), /prices (kinds age_band, room_supplement, seat_surcharge, other), /extras (catalogue rows; behaviour comes in R150).",
+        "itinerary_template_id validated against itinerary_templates."
+      ]
+    },
+    {
+      "id": "R139-6",
+      "what": "Departures API (/departures, feature group_departures)",
+      "steps": [
+        "GET list with filters tour, status, from/to dates, hasSeats, q; cursor pagination; each row has seats {capacity, held, confirmed, waitlisted, left} from one aggregate query (no N+1).",
+        "POST creates a departure: code default '<tour code>-<start date>', end_date from duration, cut-off dates from the effective settings, stops copied from tour_stops with scheduled_at computed in the tenant zone, status draft. POST /departures/bulk creates several dates of one tour in one request.",
+        "PUT edit; POST /:id/status with the transitions of design 5.2 (draft->open->closed->departed->completed; cancelled from any state before departed with a reason); illegal transitions 409.",
+        "/:id/vehicles (capacity default vehicles.seating_capacity, else defaultVehicleCapacity; capacity_mode vehicles recomputes departures.capacity), /:id/stops, /:id/prices (departure overrides), /:id/costs.",
+        "capacity.ts: seatsSummary(db, departureIds) and the rule that capacity cannot go below held + confirmed (409 SEATS_IN_USE).",
+        "Mount routes in index.ts routeMounts ('tours', 'departures') and app.use(`${prefix}/tours/*` and `/departures/*`, requireFeature('group_departures')) next to the other gates."
+      ]
+    },
+    {
+      "id": "R139-7",
+      "what": "Calendar sync",
+      "steps": [
+        "calendar.ts: on create, edit, status change and cancel, upsert one events row (event_type trip_departure, related_departure_id, title '<tour title> (<code>)', start/end, tenant timezone, assigned to the tour leader user or the creator). Cancelled departures mark the event deleted. Planner output changes come in R146; do not edit planner.ts."
+      ]
+    },
+    {
+      "id": "R139-8",
+      "what": "Privacy and shared types",
+      "steps": [
+        "privacy/registry.ts: seat_bookings, seat_passengers, passenger_extras, departure_message_sends in PRIVACY_TABLES with the where clauses of design section 18; the product tables in PRIVACY_NOT_PERSONAL with reasons. erase-contact.ts anonymises seat_passengers of the contact (names 'Erased', DOB, document and extra_fields cleared) and keeps seat counts.",
+        "packages/shared-ts/src/types/departures.ts: Tour, Departure, DepartureStop, SeatsSummary, SeatBooking, SeatPassenger types used by desktop batches."
+      ]
+    }
+  ],
+  "tests": [
+    "backend/test/departures-model.test.ts: migrations apply on a fresh tenant; tours CRUD and code clash; departure creation copies stops and computes scheduled_at in Europe/Amsterdam and Asia/Kolkata; bulk create; status transitions (legal and 409); vehicles set capacity; capacity below seats in use is 409 (insert a confirmed seat_bookings row directly); seats summary; calendar event created, updated and removed; feature off (plan basic) -> 403 with the R127 body; salesperson can view/create but not delete; accountant cannot create.",
+    "gdpr.test.ts and feature-switches.test.ts stay green with the new tables and keys."
+  ],
+  "acceptance": [
+    "All group-tours tables exist; later batches of the wave need no tenant migration for this domain.",
+    "A Pro agency can create a tour, three departures with a 49-seat coach each, and see them on the calendar; a Basic agency gets 403 FEATURE gates."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # 0 failed files; passed >= the count at the last merge",
+    "node desktop/scripts/fix-stack.mjs up --slot 2 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3120 E2E_API_URL=http://localhost:8807/api/v1 npx playwright test e2e/calendar.spec.ts e2e/super-admin.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 2"
+  ],
+  "gates": { "typecheck": false, "unit": false, "lint": false, "build": false, "backendTests": true, "flutter": false, "specs": ["e2e/calendar.spec.ts", "e2e/super-admin.spec.ts"] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere (use invented tours like 'Alpine Lakes 5 days' in tests).",
+    "Feature switch: group_departures on every new route (requireFeature in index.ts); the agency switch group_tours.enabled is read by the desktop and the public routes (later batches).",
+    "Backend: Hono + Drizzle + D1; tenant migration 0057 and master 0030 only; regenerate the tenant bundle; UUIDv7 ids; permissions module 'departures'; personal-data tables registered in the privacy registry.",
+    "Money and dates through utils/money.ts and utils/tz.ts; no INR literals.",
+    "Never weaken, skip or delete an existing test."
+  ],
+  "notes": [
+    "Before editing read: this file, TOUR-OPERATOR-DESIGN.md sections 1-6 and 18, backend/src/db/tenant-schema.ts (leads, itineraries, events, vehicles, drivers, trip_assignments), backend/src/services/features/registry.ts and resolve.ts, backend/test/feature-switches.test.ts, backend/src/services/privacy/registry.ts and backend/test/gdpr.test.ts.",
+    "Seat booking behaviour (holds, confirm, waitlist) is R143; do not implement it here beyond the tables and the summary query.",
+    "Backend tests follow the existing pattern (cloudflare:test env, applyD1Migrations, POST /api/v1/test/reset, worker.fetch); unique ids per file."
+  ],
+  "goLiveVerify": []
+}

@@ -1,0 +1,111 @@
+{
+  "id": "R153",
+  "tier": 4,
+  "step": 9,
+  "title": "Leads pipeline board: a drag-and-drop board by status on the Leads page, with filters, per-column loading, a keyboard alternative and the lost-reason dialog",
+  "lane": "fullstack",
+  "backend": true,
+  "goal": "Staff switch the Leads page between list and board, see each pipeline stage as a column with counts and values, and move a lead by dragging or with 'Move to…'.",
+  "why": "Gap 9: leads.kanban is 'partial' in docs/features.json; the page has no board at all (checked 2026-10-21), only tasks have one. Design: TOUR-OPERATOR-DESIGN.md sections 4.7 and 13.2.",
+  "featuresToWorks": ["leads.kanban"],
+  "featureKeys": [],
+  "dependsOn": ["R146"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": ["R152"],
+  "size": "M",
+  "newDependencies": [],
+  "migrations": [],
+  "files": {
+    "edit": [
+      "backend/src/routes/leads.ts (GET /board and the leads.board setting only)",
+      "desktop/src/app/(app)/leads/page.tsx",
+      "desktop/src/components/domain/kanban-board.tsx",
+      "desktop/src/lib/api/leads.ts",
+      "desktop/src/messages/en/pipeline.json",
+      "desktop/src/messages/nl/pipeline.json",
+      "desktop/src/messages/en/ui.json",
+      "desktop/src/messages/nl/ui.json",
+      "docs/features.json (leads.kanban status and evidence only)"
+    ],
+    "create": [
+      "backend/test/leads-board.test.ts",
+      "desktop/src/app/(app)/leads/_components/lead-board.tsx",
+      "desktop/src/app/(app)/leads/_components/lead-card.tsx",
+      "desktop/src/app/(app)/leads/_components/move-to-menu.tsx",
+      "desktop/src/lib/lead-board.ts",
+      "desktop/src/lib/lead-board.test.ts",
+      "desktop/e2e/leads-board.spec.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/db/tenant-schema.ts",
+      "backend/drizzle/**",
+      "backend/src/services/tax-calculator.ts",
+      "backend/src/routes/invoices.ts",
+      "desktop/src/app/(app)/invoices/**",
+      "desktop/src/app/(app)/settings/invoice-defaults/**",
+      "desktop/src/app/(app)/tasks/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "prospects/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "items": [
+    {
+      "id": "R153-1",
+      "what": "Backend",
+      "steps": [
+        "GET /leads/board with the list's filters (status set, priority, owner, source, destination, date range, q, unassigned): {columns: [{status, count, value (sum of estimated_value or budget in the agency currency; leads in other currencies counted, not summed, with a flag), leads: first 20 in the list's default order}]}; one query per column at most, no N+1 for owners.",
+        "Columns follow the leads.board setting (design 4.7; GET/PUT /leads/board-settings, admin and sales_manager), default every pipeline status in order with on_hold hidden.",
+        "Column 'load more' uses the existing GET /leads?status=&cursor=."
+      ]
+    },
+    {
+      "id": "R153-2",
+      "what": "Desktop",
+      "steps": [
+        "Leads page: List / Board toggle (remembered in localStorage per user, wrapped in try/catch); the FilterBar drives both views.",
+        "lead-board.tsx on kanban-board.tsx (extend it with drop targets and an optional per-column footer; do not copy it): columns with count and value (locale money), cards (lead-card.tsx: title, contact, destination, travel date, value, owner avatar, priority, a seats chip when the lead has a seat booking and the departures feature is on), hover actions (Open, Assign, Add follow-up), skeleton columns, empty column state, per-column Load more.",
+        "Drag and drop with HTML5 events; 'Move to…' menu on each card (keyboard and screen readers) doing the same move.",
+        "Moves are optimistic with rollback and a toast on failure; dropping on Lost opens the existing lost-reason dialog (cancel = no move); dropping on Won asks for confirmation; the status change goes through the existing status endpoint so automations run as today.",
+        "docs/features.json: leads.kanban -> works with e2e/leads-board.spec.ts as evidence."
+      ]
+    }
+  ],
+  "tests": [
+    "backend/test/leads-board.test.ts: counts and values per column with filters; mixed currencies flagged; settings hide a column; salesperson sees only what the list shows them (same visibility rules as GET /leads).",
+    "desktop vitest: lib/lead-board.ts (optimistic move and rollback reducer, column value formatting).",
+    "e2e/leads-board.spec.ts: switch to Board, drag a lead from New to Contacted (Playwright dragTo), move another with 'Move to…' by keyboard, drop one on Lost and give a reason, filter by priority, Load more in a long column; the list view still works."
+  ],
+  "acceptance": [
+    "A pipeline board with drag and drop and a keyboard alternative exists on the Leads page; status changes made there behave exactly like those made on the lead page."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # 0 failed files; passed >= the count at the last merge",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # 0 failing files; passed >= the count at the last merge",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && node scripts/i18n-check.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 2 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3120 E2E_API_URL=http://localhost:8807/api/v1 npx playwright test e2e/leads-board.spec.ts e2e/leads.spec.ts e2e/tasks.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 2"
+  ],
+  "gates": { "typecheck": true, "unit": true, "lint": true, "build": false, "backendTests": true, "flutter": false, "specs": ["e2e/leads-board.spec.ts", "e2e/leads.spec.ts", "e2e/tasks.spec.ts"] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere.",
+    "No new feature key: the board is a view of the Leads page available on every plan.",
+    "Desktop: CONTRACT.md (FilterBar, skeletons, empty states, hover actions); t() with en and nl keys in pipeline.json and ui.json; RTL-safe classes (columns flow with the reading direction); money and dates through lib/format.ts and lib/dates.ts; localStorage access wrapped in try/catch.",
+    "kanban-board.tsx stays in the i18n-check scope and keeps the tasks board working (tasks e2e).",
+    "Never weaken, skip or delete an existing test."
+  ],
+  "notes": [
+    "Before editing read: this file, TOUR-OPERATOR-DESIGN.md sections 4.7 and 13.2, desktop/src/app/(app)/tasks/page.tsx (existing board with drag), desktop/src/app/(app)/leads/page.tsx, desktop/audit/remake/CONTRACT.md.",
+    "R152 runs in parallel and owns invoices, tax and invoice-defaults."
+  ],
+  "goLiveVerify": []
+}

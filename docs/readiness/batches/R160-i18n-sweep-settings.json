@@ -1,0 +1,79 @@
+{
+  "id": "R160",
+  "tier": 4,
+  "step": 13,
+  "title": "Interface sweep E (English and Dutch): every Settings page",
+  "lane": "desktop",
+  "backend": false,
+  "goal": "Every user-visible string on the Settings pages comes from the catalogue with complete English and Dutch, and i18n-check enforces it.",
+  "why": "About 1,180 hard-coded strings remain under settings (scanFile count 2026-10-21), the largest single area. Design: TOUR-OPERATOR-DESIGN.md section 17.",
+  "featuresToWorks": ["platform.i18n-nl"],
+  "featureKeys": [],
+  "dependsOn": ["R158", "R159"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": ["R161"],
+  "size": "L",
+  "newDependencies": [],
+  "migrations": [],
+  "scope": ["desktop/src/app/(app)/settings"],
+  "namespaces": ["settings"],
+  "files": {
+    "edit": [
+      "every .tsx/.ts file under desktop/src/app/(app)/settings (strings only)",
+      "desktop/src/messages/{en,nl,hi,ar}/settings.json"
+    ],
+    "create": [
+      "docs/i18n/nl-review/R160.md",
+      "desktop/scripts/i18n-scope/settings.json",
+      "desktop/e2e/i18n-nl-settings.spec.ts"
+    ],
+    "mustNotTouch": [
+      "backend/**",
+      "desktop/src/messages/index.ts",
+      "desktop/src/messages/*/{ai,assistant,chatbot,reports}.json",
+      "desktop/src/app/(app)/ai/**",
+      "desktop/src/app/(app)/assistant/**",
+      "desktop/src/app/(app)/chatbot/**",
+      "desktop/src/app/(app)/reports/**",
+      "desktop/src/components/**",
+      "product-requirment/**",
+      "prospects/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "items": [
+    { "id": "R160-1", "what": "Convert every i18n-check finding under settings to t() with keys settings.<page>.*, keeping English identical. Strings already converted by this wave (group tours, calling, chatbot capture, invoice-defaults cards, payment defaults, age bands, quote link, margin scheme) stay in their namespaces." },
+    { "id": "R160-2", "what": "Complete nl for every new key; list the files in docs/i18n/nl-review/R160.md." },
+    { "id": "R160-3", "what": "Add desktop/scripts/i18n-scope/settings.json." },
+    { "id": "R160-4", "what": "e2e/i18n-nl-settings.spec.ts: Nederlands, open the settings hub and every settings page (with features on and off where a page differs), no missing-key warnings, no overflow." }
+  ],
+  "tests": [
+    "i18n-check passes with zero findings under settings.",
+    "Existing settings e2e (settings-company, settings-team, voip-settings, ai-settings, group-tours-settings, two-factor, webhooks-integrations, chatbot) pass unchanged in English.",
+    "e2e/i18n-nl-settings.spec.ts."
+  ],
+  "acceptance": ["No hard-coded English remains under settings; Dutch is complete; English text unchanged."],
+  "gate": [
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # 0 failing files; passed >= the count at the last merge",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && node scripts/i18n-check.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/i18n-nl-settings.spec.ts e2e/settings-company.spec.ts e2e/settings-team.spec.ts e2e/voip-settings.spec.ts e2e/ai-settings.spec.ts e2e/group-tours-settings.spec.ts e2e/two-factor.spec.ts e2e/webhooks-integrations.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": { "typecheck": true, "unit": true, "lint": true, "build": false, "backendTests": false, "flutter": false, "specs": ["e2e/i18n-nl-settings.spec.ts", "e2e/settings-company.spec.ts", "e2e/settings-team.spec.ts", "e2e/voip-settings.spec.ts", "e2e/ai-settings.spec.ts", "e2e/group-tours-settings.spec.ts", "e2e/two-factor.spec.ts", "e2e/webhooks-integrations.spec.ts"] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere.",
+    "No behaviour change: strings only (plus layout fixes for longer Dutch text).",
+    "Keys only in settings.json (and reuse of existing namespaces); never edit messages/index.ts.",
+    "RTL-safe classes in any layout fix.",
+    "Never weaken, skip or delete an existing test."
+  ],
+  "notes": ["Before editing read: this file, TOUR-OPERATOR-DESIGN.md section 17, desktop/scripts/i18n-check.mjs.", "If the batch runs long, finish whole sub-folders and report the rest in the scope file comment-free (list only completed folders)."],
+  "goLiveVerify": ["Native review of the Dutch files listed in docs/i18n/nl-review/R160.md."]
+}

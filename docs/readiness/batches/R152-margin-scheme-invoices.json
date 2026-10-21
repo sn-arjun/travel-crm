@@ -1,0 +1,125 @@
+{
+  "id": "R152",
+  "tier": 4,
+  "step": 9,
+  "title": "Margin-scheme invoices (configurable tax presentation): VAT included and not shown, editable legal wording with presets, margin cost per invoice, and a margin report that says when inputs are missing",
+  "lane": "fullstack",
+  "backend": true,
+  "goal": "An agency that sells packages under the travel agents' margin scheme can switch it on, choose or edit the legal mention, issue invoices without a VAT line, and give its accountant a report of margins and (when it has entered its rate and costs exist) VAT on the margin.",
+  "why": "Gap 6 and the owner's 'keep it configurable'. Today the only option is 'None' plus a sentence in the payment terms. Design: TOUR-OPERATOR-DESIGN.md sections 4.5 and 12. No tax rate is invented and no wording is applied silently.",
+  "featuresToWorks": ["invoices.tax-engine", "invoices.margin-scheme", "reports.margin-scheme"],
+  "featureKeys": ["margin_scheme"],
+  "dependsOn": ["R150"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": ["R153"],
+  "size": "M",
+  "newDependencies": [],
+  "migrations": ["backend/drizzle/tenant/0062_margin_scheme.sql"],
+  "files": {
+    "edit": [
+      "backend/src/db/tenant-schema.ts",
+      "backend/src/db/tenant-migrations.generated.ts (regenerated)",
+      "backend/src/services/tax-calculator.ts",
+      "backend/src/services/domain/invoices.ts",
+      "backend/src/routes/invoices.ts (create/update fields and the PDF totals block only)",
+      "backend/src/routes/credit-notes.ts",
+      "backend/src/routes/settings.ts (margin_scheme key and the tax_system enum only)",
+      "backend/src/services/reports/financial-reports.ts",
+      "backend/src/services/departures/booking-invoice.ts (default regime only)",
+      "backend/test/tax-regimes.test.ts",
+      "desktop/src/app/(app)/settings/invoice-defaults/page.tsx (Tax card only)",
+      "desktop/src/app/(app)/invoices/** (regime select, margin cost field, preview)",
+      "desktop/src/lib/api/settings.ts",
+      "desktop/src/lib/api/invoices.ts",
+      "desktop/src/messages/en/margin.json",
+      "desktop/src/messages/nl/margin.json",
+      "desktop/src/messages/en/invoices.json",
+      "desktop/src/messages/nl/invoices.json"
+    ],
+    "create": [
+      "backend/drizzle/tenant/0062_margin_scheme.sql",
+      "backend/src/services/margin-scheme.ts",
+      "backend/test/margin-scheme.test.ts",
+      "desktop/src/lib/margin-scheme.ts",
+      "desktop/src/lib/margin-scheme.test.ts",
+      "desktop/e2e/margin-scheme.spec.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/routes/leads.ts",
+      "desktop/src/app/(app)/leads/**",
+      "desktop/src/components/domain/kanban-board.tsx",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "prospects/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "items": [
+    {
+      "id": "R152-1",
+      "what": "Engine and data",
+      "steps": [
+        "0062: invoices ADD margin_cost, margin_cost_source, margin_vat_rate, margin_wording; schema; bundle.",
+        "tax-calculator.ts: TaxRegime gains 'margin'; computeInvoiceTax for margin returns no visible tax lines, total_tax 0, total = price, tax_notes = wording, tax_breakdown with one hidden MARGIN_VAT entry {base: margin, rate, amount} only when cost and rate are known, else {status: 'inputs_missing'}; credit notes freeze it (FrozenTaxRules).",
+        "margin-scheme.ts: costFor(invoice) per design section 12 (booking: departure per-seat costs x seats + per-departure costs / confirmed seats; else itinerary total_cost; else manual), snapshot on create, editable while draft; vatOnMargin(margin, rate) = margin x rate / (100 + rate) rounded in minor units.",
+        "Settings: margin_scheme key (design 4.5) with GET/PUT; tax_system and default_tax_type enums gain 'margin'; booking invoices start in margin mode when defaultFor says so."
+      ]
+    },
+    {
+      "id": "R152-2",
+      "what": "Invoice, PDF and screens",
+      "steps": [
+        "Invoice create/edit accepts tax_regime margin (only when margin_scheme.enabled and the feature is on) and margin_cost when costSource is manual.",
+        "PDF: no VAT line and no buyer VAT number in margin mode; the wording printed under the totals.",
+        "Invoice defaults Tax card: 'Margin scheme (travel agents)' option; wording textarea with preset buttons (EU generic 'Margin scheme — Travel agents', Netherlands 'Bijzondere regeling reisbureaus', UK Tour Operators' Margin Scheme text) each labelled 'check with your accountant'; the agency's VAT rate field with no default and the hint that the report needs it; cost source.",
+        "Invoice page: the regime shown; in margin mode the cost and margin are visible to staff with finance rights only (never on the PDF)."
+      ]
+    },
+    {
+      "id": "R152-3",
+      "what": "Report",
+      "steps": [
+        "financial-reports.ts: margin_scheme_report per design section 12 (rows per margin invoice; VAT blank without a rate; 'Costs not recorded' rows; totals over complete rows with the count of incomplete; banner text 'For your accountant: figures are computed from the costs recorded in TravelCRM'); tax_report excludes margin invoices from taxes invoiced and returns a pointer row."
+      ]
+    }
+  ],
+  "tests": [
+    "backend/test/margin-scheme.test.ts: margin invoice totals and hidden breakdown with and without cost or rate; booking invoice cost from departure costs; itinerary cost; manual cost; credit note keeps margin; PDF text has the wording and no VAT line; report rows complete and incomplete; feature off or setting off -> the regime is refused 400.",
+    "backend/test/tax-regimes.test.ts: existing golden invoices unchanged; a margin golden invoice added.",
+    "desktop vitest: lib/margin-scheme.ts (preview of margin and VAT on margin).",
+    "e2e/margin-scheme.spec.ts: enable the margin scheme with the EU preset and a rate, issue an invoice for a booking, the invoice shows no VAT line and the wording, the margin report lists it with VAT on the margin; without a rate the VAT column is blank."
+  ],
+  "acceptance": [
+    "Margin-scheme invoices print the agency's wording and no VAT line; nothing is computed from an invented rate.",
+    "Agencies that do not enable it see the same invoices and reports as before (golden tests)."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # 0 failed files; passed >= the count at the last merge",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # 0 failing files; passed >= the count at the last merge",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && node scripts/i18n-check.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/margin-scheme.spec.ts e2e/invoices.spec.ts e2e/credit-debit-notes.spec.ts e2e/reports.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": { "typecheck": true, "unit": true, "lint": true, "build": false, "backendTests": true, "flutter": false, "specs": ["e2e/margin-scheme.spec.ts", "e2e/invoices.spec.ts", "e2e/credit-debit-notes.spec.ts", "e2e/reports.spec.ts"] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere.",
+    "Feature switch: margin_scheme (all plans) plus the agency setting margin_scheme.enabled.",
+    "Do not invent tax rates; presets are suggestions the agency must choose and may edit; every preset says to check with an accountant.",
+    "Backend: tenant migration 0062 only; regenerate the bundle; money in minor units as the tax engine does.",
+    "Desktop: CONTRACT.md; t() with en and nl keys in margin.json and invoices.json; RTL-safe classes; money through lib/format.ts.",
+    "Never weaken, skip or delete an existing test."
+  ],
+  "notes": [
+    "Before editing read: this file, TOUR-OPERATOR-DESIGN.md sections 4.5 and 12, services/tax-calculator.ts (R201), backend/test/tax-regimes.test.ts, services/domain/invoices.ts (R142).",
+    "R153 runs in parallel and owns the leads route and pages."
+  ],
+  "goLiveVerify": ["An accountant in the first EU market confirms the wording and the report before an agency relies on it."]
+}

@@ -1,0 +1,111 @@
+{
+  "id": "R155",
+  "tier": 4,
+  "step": 10,
+  "title": "'Accept and book' on the shared quote page: one tap marks the lead won, holds or confirms the seats of a linked departure, creates the invoice when configured and offers the deposit payment",
+  "lane": "fullstack",
+  "backend": true,
+  "goal": "A customer reading the quote link accepts it on the page; staff find the lead won, the seats held (or confirmed), the invoice ready and, if a gateway is connected, the deposit being paid.",
+  "why": "Gap 10: the shared quote page has no accept button and acceptance comes back by message. Design: TOUR-OPERATOR-DESIGN.md sections 4.6, 5.5 and 13.3.",
+  "featuresToWorks": ["itineraries.share-link", "itineraries.accept-online"],
+  "featureKeys": ["quote_acceptance", "group_departures (seat holds only)"],
+  "dependsOn": ["R150"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": ["R154"],
+  "size": "M",
+  "newDependencies": [],
+  "migrations": ["backend/drizzle/tenant/0063_quote_acceptance.sql"],
+  "files": {
+    "edit": [
+      "backend/src/db/tenant-schema.ts",
+      "backend/src/db/tenant-migrations.generated.ts (regenerated)",
+      "backend/src/routes/public.ts",
+      "backend/src/routes/itineraries.ts (accepted fields in GET and a staff 'mark accepted' only)",
+      "backend/src/routes/settings.ts (quotes.accept key only)",
+      "desktop/src/app/(public)/q/[token]/page.tsx",
+      "desktop/src/app/(app)/itineraries/[id]/page.tsx (accepted badge only)",
+      "desktop/src/app/(app)/settings/itinerary-defaults/page.tsx (Quote link card only)",
+      "desktop/src/lib/api/itineraries.ts",
+      "desktop/src/messages/en/quotes.json",
+      "desktop/src/messages/nl/quotes.json"
+    ],
+    "create": [
+      "backend/drizzle/tenant/0063_quote_acceptance.sql",
+      "backend/src/services/quotes/accept.ts",
+      "backend/test/quote-accept.test.ts",
+      "desktop/src/app/(public)/q/[token]/_components/accept-sheet.tsx",
+      "desktop/e2e/quote-accept.spec.ts"
+    ],
+    "mustNotTouch": [
+      "backend/src/routes/communications.ts",
+      "backend/src/services/template-engine.ts",
+      "backend/src/services/automation/recipes.ts",
+      "backend/src/cron/dispatch.ts",
+      "backend/src/index.ts",
+      "desktop/src/app/(app)/settings/group-tours/**",
+      "desktop/src/app/(app)/tours/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "prospects/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "items": [
+    {
+      "id": "R155-1",
+      "what": "Backend",
+      "steps": [
+        "0063: itineraries ADD accepted_at, accepted_via, accepted_name, accepted_ip_hash (SHA-256 of IP + tenant id, never the raw IP); schema; bundle.",
+        "Settings quotes.accept (design 4.6) with GET/PUT.",
+        "GET /public/quotation/:token additionally returns {accept: {enabled, label, requireName, requireTerms, state: open|accepted|expired|full_waitlist}, departure?: {dates, seatsLeft per showSeatsLeft}} when the feature quote_acceptance and the setting are on.",
+        "POST /public/quotation/:token/accept {name, termsAccepted}: 5 per 10 minutes per IP; services/quotes/accept.ts does, in order and idempotently (a second call returns the first result): validity and revocation checks; itinerary approved with accepted_*; lead -> won through the existing status function (source quote_accept, actor null) so automations run; when itineraries.departure_id is set and group_departures is on, requestSeats (R143) with seats_requested or the lead pax and source quote_accept (confirmMode decides held or confirmed; full -> waitlisted and the answer says so); createInvoice per quotes.accept.createInvoice (proforma or invoice from the itinerary, reusing the existing from-itinerary logic); a deposit link through R142 when offerDeposit and a gateway (or the test gateway) is connected, else bank details; event quote.accepted; staff notification and a lead timeline entry.",
+        "Staff: an itinerary can be marked accepted by staff (accepted_via staff) for acceptances that arrive by message."
+      ]
+    },
+    {
+      "id": "R155-2",
+      "what": "Page",
+      "steps": [
+        "/q/[token]: an 'Accept and book' button (label from settings, through t()), accept-sheet with name and terms checkbox, then the result: accepted (with seats held/confirmed or waitlisted), Pay deposit (opens the payment link) or bank details with the reference; an already-accepted quote shows the accepted state; expired shows no button.",
+        "Itinerary page: an 'Accepted by <name> on <date> via link' badge."
+      ]
+    }
+  ],
+  "tests": [
+    "backend/test/quote-accept.test.ts: accept marks approved and lead won once (idempotent); expired and revoked refused; feature or setting off -> 404 on accept and no accept block on GET; departure linked -> seats held or confirmed per confirmMode, full -> waitlisted; invoice created per setting; deposit link with the test gateway; bank details otherwise; rate limit; quote.accepted emitted once.",
+    "e2e/quote-accept.spec.ts: staff enables accept, shares a quote linked to a departure; an anonymous browser accepts with a name, sees the seats and pays the deposit on the test gateway; staff sees the lead won, the seat booking and the payment."
+  ],
+  "acceptance": [
+    "One tap on the quote link closes the loop: lead won, seats handled, invoice and deposit offered.",
+    "Agencies that leave the setting off see the quote page as before."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # 0 failed files; passed >= the count at the last merge",
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # 0 failing files; passed >= the count at the last merge",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && node scripts/i18n-check.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 2 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3120 E2E_API_URL=http://localhost:8807/api/v1 npx playwright test e2e/quote-accept.spec.ts e2e/itineraries.spec.ts e2e/web-pages.spec.ts e2e/invoices.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 2"
+  ],
+  "gates": { "typecheck": true, "unit": true, "lint": true, "build": false, "backendTests": true, "flutter": false, "specs": ["e2e/quote-accept.spec.ts", "e2e/itineraries.spec.ts", "e2e/web-pages.spec.ts", "e2e/invoices.spec.ts"] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere.",
+    "Feature switch: quote_acceptance plus the agency setting; seat holds also need group_departures and the agency switch.",
+    "Public route: tenant from the master quotation_links row first; rate limited; the same not-found answers as today; no data beyond today's projection plus the accept block.",
+    "Backend: tenant migration 0063 only; regenerate the bundle; IP stored only as a salted hash.",
+    "Desktop: t() with en and nl keys in quotes.json; RTL-safe classes; money and dates through lib/format.ts and lib/dates.ts.",
+    "Never weaken, skip or delete an existing test."
+  ],
+  "notes": [
+    "Before editing read: this file, TOUR-OPERATOR-DESIGN.md sections 4.6, 5.5, 13.3, routes/public.ts, the /q page, services/departures/seats.ts (R143), services/domain/invoices.ts (R142), the existing create_invoice_from_itinerary action for the from-itinerary lines.",
+    "R154 runs in parallel and owns communications.ts, template-engine.ts, recipes.ts, cron and index.ts."
+  ],
+  "goLiveVerify": []
+}

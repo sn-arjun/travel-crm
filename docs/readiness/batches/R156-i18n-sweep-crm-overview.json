@@ -1,0 +1,93 @@
+{
+  "id": "R156",
+  "tier": 4,
+  "step": 11,
+  "title": "Interface sweep A (English and Dutch): leads, contacts, dashboard, calendar, tasks, follow-ups",
+  "lane": "desktop",
+  "backend": false,
+  "goal": "Every user-visible string on these pages comes from the catalogue with complete English and Dutch, and i18n-check enforces it.",
+  "why": "R210 converted only the shell and shared components; about 920 hard-coded strings remain in these folders (scanFile count 2026-10-21). Owner decision: Dutch interface in scope, at least every screen the client film shows. Design: TOUR-OPERATOR-DESIGN.md section 17.",
+  "featuresToWorks": ["platform.i18n-nl"],
+  "featureKeys": [],
+  "dependsOn": ["R155"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": ["R157"],
+  "size": "M",
+  "newDependencies": [],
+  "migrations": [],
+  "scope": [
+    "desktop/src/app/(app)/leads",
+    "desktop/src/app/(app)/contacts",
+    "desktop/src/app/(app)/dashboard",
+    "desktop/src/app/(app)/calendar",
+    "desktop/src/app/(app)/tasks",
+    "desktop/src/app/(app)/follow-ups"
+  ],
+  "namespaces": ["leads", "contacts", "dashboard", "calendar", "tasks", "followUps"],
+  "files": {
+    "edit": [
+      "every .tsx/.ts file under the scope folders (strings only)",
+      "desktop/src/messages/{en,nl,hi,ar}/{leads,contacts,dashboard,calendar,tasks,followUps}.json"
+    ],
+    "create": [
+      "docs/i18n/nl-review/R156.md",
+      "desktop/scripts/i18n-scope/crm-overview.json",
+      "desktop/e2e/i18n-nl-crm-overview.spec.ts"
+    ],
+    "mustNotTouch": [
+      "backend/**",
+      "desktop/src/messages/index.ts",
+      "desktop/src/messages/*/{fleet,travellers,visa,documents,rateCards,suppliers}.json",
+      "desktop/src/app/(app)/fleet/**",
+      "desktop/src/app/(app)/travellers/**",
+      "desktop/src/app/(app)/visa/**",
+      "desktop/src/app/(app)/documents/**",
+      "desktop/src/app/(app)/rate-cards/**",
+      "desktop/src/app/(app)/suppliers/**",
+      "desktop/src/components/**",
+      "product-requirment/**",
+      "prospects/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "items": [
+    { "id": "R156-1", "what": "Convert every finding of node desktop/scripts/i18n-check.mjs for the scope folders to t() (JSX text, text props, toasts, setError, data labels, column headers, empty states, confirm dialogs, aria-labels). Keys go in the namespace of the page (leads.*, contacts.*, ...); reuse common.* and status.* keys where the meaning is identical. Values and interpolations keep the current English exactly, so English screens do not change." },
+    { "id": "R156-2", "what": "Machine-translate every new key into nl (complete; placeholders identical); hi and ar may stay partial. List the namespace files in docs/i18n/nl-review/R156.md as 'machine translated, needs native review'." },
+    { "id": "R156-3", "what": "Add desktop/scripts/i18n-scope/crm-overview.json listing the scope folders, so i18n-check enforces them from now on." },
+    { "id": "R156-4", "what": "e2e/i18n-nl-crm-overview.spec.ts: switch to Nederlands, open every page in scope (list, detail, new/edit forms, drawers), assert no missing-key console warnings, html lang nl, and run the layout probe (desktop/scripts/layout-probe.mjs helpers or the rtl.spec.ts pattern) for overflow caused by longer Dutch text; fix overflow with layout (wrap, min-w-0, truncate with title), never by shortening the translation to English." }
+  ],
+  "tests": [
+    "i18n-check passes with the new scope file and zero findings in the scope folders.",
+    "Existing e2e for the area (leads, leads-board, contacts, dashboard, calendar, tasks, follow-ups) pass unchanged in English.",
+    "e2e/i18n-nl-crm-overview.spec.ts."
+  ],
+  "acceptance": [
+    "No hard-coded English remains in the scope folders; Dutch is complete for them; English screens are pixel-identical in text."
+  ],
+  "gate": [
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # 0 failing files; passed >= the count at the last merge",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && node scripts/i18n-check.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/i18n-nl-crm-overview.spec.ts e2e/leads.spec.ts e2e/leads-board.spec.ts e2e/contacts.spec.ts e2e/dashboard.spec.ts e2e/calendar.spec.ts e2e/tasks.spec.ts e2e/follow-ups.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": { "typecheck": true, "unit": true, "lint": true, "build": false, "backendTests": false, "flutter": false, "specs": ["e2e/i18n-nl-crm-overview.spec.ts", "e2e/leads.spec.ts", "e2e/leads-board.spec.ts", "e2e/contacts.spec.ts", "e2e/dashboard.spec.ts", "e2e/calendar.spec.ts", "e2e/tasks.spec.ts", "e2e/follow-ups.spec.ts"] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere.",
+    "No behaviour change: strings only (plus layout fixes for longer Dutch text).",
+    "Keys only in this batch's namespace files; never edit messages/index.ts (the files exist since R136).",
+    "RTL-safe classes in any layout fix (ms-/me-/ps-/pe-).",
+    "Never weaken, skip or delete an existing test; e2e selectors that use English text keep working because tests run in English."
+  ],
+  "notes": [
+    "Before editing read: this file, TOUR-OPERATOR-DESIGN.md section 17, desktop/scripts/i18n-check.mjs (what counts as a finding), the R210 batch file for the conventions already used (key naming, i18n-ignore for example values).",
+    "R157 runs in parallel on other folders and namespaces."
+  ],
+  "goLiveVerify": ["Native review of the Dutch files listed in docs/i18n/NL-REVIEW.md."]
+}

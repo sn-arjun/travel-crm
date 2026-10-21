@@ -1,0 +1,161 @@
+{
+  "id": "R137",
+  "tier": 4,
+  "step": 1,
+  "title": "Calling ready to switch on in the EU, Netherlands first: country gate, EU minute pricing active, NL draft prices, regulatory bundles for numbers, recording defaults per country, Dutch call prompts, docs",
+  "lane": "backend",
+  "backend": true,
+  "goal": "An agency in the Netherlands can be offered calling the same way as a UK or US agency: the country is allowed, EU minutes and packs are priced, a number can be bought once its regulatory bundle is approved by the provider, recording follows a GDPR-appropriate default for the country, and callers hear Dutch prompts. Built as general EU readiness; NL is data, not code.",
+  "why": "Owner decision 2026-10-21: calling in the Netherlands is in scope ('they might be our first customer'). Today NL is not in call_country_policy, the EU call_minute and phone_number rows and add-ons are inactive (PRICING.md 'inactive until the second wave'), number KYC is a manual document review with no provider bundle, the recording default is the same everywhere and all spoken prompts are English (routes/voip-callbacks.ts 698-980). Design: TOUR-OPERATOR-DESIGN.md sections 5.6 and 16.",
+  "featuresToWorks": ["calls.country-nl", "calls.regulatory-bundle", "calls.recording-consent-by-country"],
+  "featureKeys": ["voip_calling (existing)"],
+  "dependsOn": [],
+  "blockedOnOwner": null,
+  "parallelSafeWith": ["R136"],
+  "size": "L",
+  "newDependencies": [],
+  "migrations": ["backend/drizzle/master/0029_calling_eu_nl.sql"],
+  "files": {
+    "edit": [
+      "backend/src/services/voip/country-gate.ts",
+      "backend/src/services/voip/country-policy.ts",
+      "backend/src/services/voip/numbers.ts",
+      "backend/src/services/voip/contract.ts",
+      "backend/src/services/voip/mock-provider.ts",
+      "backend/src/services/voip/recordings.ts",
+      "backend/src/services/voip/fraud.ts",
+      "backend/src/services/voip-provider.ts",
+      "backend/src/services/twilio-voice.ts",
+      "backend/src/routes/voip-callbacks.ts",
+      "backend/src/routes/voip.ts",
+      "backend/src/routes/admin-voip.ts",
+      "backend/src/cron/dispatch.ts",
+      "backend/src/db/master-schema.ts",
+      "backend/src/types.ts",
+      "backend/scripts/gen-wrangler.mjs",
+      "backend/test/voip-numbers.test.ts",
+      "docs/decisions/ADR-001-voip.md",
+      "docs/PRICING.md",
+      "docs/GO-LIVE.md"
+    ],
+    "create": [
+      "backend/drizzle/master/0029_calling_eu_nl.sql",
+      "backend/src/services/voip/prompts.ts",
+      "backend/src/services/voip/regulatory.ts",
+      "backend/test/voip-eu-nl.test.ts",
+      "backend/test/fixtures/twilio-regulatory/*.json"
+    ],
+    "mustNotTouch": [
+      "backend/drizzle/tenant/**",
+      "backend/src/db/tenant-schema.ts",
+      "backend/src/services/mail/**",
+      "backend/src/routes/vouchers.ts",
+      "desktop/**",
+      "super-admin/**",
+      "packages/**",
+      "backend/.dev.vars",
+      "product-requirment/**",
+      "prospects/**",
+      "studio/**",
+      "docs/readiness/**"
+    ]
+  },
+  "items": [
+    {
+      "id": "R137-1",
+      "what": "Master 0029_calling_eu_nl.sql",
+      "steps": [
+        "call_country_policy: INSERT OR IGNORE ('NL', 'resell', 'twilio', 1, 'EU first market. Local numbers need a regulatory bundle (business identity and an address); confirm the requirements against Twilio''s Regulations API at go-live.').",
+        "call_country_policy ADD recording_default TEXT NOT NULL DEFAULT 'announce' (announce | off | on_request) and kyc_requirements TEXT (JSON array of {key, label, type: text|address|file|date, required}); set NL's kyc_requirements to a DRAFT list: business name, business registration number, registered business address in the country, representative full name, registration extract (file). Other rows keep NULL (the existing free-form document upload).",
+        "number_documents ADD provider_bundle_sid, provider_address_sid, provider_status, provider_status_at, provider_failure_reason, number_type (local | mobile | national; default local).",
+        "Pricing, as PRICING.md describes and as R129/R130 loaded the other markets: UPDATE comm_unit_costs SET is_active = 1 for the EU call_minute and phone_number rows (ids 01a157e5-2f4a-752c-9ea7-ca87c01b6c58 and 01a157e5-2f4b-7261-9e7a-8bfe8eda9884); UPDATE addon_products SET is_active = 1 WHERE key IN ('call_minutes_500_eu', 'phone_number_eu').",
+        "NL drafts, inactive: comm_unit_costs rows (new UUIDv7 ids) channel phone_number market NL and channel call_minute market NL (destination weight, USD), provider text 'DRAFT: enter Twilio's NL price before selling', unit_cost 0, is_active 0; addon_products ('phone_number_nl', 'Phone number (per month)', 'comm_pack', 'phone_number', 1, NULL, 'EUR', 'NL', 0). Never invent a Twilio price."
+      ]
+    },
+    {
+      "id": "R137-2",
+      "what": "Country gate and fraud",
+      "steps": [
+        "country-gate.ts DEFAULT_CALLING_COUNTRIES gains 'NL'; the comment says EU countries are added by configuration.",
+        "gen-wrangler.mjs: default VOIP_CALLING_COUNTRIES 'US,NL' (owner question Q1 in the design: keep this default unless the owner says otherwise); the '*' refusal for staging and production stays.",
+        "fraud.ts: no code change expected (own country is allowed); add tests: an NL agency calls +31 6..., +31 20... (allowed), +44 (blocked unless allow-listed), a premium prefix (blocked)."
+      ]
+    },
+    {
+      "id": "R137-3",
+      "what": "Number price by country, then market",
+      "steps": [
+        "numbers.ts price lookup: an active phone_number product whose market is the agency's ISO country wins; else the market's product. An NL agency therefore gets PRICE_NOT_CONFIGURED until the NL row is activated with a real price in the console, never the Germany-based EU price.",
+        "Metering keeps its rule (destination weight row when active, else the market row); add a test that an NL destination with the inactive draft row is priced by the EU market row."
+      ]
+    },
+    {
+      "id": "R137-4",
+      "what": "Regulatory bundles",
+      "steps": [
+        "contract.ts: optional provider methods submitRegulatoryBundle({country, numberType, endUser, address, documents}) -> {bundleSid, addressSid, status} and getRegulatoryBundleStatus(bundleSid) -> {status, failureReason}.",
+        "Twilio adapter (services/twilio-voice.ts or the adapter voip-provider.ts uses): Regulatory Compliance v2 calls (EndUsers, SupportingDocuments with the file streamed from R2, Addresses, Bundles, ItemAssignments, then Status=pending-review with StatusCallback). Built and tested only against recorded fixtures in backend/test/fixtures/twilio-regulatory; mark the request shapes 'verify at go-live'.",
+        "Mock provider: approves after MOCK_BUNDLE_DELAY_SECONDS (env, default 0), can be told to reject for tests.",
+        "services/voip/regulatory.ts: the state machine of design 5.6 over number_documents (none, submitted, platform_review, provider_review, approved, rejected). The super admin's existing approval (number_documents.status = approved) now triggers submit to the provider when the country's policy has kyc_requirements; countries without them keep today's flow (approval = purchasable).",
+        "Signed status callback POST /voip/regulatory-callback/:tenantKey (provider signature verified like the other voip callbacks; key from tenant_channel_addresses as R207 does for payments) and an hourly poll job 'voip.regulatory-poll' (period tick, at most once an hour per agency) in cron/dispatch.ts.",
+        "numbers.ts purchase: for a country with a bundle, require provider_status approved and pass BundleSid and AddressSid; the error says which step is pending (KYC_PENDING_PROVIDER with the status).",
+        "GET /voip/numbers/requirements (agency) returns the country's kyc_requirements and the current state; POST /voip/numbers/documents accepts the structured fields plus files (extends the existing upload). Admin routes in admin-voip.ts: submit-to-provider, refresh-status, reset."
+      ]
+    },
+    {
+      "id": "R137-5",
+      "what": "Recording default per country and Dutch prompts",
+      "steps": [
+        "recordings.ts: when the agency has never set recording_consent_mode, its default is the country policy's recording_default (NL announce). An explicit agency choice always wins.",
+        "services/voip/prompts.ts: every spoken text now inline in routes/voip-callbacks.ts (unavailable, please hold, voicemail, thank you, the recording announcement default) as a catalogue in en and nl with the TwiML voice and language per language (en: Polly.Joanna en-US; nl: Polly.Lotte nl-NL). The agency language (settings default_language, else en) picks it. The agency's own announcement text still wins.",
+        "voip-callbacks.ts uses prompts.ts; existing callback tests stay green; new tests render the Dutch TwiML for an agency with default_language nl."
+      ]
+    },
+    {
+      "id": "R137-6",
+      "what": "Docs",
+      "steps": [
+        "ADR-001: Addendum B (2026-10-21) 'EU readiness, Netherlands first': country gate, pricing activation, NL draft prices, regulatory bundle flow, recording default by country and the GDPR note, what is verified only at go-live.",
+        "PRICING.md: the EU call minutes and number rows are active; the NL rows are drafts pending the owner's real Twilio prices; how NL numbers are priced (country row first).",
+        "GO-LIVE.md phase 9: Twilio regulatory requirements for NL read from the Regulations API and kyc_requirements updated if different; the NL prices entered in the super admin catalogue and activated; VOIP_CALLING_COUNTRIES includes NL; a test call from an NL agency with the Dutch announcement; recording notice reviewed for the GDPR."
+      ]
+    }
+  ],
+  "tests": [
+    "backend/test/voip-eu-nl.test.ts: an NL agency is offered calling (callingAvailability ok); NL number price is PRICE_NOT_CONFIGURED while the NL row is inactive and the country price once active; the bundle flow with the mock provider: documents uploaded -> super admin approves -> submitted -> provider approved -> purchase passes the bundle and address sids; a rejected bundle blocks purchase with the reason; the signed regulatory callback with a bad signature is 403; the recording default for a fresh NL agency is announce and an explicit 'off' wins; Dutch TwiML for an nl agency.",
+    "Twilio adapter: request bodies built for the bundle calls match the recorded fixtures (mocked fetch, no network).",
+    "Existing voip tests (voip-numbers, voip-callbacks, voip-metering, voip-once, voip-provider-contract, voip-token, voip-inbound) stay green."
+  ],
+  "acceptance": [
+    "With VOIP_CALLING_COUNTRIES unset an NL agency sees calling; with it set to 'US' it does not.",
+    "No Twilio price is invented: NL rows are inactive drafts; EU rows were already in PRICING.md.",
+    "Number purchase in a bundle country is impossible before provider approval, and every pending state is readable through the API."
+  ],
+  "gate": [
+    "cd backend && npx tsc --noEmit",
+    "cd backend && npx vitest run   # 0 failed files; passed >= the count at the last merge",
+    "node backend/scripts/gen-wrangler.mjs --env production --registry scripts/fixtures/registry.sample.json   # still succeeds and refuses '*'",
+    "node desktop/scripts/fix-stack.mjs up --slot 2 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3120 E2E_API_URL=http://localhost:8807/api/v1 npx playwright test e2e/voip-settings.spec.ts e2e/calls-simulator.spec.ts e2e/softphone.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 2"
+  ],
+  "gates": { "typecheck": false, "unit": false, "lint": false, "build": false, "backendTests": true, "flutter": false, "specs": ["e2e/voip-settings.spec.ts", "e2e/calls-simulator.spec.ts", "e2e/softphone.spec.ts"] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere.",
+    "No account-touching wrangler or provider calls; providers are mocked or fixture-driven (memory: Cloudflare account safety).",
+    "Backend: Hono + Drizzle + D1; master migration number 0029 only; UUIDv7 ids; signed public callbacks resolve the tenant from a master key before any tenant DB is opened.",
+    "Feature switch: existing voip_calling plus the country gate; nothing new in the plan catalogue.",
+    "Never weaken, skip or delete an existing test."
+  ],
+  "notes": [
+    "Before editing read: this file, TOUR-OPERATOR-DESIGN.md sections 5.6 and 16, docs/decisions/ADR-001-voip.md (sections 4, 7, Addendum A, Decision 2026-10-15), docs/PRICING.md sections 3.5-3.6 and the comm_unit_costs tables, backend/drizzle/master/0022_voip_subaccounts.sql and 0026_pricing_2026_10.sql, and the R304/R305/R307 batch files for how numbers, metering and the softphone work.",
+    "Backend tests follow backend/test/voip-numbers.test.ts (applyD1Migrations on MASTER_DB, POST /api/v1/test/reset, worker.fetch). Use unique ids per file.",
+    "docs/decisions/** is edited only for the ADR addendum.",
+    "R141 builds the agency and super-admin screens on these APIs."
+  ],
+  "goLiveVerify": [
+    "Twilio's NL requirements (Regulations API) match kyc_requirements; a real bundle is approved in the Twilio console.",
+    "Real NL number and minute prices entered and activated in the super admin catalogue.",
+    "A real call from and to an NL number with the Dutch announcement."
+  ]
+}

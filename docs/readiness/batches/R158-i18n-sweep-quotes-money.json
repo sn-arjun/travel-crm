@@ -1,0 +1,88 @@
+{
+  "id": "R158",
+  "tier": 4,
+  "step": 12,
+  "title": "Interface sweep C (English and Dutch): itineraries and templates, invoices, payments, credit and debit notes, vouchers",
+  "lane": "desktop",
+  "backend": false,
+  "goal": "Every user-visible string on these pages comes from the catalogue with complete English and Dutch, and i18n-check enforces it.",
+  "why": "About 1,090 hard-coded strings remain in these folders (scanFile count 2026-10-21). Design: TOUR-OPERATOR-DESIGN.md section 17.",
+  "featuresToWorks": ["platform.i18n-nl"],
+  "featureKeys": [],
+  "dependsOn": ["R156", "R157"],
+  "blockedOnOwner": null,
+  "parallelSafeWith": ["R159"],
+  "size": "L",
+  "newDependencies": [],
+  "migrations": [],
+  "scope": [
+    "desktop/src/app/(app)/itineraries",
+    "desktop/src/app/(app)/invoices",
+    "desktop/src/app/(app)/payments",
+    "desktop/src/app/(app)/credit-notes",
+    "desktop/src/app/(app)/debit-notes",
+    "desktop/src/app/(app)/vouchers"
+  ],
+  "namespaces": ["itineraries", "invoices", "payments", "creditNotes", "debitNotes", "vouchers"],
+  "files": {
+    "edit": [
+      "every .tsx/.ts file under the scope folders (strings only)",
+      "desktop/src/messages/{en,nl,hi,ar}/{itineraries,invoices,payments,creditNotes,debitNotes,vouchers}.json"
+    ],
+    "create": [
+      "docs/i18n/nl-review/R158.md",
+      "desktop/scripts/i18n-scope/quotes-money.json",
+      "desktop/e2e/i18n-nl-quotes-money.spec.ts"
+    ],
+    "mustNotTouch": [
+      "backend/**",
+      "desktop/src/messages/index.ts",
+      "desktop/src/messages/*/{marketing,campaigns,communication,inbox}.json",
+      "desktop/src/app/(app)/marketing/**",
+      "desktop/src/app/(app)/campaigns/**",
+      "desktop/src/app/(app)/communication/**",
+      "desktop/src/components/**",
+      "product-requirment/**",
+      "prospects/**",
+      "studio/**",
+      "docs/readiness/**",
+      "docs/decisions/**",
+      "desktop/audit/fix/lint-baseline.json",
+      "desktop/audit/fix/gate-baseline.json"
+    ]
+  },
+  "items": [
+    { "id": "R158-1", "what": "Convert every i18n-check finding in the scope folders to t() in the page's namespace, keeping English identical. Strings already converted by R142, R149, R152 and R155 stay as they are." },
+    { "id": "R158-2", "what": "Complete nl for every new key; list the files in docs/i18n/nl-review/R158.md." },
+    { "id": "R158-3", "what": "Add desktop/scripts/i18n-scope/quotes-money.json with the scope folders." },
+    { "id": "R158-4", "what": "e2e/i18n-nl-quotes-money.spec.ts: Nederlands, open every page in scope (itinerary list, templates, builder, detail tabs, PDF preview page, invoice list/new/detail, payments, credit and debit notes, vouchers), no missing-key warnings, no overflow." }
+  ],
+  "tests": [
+    "i18n-check passes with zero findings in the scope folders.",
+    "Existing e2e for these areas pass unchanged in English.",
+    "e2e/i18n-nl-quotes-money.spec.ts."
+  ],
+  "acceptance": ["No hard-coded English remains in the scope folders; Dutch is complete; English text unchanged."],
+  "gate": [
+    "cd desktop && npx tsc --noEmit && npx tsc -p electron/tsconfig.json --noEmit",
+    "cd desktop && npx vitest run   # 0 failing files; passed >= the count at the last merge",
+    "cd desktop && node scripts/lint-gate.mjs",
+    "cd desktop && node scripts/i18n-check.mjs",
+    "node desktop/scripts/fix-stack.mjs up --slot 1 --reset-db",
+    "cd desktop && E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/i18n-nl-quotes-money.spec.ts e2e/itineraries.spec.ts e2e/itinerary-templates.spec.ts e2e/age-bands.spec.ts e2e/invoices.spec.ts e2e/payments.spec.ts e2e/pay-online.spec.ts e2e/credit-debit-notes.spec.ts e2e/vouchers.spec.ts e2e/margin-scheme.spec.ts",
+    "node desktop/scripts/fix-stack.mjs down --slot 1"
+  ],
+  "gates": { "typecheck": true, "unit": true, "lint": true, "build": false, "backendTests": false, "flutter": false, "specs": ["e2e/i18n-nl-quotes-money.spec.ts", "e2e/itineraries.spec.ts", "e2e/itinerary-templates.spec.ts", "e2e/age-bands.spec.ts", "e2e/invoices.spec.ts", "e2e/payments.spec.ts", "e2e/pay-online.spec.ts", "e2e/credit-debit-notes.spec.ts", "e2e/vouchers.spec.ts", "e2e/margin-scheme.spec.ts"] },
+  "productRules": [
+    "Generic product: no prospect or customer names anywhere.",
+    "No behaviour change: strings only (plus layout fixes for longer Dutch text).",
+    "Keys only in this batch's namespace files; never edit messages/index.ts.",
+    "RTL-safe classes in any layout fix.",
+    "Never weaken, skip or delete an existing test."
+  ],
+  "notes": [
+    "Before editing read: this file, TOUR-OPERATOR-DESIGN.md section 17, desktop/scripts/i18n-check.mjs.",
+    "Document labels printed by the backend (invoice and quote PDFs) are not in scope; voucher PDF labels were done in R136."
+  ],
+  "goLiveVerify": ["Native review of the Dutch files listed in docs/i18n/nl-review/R158.md."]
+}
