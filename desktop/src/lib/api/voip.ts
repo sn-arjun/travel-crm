@@ -66,14 +66,59 @@ export interface VoipAccountState {
 
 export type KycStatus = 'none' | 'pending' | 'approved' | 'rejected';
 
+/** Where a country's number documents stand (design 5.6): the platform's review comes first, then the provider's. */
+export type RegulatoryState = 'none' | 'submitted' | 'platform_review' | 'provider_review' | 'approved' | 'rejected';
+
+/** One field or document a country's regulatory bundle asks the agency for (call_country_policy.kyc_requirements). */
+export interface KycRequirement {
+  key: string;
+  label: string;
+  type: 'text' | 'address' | 'file' | 'date';
+  required: boolean;
+}
+
+/** An address answer as the backend stores it. */
+export interface KycAddress {
+  street: string;
+  city: string;
+  region?: string;
+  postalCode: string;
+}
+
 export interface NumberKycDocument {
   id: string;
   country: string;
   status: Exclude<KycStatus, 'none'>;
-  details: { businessName?: string; address?: string; registrationNumber?: string; contactName?: string } | null;
-  files: { name: string; url: string }[];
+  details: ({ businessName?: string; address?: string | KycAddress; registrationNumber?: string; contactName?: string } & Record<string, unknown>) | null;
+  files: { name: string; url?: string; field?: string }[];
   reviewNote: string | null;
   submittedAt: string;
+}
+
+/** The provider side of a document set, as the agency sees it. */
+export interface RegulatoryView {
+  state: RegulatoryState;
+  providerStatus: string | null;
+  providerStatusAt: string | null;
+  /** Why a set was rejected (by the platform or the provider). */
+  failureReason: string | null;
+  numberType: string;
+}
+
+export type NumberType = 'local' | 'mobile' | 'national';
+
+/** GET /voip/numbers/requirements: what the agency's country asks for and where its documents stand. */
+export interface NumberRequirements extends RegulatoryView {
+  country: string;
+  kycRequired: boolean;
+  /** True when the country has a requirement list and the provider reviews the bundle. */
+  bundleFlow: boolean;
+  /** Null: the free-form document upload of countries without a list. */
+  requirements: KycRequirement[] | null;
+  notes: string | null;
+  recordingDefault: RecordingConsentMode;
+  numberTypes: NumberType[];
+  document: NumberKycDocument | null;
 }
 
 /** GET /voip/number-offer: the price of a number and what is needed before buying one. */
@@ -84,6 +129,8 @@ export interface NumberOffer {
   price: { productKey: string; monthly: number; tax: number; total: number; currency: string; includesMarginPct: number } | null;
   priceReason: string | null;
   kyc: { required: boolean; status: KycStatus; document: NumberKycDocument | null };
+  /** Where the provider bundle stands (absent on an older backend). */
+  regulatory?: RegulatoryView & { bundleFlow: boolean; requirements: KycRequirement[] | null; recordingDefault: RecordingConsentMode };
   addon: { freeThisMonth: number; productKey: string | null };
 }
 
@@ -305,6 +352,8 @@ export interface RecordingSettings {
   announcement: string | null;
   defaultAnnouncement: string;
   effectiveAnnouncement: string;
+  /** The language the announcement is spoken in (the agency language: en, nl). */
+  language?: string;
   retentionDays: number;
   callAiEnabled: boolean;
   callAiEngine: 'standard' | 'premium';
@@ -349,6 +398,12 @@ export const voipApi = {
 
   kyc: {
     submit: (data: SubmitKycRequest) => client.post<ApiResponse<{ document: NumberKycDocument }>>('/voip/kyc', data),
+  },
+
+  /** R137: the country's requirement list, and the structured documents form (answers and files in one multipart body). */
+  requirements: {
+    get: () => client.get<ApiResponse<NumberRequirements>>('/voip/numbers/requirements'),
+    submit: (form: FormData) => client.post<ApiResponse<{ document: NumberKycDocument }>>('/voip/numbers/documents', form),
   },
 
   numbers: {

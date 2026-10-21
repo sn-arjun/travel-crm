@@ -34,9 +34,13 @@ import {
 } from '@/components/ui';
 import { toast } from 'sonner';
 import { useApiQuery, useApiMutation } from '@/hooks/use-api';
-import { voipApi, type VoipNumber, type AvailableNumber, type NumberOffer } from '@/lib/api/voip';
+import { voipApi, type VoipNumber, type AvailableNumber, type NumberOffer, type NumberRequirements, type RegulatoryState } from '@/lib/api/voip';
 import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { PageContainer } from '@/components/layout/page-container';
+import { useT } from '@/lib/i18n';
+import { formatCurrency, formatDate } from '@/lib/utils';
+import { BundleStatus } from './_components/bundle-status';
+import { RequirementsForm } from './_components/requirements-form';
 
 function apiMessage(err: unknown, fallback: string): string {
   const message = err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message) : '';
@@ -47,17 +51,17 @@ function apiCode(err: unknown): string | undefined {
   return err && typeof err === 'object' && 'code' in err ? ((err as { code?: string }).code ?? undefined) : undefined;
 }
 
-function money(amount: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount);
-  } catch {
-    return `${amount.toFixed(2)} ${currency}`;
-  }
-}
-
 const KYC_EMPTY = { businessName: '', address: '', registrationNumber: '', documentUrl: '' };
 
+/** A country without a requirement list reports only pending / approved / rejected; show it with the same states. */
+function stateOfLegacy(status: string | undefined): RegulatoryState {
+  if (status === 'pending') return 'submitted';
+  if (status === 'approved' || status === 'rejected') return status;
+  return 'none';
+}
+
 function PhoneNumbersPageContent() {
+  const t = useT();
   const router = useRouter();
   const { enabled, reason, upgradeHref, loading: gateLoading } = useFeatureGate('voip_calling');
 
@@ -82,9 +86,18 @@ function PhoneNumbersPageContent() {
     if (!offerResponse || !('data' in offerResponse)) return null;
     return (offerResponse.data as NumberOffer) ?? null;
   }, [offerResponse]);
+
+  // The country's requirement list and where the documents stand (R137). Absent when the call fails: the older document flow shows instead.
+  const { data: requirementsResponse, refetch: refetchRequirements } = useApiQuery(() => voipApi.requirements.get(), []);
+  const requirements: NumberRequirements | null = React.useMemo(() => {
+    if (!requirementsResponse || !('data' in requirementsResponse)) return null;
+    return (requirementsResponse.data as NumberRequirements) ?? null;
+  }, [requirementsResponse]);
+
   const [kycOpen, setKycOpen] = React.useState(false);
   const [kycForm, setKycForm] = React.useState(KYC_EMPTY);
   const [kycSaving, setKycSaving] = React.useState(false);
+  const [kycError, setKycError] = React.useState<string | null>(null);
   const [searching, setSearching] = React.useState(false);
   const [buying, setBuying] = React.useState<string | null>(null);
   const updateMutation = useApiMutation((input: { id: string; isDefault: boolean }) =>
@@ -97,6 +110,30 @@ function PhoneNumbersPageContent() {
     [numbers],
   );
 
+  const refreshOffer = () => {
+    refetchOffer({ silent: true });
+    refetchRequirements({ silent: true });
+  };
+
+  // Documents: needed at all, the state they are in, and the form that fits the country.
+  const docsRequired = requirements ? requirements.kycRequired : !!offer?.kyc.required;
+  const docState: RegulatoryState = requirements ? requirements.state : stateOfLegacy(offer?.kyc.status);
+  const failureReason = requirements?.failureReason ?? offer?.kyc.document?.reviewNote ?? null;
+  const requirementList = requirements?.bundleFlow && requirements.requirements && requirements.requirements.length > 0 ? requirements.requirements : null;
+  const docCountry = requirements?.country ?? offer?.calling.country ?? '';
+
+  // Why the Buy number button is off: the documents are not approved yet, or the country has no price yet.
+  const buyBlockedReason: string | null = React.useMemo(() => {
+    if (docsRequired && docState !== 'approved') return t(`calling.buy.blocked.${docState}`);
+    if (offer && !offer.price) return offer.priceReason === 'PRICE_NOT_CONFIGURED' ? t('calling.price.notSet') : t('calling.price.unavailable');
+    return null;
+  }, [docsRequired, docState, offer, t]);
+
+  const openDocuments = () => {
+    setKycError(null);
+    setKycOpen(true);
+  };
+
   const handleSearch = async () => {
     setSearchResults(null);
     setSearching(true);
@@ -107,9 +144,9 @@ function PhoneNumbersPageContent() {
       });
       setSearchResults(((result && 'data' in result ? result.data : []) as AvailableNumber[]) ?? []);
       // The first search turns calling on for the agency, so the offer may have changed.
-      refetchOffer({ silent: true });
+      refreshOffer();
     } catch (err) {
-      toast.error(apiMessage(err, 'Failed to search available numbers'));
+      toast.error(apiMessage(err, t('calling.search.failed')));
     } finally {
       setSearching(false);
     }
@@ -119,46 +156,74 @@ function PhoneNumbersPageContent() {
     setBuying(n.phoneNumber);
     try {
       await voipApi.numbers.purchase({ phoneNumber: n.phoneNumber, friendlyName: n.friendlyName });
-      toast.success('Phone number purchased');
+      toast.success(t('calling.buy.done'));
       setSearchOpen(false);
       setSearchResults(null);
       setSearchForm({ areaCode: '', contains: '' });
       refetch();
-      refetchOffer({ silent: true });
+      refreshOffer();
     } catch (err) {
       const code = apiCode(err);
       if (code === 'KYC_REQUIRED') {
-        toast.error(apiMessage(err, 'Business documents are needed before you can buy a number.'));
+        toast.error(apiMessage(err, t('calling.buy.docsNeeded')));
         setSearchOpen(false);
-        setKycOpen(true);
+        refreshOffer();
+        if (docState === 'none' || docState === 'rejected') openDocuments();
+      } else if (code === 'KYC_PENDING_PROVIDER') {
+        toast.error(apiMessage(err, t('calling.bundle.provider_review.message')));
+        refreshOffer();
       } else if (code === 'NUMBER_ADDON_REQUIRED') {
-        toast.error('Add a phone number to your plan first: open Settings > Billing > Buy more.');
+        toast.error(t('calling.buy.addonNeeded'));
+      } else if (code === 'PRICE_NOT_CONFIGURED') {
+        toast.error(t('calling.price.notSet'));
+        refreshOffer();
       } else {
-        toast.error(apiMessage(err, 'Failed to purchase phone number'));
+        toast.error(apiMessage(err, t('calling.buy.failed')));
       }
     } finally {
       setBuying(null);
     }
   };
 
+  const afterDocumentsSent = () => {
+    toast.success(t('calling.kyc.sent'));
+    setKycOpen(false);
+    setKycForm(KYC_EMPTY);
+    setKycError(null);
+    refreshOffer();
+  };
+
+  // The structured form (a country with a requirement list): answers and files in one multipart request.
+  const submitRequirements = async (form: FormData) => {
+    setKycSaving(true);
+    setKycError(null);
+    try {
+      await voipApi.requirements.submit(form);
+      afterDocumentsSent();
+    } catch (err) {
+      const problems = err && typeof err === 'object' && 'details' in err ? ((err as { details?: { problems?: Array<{ message: string }> } }).details?.problems ?? []) : [];
+      setKycError(problems.length > 0 ? problems.map((p) => p.message).join(' ') : apiMessage(err, t('calling.kyc.failed')));
+    } finally {
+      setKycSaving(false);
+    }
+  };
+
+  // The earlier form (a country without a list): a few fields and a link.
   const submitKyc = async () => {
     const f = kycForm;
     if (!f.businessName.trim() || !f.address.trim()) {
-      toast.error('Enter the business name and address.');
+      toast.error(t('calling.kyc.enterNameAddress'));
       return;
     }
     setKycSaving(true);
     try {
       await voipApi.kyc.submit({
         details: { businessName: f.businessName.trim(), address: f.address.trim(), ...(f.registrationNumber.trim() && { registrationNumber: f.registrationNumber.trim() }) },
-        files: f.documentUrl.trim() ? [{ name: 'Document', url: f.documentUrl.trim() }] : [],
+        files: f.documentUrl.trim() ? [{ name: t('calling.kyc.documentName'), url: f.documentUrl.trim() }] : [],
       });
-      toast.success('Documents sent for review');
-      setKycOpen(false);
-      setKycForm(KYC_EMPTY);
-      refetchOffer({ silent: true });
+      afterDocumentsSent();
     } catch (err) {
-      toast.error(apiMessage(err, 'Failed to send documents'));
+      toast.error(apiMessage(err, t('calling.kyc.failed')));
     } finally {
       setKycSaving(false);
     }
@@ -167,10 +232,10 @@ function PhoneNumbersPageContent() {
   const handleSetPrimary = async (num: VoipNumber) => {
     const result = await updateMutation.mutate({ id: num.id, isDefault: true });
     if (result) {
-      toast.success('Primary number updated');
+      toast.success(t('calling.numbers.primaryUpdated'));
       refetch();
     } else {
-      toast.error(updateMutation.error?.message ?? 'Failed to update number');
+      toast.error(updateMutation.error?.message ?? t('calling.numbers.updateFailed'));
     }
   };
 
@@ -178,10 +243,10 @@ function PhoneNumbersPageContent() {
     if (!deleteTarget) return;
     const result = await removeMutation.mutate(deleteTarget.id);
     if (result !== null) {
-      toast.success('Phone number removed');
+      toast.success(t('calling.numbers.removed'));
       refetch();
     } else {
-      toast.error(removeMutation.error?.message ?? 'Failed to remove phone number');
+      toast.error(removeMutation.error?.message ?? t('calling.numbers.removeFailed'));
     }
     setDeleteTarget(null);
   };
@@ -189,17 +254,18 @@ function PhoneNumbersPageContent() {
   const columns: DataTableColumn<VoipNumber>[] = [
     {
       key: 'number',
-      header: 'Number',
+      header: t('calling.numbers.col.number'),
       cell: (num) => (
         <div className="flex items-center gap-ds-2">
           <span className="font-mono text-sm font-medium text-ds-foreground">{num.phoneNumber}</span>
           {num.id === primaryId && (
-            <Badge className="bg-ds-warning-subtle text-ds-warning-on-subtle text-xs">Primary</Badge>
+            <Badge className="bg-ds-warning-subtle text-ds-warning-on-subtle text-xs">{t('calling.numbers.primary')}</Badge>
           )}
           {num.rental?.status === 'release_scheduled' && num.rental.releaseAt && (
             <Badge className="bg-ds-danger-subtle text-ds-danger-on-subtle text-xs">
-              {num.rental.releaseReason === 'unpaid' ? 'Rent unpaid: releases ' : 'Releases '}
-              {new Date(num.rental.releaseAt).toLocaleDateString()}
+              {num.rental.releaseReason === 'unpaid'
+                ? t('calling.numbers.releasesUnpaid', { date: formatDate(num.rental.releaseAt) })
+                : t('calling.numbers.releases', { date: formatDate(num.rental.releaseAt) })}
             </Badge>
           )}
         </div>
@@ -207,28 +273,28 @@ function PhoneNumbersPageContent() {
     },
     {
       key: 'friendlyName',
-      header: 'Friendly Name',
+      header: t('calling.numbers.col.friendlyName'),
       cell: (num) => <span className="text-sm text-ds-foreground-muted">{num.friendlyName ?? '-'}</span>,
     },
     {
       key: 'capabilities',
-      header: 'Capabilities',
+      header: t('calling.numbers.col.capabilities'),
       cell: (num) => (
         <div className="flex items-center gap-ds-2 text-ds-foreground-muted">
-          {num.capabilities?.voice && <PhoneCall className="size-3.5" aria-label="Voice" />}
-          {num.capabilities?.sms && <MessageSquare className="size-3.5" aria-label="SMS" />}
+          {num.capabilities?.voice && <PhoneCall className="size-3.5" aria-label={t('calling.numbers.voice')} />}
+          {num.capabilities?.sms && <MessageSquare className="size-3.5" aria-label={t('calling.numbers.sms')} />}
         </div>
       ),
     },
     {
       key: 'assignedName',
-      header: 'Assigned To',
+      header: t('calling.numbers.col.assignedTo'),
       cell: (num) => <span className="text-sm text-ds-foreground-muted">{num.assignedName ?? '-'}</span>,
     },
   ];
 
   const backButton = (
-    <Button variant="ghost" size="icon" onClick={() => router.push('/settings')} aria-label="Back to settings">
+    <Button variant="ghost" size="icon" onClick={() => router.push('/settings')} aria-label={t('calling.common.backToSettings')}>
       <ArrowLeft className="size-4" />
     </Button>
   );
@@ -245,18 +311,18 @@ function PhoneNumbersPageContent() {
   if (!enabled) {
     return (
       <div className="flex flex-col gap-ds-4">
-        <PageHeader title="Phone Numbers" description="Manage your VoIP phone numbers and their assignments" back={backButton} />
-        <SectionCard title={reason === 'country_unavailable' ? 'Calling is not available in your country yet' : 'Phone numbers are not available on your plan'}>
+        <PageHeader title={t('calling.numbers.title')} description={t('calling.numbers.description')} back={backButton} />
+        <SectionCard title={reason === 'country_unavailable' ? t('calling.gate.countryUnavailableTitle') : t('calling.numbers.gate.notOnPlan')}>
           <p className="mb-ds-4 text-sm text-ds-foreground-muted">
             {reason === 'country_unavailable'
-              ? 'Phone calls are offered to agencies in the United Kingdom, United States, Australia and Singapore for now.'
+              ? t('calling.gate.countryUnavailableBody')
               : reason === 'cap_exceeded'
-              ? 'You have reached your VoIP usage limit for this billing period.'
-              : 'Upgrade your plan to purchase and manage VoIP phone numbers.'}
+              ? t('calling.gate.capExceeded')
+              : t('calling.numbers.gate.upgradeBody')}
           </p>
           {reason !== 'country_unavailable' && (
             <Button asChild>
-              <a href={upgradeHref}>{reason === 'cap_exceeded' ? 'View plans' : 'Upgrade to enable'}</a>
+              <a href={upgradeHref}>{reason === 'cap_exceeded' ? t('calling.gate.viewPlans') : t('calling.gate.upgrade')}</a>
             </Button>
           )}
         </SectionCard>
@@ -267,40 +333,39 @@ function PhoneNumbersPageContent() {
   return (
     <div className="flex flex-col gap-ds-6">
       <PageHeader
-        title="Phone Numbers"
-        description="Manage your VoIP phone numbers and their assignments"
+        title={t('calling.numbers.title')}
+        description={t('calling.numbers.description')}
         count={numbers.length}
         back={backButton}
         actions={
           <Button onClick={() => setSearchOpen(true)} className="gap-ds-2">
             <Plus className="size-4" />
-            Add Number
+            {t('calling.numbers.add')}
           </Button>
         }
       />
 
       {offer && (
-        <SectionCard title="Number rental">
-          <div className="flex flex-col gap-ds-2 text-sm text-ds-foreground-muted" data-testid="number-rental-info">
+        <SectionCard title={t('calling.rental.title')}>
+          <div className="flex flex-col gap-ds-3 text-sm text-ds-foreground-muted" data-testid="number-rental-info">
             {offer.price ? (
-              <p>
-                Each number is {money(offer.price.monthly, offer.price.currency)} a month plus tax (the provider cost plus {offer.price.includesMarginPct}%), taken as the
-                phone number add-on. {offer.addon.freeThisMonth} unused this month.
+              <p data-testid="number-price">
+                {t('calling.rental.price', {
+                  price: formatCurrency(offer.price.monthly, offer.price.currency),
+                  margin: offer.price.includesMarginPct,
+                  free: offer.addon.freeThisMonth,
+                })}
               </p>
             ) : (
-              <p>Number pricing for your region is not available yet. Please contact support.</p>
-            )}
-            {offer.kyc.required && (
-              <p className="flex flex-wrap items-center gap-ds-2">
-                Business documents for {offer.calling.country}:
-                <Badge className="text-xs">
-                  {offer.kyc.status === 'approved' ? 'Approved' : offer.kyc.status === 'pending' ? 'In review' : offer.kyc.status === 'rejected' ? 'Rejected' : 'Needed'}
-                </Badge>
-                {offer.kyc.status === 'rejected' && offer.kyc.document?.reviewNote && <span>{offer.kyc.document.reviewNote}</span>}
-                {offer.kyc.status !== 'approved' && offer.kyc.status !== 'pending' && (
-                  <Button size="sm" variant="outline" onClick={() => setKycOpen(true)}>Send documents</Button>
-                )}
+              <p data-testid="number-price-missing">
+                {offer.priceReason === 'PRICE_NOT_CONFIGURED' ? t('calling.price.notSet') : t('calling.price.unavailable')}
               </p>
+            )}
+            {docsRequired && (
+              <div className="flex flex-col gap-ds-2" data-testid="number-documents">
+                <p className="font-medium text-ds-foreground">{t('calling.docs.title', { country: docCountry })}</p>
+                <BundleStatus state={docState} failureReason={failureReason} onStart={openDocuments} onResubmit={openDocuments} />
+              </div>
             )}
           </div>
         </SectionCard>
@@ -316,7 +381,7 @@ function PhoneNumbersPageContent() {
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label={num.id === primaryId ? 'Primary number' : 'Set as primary'}
+                aria-label={num.id === primaryId ? t('calling.numbers.primaryNumber') : t('calling.numbers.setPrimary')}
                 onClick={() => handleSetPrimary(num)}
                 disabled={num.id === primaryId || updateMutation.loading}
               >
@@ -329,7 +394,7 @@ function PhoneNumbersPageContent() {
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Delete"
+                aria-label={t('calling.common.delete')}
                 onClick={() => setDeleteTarget(num)}
               >
                 <Trash2 className="size-4" />
@@ -339,12 +404,12 @@ function PhoneNumbersPageContent() {
           emptyState={
             <EmptyState
               icon={<Phone className="size-8" />}
-              title="No phone numbers configured"
-              description="Search for an available number and purchase one to get started."
+              title={t('calling.numbers.empty.title')}
+              description={t('calling.numbers.empty.description')}
               action={
                 <Button onClick={() => setSearchOpen(true)} variant="outline" className="gap-ds-2">
                   <Plus className="size-4" />
-                  Add First Number
+                  {t('calling.numbers.empty.action')}
                 </Button>
               }
             />
@@ -355,31 +420,41 @@ function PhoneNumbersPageContent() {
       <Dialog open={searchOpen} onOpenChange={(open) => { setSearchOpen(open); if (!open) setSearchResults(null); }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Add Phone Number</DialogTitle>
+            <DialogTitle>{t('calling.search.title')}</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-ds-4 py-ds-4">
+            {buyBlockedReason && (
+              <div className="flex flex-wrap items-center justify-between gap-ds-2 rounded-ds-md border border-ds-border bg-ds-surface-sunken px-ds-3 py-ds-2 text-sm text-ds-foreground-muted" data-testid="buy-blocked-reason">
+                <span>{buyBlockedReason}</span>
+                {docsRequired && (docState === 'none' || docState === 'rejected') && (
+                  <Button size="sm" variant="outline" onClick={() => { setSearchOpen(false); openDocuments(); }}>
+                    {docState === 'rejected' ? t('calling.bundle.rejected.action') : t('calling.bundle.none.action')}
+                  </Button>
+                )}
+              </div>
+            )}
             <div className="flex items-end gap-ds-2">
               <div className="flex-1 flex flex-col gap-ds-2">
-                <Label htmlFor="areaCode">Area code</Label>
+                <Label htmlFor="areaCode">{t('calling.search.areaCode')}</Label>
                 <Input
                   id="areaCode"
                   value={searchForm.areaCode}
                   onChange={(e) => setSearchForm((p) => ({ ...p, areaCode: e.target.value }))}
-                  placeholder="e.g., 415"
+                  placeholder={t('calling.search.areaCodeExample')}
                 />
               </div>
               <div className="flex-1 flex flex-col gap-ds-2">
-                <Label htmlFor="contains">Contains digits</Label>
+                <Label htmlFor="contains">{t('calling.search.contains')}</Label>
                 <Input
                   id="contains"
                   value={searchForm.contains}
                   onChange={(e) => setSearchForm((p) => ({ ...p, contains: e.target.value }))}
-                  placeholder="e.g., 777"
+                  placeholder={t('calling.search.containsExample')}
                 />
               </div>
               <Button onClick={handleSearch} disabled={searching} className="gap-ds-2">
                 {searching ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
-                Search
+                {t('calling.search.action')}
               </Button>
             </div>
 
@@ -387,7 +462,7 @@ function PhoneNumbersPageContent() {
               <div className="flex flex-col gap-ds-2 max-h-72 overflow-y-auto">
                 {searchResults.length === 0 ? (
                   <p className="text-sm text-ds-foreground-muted py-ds-4 text-center">
-                    No available numbers found. Try a different area code.
+                    {t('calling.search.none')}
                   </p>
                 ) : (
                   searchResults.map((n) => (
@@ -398,16 +473,18 @@ function PhoneNumbersPageContent() {
                       <div>
                         <p className="font-mono text-sm font-medium text-ds-foreground">{n.phoneNumber}</p>
                         <p className="text-xs text-ds-foreground-muted">
-                          {n.region || n.friendlyName || 'Available'}
-                          {offer?.price ? ` - ${money(offer.price.monthly, offer.price.currency)}/month` : ''}
+                          {n.region || n.friendlyName || t('calling.search.available')}
+                          {offer?.price ? ` - ${t('calling.search.perMonth', { price: formatCurrency(offer.price.monthly, offer.price.currency) })}` : ''}
                         </p>
                       </div>
                       <Button
                         size="sm"
                         onClick={() => handlePurchase(n)}
-                        disabled={buying !== null}
+                        disabled={buying !== null || buyBlockedReason !== null}
+                        title={buyBlockedReason ?? undefined}
+                        data-testid="buy-number"
                       >
-                        Purchase
+                        {t('calling.buy.action')}
                       </Button>
                     </div>
                   ))
@@ -416,53 +493,69 @@ function PhoneNumbersPageContent() {
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSearchOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setSearchOpen(false)}>{t('calling.common.cancel')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={kycOpen} onOpenChange={setKycOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Business documents</DialogTitle>
+            <DialogTitle>{t('calling.kyc.title')}</DialogTitle>
           </DialogHeader>
-          <div className="flex flex-col gap-ds-3 py-ds-4">
-            <p className="text-sm text-ds-foreground-muted">
-              Phone companies in your country need to know which business a number belongs to. We review these before you can buy a number.
-            </p>
-            <div className="flex flex-col gap-ds-2">
-              <Label htmlFor="kycBusinessName">Business name</Label>
-              <Input id="kycBusinessName" value={kycForm.businessName} onChange={(e) => setKycForm((p) => ({ ...p, businessName: e.target.value }))} />
+          {requirementList ? (
+            <div className="flex flex-col gap-ds-3 py-ds-4">
+              <p className="text-sm text-ds-foreground-muted">{t('calling.kyc.intro')}</p>
+              <RequirementsForm
+                requirements={requirementList}
+                numberTypes={requirements?.numberTypes}
+                document={offer?.kyc.document ?? requirements?.document ?? null}
+                numberType={requirements?.numberType}
+                submitting={kycSaving}
+                error={kycError}
+                onSubmit={submitRequirements}
+                onCancel={() => setKycOpen(false)}
+              />
             </div>
-            <div className="flex flex-col gap-ds-2">
-              <Label htmlFor="kycAddress">Business address</Label>
-              <Input id="kycAddress" value={kycForm.address} onChange={(e) => setKycForm((p) => ({ ...p, address: e.target.value }))} />
-            </div>
-            <div className="flex flex-col gap-ds-2">
-              <Label htmlFor="kycRegistration">Company registration number (if you have one)</Label>
-              <Input id="kycRegistration" value={kycForm.registrationNumber} onChange={(e) => setKycForm((p) => ({ ...p, registrationNumber: e.target.value }))} />
-            </div>
-            <div className="flex flex-col gap-ds-2">
-              <Label htmlFor="kycDocumentUrl">Link to a certificate or proof of address</Label>
-              <Input id="kycDocumentUrl" type="url" placeholder="https://" value={kycForm.documentUrl} onChange={(e) => setKycForm((p) => ({ ...p, documentUrl: e.target.value }))} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setKycOpen(false)}>Cancel</Button>
-            <Button onClick={submitKyc} disabled={kycSaving} className="gap-ds-2">
-              {kycSaving && <Loader2 className="size-4 animate-spin" />}
-              Send for review
-            </Button>
-          </DialogFooter>
+          ) : (
+            <>
+              <div className="flex flex-col gap-ds-3 py-ds-4">
+                <p className="text-sm text-ds-foreground-muted">{t('calling.kyc.intro')}</p>
+                <div className="flex flex-col gap-ds-2">
+                  <Label htmlFor="kycBusinessName">{t('calling.kyc.businessName')}</Label>
+                  <Input id="kycBusinessName" value={kycForm.businessName} onChange={(e) => setKycForm((p) => ({ ...p, businessName: e.target.value }))} />
+                </div>
+                <div className="flex flex-col gap-ds-2">
+                  <Label htmlFor="kycAddress">{t('calling.kyc.address')}</Label>
+                  <Input id="kycAddress" value={kycForm.address} onChange={(e) => setKycForm((p) => ({ ...p, address: e.target.value }))} />
+                </div>
+                <div className="flex flex-col gap-ds-2">
+                  <Label htmlFor="kycRegistration">{t('calling.kyc.registration')}</Label>
+                  <Input id="kycRegistration" value={kycForm.registrationNumber} onChange={(e) => setKycForm((p) => ({ ...p, registrationNumber: e.target.value }))} />
+                </div>
+                <div className="flex flex-col gap-ds-2">
+                  <Label htmlFor="kycDocumentUrl">{t('calling.kyc.documentLink')}</Label>
+                  <Input id="kycDocumentUrl" type="url" placeholder="https://" value={kycForm.documentUrl} onChange={(e) => setKycForm((p) => ({ ...p, documentUrl: e.target.value }))} />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setKycOpen(false)}>{t('calling.common.cancel')}</Button>
+                <Button onClick={submitKyc} disabled={kycSaving} className="gap-ds-2">
+                  {kycSaving && <Loader2 className="size-4 animate-spin" />}
+                  {t('calling.kyc.send')}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 
       <ConfirmDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title="Remove phone number"
-        description={`This will release ${deleteTarget?.phoneNumber ?? 'this number'}. It stops receiving calls at once and is given back to the provider; this action cannot be undone.`}
-        confirmLabel="Remove"
+        title={t('calling.numbers.remove.title')}
+        description={t('calling.numbers.remove.description', { number: deleteTarget?.phoneNumber ?? t('calling.numbers.remove.thisNumber') })}
+        confirmLabel={t('calling.numbers.remove.confirm')}
         tone="destructive"
         onConfirm={handleDelete}
       />

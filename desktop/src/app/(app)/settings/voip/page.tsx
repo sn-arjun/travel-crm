@@ -42,6 +42,7 @@ import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { invalidateAiSettingsCache } from '@/hooks/use-ai-feature';
 import { PageContainer } from '@/components/layout/page-container';
 import { RecordingSettingsCard } from '@/components/domain/recording-settings-card';
+import { useI18n, useT } from '@/lib/i18n';
 
 type VoipToggleKey = 'voicemailEnabled' | 'ivrEnabled' | 'businessHoursEnabled';
 
@@ -53,7 +54,60 @@ const TOGGLE_ROWS: { key: VoipToggleKey; label: string; description: string }[] 
 
 const MASKED = /^\*{4}/;
 
+/** Name of a language in the interface language ("nl" -> "Dutch"); the code itself when the runtime does not know it. */
+function languageName(code: string, uiLocale: string): string {
+  try {
+    return new Intl.DisplayNames([uiLocale], { type: 'language' }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+/**
+ * What recording means in the agency's country (R141-2): the country default, the mode in force, what callers are told
+ * in the agency language, and a privacy note. Hidden when the settings cannot be read, so it never blocks the page.
+ */
+function RecordingCountryNote() {
+  const t = useT();
+  const { locale } = useI18n();
+  const { data: reqResponse } = useApiQuery(() => voipApi.requirements.get(), []);
+  const { data: settingsResponse } = useApiQuery(() => voipApi.recordingSettings.get(), []);
+  const countryDefault = reqResponse && 'data' in reqResponse ? reqResponse.data?.recordingDefault : undefined;
+  const settings = settingsResponse && 'data' in settingsResponse ? settingsResponse.data : undefined;
+  if (!countryDefault && !settings) return null;
+
+  const mode = settings?.consentMode;
+  return (
+    <SectionCard title={t('calling.recording.title')} description={t('calling.recording.description')}>
+      <div className="flex flex-col gap-ds-3 text-sm" data-testid="recording-country-note">
+        {countryDefault && (
+          <p className="text-ds-foreground" data-testid="recording-country-default" data-mode={countryDefault}>
+            {t(`calling.recording.default.${countryDefault}`)}
+          </p>
+        )}
+        {mode && (
+          <p className="text-ds-foreground-muted" data-testid="recording-current-mode">
+            {t('calling.recording.current', { mode: t(`calling.recording.mode.${mode}`) })}
+          </p>
+        )}
+        {settings && mode !== 'off' && (
+          <div className="flex flex-col gap-ds-1" data-testid="recording-announcement-preview">
+            <p className="text-xs font-medium text-ds-foreground-muted">
+              {t('calling.recording.preview', { language: languageName(settings.language ?? 'en', locale) })}
+            </p>
+            <blockquote className="border-s-2 border-ds-border ps-ds-3 text-ds-foreground">{settings.effectiveAnnouncement}</blockquote>
+          </div>
+        )}
+        <p className="text-xs text-ds-foreground-muted" data-testid="recording-privacy-note">
+          {t('calling.recording.privacy')}
+        </p>
+      </div>
+    </SectionCard>
+  );
+}
+
 function VoipSettingsPageContent() {
+  const t = useT();
   const router = useRouter();
   const { enabled, reason, upgradeHref, loading: gateLoading } = useFeatureGate('voip_calling');
   const [showApiKey, setShowApiKey] = React.useState(false);
@@ -200,10 +254,10 @@ function VoipSettingsPageContent() {
     return (
       <div className="flex flex-col gap-ds-4">
         <PageHeader title="VoIP Settings" description="Configure your voice-over-IP provider and calling features" back={backButton} />
-        <SectionCard title={reason === 'country_unavailable' ? 'Calling is not available in your country yet' : 'VoIP calling is not available on your plan'}>
+        <SectionCard title={reason === 'country_unavailable' ? t('calling.gate.countryUnavailableTitle') : 'VoIP calling is not available on your plan'}>
           <p className="mb-ds-4 text-sm text-ds-foreground-muted">
             {reason === 'country_unavailable'
-              ? 'Phone calls are offered to agencies in the United Kingdom, United States, Australia and Singapore for now.'
+              ? t('calling.gate.countryUnavailableBody')
               : reason === 'cap_exceeded'
               ? 'You have reached your VoIP usage limit for this billing period.'
               : 'Upgrade your plan to configure a VoIP provider and enable calling.'}
@@ -426,6 +480,8 @@ function VoipSettingsPageContent() {
           </div>
         </div>
       </SectionCard>
+
+      <RecordingCountryNote />
 
       <RecordingSettingsCard />
 
