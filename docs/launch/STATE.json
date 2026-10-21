@@ -85,7 +85,7 @@
       ]
     },
     "W3": {
-      "status": "running",
+      "status": "done",
       "howItRuns": "one Sonnet agent per batch in .claude/worktrees/<id> on branch batch/<id>; node_modules are PowerShell junctions into the main checkout (remove junctions before git worktree remove); orchestrator gates and merges into launch-readiness",
       "batches": {
         "R100": "DEFERRED by owner 2026-10-21 (secrets are dummy; repo privacy later).",
@@ -206,18 +206,31 @@
       "tier1": "COMPLETE 2026-10-15: R101-R124 merged (incl. orchestrator follow-ups R123, R124); exit test R121 9/9 on the merged line; fresh-clone check passes."
     },
     "W4": {
-      "status": "partial",
-      "desktop": "PASS 2026-10-14 on launch-readiness b6eb16e: desktop/release/TravelCRM Pro Setup 0.1.0.exe (167,388,167 bytes, unsigned, sha256 a4fcf6aef9474e98...). Electron smoke: installed app logs in against slot-1 API and stops its server on close; updater reports update-available from a local feed (2 passed). Logs: CRM-backups/2026-10-09/w4-*.log"
+      "status": "done",
+      "desktop": "PASS 2026-10-14 on launch-readiness b6eb16e: desktop/release/TravelCRM Pro Setup 0.1.0.exe (167,388,167 bytes, unsigned, sha256 a4fcf6aef9474e98...). Electron smoke: installed app logs in against slot-1 API and stops its server on close; updater reports update-available from a local feed (2 passed). Logs: CRM-backups/2026-10-09/w4-*.log",
+      "note": "docs/BUILD-VERIFICATION.md: all 8 items passed on the final line; APK built but not launched (no emulator)"
     },
     "W5": {
       "status": "done",
       "result": "desktop/e2e/handoff.spec.ts: operator section + 11 steps for 3 agencies (India/Basic/INR/GST, UK/Pro/GBP/VAT, UAE/Enterprise/AED/VAT); green 3 runs in a row on a reset --multi stack (41/41 each); first-login 4/4, tenant-isolation 9/9. docs/HANDOFF-PLAYBOOK.md (operator checklist, done definition, welcome pack, credential sheet template, per-country table, manual staging checks). Bugs fixed: console-created agencies got en-IN/+91/empty country (resolver now maps country names; provisioning seeds locale + phone_default_country); new agencies were billed at the India price in INR (now own market + currency). fix-stack passes BILLING_GATEWAY=mock. Merged line: backend 100/1967, desktop tsc + lint OK. Not automatable locally: real inbox/SPF/DKIM, real payments, real SMS code, Meta test connection, real calls, clean-machine installer, super admin console UI login (spec drives the admin API)."
     },
     "W6": {
-      "status": "pending"
+      "status": "done",
+      "date": "2026-10-21",
+      "outputs": "studio/out/ (gitignored): 25 films, hero (80 s), master (47.4 min, 122 chapters), 116 shorts",
+      "coverage": "353 works/partial: 342 in a chapter, 11 not filmed with a reason, 0 missing",
+      "aiRequests": "about 11 of 12 (ai-session, 2 takes)",
+      "gateMisses": [
+        "role-sales-manager render 56.3 s vs 60 s minimum, left unpadded"
+      ],
+      "reRecordLater": [
+        "website (domain placeholder)",
+        "driver (emulator, agency-code screen)"
+      ],
+      "bugsFound": "docs/LAUNCH-REPORT.md section 8"
     },
     "W7": {
-      "status": "partial",
+      "status": "done",
       "outputs": [
         "docs/INFRA.md",
         "docs/GO-LIVE.md (updated for R125/R301/R302)",
@@ -226,7 +239,8 @@
       "remaining": [
         "docs/HANDOFF-PLAYBOOK.md (W5)",
         "docs/LAUNCH-REPORT.md"
-      ]
+      ],
+      "note": "GO-LIVE, INFRA, KEYS-AND-ACCOUNTS refreshed 2026-10-21; LAUNCH-REPORT complete including videos"
     }
   },
   "notes": [
@@ -309,10 +323,9 @@
     "R132: default email routing is Cloudflare for platform mail with SendGrid fallback; it takes effect only after Cloudflare Email Sending onboarding for the platform domain (until then mail goes through SendGrid automatically). Switch or roll back from the console Email page. Note: turning \"customer reply addresses\" off also refuses replies to addresses already sent."
   ],
   "todo": [
-    "W6 videos (full catalogue) with af_heart, on the final UI; fix packages/driver_app/integration_test/demo_flow_test.dart chooseAgency(tester).",
-    "W4 build re-verification on the final line (installer, APK, super-admin build, landing).",
-    "W7 docs/LAUNCH-REPORT.md (scorecard before/after, what was verified, what remains).",
-    "Push: only on an explicit owner \"push\" (repo is public; owner will make it private later)."
+    "Push: only on an explicit owner \"push\" (repo is public; owner will make it private later). Secret scan done before it.",
+    "Bugs found while recording (LAUNCH-REPORT section 8): not yet fixed.",
+    "Re-record website (after domain) and driver (on an emulator)."
   ],
   "e2eBaseline": {
     "date": "2026-10-15",
@@ -356,20 +369,5 @@
     "multiSpecs": "handoff 41/41, locale + tenant-isolation 13/13 on a multi stack (earlier the same day)",
     "backend": "106 files / 2074 tests",
     "desktop": "95 files / 1548 tests"
-  },
-  "w6": {
-    "status": "done",
-    "date": "2026-10-21",
-    "outputs": "studio/out/ (gitignored): 25 films, hero (80 s), master (47.4 min, 122 chapters), 116 shorts",
-    "coverage": "353 works/partial: 342 in a chapter, 11 not filmed with a reason, 0 missing",
-    "aiRequests": "about 11 of 12 (ai-session, 2 takes)",
-    "gateMisses": [
-      "role-sales-manager render 56.3 s vs 60 s minimum, left unpadded"
-    ],
-    "reRecordLater": [
-      "website (domain placeholder)",
-      "driver (emulator, agency-code screen)"
-    ],
-    "bugsFound": "docs/LAUNCH-REPORT.md section 8"
   }
 }
