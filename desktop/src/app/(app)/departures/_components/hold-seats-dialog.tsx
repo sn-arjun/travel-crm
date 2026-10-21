@@ -99,9 +99,9 @@ export function HoldSeatsDialog({
       if (booking.status === 'waitlisted') {
         toast.info(t('departures.hold.waitlistedToast', { position: booking.waitlistPosition ?? 1 }));
       } else if (booking.status === 'confirmed') {
-        toast.success(t('departures.hold.confirmedToast', { seats: booking.seats }));
+        toast.success(t('departures.hold.confirmedToast', { seats: booking.seats, count: booking.seats }));
       } else {
-        toast.success(t('departures.hold.heldToast', { seats: booking.seats }));
+        toast.success(t('departures.hold.heldToast', { seats: booking.seats, count: booking.seats }));
       }
       onHeld(booking);
       onOpenChange(false);
