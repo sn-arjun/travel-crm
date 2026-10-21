@@ -20,6 +20,7 @@ import { settingsApi, type TaxSystem } from '@/lib/api/settings';
 import { useApiQuery } from '@/hooks/use-api';
 import { PageContainer } from '@/components/layout/page-container';
 import { useT } from '@/lib/i18n';
+import { PaymentsCard } from './_payments-card';
 import { useLocale } from '@/lib/locale';
 import { bankCountryOf, bankFieldError, bankFieldsFor, type BankField } from '@/lib/bank-details';
 
@@ -248,6 +249,8 @@ export default function InvoiceDefaultsPage() {
               </FormRow>
             </div>
           </SectionCard>
+
+          <PaymentsCard />
         </>
         );
       }}

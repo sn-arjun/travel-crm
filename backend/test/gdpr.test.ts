@@ -381,7 +381,7 @@ describe('R208 consent, export, erasure, unsubscribe', () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 202 }));
       const acked: string[] = [];
       const batch = { messages: [{ body: { type: 'email_campaign', data: { campaignId, tenantId: TENANT_ID, campaignType: 'email' } }, ack: () => acked.push('ack'), retry: () => acked.push('retry') }] } as any;
-      await handleCampaignQueue(batch, { ...testEnv, CAMPAIGN_QUEUE: { send: async () => undefined } });
+      await handleCampaignQueue(batch, { ...testEnv, TEST_MODE: 'false', CAMPAIGN_QUEUE: { send: async () => undefined } });
       expect(acked).toEqual(['ack']);
 
       const sgCalls = fetchSpy.mock.calls.filter(([u]) => String(u).includes('sendgrid'));

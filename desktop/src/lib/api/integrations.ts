@@ -30,7 +30,8 @@ export interface IntegrationApiKey {
   apiKey?: string;
 }
 
-export type PaymentGatewayId = 'razorpay' | 'stripe';
+/** 'mock' is the test gateway: only offered where the API says mockAvailable (local and test stacks, never production). */
+export type PaymentGatewayId = 'razorpay' | 'stripe' | 'mock';
 
 /** The agency's own Razorpay or Stripe account. Keys are never returned: only whether they are set and their last 4 characters. */
 export interface PaymentGatewayAccount {
@@ -47,7 +48,8 @@ export interface PaymentGatewayAccount {
 }
 
 export interface SavePaymentGatewayRequest {
-  mode: 'test' | 'live';
+  /** Not needed for the test gateway. */
+  mode?: 'test' | 'live';
   keyId?: string;
   keySecret?: string;
   webhookSecret?: string;
@@ -109,7 +111,7 @@ export const integrationsApi = {
     client.post<ApiResponse<IntegrationApiKey>>(API_ENDPOINTS.integrations.apiKeys, data),
 
   listPaymentGateways: () =>
-    client.get<ApiResponse<{ accounts: PaymentGatewayAccount[] }>>(API_ENDPOINTS.integrations.paymentGateways),
+    client.get<ApiResponse<{ accounts: PaymentGatewayAccount[]; mockAvailable?: boolean }>>(API_ENDPOINTS.integrations.paymentGateways),
 
   savePaymentGateway: (gateway: PaymentGatewayId, data: SavePaymentGatewayRequest) =>
     client.put<ApiResponse<PaymentGatewayAccount>>(API_ENDPOINTS.integrations.paymentGatewayById(gateway), data),

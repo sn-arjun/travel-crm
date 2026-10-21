@@ -109,18 +109,33 @@ export interface InvoicePaymentLink {
   id: string;
   url: string;
   status: 'created' | 'paid' | 'expired' | 'cancelled' | string;
-  gateway: 'razorpay' | 'stripe' | string | null;
+  gateway: 'razorpay' | 'stripe' | 'mock' | string | null;
+  /** What this link collects: a deposit, the balance or a custom amount (R142). Null on links made before. */
+  amount?: number | null;
+  purpose?: PaymentLinkPurpose | null;
+}
+
+export type PaymentLinkPurpose = 'deposit' | 'balance' | 'custom';
+
+/** Agency defaults for payment links (Settings > Invoice defaults > Payments). */
+export interface PaymentDefaults {
+  deposit: { type: 'none' | 'percent' | 'fixed'; value: number | null };
+  /** null = Stripe dynamic payment methods (the agency's Stripe dashboard decides). */
+  stripeMethodTypes: string[] | null;
+  bankReference: string;
 }
 
 /** POST /invoices/:id/payment-link */
 export interface CreatedPaymentLink {
   invoiceId: string;
-  gateway: 'razorpay' | 'stripe';
+  gateway: 'razorpay' | 'stripe' | 'mock';
   mode: 'test' | 'live';
   linkId: string;
   url: string;
   status: string;
   amount: number;
+  purpose?: PaymentLinkPurpose;
+  balanceDue?: number;
   currency: string;
 }
 
@@ -240,6 +255,8 @@ function normalizePaymentLink(raw: RawRow): InvoicePaymentLink | null {
     url,
     status: strOrNull(pick(raw, 'paymentLinkStatus', 'payment_link_status')) ?? 'created',
     gateway: strOrNull(pick(raw, 'paymentLinkGateway', 'payment_link_gateway')),
+    amount: pick(raw, 'paymentLinkAmount', 'payment_link_amount') == null ? undefined : numOf(pick(raw, 'paymentLinkAmount', 'payment_link_amount')),
+    purpose: ((p) => (p === 'deposit' || p === 'balance' || p === 'custom' ? p : undefined))(strOrNull(pick(raw, 'paymentLinkPurpose', 'payment_link_purpose'))),
   };
 }
 
@@ -351,9 +368,14 @@ export const invoicesApi = {
   send: (id: string, data: { channel: 'email' | 'whatsapp'; to: string }) =>
     client.post<ApiResponse<Invoice>>(API_ENDPOINTS.invoices.send(id), data),
 
-  /** A link to pay the balance due through the agency's own Razorpay or Stripe account. */
-  createPaymentLink: (id: string, data?: { gateway?: 'razorpay' | 'stripe' }) =>
+  /** A link to pay a deposit, the balance (the default) or a custom amount through the agency's own gateway. */
+  createPaymentLink: (id: string, data?: { gateway?: 'razorpay' | 'stripe' | 'mock'; amount?: number; purpose?: PaymentLinkPurpose }) =>
     client.post<ApiResponse<CreatedPaymentLink>>(API_ENDPOINTS.invoices.paymentLink(id), data ?? {}),
+
+  paymentDefaults: {
+    get: () => client.get<ApiResponse<PaymentDefaults>>('/settings/payment-defaults'),
+    update: (data: Partial<PaymentDefaults>) => client.put<ApiResponse<PaymentDefaults>>('/settings/payment-defaults', data),
+  },
 
   cancelPaymentLink: (id: string) =>
     client.delete<ApiResponse<{ invoiceId: string; status: string }>>(API_ENDPOINTS.invoices.paymentLink(id)),

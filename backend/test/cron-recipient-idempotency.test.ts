@@ -192,7 +192,7 @@ describe('reminder jobs have the shape the queue consumers read, with the agency
     // The consumers actually send them: Twilio / SendGrid are called, and each message takes one unit of allowance.
     const fetchSpy = mockProviders();
     for (const m of spy.sms) await handleSmsJob(m.data, testEnv);
-    for (const m of spy.email) await handleEmailJob(m.data, testEnv);
+    for (const m of spy.email) await handleEmailJob(m.data, { ...testEnv, TEST_MODE: 'false' });
     const urls = fetchSpy.mock.calls.map((c) => String(c[0]));
     expect(urls.filter((u) => u.includes('api.twilio.com')).length).toBe(spy.sms.length);
     expect(urls.filter((u) => u.includes('sendgrid')).length).toBe(spy.email.length);

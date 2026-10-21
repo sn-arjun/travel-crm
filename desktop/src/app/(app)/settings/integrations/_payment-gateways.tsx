@@ -8,6 +8,7 @@ import {
 } from '@/components/ui';
 import { toast } from 'sonner';
 import { useApiQuery } from '@/hooks/use-api';
+import { useT } from '@/lib/i18n';
 import {
   integrationsApi,
   type PaymentGatewayAccount,
@@ -67,6 +68,7 @@ function GatewayCard({ gateway, account, onChanged }: {
   account: PaymentGatewayAccount | undefined;
   onChanged: () => void;
 }) {
+  const t = useT();
   const { confirm, dialog } = useConfirm();
   const [editing, setEditing] = React.useState(!account);
   const [mode, setMode] = React.useState<'test' | 'live'>(account?.mode ?? 'test');
@@ -186,6 +188,7 @@ function GatewayCard({ gateway, account, onChanged }: {
       </div>
 
       <p className="text-xs text-ds-foreground-muted">{gateway.hint}</p>
+      {gateway.id === 'stripe' && <p className="text-xs text-ds-foreground-muted" data-testid="stripe-methods-hint">{t('payments.gateway.stripeHint')}</p>}
 
       {account && (
         <dl className="grid grid-cols-1 gap-ds-2 text-sm sm:grid-cols-3">
@@ -259,6 +262,59 @@ function GatewayCard({ gateway, account, onChanged }: {
   );
 }
 
+/** The test gateway (R142): offered only where the API says it is available (local and test stacks). Holds no keys. */
+function MockGatewayCard({ account, onChanged }: { account: PaymentGatewayAccount | undefined; onChanged: () => void }) {
+  const t = useT();
+  const [busy, setBusy] = React.useState(false);
+
+  const run = async (action: () => Promise<unknown>, done: string) => {
+    setBusy(true);
+    try {
+      await action();
+      toast.success(done);
+      onChanged();
+    } catch (err) {
+      toast.error(errorMessage(err, t('payments.gateway.mock.failed')));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-ds-3 rounded-ds-md border border-ds-border p-ds-3" data-testid="payment-gateway-mock">
+      <div className="flex flex-wrap items-center justify-between gap-ds-2">
+        <div className="flex items-center gap-ds-2">
+          <Plug className="size-4 text-ds-foreground-muted" aria-hidden="true" />
+          <span className="text-sm font-semibold">{t('payments.gateway.mock.name')}</span>
+          <Tag tone={account ? 'success' : 'warning'}>{account ? t('payments.gateway.mock.connected') : t('payments.gateway.mock.notConnected')}</Tag>
+        </div>
+        {account ? (
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            className="text-ds-danger hover:text-ds-danger"
+            aria-label={t('payments.gateway.mock.disconnect')}
+            disabled={busy}
+            onClick={() => void run(() => integrationsApi.removePaymentGateway('mock'), t('payments.gateway.mock.removed'))}
+          >
+            <Trash2 className="size-3.5" aria-hidden="true" />
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            disabled={busy}
+            data-testid="payment-gateway-mock-connect"
+            onClick={() => void run(() => integrationsApi.savePaymentGateway('mock', {}), t('payments.gateway.mock.saved'))}
+          >
+            {t('payments.gateway.mock.connect')}
+          </Button>
+        )}
+      </div>
+      <p className="text-xs text-ds-foreground-muted">{t('payments.gateway.mock.hint')}</p>
+    </div>
+  );
+}
+
 /** Settings > Integrations: the agency's own Razorpay or Stripe account, used to collect from its customers. */
 export function PaymentGateways() {
   const { data, loading, error, refetch } = useApiQuery(() => integrationsApi.listPaymentGateways(), []);
@@ -276,14 +332,19 @@ export function PaymentGateways() {
         ) : error ? (
           <p className="text-sm text-ds-foreground-muted">Only administrators can manage payment gateways.</p>
         ) : (
-          GATEWAYS.map((gateway) => (
+          [
+            ...GATEWAYS.map((gateway) => (
             <GatewayCard
               key={gateway.id}
               gateway={gateway}
               account={accounts.find((a) => a.gateway === gateway.id)}
               onChanged={() => void refetch({ silent: true })}
             />
-          ))
+            )),
+            ...(data?.data?.mockAvailable
+              ? [<MockGatewayCard key="mock" account={accounts.find((a) => a.gateway === 'mock')} onChanged={() => void refetch({ silent: true })} />]
+              : []),
+          ]
         )}
       </div>
     </SectionCard>
