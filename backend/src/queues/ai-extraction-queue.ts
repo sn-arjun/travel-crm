@@ -10,6 +10,7 @@
 import type { Env } from '../types';
 import { resolveTenantDb } from '../services/tenant-db';
 import { AIExtractionService } from '../services/ai-extraction';
+import { loadLocaleContext } from '../utils/money';
 import { AIRouter } from '../services/ai-router';
 import { generateId } from '../utils/uuid';
 import { getTenantTimeZone, localDateString, addDaysLocal, localDateStartUtcIso } from '../utils/tz';
@@ -147,6 +148,7 @@ async function handleExtractLead(
   const result = await extractionService.extractFromTranscript(
     transcript,
     callLog?.agent_name || undefined,
+    { currency: (await loadLocaleContext(db)).currency },
   );
   const durationMs = Date.now() - startTime;
 

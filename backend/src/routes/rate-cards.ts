@@ -8,6 +8,7 @@ import { rateCards, suppliers } from '../db/tenant-schema';
 import { requirePermission } from '../middleware/rbac';
 import { generateId } from '../utils/uuid';
 import { tenantToday } from '../utils/tz';
+import { loadLocaleContext } from '../utils/money';
 import { logActivity } from '../utils/activity-logger';
 import { success, created, paginated, error, notFound } from '../utils/response';
 
@@ -26,7 +27,8 @@ const createRateCardSchema = z.object({
   season: z.enum(['peak', 'off_peak', 'shoulder']).optional().nullable(),
   costPrice: z.number().min(0),
   sellingPrice: z.number().min(0).optional().nullable(),
-  currency: z.string().optional().default('INR'),
+  // Absent means the agency currency, filled in by the handler.
+  currency: z.string().optional(),
   unit: z.enum(['per_person', 'per_room', 'per_vehicle', 'per_day']).optional().nullable(),
   validFrom: z.string().optional().nullable(),
   validTo: z.string().optional().nullable(),
@@ -201,7 +203,7 @@ rateCardRoutes.post('/', requirePermission('rate_cards', 'create'), zValidator('
     season: body.season || null,
     costPrice: body.costPrice,
     sellingPrice: body.sellingPrice || null,
-    currency: body.currency || 'INR',
+    currency: body.currency?.trim() ? body.currency.trim().toUpperCase() : (await loadLocaleContext(c.get('tenantDb'))).currency,
     unit: body.unit || null,
     validFrom: body.validFrom || null,
     validTo: body.validTo || null,

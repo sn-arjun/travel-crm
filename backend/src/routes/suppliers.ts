@@ -18,6 +18,7 @@ import {
 } from '../validators/supplier-payment';
 import type { AppContext } from '../types';
 import { generateId } from '../utils/uuid';
+import { loadLocaleContext } from '../utils/money';
 
 const supplierRouter = new Hono<AppContext>();
 
@@ -272,7 +273,7 @@ supplierRouter.post('/:id/rate-cards', zValidator('json', createRateCardSchema),
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
         id, supplierId, body.service_type, body.destination || null, body.name, body.description || null,
-        body.season || null, body.cost_price, body.selling_price || null, body.currency || 'INR',
+        body.season || null, body.cost_price, body.selling_price || null, body.currency?.trim() ? body.currency.trim().toUpperCase() : (await loadLocaleContext(db)).currency,
         body.unit, body.valid_from || null, body.valid_to || null, userId, new Date().toISOString()
     ).run();
 

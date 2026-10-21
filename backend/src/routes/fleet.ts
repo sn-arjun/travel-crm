@@ -5,6 +5,7 @@ import { success, created, paginated, error, notFound } from '../utils/response'
 import { generateId } from '../utils/uuid';
 import { normalizePhone, phoneLookupVariants, inPlaceholders, tenantPhoneCountry } from '../utils/phone';
 import { logActivity } from '../utils/activity-logger';
+import { loadLocaleContext } from '../utils/money';
 import { tenantToday, tenantTimeZone, addDaysLocal, daysBetweenLocal, localMonthWindow } from '../utils/tz';
 import {
   createVehicleSchema, updateVehicleSchema, vehicleStatusSchema, vehicleListSchema,
@@ -1255,8 +1256,9 @@ fleet.post('/trips', zValidator('json', createTripSchema), async (c) => {
       const vehicle = await db.prepare('SELECT registration_number, type FROM vehicles WHERE id = ?').bind(data.vehicleId).first();
       if (driver && vehicle) {
         const tzPickup = await tenantTimeZone(c);
-        const pickupDate = new Date(data.pickupDatetime).toLocaleDateString('en-IN', { timeZone: tzPickup, weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-        const pickupTime = new Date(data.pickupDatetime).toLocaleTimeString('en-IN', { timeZone: tzPickup, hour: '2-digit', minute: '2-digit' });
+        const pickupLocale = (await loadLocaleContext(db)).locale;
+        const pickupDate = new Date(data.pickupDatetime).toLocaleDateString(pickupLocale, { timeZone: tzPickup, weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+        const pickupTime = new Date(data.pickupDatetime).toLocaleTimeString(pickupLocale, { timeZone: tzPickup, hour: '2-digit', minute: '2-digit' });
         const settings = await db.prepare('SELECT company_name FROM settings LIMIT 1').first<{ company_name: string }>();
         const message = `Hello ${data.passengerName || 'Guest'}, your vehicle has been assigned for ${pickupDate}.\n\nDriver: ${driver.name}\nPhone: ${driver.phone}\nVehicle: ${(vehicle.type as string).replace(/_/g, ' ')} (${vehicle.registration_number})\n\nPickup: ${data.pickupLocation || 'TBD'} at ${pickupTime}\n\n— ${settings?.company_name || 'TravelCRM'}`;
         await c.env.SMS_QUEUE.send({
@@ -1944,12 +1946,13 @@ fleet.get('/vehicle-rate-cards', zValidator('query', rateCardListSchema), async 
 
   const whereClause = conditions.join(' AND ');
 
+  const agencyCurrency = (await loadLocaleContext(db)).currency;
   const [countResult, rows] = await Promise.all([
     db.prepare(`SELECT COUNT(*) as total FROM vehicle_rate_cards WHERE ${whereClause}`).bind(...params).first<{ total: number }>(),
     db.prepare(`SELECT * FROM vehicle_rate_cards WHERE ${whereClause} ORDER BY vehicle_type ASC, trip_type ASC LIMIT ? OFFSET ?`).bind(...params, limit, offset).all(),
   ]);
 
-  return paginated(c, (rows.results || []).map(parseRateCardRow), countResult?.total ?? 0, page, limit);
+  return paginated(c, (rows.results || []).map((r) => parseRateCardRow(r, agencyCurrency)), countResult?.total ?? 0, page, limit);
 });
 
 // Lookup rate card by vehicle type + trip type
@@ -1968,7 +1971,7 @@ fleet.get('/vehicle-rate-cards/lookup', zValidator('query', rateCardLookupSchema
   `).bind(vehicleType, tripType, now, now).first();
 
   if (!row) return success(c, null);
-  return success(c, parseRateCardRow(row));
+  return success(c, parseRateCardRow(row, row.currency ? null : (await loadLocaleContext(db)).currency));
 });
 
 // Get single rate card
@@ -1977,7 +1980,7 @@ fleet.get('/vehicle-rate-cards/:id', async (c) => {
   const id = c.req.param('id');
   const row = await db.prepare('SELECT * FROM vehicle_rate_cards WHERE id = ? AND is_deleted = 0').bind(id).first();
   if (!row) return notFound(c, 'Rate card');
-  return success(c, parseRateCardRow(row));
+  return success(c, parseRateCardRow(row, row.currency ? null : (await loadLocaleContext(db)).currency));
 });
 
 // Create rate card
@@ -2002,7 +2005,7 @@ fleet.post('/vehicle-rate-cards', zValidator('json', createRateCardSchema), asyn
     data.minKm, data.minHours, data.nightCharge, data.driverAllowance,
     data.flatRate ?? null, data.extraKmRate, data.extraHourRate,
     data.tollIncluded ? 1 : 0, data.parkingIncluded ? 1 : 0,
-    data.currency, data.validFrom ?? null, data.validTo ?? null,
+    data.currency?.toUpperCase() ?? (await loadLocaleContext(db)).currency, data.validFrom ?? null, data.validTo ?? null,
     data.notes ?? null, data.isActive ? 1 : 0,
     userId, now, now,
   ).run();
@@ -2112,7 +2115,7 @@ fleet.post('/vehicle-rate-cards/estimate', zValidator('json', costEstimateSchema
     isNightTrip: data.isNightTrip,
   });
 
-  return success(c, { rateCard: parseRateCardRow(row), breakdown });
+  return success(c, { rateCard: parseRateCardRow(row, row.currency ? null : (await loadLocaleContext(db)).currency), breakdown });
 });
 
 // Generate invoice for completed trip
@@ -2178,7 +2181,7 @@ fleet.post('/trips/:id/generate-voucher', async (c) => {
 // HELPERS
 // ============================================================================
 
-function parseRateCardRow(row: Record<string, any>) {
+function parseRateCardRow(row: Record<string, any>, agencyCurrency: string | null = null) {
   return {
     id: row.id,
     tenantId: row.tenant_id,
@@ -2197,7 +2200,7 @@ function parseRateCardRow(row: Record<string, any>) {
     extraHourRate: row.extra_hour_rate ?? 0,
     tollIncluded: row.toll_included === 1,
     parkingIncluded: row.parking_included === 1,
-    currency: row.currency ?? 'INR',
+    currency: row.currency ?? agencyCurrency,
     validFrom: row.valid_from ?? null,
     validTo: row.valid_to ?? null,
     notes: row.notes ?? null,

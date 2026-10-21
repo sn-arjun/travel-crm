@@ -13,7 +13,7 @@ import { getUsageOverview } from '../services/metering/meter';
 import { sendTransactional } from '../services/mail/transactional';
 import { supportEmail } from '../utils/app-urls';
 import { rateLimit } from '../middleware/rate-limiter';
-import { validateLocaleSettings } from '../utils/money';
+import { loadLocaleContext, validateLocaleSettings } from '../utils/money';
 import { isUiLanguage, UI_LANGUAGES } from '../i18n';
 import { DEFAULT_VAT_RATES, loadTaxSettings, normalizeCountry } from '../services/tax-calculator';
 
@@ -338,7 +338,7 @@ settingsRoutes.get('/itinerary-defaults', async (c) => {
   const defaults = row?.value
     ? JSON.parse(row.value)
     : {
-        defaultCurrency: 'INR',
+        defaultCurrency: (await loadLocaleContext(c.get('tenantDb'))).currency,
         defaultTerms: '',
         defaultInclusions: [],
         defaultExclusions: [],
@@ -440,9 +440,21 @@ settingsRoutes.get('/invoice-defaults', async (c) => {
 
   // Defaults
   if (!result.default_due_days) result.default_due_days = 30;
-  if (!result.default_tax_type) result.default_tax_type = 'gst';
-  if (!result.default_tax_rate) result.default_tax_rate = 18;
-  if (!result.tax_system) result.tax_system = 'gst';
+  // Tax fallbacks follow the agency country, by the same rule as the tax engine: India is GST at 18, a country with
+  // a standard VAT rate is VAT at that rate, any other country is no tax and no rate. An agency with no country
+  // saved is a pre-R202 Indian agency.
+  const country = normalizeCountry(result.country ?? result.company_country) ?? 'IN';
+  const countrySystem: 'gst' | 'vat' | 'none' = country === 'IN' ? 'gst' : DEFAULT_VAT_RATES[country] !== undefined ? 'vat' : 'none';
+  if (!result.tax_system) result.tax_system = countrySystem;
+  if (!result.default_tax_type) result.default_tax_type = result.tax_system;
+  if (!result.default_tax_rate) {
+    const system = result.default_tax_type;
+    if (system === 'gst') result.default_tax_rate = 18;
+    else if (system === 'vat') {
+      const rate = Number(result.vat_rate) > 0 ? Number(result.vat_rate) : DEFAULT_VAT_RATES[country];
+      if (rate !== undefined) result.default_tax_rate = rate;
+    } else if (system === 'sales_tax' && Number(result.sales_tax_rate) > 0) result.default_tax_rate = Number(result.sales_tax_rate);
+  }
 
   return success(c, result);
 });

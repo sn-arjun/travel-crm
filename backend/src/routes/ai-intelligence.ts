@@ -477,7 +477,7 @@ app.post('/ocr/supplier-invoice', async (c) => {
   if (!parsed.success) return error(c, 'Invalid input', 400);
 
   const router = new AIRouter(env, undefined, c.get('tenantId'));
-  const textPrompt = `Extract invoice data from this supplier invoice image. Return JSON: { "supplierName": "...", "invoiceNumber": "...", "invoiceDate": "YYYY-MM-DD", "dueDate": "YYYY-MM-DD", "currency": "INR", "lineItems": [{ "description": "...", "quantity": number, "unitPrice": number, "amount": number, "hsnCode": "..." }], "subtotal": number, "taxAmount": number, "totalAmount": number, "gstNumber": "...", "panNumber": "..." }`;
+  const textPrompt = `Extract invoice data from this supplier invoice image. Return JSON: { "supplierName": "...", "invoiceNumber": "...", "invoiceDate": "YYYY-MM-DD", "dueDate": "YYYY-MM-DD", "currency": "ISO 4217 code as printed on the invoice", "lineItems": [{ "description": "...", "quantity": number, "unitPrice": number, "amount": number, "hsnCode": "..." }], "subtotal": number, "taxAmount": number, "totalAmount": number, "gstNumber": "...", "panNumber": "..." }`;
 
   const result = await router.routeVision('supplier_invoice_ocr', parsed.data.imageBase64, 'image/jpeg', textPrompt);
 

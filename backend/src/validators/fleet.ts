@@ -92,7 +92,8 @@ export const createRateCardSchema = z.object({
   extraHourRate: z.number().min(0).default(0),
   tollIncluded: z.boolean().default(false),
   parkingIncluded: z.boolean().default(false),
-  currency: z.string().default('INR'),
+  // Absent means the agency currency, filled in by the handler.
+  currency: z.string().length(3).optional(),
   validFrom: z.string().optional(),
   validTo: z.string().optional(),
   notes: z.string().optional(),

@@ -17,7 +17,8 @@ export interface ExtractionResult {
   paxCount: number | null;
   paxDetails: { adults: number; children: number; infants: number } | null;
   budget: number | null;
-  budgetCurrency: string;
+  /** ISO 4217 code the caller named, else the agency currency when the caller passed it, else null. */
+  budgetCurrency: string | null;
   preferences: string[];
   tripType: string | null;
   hotelPreference: string | null;
@@ -51,7 +52,10 @@ export interface ActionItem {
   completed: boolean;
 }
 
-const EXTRACTION_SYSTEM_PROMPT = `You are an AI assistant for a travel agency CRM. Analyze the call transcript and extract ALL relevant information in a single JSON response.
+/** The prompt example shows the agency currency, so a call that names no currency is read in it. */
+function buildExtractionPrompt(currency?: string): string {
+  const budgetCurrency = currency ? `"${currency}"` : 'null';
+  return `You are an AI assistant for a travel agency CRM. Analyze the call transcript and extract ALL relevant information in a single JSON response.
 
 Extract the following:
 1. **Lead Data**: destination, travel dates, number of travelers, budget, preferences, trip type, hotel preference, meal preference, special requests
@@ -72,7 +76,7 @@ Respond ONLY with valid JSON matching this schema:
   "pax_count": number or null,
   "pax_details": {"adults": 2, "children": 1, "infants": 0} or null,
   "budget": number or null,
-  "budget_currency": "INR",
+  "budget_currency": ${budgetCurrency},
   "preferences": ["string"],
   "trip_type": "honeymoon|family|adventure|business|group|pilgrimage|luxury" or null,
   "hotel_preference": "budget|mid-range|luxury" or null,
@@ -90,6 +94,7 @@ Respond ONLY with valid JSON matching this schema:
   "overall_confidence": 0.0 to 1.0,
   "field_confidences": {"destination": 0.9, "budget": 0.7, ...}
 }`;
+}
 
 export class AIExtractionService {
   private router: AIRouter;
@@ -109,7 +114,7 @@ export class AIExtractionService {
   async extractFromTranscript(
     transcript: string,
     agentName?: string,
-    options: { units?: number } = {},
+    options: { units?: number; currency?: string } = {},
   ): Promise<ExtractionResult> {
     const userMessage = agentName
       ? `Agent name: ${agentName}\n\nCall transcript:\n${transcript}`
@@ -121,7 +126,7 @@ export class AIExtractionService {
       ? userMessage.substring(0, maxChars) + '\n\n[Transcript truncated]'
       : userMessage;
 
-    const response = await this.router.route('call_summary', truncated, EXTRACTION_SYSTEM_PROMPT, { units: options.units ?? 1 });
+    const response = await this.router.route('call_summary', truncated, buildExtractionPrompt(options.currency), { units: options.units ?? 1 });
     const text = response.result || '{}';
     const inputTokens = response.inputTokens;
     const outputTokens = response.outputTokens;
@@ -143,7 +148,7 @@ export class AIExtractionService {
       paxCount: parsed.pax_count ?? null,
       paxDetails: parsed.pax_details || null,
       budget: parsed.budget ?? null,
-      budgetCurrency: parsed.budget_currency || 'INR',
+      budgetCurrency: parsed.budget_currency || options.currency || null,
       preferences: parsed.preferences || [],
       tripType: parsed.trip_type || null,
       hotelPreference: parsed.hotel_preference || null,

@@ -26,6 +26,7 @@ import { loadAccount, openCredentials, tenantForWebhookKey, isCredentialError } 
 import { isAgencyGateway, parseAgencyEvent, verifyAgencyWebhook, type AgencyPaymentEvent } from '../services/payments/agency-gateway';
 import { recordInvoicePayment } from '../services/payments/record';
 import { getTenantTimeZone, localDateString } from '../utils/tz';
+import { loadLocaleContext } from '../utils/money';
 
 const paymentWebhookRoutes = new Hono<AppContext>();
 
@@ -111,7 +112,7 @@ paymentWebhookRoutes.post('/:tenantKey/:gateway', async (c) => {
     // kind === 'paid'
     const amount = event.amount ?? 0;
     if (!(amount > 0)) return received({ ignored: true });
-    const currency = (invoice.currency || 'INR').toUpperCase();
+    const currency = (invoice.currency || (await loadLocaleContext(db)).currency).toUpperCase();
     if (event.currency && event.currency.toUpperCase() !== currency) {
       console.error(`[payment-webhooks] currency mismatch on invoice ${invoice.id}: ${event.currency} vs ${currency}`);
       return received({ ignored: true });

@@ -7,7 +7,7 @@ import type { AppContext } from '../types';
 import { success, error } from '../utils/response';
 import { expandRecurrence } from '../services/recurrence-engine';
 import { generateId } from '../utils/uuid';
-import { tenantToday, localDateString, addDaysLocal } from '../utils/tz';
+import { tenantToday, localDateString, addDaysLocal, getTenantTimeZone, isValidTimeZone } from '../utils/tz';
 
 const plannerRoutes = new Hono<AppContext>();
 
@@ -141,7 +141,7 @@ plannerRoutes.post('/', async (c) => {
             body.related_task_id || null,
             body.assigned_to || userId,
             userId,
-            body.timezone || 'Asia/Kolkata'
+            isValidTimeZone(body.timezone) ? body.timezone : await getTenantTimeZone(db)
         ).run();
 
         const created = await db.prepare('SELECT * FROM events WHERE id = ?').bind(id).first();

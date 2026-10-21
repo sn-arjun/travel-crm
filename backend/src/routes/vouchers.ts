@@ -7,6 +7,7 @@ import { generateId } from '../utils/uuid';
 import { success, created, paginated, error, notFound, forbidden } from '../utils/response';
 import { hasPermission, type Role } from '../constants/permissions';
 import { tenantTimeZone, localDateString } from '../utils/tz';
+import { loadLocaleContext } from '../utils/money';
 import { agencyEmailHtml, isEmailUndeliverable, queueAgencyEmail, textToHtml } from '../services/mail/delivery';
 import { isUiLanguage, t, textLanguage } from '../i18n';
 
@@ -510,7 +511,6 @@ async function buildVoucherPdf(tenantDb: D1Database, voucherId: string, voucherT
     const lang = textLanguage(voucher.language);
     const L = (key: string, vars?: Record<string, string | number>) => t(lang, key, vars);
     const f = (key: string) => `${L(`voucher.field.${key}`)}:`;
-    const dateLocale = lang === 'nl' ? 'nl-NL' : 'en-IN';
     const typeKey = `voucher.type.${voucherType}`;
     const typeLabel = L(typeKey) !== typeKey ? L(typeKey) : voucherType.charAt(0).toUpperCase() + voucherType.slice(1);
 
@@ -518,6 +518,19 @@ async function buildVoucherPdf(tenantDb: D1Database, voucherId: string, voucherT
     const pdfDoc = await PDFDocument.create();
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+    // Dates follow the voucher's language (Dutch) or else the agency locale. The built-in PDF fonts only draw Latin text,
+    // so a locale that writes dates in another script (Arabic, Devanagari) falls back to en-GB.
+    const wantedLocale = lang === 'nl' ? 'nl-NL' : (await loadLocaleContext(tenantDb)).locale;
+    const canDraw = (loc: string) => {
+      try {
+        font.encodeText(new Date(0).toLocaleDateString(loc, { timeZone: voucherTz, day: 'numeric', month: 'short', year: 'numeric' }));
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const dateLocale = canDraw(wantedLocale) ? wantedLocale : 'en-GB';
 
     // A4 Portrait
     const pageWidth = 595;

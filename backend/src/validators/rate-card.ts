@@ -8,7 +8,8 @@ export const createRateCardSchema = z.object({
     season: z.enum(['peak', 'off_peak', 'shoulder', 'year_round']).optional(),
     cost_price: z.number().min(0),
     selling_price: z.number().min(0).optional(),
-    currency: z.string().default('INR'),
+    // Absent means the agency currency, filled in by the handler.
+    currency: z.string().optional(),
     unit: z.enum(['per_night', 'per_person', 'per_trip', 'per_day', 'flat', 'per_vehicle', 'per_room']),
     valid_from: z.string().optional(),
     valid_to: z.string().optional(),
