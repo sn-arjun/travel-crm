@@ -24,7 +24,7 @@ import { unwrapList } from '@/lib/api/envelope';
 import { useAuthStore } from '@/stores/auth-store';
 import { AttentionWidget } from '@/components/domain/assistant/attention-widget';
 import {
-  PERIOD_OPTIONS, formatCurrency, loadDashboardSummary, loadPeriodMetrics, loadRevenueTrend,
+  PERIOD_OPTIONS, formatCurrency, loadDashboardSummary, moneyTone, loadPeriodMetrics, loadRevenueTrend,
   percentChange, type DashboardPeriod, type FollowUpRow,
 } from './dashboard-data';
 import {
@@ -189,17 +189,17 @@ export default function DashboardPage() {
           <FinanceStat
             label={`Collected (${periodMeta.short})`}
             value={finite(cur?.collected) !== undefined ? formatCurrency(cur?.collected ?? 0) : null}
-            tone="text-ds-success"
+            tone={moneyTone(cur?.collected, 'text-ds-success')}
           />
           <FinanceStat
             label="Outstanding (today)"
             value={summary ? formatCurrency(summary.financial.outstanding) : null}
-            tone="text-ds-warning"
+            tone={moneyTone(summary?.financial.outstanding, 'text-ds-warning')}
           />
           <FinanceStat
             label="Overdue (today)"
             value={summary ? formatCurrency(summary.financial.overdue) : null}
-            tone="text-ds-danger"
+            tone={moneyTone(summary?.financial.overdue, 'text-ds-danger')}
           />
         </div>
 

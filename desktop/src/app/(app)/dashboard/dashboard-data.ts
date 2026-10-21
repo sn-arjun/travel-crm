@@ -105,6 +105,15 @@ export interface PeriodTotals {
   collectionRate: number | null;
 }
 
+/**
+ * Colour class for a money figure that normally signals something (green collected, amber outstanding, red overdue).
+ * Zero, empty and unknown amounts are neutral: nothing owed is not an error. Negative amounts always read as danger.
+ */
+export function moneyTone(amount: number | null | undefined, tone: string): string | undefined {
+  if (typeof amount !== 'number' || !Number.isFinite(amount) || amount === 0) return undefined;
+  return amount < 0 ? 'text-ds-danger' : tone;
+}
+
 const INVOICED_TYPES = new Set(['tax_invoice', 'proforma']);
 
 function sum<T>(rows: T[], pick: (row: T) => number): number {
