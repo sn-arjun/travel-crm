@@ -68,7 +68,7 @@ export class MockGateway implements BillingGateway {
   }
 
   async createCheckout(params: CheckoutParams): Promise<CheckoutResult> {
-    const base = (this.env.API_PUBLIC_URL || 'http://localhost').replace(/\/+$/, '');
+    const base = (this.env.API_PUBLIC_URL || params.apiBaseUrl || 'http://localhost').replace(/\/+$/, '');
     const reference = `mock_sub_${generateId()}`;
     const q = new URLSearchParams({
       tenant: params.tenantId,
@@ -85,7 +85,7 @@ export class MockGateway implements BillingGateway {
 
   /** A one-off payment: a link to this server's mock add-on checkout, which plays the paid (or failed) event. */
   async createOrderCheckout(params: OrderCheckoutParams): Promise<CheckoutResult> {
-    const base = (this.env.API_PUBLIC_URL || 'http://localhost').replace(/\/+$/, '');
+    const base = (this.env.API_PUBLIC_URL || params.apiBaseUrl || 'http://localhost').replace(/\/+$/, '');
     const q = new URLSearchParams({ order: params.orderId, success: params.successUrl, cancel: params.cancelUrl });
     return { url: `${base}/api/v1/billing/mock-addon-checkout?${q.toString()}`, reference: `mock_ord_${params.orderId}`, customerId: `mock_cus_${params.tenantId}` };
   }

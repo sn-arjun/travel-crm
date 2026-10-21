@@ -273,6 +273,7 @@ billingRoutes.post('/checkout', zValidator('json', checkoutSchema), async (c) =>
       customerId: customer?.customer_id ?? null,
       successUrl: `${home}?checkout=success`,
       cancelUrl: `${home}?checkout=cancelled`,
+      apiBaseUrl: new URL(c.req.url).origin,
     });
     return success(c, {
       url: result.url,
@@ -332,7 +333,7 @@ billingRoutes.post('/addons/checkout', zValidator('json', addonCheckoutSchema), 
   const gateway = gatewayForCountry(c.env, tenant.country);
   if (!gateway.isConfigured()) return fail(c, 503, 'BILLING_NOT_CONFIGURED', NOT_CONFIGURED);
   try {
-    const created = await createOrder(c.env, tenant, body);
+    const created = await createOrder(c.env, tenant, body, { apiBaseUrl: new URL(c.req.url).origin });
     return success(c, {
       url: created.url,
       gateway: created.gatewayId,

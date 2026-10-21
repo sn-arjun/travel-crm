@@ -44,6 +44,8 @@ export interface CheckoutParams {
   customerId?: string | null;
   successUrl: string;
   cancelUrl: string;
+  /** Origin (with port) the API answered this request on; the mock gateway links back to it when API_PUBLIC_URL is not set. */
+  apiBaseUrl?: string;
 }
 
 export interface CheckoutResult {
@@ -94,6 +96,8 @@ export interface OrderCheckoutParams {
   customerId?: string | null;
   successUrl: string;
   cancelUrl: string;
+  /** See CheckoutParams.apiBaseUrl. */
+  apiBaseUrl?: string;
 }
 
 export interface BillingEvent {

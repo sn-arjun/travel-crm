@@ -287,7 +287,7 @@ export async function createOrder(
   env: Env,
   tenant: TenantRow,
   input: { productKey: string; quantity: number; idempotencyKey?: string | null },
-  opts: { now?: Date; fetchImpl?: FetchLike } = {},
+  opts: { now?: Date; fetchImpl?: FetchLike; apiBaseUrl?: string } = {},
 ): Promise<CreatedOrder> {
   const now = opts.now ?? new Date();
   const key = `${tenant.id}:${input.idempotencyKey?.trim() || generateId()}`;
@@ -330,6 +330,7 @@ export async function createOrder(
       customerId: customer?.customer_id ?? null,
       successUrl: `${home}?addon=success`,
       cancelUrl: `${home}?addon=cancelled`,
+      apiBaseUrl: opts.apiBaseUrl,
     });
     await env.MASTER_DB
       .prepare('UPDATE addon_orders SET gateway_ref = ?, checkout_url = ? WHERE id = ?')
