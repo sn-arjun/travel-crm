@@ -4,7 +4,8 @@
  * the call endpoints answer 403 CALLING_NOT_AVAILABLE_IN_COUNTRY and the desktop hides the calling UI.
  *
  * The allow-list is configuration: VOIP_CALLING_COUNTRIES (comma-separated ISO 3166 alpha-2 codes).
- * Default GB,US,AU,SG; DE and MY are added in the second wave by setting the variable, no code change.
+ * Default GB,US,AU,SG,NL (R137: the Netherlands is the first EU country, ready to switch on). Other EU countries,
+ * DE and MY are added by setting the variable, no code change. Deployments set the list explicitly (gen-wrangler.mjs).
  * '*' means every country and is honoured outside production only (local stacks, demos).
  *
  * The agency's country is the one in its settings (`country` / `company_country`, R202). An agency that has
@@ -15,7 +16,7 @@ import type { MiddlewareHandler } from 'hono';
 import type { AppContext, Env } from '../../types';
 import { loadLocaleContext } from '../../utils/money';
 
-export const DEFAULT_CALLING_COUNTRIES: readonly string[] = ['GB', 'US', 'AU', 'SG'];
+export const DEFAULT_CALLING_COUNTRIES: readonly string[] = ['GB', 'US', 'AU', 'SG', 'NL'];
 
 export const CALLING_NOT_AVAILABLE_CODE = 'CALLING_NOT_AVAILABLE_IN_COUNTRY';
 

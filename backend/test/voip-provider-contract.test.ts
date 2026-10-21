@@ -369,20 +369,20 @@ describe('MockProvider behaviour', () => {
 // ── Country allow-list ────────────────────────────────────────
 
 describe('calling country allow-list', () => {
-  it('defaults to GB, US, AU, SG and is configuration', () => {
-    expect(callingAllowList({}).countries).toEqual(['GB', 'US', 'AU', 'SG']);
+  it('defaults to GB, US, AU, SG, NL and is configuration', () => {
+    expect(callingAllowList({}).countries).toEqual(['GB', 'US', 'AU', 'SG', 'NL']);
     expect(callingAllowList({ VOIP_CALLING_COUNTRIES: ' gb, de ,MY,, x1 ' }).countries).toEqual(['GB', 'DE', 'MY']);
-    expect(callingAllowList({ VOIP_CALLING_COUNTRIES: 'junk' }).countries).toEqual(['GB', 'US', 'AU', 'SG']);
+    expect(callingAllowList({ VOIP_CALLING_COUNTRIES: 'junk' }).countries).toEqual(['GB', 'US', 'AU', 'SG', 'NL']);
   });
 
   it('"*" opens every country outside production only', () => {
     expect(callingAllowList({ VOIP_CALLING_COUNTRIES: '*' }).all).toBe(true);
-    expect(callingAllowList({ VOIP_CALLING_COUNTRIES: '*', ENVIRONMENT: 'production' })).toEqual({ all: false, countries: ['GB', 'US', 'AU', 'SG'] });
+    expect(callingAllowList({ VOIP_CALLING_COUNTRIES: '*', ENVIRONMENT: 'production' })).toEqual({ all: false, countries: ['GB', 'US', 'AU', 'SG', 'NL'] });
   });
 
   it('decides per country: India, the Gulf, Thailand, Sri Lanka, Nepal, Bangladesh out; an unset country is out', () => {
     const list = callingAllowList({});
-    for (const country of ['GB', 'US', 'AU', 'SG', 'gb']) expect(callingAvailabilityFor(country, list).available).toBe(true);
+    for (const country of ['GB', 'US', 'AU', 'SG', 'NL', 'gb']) expect(callingAvailabilityFor(country, list).available).toBe(true);
     for (const country of ['IN', 'AE', 'SA', 'QA', 'TH', 'LK', 'NP', 'BD', 'DE', 'MY']) {
       expect(callingAvailabilityFor(country, list)).toMatchObject({ available: false, reason: 'country_not_supported' });
     }

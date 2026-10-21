@@ -17,7 +17,7 @@
  *   EMAIL_SYSTEM_PROVIDER (sendgrid | cloudflare, default cloudflare with SendGrid fallback; the console Email page overrides it at runtime; mock for local only) is always written. Also written: API_PUBLIC_URL, TENANT_PROVISIONER=cloudflare,
  *   CF_WORKER_SCRIPT_NAME.
  *   Staging and production also get (default in brackets, override with the same-named variable): PLATFORM_TAX_COUNTRY (IN),
- *   PLATFORM_GST_RATE (18), BILLING_GRACE_DAYS (7), VOIP_CALLING_COUNTRIES (US), WHATSAPP_META_GRAPH_VERSION (v21.0); and, only when set:
+ *   PLATFORM_GST_RATE (18), BILLING_GRACE_DAYS (7), VOIP_CALLING_COUNTRIES (US,NL), WHATSAPP_META_GRAPH_VERSION (v21.0); and, only when set:
  *   SUPER_ADMIN_EMAIL, PLATFORM_TAX_STATE, PLATFORM_TAX_ID, PLATFORM_VAT_COUNTRIES, PLATFORM_VAT_RATE, WHATSAPP_META_PHONE_NUMBER_ID,
  *   OCI_PROVISIONER_URL, WP_SITES_DOMAIN, DAILY_JOB_HOUR, APP_VERSION (see OPTIONAL_PLAIN_VARS).
  *   REFUSED for staging and production (the generator fails): BILLING_GATEWAY=mock, TEST_MODE, VOIP_PROVIDER=mock, VOIP_CALLING_COUNTRIES='*'.
@@ -193,7 +193,7 @@ export const DEFAULTED_PLAIN_VARS = {
   PLATFORM_TAX_COUNTRY: 'IN',
   PLATFORM_GST_RATE: '18',
   BILLING_GRACE_DAYS: '7',
-  VOIP_CALLING_COUNTRIES: 'US', // explicit on purpose: the code default GB,US,AU,SG would open three markets with unpriced numbers
+  VOIP_CALLING_COUNTRIES: 'US,NL', // explicit on purpose: the code default GB,US,AU,SG,NL would open markets with unpriced numbers; NL is ready to switch on (R137), the others are added at go-live
   WHATSAPP_META_GRAPH_VERSION: 'v21.0',
 };
 

@@ -137,7 +137,7 @@ try {
   const d = gen2('production');
   check(d.rr.status === 0, `defaults: production generation exits 0 ${d.rr.status === 0 ? '' : d.rr.stderr}`);
   const dEnv = d.text.slice(d.text.indexOf('[env.production]'));
-  for (const [k, v] of [['PLATFORM_TAX_COUNTRY', 'IN'], ['PLATFORM_GST_RATE', '18'], ['BILLING_GRACE_DAYS', '7'], ['VOIP_CALLING_COUNTRIES', 'US'], ['WHATSAPP_META_GRAPH_VERSION', 'v21.0'], ['ENVIRONMENT', 'production']]) {
+  for (const [k, v] of [['PLATFORM_TAX_COUNTRY', 'IN'], ['PLATFORM_GST_RATE', '18'], ['BILLING_GRACE_DAYS', '7'], ['VOIP_CALLING_COUNTRIES', 'US,NL'], ['WHATSAPP_META_GRAPH_VERSION', 'v21.0'], ['ENVIRONMENT', 'production']]) {
     const line = `${k} = "${v}"`;
     check(d.text.split(line).length === 3 && dEnv.includes(line), `default ${line} written at top level and in [env.production.vars]`);
   }
@@ -145,7 +145,7 @@ try {
     check(!new RegExp(`^${k} =`, 'm').test(d.text), `${k} is not written when unset`);
   }
   const stg = gen2('staging', {}, 'r134-stg.toml');
-  check(stg.rr.status === 0 && /ENVIRONMENT = "staging"/.test(stg.text) && /VOIP_CALLING_COUNTRIES = "US"/.test(stg.text), 'staging gets ENVIRONMENT=staging and the same defaults');
+  check(stg.rr.status === 0 && /ENVIRONMENT = "staging"/.test(stg.text) && /VOIP_CALLING_COUNTRIES = "US,NL"/.test(stg.text), 'staging gets ENVIRONMENT=staging and the same defaults');
 
   const set = {
     PLATFORM_TAX_COUNTRY: 'gb', PLATFORM_GST_RATE: '5', BILLING_GRACE_DAYS: '14', VOIP_CALLING_COUNTRIES: 'us, gb,US', WHATSAPP_META_GRAPH_VERSION: 'v22.0',

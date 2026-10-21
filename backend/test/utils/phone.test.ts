@@ -29,6 +29,15 @@ describe('normalizePhone by the agency country', () => {
     expect(normalizePhone('6591234567', 'SG')).toBe('+6591234567');
   });
 
+  it('Netherlands (R137): a mobile with the 0 trunk digit, the international form and a 085 landline', () => {
+    expect(normalizePhone('0612345678', 'NL')).toBe('+31612345678');
+    expect(normalizePhone('06 1234 5678', 'NL')).toBe('+31612345678');
+    expect(normalizePhone('+31 6 1234 5678', 'NL')).toBe('+31612345678');
+    expect(normalizePhone('31612345678', 'NL')).toBe('+31612345678');
+    expect(normalizePhone('085 208 0400', 'NL')).toBe('+31852080400');
+    expect(normalizePhone('020 123 4567', 'NL')).toBe('+31201234567');
+  });
+
   it('India is unchanged', () => {
     expect(normalizePhone('9876543210')).toBe('+919876543210');
     expect(normalizePhone('09876543210', 'IN')).toBe('+919876543210');

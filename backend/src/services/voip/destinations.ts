@@ -78,6 +78,9 @@ export const BLOCKED_PREFIXES: ReadonlyArray<{ prefix: string; why: string }> = 
   { prefix: '651900', why: 'Singapore premium rate (1900)' },
   { prefix: '49900', why: 'German premium rate (0900)' },
   { prefix: '49137', why: 'German mass-traffic numbers (0137)' },
+  { prefix: '31900', why: 'Dutch premium rate (0900)' },
+  { prefix: '31906', why: 'Dutch premium rate (0906)' },
+  { prefix: '31909', why: 'Dutch premium rate (0909)' },
 ];
 
 export interface DestinationInfo {
