@@ -201,8 +201,7 @@ function PhoneNumbersPageContent() {
       await voipApi.requirements.submit(form);
       afterDocumentsSent();
     } catch (err) {
-      const problems = err && typeof err === 'object' && 'details' in err ? ((err as { details?: { problems?: Array<{ message: string }> } }).details?.problems ?? []) : [];
-      setKycError(problems.length > 0 ? problems.map((p) => p.message).join(' ') : apiMessage(err, t('calling.kyc.failed')));
+      setKycError(apiMessage(err, t('calling.kyc.failed')));
     } finally {
       setKycSaving(false);
     }
@@ -338,7 +337,7 @@ function PhoneNumbersPageContent() {
         count={numbers.length}
         back={backButton}
         actions={
-          <Button onClick={() => setSearchOpen(true)} className="gap-ds-2">
+          <Button onClick={() => setSearchOpen(true)} className="gap-ds-2" data-testid="add-number">
             <Plus className="size-4" />
             {t('calling.numbers.add')}
           </Button>

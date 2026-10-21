@@ -12,8 +12,8 @@
  * D. No mailto:/wa.me/tel: anchors on either page
  *
  * Provider traffic (Twilio number inventory) cannot be seeded — the backend purchases from the real
- * provider — so section C fakes ONLY `/voip/numbers*` at the network layer with a stateful fake that
- * mirrors the backend contract (phoneNumber/isDefault, 409 on deleting the only number). Settings
+ * provider — so section C fakes ONLY `/voip/numbers*` (and the buy-ready `/voip/number-offer`) at the network layer with a
+ * stateful fake that mirrors the backend contract (phoneNumber/isDefault, 409 on deleting the only number). Settings
  * (section B) hit the real backend.
  *
  * N/A for this slice (no such UI exists, see slice manifest): relation comboboxes, infinite scroll,
@@ -111,6 +111,8 @@ function fakeNumbersApi(page: Page, opts: { searchResults?: any[] } = {}) {
     const method = req.method();
     if (method === 'OPTIONS') return route.fallback();
     const path = new URL(req.url()).pathname.replace(/^.*\/voip\/numbers/, '') || '/';
+    // The country requirements and the documents form (R137) are not part of the number list: the real backend answers them.
+    if (path === '/requirements' || path === '/documents') return route.fallback();
     const body = req.postData() ? JSON.parse(req.postData()!) : undefined;
     calls.push({ method, path, body });
 
@@ -144,7 +146,22 @@ function fakeNumbersApi(page: Page, opts: { searchResults?: any[] } = {}) {
     return route.fallback();
   });
 
-  return { store, calls, ready };
+  // The offer (price and documents) is faked as an agency that can buy: Buy number is off while a price or the documents are missing
+  // (R141), and what the demo agency's country has in the catalogue is not what this section is about.
+  const offerReady = page.route(/\/voip\/number-offer(\?.*)?$/, (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    return ok(route, {
+      calling: { allowed: true, reason: null, message: null, country: 'US', position: 'resell' },
+      account: { status: 'active', provider: 'mock' },
+      price: { productKey: 'phone_number_us', monthly: 2, tax: 0, total: 2, currency: 'USD', includesMarginPct: 20 },
+      priceReason: null,
+      kyc: { required: false, status: 'none', document: null },
+      addon: { freeThisMonth: 1, productKey: 'phone_number_us' },
+      numbers: [],
+    });
+  });
+
+  return { store, calls, ready: Promise.all([ready, offerReady]).then(() => undefined) };
 }
 
 // ─── A. Gate ──────────────────────────────────────────────────────────────────
@@ -338,12 +355,12 @@ test.describe.serial('C. Phone numbers', () => {
     await dialog.getByRole('button', { name: /Search/ }).click();
     await expect(dialog.getByText('+14155550101')).toBeVisible();
     await expect(dialog.getByText('+14155550102')).toBeVisible();
-    await expect(dialog.getByRole('button', { name: 'Purchase' })).toHaveCount(2);
+    await expect(dialog.getByRole('button', { name: 'Buy number' })).toHaveCount(2);
     const search = fake.calls.find((c) => c.path === '/search')!;
     expect(search.body).toMatchObject({ areaCode: '415', contains: '555' });
 
     // Purchase the first -> toast, dialog closes, listed as Primary (first number auto-default).
-    await dialog.getByRole('button', { name: 'Purchase' }).first().click();
+    await dialog.getByRole('button', { name: 'Buy number' }).first().click();
     await expect(page.locator(TOAST).filter({ hasText: 'Phone number purchased' })).toBeVisible({ timeout: 10_000 });
     await expect(dialog).toBeHidden();
     expect(fake.calls.find((c) => c.path === '/purchase')!.body).toMatchObject({ phoneNumber: '+14155550101' });
@@ -356,7 +373,7 @@ test.describe.serial('C. Phone numbers', () => {
     await page.getByRole('button', { name: /^Add Number$/ }).click();
     await dialog.locator('#areaCode').fill('415');
     await dialog.getByRole('button', { name: /Search/ }).click();
-    await dialog.getByRole('button', { name: 'Purchase' }).nth(1).click();
+    await dialog.getByRole('button', { name: 'Buy number' }).nth(1).click();
     await expect(dialog).toBeHidden();
     const row2 = page.getByRole('row').filter({ hasText: '+14155550102' });
     await expect(row2).toBeVisible();
@@ -406,7 +423,7 @@ test.describe.serial('C. Phone numbers', () => {
     await dialog.locator('#areaCode').fill('000');
     await dialog.getByRole('button', { name: /Search/ }).click();
     await expect(dialog.getByText(/No available numbers found/i)).toBeVisible();
-    await expect(dialog.getByRole('button', { name: 'Purchase' })).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: 'Buy number' })).toHaveCount(0);
   });
 
   test('provider failure during search surfaces as a toast, not a crash (real backend)', async ({ page }) => {
@@ -423,7 +440,7 @@ test.describe.serial('C. Phone numbers', () => {
     await dialog.getByRole('button', { name: /Search/ }).click();
     await expect(page.locator(TOAST).filter({ hasText: /credentials|configured|unavailable|Failed to search|search numbers/i }).first())
       .toBeVisible({ timeout: 30_000 });
-    await expect(dialog.getByRole('button', { name: 'Purchase' })).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: 'Buy number' })).toHaveCount(0);
     await expect(page.getByText('Something went wrong')).toHaveCount(0);
   });
 
