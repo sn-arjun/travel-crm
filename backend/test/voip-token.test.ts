@@ -94,6 +94,8 @@ describe('GET /voip/token', () => {
 
   it('once calling is on, an agent gets a short-lived token whose identity is derived from the signed-in user', async () => {
     expect((await call('POST', '/voip/account/enable', admin, {})).status).toBeLessThan(300);
+    // R135-5: the desktop learns from /ai/settings that calling is on, so it only then asks for a token.
+    expect((await json(await call('GET', '/ai/settings', admin))).data.voipCalling.accountActive).toBe(true);
 
     const agent = await seedUser(AGENT_ID, 'salesperson');
     const res = await call('GET', '/voip/token', agent);

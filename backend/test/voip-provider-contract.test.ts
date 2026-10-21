@@ -475,14 +475,14 @@ describe('country gating through the API', () => {
     await setCountry('IN');
     const india = await flag();
     expect(india.feature.enabled).toBe(false);
-    expect(india.voipCalling).toEqual({ available: false, country: 'IN', reason: 'country_not_supported' });
+    expect(india.voipCalling).toEqual({ available: false, country: 'IN', reason: 'country_not_supported', accountActive: false });
     const check = (await (await call('GET', '/ai/settings/features/check/voip_calling', admin)).json()) as any;
     expect(check.data.enabled).toBe(false);
 
     await setCountry('GB');
     const uk = await flag();
     expect(uk.feature.enabled).toBe(true);
-    expect(uk.voipCalling).toEqual({ available: true, country: 'GB', reason: 'ok' });
+    expect(uk.voipCalling).toEqual({ available: true, country: 'GB', reason: 'ok', accountActive: false });
   });
 
   it('provider webhooks are not gated by country (a call already in flight must still be recorded)', async () => {
