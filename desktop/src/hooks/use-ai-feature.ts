@@ -37,9 +37,13 @@ async function fetchSettings(): Promise<AiSettingsData | null> {
   return null;
 }
 
+/** Fired when the cache is dropped, so mounted hooks (the always-on softphone host) pick up the change. */
+export const AI_SETTINGS_INVALIDATED_EVENT = 'travelcrm:ai-settings-invalidated';
+
 export function invalidateAiSettingsCache() {
   cachedSettings = null;
   cacheTimestamp = 0;
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(AI_SETTINGS_INVALIDATED_EVENT));
 }
 
 /**
