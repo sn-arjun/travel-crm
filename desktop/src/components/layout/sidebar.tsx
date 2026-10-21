@@ -36,11 +36,13 @@ import { assistantApi } from '@/lib/api/assistant';
 import { useRealtimeEvent, useRealtimeConnected } from '@/hooks/use-realtime-event';
 import { useElectron } from '@/hooks/use-electron';
 import { useCallingOffered } from '@/hooks/use-feature-gate';
+import { useGroupTours } from '@/hooks/use-group-tours';
 import { ConnectionStatus } from '@/components/layout/connection-status';
 import {
   navigation,
   bottomNav,
   findActiveHref,
+  GROUP_TOURS_HREFS,
   type NavItem,
 } from '@/components/layout/nav-config';
 
@@ -304,10 +306,18 @@ export function Sidebar() {
   const badgeCounts = useBadgeCounts();
   const { isElectron } = useElectron();
   const callingOffered = useCallingOffered();
+  const { enabled: groupToursOn } = useGroupTours();
   // Calling is resold only in some countries: elsewhere its entries are not shown at all.
+  // Group tours show only when the plan has them and the agency switched them on.
   const visibleNavigation = React.useMemo(
-    () => navigation.map((group) => ({ ...group, items: group.items.filter((item) => callingOffered || !item.href.startsWith('/communication/calls')) })),
-    [callingOffered],
+    () =>
+      navigation.map((group) => ({
+        ...group,
+        items: group.items.filter(
+          (item) => (callingOffered || !item.href.startsWith('/communication/calls')) && (groupToursOn || !GROUP_TOURS_HREFS.has(item.href)),
+        ),
+      })),
+    [callingOffered, groupToursOn],
   );
 
   const activeHref = React.useMemo(() => findActiveHref(pathname), [pathname]);

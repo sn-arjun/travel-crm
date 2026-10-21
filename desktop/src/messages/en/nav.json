@@ -126,5 +126,18 @@
   "nav.entity.leadScore": "lead score",
   "nav.pageTitle.new": "New {noun}",
   "nav.pageTitle.edit": "Edit {noun}",
-  "nav.pageTitle.details": "{noun} details"
+  "nav.pageTitle.details": "{noun} details",
+  "nav.items.departures": "Departures",
+  "nav.items.tours": "Tours",
+  "nav.entity.tour": "tour",
+  "nav.entity.departure": "departure",
+  "nav.titles.settingsGroupTours": "Group tours settings",
+  "nav.palette.newTour.label": "New tour",
+  "nav.palette.newTour.description": "Create a group tour",
+  "nav.palette.newDeparture.label": "New departure",
+  "nav.palette.newDeparture.description": "Add dates for a group tour",
+  "nav.palette.departures.label": "Departures",
+  "nav.palette.departures.description": "Seats left, bookings and the waitlist",
+  "nav.palette.tours.label": "Tours",
+  "nav.palette.tours.description": "Group tours you sell"
 }

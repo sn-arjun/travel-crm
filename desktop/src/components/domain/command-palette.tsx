@@ -2,7 +2,7 @@
 
 import {
   Plus, Search, Users, Briefcase, Truck, MapPin, CreditCard,
-  Settings, LayoutDashboard, Plane, User, Receipt, AlertTriangle,
+  Settings, LayoutDashboard, Plane, User, Receipt, AlertTriangle, CalendarRange, Compass,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
@@ -12,6 +12,7 @@ import { contactsApi } from '@/lib/api/contacts';
 import { unwrapList } from '@/lib/api/envelope';
 import { invoicesApi } from '@/lib/api/invoices';
 import { leadsApi } from '@/lib/api/leads';
+import { useGroupTours } from '@/hooks/use-group-tours';
 import { cn } from '@/lib/utils';
 import { tEn, useT, type TranslateFn } from '@/lib/i18n';
 
@@ -81,6 +82,7 @@ interface CommandItem {
 
 export function CommandPalette() {
   const t = useT();
+  const { enabled: groupToursOn } = useGroupTours();
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState('');
@@ -109,7 +111,16 @@ export function CommandPalette() {
     { id: 'nav-rate-cards', label: t('shell.palette.commands.nav-rate-cards.label'), description: t('shell.palette.commands.nav-rate-cards.description'), icon: CreditCard, action: () => router.push('/fleet/rate-cards'), section: t('shell.palette.sections.navigate'), keywords: ['pricing', 'fleet'] },
     { id: 'nav-alerts', label: t('shell.palette.commands.nav-alerts.label'), description: t('shell.palette.commands.nav-alerts.description'), icon: AlertTriangle, action: () => router.push('/fleet/alerts'), section: t('shell.palette.sections.navigate'), keywords: ['warnings', 'expiry'] },
     { id: 'nav-settings', label: t('shell.palette.commands.nav-settings.label'), description: t('shell.palette.commands.nav-settings.description'), icon: Settings, action: () => router.push('/settings'), section: t('shell.palette.sections.navigate'), keywords: ['preferences', 'config'] },
-  ], [router, t]);
+    // Group tours: only when the plan has them and the agency switched them on.
+    ...(groupToursOn
+      ? [
+          { id: 'new-tour', label: t('nav.palette.newTour.label'), description: t('nav.palette.newTour.description'), icon: Plus, action: () => router.push('/tours/new'), section: t('shell.palette.sections.quickCreate'), keywords: ['create', 'group', 'package'] },
+          { id: 'new-departure', label: t('nav.palette.newDeparture.label'), description: t('nav.palette.newDeparture.description'), icon: Plus, action: () => router.push('/departures/new'), section: t('shell.palette.sections.quickCreate'), keywords: ['create', 'group', 'dates'] },
+          { id: 'nav-departures', label: t('nav.palette.departures.label'), description: t('nav.palette.departures.description'), icon: CalendarRange, action: () => router.push('/departures'), section: t('shell.palette.sections.navigate'), keywords: ['seats', 'group', 'waitlist'] },
+          { id: 'nav-tours', label: t('nav.palette.tours.label'), description: t('nav.palette.tours.description'), icon: Compass, action: () => router.push('/tours'), section: t('shell.palette.sections.navigate'), keywords: ['group', 'packages'] },
+        ]
+      : []),
+  ], [router, t, groupToursOn]);
 
   // Records matching the query; each new query drops the previous request's answer (stale responses are ignored).
   const [hits, setHits] = React.useState<EntityHit[]>([]);

@@ -126,5 +126,18 @@
   "nav.entity.leadScore": "تقييم العميل المحتمل",
   "nav.pageTitle.new": "إضافة: {noun}",
   "nav.pageTitle.edit": "تعديل: {noun}",
-  "nav.pageTitle.details": "تفاصيل: {noun}"
+  "nav.pageTitle.details": "تفاصيل: {noun}",
+  "nav.items.departures": "الرحلات المجدولة",
+  "nav.items.tours": "الجولات",
+  "nav.entity.tour": "جولة",
+  "nav.entity.departure": "رحلة مجدولة",
+  "nav.titles.settingsGroupTours": "إعدادات الجولات الجماعية",
+  "nav.palette.newTour.label": "جولة جديدة",
+  "nav.palette.newTour.description": "إنشاء جولة جماعية",
+  "nav.palette.newDeparture.label": "رحلة مجدولة جديدة",
+  "nav.palette.newDeparture.description": "إضافة مواعيد لجولة جماعية",
+  "nav.palette.departures.label": "الرحلات المجدولة",
+  "nav.palette.departures.description": "المقاعد المتبقية والحجوزات وقائمة الانتظار",
+  "nav.palette.tours.label": "الجولات",
+  "nav.palette.tours.description": "الجولات الجماعية التي تبيعها"
 }

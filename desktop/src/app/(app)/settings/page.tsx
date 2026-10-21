@@ -24,6 +24,7 @@ import {
 import { PageHeader, SectionCard } from '@/components/ui';
 import { PageContainer } from '@/components/layout/page-container';
 import { useCallingOffered } from '@/hooks/use-feature-gate';
+import { GroupToursHubCard } from './group-tours/_components/hub-card';
 
 interface SettingsLink {
   label: string;
@@ -134,6 +135,9 @@ export default function SettingsPage() {
           </div>
         </SectionCard>
       ))}
+
+      {/* Shown only when the plan has group departures; the card carries the agency switch. */}
+      <GroupToursHubCard />
     </PageContainer>
   );
 }

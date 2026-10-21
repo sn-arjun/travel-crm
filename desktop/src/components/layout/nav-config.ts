@@ -32,6 +32,8 @@ import {
   Send,
   LayoutTemplate,
   MessageCircle,
+  CalendarRange,
+  Compass,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { tEn, type TranslateFn } from '@/lib/i18n';
@@ -58,6 +60,9 @@ export interface NavGroup {
   label: string;
   items: NavItem[];
 }
+
+/** Entries of the group tours area: hidden unless the plan has group departures and the agency switched them on. */
+export const GROUP_TOURS_HREFS: ReadonlySet<string> = new Set(['/departures', '/tours']);
 
 function navItem(titleKey: string, href: string, icon: LucideIcon, badgeKey?: NavBadgeKey): NavItem {
   return { titleKey, title: tEn(titleKey), href, icon, ...(badgeKey ? { badgeKey } : {}) };
@@ -89,6 +94,9 @@ export const navigation: NavGroup[] = [
       navItem('nav.items.fleetRateCards', '/fleet/rate-cards', Tag),
       navItem('nav.items.itineraries', '/itineraries', MapIcon),
       navItem('nav.items.itineraryTemplates', '/itineraries/templates', Bookmark),
+      // Group tours: shown only when the plan has group departures and the agency switched them on (the sidebar filters GROUP_TOURS_HREFS).
+      navItem('nav.items.departures', '/departures', CalendarRange),
+      navItem('nav.items.tours', '/tours', Compass),
       navItem('nav.items.rateCards', '/rate-cards', Tag),
       navItem('nav.items.suppliers', '/suppliers', PackageSearch),
       navItem('nav.items.accountsSuppliersView', '/accounts', Building2),
@@ -247,6 +255,7 @@ const STATIC_TITLES: Record<string, string> = {
   '/onboarding': 'nav.titles.onboarding',
   '/settings': 'nav.titles.settings',
   '/settings/ai-usage': 'nav.titles.settingsAiUsage',
+  '/settings/group-tours': 'nav.titles.settingsGroupTours',
   '/campaigns': 'nav.titles.campaigns',
   '/marketing': 'nav.titles.marketing',
   '/assistant': 'nav.titles.assistant',
@@ -263,6 +272,8 @@ const ENTITY_NOUNS: Record<string, string> = {
   '/payments': 'nav.entity.payment',
   '/itineraries': 'nav.entity.itinerary',
   '/itineraries/templates': 'nav.entity.itineraryTemplate',
+  '/tours': 'nav.entity.tour',
+  '/departures': 'nav.entity.departure',
   '/suppliers': 'nav.entity.supplier',
   '/travellers': 'nav.entity.traveller',
   '/visa': 'nav.entity.visaApplication',
