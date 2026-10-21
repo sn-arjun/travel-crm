@@ -21,6 +21,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:integration_test/integration_test.dart';
 
+import 'helpers/agency_login.dart' as agency;
+
 const _phone = String.fromEnvironment('DRIVER_PHONE', defaultValue: '9876543210');
 const _otp = String.fromEnvironment('OTP', defaultValue: '123456');
 const _tripId = String.fromEnvironment('TRIP_ID');
@@ -140,6 +142,8 @@ void main() {
     await Hive.deleteFromDisk();
 
     app.main();
+    // The build carries no agency: a signed-out phone starts on the agency-code screen.
+    await agency.chooseAgency(tester);
     await pumpUntil(tester, find.byKey(const Key('phone-field')));
 
     // ── ready: the script starts screenrecord now ──
