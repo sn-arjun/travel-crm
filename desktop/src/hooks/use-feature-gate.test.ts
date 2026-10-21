@@ -49,6 +49,10 @@ describe('calling country gate (R301)', () => {
 });
 
 describe('tour operator feature keys (R143)', () => {
+  beforeEach(() => {
+    settings.value = { loading: false, features: [], usageCaps: {}, voipCalling: null };
+  });
+
   it.each(['group_departures', 'public_booking', 'coach_trips', 'age_band_pricing', 'margin_scheme', 'quote_acceptance'] as const)(
     '%s is gated by the plan like any other feature',
     (key) => {
