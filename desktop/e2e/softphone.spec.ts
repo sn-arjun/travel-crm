@@ -99,12 +99,17 @@ test.describe('Softphone', () => {
     const contact = await seedContact({ name: `NoCall Caller ${Date.now()}`, phone });
     await seedLead(contact.id, { title: `NoCall Lead ${Date.now()}`, assignedTo: adminId });
 
+    // R135-5: where calling is off the app never even asks for a token (no 403 on every page).
+    const tokenRequests: string[] = [];
+    page.on('request', (req) => { if (req.url().includes('/voip/token')) tokenRequests.push(req.url()); });
+
     const socket = page.waitForEvent('websocket', { predicate: (ws) => ws.url().includes('/ws'), timeout: 20_000 });
     await page.goto('/dashboard');
     await waitForLoad(page);
     await socket;
-    await expect(page.getByTestId('softphone-state')).toHaveAttribute('data-softphone-state', 'unavailable', { timeout: 15_000 });
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(3000);
+    await expect(page.getByTestId('softphone-state')).toHaveCount(0);
+    expect(tokenRequests).toEqual([]);
 
     await simulate('inbound_missed', phone);
     await expect(page.getByTestId('call-screen-pop')).toBeVisible({ timeout: 15_000 });
