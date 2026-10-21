@@ -625,3 +625,5 @@ export interface ReportConfig {
   dateRange: { start: string; end: string };
   filters?: Record<string, unknown>;
 }
+
+export * from './departures';

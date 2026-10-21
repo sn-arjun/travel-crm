@@ -17,7 +17,10 @@ export const VISAS = `(SELECT id FROM visa_applications WHERE traveller_id IN ${
 export const MESSAGES = `(SELECT id FROM message_log WHERE contact_id = ? OR lead_id IN ${LEADS})`;
 export const CALLS = `(SELECT id FROM call_logs WHERE contact_id = ? OR lead_id IN ${LEADS})`;
 export const TRIPS = `(SELECT id FROM trip_assignments WHERE contact_id = ? OR lead_id IN ${LEADS})`;
-export const VOUCHERS = `(SELECT id FROM vouchers WHERE lead_id IN ${LEADS})`;
+/** Seat bookings of the contact (group departures, R139) and the passengers on them or recorded as the contact's travellers. */
+export const SEAT_BOOKINGS = `(SELECT id FROM seat_bookings WHERE contact_id = ? OR lead_id IN ${LEADS})`;
+export const SEAT_PASSENGERS = `(SELECT id FROM seat_passengers WHERE seat_booking_id IN ${SEAT_BOOKINGS} OR traveller_id IN ${TRAVELLERS})`;
+export const VOUCHERS =`(SELECT id FROM vouchers WHERE lead_id IN ${LEADS})`;
 /** The contact, its leads and its travellers: what an `entity_id` column can point at. */
 export const ENTITY_IDS = `(SELECT ? UNION SELECT id FROM leads WHERE contact_id = ? UNION SELECT id FROM travellers WHERE contact_id = ?)`;
 
@@ -74,6 +77,10 @@ export const PRIVACY_TABLES: PrivacyTable[] = [
   { key: 'callLogs', table: 'call_logs', where: `id IN ${CALLS}`, fileColumns: ['recording_r2_key', 'recording_url'] },
   { key: 'callTranscripts', table: 'call_transcripts', where: `call_log_id IN ${CALLS}` },
   { key: 'aiCallExtractions', table: 'ai_call_extractions', where: `call_log_id IN ${CALLS} OR created_contact_id = ?` },
+  { key: 'seatBookings', table: 'seat_bookings', where: `contact_id = ? OR lead_id IN ${LEADS}` },
+  { key: 'seatPassengers', table: 'seat_passengers', where: `seat_booking_id IN ${SEAT_BOOKINGS} OR traveller_id IN ${TRAVELLERS}` },
+  { key: 'passengerExtras', table: 'passenger_extras', where: `seat_passenger_id IN ${SEAT_PASSENGERS}` },
+  { key: 'departureMessageSends', table: 'departure_message_sends', where: 'contact_id = ?' },
   { key: 'tripAssignments', table: 'trip_assignments', where: `id IN ${TRIPS}` },
   { key: 'tripTimeline', table: 'trip_timeline', where: `trip_id IN ${TRIPS}` },
   { key: 'tripCosts', table: 'trip_costs', where: `trip_id IN ${TRIPS}`, fileColumns: ['receipt_url'] },
@@ -105,6 +112,15 @@ export const PRIVACY_NOT_PERSONAL: Record<string, string> = {
   driver_otp_log: 'driver (staff) login codes',
   quotation_links: 'master table; erasure sets is_active = 0 for the contact itineraries (erase-contact.ts step 2)',
   addon_orders: 'master table (R206): an agency buying add-ons from the platform; invoice_id is the platform invoice, not a customer invoice',
+  tours: 'product data: tour definitions, no people (R139)',
+  tour_stops: 'product data: default stops of a tour, no people (R139)',
+  tour_prices: 'product data: prices, no people (R139)',
+  tour_extras: 'product data: optional extras catalogue, no people (R139)',
+  departures: 'product data: dated runs of a tour; staff ids only (tour leader, creator) (R139)',
+  departure_vehicles: 'product data: coaches on a departure; driver ids are staff (R139)',
+  departure_stops: 'product data: stop names and times, no people (R139)',
+  departure_costs: 'agency cost lines of a departure; supplier and staff ids only (R139)',
+  departure_message_rules: 'agency message rules; templates and timing, no people (R139)',
   import_errors: 'handled by the import-row scrub in erase-contact.ts (row_data text match)',
 };
 
