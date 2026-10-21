@@ -6,12 +6,40 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
+type RegulatoryState = 'none' | 'submitted' | 'platform_review' | 'provider_review' | 'approved' | 'rejected';
+
+/** The provider side of a document set (R137): where it stands, why it failed, and the provider's ids. */
+interface Regulatory {
+  state: RegulatoryState;
+  providerStatus: string | null;
+  providerStatusAt: string | null;
+  failureReason: string | null;
+  numberType: string;
+  bundleSid?: string | null;
+  addressSid?: string | null;
+}
+
 interface Doc {
   country: string;
   status: 'pending' | 'approved' | 'rejected';
-  details: { businessName?: string; address?: string; registrationNumber?: string } | null;
-  files: Array<{ name: string; url: string }>;
+  details: Record<string, unknown> | null;
+  files: Array<{ name: string; url?: string; field?: string }>;
   reviewNote: string | null;
+  regulatory?: Regulatory;
+}
+
+/** One field or document a country's regulatory bundle asks for (call_country_policy.kyc_requirements). */
+interface Requirement {
+  key: string;
+  label: string;
+  type: 'text' | 'address' | 'file' | 'date';
+  required: boolean;
+}
+
+interface CountryPolicy {
+  country: string;
+  kycRequired: boolean;
+  kycRequirements: Requirement[] | null;
 }
 
 interface NumberRow {
@@ -63,6 +91,38 @@ const FRAUD_LABELS: Record<string, string> = {
   blocked_destination: 'Calls to a blocked or not-allowed destination were refused',
 };
 
+const STATE_LABELS: Record<RegulatoryState, string> = {
+  none: 'Not started',
+  submitted: 'Submitted',
+  platform_review: 'Platform review',
+  provider_review: 'Provider review',
+  approved: 'Approved',
+  rejected: 'Rejected',
+};
+
+/** What each state means for the operator, so the next step is clear. */
+const STATE_HELP: Record<RegulatoryState, string> = {
+  none: 'Nothing sent yet.',
+  submitted: 'Waiting for your decision. Approving also submits the bundle to the phone provider.',
+  platform_review: 'You approved the documents but the bundle is not with the provider. Submit it again.',
+  provider_review: 'With the phone provider. Use Refresh status to ask for the latest result.',
+  approved: 'The provider approved the bundle. The agency can buy numbers.',
+  rejected: 'Rejected. The agency has to correct and send the documents again.',
+};
+
+/** A stored answer as one line: an address object reads "Street, 1234 AB City". */
+function showValue(value: unknown): string {
+  if (value == null || value === '') return '-';
+  if (typeof value === 'object') {
+    const a = value as { street?: string; postalCode?: string; city?: string; region?: string };
+    const line = [a.street, [a.postalCode, a.city].filter(Boolean).join(' '), a.region].filter(Boolean).join(', ');
+    return line || JSON.stringify(value);
+  }
+  return String(value);
+}
+
+const humanize = (key: string) => key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
+
 const REASONS: Record<string, string> = {
   trial_not_allowed: 'Calling is not included in the free trial.',
   country_not_set: 'The agency has not set its country.',
@@ -82,9 +142,10 @@ export function CallingPanel({ tenantId }: { tenantId: string }) {
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [countries, setCountries] = useState<string | null>(null);
   const [ceiling, setCeiling] = useState<string | null>(null);
+  const [policies, setPolicies] = useState<CountryPolicy[]>([]);
 
   const load = useCallback(async () => {
-    const [res, settings] = await Promise.all([fetch(`/api/tenants/${tenantId}/voip`), fetch('/api/voip/settings')]);
+    const [res, settings, policy] = await Promise.all([fetch(`/api/tenants/${tenantId}/voip`), fetch('/api/voip/settings'), fetch('/api/voip/country-policy')]);
     const body = (await res.json()) as CallingState & { error?: string };
     if (!res.ok) {
       setMessage(body.error || 'Could not load calling');
@@ -92,23 +153,38 @@ export function CallingPanel({ tenantId }: { tenantId: string }) {
     }
     setState(body);
     if (settings.ok) setTrial(((await settings.json()) as { callingOnTrial: boolean }).callingOnTrial);
+    // Without the policy list the documents still show; they just read as a country without a provider bundle.
+    if (policy.ok) setPolicies((await policy.json()) as CountryPolicy[]);
   }, [tenantId]);
 
   useEffect(() => {
     load().catch(() => setMessage('Could not load calling'));
   }, [load]);
 
-  const act = async (path: string, method: string, body?: unknown, confirmText?: string) => {
-    if (confirmText && !window.confirm(confirmText)) return;
+  /** Runs one action and reloads. Returns the response body, or null when the action failed (the message says why). */
+  const act = async (path: string, method: string, body?: unknown, confirmText?: string): Promise<Record<string, unknown> | null> => {
+    if (confirmText && !window.confirm(confirmText)) return null;
     setBusy(true);
     setMessage('');
     const res = await fetch(path, { method, headers: { 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
     setBusy(false);
     if (!res.ok) {
       setMessage(((await res.json().catch(() => ({}))) as { error?: string }).error || 'The action failed');
-      return;
+      // A failed hand-over to the provider still changes the row (submit_failed and its reason), so show it.
+      await load();
+      return null;
     }
+    const result = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     await load();
+    return result;
+  };
+
+  /** Approve the documents. In a bundle country the approval also hands the bundle to the provider; say when that failed. */
+  const approve = async (country: string) => {
+    const result = await act(`/api/tenants/${tenantId}/voip/documents/${country}`, 'PUT', { status: 'approved' });
+    if (result && typeof result.submitError === 'string' && result.submitError) {
+      setMessage(`Approved, but the provider did not take the bundle: ${result.submitError}`);
+    }
   };
 
   if (!state) return <p className="text-sm text-muted-foreground">{message || 'Loading...'}</p>;
@@ -243,41 +319,26 @@ export function CallingPanel({ tenantId }: { tenantId: string }) {
         <CardContent className="space-y-3">
           {state.documents.length === 0 && <p className="text-sm text-muted-foreground">Nothing submitted.</p>}
           {state.documents.map((d) => (
-            <div key={d.country} className="rounded-md border p-3 text-sm space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="font-medium">{d.country}</span>
-                <Badge variant={d.status === 'approved' ? 'default' : 'outline'}>{d.status}</Badge>
-              </div>
-              <p className="text-muted-foreground">
-                {d.details?.businessName} - {d.details?.address}
-                {d.details?.registrationNumber ? ` - ${d.details.registrationNumber}` : ''}
-              </p>
-              {d.files.map((f) => (
-                <p key={f.url}>
-                  <a className="underline" href={f.url} target="_blank" rel="noreferrer">{f.name}</a>
-                </p>
-              ))}
-              {d.reviewNote && <p className="text-muted-foreground">Note: {d.reviewNote}</p>}
-              {d.status === 'pending' && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button size="sm" disabled={busy} onClick={() => act(`/api/tenants/${tenantId}/voip/documents/${d.country}`, 'PUT', { status: 'approved' })}>Approve</Button>
-                  <Input
-                    className="max-w-xs"
-                    placeholder="Reason for rejecting"
-                    value={notes[d.country] ?? ''}
-                    onChange={(e) => setNotes((n) => ({ ...n, [d.country]: e.target.value }))}
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={busy || !(notes[d.country] ?? '').trim()}
-                    onClick={() => act(`/api/tenants/${tenantId}/voip/documents/${d.country}`, 'PUT', { status: 'rejected', note: notes[d.country] })}
-                  >
-                    Reject
-                  </Button>
-                </div>
-              )}
-            </div>
+            <DocumentCard
+              key={d.country}
+              doc={d}
+              policy={policies.find((p) => p.country === d.country)}
+              busy={busy}
+              note={notes[d.country] ?? ''}
+              onNote={(value) => setNotes((n) => ({ ...n, [d.country]: value }))}
+              onApprove={() => approve(d.country)}
+              onReject={() => act(`/api/tenants/${tenantId}/voip/documents/${d.country}`, 'PUT', { status: 'rejected', note: notes[d.country] })}
+              onSubmit={() => act(`/api/tenants/${tenantId}/voip/documents/${d.country}/submit-to-provider`, 'POST')}
+              onRefresh={() => act(`/api/tenants/${tenantId}/voip/documents/${d.country}/refresh-status`, 'POST')}
+              onReset={() =>
+                act(
+                  `/api/tenants/${tenantId}/voip/documents/${d.country}/reset`,
+                  'POST',
+                  undefined,
+                  'Forget the provider bundle for this agency? The bundle at the provider is left as it is; you can submit the documents again afterwards.',
+                )
+              }
+            />
           ))}
         </CardContent>
       </Card>
@@ -323,6 +384,127 @@ export function CallingPanel({ tenantId }: { tenantId: string }) {
             </label>
           </CardContent>
         </Card>
+      )}
+    </div>
+  );
+}
+
+interface DocumentCardProps {
+  doc: Doc;
+  policy: CountryPolicy | undefined;
+  busy: boolean;
+  note: string;
+  onNote: (value: string) => void;
+  onApprove: () => void;
+  onReject: () => void;
+  onSubmit: () => void;
+  onRefresh: () => void;
+  onReset: () => void;
+}
+
+/**
+ * One country's number documents (R141-3): what the agency sent, where the provider bundle stands, and the actions that move
+ * it on: approve (which submits to the provider in a bundle country), reject, submit again, refresh the status, reset.
+ */
+function DocumentCard({ doc: d, policy, busy, note, onNote, onApprove, onReject, onSubmit, onRefresh, onReset }: DocumentCardProps) {
+  const requirements = policy?.kycRequired && policy.kycRequirements && policy.kycRequirements.length > 0 ? policy.kycRequirements : null;
+  const bundle = requirements !== null;
+  const reg = d.regulatory;
+  const regState: RegulatoryState = reg?.state ?? (d.status === 'pending' ? 'submitted' : d.status);
+  const details = d.details ?? {};
+  const fields: Array<[string, string]> = requirements
+    ? requirements.filter((r) => r.type !== 'file').map((r) => [r.label, showValue(details[r.key])])
+    : Object.entries(details).map(([k, v]) => [humanize(k), showValue(v)]);
+  const fileLabel = (field?: string) => requirements?.find((r) => r.key === field)?.label ?? field;
+  const withProvider = !!reg?.bundleSid || !!reg?.providerStatus;
+
+  return (
+    <div className="rounded-md border p-3 text-sm space-y-3" data-testid={`document-${d.country}`} data-state={regState}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-medium">{d.country}</span>
+        <Badge variant={d.status === 'approved' ? 'default' : 'outline'} data-testid="document-review-status">{d.status}</Badge>
+        {bundle && (
+          <Badge variant={regState === 'rejected' ? 'destructive' : regState === 'approved' ? 'default' : 'secondary'} data-testid="document-bundle-state">
+            {STATE_LABELS[regState]}
+          </Badge>
+        )}
+        {bundle && reg?.numberType && <span className="text-xs text-muted-foreground">number type: {reg.numberType}</span>}
+      </div>
+
+      {bundle && <p className="text-muted-foreground">{STATE_HELP[regState]}</p>}
+
+      <dl className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-[minmax(10rem,auto)_1fr]">
+        {fields.map(([label, value]) => (
+          <div key={label} className="contents">
+            <dt className="text-muted-foreground">{label}</dt>
+            <dd data-testid="document-field">{value}</dd>
+          </div>
+        ))}
+      </dl>
+
+      {d.files.length > 0 && (
+        <ul className="space-y-1">
+          {d.files.map((f, i) => (
+            <li key={`${f.name}-${i}`}>
+              {f.url ? (
+                <a className="underline" href={f.url} target="_blank" rel="noreferrer">{f.name}</a>
+              ) : (
+                <span>{f.name}</span>
+              )}
+              {fileLabel(f.field) && <span className="text-muted-foreground"> ({fileLabel(f.field)}{f.url ? '' : ', uploaded file'})</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {d.reviewNote && <p className="text-muted-foreground">Note: {d.reviewNote}</p>}
+
+      {bundle && (
+        <div className="rounded-md bg-muted/40 p-2 space-y-1" data-testid="document-provider">
+          <p>
+            Provider status: <span className="font-mono">{reg?.providerStatus ?? 'not submitted'}</span>
+            {reg?.providerStatusAt && <span className="text-muted-foreground"> at {new Date(reg.providerStatusAt).toLocaleString()}</span>}
+          </p>
+          {reg?.bundleSid && (
+            <p className="font-mono text-xs text-muted-foreground">
+              Bundle {reg.bundleSid}
+              {reg.addressSid ? ` / address ${reg.addressSid}` : ''}
+            </p>
+          )}
+          {reg?.failureReason && <p className="text-destructive" data-testid="document-failure">Failure reason: {reg.failureReason}</p>}
+        </div>
+      )}
+
+      {d.status === 'pending' && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" disabled={busy} onClick={onApprove} data-testid="document-approve">
+            {bundle ? 'Approve and submit to provider' : 'Approve'}
+          </Button>
+          <Input className="max-w-xs" placeholder="Reason for rejecting" value={note} onChange={(e) => onNote(e.target.value)} />
+          <Button size="sm" variant="outline" disabled={busy || !note.trim()} onClick={onReject}>
+            Reject
+          </Button>
+        </div>
+      )}
+
+      {bundle && d.status === 'approved' && (
+        <div className="flex flex-wrap items-center gap-2">
+          {regState !== 'approved' && regState !== 'provider_review' && (
+            <Button size="sm" disabled={busy} onClick={onSubmit} data-testid="document-submit">
+              Submit to provider
+            </Button>
+          )}
+          {reg?.bundleSid && (
+            <Button size="sm" variant="outline" disabled={busy} onClick={onRefresh} data-testid="document-refresh">
+              Refresh status
+            </Button>
+          )}
+          {withProvider && (
+            <Button size="sm" variant="outline" disabled={busy} onClick={onReset} data-testid="document-reset">
+              Reset
+            </Button>
+          )}
+        </div>
       )}
     </div>
   );

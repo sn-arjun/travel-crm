@@ -38,6 +38,11 @@ function packPrice(units: number, unitCost: number, marginPct: number, currency:
   return Math.ceil(Math.round(units * unitCost * (1 + marginPct / 100) * factor * 1e6) / 1e6) / factor;
 }
 
+/** A provider text that starts with DRAFT marks a placeholder row (migration master 0029: "DRAFT: enter Twilio's NL price before selling"). */
+function isDraftProvider(provider: string): boolean {
+  return provider.trim().toUpperCase().startsWith('DRAFT');
+}
+
 async function send(path: string, method: 'PUT' | 'POST', body: unknown): Promise<string | null> {
   const res = await fetch(`/api/catalogue${path}`, {
     method,
@@ -295,22 +300,38 @@ function UnitCostRow({ unitCost, packs, onDone }: { unitCost: CatalogueUnitCost;
   const [provider, setProvider] = useState(unitCost.provider);
   const [active, setActive] = useState(unitCost.isActive);
 
-  const save = async () =>
+  // A row whose provider text starts with DRAFT holds a placeholder cost (the NL rows of R137), not a price from the provider.
+  const draft = isDraftProvider(unitCost.provider);
+  const costUnchanged = Number(cost) === unitCost.unitCost;
+  // Client-side guard: a draft row is switched on only together with a real unit cost. The backend accepts the edit as it always did.
+  const activationBlocked = draft && active && !unitCost.isActive && costUnchanged;
+
+  const save = async () => {
+    if (activationBlocked) return;
     onDone(
       await send(`/unit-costs/${unitCost.id}`, 'PUT', { unitCost: Number(cost), marginPct: Number(margin), provider, isActive: active }),
       `Saved the ${unitCost.channel} cost`,
     );
+  };
 
   return (
-    <div className="rounded-md border p-3 space-y-2">
+    <div className="rounded-md border p-3 space-y-2" data-testid={`unit-cost-${unitCost.channel}-${unitCost.market}`} data-draft={draft ? 'true' : 'false'}>
       <div className="flex flex-wrap items-end gap-2">
         <Badge variant="outline">{unitCost.channel} / {unitCost.market}</Badge>
+        {draft && <Badge variant="destructive" data-testid="draft-price-flag">Draft price</Badge>}
         <Labeled label="Provider"><Input className="w-32" value={provider} onChange={(e) => setProvider(e.target.value)} /></Labeled>
         <Labeled label={`Unit cost (${unitCost.currency})`}><Input className="w-28" type="number" min={0} step="any" value={cost} onChange={(e) => setCost(e.target.value)} /></Labeled>
         <Labeled label="Margin %"><Input className="w-24" type="number" min={0} value={margin} onChange={(e) => setMargin(e.target.value)} /></Labeled>
         <label className="flex items-center gap-2 text-sm pb-2"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Active</label>
-        <Button size="sm" variant="outline" onClick={save}>Save</Button>
+        <Button size="sm" variant="outline" onClick={save} disabled={activationBlocked} data-testid="unit-cost-save">Save</Button>
       </div>
+      {draft && (
+        <p className="text-xs text-destructive" data-testid="draft-price-help">
+          {activationBlocked
+            ? 'This is a placeholder cost. Enter the provider price in Unit cost before you activate the row.'
+            : 'Provider text starts with DRAFT: replace it with the provider and enter the real price before selling.'}
+        </p>
+      )}
       {packs.length > 0 && (
         <ul className="text-sm text-muted-foreground">
           {packs.map((p) => (
