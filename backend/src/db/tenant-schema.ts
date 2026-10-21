@@ -1537,12 +1537,17 @@ export const drivers = sqliteTable('drivers', {
   totalTrips: integer('total_trips').default(0),
   dateOfJoining: text('date_of_joining'),
   notes: text('notes'),
+  // R145: crew role (driver, tour_leader, both) and the staff user this crew member is, if any (via 0059_coach_trip_stops.sql)
+  crewRole: text('crew_role').notNull().default('driver'),
+  userId: text('user_id').references(() => users.id),
   isDeleted: integer('is_deleted').default(0),
   createdBy: text('created_by').references(() => users.id),
   createdAt: text('created_at').default(timestamp),
   updatedAt: text('updated_at').default(timestamp),
 }, (table) => [
   index('drivers_tenant_id_idx').on(table.tenantId),
+  index('drivers_crew_role_idx').on(table.crewRole),
+  index('drivers_user_id_idx').on(table.userId),
   index('drivers_phone_idx').on(table.phone),
   index('drivers_status_idx').on(table.status),
   index('drivers_is_deleted_idx').on(table.isDeleted),
@@ -1635,11 +1640,18 @@ export const tripAssignments = sqliteTable('trip_assignments', {
   contactId: text('contact_id').references(() => contacts.id),
   invoiceId: text('invoice_id').references(() => invoices.id),
   voucherId: text('voucher_id').references(() => vouchers.id),
+  // R145: coach trips (via 0059_coach_trip_stops.sql)
+  departureId: text('departure_id').references(() => departures.id),
+  tripKind: text('trip_kind').notNull().default('transfer'), // transfer, coach
+  tourLeaderId: text('tour_leader_id').references(() => drivers.id),
   isDeleted: integer('is_deleted').default(0),
   createdAt: text('created_at').default(timestamp),
   updatedAt: text('updated_at').default(timestamp),
 }, (table) => [
   index('trip_assignments_tenant_id_idx').on(table.tenantId),
+  index('trip_assignments_departure_idx').on(table.departureId),
+  index('trip_assignments_tour_leader_idx').on(table.tourLeaderId),
+  index('trip_assignments_kind_idx').on(table.tripKind),
   index('trip_assignments_lead_id_idx').on(table.leadId),
   index('trip_assignments_vehicle_id_idx').on(table.vehicleId),
   index('trip_assignments_driver_id_idx').on(table.driverId),
@@ -1679,6 +1691,57 @@ export const tripTimeline = sqliteTable('trip_timeline', {
 }, (table) => [
   index('trip_timeline_trip_id_idx').on(table.tripId),
   index('trip_timeline_status_idx').on(table.status),
+]);
+
+// R145: the ordered stops of a coach trip and the passengers boarding at them (docs/readiness/TOUR-OPERATOR-DESIGN.md 3.3)
+export const tripStops = sqliteTable('trip_stops', {
+  id: text('id').primaryKey(),
+  tripId: text('trip_id').notNull().references(() => tripAssignments.id, { onDelete: 'cascade' }),
+  departureStopId: text('departure_stop_id'), // null for a trip with no departure
+  sortOrder: integer('sort_order').notNull().default(0),
+  name: text('name').notNull(),
+  address: text('address'),
+  lat: real('lat'),
+  lng: real('lng'),
+  scheduledAt: text('scheduled_at'), // UTC ISO
+  documentsCheck: integer('documents_check').notNull().default(0),
+  status: text('status').notNull().default('pending'), // pending, arrived, departed, skipped
+  arrivedAt: text('arrived_at'),
+  departedAt: text('departed_at'),
+  arrivedLat: real('arrived_lat'),
+  arrivedLng: real('arrived_lng'),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('trip_stops_trip_idx').on(table.tripId, table.sortOrder),
+]);
+
+export const tripPassengers = sqliteTable('trip_passengers', {
+  id: text('id').primaryKey(),
+  tripId: text('trip_id').notNull().references(() => tripAssignments.id, { onDelete: 'cascade' }),
+  tripStopId: text('trip_stop_id').references(() => tripStops.id, { onDelete: 'set null' }),
+  seatPassengerId: text('seat_passenger_id').references(() => seatPassengers.id, { onDelete: 'set null' }), // null for an ad-hoc passenger
+  contactId: text('contact_id').references(() => contacts.id),
+  name: text('name').notNull(),
+  phone: text('phone'),
+  seats: integer('seats').notNull().default(1),
+  boardingStatus: text('boarding_status').notNull().default('pending'), // pending, boarded, no_show
+  boardedAt: text('boarded_at'),
+  markedByDriverId: text('marked_by_driver_id'),
+  markedByUserId: text('marked_by_user_id'),
+  documentsChecked: integer('documents_checked').notNull().default(0),
+  documentsCheckedAt: text('documents_checked_at'),
+  lastOpId: text('last_op_id'), // idempotency for offline ticks from the app
+  boardingOpAt: text('boarding_op_at'), // clock time of the tick last applied; an older tick arriving later is ignored
+  documentsOpAt: text('documents_op_at'),
+  notes: text('notes'),
+  createdAt: text('created_at').default(timestamp),
+  updatedAt: text('updated_at').default(timestamp),
+}, (table) => [
+  index('trip_passengers_trip_idx').on(table.tripId, table.tripStopId),
+  index('trip_passengers_stop_idx').on(table.tripStopId),
+  index('trip_passengers_seat_passenger_idx').on(table.seatPassengerId),
+  index('trip_passengers_contact_idx').on(table.contactId),
 ]);
 
 // ============================================================

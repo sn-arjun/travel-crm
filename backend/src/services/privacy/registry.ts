@@ -16,10 +16,13 @@ export const ITINERARY_DAYS = `(SELECT id FROM itinerary_days WHERE itinerary_id
 export const VISAS = `(SELECT id FROM visa_applications WHERE traveller_id IN ${TRAVELLERS} OR lead_id IN ${LEADS})`;
 export const MESSAGES = `(SELECT id FROM message_log WHERE contact_id = ? OR lead_id IN ${LEADS})`;
 export const CALLS = `(SELECT id FROM call_logs WHERE contact_id = ? OR lead_id IN ${LEADS})`;
-export const TRIPS = `(SELECT id FROM trip_assignments WHERE contact_id = ? OR lead_id IN ${LEADS})`;
+/** Trips booked for the contact or its leads. Erasure rewrites these rows whole, so it uses this set and never the wider TRIPS. */
+export const OWN_TRIPS = `(SELECT id FROM trip_assignments WHERE contact_id = ? OR lead_id IN ${LEADS})`;
 /** Seat bookings of the contact (group departures, R139) and the passengers on them or recorded as the contact's travellers. */
 export const SEAT_BOOKINGS = `(SELECT id FROM seat_bookings WHERE contact_id = ? OR lead_id IN ${LEADS})`;
 export const SEAT_PASSENGERS = `(SELECT id FROM seat_passengers WHERE seat_booking_id IN ${SEAT_BOOKINGS} OR traveller_id IN ${TRAVELLERS})`;
+/** Trips of the contact (OWN_TRIPS) and the coach trips the contact rides on as a passenger (R145). Used for export; the other passengers of such a trip are not the contact's data. */
+export const TRIPS = `(SELECT id FROM trip_assignments WHERE id IN ${OWN_TRIPS} OR id IN (SELECT trip_id FROM trip_passengers WHERE contact_id = ? OR seat_passenger_id IN ${SEAT_PASSENGERS}))`;
 export const VOUCHERS =`(SELECT id FROM vouchers WHERE lead_id IN ${LEADS})`;
 /** The contact, its leads and its travellers: what an `entity_id` column can point at. */
 export const ENTITY_IDS = `(SELECT ? UNION SELECT id FROM leads WHERE contact_id = ? UNION SELECT id FROM travellers WHERE contact_id = ?)`;
@@ -81,6 +84,7 @@ export const PRIVACY_TABLES: PrivacyTable[] = [
   { key: 'seatPassengers', table: 'seat_passengers', where: `seat_booking_id IN ${SEAT_BOOKINGS} OR traveller_id IN ${TRAVELLERS}` },
   { key: 'passengerExtras', table: 'passenger_extras', where: `seat_passenger_id IN ${SEAT_PASSENGERS}` },
   { key: 'departureMessageSends', table: 'departure_message_sends', where: 'contact_id = ?' },
+  { key: 'tripPassengers', table: 'trip_passengers', where: `contact_id = ? OR trip_id IN ${OWN_TRIPS} OR seat_passenger_id IN ${SEAT_PASSENGERS}` },
   { key: 'tripAssignments', table: 'trip_assignments', where: `id IN ${TRIPS}` },
   { key: 'tripTimeline', table: 'trip_timeline', where: `trip_id IN ${TRIPS}` },
   { key: 'tripCosts', table: 'trip_costs', where: `trip_id IN ${TRIPS}`, fileColumns: ['receipt_url'] },
@@ -119,6 +123,7 @@ export const PRIVACY_NOT_PERSONAL: Record<string, string> = {
   departures: 'product data: dated runs of a tour; staff ids only (tour leader, creator) (R139)',
   departure_vehicles: 'product data: coaches on a departure; driver ids are staff (R139)',
   departure_stops: 'product data: stop names and times, no people (R139)',
+  trip_stops: 'stop names and times of a coach trip, no people (R145)',
   departure_costs: 'agency cost lines of a departure; supplier and staff ids only (R139)',
   departure_message_rules: 'agency message rules; templates and timing, no people (R139)',
   import_errors: 'handled by the import-row scrub in erase-contact.ts (row_data text match)',

@@ -10,6 +10,7 @@ import {
   VISAS,
   MESSAGES,
   CALLS,
+  OWN_TRIPS,
   TRIPS,
   VOUCHERS,
   SEAT_BOOKINGS,
@@ -249,6 +250,7 @@ export async function eraseContact(
 
   // Group departures (R139): passengers are anonymised and unlinked from the traveller (deleted below); the seat counts stay
   steps.push(
+    step('trip_passengers', `UPDATE trip_passengers SET name = 'Erased', phone = NULL, notes = NULL, contact_id = NULL WHERE contact_id = ? OR trip_id IN ${OWN_TRIPS} OR seat_passenger_id IN ${SEAT_PASSENGERS}`, contactId),
     step('seat_passengers', `UPDATE seat_passengers SET first_name = 'Erased', last_name = '', gender = NULL, date_of_birth = NULL, meal_preference = NULL, extra_fields = NULL, room_group = NULL, traveller_id = NULL WHERE id IN ${SEAT_PASSENGERS}`, contactId),
     step('seat_bookings', `UPDATE seat_bookings SET notes = NULL, room_notes = NULL, cancel_reason = NULL WHERE id IN ${SEAT_BOOKINGS}`, contactId),
     step('departure_message_sends', `UPDATE departure_message_sends SET contact_id = NULL, detail = NULL WHERE contact_id = ?`, contactId)
@@ -266,8 +268,8 @@ export async function eraseContact(
 
   // Kept for tax or operations, personal fields cleared
   steps.push(
-    step('trip_timeline', `UPDATE trip_timeline SET notes = NULL, latitude = NULL, longitude = NULL WHERE trip_id IN ${TRIPS}`, contactId),
-    step('trip_assignments', `UPDATE trip_assignments SET passenger_name = 'Erased', passenger_phone = NULL, special_instructions = NULL, pickup_location = NULL, drop_location = NULL, cancellation_reason = NULL, contact_id = NULL WHERE id IN ${TRIPS}`, contactId),
+    step('trip_timeline', `UPDATE trip_timeline SET notes = NULL, latitude = NULL, longitude = NULL WHERE trip_id IN ${OWN_TRIPS}`, contactId),
+    step('trip_assignments', `UPDATE trip_assignments SET passenger_name = 'Erased', passenger_phone = NULL, special_instructions = NULL, pickup_location = NULL, drop_location = NULL, cancellation_reason = NULL, contact_id = NULL WHERE id IN ${OWN_TRIPS}`, contactId),
     step('invoices', `UPDATE invoices SET notes = NULL, payment_link = NULL, payment_link_id = NULL, payment_link_url = NULL, payment_link_status = NULL, payment_link_gateway = NULL WHERE contact_id = ? OR lead_id IN ${LEADS}`, contactId),
     step('payments', `UPDATE payments SET notes = NULL, receipt_url = NULL WHERE contact_id = ? OR invoice_id IN ${INVOICES}`, contactId),
     step('itineraries', `UPDATE itineraries SET title = 'Erased itinerary', notes = NULL, share_token = NULL, share_link_active = 0 WHERE lead_id IN ${LEADS}`, contactId),

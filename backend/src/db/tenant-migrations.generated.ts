@@ -1098,5 +1098,27 @@ export const TENANT_MIGRATIONS: BundledMigration[] = [
       "ALTER TABLE payment_gateway_accounts_new RENAME TO payment_gateway_accounts",
       "CREATE UNIQUE INDEX IF NOT EXISTS payment_gateway_accounts_gateway_idx ON payment_gateway_accounts(gateway)"
     ]
+  },
+  {
+    "name": "0059_coach_trip_stops.sql",
+    "queries": [
+      "-- R145: coach trips with ordered stops and passenger check-in (docs/readiness/TOUR-OPERATOR-DESIGN.md section 3.3).\n--\n-- A trip_assignments row stays one vehicle with one driver. A coach trip (trip_kind = 'coach') additionally carries an ordered list of\n-- stops (trip_stops) and the passengers boarding at them (trip_passengers), each with a boarded / no-show tick and a documents-checked\n-- mark. A trip made from a departure remembers it (departure_id); its stops and passengers are copies, so editing the trip never\n-- changes the departure.\n--\n-- A tour leader is a driver row with crew_role 'tour_leader' (or 'both'). drivers.user_id optionally links the crew member to a\n-- staff user, so the desktop can show \"my trips\".\n\nALTER TABLE trip_assignments ADD COLUMN departure_id TEXT REFERENCES departures(id)",
+      "ALTER TABLE trip_assignments ADD COLUMN trip_kind TEXT NOT NULL DEFAULT 'transfer' CHECK (trip_kind IN ('transfer', 'coach'))",
+      "ALTER TABLE trip_assignments ADD COLUMN tour_leader_id TEXT REFERENCES drivers(id)",
+      "CREATE INDEX IF NOT EXISTS trip_assignments_departure_idx ON trip_assignments(departure_id)",
+      "CREATE INDEX IF NOT EXISTS trip_assignments_tour_leader_idx ON trip_assignments(tour_leader_id)",
+      "CREATE INDEX IF NOT EXISTS trip_assignments_kind_idx ON trip_assignments(trip_kind)",
+      "ALTER TABLE drivers ADD COLUMN crew_role TEXT NOT NULL DEFAULT 'driver' CHECK (crew_role IN ('driver', 'tour_leader', 'both'))",
+      "ALTER TABLE drivers ADD COLUMN user_id TEXT REFERENCES users(id)",
+      "CREATE INDEX IF NOT EXISTS drivers_crew_role_idx ON drivers(crew_role)",
+      "CREATE INDEX IF NOT EXISTS drivers_user_id_idx ON drivers(user_id)",
+      "CREATE TABLE IF NOT EXISTS trip_stops (\n  id TEXT PRIMARY KEY,\n  trip_id TEXT NOT NULL REFERENCES trip_assignments(id) ON DELETE CASCADE,\n  departure_stop_id TEXT,\n  sort_order INTEGER NOT NULL DEFAULT 0,\n  name TEXT NOT NULL,\n  address TEXT,\n  lat REAL,\n  lng REAL,\n  scheduled_at TEXT,\n  documents_check INTEGER NOT NULL DEFAULT 0,\n  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'arrived', 'departed', 'skipped')),\n  arrived_at TEXT,\n  departed_at TEXT,\n  arrived_lat REAL,\n  arrived_lng REAL,\n  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\n  updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))\n)",
+      "CREATE INDEX IF NOT EXISTS trip_stops_trip_idx ON trip_stops(trip_id, sort_order)",
+      "CREATE TABLE IF NOT EXISTS trip_passengers (\n  id TEXT PRIMARY KEY,\n  trip_id TEXT NOT NULL REFERENCES trip_assignments(id) ON DELETE CASCADE,\n  trip_stop_id TEXT REFERENCES trip_stops(id) ON DELETE SET NULL,\n  seat_passenger_id TEXT REFERENCES seat_passengers(id) ON DELETE SET NULL,\n  contact_id TEXT REFERENCES contacts(id),\n  name TEXT NOT NULL,\n  phone TEXT,\n  seats INTEGER NOT NULL DEFAULT 1,\n  boarding_status TEXT NOT NULL DEFAULT 'pending' CHECK (boarding_status IN ('pending', 'boarded', 'no_show')),\n  boarded_at TEXT,\n  marked_by_driver_id TEXT,\n  marked_by_user_id TEXT,\n  documents_checked INTEGER NOT NULL DEFAULT 0,\n  documents_checked_at TEXT,\n  last_op_id TEXT,\n  -- Time (the app's clock) of the tick last applied to each part; an older tick that arrives later is ignored.\n  boarding_op_at TEXT,\n  documents_op_at TEXT,\n  notes TEXT,\n  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\n  updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))\n)",
+      "CREATE INDEX IF NOT EXISTS trip_passengers_trip_idx ON trip_passengers(trip_id, trip_stop_id)",
+      "CREATE INDEX IF NOT EXISTS trip_passengers_stop_idx ON trip_passengers(trip_stop_id)",
+      "CREATE INDEX IF NOT EXISTS trip_passengers_seat_passenger_idx ON trip_passengers(seat_passenger_id)",
+      "CREATE INDEX IF NOT EXISTS trip_passengers_contact_idx ON trip_passengers(contact_id)"
+    ]
   }
 ];
