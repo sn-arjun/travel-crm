@@ -141,6 +141,7 @@ export async function handleEmailJob(job: EmailJob, env: Env): Promise<void> {
       bcc: job.bcc,
       attachments: job.attachments,
       unsubscribeUrl: job.unsubscribeUrl,
+      ...(job.tenantId ? { tenantId: job.tenantId } : {}),
       ...(job.templateId && job.templateData ? { templateId: job.templateId, templateData: job.templateData } : {}),
     });
     result = { success: sent.success, messageId: sent.messageId, error: sent.error };

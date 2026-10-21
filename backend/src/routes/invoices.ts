@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
-import { emitFromRequest } from '../services/automation/events';
+import { emitFromRequest, requestDepth } from '../services/automation/events';
+import { createInvoice, InvoiceContactNotFound } from '../services/domain/invoices';
 import { zValidator } from '../utils/validator';
 import { z } from 'zod';
 import type { AppContext } from '../types';
@@ -232,169 +233,11 @@ invoiceRoutes.post('/', zValidator('json', createInvoiceSchema), async (c) => {
   const data = c.req.valid('json');
 
   try {
-    const localeCtx = await loadLocaleContext(tenantDb);
-    const currency = (data.currency ?? localeCtx.currency).toUpperCase();
-    // Verify contact exists
-    const buyer = await loadTaxBuyer(tenantDb, data.contactId);
-    if (!buyer) {
-      return notFound(c, 'Contact');
-    }
-
-    // Tax follows the agency's own tax system (settings) and the buyer, and is stored on the invoice
-    const { regime, seller } = await loadTaxSettings(tenantDb);
-    let doc;
-    try {
-      doc = computeDocumentTotals(data.items, data.discountType, data.discountValue, { regime, seller, buyer, gstDefaultRate: data.gstRate });
-    } catch (e) {
-      if (e instanceof TaxConfigError) return error(c, e.message, 400);
-      throw e;
-    }
-    const taxCols = taxColumns(doc.tax);
-    const totals = {
-      subtotal: doc.subtotal,
-      discountAmount: doc.discountAmount,
-      taxableAmount: doc.taxableAmount,
-      cgst: doc.tax.cgst,
-      sgst: doc.tax.sgst,
-      igst: doc.tax.igst,
-      vatAmount: doc.tax.vatAmount,
-      totalTax: doc.tax.totalTax,
-      total: doc.total,
-    };
-
-    // Generate invoice number
-    const { invoiceNumber } = await generateInvoiceNumber(tenantDb, data.type);
-
-    const agencyBank = data.bankDetails ? null : await loadAgencyBankDetails(tenantDb);
-    const bankSnapshot = data.bankDetails
-      ? JSON.stringify(data.bankDetails)
-      : agencyBank && Object.keys(agencyBank.details).length > 0
-        ? JSON.stringify(agencyBank.details)
-        : null;
-
-    // Create invoice
-    const invoiceId = generateId();
-    const now = new Date().toISOString();
-
-    await tenantDb
-      .prepare(
-        `INSERT INTO invoices (
-          id, contact_id, lead_id, invoice_number, type, subtotal,
-          discount_type, discount_value, discount_amount, taxable_amount,
-          tax_type, cgst, sgst, igst, vat_amount, total_tax, total,
-          currency, status, due_date, paid_amount, balance_due, notes,
-          bank_details, created_by, created_at, updated_at, issue_date, terms,
-          tax_regime, tax_breakdown, seller_tax_id, buyer_tax_id, place_of_supply, tax_notes
-        ) VALUES (
-          ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
-          ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20,
-          ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29,
-          ?30, ?31, ?32, ?33, ?34, ?35
-        )`
-      )
-      .bind(
-        invoiceId,
-        data.contactId,
-        data.leadId || null,
-        invoiceNumber,
-        data.type,
-        totals.subtotal,
-        data.discountType || null,
-        data.discountValue || null,
-        totals.discountAmount,
-        totals.taxableAmount,
-        taxCols.tax_type,
-        totals.cgst,
-        totals.sgst,
-        totals.igst,
-        totals.vatAmount,
-        totals.totalTax,
-        totals.total,
-        currency,
-        'draft', // status
-        data.dueDate || null,
-        0, // paid_amount
-        totals.total, // balance_due
-        data.notes || null,
-        // An invoice keeps the bank details it was issued with: the ones sent, else the agency's current ones.
-        bankSnapshot,
-        userId,
-        now,
-        now,
-        data.issueDate || (await tenantToday(c)).today,
-        data.terms || null,
-        taxCols.tax_regime,
-        taxCols.tax_breakdown,
-        taxCols.seller_tax_id,
-        taxCols.buyer_tax_id,
-        taxCols.place_of_supply,
-        taxCols.tax_notes
-      )
-      .run();
-
-    // Create line items
-    for (let i = 0; i < data.items.length; i++) {
-      const item = data.items[i];
-      const calc = doc.items[i];
-
-      await tenantDb
-        .prepare(
-          `INSERT INTO invoice_items (
-            id, invoice_id, description, hsn_code, quantity, rate,
-            discount_percent, taxable_amount, tax_rate, tax_amount, amount, sort_order
-          ) VALUES (
-            ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12
-          )`
-        )
-        .bind(
-          generateId(),
-          invoiceId,
-          item.description,
-          item.hsnCode || null,
-          item.quantity,
-          item.rate,
-          item.discountPercent,
-          calc.taxable,
-          calc.taxRate,
-          calc.tax,
-          calc.amount,
-          i
-        )
-        .run();
-    }
-
-    // Log activity
-    const db = drizzle(tenantDb);
-    await logActivity(db, {
-      userId, action: 'invoice_created', entityType: 'invoice', entityId: invoiceId,
-      details: JSON.stringify({ invoiceNumber, contactId: data.contactId }),
+    let waiter: { waitUntil(p: Promise<unknown>): void } | undefined;
+    try { waiter = c.executionCtx; } catch { waiter = undefined; }
+    const { id: invoiceId, invoiceNumber, totals, doc } = await createInvoice(c.env, c.get('tenantId'), tenantDb, data, {
+      userId, depth: requestDepth(c), waiter,
     });
-
-    // Notify lead owner if invoice is linked to a lead (TICKET-166)
-    if (data.leadId) {
-      try {
-        const lead = await tenantDb
-          .prepare('SELECT assigned_to, created_by FROM leads WHERE id = ? AND is_deleted = 0')
-          .bind(data.leadId)
-          .first<{ assigned_to: string | null; created_by: string }>();
-        const notifyId = lead?.assigned_to ?? lead?.created_by;
-        if (notifyId && notifyId !== userId) {
-          await db.insert(notifications).values({
-            id: generateId(),
-            userId: notifyId,
-            title: 'Invoice created',
-            message: `Invoice ${invoiceNumber} for ${formatMoney(totals.total, currency, localeCtx.locale)} has been created`,
-            type: 'invoice_overdue',
-            referenceType: 'invoice',
-            referenceId: invoiceId,
-          });
-        }
-      } catch (_) {
-        // Non-critical
-      }
-    }
-
-    await emitFromRequest(c, { type: 'invoice.created', entityType: 'invoice', entityId: invoiceId, payload: { contactId: data.contactId, leadId: data.leadId ?? null } });
 
     return created(c, {
       id: invoiceId,
@@ -413,6 +256,8 @@ invoiceRoutes.post('/', zValidator('json', createInvoiceSchema), async (c) => {
       balanceDue: totals.total,
     });
   } catch (err) {
+    if (err instanceof InvoiceContactNotFound) return notFound(c, 'Contact');
+    if (err instanceof TaxConfigError) return error(c, err.message, 400);
     console.error('Error creating invoice:', err);
     return error(c, 'Failed to create invoice', 500);
   }

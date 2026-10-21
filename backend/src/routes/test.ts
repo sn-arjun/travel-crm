@@ -235,7 +235,10 @@ testApp.post('/super-admin', async (c) => {
 testApp.get('/outbox', async (c) => {
     if (!isTestMode(c.env)) return c.json({ error: 'Not found' }, 404);
     const to = c.req.query('to') || undefined;
-    const emails = await listOutbox(c.env, to);
+    const tenantId = c.req.query('tenantId') || undefined;
+    const kindQ = c.req.query('kind');
+    const kind = kindQ === 'agency' || kindQ === 'system' ? kindQ : undefined;
+    const emails = await listOutbox(c.env, { to, tenantId, kind });
     return c.json({ success: true, data: emails });
 });
 

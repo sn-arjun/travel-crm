@@ -5,6 +5,9 @@ import { sendgridProvider } from './providers/sendgrid';
 import { mockProvider } from './providers/mock';
 import { envEmailSettings, getEmailSettings, type EmailSettings } from './settings';
 import { recordPlatformMail } from './platform-log';
+import { isTestMode } from '../../utils/test-mode';
+import { generateId } from '../../utils/uuid';
+import { OUTBOX_PREFIX } from './transactional';
 
 /**
  * R131 (ADR-002 section 6.1): one interface for outgoing email.
@@ -18,7 +21,7 @@ import { recordPlatformMail } from './platform-log';
  */
 export type MailKind = 'platform_system' | 'agency_transactional' | 'agency_marketing';
 
-export type ProviderName = 'sendgrid' | 'cloudflare' | 'mock';
+export type ProviderName = 'sendgrid' | 'cloudflare' | 'mock' | 'outbox';
 
 export interface OutgoingEmail {
   to: string | string[];
@@ -40,6 +43,8 @@ export interface OutgoingEmail {
   /** A SendGrid dynamic template id with its data (R132). Only SendGrid can send it, so a message with one never goes to Cloudflare. */
   templateId?: string;
   templateData?: Record<string, string | number | boolean | string[]>;
+  /** The agency the mail belongs to, when known (R142). Only used to label the local outbox entry in test mode. */
+  tenantId?: string;
 }
 
 export interface EmailSendResult {
@@ -75,7 +80,11 @@ export function providerFor(env: Env, kind: MailKind, settings: EmailSettings = 
  * written to the delivery log (platform_email_log) with the reason for a fallback or a failure.
  */
 export async function sendMail(env: Env, kind: MailKind, message: OutgoingEmail): Promise<EmailSendResult> {
-  if (kind !== 'platform_system') return safeSend(sendgridProvider, env, message);
+  if (kind !== 'platform_system') {
+    // R142: in test mode agency mail never leaves the machine; it is written to the local outbox (GET /test/outbox).
+    if (isTestMode(env)) return writeAgencyOutbox(env, kind, message);
+    return safeSend(sendgridProvider, env, message);
+  }
 
   const settings = await getEmailSettings(env);
   // A SendGrid dynamic template exists only at SendGrid: it is sent there whatever the routing says.
@@ -115,5 +124,31 @@ async function safeSend(provider: EmailProvider, env: Env, message: OutgoingEmai
     return await provider.send(env, message);
   } catch (err) {
     return { success: false, provider: provider.name, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** R142: test mode only. Keeps a readable copy of an agency email in KV and reports success; SendGrid is never called. */
+async function writeAgencyOutbox(env: Env, kind: MailKind, message: OutgoingEmail): Promise<EmailSendResult> {
+  try {
+    const id = generateId();
+    const to = (Array.isArray(message.to) ? message.to : [message.to]).join(', ');
+    const entry = {
+      id,
+      kind: 'agency' as const,
+      mailKind: kind,
+      tenantId: message.tenantId ?? null,
+      to,
+      subject: message.subject,
+      html: message.html ?? '',
+      text: message.text ?? '',
+      template: message.category ?? null,
+      attachmentNames: (message.attachments ?? []).map((a) => a.filename),
+      createdAt: new Date().toISOString(),
+    };
+    await env.CACHE.put(`${OUTBOX_PREFIX}${id}`, JSON.stringify(entry), { expirationTtl: 7 * 24 * 3600 });
+    console.log(`[mail:outbox] ${kind} -> ${to} (${id})`);
+    return { success: true, provider: 'outbox', messageId: id };
+  } catch (err) {
+    return { success: false, provider: 'outbox', error: err instanceof Error ? err.message : String(err) };
   }
 }

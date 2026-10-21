@@ -18,9 +18,20 @@ export interface OutboxEntry {
   subject: string;
   html: string;
   text: string;
-  template: TemplateName;
+  /** The template for system mail; the category (or null) for agency mail written by sendMail (R142). */
+  template: TemplateName | string | null;
+  /** 'system' for platform mail, 'agency' for agency mail to its customers (R142). Entries without it are system mail. */
+  kind?: 'system' | 'agency';
+  mailKind?: string;
+  attachmentNames?: string[];
   tenantId: string | null;
   createdAt: string;
+}
+
+export interface OutboxFilter {
+  to?: string;
+  tenantId?: string;
+  kind?: 'agency' | 'system';
 }
 
 export interface TransactionalParams {
@@ -106,8 +117,10 @@ export async function sendTransactional(env: Env, params: TransactionalParams): 
   }
 }
 
-/** Newest first. Optionally only mail addressed to `to`. */
-export async function listOutbox(env: Env, to?: string): Promise<OutboxEntry[]> {
+/** Newest first. Optionally only mail addressed to `to`, for one agency, or of one kind (agency or system). */
+export async function listOutbox(env: Env, filter?: string | OutboxFilter): Promise<OutboxEntry[]> {
+  const f: OutboxFilter = typeof filter === 'string' ? { to: filter } : filter ?? {};
+  const to = f.to;
   const entries: OutboxEntry[] = [];
   let cursor: string | undefined;
   do {
@@ -121,6 +134,8 @@ export async function listOutbox(env: Env, to?: string): Promise<OutboxEntry[]> 
   const wanted = to?.toLowerCase();
   return entries
     .filter((e) => !wanted || e.to.toLowerCase() === wanted)
+    .filter((e) => !f.tenantId || e.tenantId === f.tenantId)
+    .filter((e) => !f.kind || (e.kind ?? 'system') === f.kind)
     .sort((a, b) => (a.id < b.id ? 1 : -1));
 }
 
