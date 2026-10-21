@@ -272,7 +272,10 @@ describe('chatbot widget asks for contact details (R151)', () => {
   });
 
   it('serves a widget that builds the form from text only and posts to /contact', async () => {
-    const script = await (await req(testEnv, 'GET', `/api/v1/public/chatbot/${key}/widget.js`)).text();
+    const served = await req(testEnv, 'GET', `/api/v1/public/chatbot/${key}/widget.js`);
+    // A website on another origin must be allowed to load the script (the default same-origin policy would block it).
+    expect(served.headers.get('cross-origin-resource-policy')).toBe('cross-origin');
+    const script = await served.text();
     expect(script).toContain('/contact');
     expect(script).toContain('cap.consentText');
     // Agency wording is never written as markup: the only innerHTML is the static shell.

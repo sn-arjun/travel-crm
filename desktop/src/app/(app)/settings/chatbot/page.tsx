@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import {
-  Check, Clock, Code2, Copy, Globe, Loader2, Lock, MessageSquare, Save, Sparkles,
+  Check, Clock, Code2, Copy, Globe, Loader2, Lock, MessageSquare, Save, Sparkles, UserRound,
 } from 'lucide-react';
 import {
   Button, Input, Label, Card, CardContent, CardHeader, CardTitle, CardDescription,
@@ -15,17 +15,20 @@ import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { chatbotApi, parseAllowedOrigins, type ChatbotConfig, type UpdateChatbotConfigRequest } from '@/lib/api/chatbot';
 import { toast } from 'sonner';
 import { color } from '@/design-system/tokens';
+import { ContactCaptureCard } from '@/components/chatbot/contact-capture-card';
+import { useT } from '@/lib/i18n';
 
 // Default widget accent: the product primary colour (light theme value).
 const DEFAULT_WIDGET_COLOR = color('primary', 'light');
 import { PageContainer } from '@/components/layout/page-container';
 
 function ChatbotSettingsContent() {
+  const t = useT();
   const [isSaving, setIsSaving] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState('website');
   const [copied, setCopied] = React.useState(false);
 
-  const { data: configResponse, loading } = useApiQuery(() => chatbotApi.config.get(), []);
+  const { data: configResponse, loading, refetch: refetchConfig } = useApiQuery(() => chatbotApi.config.get(), []);
   const config: ChatbotConfig | null = configResponse?.data ?? null;
 
   const [webBotEnabled, setWebBotEnabled] = React.useState(true);
@@ -137,7 +140,7 @@ function ChatbotSettingsContent() {
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="website" className="gap-ds-2">
             <Globe className="size-4" aria-hidden="true" />
             <span className="hidden sm:inline">Website bot</span>
@@ -145,6 +148,10 @@ function ChatbotSettingsContent() {
           <TabsTrigger value="whatsapp" className="gap-ds-2">
             <MessageSquare className="size-4" aria-hidden="true" />
             <span className="hidden sm:inline">WhatsApp</span>
+          </TabsTrigger>
+          <TabsTrigger value="contact" className="gap-ds-2">
+            <UserRound className="size-4" aria-hidden="true" />
+            <span className="hidden sm:inline">{t('chatbot.capture.tab')}</span>
           </TabsTrigger>
           <TabsTrigger value="install" className="gap-ds-2">
             <Code2 className="size-4" aria-hidden="true" />
@@ -250,6 +257,10 @@ function ChatbotSettingsContent() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="contact" className="space-y-ds-4">
+          {config && <ContactCaptureCard initial={config.contactCapture} onSaved={() => void refetchConfig()} />}
         </TabsContent>
 
         <TabsContent value="install" className="space-y-ds-4">

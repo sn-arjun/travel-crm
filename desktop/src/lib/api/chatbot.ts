@@ -1,8 +1,59 @@
 import { client, type ApiResponse, type PaginatedResponse } from './client';
 import { API_ENDPOINTS } from './config';
 
+/** When the website chat asks the visitor for contact details (Settings > Chatbot > Contact details). */
+export const CAPTURE_MODES = ['off', 'before_chat', 'after_first_reply', 'before_handoff'] as const;
+export type CaptureMode = (typeof CAPTURE_MODES)[number];
+export type CaptureFieldState = 'required' | 'optional' | 'hidden';
+
+export interface ContactCaptureSettings {
+  mode: CaptureMode;
+  fields: { name: CaptureFieldState; email: CaptureFieldState; phone: CaptureFieldState };
+  requireOneOf: Array<'email' | 'phone'>;
+  consentText: string;
+  marketingOptIn: boolean;
+  autoCreateLead: boolean;
+}
+
+export const DEFAULT_CONTACT_CAPTURE: ContactCaptureSettings = {
+  mode: 'off',
+  fields: { name: 'optional', email: 'optional', phone: 'optional' },
+  requireOneOf: ['email', 'phone'],
+  consentText: '',
+  marketingOptIn: false,
+  autoCreateLead: false,
+};
+
+/** The stored column (a JSON string, or already an object) -> complete settings; anything unreadable means "off". */
+export function parseContactCapture(raw: unknown): ContactCaptureSettings {
+  let value: unknown = raw;
+  if (typeof raw === 'string') {
+    try { value = JSON.parse(raw); } catch { value = null; }
+  }
+  if (!value || typeof value !== 'object') return DEFAULT_CONTACT_CAPTURE;
+  const v = value as Partial<Record<keyof ContactCaptureSettings, unknown>>;
+  const state = (x: unknown, fallback: CaptureFieldState): CaptureFieldState =>
+    x === 'required' || x === 'optional' || x === 'hidden' ? x : fallback;
+  const f = (v.fields && typeof v.fields === 'object' ? v.fields : {}) as Record<string, unknown>;
+  return {
+    mode: (CAPTURE_MODES as readonly unknown[]).includes(v.mode) ? (v.mode as CaptureMode) : 'off',
+    fields: {
+      name: state(f.name, 'optional'),
+      email: state(f.email, 'optional'),
+      phone: state(f.phone, 'optional'),
+    },
+    requireOneOf: Array.isArray(v.requireOneOf)
+      ? v.requireOneOf.filter((x): x is 'email' | 'phone' => x === 'email' || x === 'phone')
+      : DEFAULT_CONTACT_CAPTURE.requireOneOf,
+    consentText: typeof v.consentText === 'string' ? v.consentText : '',
+    marketingOptIn: v.marketingOptIn === true,
+    autoCreateLead: v.autoCreateLead === true,
+  };
+}
+
 export interface ChatbotConfig {
   id: string;
+  contactCapture: ContactCaptureSettings;
   enabled: boolean;
   name: string;
   description?: string;
@@ -33,6 +84,11 @@ export interface ChatbotConversation {
   visitorId?: string;
   visitorName?: string;
   visitorEmail?: string;
+  visitorPhone?: string;
+  /** When the visitor agreed to be contacted through the chat form; absent when they never filled it in. */
+  contactConsentAt?: string;
+  /** They ticked the optional marketing box. */
+  marketingOptIn?: boolean;
   /** CRM contact this visitor is linked to; messaging needs it. */
   contactId?: string;
   channel: 'web' | 'facebook' | 'whatsapp' | 'telegram';
@@ -118,6 +174,9 @@ interface RawConversation {
   visitor_name?: string | null;
   visitorEmail?: string | null;
   visitor_email?: string | null;
+  visitor_phone?: string | null;
+  contact_consent_at?: string | null;
+  contact_marketing_opt_in?: number | null;
   contactId?: string | null;
   contact_id?: string | null;
   channel: ChatbotConversation['channel'];
@@ -144,6 +203,7 @@ interface RawChannelConfig {
   widget_position?: string;
   branding_color?: string;
   auto_reply?: string;
+  contact_capture?: string | null;
 }
 
 interface RawPagination {
@@ -188,6 +248,9 @@ function normalizeConversation(raw: RawConversation): ChatbotConversation {
     visitorId: raw.visitorId ?? raw.visitor_id,
     visitorName: raw.visitorName ?? raw.visitor_name ?? undefined,
     visitorEmail: raw.visitorEmail ?? raw.visitor_email ?? undefined,
+    visitorPhone: raw.visitor_phone ?? undefined,
+    contactConsentAt: raw.contact_consent_at ?? undefined,
+    marketingOptIn: raw.contact_marketing_opt_in ? true : undefined,
     contactId: raw.contactId ?? raw.contact_id ?? undefined,
     // the public widget stores its conversations under the channel "website"; the app calls that channel "web"
     channel: (raw.channel === ('website' as string) ? 'web' : raw.channel) as ChatbotConversation['channel'],
@@ -211,6 +274,8 @@ function normalizeConfig(allRows: RawChannelConfig[]): ChatbotConfig {
   const source = chosen ?? rows[0];
   return {
     id: source?.id ?? '',
+    // The server reads the 'website' row first and falls back to the legacy 'web' row.
+    contactCapture: parseContactCapture(site?.contact_capture ?? legacy?.contact_capture),
     enabled: !!(source?.enabled ?? 0),
     name: source?.name ?? 'Chatbot',
     description: source?.description,
@@ -379,6 +444,12 @@ export const chatbotApi = {
         },
       };
     },
+  },
+
+  /** Settings > Chatbot > Contact details: saved on the website bot's row; the server validates and completes it. */
+  contactCapture: {
+    save: (settings: ContactCaptureSettings) =>
+      client.put<ApiResponse<Record<string, unknown>>>(API_ENDPOINTS.chatbot.configChannel('website'), { contactCapture: settings }),
   },
 
   /**

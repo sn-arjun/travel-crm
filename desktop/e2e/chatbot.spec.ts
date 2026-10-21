@@ -92,6 +92,22 @@ async function seedConversation(overrides: {
   return body.data.conversationId as string;
 }
 
+/**
+ * A page that embeds the widget script, so the widget's requests carry a real Origin. The browser blocks a public https
+ * page (or a page answered by a route) from reaching the local API, so the script is added to a real page of the web
+ * app itself, and that local address joins the allowed websites.
+ */
+const SITE_ORIGIN = new URL(process.env.E2E_BASE_URL ?? 'http://localhost:3100').origin;
+async function mountWidget(page: Page) {
+  const info = await api('GET', '/chatbot/widget');
+  const allowed: string[] = info?.data?.allowedOrigins ?? [];
+  if (!allowed.includes(SITE_ORIGIN)) await api('PUT', '/chatbot/config/website', { allowedOrigins: [...allowed, SITE_ORIGIN] });
+  await page.goto('/help');
+  await waitForLoad(page);
+  await page.addScriptTag({ url: `${API_URL}/public/chatbot/${widgetKey}/widget.js` });
+  await page.locator('.cb-btn').waitFor();
+}
+
 test.describe.serial('Chatbot', () => {
   let conversationId: string;
   const ts = Date.now();
@@ -437,5 +453,105 @@ test.describe.serial('Chatbot', () => {
     await expect(page.locator('input[name*="id" i]')).toHaveCount(0);
     await expect(page.locator('a[href^="mailto:"]')).toHaveCount(0);
     await expect(page.locator('a[href^="wa.me"]')).toHaveCount(0);
+  });
+
+  test('Contact details — the widget asks for name and phone before the chat, the conversation shows them and Create lead works', async ({ page }) => {
+    // Settings > Chatbot > Contact details: ask before the chat, phone required.
+    await page.goto('/settings/chatbot');
+    await waitForLoad(page);
+    await page.getByRole('tab', { name: /Contact details/i }).click();
+    await page.getByRole('combobox', { name: /When to ask/i }).click();
+    await page.getByRole('option', { name: 'Before the chat starts' }).click();
+    await page.getByRole('combobox', { name: /^Phone/ }).click();
+    await page.getByRole('option', { name: 'Required', exact: true }).click();
+    const saved = page.waitForResponse((res) => res.url().includes('/chatbot/config/website') && res.request().method() === 'PUT');
+    await page.getByRole('button', { name: /Save contact settings/i }).click();
+    expect((await saved).ok()).toBe(true);
+    const stored = await api('GET', '/chatbot/config/website');
+    expect(JSON.parse(stored.data.contact_capture)).toMatchObject({ mode: 'before_chat', fields: { phone: 'required' } });
+
+    // A website visitor: the agency's allowed website embeds the widget script.
+    const phone = `98${String(ts).slice(-8)}`;
+    await mountWidget(page);
+    await page.locator('.cb-btn').click();
+    const form = page.locator('#cbForm');
+    await expect(form).toBeVisible();
+    await expect(form.getByRole('heading')).toBeVisible();
+    // The message box is hidden until the form is done.
+    await expect(page.locator('#cbInp')).toBeHidden();
+    // Consent is needed, and the phone is required.
+    await form.getByRole('button', { name: /Continue/i }).click();
+    await expect(form.getByRole('alert')).not.toBeEmpty();
+    await form.locator('#cbF_name').fill(`Widget Visitor ${ts}`);
+    await form.locator('#cbF_phone').fill(phone);
+    await form.locator('#cbF_consent').check();
+    const contactSent = page.waitForResponse((res) => res.url().includes('/public/chatbot/') && res.url().endsWith('/contact'));
+    await form.getByRole('button', { name: /Continue/i }).click();
+    expect((await contactSent).status()).toBe(200);
+    await expect(page.locator('#cbInp')).toBeVisible();
+
+    await page.locator('#cbInp').fill(`Hello from the widget ${SEED_TAG}`);
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect(page.locator('.cb-bot').last()).toContainText('An agent will reply shortly');
+
+    const list = await api('GET', `/chatbot/conversations?channel=website&limit=100`);
+    const conv = (list.data as Array<{ id: string; visitor_name: string | null; visitor_phone: string | null }>).find((c) => c.visitor_name === `Widget Visitor ${ts}`);
+    expect(conv?.visitor_phone).toBe(`+91${phone}`);
+
+    // Staff side: the details are in the side panel and Create lead is enabled.
+    await page.goto(`/chatbot/conversations/${conv!.id}`);
+    await waitForLoad(page);
+    const panel = page.getByTestId('visitor-contact-details');
+    await expect(panel).toContainText(`Widget Visitor ${ts}`);
+    await expect(panel).toContainText(`+91${phone}`);
+    await expect(panel).toContainText(/Agreed to be contacted/);
+    await page.getByRole('button', { name: 'More actions' }).click();
+    const createLeadOption = page.getByRole('menuitem', { name: 'Create lead' });
+    await expect(createLeadOption).toBeEnabled();
+    const created = page.waitForResponse((res) => res.url().includes(`/chatbot/conversations/${conv!.id}/create-lead`) && res.request().method() === 'POST');
+    await createLeadOption.click();
+    expect((await created).status()).toBe(201);
+    await expect(page).toHaveURL(/\/leads\/[0-9a-f-]{36}/, { timeout: 10_000 });
+  });
+
+  test('Contact details — with automatic lead creation the lead exists without a click', async ({ page }) => {
+    await api('PUT', '/chatbot/config/website', {
+      contactCapture: {
+        mode: 'before_chat',
+        fields: { name: 'required', email: 'optional', phone: 'optional' },
+        requireOneOf: ['email', 'phone'],
+        consentText: 'I agree to be contacted about my trip.',
+        marketingOptIn: false,
+        autoCreateLead: true,
+      },
+    });
+    const email = `auto-${ts}@example.test`;
+    await mountWidget(page);
+    await page.locator('.cb-btn').click();
+    const form = page.locator('#cbForm');
+    await expect(form).toBeVisible();
+    // The agency's own consent wording is shown as text.
+    await expect(form).toContainText('I agree to be contacted about my trip.');
+    await form.locator('#cbF_name').fill(`Auto Visitor ${ts}`);
+    await form.locator('#cbF_email').fill(email);
+    await form.locator('#cbF_consent').check();
+    const contactSent = page.waitForResponse((res) => res.url().endsWith('/contact'));
+    await form.getByRole('button', { name: /Continue/i }).click();
+    expect((await contactSent).status()).toBe(200);
+
+    const list = await api('GET', `/chatbot/conversations?channel=website&limit=100`);
+    const conv = (list.data as Array<{ id: string; visitor_name: string | null; lead_id: string | null; contact_id: string | null }>).find((c) => c.visitor_name === `Auto Visitor ${ts}`);
+    expect(conv?.lead_id).toBeTruthy();
+    expect(conv?.contact_id).toBeTruthy();
+    const lead = await api('GET', `/leads/${conv!.lead_id}`);
+    expect(lead?.data?.contactId ?? lead?.data?.contact_id).toBe(conv!.contact_id);
+  });
+
+  test('Contact details — switched off again, the widget shows no form', async ({ page }) => {
+    await api('PUT', '/chatbot/config/website', { contactCapture: null });
+    await mountWidget(page);
+    await page.locator('.cb-btn').click();
+    await expect(page.locator('#cbInp')).toBeVisible();
+    await expect(page.locator('#cbForm form')).toHaveCount(0);
   });
 });

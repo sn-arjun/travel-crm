@@ -143,7 +143,11 @@ app.use('*', async (c, next) => {
 
 app.use('*', requestLogger);
 app.use('*', prettyJSON());
-app.use('*', secureHeaders());
+// The embeddable chat script is loaded by agencies' own websites, so unlike every other response it must not carry
+// Cross-Origin-Resource-Policy: same-origin (browsers refuse a cross-origin script tag with it).
+const strictHeaders = secureHeaders();
+const embedHeaders = secureHeaders({ crossOriginResourcePolicy: 'cross-origin' });
+app.use('*', (c, next) => (/\/public\/chatbot\/[^/]+\/widget\.js$/.test(c.req.path) ? embedHeaders(c, next) : strictHeaders(c, next)));
 
 app.use(
   '*',

@@ -20,6 +20,7 @@ import {
   type SendReplyRequest,
   type HandoffRequest,
 } from '@/lib/api/chatbot';
+import { VisitorContactDetails, hasVisitorDetails } from '@/components/chatbot/visitor-contact-details';
 import { usersApi } from '@/lib/api/users';
 import type { User as TeamUser } from '@travelcrm/shared';
 import { toast } from 'sonner';
@@ -201,7 +202,8 @@ export default function ConversationDetailPage() {
             label: 'Create lead',
             icon: <Briefcase />,
             onSelect: handleCreateLead,
-            disabled: creatingLead,
+            // Nothing to identify the visitor by yet: the panel says so, and the server would refuse anyway.
+            disabled: creatingLead || !hasVisitorDetails(conversation),
           },
         ]}
         overview={
@@ -251,18 +253,7 @@ export default function ConversationDetailPage() {
             <div className="flex flex-col gap-ds-4">
               <SectionCard title="Visitor info">
                 <div className="flex flex-col gap-ds-3 text-sm">
-                  {conversation.visitorName && (
-                    <div className="flex items-center gap-ds-2">
-                      <User className="size-3.5 text-ds-foreground-muted" aria-hidden="true" />
-                      <span>{conversation.visitorName}</span>
-                    </div>
-                  )}
-                  {conversation.visitorEmail && (
-                    <div className="flex items-center gap-ds-2">
-                      <MessageSquare className="size-3.5 text-ds-foreground-muted" aria-hidden="true" />
-                      <span>{conversation.visitorEmail}</span>
-                    </div>
-                  )}
+                  <VisitorContactDetails conversation={conversation} />
                   <div className="flex items-center gap-ds-2">
                     {channelIcon(conversation.channel)}
                     <span className="capitalize">{conversation.channel}</span>
