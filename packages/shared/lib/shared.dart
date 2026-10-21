@@ -40,6 +40,7 @@ export 'models/generated_flyer_model.dart';
 export 'models/vehicle_model.dart';
 export 'models/driver_model.dart';
 export 'models/trip_assignment_model.dart';
+export 'models/trip_stop_model.dart';
 export 'models/vehicle_rate_card_model.dart';
 export 'models/document_model.dart';
 export 'models/bookmark_model.dart';

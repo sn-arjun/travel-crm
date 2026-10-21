@@ -497,6 +497,17 @@ class ApiEndpoints {
   static String driverTripStatus(String id) => '$_base/driver/trips/$id/status';
   static String driverTripCheckIn(String id) => '$_base/driver/trips/$id/check-in';
   static String driverTripCheckOut(String id) => '$_base/driver/trips/$id/check-out';
-  static const String driverPushTokens = '$_base/driver/push-tokens';
+  // Coach trips (R145): stops, passenger check-in and head count for the crew.
+  static String driverTripStopArrive(String id, String stopId) =>
+      '$_base/driver/trips/$id/stops/$stopId/arrive';
+  static String driverTripStopDepart(String id, String stopId) =>
+      '$_base/driver/trips/$id/stops/$stopId/depart';
+  static String driverTripPassengers(String id) =>
+      '$_base/driver/trips/$id/passengers';
+  static String driverTripPassenger(String id, String passengerId) =>
+      '$_base/driver/trips/$id/passengers/$passengerId';
+  static String driverTripHeadcount(String id) =>
+      '$_base/driver/trips/$id/headcount';
+  static const String driverPushTokens ='$_base/driver/push-tokens';
   static String driverPushToken(String token) => '$_base/driver/push-tokens/$token';
 }
