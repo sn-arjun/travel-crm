@@ -6,6 +6,8 @@ import { generateId } from '../../utils/uuid';
 import { getEmailSettings } from './settings';
 import { recordPlatformMail } from './platform-log';
 import { renderTemplate, type TemplateName } from './templates';
+import { emailLanguage, textLanguage, type TextLanguage } from '../../i18n';
+import { resolveTenantDb } from '../tenant-db';
 
 export const OUTBOX_PREFIX = 'outbox:';
 const OUTBOX_TTL_SECONDS = 7 * 24 * 3600;
@@ -26,6 +28,8 @@ export interface TransactionalParams {
   template: TemplateName;
   data?: Record<string, unknown>;
   tenantId?: string;
+  /** The recipient's language. When omitted it is looked up from the recipient's user row, then the agency default_language. */
+  language?: string;
 }
 
 export interface TransactionalResult {
@@ -37,6 +41,21 @@ export interface TransactionalResult {
   error?: string;
 }
 
+/** Mail to the platform's own staff: always English, never looked up. */
+const OPERATOR_TEMPLATES = new Set<TemplateName>(['platform_enquiry', 'voip_spend_alert', 'console_test']);
+
+async function languageFor(env: Env, params: TransactionalParams): Promise<TextLanguage> {
+  if (params.language) return textLanguage(params.language);
+  if (!params.tenantId || OPERATOR_TEMPLATES.has(params.template)) return 'en';
+  try {
+    const db = await resolveTenantDb(env, params.tenantId);
+    if (db) return await emailLanguage(db, params.to);
+  } catch {
+    // no agency database to ask: English
+  }
+  return 'en';
+}
+
 /**
  * Send a system email (welcome, invite, password reset...).
  * With a SendGrid key it goes out through SendGrid; with no key (or in TEST_MODE) it is
@@ -45,7 +64,7 @@ export interface TransactionalResult {
  */
 export async function sendTransactional(env: Env, params: TransactionalParams): Promise<TransactionalResult> {
   try {
-    const rendered = renderTemplate(params.template, { ...(params.data ?? {}), appUrl: appUrl(env) });
+    const rendered = renderTemplate(params.template, { ...(params.data ?? {}), appUrl: appUrl(env) }, await languageFor(env, params));
     const first = providerFor(env, 'platform_system', await getEmailSettings(env)).name;
     // Test mode and the mock provider write to the outbox; SendGrid with no key does too. Cloudflare needs no SendGrid key.
     const outboxReason = isTestMode(env) ? 'test mode' : first === 'mock' ? 'mock provider' : first === 'sendgrid' && !env.SENDGRID_API_KEY ? 'no SendGrid key' : null;

@@ -10,6 +10,7 @@ import { getCatalogue } from '../services/plans/catalogue';
 import { publicPlansView } from '../services/plans/view';
 import { verifyUnsubscribeToken } from '../utils/unsubscribe-token';
 import { withdrawMarketing } from '../services/privacy/consent';
+import { agencyDefaultLanguage, t, type TextLanguage } from '../i18n';
 
 // Minimal context — no auth, just Env bindings
 const publicRoutes = new Hono<{ Bindings: Env }>();
@@ -37,14 +38,26 @@ const unsubscribeLimit = rateLimit({
   keyFn: (c) => `rl:unsub:${c.req.header('cf-connecting-ip') || 'unknown'}`,
 }) as any;
 
-function unsubscribePage(title: string, message: string, status: 200 | 400 = 200): Response {
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${title}</title></head><body style="font-family:system-ui,sans-serif;max-width:32rem;margin:15vh auto;padding:0 1rem;color:#222"><h1 style="font-size:1.4rem">${title}</h1><p>${message}</p></body></html>`;
+/** The agency's default language (en or nl) for the texts of a public page; English when the agency cannot be reached. */
+async function agencyLanguage(env: Env, tenantId: string): Promise<TextLanguage> {
+  try {
+    const db = await resolveTenantDb(env, tenantId);
+    return db ? await agencyDefaultLanguage(db) : 'en';
+  } catch {
+    return 'en';
+  }
+}
+
+function unsubscribePage(title: string, message: string, status: 200 | 400 = 200, lang: TextLanguage = 'en'): Response {
+  const html = `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${title}</title></head><body style="font-family:system-ui,sans-serif;max-width:32rem;margin:15vh auto;padding:0 1rem;color:#222"><h1 style="font-size:1.4rem">${title}</h1><p>${message}</p></body></html>`;
   return new Response(html, { status, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' } });
 }
 
 async function handleUnsubscribe(c: any): Promise<Response> {
   const claims = await verifyUnsubscribeToken(c.env, c.req.param('token'));
-  if (!claims) return unsubscribePage('Link not valid', 'This unsubscribe link is not valid. If you keep receiving messages, reply to one and ask to be removed.', 400);
+  // A link with a bad signature names no agency, so its page is English.
+  if (!claims) return unsubscribePage(t('en', 'public.unsubscribe.invalidTitle'), t('en', 'public.unsubscribe.invalidBody'), 400);
+  const lang = await agencyLanguage(c.env, claims.tenantId);
   try {
     const db = await resolveTenantDb(c.env, claims.tenantId);
     if (db) {
@@ -60,7 +73,7 @@ async function handleUnsubscribe(c: any): Promise<Response> {
   } catch (err) {
     console.error('[unsubscribe] failed', err);
   }
-  return unsubscribePage('You are unsubscribed', 'You will not receive further marketing messages from us. You can close this page.');
+  return unsubscribePage(t(lang, 'public.unsubscribe.doneTitle'), t(lang, 'public.unsubscribe.doneBody'), 200, lang);
 }
 
 publicRoutes.get('/unsubscribe/:token', unsubscribeLimit, handleUnsubscribe);
@@ -85,18 +98,18 @@ publicRoutes.get('/quotation/:token', async (c) => {
   ).bind(token).first<{ tenant_id: string; itinerary_id: string; is_active: number }>();
 
   if (!mapping) {
-    return c.json({ error: 'Quotation not found' }, 404);
+    return c.json({ error: t('en', 'public.quotation.notFound') }, 404);
   }
   // Revoked links stay known (so the client sees "gone", not "never existed").
   // Expiry is the itinerary's validity date, checked below (quotation_links has no expiry column).
   if (!mapping.is_active) {
-    return c.json({ error: 'This quotation link has been revoked' }, 410);
+    return c.json({ error: t(await agencyLanguage(c.env, mapping.tenant_id), 'public.quotation.revoked') }, 410);
   }
 
   // Get tenant DB
   const tenantDbBinding = await resolveTenantDb(c.env, mapping.tenant_id);
   if (!tenantDbBinding) {
-    return c.json({ error: 'Quotation not found' }, 404);
+    return c.json({ error: t('en', 'public.quotation.notFound') }, 404);
   }
 
   const db = drizzle(tenantDbBinding);
@@ -105,14 +118,15 @@ publicRoutes.get('/quotation/:token', async (c) => {
   const [itin] = await db.select().from(itineraries)
     .where(and(eq(itineraries.id, mapping.itinerary_id), eq(itineraries.isDeleted, 0)));
 
+  const lang = await agencyDefaultLanguage(tenantDbBinding);
   if (!itin) {
-    return c.json({ error: 'Quotation not found' }, 404);
+    return c.json({ error: t(lang, 'public.quotation.notFound') }, 404);
   }
 
   // Check expiry
   // validityDate is a local calendar date: valid through the end of that day in the tenant's timezone
   if (itin.validityDate && itin.validityDate < localDateString(await getTenantTimeZone(tenantDbBinding))) {
-    return c.json({ error: 'This quotation has expired' }, 410);
+    return c.json({ error: t(lang, 'public.quotation.expired') }, 410);
   }
 
   // Increment view count

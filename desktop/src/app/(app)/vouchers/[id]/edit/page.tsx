@@ -404,6 +404,7 @@ export default function EditVoucherPage() {
                       <SelectItem value="en">English</SelectItem>
                       <SelectItem value="hi">Hindi</SelectItem>
                       <SelectItem value="ar">Arabic</SelectItem>
+                      <SelectItem value="nl">Dutch</SelectItem>
                     </SelectContent>
                   </Select>
                 </FormRow>

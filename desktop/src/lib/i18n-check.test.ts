@@ -60,7 +60,7 @@ describe('i18n-check catalogue rules (split catalogues, complete nl)', () => {
   it('passes on the real catalogues, with en and nl complete', () => {
     expect(COMPLETE_LANGUAGES).toEqual(['en', 'nl']);
     expect(check()).toEqual([]);
-    expect((run({ dir, scope: [] }).coverage as Record<string, { percent: number }>).nl.percent).toBe(100);
+    expect((run({ dir, scope: [] }).coverage as Record<string, { percent: number }>).nl?.percent).toBe(100);
   });
 
   it('fails when an nl key is missing', () => {

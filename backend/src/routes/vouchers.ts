@@ -8,6 +8,7 @@ import { success, created, paginated, error, notFound, forbidden } from '../util
 import { hasPermission, type Role } from '../constants/permissions';
 import { tenantTimeZone, localDateString } from '../utils/tz';
 import { agencyEmailHtml, isEmailUndeliverable, queueAgencyEmail, textToHtml } from '../services/mail/delivery';
+import { isUiLanguage, t, textLanguage } from '../i18n';
 
 const voucherRoutes = new Hono<AppContext>();
 
@@ -88,7 +89,7 @@ const createVoucherSchema = z.object({
   supplierId: z.string().optional().nullable(),
   title: z.string().min(1),
   details: z.record(z.string(), z.any()),
-  language: z.string().default('en'),
+  language: z.string().refine(isUiLanguage, 'Unsupported language').default('en'),
   notes: z.string().optional().nullable(),
 });
 
@@ -96,7 +97,7 @@ const updateVoucherSchema = z.object({
   title: z.string().min(1).optional(),
   supplierId: z.string().optional().nullable(),
   details: z.record(z.string(), z.any()).optional(),
-  language: z.string().optional(),
+  language: z.string().refine(isUiLanguage, 'Unsupported language').optional(),
   notes: z.string().optional().nullable(),
 });
 
@@ -505,7 +506,13 @@ async function buildVoucherPdf(tenantDb: D1Database, voucherId: string, voucherT
 
     const details = voucher.details_json ? JSON.parse(voucher.details_json) : {};
     const voucherType = (voucher.type as string) || 'general';
-    const typeLabel = voucherType.charAt(0).toUpperCase() + voucherType.slice(1);
+    // The voucher's own language picks the labels: Dutch for nl, English for everything else (the catalogue falls back).
+    const lang = textLanguage(voucher.language);
+    const L = (key: string, vars?: Record<string, string | number>) => t(lang, key, vars);
+    const f = (key: string) => `${L(`voucher.field.${key}`)}:`;
+    const dateLocale = lang === 'nl' ? 'nl-NL' : 'en-IN';
+    const typeKey = `voucher.type.${voucherType}`;
+    const typeLabel = L(typeKey) !== typeKey ? L(typeKey) : voucherType.charAt(0).toUpperCase() + voucherType.slice(1);
 
     // Build PDF using pdf-lib
     const pdfDoc = await PDFDocument.create();
@@ -581,7 +588,7 @@ async function buildVoucherPdf(tenantDb: D1Database, voucherId: string, voucherT
     y -= 24;
 
     // Voucher title
-    page.drawText(`${typeLabel} Voucher`, {
+    page.drawText(L('voucher.title', { type: typeLabel }), {
       x: margin,
       y,
       size: 20,
@@ -601,7 +608,8 @@ async function buildVoucherPdf(tenantDb: D1Database, voucherId: string, voucherT
     y -= 10;
 
     // Status badge
-    const statusText = ((voucher.status as string) || 'draft').toUpperCase();
+    const statusKey = `voucher.status.${(voucher.status as string) || 'draft'}`;
+    const statusText = (L(statusKey) !== statusKey ? L(statusKey) : ((voucher.status as string) || 'draft')).toUpperCase();
     const statusColors: Record<string, [number, number, number]> = {
       draft: [0.6, 0.6, 0.6],
       sent: [0.1, 0.5, 0.8],
@@ -621,7 +629,7 @@ async function buildVoucherPdf(tenantDb: D1Database, voucherId: string, voucherT
     y -= 16;
 
     // ====== General Info ======
-    page.drawText('BOOKING INFORMATION', {
+    page.drawText(L('voucher.section.booking').toUpperCase(), {
       x: margin,
       y,
       size: 10,
@@ -630,21 +638,21 @@ async function buildVoucherPdf(tenantDb: D1Database, voucherId: string, voucherT
     });
     y -= 18;
 
-    drawField('Voucher ID:', voucherId);
-    drawField('Type:', typeLabel);
-    if (voucher.lead_name) drawField('Lead:', voucher.lead_name as string);
-    if (voucher.supplier_name) drawField('Supplier:', voucher.supplier_name as string);
-    if (voucher.language) drawField('Language:', (voucher.language as string).toUpperCase());
-    if (voucher.created_at) drawField('Created:', new Date(voucher.created_at as string).toLocaleDateString('en-IN', { timeZone: voucherTz, day: 'numeric', month: 'short', year: 'numeric' }));
-    if (voucher.sent_at) drawField('Sent:', new Date(voucher.sent_at as string).toLocaleDateString('en-IN', { timeZone: voucherTz, day: 'numeric', month: 'short', year: 'numeric' }));
-    if (voucher.confirmed_at) drawField('Confirmed:', new Date(voucher.confirmed_at as string).toLocaleDateString('en-IN', { timeZone: voucherTz, day: 'numeric', month: 'short', year: 'numeric' }));
+    drawField(f('voucherId'), voucherId);
+    drawField(f('type'), typeLabel);
+    if (voucher.lead_name) drawField(f('lead'), voucher.lead_name as string);
+    if (voucher.supplier_name) drawField(f('supplier'), voucher.supplier_name as string);
+    if (voucher.language) drawField(f('language'), (voucher.language as string).toUpperCase());
+    if (voucher.created_at) drawField(f('created'), new Date(voucher.created_at as string).toLocaleDateString(dateLocale, { timeZone: voucherTz, day: 'numeric', month: 'short', year: 'numeric' }));
+    if (voucher.sent_at) drawField(f('sent'), new Date(voucher.sent_at as string).toLocaleDateString(dateLocale, { timeZone: voucherTz, day: 'numeric', month: 'short', year: 'numeric' }));
+    if (voucher.confirmed_at) drawField(f('confirmed'), new Date(voucher.confirmed_at as string).toLocaleDateString(dateLocale, { timeZone: voucherTz, day: 'numeric', month: 'short', year: 'numeric' }));
 
     y -= 8;
     drawLine(y);
     y -= 16;
 
     // ====== Type-Specific Details ======
-    const sectionTitle = `${typeLabel.toUpperCase()} DETAILS`;
+    const sectionTitle = L('voucher.section.details', { type: typeLabel }).toUpperCase();
     page.drawText(sectionTitle, {
       x: margin,
       y,
@@ -656,46 +664,46 @@ async function buildVoucherPdf(tenantDb: D1Database, voucherId: string, voucherT
 
     // Render details based on voucher type
     if (voucherType === 'hotel') {
-      if (details.hotelName) drawField('Hotel:', details.hotelName);
-      if (details.hotelAddress) drawField('Address:', details.hotelAddress);
-      if (details.checkIn) drawField('Check-In:', details.checkIn);
-      if (details.checkOut) drawField('Check-Out:', details.checkOut);
-      if (details.roomType) drawField('Room Type:', details.roomType);
-      if (details.roomCount) drawField('Rooms:', String(details.roomCount));
-      if (details.mealPlan) drawField('Meal Plan:', details.mealPlan);
-      if (details.confirmationNumber) drawField('Confirmation #:', details.confirmationNumber);
+      if (details.hotelName) drawField(f('hotel'), details.hotelName);
+      if (details.hotelAddress) drawField(f('address'), details.hotelAddress);
+      if (details.checkIn) drawField(f('checkIn'), details.checkIn);
+      if (details.checkOut) drawField(f('checkOut'), details.checkOut);
+      if (details.roomType) drawField(f('roomType'), details.roomType);
+      if (details.roomCount) drawField(f('rooms'), String(details.roomCount));
+      if (details.mealPlan) drawField(f('mealPlan'), details.mealPlan);
+      if (details.confirmationNumber) drawField(f('confirmationNumber'), details.confirmationNumber);
       if (details.guestNames && details.guestNames.length > 0) {
-        drawField('Guests:', details.guestNames.join(', '));
+        drawField(f('guests'), details.guestNames.join(', '));
       }
-      if (details.specialRequests) drawField('Special Requests:', details.specialRequests);
-      if (details.emergencyContact) drawField('Emergency Contact:', details.emergencyContact);
+      if (details.specialRequests) drawField(f('specialRequests'), details.specialRequests);
+      if (details.emergencyContact) drawField(f('emergencyContact'), details.emergencyContact);
     } else if (voucherType === 'transport') {
-      if (details.vehicleType) drawField('Vehicle:', details.vehicleType);
-      if (details.driverName) drawField('Driver:', details.driverName);
-      if (details.driverPhone) drawField('Driver Phone:', details.driverPhone);
-      if (details.pickupLocation) drawField('Pickup:', details.pickupLocation);
-      if (details.pickupTime) drawField('Pickup Time:', details.pickupTime);
-      if (details.dropLocation) drawField('Drop:', details.dropLocation);
-      if (details.route) drawField('Route:', details.route);
+      if (details.vehicleType) drawField(f('vehicle'), details.vehicleType);
+      if (details.driverName) drawField(f('driver'), details.driverName);
+      if (details.driverPhone) drawField(f('driverPhone'), details.driverPhone);
+      if (details.pickupLocation) drawField(f('pickup'), details.pickupLocation);
+      if (details.pickupTime) drawField(f('pickupTime'), details.pickupTime);
+      if (details.dropLocation) drawField(f('drop'), details.dropLocation);
+      if (details.route) drawField(f('route'), details.route);
       if (details.sightseeing && details.sightseeing.length > 0) {
-        drawField('Sightseeing:', details.sightseeing.join(', '));
+        drawField(f('sightseeing'), details.sightseeing.join(', '));
       }
-      if (details.terms) drawField('Terms:', details.terms);
+      if (details.terms) drawField(f('terms'), details.terms);
     } else if (voucherType === 'flight') {
-      if (details.airline) drawField('Airline:', details.airline);
-      if (details.flightNumber) drawField('Flight:', details.flightNumber);
-      if (details.travelClass) drawField('Class:', details.travelClass);
-      if (details.departureAirport) drawField('Departure:', `${details.departureAirport}${details.departureTerminal ? ' (T' + details.departureTerminal + ')' : ''}`);
-      if (details.departureTime) drawField('Departure Time:', details.departureTime);
-      if (details.arrivalAirport) drawField('Arrival:', `${details.arrivalAirport}${details.arrivalTerminal ? ' (T' + details.arrivalTerminal + ')' : ''}`);
-      if (details.arrivalTime) drawField('Arrival Time:', details.arrivalTime);
-      if (details.pnr) drawField('PNR:', details.pnr);
-      if (details.baggageAllowance) drawField('Baggage:', details.baggageAllowance);
-      if (details.seatNumbers) drawField('Seats:', details.seatNumbers);
-      if (details.mealPreference) drawField('Meal Pref:', details.mealPreference);
+      if (details.airline) drawField(f('airline'), details.airline);
+      if (details.flightNumber) drawField(f('flight'), details.flightNumber);
+      if (details.travelClass) drawField(f('class'), details.travelClass);
+      if (details.departureAirport) drawField(f('departure'), `${details.departureAirport}${details.departureTerminal ? ' (T' + details.departureTerminal + ')' : ''}`);
+      if (details.departureTime) drawField(f('departureTime'), details.departureTime);
+      if (details.arrivalAirport) drawField(f('arrival'), `${details.arrivalAirport}${details.arrivalTerminal ? ' (T' + details.arrivalTerminal + ')' : ''}`);
+      if (details.arrivalTime) drawField(f('arrivalTime'), details.arrivalTime);
+      if (details.pnr) drawField(f('pnr'), details.pnr);
+      if (details.baggageAllowance) drawField(f('baggage'), details.baggageAllowance);
+      if (details.seatNumbers) drawField(f('seats'), details.seatNumbers);
+      if (details.mealPreference) drawField(f('mealPref'), details.mealPreference);
       if (details.passengers && details.passengers.length > 0) {
         ensureSpace(18);
-        page.drawText('Passengers:', {
+        page.drawText(f('passengers'), {
           x: margin,
           y,
           size: 9,
@@ -705,7 +713,7 @@ async function buildVoucherPdf(tenantDb: D1Database, voucherId: string, voucherT
         y -= 16;
         for (const pax of details.passengers) {
           ensureSpace(16);
-          const paxText = pax.pnr ? `${pax.name} (PNR: ${pax.pnr})` : pax.name;
+          const paxText = pax.pnr ? L('voucher.passengerPnr', { name: pax.name, pnr: pax.pnr }) : pax.name;
           page.drawText(`  - ${paxText}`, {
             x: margin + 10,
             y,
@@ -717,17 +725,17 @@ async function buildVoucherPdf(tenantDb: D1Database, voucherId: string, voucherT
         }
       }
     } else if (voucherType === 'activity') {
-      if (details.activityName) drawField('Activity:', details.activityName);
-      if (details.dateTime) drawField('Date/Time:', details.dateTime);
-      if (details.meetingPoint) drawField('Meeting Point:', details.meetingPoint);
-      if (details.duration) drawField('Duration:', details.duration);
-      if (details.operatorContact) drawField('Operator:', details.operatorContact);
-      if (details.emergencyContact) drawField('Emergency:', details.emergencyContact);
+      if (details.activityName) drawField(f('activity'), details.activityName);
+      if (details.dateTime) drawField(f('dateTime'), details.dateTime);
+      if (details.meetingPoint) drawField(f('meetingPoint'), details.meetingPoint);
+      if (details.duration) drawField(f('duration'), details.duration);
+      if (details.operatorContact) drawField(f('operator'), details.operatorContact);
+      if (details.emergencyContact) drawField(f('emergency'), details.emergencyContact);
       if (details.inclusions && details.inclusions.length > 0) {
-        drawField('Inclusions:', details.inclusions.join(', '));
+        drawField(f('inclusions'), details.inclusions.join(', '));
       }
       if (details.whatToBring && details.whatToBring.length > 0) {
-        drawField('What to Bring:', details.whatToBring.join(', '));
+        drawField(f('whatToBring'), details.whatToBring.join(', '));
       }
     } else {
       // Generic: render all key-value pairs
@@ -747,7 +755,7 @@ async function buildVoucherPdf(tenantDb: D1Database, voucherId: string, voucherT
       y -= 16;
       ensureSpace(40);
 
-      page.drawText('NOTES', {
+      page.drawText(L('voucher.section.notes').toUpperCase(), {
         x: margin,
         y,
         size: 10,
@@ -809,14 +817,14 @@ async function buildVoucherPdf(tenantDb: D1Database, voucherId: string, voucherT
         font: boldFont,
         color: rgb(0.5, 0.5, 0.5),
       });
-      pg.drawText(`Generated ${localDateString(voucherTz)}`, {
+      pg.drawText(L('voucher.footer.generated', { date: localDateString(voucherTz) }), {
         x: margin + 70,
         y: 22,
         size: 7,
         font,
         color: rgb(0.5, 0.5, 0.5),
       });
-      pg.drawText(`Page ${i + 1} of ${pageCount}`, {
+      pg.drawText(L('voucher.footer.page', { page: i + 1, total: pageCount }), {
         x: pageWidth - margin - 60,
         y: 22,
         size: 7,

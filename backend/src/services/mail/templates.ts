@@ -1,3 +1,5 @@
+import { t, textLanguage, type MessageVars, type TextLanguage } from '../../i18n';
+
 export type TemplateName =
   | 'welcome_admin'
   | 'invite_user'
@@ -34,9 +36,9 @@ function esc(value: unknown): string {
     .replace(/"/g, '&quot;');
 }
 
-function layout(title: string, bodyHtml: string): string {
+function layout(lang: TextLanguage, title: string, bodyHtml: string): string {
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${lang}">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${esc(title)}</title></head>
 <body style="font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 0; background: #f5f5f5; color: #222;">
   <div style="max-width: 600px; margin: 24px auto; background: #ffffff; border-radius: 8px; overflow: hidden;">
@@ -47,8 +49,8 @@ function layout(title: string, bodyHtml: string): string {
 </html>`;
 }
 
-function button(url: string, label: string): string {
-  return `<p style="margin: 24px 0;"><a href="${esc(url)}" style="display: inline-block; padding: 12px 28px; background: #1565C0; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold;">${esc(label)}</a></p><p style="font-size: 13px; color: #555;">If the button does not work, copy this address into your browser:<br>${esc(url)}</p>`;
+function button(lang: TextLanguage, url: string, label: string): string {
+  return `<p style="margin: 24px 0;"><a href="${esc(url)}" style="display: inline-block; padding: 12px 28px; background: #1565C0; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold;">${esc(label)}</a></p><p style="font-size: 13px; color: #555;">${t(lang, 'mail.buttonFallback')}<br>${esc(url)}</p>`;
 }
 
 function str(d: TemplateData, key: string, fallback = ''): string {
@@ -56,89 +58,103 @@ function str(d: TemplateData, key: string, fallback = ''): string {
   return v === undefined || v === null ? fallback : String(v);
 }
 
-export function renderTemplate(template: TemplateName, data: TemplateData): RenderedEmail {
+/**
+ * Render a system email. `language` is the recipient's language (see i18n/emailLanguage); anything but 'nl' reads English.
+ * Platform-operator mail (enquiries, spend alerts, the console test) is always English.
+ */
+export function renderTemplate(template: TemplateName, data: TemplateData, language: string = 'en'): RenderedEmail {
+  const lang = textLanguage(language);
+  const T = (key: string, vars?: MessageVars) => t(lang, key, vars);
+  /** An HTML fragment from the catalogue: every value is escaped, except those listed in `raw` (already safe HTML). */
+  const H = (key: string, vars: Record<string, string | number> = {}, raw: Record<string, string> = {}) => {
+    const safe: Record<string, string | number> = {};
+    for (const [k, v] of Object.entries(vars)) safe[k] = esc(v);
+    return t(lang, key, { ...safe, ...raw });
+  };
+  const hello = (name: unknown) => (name ? T('mail.greetingName', { name: esc(name) }) : T('mail.greeting'));
+  const btn = (url: string, label: string) => button(lang, url, label);
+  const page = (title: string, body: string) => layout(lang, title, body);
+
   switch (template) {
     case 'console_test': {
       const subject = 'TravelCRM Pro test email';
-      const html = layout(subject, `<p>This is a test email sent from the super admin console (Email page).</p><p>If you can read it, platform mail reaches you.</p>`);
+      const html = layout('en', subject, `<p>This is a test email sent from the super admin console (Email page).</p><p>If you can read it, platform mail reaches you.</p>`);
       const text = ['This is a test email sent from the super admin console (Email page).', 'If you can read it, platform mail reaches you.', ''].join('\n');
       return { subject, html, text };
     }
     case 'welcome_admin': {
-      const agency = str(data, 'agencyName', 'your agency');
+      const agency = str(data, 'agencyName', T('mail.welcome.agencyFallback'));
       const email = str(data, 'email');
       const password = str(data, 'temporaryPassword');
       const loginUrl = str(data, 'loginUrl', data.appUrl);
       const download = `${data.appUrl}/download`;
       const quickStart = `${data.appUrl}/quick-start`;
-      const subject = `Welcome to TravelCRM Pro, ${agency}`;
-      const html = layout(
+      const subject = T('mail.welcome.subject', { agency });
+      const html = page(
         subject,
-        `<p>Hello${data.adminName ? ` ${esc(data.adminName)}` : ''},</p>
-<p>The workspace for <strong>${esc(agency)}</strong> is ready.</p>
-<p>Sign in with:<br>Email: <strong>${esc(email)}</strong><br>Temporary password: <strong>${esc(password)}</strong></p>
-<p>You will be asked to choose a new password the first time you sign in.</p>
-${button(loginUrl, 'Sign in')}
-<p>Desktop app download: <a href="${esc(download)}">${esc(download)}</a><br>Quick start guide: <a href="${esc(quickStart)}">${esc(quickStart)}</a></p>`
+        `<p>${hello(data.adminName)}</p>
+<p>${H('mail.welcome.ready.html', { agency })}</p>
+<p>${H('mail.welcome.credentials.html', { email, password })}</p>
+<p>${T('mail.welcome.changePassword')}</p>
+${btn(loginUrl, T('mail.welcome.signIn'))}
+<p>${H('mail.welcome.links.html', { download, quickStart })}</p>`
       );
-      const text = `Welcome to TravelCRM Pro\n\nThe workspace for ${agency} is ready.\n\nEmail: ${email}\nTemporary password: ${password}\n\nYou will be asked to choose a new password the first time you sign in.\n\nSign in: ${loginUrl}\nDownload the desktop app: ${download}\nQuick start: ${quickStart}\n`;
+      const text = T('mail.welcome.text', { agency, email, password, loginUrl, download, quickStart });
       return { subject, html, text };
     }
     case 'invite_user': {
       const url = str(data, 'setupUrl');
-      const inviter = str(data, 'inviterName', 'Your administrator');
+      const inviter = str(data, 'inviterName', T('mail.invite.inviterFallback'));
       const agency = str(data, 'agencyName', 'TravelCRM Pro');
       const role = str(data, 'role');
-      const roleLabel = role ? ` as ${role.replace(/_/g, ' ')}` : '';
-      const subject = `You have been invited to ${agency}`;
-      const html = layout(
+      const roleName = role ? (T(`mail.role.${role}`) !== `mail.role.${role}` ? T(`mail.role.${role}`) : role.replace(/_/g, ' ')) : '';
+      const roleLabel = role ? T('mail.invite.asRole', { role: roleName }) : '';
+      const subject = T('mail.invite.subject', { agency });
+      const html = page(
         subject,
-        `<p>Hello${data.name ? ` ${esc(data.name)}` : ''},</p>
-<p>${esc(inviter)} invited you to join <strong>${esc(agency)}</strong> on TravelCRM Pro${esc(roleLabel)}.</p>
-<p>Set up your account to get started. This link is valid for 7 days.</p>
-${button(url, 'Set up your account')}`
+        `<p>${hello(data.name)}</p>
+<p>${H('mail.invite.body.html', { inviter, agency, role: roleLabel })}</p>
+<p>${T('mail.invite.setup')}</p>
+${btn(url, T('mail.invite.button'))}`
       );
-      const text = `${inviter} invited you to join ${agency} on TravelCRM Pro${roleLabel}.\n\nSet up your account (valid for 7 days):\n${url}\n`;
+      const text = T('mail.invite.text', { inviter, agency, role: roleLabel, url });
       return { subject, html, text };
     }
     case 'reset_password': {
       const url = str(data, 'resetUrl');
-      const subject = 'Reset your TravelCRM Pro password';
-      const html = layout(
+      const subject = T('mail.reset.subject');
+      const html = page(
         subject,
-        `<p>Hello${data.name ? ` ${esc(data.name)}` : ''},</p>
-<p>We received a request to reset your password. The link below expires in 1 hour.</p>
-${button(url, 'Reset password')}
-<p style="font-size: 13px; color: #555;">If you did not ask for this, ignore this email. Your password stays the same.</p>`
+        `<p>${hello(data.name)}</p>
+<p>${T('mail.reset.body')}</p>
+${btn(url, T('mail.reset.button'))}
+<p style="font-size: 13px; color: #555;">${T('mail.reset.ignore')}</p>`
       );
-      const text = `We received a request to reset your TravelCRM Pro password.\n\nThis link expires in 1 hour:\n${url}\n\nIf you did not ask for this, ignore this email.\n`;
+      const text = T('mail.reset.text', { url });
       return { subject, html, text };
     }
     case 'password_changed': {
-      const subject = 'Your TravelCRM Pro password was changed';
-      const html = layout(
+      const subject = T('mail.passwordChanged.subject');
+      const html = page(
         subject,
-        `<p>Hello${data.name ? ` ${esc(data.name)}` : ''},</p><p>The password for your account was just changed. If this was not you, reset it now or contact your administrator.</p>${button(`${data.appUrl}/forgot-password`, 'Reset password')}`
+        `<p>${hello(data.name)}</p><p>${T('mail.passwordChanged.body')}</p>${btn(`${data.appUrl}/forgot-password`, T('mail.passwordChanged.button'))}`
       );
-      const text = `The password for your TravelCRM Pro account was just changed. If this was not you, reset it at ${data.appUrl}/forgot-password or contact your administrator.\n`;
+      const text = T('mail.passwordChanged.text', { url: `${data.appUrl}/forgot-password` });
       return { subject, html, text };
     }
     case 'two_factor_enabled': {
-      const subject = 'Two-factor sign-in was turned on for your TravelCRM Pro account';
-      const html = layout(
-        subject,
-        `<p>Hello${data.name ? ` ${esc(data.name)}` : ''},</p><p>Two-factor sign-in with an authenticator app is now on for your account. You will be asked for a code each time you sign in. If this was not you, change your password and contact your administrator.</p>`
-      );
-      const text = `Two-factor sign-in with an authenticator app is now on for your TravelCRM Pro account. If this was not you, change your password and contact your administrator.\n`;
+      const subject = T('mail.twoFactorOn.subject');
+      const html = page(subject, `<p>${hello(data.name)}</p><p>${T('mail.twoFactorOn.body')}</p>`);
+      const text = T('mail.twoFactorOn.text');
       return { subject, html, text };
     }
     case 'two_factor_disabled': {
-      const subject = 'Two-factor sign-in was turned off for your TravelCRM Pro account';
-      const html = layout(
+      const subject = T('mail.twoFactorOff.subject');
+      const html = page(
         subject,
-        `<p>Hello${data.name ? ` ${esc(data.name)}` : ''},</p><p>Two-factor sign-in was turned off for your account. If this was not you, reset your password now and contact your administrator.</p>${button(`${data.appUrl}/forgot-password`, 'Reset password')}`
+        `<p>${hello(data.name)}</p><p>${T('mail.twoFactorOff.body')}</p>${btn(`${data.appUrl}/forgot-password`, T('mail.twoFactorOff.button'))}`
       );
-      const text = `Two-factor sign-in was turned off for your TravelCRM Pro account. If this was not you, reset your password at ${data.appUrl}/forgot-password and contact your administrator.\n`;
+      const text = T('mail.twoFactorOff.text', { url: `${data.appUrl}/forgot-password` });
       return { subject, html, text };
     }
     case 'platform_enquiry': {
@@ -147,111 +163,108 @@ ${button(url, 'Reset password')}
       const rows = keys
         .map((k) => `<tr><td style="padding: 4px 12px 4px 0;"><strong>${esc(k)}</strong></td><td>${esc(data[k])}</td></tr>`)
         .join('');
-      const html = layout(subject, `<p>A new enquiry arrived.</p><table>${rows}</table>`);
+      const html = layout('en', subject, `<p>A new enquiry arrived.</p><table>${rows}</table>`);
       const text = 'A new enquiry arrived.\n\n' + keys.map((k) => `${k}: ${data[k]}`).join('\n') + '\n';
       return { subject, html, text };
     }
     case 'payment_receipt': {
-      const agency = str(data, 'agencyName', 'your agency');
+      const agency = str(data, 'agencyName', T('mail.welcome.agencyFallback'));
       const number = str(data, 'invoiceNumber');
       const amount = str(data, 'amount');
       const paidUntil = str(data, 'paidUntil');
       const url = str(data, 'billingUrl', `${data.appUrl}/settings/billing`);
-      const subject = `Payment received: invoice ${number}`;
-      const until = paidUntil ? ` Your subscription is paid until ${esc(paidUntil)}.` : '';
-      const html = layout(
+      const subject = T('mail.receipt.subject', { number });
+      const until = paidUntil ? T('mail.receipt.until', { date: esc(paidUntil) }) : '';
+      const html = page(
         subject,
-        `<p>Thank you. We received ${esc(amount)} for ${esc(agency)} (invoice <strong>${esc(number)}</strong>).${until}</p>${button(url, 'View invoices')}`
+        `<p>${H('mail.receipt.body.html', { amount, agency, number }, { until })}</p>${btn(url, T('mail.receipt.button'))}`
       );
-      const text = `Thank you. We received ${amount} for ${agency} (invoice ${number}).${paidUntil ? ` Paid until ${paidUntil}.` : ''}
-
-Invoices: ${url}
-`;
+      const text = T('mail.receipt.text', {
+        amount,
+        agency,
+        number,
+        until: paidUntil ? T('mail.receipt.textPaidUntil', { date: paidUntil }) : '',
+        url,
+      });
       return { subject, html, text };
     }
     case 'payment_failed': {
-      const agency = str(data, 'agencyName', 'your agency');
+      const agency = str(data, 'agencyName', T('mail.welcome.agencyFallback'));
       const days = str(data, 'graceDays', '7');
       const ends = str(data, 'graceEnds');
       const url = str(data, 'billingUrl', `${data.appUrl}/settings/billing`);
-      const subject = 'We could not collect your TravelCRM Pro payment';
-      const html = layout(
+      const subject = T('mail.paymentFailed.subject');
+      const html = page(
         subject,
-        `<p>The renewal payment for <strong>${esc(agency)}</strong> did not go through. Everything keeps working for ${esc(days)} days${ends ? ` (until ${esc(ends)})` : ''}. After that the workspace becomes read-only until the payment is made. No data is deleted.</p>${button(url, 'Update payment')}`
+        `<p>${H('mail.paymentFailed.body.html', { agency, days }, { until: ends ? T('mail.paymentFailed.until', { date: esc(ends) }) : '' })}</p>${btn(url, T('mail.paymentFailed.button'))}`
       );
-      const text = `The renewal payment for ${agency} did not go through. Everything keeps working for ${days} days${ends ? ` (until ${ends})` : ''}. After that the workspace becomes read-only until the payment is made. No data is deleted.
-
-Pay now: ${url}
-`;
+      const text = T('mail.paymentFailed.text', { agency, days, until: ends ? T('mail.paymentFailed.until', { date: ends }) : '', url });
       return { subject, html, text };
     }
     case 'trial_ending': {
-      const agency = str(data, 'agencyName', 'your agency');
+      const agency = str(data, 'agencyName', T('mail.welcome.agencyFallback'));
       const left = str(data, 'daysLeft', '3');
       const ends = str(data, 'endsOn');
       const url = str(data, 'billingUrl', `${data.appUrl}/settings/billing`);
-      const subject = `Your TravelCRM Pro trial ends in ${left} day${left === '1' ? '' : 's'}`;
-      const html = layout(
+      const count = Number(left);
+      const subject = T('mail.trial.subject', { count: Number.isFinite(count) ? count : 3 });
+      const html = page(
         subject,
-        `<p>The free trial for <strong>${esc(agency)}</strong> ends${ends ? ` on ${esc(ends)}` : ''}. Choose a plan to keep working without interruption; your data stays safe.</p>${button(url, 'Choose a plan')}`
+        `<p>${H('mail.trial.body.html', { agency }, { ends: ends ? T('mail.trial.ends', { date: esc(ends) }) : '' })}</p>${btn(url, T('mail.trial.button'))}`
       );
-      const text = `The free trial for ${agency} ends${ends ? ` on ${ends}` : ''}. Choose a plan to keep working: ${url}
-`;
+      const text = T('mail.trial.text', { agency, ends: ends ? T('mail.trial.ends', { date: ends }) : '', url });
       return { subject, html, text };
     }
     case 'number_release_notice': {
-      const agency = str(data, 'agencyName', 'your agency');
+      const agency = str(data, 'agencyName', T('mail.welcome.agencyFallback'));
       const numbers = Array.isArray(data.numbers) ? (data.numbers as unknown[]).map(String) : [];
       const releaseOn = str(data, 'releaseOn');
       const reason = str(data, 'reason', 'cancelled');
       const url = str(data, 'billingUrl', `${data.appUrl}/settings/billing`);
-      const why = reason === 'unpaid' ? 'the rental for this month has not been paid' : 'the account was cancelled';
-      const subject = numbers.length === 1 ? `Your phone number ${numbers[0]} will be released` : 'Your phone numbers will be released';
+      const unpaid = reason === 'unpaid';
+      const why = T(unpaid ? 'mail.numbers.whyUnpaid' : 'mail.numbers.whyCancelled');
+      const keep = T(unpaid ? 'mail.numbers.keepUnpaid' : 'mail.numbers.keepCancelled');
+      const subject = numbers.length === 1 ? T('mail.numbers.subjectOne', { number: numbers[0] }) : T('mail.numbers.subjectMany');
       const list = numbers.map((n) => `<li>${esc(n)}</li>`).join('');
-      const html = layout(
+      const html = page(
         subject,
-        `<p>For <strong>${esc(agency)}</strong>, ${esc(why)}, so these numbers will be released on <strong>${esc(releaseOn)}</strong>:</p><ul>${list}</ul><p>A released number is usually gone for good. To keep it, ${reason === 'unpaid' ? 'buy the phone number add-on' : 'reactivate the account'} before that date.</p>${button(url, 'Open billing')}`
+        `<p>${H('mail.numbers.body.html', { agency, why, date: releaseOn })}</p><ul>${list}</ul><p>${H('mail.numbers.after.html', { keep })}</p>${btn(url, T('mail.numbers.button'))}`
       );
-      const text = `For ${agency}, ${why}, so these numbers will be released on ${releaseOn}: ${numbers.join(', ')}
-
-A released number is usually gone for good. To keep it, ${reason === 'unpaid' ? 'buy the phone number add-on' : 'reactivate the account'} before that date: ${url}
-`;
+      const text = T('mail.numbers.text', { agency, why, date: releaseOn, numbers: numbers.join(', '), keep, url });
       return { subject, html, text };
     }
     case 'website_ready': {
       // R309: the site address only. The admin password is set by the person through WordPress's own reset email.
-      const agency = str(data, 'agencyName', 'your agency');
+      const agency = str(data, 'agencyName', T('mail.welcome.agencyFallback'));
       const url = str(data, 'siteUrl');
       const adminUrl = str(data, 'adminUrl');
-      const subject = `Your website for ${agency} is ready`;
-      const html = layout(
+      const subject = T('mail.website.subject', { agency });
+      const html = page(
         subject,
-        `<p>The website for <strong>${esc(agency)}</strong> is live.</p>${button(url, 'Open your website')}<p>To edit it, sign in at <a href="${esc(adminUrl)}">${esc(adminUrl)}</a>. WordPress sends a separate email with a link to choose your password; we never see or send it.</p>`
+        `<p>${H('mail.website.live.html', { agency })}</p>${btn(url, T('mail.website.button'))}<p>${H('mail.website.edit.html', { adminUrl })}</p>`
       );
-      const text = `The website for ${agency} is live: ${url}\nTo edit it, sign in at ${adminUrl}. WordPress sends a separate email with a link to choose your password.\n`;
+      const text = T('mail.website.text', { agency, url, adminUrl });
       return { subject, html, text };
     }
     case 'voip_spend_alert': {
       const subject = str(data, 'subject', 'Call spend alert');
       const lines = Array.isArray(data.lines) ? (data.lines as unknown[]).map((l) => String(l)) : [];
-      const html = layout(subject, lines.map((l) => `<p>${esc(l)}</p>`).join('') + button(`${data.appUrl}`, 'Open the console'));
+      const html = layout('en', subject, lines.map((l) => `<p>${esc(l)}</p>`).join('') + button('en', `${data.appUrl}`, 'Open the console'));
       const text = [subject, '', ...lines, ''].join('\n');
       return { subject, html, text };
     }
     case 'usage_alert': {
-      const label = str(data, 'label', 'usage');
-      const threshold = Number(data.threshold) >= 100 ? 100 : 80;
+      const label = str(data, 'label', T('mail.usage.labelFallback'));
+      const full = Number(data.threshold) >= 100;
       const used = str(data, 'used', '0');
       const allowance = str(data, 'allowance', '0');
       const usageUrl = str(data, 'usageUrl', `${data.appUrl}/settings/ai-usage`);
-      const subject = threshold >= 100
-        ? `You have used all of this month's ${label}`
-        : `You have used 80% of this month's ${label}`;
-      const lead = threshold >= 100
-        ? `Your agency has used all ${esc(allowance)} of this month's ${esc(label)}. New sends are refused until the allowance renews next month; you can ask for an upgrade or extra credits.`
-        : `Your agency has used ${esc(used)} of this month's ${esc(allowance)} ${esc(label)} (80%).`;
-      const html = layout(subject, `<p>${lead}</p>${button(usageUrl, 'Open usage and limits')}`);
-      const text = `${subject}\n\nUsed ${used} of ${allowance} ${label}.\n${threshold >= 100 ? 'New sends are refused until the allowance renews next month. Ask for an upgrade or extra credits.\n' : ''}\nUsage and limits: ${usageUrl}\n`;
+      const subject = full ? T('mail.usage.subjectFull', { label }) : T('mail.usage.subjectWarn', { label });
+      const lead = full
+        ? T('mail.usage.leadFull', { allowance: esc(allowance), label: esc(label) })
+        : T('mail.usage.leadWarn', { used: esc(used), allowance: esc(allowance), label: esc(label) });
+      const html = page(subject, `<p>${lead}</p>${btn(usageUrl, T('mail.usage.button'))}`);
+      const text = `${subject}\n\n${T('mail.usage.textUsed', { used, allowance, label })}${full ? T('mail.usage.textFull') : ''}\n${T('mail.usage.textLink', { url: usageUrl })}`;
       return { subject, html, text };
     }
   }

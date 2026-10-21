@@ -14,6 +14,7 @@ import { logActivity } from '../utils/activity-logger';
 import { success, created, error } from '../utils/response';
 import { appUrl } from '../utils/app-urls';
 import { sendTransactional } from '../services/mail/transactional';
+import { agencyDefaultLanguage, isUiLanguage } from '../i18n';
 import { revokeAllSessions } from '../services/two-factor';
 import { seatLimitResponse } from '../services/plans/seats';
 import { isValidLocale } from '../utils/money';
@@ -84,7 +85,7 @@ const updateProfileSchema = z.object({
   name: z.string().min(1).optional(),
   phone: z.string().optional(),
   department: z.string().optional(),
-  language: z.string().optional(),
+  language: z.string().refine(isUiLanguage, 'Unsupported language').optional(),
   // R202: personal display overrides; null clears the override and the agency setting applies again
   locale: z.string().refine((v) => isValidLocale(v), 'Not a valid locale tag').nullable().optional(),
   timezone: z.string().refine((v) => isValidTimeZone(v), 'Not a valid IANA time zone').nullable().optional(),
@@ -258,6 +259,8 @@ const createUserSchema = z.object({
   role: z.enum(['admin', 'sales_manager', 'salesperson', 'operations', 'accountant', 'view_only']),
   phone: z.string().optional(),
   department: z.string().optional(),
+  // The language of the invitation email and of the new user's interface; the agency default_language when omitted.
+  language: z.string().refine(isUiLanguage, 'Unsupported language').optional(),
 });
 
 userRoutes.post(
@@ -295,6 +298,7 @@ userRoutes.post(
 
     // Insert invited user into tenant DB so they appear in team list
     const newUserId = generateId();
+    const inviteLanguage = data.language ?? (await agencyDefaultLanguage(c.get('tenantDb')));
     await db.insert(users).values({
       id: newUserId,
       email: data.email.toLowerCase(),
@@ -303,6 +307,7 @@ userRoutes.post(
       passwordHash: 'INVITE_PENDING',
       role: data.role,
       department: data.department || null,
+      language: inviteLanguage,
       inviteStatus: 'pending',
       invitedAt: new Date().toISOString(),
     });

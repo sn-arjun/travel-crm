@@ -14,6 +14,7 @@ import { sendTransactional } from '../services/mail/transactional';
 import { supportEmail } from '../utils/app-urls';
 import { rateLimit } from '../middleware/rate-limiter';
 import { validateLocaleSettings } from '../utils/money';
+import { isUiLanguage, UI_LANGUAGES } from '../i18n';
 import { DEFAULT_VAT_RATES, loadTaxSettings, normalizeCountry } from '../services/tax-calculator';
 
 const settingsRoutes = new Hono<AppContext>();
@@ -49,6 +50,9 @@ settingsRoutes.put(
     const data = c.req.valid('json');
     const localeProblem = validateLocaleSettings(data);
     if (localeProblem) return error(c, localeProblem, 400);
+    if (data.default_language && !isUiLanguage(data.default_language)) {
+      return error(c, `default_language must be one of ${UI_LANGUAGES.join(', ')}`, 400);
+    }
     const db = drizzle(c.get('tenantDb'));
     const userId = c.get('userId');
     const now = new Date().toISOString();

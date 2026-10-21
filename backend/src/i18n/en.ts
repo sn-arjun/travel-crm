@@ -1,0 +1,203 @@
+/**
+ * English texts of the backend documents: system emails, voucher PDF labels and the public pages' server texts.
+ * English is the source: nl.ts must have every key (the compiler checks it) and other languages fall back to this file.
+ *
+ * `{name}` placeholders are replaced by t(). Keys ending in `.html` are HTML fragments written here (so they may carry
+ * <strong> and <a>): templates.ts escapes every value it passes into them. Keys ending in `.text` are the plain-text mail.
+ */
+export const en = {
+  // ---- system emails: shared ----
+  'mail.greeting': 'Hello,',
+  'mail.greetingName': 'Hello {name},',
+  'mail.buttonFallback': 'If the button does not work, copy this address into your browser:',
+  'mail.role.admin': 'admin',
+  'mail.role.sales_manager': 'sales manager',
+  'mail.role.salesperson': 'salesperson',
+  'mail.role.operations': 'operations',
+  'mail.role.accountant': 'accountant',
+  'mail.role.view_only': 'view only',
+
+  // ---- welcome ----
+  'mail.welcome.agencyFallback': 'your agency',
+  'mail.welcome.subject': 'Welcome to TravelCRM Pro, {agency}',
+  'mail.welcome.ready.html': 'The workspace for <strong>{agency}</strong> is ready.',
+  'mail.welcome.credentials.html':
+    'Sign in with:<br>Email: <strong>{email}</strong><br>Temporary password: <strong>{password}</strong>',
+  'mail.welcome.changePassword': 'You will be asked to choose a new password the first time you sign in.',
+  'mail.welcome.signIn': 'Sign in',
+  'mail.welcome.links.html':
+    'Desktop app download: <a href="{download}">{download}</a><br>Quick start guide: <a href="{quickStart}">{quickStart}</a>',
+  'mail.welcome.text':
+    'Welcome to TravelCRM Pro\n\nThe workspace for {agency} is ready.\n\nEmail: {email}\nTemporary password: {password}\n\nYou will be asked to choose a new password the first time you sign in.\n\nSign in: {loginUrl}\nDownload the desktop app: {download}\nQuick start: {quickStart}\n',
+
+  // ---- invitation ----
+  'mail.invite.inviterFallback': 'Your administrator',
+  'mail.invite.asRole': ' as {role}',
+  'mail.invite.subject': 'You have been invited to {agency}',
+  'mail.invite.body.html': '{inviter} invited you to join <strong>{agency}</strong> on TravelCRM Pro{role}.',
+  'mail.invite.setup': 'Set up your account to get started. This link is valid for 7 days.',
+  'mail.invite.button': 'Set up your account',
+  'mail.invite.text': '{inviter} invited you to join {agency} on TravelCRM Pro{role}.\n\nSet up your account (valid for 7 days):\n{url}\n',
+
+  // ---- password reset ----
+  'mail.reset.subject': 'Reset your TravelCRM Pro password',
+  'mail.reset.body': 'We received a request to reset your password. The link below expires in 1 hour.',
+  'mail.reset.button': 'Reset password',
+  'mail.reset.ignore': 'If you did not ask for this, ignore this email. Your password stays the same.',
+  'mail.reset.text':
+    'We received a request to reset your TravelCRM Pro password.\n\nThis link expires in 1 hour:\n{url}\n\nIf you did not ask for this, ignore this email.\n',
+
+  // ---- password changed ----
+  'mail.passwordChanged.subject': 'Your TravelCRM Pro password was changed',
+  'mail.passwordChanged.body':
+    'The password for your account was just changed. If this was not you, reset it now or contact your administrator.',
+  'mail.passwordChanged.button': 'Reset password',
+  'mail.passwordChanged.text':
+    'The password for your TravelCRM Pro account was just changed. If this was not you, reset it at {url} or contact your administrator.\n',
+
+  // ---- two-factor ----
+  'mail.twoFactorOn.subject': 'Two-factor sign-in was turned on for your TravelCRM Pro account',
+  'mail.twoFactorOn.body':
+    'Two-factor sign-in with an authenticator app is now on for your account. You will be asked for a code each time you sign in. If this was not you, change your password and contact your administrator.',
+  'mail.twoFactorOn.text':
+    'Two-factor sign-in with an authenticator app is now on for your TravelCRM Pro account. If this was not you, change your password and contact your administrator.\n',
+  'mail.twoFactorOff.subject': 'Two-factor sign-in was turned off for your TravelCRM Pro account',
+  'mail.twoFactorOff.body':
+    'Two-factor sign-in was turned off for your account. If this was not you, reset your password now and contact your administrator.',
+  'mail.twoFactorOff.button': 'Reset password',
+  'mail.twoFactorOff.text':
+    'Two-factor sign-in was turned off for your TravelCRM Pro account. If this was not you, reset your password at {url} and contact your administrator.\n',
+
+  // ---- billing ----
+  'mail.receipt.subject': 'Payment received: invoice {number}',
+  'mail.receipt.until': ' Your subscription is paid until {date}.',
+  'mail.receipt.body.html': 'Thank you. We received {amount} for {agency} (invoice <strong>{number}</strong>).{until}',
+  'mail.receipt.button': 'View invoices',
+  'mail.receipt.textPaidUntil': ' Paid until {date}.',
+  'mail.receipt.text': 'Thank you. We received {amount} for {agency} (invoice {number}).{until}\n\nInvoices: {url}\n',
+  'mail.paymentFailed.subject': 'We could not collect your TravelCRM Pro payment',
+  'mail.paymentFailed.until': ' (until {date})',
+  'mail.paymentFailed.body.html':
+    'The renewal payment for <strong>{agency}</strong> did not go through. Everything keeps working for {days} days{until}. After that the workspace becomes read-only until the payment is made. No data is deleted.',
+  'mail.paymentFailed.button': 'Update payment',
+  'mail.paymentFailed.text':
+    'The renewal payment for {agency} did not go through. Everything keeps working for {days} days{until}. After that the workspace becomes read-only until the payment is made. No data is deleted.\n\nPay now: {url}\n',
+  'mail.trial.subject_one': 'Your TravelCRM Pro trial ends in {count} day',
+  'mail.trial.subject_other': 'Your TravelCRM Pro trial ends in {count} days',
+  'mail.trial.ends': ' on {date}',
+  'mail.trial.body.html':
+    'The free trial for <strong>{agency}</strong> ends{ends}. Choose a plan to keep working without interruption; your data stays safe.',
+  'mail.trial.button': 'Choose a plan',
+  'mail.trial.text': 'The free trial for {agency} ends{ends}. Choose a plan to keep working: {url}\n',
+  'mail.numbers.subjectOne': 'Your phone number {number} will be released',
+  'mail.numbers.subjectMany': 'Your phone numbers will be released',
+  'mail.numbers.whyUnpaid': 'the rental for this month has not been paid',
+  'mail.numbers.whyCancelled': 'the account was cancelled',
+  'mail.numbers.keepUnpaid': 'buy the phone number add-on',
+  'mail.numbers.keepCancelled': 'reactivate the account',
+  'mail.numbers.body.html':
+    'For <strong>{agency}</strong>, {why}, so these numbers will be released on <strong>{date}</strong>:',
+  'mail.numbers.after.html':
+    'A released number is usually gone for good. To keep it, {keep} before that date.',
+  'mail.numbers.button': 'Open billing',
+  'mail.numbers.text':
+    'For {agency}, {why}, so these numbers will be released on {date}: {numbers}\n\nA released number is usually gone for good. To keep it, {keep} before that date: {url}\n',
+
+  // ---- website ready ----
+  'mail.website.subject': 'Your website for {agency} is ready',
+  'mail.website.live.html': 'The website for <strong>{agency}</strong> is live.',
+  'mail.website.button': 'Open your website',
+  'mail.website.edit.html':
+    'To edit it, sign in at <a href="{adminUrl}">{adminUrl}</a>. WordPress sends a separate email with a link to choose your password; we never see or send it.',
+  'mail.website.text':
+    'The website for {agency} is live: {url}\nTo edit it, sign in at {adminUrl}. WordPress sends a separate email with a link to choose your password.\n',
+
+  // ---- usage alert ----
+  'mail.usage.labelFallback': 'usage',
+  'mail.usage.subjectFull': "You have used all of this month's {label}",
+  'mail.usage.subjectWarn': "You have used 80% of this month's {label}",
+  'mail.usage.leadFull':
+    "Your agency has used all {allowance} of this month's {label}. New sends are refused until the allowance renews next month; you can ask for an upgrade or extra credits.",
+  'mail.usage.leadWarn': "Your agency has used {used} of this month's {allowance} {label} (80%).",
+  'mail.usage.button': 'Open usage and limits',
+  'mail.usage.textUsed': 'Used {used} of {allowance} {label}.\n',
+  'mail.usage.textFull': 'New sends are refused until the allowance renews next month. Ask for an upgrade or extra credits.\n',
+  'mail.usage.textLink': 'Usage and limits: {url}\n',
+
+  // ---- voucher PDF ----
+  'voucher.title': '{type} Voucher',
+  'voucher.type.hotel': 'Hotel',
+  'voucher.type.transport': 'Transport',
+  'voucher.type.flight': 'Flight',
+  'voucher.type.activity': 'Activity',
+  'voucher.type.general': 'General',
+  'voucher.status.draft': 'Draft',
+  'voucher.status.sent': 'Sent',
+  'voucher.status.confirmed': 'Confirmed',
+  'voucher.section.booking': 'Booking information',
+  'voucher.section.details': '{type} details',
+  'voucher.section.notes': 'Notes',
+  'voucher.field.voucherId': 'Voucher ID',
+  'voucher.field.type': 'Type',
+  'voucher.field.lead': 'Lead',
+  'voucher.field.supplier': 'Supplier',
+  'voucher.field.language': 'Language',
+  'voucher.field.created': 'Created',
+  'voucher.field.sent': 'Sent',
+  'voucher.field.confirmed': 'Confirmed',
+  'voucher.field.hotel': 'Hotel',
+  'voucher.field.address': 'Address',
+  'voucher.field.checkIn': 'Check-In',
+  'voucher.field.checkOut': 'Check-Out',
+  'voucher.field.roomType': 'Room Type',
+  'voucher.field.rooms': 'Rooms',
+  'voucher.field.mealPlan': 'Meal Plan',
+  'voucher.field.confirmationNumber': 'Confirmation #',
+  'voucher.field.guests': 'Guests',
+  'voucher.field.specialRequests': 'Special Requests',
+  'voucher.field.emergencyContact': 'Emergency Contact',
+  'voucher.field.vehicle': 'Vehicle',
+  'voucher.field.driver': 'Driver',
+  'voucher.field.driverPhone': 'Driver Phone',
+  'voucher.field.pickup': 'Pickup',
+  'voucher.field.pickupTime': 'Pickup Time',
+  'voucher.field.drop': 'Drop',
+  'voucher.field.route': 'Route',
+  'voucher.field.sightseeing': 'Sightseeing',
+  'voucher.field.terms': 'Terms',
+  'voucher.field.airline': 'Airline',
+  'voucher.field.flight': 'Flight',
+  'voucher.field.class': 'Class',
+  'voucher.field.departure': 'Departure',
+  'voucher.field.departureTime': 'Departure Time',
+  'voucher.field.arrival': 'Arrival',
+  'voucher.field.arrivalTime': 'Arrival Time',
+  'voucher.field.pnr': 'PNR',
+  'voucher.field.baggage': 'Baggage',
+  'voucher.field.seats': 'Seats',
+  'voucher.field.mealPref': 'Meal Pref',
+  'voucher.field.passengers': 'Passengers',
+  'voucher.field.activity': 'Activity',
+  'voucher.field.dateTime': 'Date/Time',
+  'voucher.field.meetingPoint': 'Meeting Point',
+  'voucher.field.duration': 'Duration',
+  'voucher.field.operator': 'Operator',
+  'voucher.field.emergency': 'Emergency',
+  'voucher.field.inclusions': 'Inclusions',
+  'voucher.field.whatToBring': 'What to Bring',
+  'voucher.passengerPnr': '{name} (PNR: {pnr})',
+  'voucher.footer.generated': 'Generated {date}',
+  'voucher.footer.page': 'Page {page} of {total}',
+
+  // ---- public pages ----
+  'public.unsubscribe.invalidTitle': 'Link not valid',
+  'public.unsubscribe.invalidBody':
+    'This unsubscribe link is not valid. If you keep receiving messages, reply to one and ask to be removed.',
+  'public.unsubscribe.doneTitle': 'You are unsubscribed',
+  'public.unsubscribe.doneBody': 'You will not receive further marketing messages from us. You can close this page.',
+  'public.quotation.notFound': 'Quotation not found',
+  'public.quotation.revoked': 'This quotation link has been revoked',
+  'public.quotation.expired': 'This quotation has expired',
+} as const;
+
+export type MessageKey = keyof typeof en;

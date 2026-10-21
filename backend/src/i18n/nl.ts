@@ -1,0 +1,201 @@
+import type { MessageKey } from './en';
+
+/**
+ * Dutch texts of the backend documents. MACHINE-MADE: needs native review before a Dutch agency goes live
+ * (see docs/i18n/NL-REVIEW.md). Same keys and {placeholders} as en.ts; the compiler fails a missing key.
+ * The PDF voucher font (Helvetica, WinAnsi) covers every character used here.
+ */
+export const nl: Record<MessageKey, string> = {
+  // ---- system emails: shared ----
+  'mail.greeting': 'Hallo,',
+  'mail.greetingName': 'Hallo {name},',
+  'mail.buttonFallback': 'Werkt de knop niet? Kopieer dan dit adres naar uw browser:',
+  'mail.role.admin': 'beheerder',
+  'mail.role.sales_manager': 'verkoopmanager',
+  'mail.role.salesperson': 'verkoper',
+  'mail.role.operations': 'operatie',
+  'mail.role.accountant': 'boekhouder',
+  'mail.role.view_only': 'alleen lezen',
+
+  // ---- welcome ----
+  'mail.welcome.agencyFallback': 'uw bureau',
+  'mail.welcome.subject': 'Welkom bij TravelCRM Pro, {agency}',
+  'mail.welcome.ready.html': 'De werkruimte voor <strong>{agency}</strong> is klaar.',
+  'mail.welcome.credentials.html':
+    'Meld u aan met:<br>E-mail: <strong>{email}</strong><br>Tijdelijk wachtwoord: <strong>{password}</strong>',
+  'mail.welcome.changePassword': 'Bij de eerste keer aanmelden wordt u gevraagd een nieuw wachtwoord te kiezen.',
+  'mail.welcome.signIn': 'Aanmelden',
+  'mail.welcome.links.html':
+    'Desktop-app downloaden: <a href="{download}">{download}</a><br>Snelstartgids: <a href="{quickStart}">{quickStart}</a>',
+  'mail.welcome.text':
+    'Welkom bij TravelCRM Pro\n\nDe werkruimte voor {agency} is klaar.\n\nE-mail: {email}\nTijdelijk wachtwoord: {password}\n\nBij de eerste keer aanmelden wordt u gevraagd een nieuw wachtwoord te kiezen.\n\nAanmelden: {loginUrl}\nDe desktop-app downloaden: {download}\nSnelstart: {quickStart}\n',
+
+  // ---- invitation ----
+  'mail.invite.inviterFallback': 'Uw beheerder',
+  'mail.invite.asRole': ' als {role}',
+  'mail.invite.subject': 'U bent uitgenodigd voor {agency}',
+  'mail.invite.body.html': '{inviter} heeft u uitgenodigd om deel te nemen aan <strong>{agency}</strong> in TravelCRM Pro{role}.',
+  'mail.invite.setup': 'Stel uw account in om aan de slag te gaan. Deze link is 7 dagen geldig.',
+  'mail.invite.button': 'Uw account instellen',
+  'mail.invite.text': '{inviter} heeft u uitgenodigd om deel te nemen aan {agency} in TravelCRM Pro{role}.\n\nStel uw account in (7 dagen geldig):\n{url}\n',
+
+  // ---- password reset ----
+  'mail.reset.subject': 'Stel uw TravelCRM Pro-wachtwoord opnieuw in',
+  'mail.reset.body': 'We hebben een verzoek ontvangen om uw wachtwoord opnieuw in te stellen. De onderstaande link verloopt over 1 uur.',
+  'mail.reset.button': 'Wachtwoord opnieuw instellen',
+  'mail.reset.ignore': 'Hebt u dit niet aangevraagd? Negeer dan deze e-mail. Uw wachtwoord blijft hetzelfde.',
+  'mail.reset.text':
+    'We hebben een verzoek ontvangen om uw TravelCRM Pro-wachtwoord opnieuw in te stellen.\n\nDeze link verloopt over 1 uur:\n{url}\n\nHebt u dit niet aangevraagd? Negeer dan deze e-mail.\n',
+
+  // ---- password changed ----
+  'mail.passwordChanged.subject': 'Uw TravelCRM Pro-wachtwoord is gewijzigd',
+  'mail.passwordChanged.body':
+    'Het wachtwoord van uw account is zojuist gewijzigd. Was u dit niet? Stel het dan nu opnieuw in of neem contact op met uw beheerder.',
+  'mail.passwordChanged.button': 'Wachtwoord opnieuw instellen',
+  'mail.passwordChanged.text':
+    'Het wachtwoord van uw TravelCRM Pro-account is zojuist gewijzigd. Was u dit niet? Stel het dan opnieuw in via {url} of neem contact op met uw beheerder.\n',
+
+  // ---- two-factor ----
+  'mail.twoFactorOn.subject': 'Tweestapsaanmelding is ingeschakeld voor uw TravelCRM Pro-account',
+  'mail.twoFactorOn.body':
+    'Tweestapsaanmelding met een authenticator-app is nu ingeschakeld voor uw account. Bij elke aanmelding wordt u om een code gevraagd. Was u dit niet? Wijzig dan uw wachtwoord en neem contact op met uw beheerder.',
+  'mail.twoFactorOn.text':
+    'Tweestapsaanmelding met een authenticator-app is nu ingeschakeld voor uw TravelCRM Pro-account. Was u dit niet? Wijzig dan uw wachtwoord en neem contact op met uw beheerder.\n',
+  'mail.twoFactorOff.subject': 'Tweestapsaanmelding is uitgeschakeld voor uw TravelCRM Pro-account',
+  'mail.twoFactorOff.body':
+    'Tweestapsaanmelding is uitgeschakeld voor uw account. Was u dit niet? Stel dan nu uw wachtwoord opnieuw in en neem contact op met uw beheerder.',
+  'mail.twoFactorOff.button': 'Wachtwoord opnieuw instellen',
+  'mail.twoFactorOff.text':
+    'Tweestapsaanmelding is uitgeschakeld voor uw TravelCRM Pro-account. Was u dit niet? Stel uw wachtwoord dan opnieuw in via {url} en neem contact op met uw beheerder.\n',
+
+  // ---- billing ----
+  'mail.receipt.subject': 'Betaling ontvangen: factuur {number}',
+  'mail.receipt.until': ' Uw abonnement is betaald tot {date}.',
+  'mail.receipt.body.html': 'Bedankt. We hebben {amount} ontvangen voor {agency} (factuur <strong>{number}</strong>).{until}',
+  'mail.receipt.button': 'Facturen bekijken',
+  'mail.receipt.textPaidUntil': ' Betaald tot {date}.',
+  'mail.receipt.text': 'Bedankt. We hebben {amount} ontvangen voor {agency} (factuur {number}).{until}\n\nFacturen: {url}\n',
+  'mail.paymentFailed.subject': 'We konden uw TravelCRM Pro-betaling niet incasseren',
+  'mail.paymentFailed.until': ' (tot {date})',
+  'mail.paymentFailed.body.html':
+    'De verlengingsbetaling voor <strong>{agency}</strong> is niet gelukt. Alles blijft {days} dagen werken{until}. Daarna wordt de werkruimte alleen-lezen totdat de betaling is gedaan. Er worden geen gegevens verwijderd.',
+  'mail.paymentFailed.button': 'Betaalgegevens bijwerken',
+  'mail.paymentFailed.text':
+    'De verlengingsbetaling voor {agency} is niet gelukt. Alles blijft {days} dagen werken{until}. Daarna wordt de werkruimte alleen-lezen totdat de betaling is gedaan. Er worden geen gegevens verwijderd.\n\nNu betalen: {url}\n',
+  'mail.trial.subject_one': 'Uw TravelCRM Pro-proefperiode eindigt over {count} dag',
+  'mail.trial.subject_other': 'Uw TravelCRM Pro-proefperiode eindigt over {count} dagen',
+  'mail.trial.ends': ' op {date}',
+  'mail.trial.body.html':
+    'De gratis proefperiode voor <strong>{agency}</strong> eindigt{ends}. Kies een abonnement om zonder onderbreking door te werken; uw gegevens blijven veilig.',
+  'mail.trial.button': 'Een abonnement kiezen',
+  'mail.trial.text': 'De gratis proefperiode voor {agency} eindigt{ends}. Kies een abonnement om door te werken: {url}\n',
+  'mail.numbers.subjectOne': 'Uw telefoonnummer {number} wordt vrijgegeven',
+  'mail.numbers.subjectMany': 'Uw telefoonnummers worden vrijgegeven',
+  'mail.numbers.whyUnpaid': 'de huur voor deze maand niet is betaald',
+  'mail.numbers.whyCancelled': 'het account is opgezegd',
+  'mail.numbers.keepUnpaid': 'koopt u de telefoonnummer-add-on',
+  'mail.numbers.keepCancelled': 'activeert u het account opnieuw',
+  'mail.numbers.body.html':
+    'Voor <strong>{agency}</strong> geldt dat {why}, daarom worden deze nummers vrijgegeven op <strong>{date}</strong>:',
+  'mail.numbers.after.html':
+    'Een vrijgegeven nummer is meestal voorgoed weg. Wilt u het behouden, dan {keep} vóór die datum.',
+  'mail.numbers.button': 'Facturatie openen',
+  'mail.numbers.text':
+    'Voor {agency} geldt dat {why}, daarom worden deze nummers vrijgegeven op {date}: {numbers}\n\nEen vrijgegeven nummer is meestal voorgoed weg. Wilt u het behouden, dan {keep} vóór die datum: {url}\n',
+
+  // ---- website ready ----
+  'mail.website.subject': 'Uw website voor {agency} is klaar',
+  'mail.website.live.html': 'De website voor <strong>{agency}</strong> staat online.',
+  'mail.website.button': 'Uw website openen',
+  'mail.website.edit.html':
+    'Om de website te bewerken, meldt u zich aan via <a href="{adminUrl}">{adminUrl}</a>. WordPress stuurt een aparte e-mail met een link om uw wachtwoord te kiezen; wij zien of versturen dat nooit.',
+  'mail.website.text':
+    'De website voor {agency} staat online: {url}\nOm de website te bewerken, meldt u zich aan via {adminUrl}. WordPress stuurt een aparte e-mail met een link om uw wachtwoord te kiezen.\n',
+
+  // ---- usage alert ----
+  'mail.usage.labelFallback': 'gebruik',
+  'mail.usage.subjectFull': 'U hebt het hele tegoed van deze maand opgebruikt: {label}',
+  'mail.usage.subjectWarn': 'U hebt 80% van het tegoed van deze maand gebruikt: {label}',
+  'mail.usage.leadFull':
+    'Uw bureau heeft alle {allowance} van het tegoed van deze maand opgebruikt ({label}). Nieuwe verzendingen worden geweigerd totdat het tegoed volgende maand wordt vernieuwd; u kunt een upgrade of extra tegoed aanvragen.',
+  'mail.usage.leadWarn': 'Uw bureau heeft {used} van de {allowance} van deze maand gebruikt ({label}, 80%).',
+  'mail.usage.button': 'Gebruik en limieten openen',
+  'mail.usage.textUsed': '{used} van {allowance} gebruikt ({label}).\n',
+  'mail.usage.textFull': 'Nieuwe verzendingen worden geweigerd totdat het tegoed volgende maand wordt vernieuwd. Vraag een upgrade of extra tegoed aan.\n',
+  'mail.usage.textLink': 'Gebruik en limieten: {url}\n',
+
+  // ---- voucher PDF ----
+  'voucher.title': '{type}voucher',
+  'voucher.type.hotel': 'Hotel',
+  'voucher.type.transport': 'Vervoer',
+  'voucher.type.flight': 'Vlucht',
+  'voucher.type.activity': 'Activiteit',
+  'voucher.type.general': 'Algemeen',
+  'voucher.status.draft': 'Concept',
+  'voucher.status.sent': 'Verzonden',
+  'voucher.status.confirmed': 'Bevestigd',
+  'voucher.section.booking': 'Boekingsgegevens',
+  'voucher.section.details': 'Gegevens {type}',
+  'voucher.section.notes': 'Opmerkingen',
+  'voucher.field.voucherId': 'Voucher-id',
+  'voucher.field.type': 'Soort',
+  'voucher.field.lead': 'Lead',
+  'voucher.field.supplier': 'Leverancier',
+  'voucher.field.language': 'Taal',
+  'voucher.field.created': 'Aangemaakt',
+  'voucher.field.sent': 'Verzonden',
+  'voucher.field.confirmed': 'Bevestigd',
+  'voucher.field.hotel': 'Hotel',
+  'voucher.field.address': 'Adres',
+  'voucher.field.checkIn': 'Inchecken',
+  'voucher.field.checkOut': 'Uitchecken',
+  'voucher.field.roomType': 'Kamertype',
+  'voucher.field.rooms': 'Kamers',
+  'voucher.field.mealPlan': 'Maaltijdplan',
+  'voucher.field.confirmationNumber': 'Bevestigingsnr.',
+  'voucher.field.guests': 'Gasten',
+  'voucher.field.specialRequests': 'Bijzondere wensen',
+  'voucher.field.emergencyContact': 'Noodcontact',
+  'voucher.field.vehicle': 'Voertuig',
+  'voucher.field.driver': 'Chauffeur',
+  'voucher.field.driverPhone': 'Telefoon chauffeur',
+  'voucher.field.pickup': 'Ophaalplaats',
+  'voucher.field.pickupTime': 'Ophaaltijd',
+  'voucher.field.drop': 'Afzetplaats',
+  'voucher.field.route': 'Route',
+  'voucher.field.sightseeing': 'Bezienswaardigheden',
+  'voucher.field.terms': 'Voorwaarden',
+  'voucher.field.airline': 'Luchtvaartmaatschappij',
+  'voucher.field.flight': 'Vlucht',
+  'voucher.field.class': 'Klasse',
+  'voucher.field.departure': 'Vertrek',
+  'voucher.field.departureTime': 'Vertrektijd',
+  'voucher.field.arrival': 'Aankomst',
+  'voucher.field.arrivalTime': 'Aankomsttijd',
+  'voucher.field.pnr': 'Boekingscode (PNR)',
+  'voucher.field.baggage': 'Bagage',
+  'voucher.field.seats': 'Stoelen',
+  'voucher.field.mealPref': 'Maaltijdvoorkeur',
+  'voucher.field.passengers': 'Passagiers',
+  'voucher.field.activity': 'Activiteit',
+  'voucher.field.dateTime': 'Datum/tijd',
+  'voucher.field.meetingPoint': 'Ontmoetingspunt',
+  'voucher.field.duration': 'Duur',
+  'voucher.field.operator': 'Aanbieder',
+  'voucher.field.emergency': 'Noodnummer',
+  'voucher.field.inclusions': 'Inbegrepen',
+  'voucher.field.whatToBring': 'Meenemen',
+  'voucher.passengerPnr': '{name} (PNR: {pnr})',
+  'voucher.footer.generated': 'Aangemaakt op {date}',
+  'voucher.footer.page': 'Pagina {page} van {total}',
+
+  // ---- public pages ----
+  'public.unsubscribe.invalidTitle': 'Link niet geldig',
+  'public.unsubscribe.invalidBody':
+    'Deze afmeldlink is niet geldig. Blijft u berichten ontvangen? Antwoord dan op een bericht en vraag om verwijderd te worden.',
+  'public.unsubscribe.doneTitle': 'U bent afgemeld',
+  'public.unsubscribe.doneBody': 'U ontvangt geen marketingberichten meer van ons. U kunt deze pagina sluiten.',
+  'public.quotation.notFound': 'Offerte niet gevonden',
+  'public.quotation.revoked': 'Deze offertelink is ingetrokken',
+  'public.quotation.expired': 'Deze offerte is verlopen',
+};
