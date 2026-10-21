@@ -178,7 +178,7 @@ describe('R140-B6 invoice defaults and invoices', () => {
     const ok = await call('PUT', '/settings/invoice-defaults', admin, { bank_details: { accountName: 'Reisbureau BV', iban: 'NL91 ABNA 0417 1643 00', bic: 'abnanl2a', bankName: 'ABN AMRO' } });
     expect(ok.status, await ok.clone().text()).toBe(200);
     const got = ((await (await call('GET', '/settings/invoice-defaults', admin)).json()) as any).data;
-    expect(got.bank_details).toEqual({ accountName: 'Reisbureau BV', iban: 'NL91ABNA0417164300', bic: 'ABNANL2A', bankName: 'ABN AMRO' });
+    expect(got.bank_details).toEqual({ accountName: 'Reisbureau BV', accountHolderName: 'Reisbureau BV', iban: 'NL91ABNA0417164300', bic: 'ABNANL2A', bankName: 'ABN AMRO' });
   });
 
   it('an Indian agency: IFSC is accepted, upi_id is kept and read', async () => {
@@ -195,7 +195,7 @@ describe('R140-B6 invoice defaults and invoices', () => {
   it('old keys still read: accountHolderName, ifsc and a separate upi_id', async () => {
     await setAgency({ country: 'IN', bank_details: JSON.stringify({ bankName: 'HDFC', accountNumber: '99', ifsc: 'HDFC0000001', accountHolderName: 'Old Travels' }), upi_id: 'old@upi' });
     const got = ((await (await call('GET', '/settings/invoice-defaults', admin)).json()) as any).data;
-    expect(got.bank_details).toEqual({ bankName: 'HDFC', accountNumber: '99', ifsc: 'HDFC0000001', accountName: 'Old Travels', upiId: 'old@upi' });
+    expect(got.bank_details).toEqual({ bankName: 'HDFC', accountNumber: '99', ifsc: 'HDFC0000001', accountName: 'Old Travels', accountHolderName: 'Old Travels', upiId: 'old@upi' });
   });
 
   it('a UK agency validates its sort code', async () => {

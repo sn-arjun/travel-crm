@@ -1,6 +1,7 @@
 import { type Locator, type Page } from '@playwright/test';
 import { test, expect } from './fixtures';
-import { waitForLoad } from './helpers/auth';
+import { API_URL, waitForLoad } from './helpers/auth';
+import { completeFirstLogin, createAgency, createSuperAdminToken, isMultiTenantStack, NEEDS_MULTI, signInViaUI } from './helpers/tenants';
 import { api, seedEmailTemplate } from './helpers/api-seed';
 
 /**
@@ -740,5 +741,84 @@ test.describe('Settings — company configuration', () => {
     expect(((await settingsGet('follow-up-sequences')) as any[]).some((s) => s.id === created.id)).toBe(false);
 
     await expectNoDirectMessagingLinks(page);
+  });
+});
+
+// ─── bank details by country (R140) ─────────────────────────────────────────
+
+// A Dutch agency's interface opens in Dutch, so the Save button is Opslaan there.
+const saveAnyLanguage = (page: Page) => page.getByRole('button', { name: /^(Save|Opslaan)$/ }).click();
+
+test.describe('Invoice defaults: bank details follow the agency country', () => {
+  // A Dutch agency has its own database: needs the multi-tenant stack, and its own login.
+  test.use({ storageState: undefined });
+
+  test('a Dutch agency sees IBAN and BIC and no IFSC or UPI, and its invoice keeps the details', async ({ page }) => {
+    test.skip(!(await isMultiTenantStack(API_URL)), NEEDS_MULTI);
+
+    const sa = await createSuperAdminToken(API_URL);
+    const created = await createAgency(API_URL, sa, {
+      plan: 'pro',
+      slug: `nl-bank-${Date.now().toString(36)}`,
+      companyName: 'Reisbureau Bank Test',
+      country: 'Netherlands',
+      currency: 'EUR',
+      timezone: 'Europe/Amsterdam',
+      taxSystem: 'vat',
+      region: 'eu',
+    });
+    const agency = await completeFirstLogin(API_URL, created);
+    const call = async (method: string, path: string, payload?: unknown) => {
+      const res = await fetch(`${API_URL}${path}`, {
+        method,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${agency.accessToken}` },
+        body: payload === undefined ? undefined : JSON.stringify(payload),
+      });
+      return { status: res.status, body: JSON.parse(await res.text()) };
+    };
+    expect((await call('PUT', '/settings/company', {
+      company_name: agency.companyName, currency: 'EUR', locale: 'nl-NL', timezone: 'Europe/Amsterdam', country: 'NL', phone_default_country: 'NL', tax_system: 'vat',
+    })).status).toBe(200);
+
+    await signInViaUI(page, agency);
+    await openSettingsPage(page, '/settings/invoice-defaults', 'Invoice Defaults');
+
+    // The Bank Details card shows the Dutch set only.
+    await expect(page.locator('#iban')).toBeVisible();
+    await expect(page.locator('#bic')).toBeVisible();
+    await expect(page.locator('#bankName')).toBeVisible();
+    await expect(page.locator('#ifsc')).toHaveCount(0);
+    await expect(page.locator('#upiId')).toHaveCount(0);
+    await expect(page.locator('#sortCode')).toHaveCount(0);
+
+    await page.locator('#vatRate').fill('21');
+    await page.locator('#defaultTaxRate').fill('21');
+    await page.locator('#accountHolderName').fill('Reisbureau Bank Test BV');
+
+    // An invalid IBAN is refused with the message in the user's language, and nothing is saved.
+    await page.locator('#iban').fill('NL91ABNA0417164301');
+    await page.locator('#bic').fill('ABNANL2A');
+    await saveAnyLanguage(page);
+    await expectToast(page, /This IBAN is not valid|Dit IBAN is niet geldig/);
+    await expect(page).toHaveURL(/\/settings\/invoice-defaults$/);
+
+    // A valid one saves; the API stores it compact and reads it back in the current shape.
+    await page.locator('#iban').fill('NL91 ABNA 0417 1643 00');
+    await saveAnyLanguage(page);
+    await expectToast(page, 'Invoice defaults saved successfully');
+    await page.waitForURL(/\/settings$/);
+    const stored = (await call('GET', '/settings/invoice-defaults')).body.data;
+    expect(stored.bank_details).toMatchObject({ accountName: 'Reisbureau Bank Test BV', iban: 'NL91ABNA0417164300', bic: 'ABNANL2A' });
+    expect(stored.bank_details.ifsc).toBeUndefined();
+
+    // The pre-filled form shows the IBAN, and an invoice issued now carries the details and the country they print for.
+    await openSettingsPage(page, '/settings/invoice-defaults', 'Invoice Defaults');
+    await expect(page.locator('#iban')).toHaveValue('NL91ABNA0417164300');
+    const contact = (await call('POST', '/contacts', { name: 'Bank Check Klant', type: 'customer', phone: '+31612345678' })).body.data;
+    const invoice = await call('POST', '/invoices', { contactId: contact.id, items: [{ description: 'Rondreis', quantity: 1, rate: 1000, taxRate: 21 }] });
+    expect(invoice.status).toBe(201);
+    const detail = (await call('GET', `/invoices/${invoice.body.data.id}`)).body.data;
+    expect(detail.bank_country).toBe('NL');
+    expect(JSON.parse(detail.bank_details)).toMatchObject({ iban: 'NL91ABNA0417164300', bic: 'ABNANL2A' });
   });
 });

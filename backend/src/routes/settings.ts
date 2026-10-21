@@ -441,7 +441,9 @@ settingsRoutes.get('/invoice-defaults', async (c) => {
 
   // Bank details come back in the current shape whichever keys they were saved under (R140): accountHolderName is
   // accountName, and the separate upi_id setting is upiId.
-  result.bank_details = normalizeBankDetails(result.bank_details, result.upi_id);
+  // accountHolderName stays beside accountName for clients that still read the older shape.
+  const bank = normalizeBankDetails(result.bank_details, result.upi_id);
+  result.bank_details = bank.accountName ? { ...bank, accountHolderName: bank.accountName } : bank;
 
   // Defaults
   if (!result.default_due_days) result.default_due_days = 30;
@@ -525,7 +527,8 @@ settingsRoutes.put(
       const bank = normalizeBankDetails(body.bank_details, body.upi_id);
       const problem = validateBankDetails(bankCountry, bank);
       if (problem) return error(c, problem, 400);
-      body.bank_details = bank;
+      // accountHolderName is written alongside accountName so readers of the older shape keep working.
+      body.bank_details = bank.accountName ? { ...bank, accountHolderName: bank.accountName } : bank;
       // The UPI id keeps its own setting for Indian agencies, so older readers still find it.
       if (bank.upiId && body.upi_id === undefined && bankCountry === 'IN') body.upi_id = bank.upiId;
     }

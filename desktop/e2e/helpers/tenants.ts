@@ -75,9 +75,14 @@ export async function createAgency(
   if (res.status !== 201) throw new Error(`provisioning ${opts.slug} failed: ${res.status} ${await res.text()}`);
   const tenantId = ((await res.json()) as { data: { tenantId: string } }).data.tenantId;
 
-  const box = await fetch(`${apiUrl}/test/outbox?to=${encodeURIComponent(email)}`);
-  const mails = ((await box.json()) as { data: Array<{ template: string; text: string }> }).data;
-  const temporaryPassword = mails.find((m) => m.template === 'welcome_admin')?.text.match(/Temporary password:\s*(\S+)/i)?.[1];
+  // The welcome email is queued after the 201, so it can land a moment later: look for up to ten seconds. A Dutch agency gets it in Dutch.
+  let temporaryPassword: string | undefined;
+  for (let attempt = 0; attempt < 20 && !temporaryPassword; attempt++) {
+    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 500));
+    const box = await fetch(`${apiUrl}/test/outbox?to=${encodeURIComponent(email)}`);
+    const mails = ((await box.json()) as { data: Array<{ template: string; text: string }> }).data;
+    temporaryPassword = mails.find((m) => m.template === 'welcome_admin')?.text.match(/(?:Temporary password|Tijdelijk wachtwoord):\s*(\S+)/i)?.[1];
+  }
   if (!temporaryPassword) throw new Error(`welcome email for ${email} not found in the outbox`);
   return { slug: opts.slug, plan: opts.plan, companyName, tenantId, email, temporaryPassword };
 }
