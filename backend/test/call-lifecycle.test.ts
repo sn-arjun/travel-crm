@@ -471,6 +471,28 @@ describe('Call lifecycle events and recipes', () => {
     expect(events.find((e) => e.type === 'call.transferred')!.payload).toMatchObject({ fromAgent: ADMIN_ID, toNumber: '+919000009399', note: 'Wants the Bali package' });
   });
 
+  it('R135-4: a simulated inbound call (ring, answer) is ended from the call panel route: 200 and completed, not "[mock] Call not found"', async () => {
+    // No callSid: the simulator makes up its own provider call id, as the local stack's simulator does.
+    const ring = await simulateVoipScenario({
+      scenario: 'inbound_ring',
+      to: AGENCY_NUMBER,
+      from: '+919000009361',
+      baseUrl: base(),
+      authToken: testEnv.TWILIO_AUTH_TOKEN,
+      send: async (request) => {
+        const ctx = createExecutionContext();
+        const res = await worker.fetch(request, testEnv, ctx);
+        await waitOnExecutionContext(ctx);
+        return res;
+      },
+    });
+    const callId = await callIdOf(ring.callSid);
+    const res = await call('POST', `/calls/${callId}/end`, admin);
+    expect(res.status).toBe(200);
+    const [row] = await rows<{ status: string }>('SELECT status FROM call_logs WHERE id = ?', callId);
+    expect(row.status).toBe('completed');
+  });
+
   it('with automations paused the events are recorded but no recipe reacts', async () => {
     await testEnv.MASTER_DB.prepare("INSERT INTO settings (key, value) VALUES ('automations_paused', '1') ON CONFLICT(key) DO UPDATE SET value = '1'").run();
     try {

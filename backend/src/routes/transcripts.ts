@@ -30,7 +30,8 @@ transcriptRoutes.get('/:callLogId', async (c) => {
     WHERE ct.call_log_id = ?
   `).bind(callLogId).first<Record<string, any>>();
 
-  if (!row) return notFound(c, 'Transcript');
+  // R135-6: a call without a transcript yet is a normal state, not an error: answer 200 with null.
+  if (!row) return success(c, null);
 
   return success(c, {
     id: row.id,

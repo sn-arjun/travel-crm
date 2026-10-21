@@ -26,6 +26,9 @@ export const MOCK_AUTH_TOKEN = 'mock-auth-token';
 /** Searching this area code makes the mock's number search fail (provider-error path in tests and e2e). */
 export const MOCK_FAILING_AREA_CODE = '999';
 
+/** Provider call ids the call simulator makes up start with this (services/voip/simulator.ts). */
+export const SIMULATED_CALL_PREFIX = 'CAsim';
+
 export interface MockCallRecord {
   providerCallId: string;
   mode: 'initiate' | 'softphone' | 'bridge';
@@ -201,7 +204,13 @@ export class MockVoipProvider extends TwilioVoipProvider {
   }
 
   private findCall(providerCallId: string): MockCallRecord {
-    const call = state.calls.find((c) => c.providerCallId === providerCallId);
+    let call = state.calls.find((c) => c.providerCallId === providerCallId);
+    // R135-4: the call simulator (services/voip/simulator.ts) plays calls with ids of its own, never placed through this
+    // provider; the mock knows them too, so the call panel can hold, transfer and end a simulated call.
+    if (!call && providerCallId.startsWith(SIMULATED_CALL_PREFIX)) {
+      call = { providerCallId, mode: 'initiate', from: '', to: '', record: false, status: 'in-progress', ended: false, held: false };
+      state.calls.push(call);
+    }
     if (!call) throw new VoipProviderError('mock', 20404, 'Call not found', 'not_found');
     return call;
   }

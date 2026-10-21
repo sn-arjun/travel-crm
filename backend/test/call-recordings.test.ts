@@ -833,6 +833,12 @@ describe('transcription and summary through the metered router', () => {
     expect((await call('GET', `/transcripts/${other.id}`, sales)).status).toBe(403);
     expect((await call('GET', `/transcripts/${other.id}`, admin)).status).toBe(200);
     expect((await call('GET', `/transcripts/${mine.id}`, viewer)).status).toBe(403);
+
+    // R135-6: a call with no transcript yet answers 200 with null, not a 404
+    const pending = await insertCall({ id: uid('trnone'), routedTo: SALES_ID });
+    const none = await call('GET', `/transcripts/${pending.id}`, sales);
+    expect(none.status).toBe(200);
+    expect(((await none.json()) as any).data).toBeNull();
     expect((await call('GET', `/calls/${mine.id}/summary`, sales)).status).toBe(200);
     expect((await call('GET', `/calls/${other.id}/summary`, sales)).status).toBe(403);
     expect((await call('GET', `/calls/${mine.id}/summary`, viewer)).status).toBe(403);
