@@ -8,6 +8,7 @@
  */
 
 import { callingAvailability } from '../services/voip/country-gate';
+import { getAccount } from '../services/voip/subaccounts';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '../utils/validator';
@@ -97,6 +98,9 @@ aiSettingsRoutes.get('/', async (c) => {
   const providerStatus = router.getProviderStatus();
 
   const voipCalling = await callingAvailability(c.env, db);
+  // R135-5: the softphone asks for a token only where calling is on (an active sub-account), so a 403 is never provoked.
+  const callingAccount = await getAccount(c.env, tenantId).catch(() => null);
+  const accountActive = !!callingAccount && callingAccount.status === 'active' && !!callingAccount.sub_account_id;
 
   // Build AI feature map with enabled/disabled + tier info (tier = the Pro plan's features in the catalogue)
   const proFeatures = planFeaturesFrom(await getCatalogue(c.env), 'pro');
@@ -122,7 +126,7 @@ aiSettingsRoutes.get('/', async (c) => {
     plan: tenantFeatures.plan,
     aiFeatures,
     // Where calling is offered (R301): the desktop hides calling UI when available is false.
-    voipCalling: { available: voipCalling.available, country: voipCalling.country, reason: voipCalling.reason },
+    voipCalling: { available: voipCalling.available, country: voipCalling.country, reason: voipCalling.reason, accountActive },
     usageCaps,
     usageSummary: {
       totalRequests: usageSummary?.total_requests ?? 0,

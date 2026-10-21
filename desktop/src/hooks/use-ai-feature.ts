@@ -65,6 +65,13 @@ export function useAiSettings(): AiFeatureState {
 
   React.useEffect(() => { fetch(); }, [fetch]);
 
+  // Another screen changed something that settings report (for example calling was turned on): load again.
+  React.useEffect(() => {
+    const onInvalidated = () => { void fetch(); };
+    window.addEventListener(AI_SETTINGS_INVALIDATED_EVENT, onInvalidated);
+    return () => window.removeEventListener(AI_SETTINGS_INVALIDATED_EVENT, onInvalidated);
+  }, [fetch]);
+
   return {
     loading,
     plan: settings?.plan ?? null,

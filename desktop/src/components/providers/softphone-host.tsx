@@ -5,6 +5,8 @@ import * as React from 'react';
 import { CallControlsPanel } from '@/components/domain/call-controls-panel';
 import { FirstCallMicCheck } from '@/components/domain/mic-check';
 import { useAuthStore } from '@/stores/auth-store';
+import { useAiSettings } from '@/hooks/use-ai-feature';
+import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { useRealtimeStore } from '@/stores/realtime-store';
 import { useSoftphoneStore } from '@/stores/softphone-store';
 import { appSoftphone, useSoftphone } from '@/lib/softphone/use-softphone';
@@ -13,6 +15,16 @@ import type { RingingCall } from '@/components/domain/call-screen-pop';
 
 /** Roles that take calls (the same list the API's token route allows). */
 const AGENT_ROLES = new Set(['admin', 'sales_manager', 'salesperson']);
+
+/**
+ * True once the agency's settings say calling is on: allowed by plan and country, with an active calling account.
+ * Until then (and where it is off) the app never asks for a softphone token, so no 403 is provoked (R135-5).
+ */
+export function useCallingOn(): boolean {
+  const gate = useFeatureGate('voip_calling');
+  const { voipCalling } = useAiSettings();
+  return !gate.loading && gate.enabled && voipCalling?.accountActive === true;
+}
 
 /**
  * Registers the in-app phone for the signed-in agent and shows the in-call panel for calls answered from the
@@ -25,7 +37,8 @@ export function SoftphoneHost() {
   const role = useAuthStore((s) => s.user?.role as string | undefined);
   const restricted = useAuthStore((s) => s.mustChangePassword || s.twoFactorSetupRequired);
   const subscribe = useRealtimeStore((s) => s.subscribe);
-  const eligible = isAuthenticated && !!userId && !!role && AGENT_ROLES.has(role) && !restricted;
+  const calling = useCallingOn();
+  const eligible = isAuthenticated && !!userId && !!role && AGENT_ROLES.has(role) && !restricted && calling;
 
   // Register on sign-in, sign out of the phone on sign-out.
   React.useEffect(() => {

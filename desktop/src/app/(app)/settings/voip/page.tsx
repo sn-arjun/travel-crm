@@ -39,6 +39,7 @@ import {
   type VoipRoutingStrategy,
 } from '@/lib/api/voip';
 import { useFeatureGate } from '@/hooks/use-feature-gate';
+import { invalidateAiSettingsCache } from '@/hooks/use-ai-feature';
 import { PageContainer } from '@/components/layout/page-container';
 import { RecordingSettingsCard } from '@/components/domain/recording-settings-card';
 
@@ -78,6 +79,7 @@ function VoipSettingsPageContent() {
     try {
       await voipApi.account.enable();
       toast.success('Calling is on');
+      invalidateAiSettingsCache();
       refetchAccount();
       refetch();
     } catch (err) {
