@@ -357,4 +357,77 @@ describe('R207 agency payment links', () => {
       expect((await stripeHook(body)).status).toBe(404);
     });
   });
+
+  describe('amounts and Stripe payment methods (R142)', () => {
+    const stripeLinkForm = () => new URLSearchParams(calls.find((c) => c.url.endsWith('/v1/payment_links') && c.init?.method === 'POST')!.init.body);
+
+    it('an amount above the balance due is a 400, a smaller one is stored and sent to the gateway', async () => {
+      mockGateways();
+      expect((await call('PUT', '/integrations/payment-gateways/stripe', admin, { mode: 'test', keySecret: STRIPE_SECRET, webhookSecret: STRIPE_WEBHOOK })).status).toBe(200);
+      const inv = await newInvoice('EUR', 1000);
+      const above = await call('POST', `/invoices/${inv.id}/payment-link`, admin, { amount: 1000.01 });
+      expect(above.status).toBe(400);
+      expect(((await above.json()) as any).error.details.code).toBe('AMOUNT_ABOVE_BALANCE');
+      expect(calls).toHaveLength(0);
+
+      const ok = await call('POST', `/invoices/${inv.id}/payment-link`, admin, { amount: 250, purpose: 'deposit' });
+      expect(ok.status).toBe(201);
+      expect(((await ok.json()) as any).data).toMatchObject({ amount: 250, purpose: 'deposit', balanceDue: 1000 });
+      const price = new URLSearchParams(calls.find((c) => c.url.endsWith('/prices'))!.init.body);
+      expect(price.get('unit_amount')).toBe('25000');
+      expect(await invoiceRow(inv.id)).toMatchObject({ payment_link_amount: 250, payment_link_purpose: 'deposit' });
+    });
+
+    it('sends no payment_method_types by default, so Stripe dynamic methods apply (iDEAL for EUR when enabled in the dashboard)', async () => {
+      mockGateways();
+      const inv = await newInvoice('EUR', 300);
+      expect((await call('POST', `/invoices/${inv.id}/payment-link`, admin, {})).status).toBe(201);
+      const form = stripeLinkForm();
+      expect([...form.keys()].filter((k) => k.startsWith('payment_method_types'))).toEqual([]);
+    });
+
+    it('with stripeMethodTypes set, the list is sent as payment_method_types[i] for EUR', async () => {
+      mockGateways();
+      expect((await call('PUT', '/settings/payment-defaults', admin, { stripeMethodTypes: ['ideal', 'card', 'bancontact'] })).status).toBe(200);
+      const inv = await newInvoice('EUR', 300);
+      expect((await call('POST', `/invoices/${inv.id}/payment-link`, admin, {})).status).toBe(201);
+      const form = stripeLinkForm();
+      expect(form.get('payment_method_types[0]')).toBe('ideal');
+      expect(form.get('payment_method_types[1]')).toBe('card');
+      expect(form.get('payment_method_types[2]')).toBe('bancontact');
+    });
+
+    it('iDEAL on a GBP invoice is a readable 400 and nothing is sent to Stripe', async () => {
+      mockGateways();
+      const inv = await newInvoice('GBP', 300);
+      const res = await call('POST', `/invoices/${inv.id}/payment-link`, admin, { gateway: 'stripe' });
+      expect(res.status).toBe(400);
+      const err = ((await res.json()) as any).error;
+      expect(err.message).toContain('iDEAL');
+      expect(err.message).toContain('EUR');
+      expect(err.details.code).toBe('PAYMENT_METHOD_CURRENCY');
+      expect(calls).toHaveLength(0);
+      // card only is fine for GBP
+      expect((await call('PUT', '/settings/payment-defaults', admin, { stripeMethodTypes: ['card'] })).status).toBe(200);
+      expect((await call('POST', `/invoices/${inv.id}/payment-link`, admin, { gateway: 'stripe' })).status).toBe(201);
+      // an unknown method is refused when saving
+      expect((await call('PUT', '/settings/payment-defaults', admin, { stripeMethodTypes: ['paypal'] })).status).toBe(400);
+      // clearing the list goes back to dynamic methods
+      expect((await call('PUT', '/settings/payment-defaults', admin, { stripeMethodTypes: null })).status).toBe(200);
+      expect(((await (await call('GET', '/settings/payment-defaults', admin)).json()) as any).data.stripeMethodTypes).toBeNull();
+    });
+
+    it('a deposit with no default set asks for an amount; a fixed default is capped at the balance', async () => {
+      mockGateways();
+      expect((await call('PUT', '/settings/payment-defaults', admin, { deposit: { type: 'none' } })).status).toBe(200);
+      const inv = await newInvoice('EUR', 200);
+      const none = await call('POST', `/invoices/${inv.id}/payment-link`, admin, { purpose: 'deposit' });
+      expect(none.status).toBe(400);
+      expect((await call('PUT', '/settings/payment-defaults', admin, { deposit: { type: 'fixed', value: 500 } })).status).toBe(200);
+      const capped = await call('POST', `/invoices/${inv.id}/payment-link`, admin, { purpose: 'deposit' });
+      expect(capped.status).toBe(201);
+      expect(((await capped.json()) as any).data.amount).toBe(200);
+      expect((await call('PUT', '/settings/payment-defaults', admin, { deposit: { type: 'percent', value: 120 } })).status).toBe(400);
+    });
+  });
 });
