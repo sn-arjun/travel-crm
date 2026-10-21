@@ -23,7 +23,7 @@ interface Doc {
   country: string;
   status: 'pending' | 'approved' | 'rejected';
   details: Record<string, unknown> | null;
-  files: Array<{ name: string; url?: string; field?: string }>;
+  files: Array<{ name: string; url?: string; key?: string; field?: string }>;
   reviewNote: string | null;
   regulatory?: Regulatory;
 }
@@ -321,6 +321,7 @@ export function CallingPanel({ tenantId }: { tenantId: string }) {
           {state.documents.map((d) => (
             <DocumentCard
               key={d.country}
+              tenantId={tenantId}
               doc={d}
               policy={policies.find((p) => p.country === d.country)}
               busy={busy}
@@ -390,6 +391,7 @@ export function CallingPanel({ tenantId }: { tenantId: string }) {
 }
 
 interface DocumentCardProps {
+  tenantId: string;
   doc: Doc;
   policy: CountryPolicy | undefined;
   busy: boolean;
@@ -406,7 +408,7 @@ interface DocumentCardProps {
  * One country's number documents (R141-3): what the agency sent, where the provider bundle stands, and the actions that move
  * it on: approve (which submits to the provider in a bundle country), reject, submit again, refresh the status, reset.
  */
-function DocumentCard({ doc: d, policy, busy, note, onNote, onApprove, onReject, onSubmit, onRefresh, onReset }: DocumentCardProps) {
+function DocumentCard({ tenantId, doc: d, policy, busy, note, onNote, onApprove, onReject, onSubmit, onRefresh, onReset }: DocumentCardProps) {
   const requirements = policy?.kycRequired && policy.kycRequirements && policy.kycRequirements.length > 0 ? policy.kycRequirements : null;
   const bundle = requirements !== null;
   const reg = d.regulatory;
@@ -448,6 +450,17 @@ function DocumentCard({ doc: d, policy, busy, note, onNote, onApprove, onReject,
             <li key={`${f.name}-${i}`}>
               {f.url ? (
                 <a className="underline" href={f.url} target="_blank" rel="noreferrer">{f.name}</a>
+              ) : f.key ? (
+                // An uploaded file is stored privately: the console fetches it with the operator's session, and each open is logged.
+                <a
+                  className="underline"
+                  href={`/api/tenants/${tenantId}/voip/documents/${d.country}/files/${i}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  data-testid="document-file-link"
+                >
+                  {f.name} (open)
+                </a>
               ) : (
                 <span>{f.name}</span>
               )}

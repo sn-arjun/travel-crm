@@ -15,7 +15,7 @@ import {
   listCountryPolicies,
   setPlatformSetting,
 } from '../services/voip/country-policy';
-import { afterPlatformApproval, hasBundleFlow, refreshProviderStatus, resetProvider, submitToProvider } from '../services/voip/regulatory';
+import { ALLOWED_DOCUMENT_TYPES, afterPlatformApproval, hasBundleFlow, kycPrefix, refreshProviderStatus, resetProvider, submitToProvider } from '../services/voip/regulatory';
 import {
   accountView,
   closeAccount,
@@ -64,6 +64,7 @@ import {
  *   POST    /tenants/:id/voip/enable|suspend|resume|close
  *   PUT     /tenants/:id/voip/documents/:country approve or reject number documents (an approval in a country with a regulatory bundle also submits it to the provider, R137)
  *   POST    /tenants/:id/voip/documents/:country/submit-to-provider | refresh-status | reset   the provider side of the bundle (R137)
+ *   GET     /tenants/:id/voip/documents/:country/files/:index   one uploaded file of that document set, streamed (R151-carry; every open is audited)
  *   POST    /tenants/:id/voip/numbers/:numberId/release
  *   GET     /voip/fraud-events?status=active     fraud limits that fired (blocks and flags), newest first
  *   POST    /voip/fraud-events/:id/lift          lift a block / dismiss a flag (audited)
@@ -317,6 +318,51 @@ app.put('/tenants/:id/voip/documents/:country', zValidator('json', reviewSchema)
     if (submission.submitted) await logAdminAction(c.env, actorFrom(c), 'voip.regulatory.submit', tenant.id, null, { country, trigger: 'approval' });
   }
   return success(c, { ...(await documentView(c.env, tenant.id, country)), submittedToProvider: submission.submitted, submitError: submission.error });
+});
+
+/**
+ * Opens one file the agency uploaded for its number application (stored under <tenant>/kyc/, readable by the agency's admins and
+ * here by the super admin only). The file is named by its position in that agency's own document set, never by a storage key,
+ * so there is no way to ask for another agency's object; the key must also sit under this agency's kyc prefix. Each open is audited.
+ */
+app.get('/tenants/:id/voip/documents/:country/files/:index', async (c) => {
+  const tenant = await loadTenant(c.env, c.req.param('id'));
+  if (!tenant) return notFound(c, 'Tenant');
+  const country = c.req.param('country').toUpperCase();
+  const row = await getKyc(c.env, tenant.id, country);
+  if (!row) return notFound(c, 'Documents');
+  let files: Array<{ name?: string; key?: string; field?: string; contentType?: string }> = [];
+  try {
+    const parsed = row.files ? JSON.parse(row.files) : [];
+    if (Array.isArray(parsed)) files = parsed;
+  } catch {
+    files = [];
+  }
+  const indexText = c.req.param('index');
+  const file = /^\d{1,3}$/.test(indexText) ? files[Number(indexText)] : undefined;
+  if (!file) return notFound(c, 'File');
+  // A document sent as a link before R137 has no stored object to open.
+  if (!file.key) return error(c, 'This document was sent as a link, not uploaded', 404);
+  if (!file.key.startsWith(kycPrefix(tenant.id)) || file.key.includes('..')) return error(c, 'Access denied', 403);
+
+  const object = await c.env.FILE_STORAGE.get(file.key);
+  if (!object) return notFound(c, 'File');
+
+  await logAdminAction(c.env, actorFrom(c), 'voip.documents.file_open', tenant.id, null, { country, file: file.name ?? null, requirement: file.field ?? null, index: Number(indexText) });
+
+  // Only the document types an agency may upload are shown in the browser; anything else downloads as an opaque file.
+  const stored = object.httpMetadata?.contentType || file.contentType || '';
+  const safeType = ALLOWED_DOCUMENT_TYPES.includes(stored);
+  const name = (file.name || 'document').replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 120) || 'document';
+  return new Response(object.body as ReadableStream, {
+    headers: {
+      'Content-Type': safeType ? stored : 'application/octet-stream',
+      'Content-Disposition': `${safeType ? 'inline' : 'attachment'}; filename="${name}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+      'Content-Length': String(object.size),
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  });
 });
 
 function publicBase(c: { env: AppContext['Bindings']; req: { url: string } }): string {
