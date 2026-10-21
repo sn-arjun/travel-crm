@@ -99,7 +99,11 @@ async function demo() {
     const inv = await call('POST', '/users', { email: VIEW_ONLY.email, name: VIEW_ONLY.name, role: VIEW_ONLY.role, department: VIEW_ONLY.department }, me.accessToken);
     const token = must(inv, 'invite the view-only teammate')?.inviteToken;
     if (!token) throw new Error('the invite returned no inviteToken');
-    must(await call('POST', '/auth/setup-account', { token, name: VIEW_ONLY.name, password: PASSWORD }), 'accept the invitation');
+    // The API now requires 12+ characters; accept with a long one, then set the same demo password as the rest of the team directly.
+    must(await call('POST', '/auth/setup-account', { token, name: VIEW_ONLY.name, password: `${PASSWORD}-film-setup` }), 'accept the invitation');
+    const db2 = await openDb((d) => hasTable(d, 'users') && !!d.prepare('SELECT 1 FROM users WHERE email = ?').get(VIEW_ONLY.email), 'the view-only teammate');
+    db2.prepare('UPDATE users SET password_hash = ?, must_change_password = 0, invite_status = ? WHERE email = ?').run(hash, "active", VIEW_ONLY.email);
+    db2.close();
     log(`${VIEW_ONLY.email}: view-only teammate added`);
   } else log(`${VIEW_ONLY.email}: already there`);
   // Every feature is visible in the area films: the demo agency runs on Enterprise (the plans film shows the limits).
@@ -109,7 +113,7 @@ async function demo() {
 }
 
 // ── --transcript <callLogId> ─────────────────────────────────
-const SAMPLE = [
+const SAMPLE_IN = [
   ['agent', 'Good afternoon, Sahyadri Holidays, Sneha speaking.'],
   ['customer', 'Hi Sneha, this is Rohit. We are four adults looking at Coorg for a long weekend in January.'],
   ['agent', 'Lovely. Do you have dates in mind, and would you like a homestay or a resort?'],
@@ -117,8 +121,17 @@ const SAMPLE = [
   ['agent', 'Noted. I will send two homestay options with an Innova and a driver by this evening.'],
   ['customer', 'Great, WhatsApp is best. Thank you.'],
 ];
+const SAMPLE_UK = [
+  ['agent', 'Good afternoon, Thames and Tide Travel, Oliver speaking.'],
+  ['customer', 'Hello Oliver, it is Tom Walker. We are looking at the Kerala trip for the two of us in March.'],
+  ['agent', 'Lovely. Would you like the houseboat night in Alleppey, and a private driver throughout?'],
+  ['customer', 'Yes please, the houseboat and the driver. Can you send the price in pounds?'],
+  ['agent', 'Of course. I will email you two options by this evening.'],
+  ['customer', 'Brilliant, email is best. Thank you.'],
+];
 async function transcript(callLogId) {
   if (!callLogId) throw new Error('--transcript needs a call log id');
+  const SAMPLE = has('--uk') ? SAMPLE_UK : SAMPLE_IN;
   const db = await openDb((d) => hasTable(d, 'call_logs') && !!d.prepare('SELECT 1 FROM call_logs WHERE id = ?').get(callLogId), `call ${callLogId}`);
   let t = 0; const segs = SAMPLE.map(([speaker, text]) => { const d = Math.max(2.5, text.split(' ').length / 2.6); const s = { speaker, text, start: +t.toFixed(1), end: +(t + d).toFixed(1), confidence: 0.94 }; t += d + 0.6; return s; });
   const full = SAMPLE.map(([s, x]) => `${s === 'agent' ? 'Agent' : 'Customer'}: ${x}`).join('\n');
@@ -173,13 +186,21 @@ export async function ensureAgency(key, sa) {
   const t = me.accessToken;
   must(await call('PUT', '/settings/company', { company_name: p.companyName, company_city: p.city, company_phone: p.phone, company_email: p.email, onboarding_completed: 'true' }, t), 'company settings');
   const r = RECORDS[key];
-  const contacts = (await call('GET', '/contacts?limit=50', undefined, t)).json?.data ?? [];
-  if (!(Array.isArray(contacts) ? contacts : contacts.data ?? []).length) {
-    const ids = [];
-    for (const [name, phone, email, city] of r.contacts) ids.push(must(await call('POST', '/contacts', { name, phone, email, city, country: p.country, source: 'website', type: 'customer' }, t), `contact ${name}`).id);
-    const lead = must(await call('POST', '/leads', { contactId: ids[0], title: r.lead[0], destinations: r.lead[1], budget: r.lead[2], currency: p.currency, paxAdults: 2, tripType: 'international', source: 'website', priority: 'hot' }, t), 'lead');
-    const day = (n) => new Date(Date.now() + n * 86400_000).toISOString().slice(0, 10);
-    const inv = must(await call('POST', '/invoices', { contactId: ids[0], leadId: lead.id, type: 'tax_invoice', currency: p.currency, items: [{ description: r.invoice[0], quantity: 1, rate: r.invoice[1], taxRate: r.invoice[2] }], dueDate: day(21) }, t), 'invoice');
+  const listOf = (r) => { const d = r.json?.data; return Array.isArray(d) ? d : d?.data ?? []; };
+  let contacts = listOf(await call('GET', '/contacts?limit=50', undefined, t));
+  if (!contacts.length) {
+    for (const [name, phone, email, city] of r.contacts) must(await call('POST', '/contacts', { name, phone, email, city, country: p.country, source: 'website', type: 'customer' }, t), `contact ${name}`);
+    contacts = listOf(await call('GET', '/contacts?limit=50', undefined, t));
+  }
+  const day = (n) => new Date(Date.now() + n * 86400_000).toISOString().slice(0, 10);
+  const first = contacts.find((c) => c.name === r.contacts[0][0]) ?? contacts[0];
+  let leads = listOf(await call('GET', '/leads?limit=5', undefined, t));
+  if (!leads.length) {
+    must(await call('POST', '/leads', { contactId: first.id, title: r.lead[0], destinations: r.lead[1], travelDate: day(75), budget: r.lead[2], currency: p.currency, paxAdults: 2, tripType: 'international', source: 'website', priority: 'hot' }, t), 'lead');
+    leads = listOf(await call('GET', '/leads?limit=5', undefined, t));
+  }
+  if (!listOf(await call('GET', '/invoices?limit=5', undefined, t)).length) {
+    const inv = must(await call('POST', '/invoices', { contactId: first.id, leadId: leads[0].id, type: 'tax_invoice', currency: p.currency, items: [{ description: r.invoice[0], quantity: 1, rate: r.invoice[1], taxRate: r.invoice[2] }], dueDate: day(21) }, t), 'invoice');
     must(await call('POST', '/payments', { invoiceId: inv.id, amount: Math.round(r.invoice[1] * 0.4), date: day(-1), method: 'transfer', reference: `${p.currency}-ADV-2201` }, t), 'payment');
     log(`${p.companyName}: 2 contacts, a lead, an invoice and an advance`);
   }

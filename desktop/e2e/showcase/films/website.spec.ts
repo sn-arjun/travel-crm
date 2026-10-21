@@ -35,7 +35,7 @@ async function serveLanding(page: Page): Promise<void> {
 
 test('film:website', async ({ page, context }, testInfo) => {
   test.setTimeout(20 * 60_000);
-  const B = agency('B');
+  const B = agency('C'); // agency B's website request was used up in the dry run (it failed: no provisioner on a local stack)
   await recordFilm(page, context, 'website', testInfo, async () => {
     await serveLanding(page);
     await page.goto(`${LANDING}/`);
@@ -54,14 +54,14 @@ test('film:website', async ({ page, context }, testInfo) => {
       await page.locator('#enquire').scrollIntoViewIfNeeded();
       await pause(page, 600);
       await typeInto(page, page.locator('#f-name'), 'Sunil Bhat');
-      await typeInto(page, page.locator('#f-email'), 'sunil.bhat@example.com');
+      await typeInto(page, page.locator('#f-email'), 'sunil.bhat@westernghats.example');
       await typeInto(page, page.locator('#f-company'), 'Western Ghats Journeys');
       await typeInto(page, page.locator('#f-country'), 'India');
       await typeInto(page, page.locator('#f-message'), 'We are six people in Mangaluru. Could we see a demo with one of our WhatsApp enquiries?', { delay: 22 });
       const send = page.locator('#enquiry-form button[type="submit"]');
       await focus(page, 'send', send);
       await clickOn(page, send);
-      await expect(page.locator('#enquiry-form').getByText(/thank|received|we will/i).first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.locator('h3:visible', { hasText: /We have your request/i }).first()).toBeVisible({ timeout: 15_000 });
     });
 
     await beat(page, 'landing-legal', async () => {
@@ -84,11 +84,9 @@ test('film:website', async ({ page, context }, testInfo) => {
       await clickOn(page, page.getByRole('tab', { name: 'Website' }));
       const create = page.getByRole('button', { name: 'Create website' });
       if (await create.isVisible().catch(() => false)) {
-        await focus(page, 'create-site', create);
-        await clickOn(page, create);
-        await settle(page, 1200);
+        // product limit on a local stack: no web server is attached yet (it is set up at go-live), so the click is not filmed
+        await focus(page, 'create-site', create, { dwellMs: 900 });
       }
-      await glance(page, page.getByText(/Queued|Building|Live/).first(), 1000);
     });
 
     await beat(page, 'wp-console', async () => {

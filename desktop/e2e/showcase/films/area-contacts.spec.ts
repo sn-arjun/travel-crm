@@ -67,9 +67,14 @@ test('film:area-contacts', async ({ page, context }, testInfo) => {
     await beat(page, 'contacts-merge', async () => {
       await page.goto('/contacts/merge');
       await settle(page, 1100);
-      const combos = page.getByRole('combobox');
-      await pickRelation(page, combos.nth(0), /Search/i, 'Rohit', /rohit\.bhatia@example\.com|9811142587/);
-      await pickRelation(page, combos.nth(1), /Search/i, 'Rohit', /rohit\.b@example\.com|9811142500/);
+      // two search boxes (keep, merge): type, then choose from the matching contacts
+      const boxes = page.getByPlaceholder('Search contacts...');
+      await typeInto(page, boxes.nth(0), 'Rohit');
+      await settle(page, 700);
+      await clickOn(page, page.getByRole('option').filter({ hasText: /rohit.bhatia@example.com|9811142587/ }).first());
+      await typeInto(page, page.getByPlaceholder('Search contacts...').first(), 'Rohit');
+      await settle(page, 700);
+      await clickOn(page, page.getByRole('option').filter({ hasText: /rohit.b@example.com|9811142500/ }).first());
       await settle(page, 900);
       await clickOn(page, page.getByRole('button', { name: /^Merge/ }).last());
       const confirm = page.getByRole('alertdialog').or(page.getByRole('dialog'));

@@ -2,18 +2,32 @@
  * Film automations-calls: what the assistant does after a call (studio/clips/automations-calls.json, docs/CALL-AUTOMATION.md).
  * Calls are played by the call simulator (POST /test/voip/simulate) on the mock provider: no telephony account is contacted.
  */
-import * as D from '../demo-data';
-import { asUser, beat, clickOn, ensureInboundLine, expect, findOne, focus, glance, pause, recordFilm, search, settle, simulateCall, visit } from './film-kit';
+// Calling is not offered to Indian agencies, so this film runs on the UK film agency B (multi-agency stack, film-prep --agencies).
+import { actorTenant, admin, agency, api, asAgency, beat, callingOn, clickOn, ensureInboundLine, expect, findOne, focus, glance, pause, recordFilm, rows, search, setActor, settle, simulateCall, visit } from './film-kit';
 
-const test = asUser();
-const contactPhone = (key: string) => D.CONTACTS.find((c) => c.key === key)!.phone;
-const PRIYA = contactPhone('C01');
-const FATIMA = contactPhone('C11');
-const UNKNOWN_MISSED = '+919900112233';
-const UNKNOWN_ANSWERED = '+919900445566';
+const test = asAgency('B');
+const PRIYA = '+447700900144'; // Charlotte Hughes
+const FATIMA = '+447700900277'; // Tom Walker
+const UNKNOWN_MISSED = '+447700900911';
+const UNKNOWN_ANSWERED = '+447700900922';
 
 test.beforeAll(async () => {
+  const b = agency('B');
+  setActor({ email: b.email, password: b.password, tenantId: b.tenantId });
   await ensureInboundLine();
+  await callingOn();
+  // Tom Walker's enquiry (a new lead) is what his answered call moves to Contacted.
+  const have = rows(await api('GET', `/leads?search=${encodeURIComponent('Rajasthan Palace Circuit')}`)).find((l) => /Rajasthan Palace Circuit/.test(l.title));
+  if (have && have.status !== 'new') await api('PUT', `/leads/${have.id}/status`, { status: 'new' }); // a re-take starts from a new enquiry
+  if (!have) {
+    const tom = rows(await api('GET', '/contacts?search=Tom%20Walker')).find((c) => /Tom Walker/.test(c.name));
+    if (!tom) throw new Error('Tom Walker missing: run film-prep --agencies');
+    const r = await api('POST', '/leads', { contactId: tom.id, title: 'Rajasthan Palace Circuit', destinations: ['Jaipur', 'Udaipur'], budget: 5200, currency: 'GBP', paxAdults: 2, tripType: 'international', source: 'manual', priority: 'warm', travelDate: new Date(Date.now() + 80 * 86400_000).toISOString().slice(0, 10) });
+    if (!r?.success) throw new Error(`lead for Tom: ${JSON.stringify(r).slice(0, 200)}`);
+  }
+});
+test.afterAll(async () => {
+  await admin('POST', `/tenants/${actorTenant()}/voip/close`, {});
 });
 
 test('film:automations-calls', async ({ page, context }, testInfo) => {
@@ -27,12 +41,12 @@ test('film:automations-calls', async ({ page, context }, testInfo) => {
       await simulateCall('inbound_missed', PRIYA);
       await page.reload();
       await settle(page, 1200);
-      const draft = queue.getByText(/Tell Priya Nair we will ring back/).first();
+      const draft = queue.getByText(/Tell Charlotte Hughes we will ring back/).first();
       await expect(draft).toBeVisible({ timeout: 30_000 });
       await focus(page, 'sorry-draft', draft, { dwellMs: 800 });
       await visit(page, '/tasks');
-      await search(page, /Search tasks/i, 'Call back Priya');
-      await glance(page, page.locator('table tbody tr').filter({ hasText: 'Call back Priya Nair' }).first(), 900);
+      await search(page, /Search tasks/i, 'Call back Charlotte');
+      await glance(page, page.locator('table tbody tr').filter({ hasText: 'Call back Charlotte Hughes' }).first(), 900);
     });
 
     await beat(page, 'missed-unknown', async () => {
@@ -54,8 +68,8 @@ test('film:automations-calls', async ({ page, context }, testInfo) => {
 
     await beat(page, 'answered', async () => {
       await simulateCall('inbound_answered', FATIMA, { durationSeconds: 140 });
-      const lead = await findOne(`/leads?search=${encodeURIComponent('Kashmir Paradise')}`, (l) => /Kashmir Paradise/.test(l.title));
-      await expect.poll(async () => (await findOne(`/leads?search=${encodeURIComponent('Kashmir Paradise')}`, (l) => l.id === lead.id)).status, { timeout: 25_000 }).toBe('contacted');
+      const lead = await findOne(`/leads?search=${encodeURIComponent('Rajasthan Palace Circuit')}`, (l) => /Rajasthan Palace Circuit/.test(l.title));
+      await expect.poll(async () => (await findOne(`/leads?search=${encodeURIComponent('Rajasthan Palace Circuit')}`, (l) => l.id === lead.id)).status, { timeout: 25_000 }).toBe('contacted');
       await page.goto(`/leads/${lead.id}`);
       await settle(page, 1200);
       await clickOn(page, page.getByRole('tab', { name: 'Activity' }));

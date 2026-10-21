@@ -22,15 +22,17 @@ test('film:area-finance', async ({ page, context }, testInfo) => {
     await beat(page, 'inv-new', async () => {
       await page.goto('/invoices/new');
       await settle(page, 1000);
-      await pickRelation(page, page.getByRole('combobox').filter({ hasText: /Select (a )?(contact|customer)/i }).first(), /Search/i, 'Tanvi', /Tanvi Deshpande/);
+      await pickRelation(page, page.getByRole('combobox').filter({ hasText: /Search contacts/i }).first(), /Search/i, 'Tanvi', /Tanvi Deshpande/);
       await typeInto(page, page.getByPlaceholder(/Flight tickets|e\.g\./i).first(), 'Bali Island Bliss: 5N, villa with pool');
       await typeInto(page, page.locator('input[placeholder="0"]').first(), '168000');
       await pause(page, 500);
       const totals = page.getByText(/Total/).last();
       await focus(page, 'totals', totals);
       await clickOn(page, page.getByRole('button', { name: /^Save/ }).first());
-      await page.waitForURL(/\/invoices\/[^/]+$/, { timeout: 20_000 });
+      // saving returns to the invoice list, where the new invoice is on top
+      await page.waitForURL(/\/invoices$/, { timeout: 20_000 });
       await settle(page, 1000);
+      await openRow(page, 'Tanvi Deshpande', /\/invoices\/[^/]+$/);
     });
 
     await beat(page, 'inv-detail', async () => {
@@ -66,7 +68,7 @@ test('film:area-finance', async ({ page, context }, testInfo) => {
       await page.goto('/settings/integrations');
       await settle(page, 1200);
       await glance(page, page.getByText(/Razorpay|Stripe/).first(), 1100);
-    });
+    }, { leave: async () => { await page.goBack(); await settle(page, 800); } }); // the gateway forms carry a real "Mode: Test" selector
 
     await beat(page, 'inv-actions', async () => {
       await visit(page, '/invoices');

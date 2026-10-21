@@ -20,7 +20,7 @@
       "lowerThird": { "feature": "Quote margins", "role": "Sales manager", "plan": "All plans" },
       "features": ["itineraries.cost-estimate"] },
     { "type": "screen", "step": "sm-report", "chapter": "Team performance",
-      "narration": "The team report shows leads, conversions and revenue per consultant, so his one-to-ones start from facts.",
+      "narration": "The sales report shows won revenue and deals per consultant, so his one-to-ones start from facts.",
       "lowerThird": { "feature": "Team report", "role": "Sales manager", "plan": "All plans" },
       "features": ["reports.hub", "reports.date-compare"] },
     { "type": "screen", "step": "sm-export",

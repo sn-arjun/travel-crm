@@ -5,46 +5,134 @@
   "recording": "ai-session",
   "note": "GATED: recorded only in one owner-approved live session on a stack started with fix-stack --ai, SHOWCASE_AI=1. Budget: 12 AI requests, counted by the spec, never retried automatically. Lower-thirds follow docs/PRICING.md section 2.6 (ai_assistant and ai_message_compose on every plan; extraction, scoring, scan and search on Pro and Enterprise; ai_intelligence on Pro and Enterprise).",
   "scenes": [
-    { "type": "logo", "dur": 2.6 },
-    { "type": "title", "kicker": "TravelCRM Pro", "title": "AI that drafts, you decide", "subtitle": "Every AI action asks first and is metered in credits", "chapter": "Introduction", "short": false,
-      "narration": "The AI in TravelCRM Pro drafts and summarises. Nothing is sent or charged to a customer without you, and every request is counted in credits." },
-    { "type": "screen", "step": "ai-read", "chapter": "Reading messages",
+    {
+      "type": "logo",
+      "dur": 2.6
+    },
+    {
+      "type": "title",
+      "kicker": "TravelCRM Pro",
+      "title": "AI that drafts, you decide",
+      "subtitle": "Every AI action asks first and is metered in credits",
+      "chapter": "Introduction",
+      "short": false,
+      "narration": "The AI in TravelCRM Pro drafts and summarises. Nothing is sent or charged to a customer without you, and every request is counted in credits."
+    },
+    {
+      "type": "screen",
+      "step": "ai-read",
+      "chapter": "Reading messages",
       "narration": "With AI switched on, the model reads each incoming message: it labels it, and when there is work, it understands the trip. The suggestion is marked as AI.",
-      "lowerThird": { "feature": "AI reads messages", "role": "Sales team", "plan": "All plans" },
-      "features": ["assistant.read-messages-ai"] },
-    { "type": "screen", "step": "ai-extract", "chapter": "Lead from pasted text",
+      "lowerThird": {
+        "feature": "AI reads messages",
+        "role": "Sales team",
+        "plan": "All plans"
+      },
+      "features": [
+        "assistant.read-messages-ai"
+      ]
+    },
+    {
+      "type": "screen",
+      "step": "ai-extract",
+      "chapter": "Lead from pasted text",
       "narration": "Paste an enquiry from anywhere, and the AI turns it into a contact and a lead for you to check.",
-      "lowerThird": { "feature": "Lead from text", "role": "Sales team", "plan": "Pro and Enterprise" },
-      "features": ["ai.lead-extraction"] },
-    { "type": "screen", "step": "ai-compose", "chapter": "Writing",
+      "lowerThird": {
+        "feature": "Lead from text",
+        "role": "Sales team",
+        "plan": "Pro and Enterprise"
+      },
+      "features": [
+        "ai.lead-extraction"
+      ]
+    },
+    {
+      "type": "screen",
+      "step": "ai-compose",
+      "chapter": "Writing",
       "narration": "The composer drafts a message in your tone. You edit it before anything goes out.",
-      "lowerThird": { "feature": "Message composer", "role": "Sales team", "plan": "All plans" },
-      "features": ["ai.compose"] },
-    { "type": "screen", "step": "ai-itinerary",
-      "narration": "Describe a trip, and the itinerary generator proposes a day-by-day plan to start from.",
-      "lowerThird": { "feature": "Itinerary generator", "role": "Sales team", "plan": "Pro and Enterprise" },
-      "features": ["ai.itinerary"] },
-    { "type": "screen", "step": "ai-social",
+      "lowerThird": {
+        "feature": "Message composer",
+        "role": "Sales team",
+        "plan": "All plans"
+      },
+      "features": [
+        "ai.compose"
+      ]
+    },
+    {
+      "type": "screen",
+      "step": "ai-social",
       "narration": "Marketing can draft a social media post for an offer in seconds.",
-      "lowerThird": { "feature": "Social posts", "role": "Admin, sales manager", "plan": "All plans" },
-      "features": ["marketing.social"] },
-    { "type": "screen", "step": "ai-search", "chapter": "Asking your data",
+      "lowerThird": {
+        "feature": "Social posts",
+        "role": "Admin, sales manager",
+        "plan": "All plans"
+      },
+      "features": [
+        "marketing.social"
+      ]
+    },
+    {
+      "type": "screen",
+      "step": "ai-search",
+      "chapter": "Asking your data",
       "narration": "Ask your data a question in plain English, like which Goa leads are travelling in December.",
-      "lowerThird": { "feature": "Ask your data", "role": "Admin, sales manager", "plan": "Pro and Enterprise" },
-      "features": ["ai.nl-search"] },
-    { "type": "screen", "step": "ai-score",
-      "narration": "Lead scores rank who is most likely to book, and smart follow-ups suggest who to call next.",
-      "lowerThird": { "feature": "Lead scores and smart follow-ups", "role": "Sales team", "plan": "Pro and Enterprise" },
-      "features": ["ai.lead-score", "ai.smart-followups"] },
-    { "type": "screen", "step": "ai-insights", "chapter": "Business intelligence",
-      "narration": "Insights, a business briefing and a health score read your numbers and point out what changed.",
-      "lowerThird": { "feature": "Insights and briefings", "role": "Admin, sales manager", "plan": "Pro and Enterprise" },
-      "features": ["ai.insights", "ai.bi-briefings", "ai.bi-health-score"] },
-    { "type": "flow", "heading": "And more, on the same credits", "chapter": "More AI tools", "short": false,
-      "steps": [{ "label": "Document scan", "sub": "passports, supplier bills" }, { "label": "Call summaries", "sub": "after recorded calls" }, { "label": "Destinations", "sub": "profit and demand" }, { "label": "Team and segments", "sub": "workload, lifetime value" }],
-      "narration": "There is more on the same credits, not shown running here: scanning passports and supplier bills, summaries of recorded calls that turn into suggested next steps, destination profitability, team workload and customer segments.",
-      "features": ["ai.ocr", "calls.ai-summary", "automation.calls.summarise", "ai.bi-destinations", "ai.bi-team", "ai.bi-segments"] },
-    { "type": "end", "headline": "AI that drafts. People who decide.", "cta": "Try it on your enquiries", "chapter": "Thank you", "short": false,
-      "narration": "TravelCRM Pro. AI that drafts, and people who decide." }
+      "lowerThird": {
+        "feature": "Ask your data",
+        "role": "Admin, sales manager",
+        "plan": "Pro and Enterprise"
+      },
+      "features": [
+        "ai.nl-search"
+      ]
+    },
+    {
+      "type": "flow",
+      "heading": "And more, on the same credits",
+      "chapter": "More AI tools",
+      "short": false,
+      "steps": [
+        {
+          "label": "Document scan",
+          "sub": "passports, supplier bills"
+        },
+        {
+          "label": "Call summaries",
+          "sub": "after recorded calls"
+        },
+        {
+          "label": "Destinations",
+          "sub": "profit and demand"
+        },
+        {
+          "label": "Team and segments",
+          "sub": "workload, lifetime value"
+        }
+      ],
+      "narration": "There is more on the same credits, not shown running here: day-by-day itineraries, lead scores, insights, smart follow-ups, a business briefing and a health score, scanning passports and supplier bills, summaries of recorded calls that turn into suggested next steps, destination profitability, team workload and customer segments.",
+      "features": [
+        "ai.ocr",
+        "calls.ai-summary",
+        "automation.calls.summarise",
+        "ai.bi-destinations",
+        "ai.bi-team",
+        "ai.bi-segments",
+        "ai.smart-followups",
+        "ai.bi-briefings",
+        "ai.bi-health-score",
+        "ai.itinerary",
+        "ai.lead-score",
+        "ai.insights"
+      ]
+    },
+    {
+      "type": "end",
+      "headline": "AI that drafts. People who decide.",
+      "cta": "Try it on your enquiries",
+      "chapter": "Thank you",
+      "short": false,
+      "narration": "TravelCRM Pro. AI that drafts, and people who decide."
+    }
   ]
 }

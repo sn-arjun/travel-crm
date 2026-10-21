@@ -1,10 +1,13 @@
 /** Film role-admin: Ananya (admin) from sign-in to reports (studio/clips/role-admin.json). Starts signed out. */
 import { DEMO_EMAIL, DEMO_PASSWORD } from '../demo-data';
-import { anonymous as test, beat, clickOn, expect, focus, glance, pause, recordFilm, scrollSteps, settle, signIn, typeInto } from './film-kit';
+import { anonymous as test, beat, clickOn, expect, focus, glance, inbound, pause, recordFilm, scrollSteps, settle, signIn, typeInto } from './film-kit';
 
 test('film:role-admin', async ({ page, context }, testInfo) => {
   test.setTimeout(20 * 60_000);
   await recordFilm(page, context, 'role-admin', testInfo, async () => {
+    // off camera: two customers wrote in this morning, so the assistant has suggestions waiting (a fresh seed has none)
+    await inbound({ from: '+919847064411', fromName: 'Karan Bedi', body: 'Hi, Karan Bedi here. Planning a 4-night Goa trip for two in November, budget around 80000. Please share options.' });
+    await inbound({ from: '+919847065522', fromName: 'Pooja Shetty', body: 'Hello, this is Pooja Shetty. Could you quote a 3-night Udaipur stay for my parents in December?' });
     await page.goto('/login');
     await settle(page, 1200);
 
@@ -34,18 +37,9 @@ test('film:role-admin', async ({ page, context }, testInfo) => {
     await beat(page, 'admin-announce', async () => {
       await page.goto('/settings/announcements');
       await settle(page, 1200);
-      await clickOn(page, page.getByRole('button', { name: /New announcement|Post|Create/ }).first());
-      const dlg = page.getByRole('dialog');
-      const title = dlg.locator('input').first();
-      if (await title.isVisible().catch(() => false)) {
-        await typeInto(page, title, 'Diwali rush: please confirm every hotel voucher by Friday');
-        await typeInto(page, dlg.locator('textarea').first(), 'Ops will chase suppliers on Monday for anything still unconfirmed. Thank you, team!', { delay: 22 });
-        await clickOn(page, dlg.getByRole('button', { name: /Post|Publish|Save|Send/ }).last());
-      } else {
-        await typeInto(page, page.locator('input').first(), 'Diwali rush: please confirm every hotel voucher by Friday');
-        await typeInto(page, page.locator('textarea').first(), 'Ops will chase suppliers on Monday for anything still unconfirmed. Thank you, team!', { delay: 22 });
-        await clickOn(page, page.getByRole('button', { name: /Post|Publish|Save|Send/ }).last());
-      }
+      await typeInto(page, page.getByPlaceholder('Announcement title...'), 'Diwali rush: please confirm every hotel voucher by Friday');
+      await typeInto(page, page.getByPlaceholder('Write your announcement...'), 'Ops will chase suppliers on Monday for anything still unconfirmed. Thank you, team!', { delay: 22 });
+      await clickOn(page, page.getByRole('button', { name: 'Send Announcement' }));
       await settle(page, 1000);
     });
 

@@ -6,7 +6,7 @@
   "note": "Phone scenes take in/out from desktop/showcase/.work/driver-marks.json (scripts/record-driver.ps1). markText is a substring of the CAPTION marks printed by packages/driver_app/integration_test/demo_flow_test.dart.",
   "scenes": [
     { "type": "logo", "dur": 2.6 },
-    { "type": "title", "kicker": "Roles", "title": "The driver app", "subtitle": "Ravi's airport pickup, from his phone", "chapter": "Introduction", "short": false,
+    { "type": "title", "kicker": "Roles", "title": "The driver app", "subtitle": "Ravi's airport pickup, from his phone. Recorded on an earlier build: the current app asks for the agency code first", "chapter": "Introduction", "short": false,
       "narration": "Drivers get their own Android app. Here is Ravi doing an airport pickup that the office assigned to him." },
     { "type": "phone", "markText": "Ravi signs in", "chapter": "Signing in",
       "heading": "Sign in with a code", "sub": "Phone number and a one-time code",

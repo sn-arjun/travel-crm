@@ -38,7 +38,7 @@ test('film:area-reports', async ({ page, context }, testInfo) => {
     await beat(page, 'palette', async () => {
       const open = page.getByRole('button', { name: /Search/ }).first();
       await clickOn(page, open);
-      const input = page.getByPlaceholder('Type a command or search...');
+      const input = page.getByPlaceholder(/Type a command/);
       await focus(page, 'palette', input);
       await typeInto(page, input, 'invoice');
       await settle(page, 1000);

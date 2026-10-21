@@ -5,7 +5,7 @@
  */
 import { createHmac } from 'node:crypto';
 
-import { DEMO_PASSWORD } from '../demo-data';
+import { DEMO_EMAIL, DEMO_PASSWORD } from '../demo-data';
 import { api, asUser, BASE_URL, beat, clickOn, expect, findOne, focus, glance, outbox, pause, recordFilm, scrollSteps, settle, showMail, tokenFor, typeInto, visit } from './film-kit';
 
 const test = asUser();
@@ -135,10 +135,7 @@ test('film:area-settings', async ({ page, context }, testInfo) => {
       await focus(page, 'erase', toggle);
       await clickOn(page, toggle);
       const form = page.getByTestId('privacy-erase-form');
-      const reasonBox = form.locator('textarea, input[type="text"]').first();
-      if (await reasonBox.isVisible().catch(() => false)) await typeInto(page, reasonBox, 'Customer asked to be forgotten (email of 21 Oct)');
-      const confirmBox = form.locator('input[type="checkbox"], [role="checkbox"]').first();
-      if (await confirmBox.isVisible().catch(() => false)) await clickOn(page, confirmBox);
+      await typeInto(page, form.locator('#erase-phrase'), 'ERASE CONTACT');
       await clickOn(page, page.getByTestId('privacy-erase-confirm'));
       await settle(page, 1200);
     });
@@ -160,8 +157,12 @@ test('film:area-settings', async ({ page, context }, testInfo) => {
       await clickOn(page, page.getByRole('menuitem', { name: /Sign out|Log out/ }));
       await page.waitForURL('**/login', { timeout: 15_000 });
       await settle(page, 900);
-      await glance(page, page.getByRole('button', { name: /phone|code/i }).or(page.getByRole('link', { name: /phone|code/i })), 900);
-      await clickOn(page, page.getByRole('link', { name: /Forgot/i }));
+      // email first, then the password step, which carries the code-by-text option and the reset link
+      await typeInto(page, page.locator('#email'), DEMO_EMAIL);
+      await clickOn(page, page.locator('button[type="submit"]'));
+      await page.waitForSelector('#password', { timeout: 15_000 });
+      await settle(page, 700);
+      await clickOn(page, page.getByRole('button', { name: /Forgot/i }).or(page.getByRole('link', { name: /Forgot/i })).first());
       await page.waitForURL('**/forgot-password', { timeout: 15_000 });
       await settle(page, 900);
     });

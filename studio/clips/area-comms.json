@@ -8,7 +8,7 @@
     { "type": "title", "kicker": "TravelCRM Pro", "title": "One inbox for every channel", "subtitle": "WhatsApp, email, SMS and website chat", "chapter": "Introduction", "short": false,
       "narration": "Customers write on WhatsApp, by email, by text and on your website. All of it lands in one shared inbox." },
     { "type": "screen", "step": "inbox-arrive", "chapter": "Messages arrive",
-      "narration": "A WhatsApp message comes in from a customer. It appears in the inbox straight away, matched to the contact, with no refresh.",
+      "narration": "A WhatsApp message comes in from a customer. It lands in the inbox, matched to the contact, and the bell lights up.",
       "lowerThird": { "feature": "Shared inbox", "role": "Sales team", "plan": "All plans" },
       "callout": { "focus": "new-message", "label": "Arrived just now" },
       "features": ["inbox.list", "inbox.realtime", "inbox.whatsapp-sms-inbound"] },

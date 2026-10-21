@@ -77,7 +77,7 @@ test('film:platform-owner', async ({ page, context }, testInfo) => {
       const provision = page.getByRole('button', { name: /Provision Tenant/ });
       await focus(page, 'provision', provision);
       await clickOn(page, provision);
-      await expect(page.getByRole('button', { name: 'Open agency' }).or(page.getByText(/provisioned|ready|active/i).first())).toBeVisible({ timeout: 60_000 });
+      await expect(page.getByRole('button', { name: 'Open agency' }).first()).toBeVisible({ timeout: 60_000 });
       await pause(page, 900);
     });
 

@@ -86,10 +86,24 @@ test('film:plans', async ({ page, context }, testInfo) => {
     });
 
     await beat(page, 'checkout', async () => {
-      const popup = page.waitForEvent('popup', { timeout: 20_000 }).catch(() => null);
+      // the payment page opens with window.open(..., 'noopener'): such a tab is a new page of the context, not a popup of this page
+      const started = page.waitForResponse((r) => r.url().endsWith("/billing/checkout") && r.request().method() === 'POST', { timeout: 20_000 });
+      const opened = context.waitForEvent('page', { timeout: 15_000 }).catch(() => null);
       await clickOn(page, page.getByTestId('billing-pay'));
-      const p = await popup;
-      if (p) { await p.waitForLoadState('load').catch(() => undefined); await p.waitForURL(/checkout=success|billing/, { timeout: 30_000 }).catch(() => undefined); await p.close().catch(() => undefined); }
+      const url = ((await (await started).json()) as { data?: { url?: string } }).data?.url;
+      // product observation (local stack): the mock gateway builds its payment URL from the request host without the port, so the tab the
+      // app opens cannot load. The take plays the same payment page on the API's own address.
+      await (await opened)?.close().catch(() => undefined);
+      if (url) {
+        const fixed = new URL(url);
+        fixed.protocol = new URL(API_URL).protocol;
+        fixed.host = new URL(API_URL).host;
+        const p = await context.newPage();
+        await p.goto(fixed.toString()).catch(() => undefined);
+        await p.waitForTimeout(1500);
+        await p.close().catch(() => undefined);
+      }
+      await pause(page, 1500); // the gateway tells the server; give it a moment before the page is refreshed
       await page.reload();
       await settle(page, 1500);
       const inv = page.getByTestId('billing-invoices');
@@ -117,8 +131,9 @@ test('film:plans', async ({ page, context }, testInfo) => {
       await page.goto('/settings/chatbot');
       await settle(page, 1200);
       await scrollSteps(page, 1, 300);
-      await page.goto('/dashboard');
-      await settle(page, 1000);
+      await page.goto('/settings/billing');
+      await settle(page, 1200);
+      await glance(page, page.getByTestId('billing-current'), 800);
     });
   });
 });

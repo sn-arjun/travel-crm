@@ -21,7 +21,7 @@
       "lowerThird": { "feature": "Legal pages", "role": "Visitors", "plan": "Platform" },
       "features": ["landing.legal"] },
     { "type": "screen", "step": "wp-create", "chapter": "A website for each agency",
-      "narration": "For an agency, the platform team opens the Website tab and creates the site in one click. It is queued and built on the shared WordPress server from the travel starter template.",
+      "narration": "For an agency, the platform team opens the Website tab, where one button creates the site. Once the hosting server is attached at go-live, it is queued and built on the shared WordPress server from the travel starter template.",
       "lowerThird": { "feature": "Agency website", "role": "Platform owner", "plan": "Basic: 1 site, Pro: own domain" },
       "callout": { "focus": "create-site", "label": "One click" },
       "features": ["wp.provision-queue", "wp.template", "wp.provisioner"] },

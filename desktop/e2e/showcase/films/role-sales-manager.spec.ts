@@ -1,5 +1,5 @@
 /** Film role-sales-manager: Rahul Nair (sales manager) (studio/clips/role-sales-manager.json). */
-import { asUser, beat, clickOn, expect, findOne, glance, hoverOn, pause, pickSelect, recordFilm, scrollSteps, settle, staffEmail, typeInto, visit } from './film-kit';
+import { asUser, beat, clickOn, ensureUnassignedLead, expect, findOne, glance, hoverOn, pause, pickSelect, recordFilm, scrollSteps, settle, staffEmail, typeInto, visit } from './film-kit';
 
 const test = asUser(staffEmail('rahul'));
 
@@ -16,6 +16,7 @@ test('film:role-sales-manager', async ({ page, context }, testInfo) => {
       await glance(page, page.locator('table tbody tr').nth(1), 700);
     });
 
+    await ensureUnassignedLead();
     await beat(page, 'sm-assign', async () => {
       await page.goto('/leads/unassigned');
       await settle(page, 1200);
@@ -40,7 +41,7 @@ test('film:role-sales-manager', async ({ page, context }, testInfo) => {
     });
 
     await beat(page, 'sm-report', async () => {
-      await page.goto('/reports/team');
+      await page.goto('/reports/sales'); // the Team report refuses the sales manager role (product bug, see report): the sales report shows revenue per consultant
       await settle(page, 1800);
       await glance(page, page.getByRole('combobox', { name: /Date range|Period/i }), 700);
       await scrollSteps(page, 1, 350);

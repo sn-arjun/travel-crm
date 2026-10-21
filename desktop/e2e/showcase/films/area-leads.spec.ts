@@ -1,6 +1,6 @@
 /** Film area-leads: leads, follow-ups, tasks, calendar (studio/clips/area-leads.json). Signed in as the demo admin. */
 import * as D from '../demo-data';
-import { asUser, beat, clickOn, expect, focus, glance, hoverOn, openRow, pause, pickDate, pickDateTime, pickRelation, pickSelect, recordFilm, scrollSteps, search, settle, typeInto, visit } from './film-kit';
+import { asUser, beat, clickOn, ensureUnassignedLead, expect, focus, glance, hoverOn, openRow, pause, pickDate, pickDateTime, pickRelation, pickSelect, recordFilm, scrollSteps, search, settle, typeInto, visit } from './film-kit';
 
 const test = asUser();
 
@@ -69,6 +69,7 @@ test('film:area-leads', async ({ page, context }, testInfo) => {
       await glance(page, page.getByText('Lost', { exact: true }).first());
     });
 
+    await ensureUnassignedLead();
     await beat(page, 'leads-unassigned', async () => {
       await page.goto('/leads/unassigned');
       await settle(page, 1200);
@@ -136,6 +137,8 @@ test('film:area-leads', async ({ page, context }, testInfo) => {
       await visit(page, '/calendar');
       await clickOn(page, page.getByRole('button', { name: 'week', exact: true }));
       await settle(page, 1000);
+      // the week view opens the day's side panel when a day is chosen; its Add Event button creates the event
+      await clickOn(page, page.getByText(String(new Date().getDate()), { exact: true }).first());
       await clickOn(page, page.getByRole('button', { name: /add event/i }).first());
       const ev = page.getByRole('dialog').filter({ hasText: 'Create Event' });
       await typeInto(page, ev.locator('input[placeholder="Event title"]'), 'Supplier meet: Vembanad Lake Resort');

@@ -6,26 +6,30 @@
 import { execFileSync } from 'node:child_process';
 import * as path from 'node:path';
 
-import * as D from '../demo-data';
-import { admin, api, asUser, beat, callingOn, clickOn, ensureInboundLine, expect, findOne, focus, glance, pause, recordFilm, REPO, rows, scrollSteps, settle, simulateCall, typeInto, visit, waitForSocket } from './film-kit';
+// Calling is not offered to Indian agencies, so this film runs on the UK film agency B (multi-agency stack, film-prep --agencies).
+import { actorTenant, admin, agency, allowHttp, api, asAgency, beat, callingOn, clickOn, ensureInboundLine, expect, findOne, focus, glance, pause, recordFilm, REPO, rows, scrollSteps, setActor, settle, simulateCall, typeInto, visit, waitForSocket } from './film-kit';
 
-const test = asUser();
-const PRIYA = D.CONTACTS.find((c) => c.key === 'C01')!.phone;
-const NEHA = D.CONTACTS.find((c) => c.key === 'C05')!;
-const ARVIND = D.CONTACTS.find((c) => c.key === 'C24')!.phone;
+const test = asAgency('B');
+const PRIYA = '+447700900144'; // Charlotte Hughes
+const ARVIND = '+447700900277'; // Tom Walker
 
 test.beforeAll(async () => {
+  const b = agency('B');
+  setActor({ email: b.email, password: b.password, tenantId: b.tenantId });
   await ensureInboundLine();
   await callingOn();
 });
 test.afterAll(async () => {
-  await admin('POST', `/tenants/${D.TENANT_ID}/voip/close`, {});
+  await admin('POST', `/tenants/${actorTenant()}/voip/close`, {});
 });
 
 test('film:area-calls', async ({ page, context }, testInfo) => {
   test.setTimeout(25 * 60_000);
+  // a call without a transcript yet answers 404 on its detail page: that is the normal "no transcript" state, not a failure
+  allowHttp(/\/api\/v1\/transcripts\//, [404]);
   await recordFilm(page, context, 'area-calls', testInfo, async () => {
-    await waitForSocket(page, '/dashboard');
+    // the dashboard shows a red zero in the agency's currency, which the take's error-text check misreads: start on the call log
+    await waitForSocket(page, '/communication/calls');
     await expect(page.getByTestId('softphone-state')).toHaveAttribute('data-softphone-state', 'ready', { timeout: 20_000 });
     let callSid = '';
 
@@ -48,15 +52,16 @@ test('film:area-calls', async ({ page, context }, testInfo) => {
       await clickOn(page, page.getByTestId('call-panel-hold'));
       await pause(page, 700);
       await clickOn(page, page.getByTestId('call-panel-hold'));
-      await typeInto(page, page.getByTestId('call-panel-note'), 'Wants the houseboat upgraded to a premium one; send the price difference.', { delay: 25 });
-      await clickOn(page, page.getByTestId('call-panel-hangup'));
+      await typeInto(page, page.getByTestId('call-panel-note'), 'Wants the houseboat upgraded to a premium one; send the price difference in pounds.', { delay: 25 });
+      // product observation: ending a simulated inbound call from the panel makes the API answer 500 ("[mock] Call not found": the
+      // mock provider does not know calls the simulator opened), so the customer hangs up instead, the same call-ended update a provider sends
+      await simulateCall('inbound_finish', PRIYA, { callSid, durationSeconds: 95 });
       await clickOn(page, page.getByRole('button', { name: 'Log & close' }));
       await expect(panel).toHaveCount(0);
-      await simulateCall('inbound_finish', PRIYA, { callSid, durationSeconds: 95 });
     });
 
     await beat(page, 'calls-click', async () => {
-      const lead = await findOne(`/leads?search=${encodeURIComponent('Maldives Overwater')}`, (l) => /Maldives Overwater/.test(l.title));
+      const lead = await findOne(`/leads?search=${encodeURIComponent('Kerala Spice Trail')}`, (l) => /Kerala Spice Trail/.test(l.title));
       await page.goto(`/leads/${lead.id}`);
       await settle(page, 1100);
       await clickOn(page, page.getByRole('button', { name: /^Call/ }).first());
@@ -68,7 +73,6 @@ test('film:area-calls', async ({ page, context }, testInfo) => {
       await pause(page, 1500);
       await clickOn(page, page.getByTestId('call-panel-hangup'));
       await clickOn(page, page.getByRole('button', { name: 'Cancel' }));
-      void NEHA;
     });
 
     await beat(page, 'calls-log', async () => {
@@ -88,7 +92,7 @@ test('film:area-calls', async ({ page, context }, testInfo) => {
         callId = row?.id ?? '';
         return row?.recordingState === 'stored';
       }, { timeout: 20_000 }).toBe(true);
-      execFileSync(process.execPath, [path.join(REPO, 'scripts/showcase/film-prep.mjs'), '--transcript', callId], { stdio: 'inherit', env: process.env });
+      execFileSync(process.execPath, [path.join(REPO, 'scripts/showcase/film-prep.mjs'), '--transcript', callId, '--uk'], { stdio: 'inherit', env: process.env });
       await page.goto(`/communication/calls/${callId}`);
       await settle(page, 1200);
       const player = page.getByTestId('call-recording-player');
