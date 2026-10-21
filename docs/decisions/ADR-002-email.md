@@ -301,6 +301,12 @@ Also update: `backend/wrangler.base.toml` (the new queue), `scripts/push-secrets
 
 ---
 
+## Decision (owner, 2026-10-21)
+
+**Cloudflare + SendGrid, not Amazon SES.** Incoming mail is received by Cloudflare Email Routing. The platform's own system mail (welcome, invites, password reset, receipts, alerts) is sent through Cloudflare Email Sending, with an automatic fallback to SendGrid. All agency mail (customer emails and campaigns) stays on SendGrid. This is the default; the super admin can switch system mail between Cloudflare and SendGrid, and turn the fallback and reply addresses on or off, on the console Email page without a deploy.
+
+Built in R131 (provider interface, inbound Email Worker, reply addresses) and R132 (Cloudflare default with fallback, console settings, platform delivery log, campaign and template sends through the interface). Section 6.3 above ("SES for agency mail") is superseded: read "SendGrid for agency mail". Go-live steps: `docs/GO-LIVE.md` step 9.1a.
+
 ## 8. Sources (all read 2026-10-20 unless stated)
 
 - [E0] Cloudflare Email Service pricing: https://developers.cloudflare.com/email-service/platform/pricing/

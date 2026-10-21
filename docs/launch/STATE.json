@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-21T22:30+05:30",
+  "updated": "2026-10-22T00:30+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -241,7 +241,7 @@
     "Never run npm install/ci inside backend/ or super-admin/: they are root workspaces (R118). Reinstall only at the root.",
     "Root node_modules contains npm workspace links (travelcrm-api, travelcrm-desktop, super-admin, @travelcrm/shared) pointing at the source folders; never delete node_modules recursively through them.",
     "OpenNext builds inside a junctioned worktree can write partial next/styled-jsx folders into the MAIN desktop/ or super-admin/ node_modules; delete folders there that are not in package-lock.json. Removed desktop/node_modules/{next,styled-jsx} on 2026-10-15.",
-    "2026-10-16: leftover worktree folders R103 R106 R107 R112 R115 R120 R123 R213 R306 under .claude/worktrees could not be deleted (files held open or long paths). Verified 0 links inside; safe to delete by hand after closing editors.",
+    "2026-10-22: leftover worktree folders R103 R106 R107 R112 R115 R120 R123 R133 R306 under .claude/worktrees could not be deleted (files held open or long paths). Verified 0 links inside; safe to delete by hand after closing editors.",
     "2026-10-21: backend/test/cron-fanout.test.ts \"without a bound queue scheduled() runs agencies inline\" flaked once on a full run (passed alone and on re-run). Watch it.",
     "2026-10-21: intermittent \"Request timeout\" on invoice list/detail under load in local stacks (R203 and R211 full runs, locale.spec once). Invoice pages do not call the exchange-rate service. Investigate as R133."
   ],
@@ -321,28 +321,26 @@
     "source": "R123 full run on slot 3"
   },
   "ownerToConfirm": {
-    "fromR109": [
-      "Extra user per year: Basic 2,400 / Pro 1,800 / Enterprise 1,200 INR",
-      "AI credits per month: trial 2,000 / Basic 1,000 / Pro 15,000 / Enterprise 25,000",
-      "Monthly caps: SMS 0/10/15/20, WhatsApp 50/250/400/600, login codes 5/9/12/14, email 100/500/2,000/8,000 (trial/Basic/Pro/Enterprise)",
-      "Packs: 100 SMS = 967.20, 1,000 WhatsApp = 714.00, 100 login codes = 1,548.00, 5,000 AI credits = 250 INR",
-      "Provider unit costs: SMS 8.06, WhatsApp 0.595, login code 12.90 INR; margin 20% (card fees leave ~18%)",
-      "Trial: 14 days, 3 users, no calling",
-      "International market prices: none seeded"
-    ],
-    "fromR110": [
-      "Draft SendGrid email unit cost and the email_1000 pack price",
-      "call_minutes_100 pack (inactive until VoIP decision)",
-      "OTP abuse limits: 3 per 10 min and 10 per day per number, 20 per hour per IP"
-    ],
-    "fromR201": [
-      "Export (LUT) and reverse-charge invoice wording",
-      "Default VAT rates GB 20, AE 5, SA 15, DE 19",
-      "Gulf agencies below the VAT threshold use \"none\"?",
-      "GST defaults 18% itinerary invoices, 5% trip invoices",
-      "US sales tax single rate, no nexus handling",
-      "Mandatory invoice fields per country (accountant)"
-    ]
+    "settled": "Prices, allowances, packs and unit costs: superseded by docs/PRICING.md (approved 2026-10-21, loaded by R129/R130). Trial calling off, number release 14/7 days, spike = flag + email: approved 2026-10-21.",
+    "stillOpen": {
+      "tax": [
+        "Export (LUT) and reverse-charge invoice wording",
+        "Default VAT rates GB 20, AE 5, SA 15, DE 19 (accountant)",
+        "Gulf agencies below the VAT threshold use \"none\"?",
+        "GST defaults 18% itinerary invoices, 5% trip invoices",
+        "US sales tax single rate, no nexus handling",
+        "Mandatory invoice fields per country (accountant)"
+      ],
+      "otp": [
+        "OTP abuse limits: 3 per 10 min and 10 per day per number, 20 per hour per IP"
+      ],
+      "perMarketAllowances": [
+        "Enterprise allowance numbers for EU/DE, MY_TH, LK_NP_BD if wanted (R130 mechanism exists, no rows seeded)"
+      ],
+      "loginCodes": [
+        "Login codes stay on SMS (2026-10-14); WhatsApp would cut India cost from about INR 13 to 0.14 per code"
+      ]
+    }
   },
   "incidents": [
     {
