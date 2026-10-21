@@ -20,12 +20,69 @@ import { callingAllowList, callingAvailabilityFor } from './country-gate';
 export type CallPosition = 'resell' | 'bridge' | 'own_account' | 'not_offered';
 export const CALL_POSITIONS: readonly CallPosition[] = ['resell', 'bridge', 'own_account', 'not_offered'];
 
+/** How a call is recorded for an agency that never chose (R137): announce (caller is told, then recorded), off, or on request. */
+export type RecordingDefault = 'announce' | 'off' | 'on_request';
+export const RECORDING_DEFAULTS: readonly RecordingDefault[] = ['announce', 'off', 'on_request'];
+
+/** One field or document a country's regulatory bundle asks the agency for (R137). */
+export interface KycRequirement {
+  key: string;
+  label: string;
+  type: 'text' | 'address' | 'file' | 'date';
+  required: boolean;
+}
+
 export interface CountryPolicy {
   country: string;
   position: CallPosition;
   provider: string | null;
   kycRequired: boolean;
   notes: string | null;
+  recordingDefault: RecordingDefault;
+  /** The structured requirement list; null = the free-form document upload and no provider bundle. */
+  kycRequirements: KycRequirement[] | null;
+}
+
+interface PolicyRow {
+  country: string;
+  position: CallPosition;
+  provider: string | null;
+  kyc_required: number;
+  notes: string | null;
+  recording_default: string | null;
+  kyc_requirements: string | null;
+}
+
+const POLICY_COLUMNS = 'country, position, provider, kyc_required, notes, recording_default, kyc_requirements';
+
+/** Parse a stored requirement list; anything unreadable or empty is "no list". */
+export function parseKycRequirements(raw: string | null | undefined): KycRequirement[] | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    const out: KycRequirement[] = [];
+    for (const r of parsed) {
+      if (!r || typeof r.key !== 'string' || typeof r.label !== 'string') continue;
+      const type = ['text', 'address', 'file', 'date'].includes(r.type) ? r.type : 'text';
+      out.push({ key: r.key, label: r.label, type, required: r.required !== false });
+    }
+    return out.length > 0 ? out : null;
+  } catch {
+    return null;
+  }
+}
+
+function policyFromRow(row: PolicyRow): CountryPolicy {
+  return {
+    country: row.country,
+    position: row.position,
+    provider: row.provider,
+    kycRequired: !!row.kyc_required,
+    notes: row.notes,
+    recordingDefault: RECORDING_DEFAULTS.find((m) => m === row.recording_default) ?? 'announce',
+    kycRequirements: parseKycRequirements(row.kyc_requirements),
+  };
 }
 
 export const TRIAL_CALLING_SETTING = 'voip_calling_on_trial';
@@ -33,18 +90,13 @@ export const TRIAL_CALLING_SETTING = 'voip_calling_on_trial';
 export async function getCountryPolicy(env: Pick<Env, 'MASTER_DB'>, country: string): Promise<CountryPolicy | null> {
   const code = (country || '').trim().toUpperCase();
   if (!code) return null;
-  const row = await env.MASTER_DB
-    .prepare('SELECT country, position, provider, kyc_required, notes FROM call_country_policy WHERE country = ?')
-    .bind(code)
-    .first<{ country: string; position: CallPosition; provider: string | null; kyc_required: number; notes: string | null }>();
-  return row ? { country: row.country, position: row.position, provider: row.provider, kycRequired: !!row.kyc_required, notes: row.notes } : null;
+  const row = await env.MASTER_DB.prepare(`SELECT ${POLICY_COLUMNS} FROM call_country_policy WHERE country = ?`).bind(code).first<PolicyRow>();
+  return row ? policyFromRow(row) : null;
 }
 
 export async function listCountryPolicies(env: Pick<Env, 'MASTER_DB'>): Promise<CountryPolicy[]> {
-  const rows = await env.MASTER_DB
-    .prepare('SELECT country, position, provider, kyc_required, notes FROM call_country_policy ORDER BY country')
-    .all<{ country: string; position: CallPosition; provider: string | null; kyc_required: number; notes: string | null }>();
-  return (rows.results ?? []).map((r) => ({ country: r.country, position: r.position, provider: r.provider, kycRequired: !!r.kyc_required, notes: r.notes }));
+  const rows = await env.MASTER_DB.prepare(`SELECT ${POLICY_COLUMNS} FROM call_country_policy ORDER BY country`).all<PolicyRow>();
+  return (rows.results ?? []).map(policyFromRow);
 }
 
 export async function getPlatformSetting(env: Pick<Env, 'MASTER_DB'>, key: string): Promise<string | null> {

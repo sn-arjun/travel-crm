@@ -616,6 +616,8 @@ export const callCountryPolicy = sqliteTable('call_country_policy', {
   provider: text('provider'),
   kycRequired: integer('kyc_required').notNull().default(0),
   notes: text('notes'),
+  recordingDefault: text('recording_default').notNull().default('announce'), // announce | off | on_request (R137)
+  kycRequirements: text('kyc_requirements'), // JSON [{ key, label, type: text|address|file|date, required }]; null = free-form upload (R137)
   updatedAt: text('updated_at').notNull().default(nowText),
 });
 
@@ -629,6 +631,12 @@ export const numberDocuments = sqliteTable('number_documents', {
   reviewNote: text('review_note'),
   reviewedBy: text('reviewed_by'),
   reviewedAt: text('reviewed_at'),
+  providerBundleSid: text('provider_bundle_sid'), // R137: regulatory bundle at the phone provider
+  providerAddressSid: text('provider_address_sid'),
+  providerStatus: text('provider_status'), // pending-review | in-review | twilio-approved | twilio-rejected | submit_failed
+  providerStatusAt: text('provider_status_at'),
+  providerFailureReason: text('provider_failure_reason'),
+  numberType: text('number_type').notNull().default('local'), // local | mobile | national
   createdAt: text('created_at').notNull().default(nowText),
   updatedAt: text('updated_at').notNull().default(nowText),
 }, (table) => [uniqueIndex('number_documents_tenant_country_idx').on(table.tenantId, table.country)]);
