@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-21T19:59:38.568Z",
+  "updated": "2026-10-21T20:27:26.070Z",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -276,6 +276,12 @@
           "head": "6ac6c5b",
           "what": "India defaults removed: template/lead/itinerary/credit-note currency from agency, PDF money by locale, AI budget label, invoice defaults by country, guard test no-india-defaults, monotonic UUIDv7 (Dart + TS)",
           "gates": "merged line backend 113/2192, desktop 99/1570, lint PASS, i18n PASS"
+        },
+        "R143": {
+          "status": "merged",
+          "head": "2c63ad6",
+          "what": "seat bookings: holds, confirm, cancel, change, move, passengers + travellers, waitlist auto-offer, hold expiry + lifecycle cron, lead link, departure events, 5 recipes, actions confirm_seat_booking/offer_seats/mark_lead_lost; concurrency test 20 parallel on 10 seats",
+          "gates": "merged line backend 116/2248 (after fixing security-hardening quotation limit flake 6fb0e75), desktop 99/1576"
         }
       }
     }
@@ -296,7 +302,8 @@
     "OpenNext builds inside a junctioned worktree can write partial next/styled-jsx folders into the MAIN desktop/ or super-admin/ node_modules; delete folders there that are not in package-lock.json. Removed desktop/node_modules/{next,styled-jsx} on 2026-10-15.",
     "2026-10-22: leftover worktree folders R103 R106 R107 R112 R115 R120 R123 R133 R306 under .claude/worktrees could not be deleted (files held open or long paths). Verified 0 links inside; safe to delete by hand after closing editors.",
     "2026-10-21: backend/test/cron-fanout.test.ts \"without a bound queue scheduled() runs agencies inline\" flaked once on a full run (passed alone and on re-run). Watch it.",
-    "2026-10-21: intermittent \"Request timeout\" on invoice list/detail under load in local stacks (R203 and R211 full runs, locale.spec once). Invoice pages do not call the exchange-rate service. Investigate as R133."
+    "2026-10-21: intermittent \"Request timeout\" on invoice list/detail under load in local stacks (R203 and R211 full runs, locale.spec once). Invoice pages do not call the exchange-rate service. Investigate as R133.",
+    "2026-10-22: while fixing the quotation-limit test, one run that first waited ~40 s inside the workers test runtime saw 61 requests all allowed (KV limiter appeared to fail open). Not reproduced; the KV limiter catches errors and fails open by design. Worth a look if public-link limits matter."
   ],
   "ownerDecisions": {
     "2026-10-14": [
