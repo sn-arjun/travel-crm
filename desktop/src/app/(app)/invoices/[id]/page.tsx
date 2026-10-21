@@ -262,7 +262,7 @@ export default function InvoiceDetailPage() {
               </div>
             </SectionCard>
 
-            <PaymentLinkCard invoice={invoice} contact={{ name: invoice.contactName || contact?.name || 'Client', email: billEmail, phone: invoice.contactPhone ?? contact?.phone }} onChanged={() => void refetch()} />
+            <PaymentLinkCard invoice={invoice} contact={{ name: invoice.contactName || contact?.name || 'Client', email: billEmail, phone: invoice.contactPhone ?? contact?.phone }} onChanged={() => void refetch({ silent: true })} />
 
             <SectionCard title="Bill to">
               <div className="grid gap-ds-4 sm:grid-cols-2" data-testid="invoice-bill-to">

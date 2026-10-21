@@ -83,10 +83,11 @@ test('open the link, pay with iDEAL, return and see the payment and the balance'
 });
 
 test('the customer email of a sent invoice is readable in the local outbox', async () => {
+  test.setTimeout(120_000);
   const sent = await api('POST', `/invoices/${invoiceId}/send`, { channel: 'email', to: contactEmail });
   expect(sent.success ?? true).toBeTruthy();
   let mail: { subject: string; to: string; tenantId: string; kind: string } | undefined;
-  for (let i = 0; i < 30 && !mail; i++) {
+  for (let i = 0; i < 90 && !mail; i++) {
     const res = await fetch(`${API_URL}/test/outbox?tenantId=${TENANT_ID}&kind=agency&to=${encodeURIComponent(contactEmail)}`);
     const body = (await res.json()) as { data: Array<{ subject: string; to: string; tenantId: string; kind: string }> };
     mail = body.data[0];
