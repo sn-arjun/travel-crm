@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-21T20:30+05:30",
+  "updated": "2026-10-21T22:30+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -307,8 +307,6 @@
     "R132: default email routing is Cloudflare for platform mail with SendGrid fallback; it takes effect only after Cloudflare Email Sending onboarding for the platform domain (until then mail goes through SendGrid automatically). Switch or roll back from the console Email page. Note: turning \"customer reply addresses\" off also refuses replies to addresses already sent."
   ],
   "todo": [
-    "Full e2e verification of the merged line on slot 0 (the R133 verify run was stopped by the memory monitor; owner to say when to run it).",
-    "fix-stack: capture the wrangler API log (http.request timings) per slot.",
     "W6 videos (full catalogue) with af_heart, on the final UI; fix packages/driver_app/integration_test/demo_flow_test.dart chooseAgency(tester).",
     "W4 build re-verification on the final line (installer, APK, super-admin build, landing).",
     "W7 docs/LAUNCH-REPORT.md (scorecard before/after, what was verified, what remains).",
@@ -351,5 +349,12 @@
       "date": "2026-10-15",
       "what": "A docs sub-agent broke shell quoting and executed document lines; wrangler secret put created a placeholder Worker travelcrm-api with 8 secrets on the owner's real Cloudflare account. Found with a read-only workers_list; owner approved deletion; deleted (wrangler delete). Values were local placeholders or junk (no real secrets exist on this machine). Safeguard: memory cloudflare-account-safety; every agent brief forbids account-touching wrangler commands."
     }
-  ]
+  ],
+  "finalVerification": {
+    "date": "2026-10-21",
+    "fullE2E_slot0": "818 passed, 0 failed, 73 skipped (multi-tenant specs skip on single) in 22.7 min",
+    "multiSpecs": "handoff 41/41, locale + tenant-isolation 13/13 on a multi stack (earlier the same day)",
+    "backend": "106 files / 2074 tests",
+    "desktop": "95 files / 1548 tests"
+  }
 }
