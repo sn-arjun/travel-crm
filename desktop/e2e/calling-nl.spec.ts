@@ -274,3 +274,15 @@ test('the console view carries what a reviewer needs: fields, file and the provi
   expect(nl.kycRequired).toBe(true);
   expect(nl.kycRequirements.map((r: any) => r.key)).toEqual(['businessName', 'registrationNumber', 'address', 'representativeName', 'registrationExtract']);
 });
+
+test('Settings > Calling explains the recording default and shows the Dutch announcement', async ({ page }) => {
+  await signInViaUI(page, agency);
+  await page.goto('/settings/voip');
+  const note = page.getByTestId('recording-country-note');
+  await expect(note).toBeVisible({ timeout: 30_000 });
+  // NL announces by default; the sentence and the preview are in Dutch, the default announcement is the Dutch prompt
+  await expect(note.getByTestId('recording-country-default')).toHaveAttribute('data-mode', 'announce');
+  await expect(note.getByTestId('recording-country-default')).toHaveText('In uw land worden opnames standaard aangekondigd.');
+  await expect(note.getByTestId('recording-announcement-preview')).toContainText('Dit gesprek kan worden opgenomen voor kwaliteits- en trainingsdoeleinden.');
+  await expect(note.getByTestId('recording-privacy-note')).toContainText('AVG');
+});

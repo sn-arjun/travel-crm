@@ -90,7 +90,7 @@
   "calling.rental.title": "إيجار الأرقام",
   "calling.req.address.city": "المدينة",
   "calling.req.address.postalCode": "الرمز البريدي",
-  "calling.req.address.region": "المنطقة (اختياري)",
+  "calling.req.address.region": "المنطقة",
   "calling.req.address.street": "الشارع والرقم",
   "calling.req.error.address": "يتطلب {label} شارعاً ورمزاً بريدياً ومدينة.",
   "calling.req.error.date": "{label} ليس تاريخاً صالحاً.",

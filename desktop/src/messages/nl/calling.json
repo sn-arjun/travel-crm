@@ -90,7 +90,7 @@
   "calling.rental.title": "Nummerhuur",
   "calling.req.address.city": "Plaats",
   "calling.req.address.postalCode": "Postcode",
-  "calling.req.address.region": "Provincie (optioneel)",
+  "calling.req.address.region": "Provincie",
   "calling.req.address.street": "Straat en huisnummer",
   "calling.req.error.address": "{label} vraagt om een straat, een postcode en een plaats.",
   "calling.req.error.date": "{label} is geen geldige datum.",

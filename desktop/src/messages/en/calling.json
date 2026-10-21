@@ -90,7 +90,7 @@
   "calling.rental.title": "Number rental",
   "calling.req.address.city": "City",
   "calling.req.address.postalCode": "Postal code",
-  "calling.req.address.region": "Region (optional)",
+  "calling.req.address.region": "Region",
   "calling.req.address.street": "Street and number",
   "calling.req.error.address": "{label} needs a street, a postal code and a city.",
   "calling.req.error.date": "{label} is not a valid date.",
