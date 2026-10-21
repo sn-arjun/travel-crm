@@ -40,14 +40,13 @@ export const tripFormSchema = z.object({
   endClock: z.string().min(1, 'End time is required'),
   distance: z.number().optional(),
   fare: z.number().optional(),
-}).superRefine((v, ctx) => {
-  // A transfer is one vehicle, one driver and one route; a coach trip gets its route from the stops.
-  if (v.tripKind === 'coach') return;
-  if (!v.vehicleId) ctx.addIssue({ code: 'custom', path: ['vehicleId'], message: 'Pick a vehicle' });
-  if (!v.driverId) ctx.addIssue({ code: 'custom', path: ['driverId'], message: 'Pick a driver' });
-  if (!v.startLocation) ctx.addIssue({ code: 'custom', path: ['startLocation'], message: 'Start location is required' });
-  if (!v.endLocation) ctx.addIssue({ code: 'custom', path: ['endLocation'], message: 'End location is required' });
-});
+})
+  // A transfer is one vehicle, one driver and one route; a coach trip gets its route from the stops. `when` keeps these checks
+  // running next to the other required fields, so one Save shows every missing field at once.
+  .refine((v) => v.tripKind === 'coach' || !!v.vehicleId, { path: ['vehicleId'], message: 'Pick a vehicle', when: () => true })
+  .refine((v) => v.tripKind === 'coach' || !!v.driverId, { path: ['driverId'], message: 'Pick a driver', when: () => true })
+  .refine((v) => v.tripKind === 'coach' || !!v.startLocation, { path: ['startLocation'], message: 'Start location is required', when: () => true })
+  .refine((v) => v.tripKind === 'coach' || !!v.endLocation, { path: ['endLocation'], message: 'End location is required', when: () => true });
 export type TripFormValues = z.infer<typeof tripFormSchema>;
 
 export const TRIP_TYPE_VALUES: string[] = TRIP_TYPE_OPTIONS.map((o) => o.value);

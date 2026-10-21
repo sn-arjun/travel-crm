@@ -1137,8 +1137,9 @@ fleet.get('/trips', zValidator('query', tripListSchema), async (c) => {
   if (from) { conditions.push('ta.pickup_datetime >= ?'); params.push(from); }
   if (to) { conditions.push('ta.pickup_datetime <= ?'); params.push(to); }
   if (search) {
-    conditions.push('(ta.passenger_name LIKE ? OR v.registration_number LIKE ? OR d.name LIKE ?)');
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    // R145: a coach trip has no passenger name, so the route and the tour leader are searchable too
+    conditions.push('(ta.passenger_name LIKE ? OR v.registration_number LIKE ? OR d.name LIKE ? OR ta.pickup_location LIKE ? OR ta.drop_location LIKE ? OR tl.name LIKE ?)');
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
   }
 
   const whereClause = conditions.join(' AND ');
@@ -1149,6 +1150,7 @@ fleet.get('/trips', zValidator('query', tripListSchema), async (c) => {
     SELECT COUNT(*) as count FROM trip_assignments ta
     LEFT JOIN vehicles v ON v.id = ta.vehicle_id
     LEFT JOIN drivers d ON d.id = ta.driver_id
+    LEFT JOIN drivers tl ON tl.id = ta.tour_leader_id
     WHERE ${whereClause}
   `).bind(...params).first<{ count: number }>();
   const total = countResult?.count ?? 0;

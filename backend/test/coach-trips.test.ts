@@ -540,3 +540,15 @@ describe('privacy', () => {
     expect(row.is_deleted).toBe(0);
   });
 });
+
+describe('trip search', () => {
+  it('finds a coach trip by its route and by its tour leader', async () => {
+    const leader = await makeCrew('Searchable Sigrid', 'tour_leader');
+    const trip = await makeCoachTrip([], { tourLeaderId: leader.id, pickupLocation: 'Findable Depot Nine', dropLocation: 'Elsewhere Ten' });
+    const byRoute = (await json(await call('GET', '/fleet/trips?search=Findable%20Depot', admin))).data.map((t: any) => t.id);
+    expect(byRoute).toContain(trip.id);
+    const byLeader = (await json(await call('GET', '/fleet/trips?search=Searchable%20Sigrid&tripKind=coach', admin))).data.map((t: any) => t.id);
+    expect(byLeader).toEqual([trip.id]);
+    expect((await json(await call('GET', '/fleet/trips?search=Searchable%20Sigrid&tripKind=transfer', admin))).data).toEqual([]);
+  });
+});
