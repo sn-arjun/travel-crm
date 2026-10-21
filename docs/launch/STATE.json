@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-22T00:30+05:30",
+  "updated": "2026-10-22T15:30+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -143,7 +143,8 @@
         "R132": "merged: default = Cloudflare for platform system mail with SendGrid fallback (gen-wrangler default cloudflare; no binding or refusal -> SendGrid, reason logged; test/local -> outbox); agency mail always SendGrid; resolution console > EMAIL_SYSTEM_PROVIDER > built-in; console Email page (/email): routing per kind, provider status, switches (provider, fallback, reply addresses) with audited reason, test send, delivery log; master platform_email_log (masked addresses, SendGrid events update it, Cloudflare rows \"accepted\", 90-day purge); campaign queue and template sends now through sendMail. Master 0027. Merged line: backend 105/2053, gen-wrangler self-test OK, super-admin tsc + lint + build OK; e2e communication-inbox + campaigns + marketing-opt-out + first-login + two-factor 67 passed (slot 1). Orchestrator: backend network guard (test/setup/network-guard.ts) after finding security-hardening sent 6 real SendGrid requests per run with the test key.",
         "R130": "merged: whatsapp (utility/service) and whatsapp_marketing meter channels with their own caps, packs (market-filtered) and 402s; category = marketing for campaigns and promotional templates, utility for everything else paid (Meta and Twilio alike); refunds go back to the charged channel; plan_allowances gains a nullable market column (agency market row preferred, admin PUT ?market=), no per-market rows seeded (PRICING.md gives no amounts); master 0028 switches step-B rows on, whatsapp allowances 20/250/750/2000, marketing 10/50/200/500, interim marketing-rate whatsapp unit costs off; usage screen shows the two lines, usage-limits.tsx through t() (en/ar/hi). Merged line (identical to the tested branch): backend 106/2074, desktop 94/1545, lint 0, i18n PASS (ar 811/811), super-admin tsc 0; e2e whatsapp-campaigns + communication-inbox + marketing-opt-out 56 passed (slot 2). Owner: per-market allowance numbers for EU/DE, MY_TH, LK_NP_BD Enterprise when wanted.",
         "R133": "merged: root cause of the \"invoice timeouts\" in full runs = test pollution, not slowness: first-login.spec (sorted before invoices.spec) set the shared invoice prefix to TRV on a single-tenant stack, so invoices.spec waited for INV-/PI- numbers. first-login.spec now skips on single-tenant stacks; guard test e2e-single-tenant-guard.test.ts. Client timeout 30 s (not changed). Verify: full run reached 883 with 810 passed and 0 failed before the memory monitor stopped it; second verify not run. Merged line: desktop 95/1548, lint 0. Open: the one-off 30 s \"Couldn't load invoices\" in locale.spec on a multi stack is unexplained; slot API log (desktop/audit/fix/stack/slot0-api.log) was empty, so fix-stack should capture wrangler http.request timings.",
-        "R212": "DEFERRED by owner 2026-10-21 (single location for now)."
+        "R212": "DEFERRED by owner 2026-10-21 (single location for now).",
+        "R134": "merged: push-secrets.sh covers 30 secret names (7 required, fail before pushing, also in --dry-run; --partial; placeholders count as missing; CF_API_TOKEN never from the deploy token; BILLING_MOCK_SECRET and TEST_MODE never pushed); gen-wrangler writes every plain var (platform tax, BILLING_GRACE_DAYS, VOIP_CALLING_COUNTRIES default US, WHATSAPP_META_GRAPH_VERSION, optional provider vars) and refuses mock billing, TEST_MODE, mock VoIP and a * calling list on staging/production; deploy-backend.yml passes every plain var. Self-tests: gen-wrangler ALL PASSED, shell-scripts ALL PASSED. Go-live note: delete any hand-set secrets that are now plain vars before the first deploy (wrangler rejects a name that is both)."
       },
       "merged": [
         "R101",
@@ -199,7 +200,8 @@
         "R129",
         "R132",
         "R130",
-        "R133"
+        "R133",
+        "R134"
       ],
       "tier1": "COMPLETE 2026-10-15: R101-R124 merged (incl. orchestrator follow-ups R123, R124); exit test R121 9/9 on the merged line; fresh-clone check passes."
     },
