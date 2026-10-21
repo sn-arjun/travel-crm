@@ -265,4 +265,14 @@ export const nl: Record<MessageKey, string> = {
   'manifest.totals': '{passengers} passagiers, {seats} plaatsen',
   'manifest.footer.generated': 'Aangemaakt op {date}',
   'manifest.footer.page': 'Pagina {page} van {total}',
+  // ---- website chat: contact details form (R151) ----
+  'chatCapture.title': 'Hoe kunnen we u bereiken?',
+  'chatCapture.name': 'Uw naam',
+  'chatCapture.email': 'E-mail',
+  'chatCapture.phone': 'Telefoon',
+  'chatCapture.consent': 'Ik ga ermee akkoord dat jullie contact met mij opnemen over mijn aanvraag.',
+  'chatCapture.marketing': 'Stuur mij aanbiedingen en nieuws (optioneel)',
+  'chatCapture.submit': 'Doorgaan',
+  'chatCapture.skip': 'Nu niet',
+  'chatCapture.error': 'Controleer uw gegevens en probeer het opnieuw.',
 };

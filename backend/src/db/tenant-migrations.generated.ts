@@ -1120,5 +1120,14 @@ export const TENANT_MIGRATIONS: BundledMigration[] = [
       "CREATE INDEX IF NOT EXISTS trip_passengers_seat_passenger_idx ON trip_passengers(seat_passenger_id)",
       "CREATE INDEX IF NOT EXISTS trip_passengers_contact_idx ON trip_passengers(contact_id)"
     ]
+  },
+  {
+    "name": "0061_chatbot_contact_capture.sql",
+    "queries": [
+      "-- R151: the website chat can ask the visitor for name, email and phone.\n--\n-- chatbot_config.contact_capture is the agency's setting (JSON, design 4.8); NULL means \"never ask\" (today's behaviour).\n-- The conversation keeps the consent the visitor gave: when, the exact text shown, and whether the marketing box was ticked.\n-- Consent rows (contact_consents) are written as soon as the conversation belongs to a contact.\nALTER TABLE chatbot_config ADD COLUMN contact_capture TEXT",
+      "ALTER TABLE chatbot_conversations ADD COLUMN contact_consent_at TEXT",
+      "ALTER TABLE chatbot_conversations ADD COLUMN contact_consent_text TEXT",
+      "ALTER TABLE chatbot_conversations ADD COLUMN contact_marketing_opt_in INTEGER DEFAULT 0"
+    ]
   }
 ];

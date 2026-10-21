@@ -2349,6 +2349,7 @@ export const chatbotConfig = sqliteTable('chatbot_config', {
   handoffThreshold: integer('handoff_threshold').default(5), // after N messages, offer handoff
   systemPrompt: text('system_prompt'), // custom instructions for AI
   allowedOrigins: text('allowed_origins'), // JSON array of website origins allowed to embed the widget
+  contactCapture: text('contact_capture'), // JSON: when and which contact details the widget asks for (R151); NULL = never
   createdAt: text('created_at').default(timestamp),
   updatedAt: text('updated_at').default(timestamp),
 }, (table) => [
@@ -2377,6 +2378,9 @@ export const chatbotConversations = sqliteTable('chatbot_conversations', {
   totalCost: real('total_cost').default(0),
   lastMessageAt: text('last_message_at'),
   closedAt: text('closed_at'),
+  contactConsentAt: text('contact_consent_at'), // when the visitor agreed to be contacted (R151)
+  contactConsentText: text('contact_consent_text'), // the exact wording they agreed to
+  contactMarketingOptIn: integer('contact_marketing_opt_in').default(0), // boolean: the optional marketing box
   createdAt: text('created_at').default(timestamp),
   updatedAt: text('updated_at').default(timestamp),
 }, (table) => [

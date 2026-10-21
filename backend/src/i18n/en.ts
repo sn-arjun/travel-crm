@@ -265,6 +265,16 @@ export const en = {
   'manifest.totals': '{passengers} passengers, {seats} seats',
   'manifest.footer.generated': 'Generated {date}',
   'manifest.footer.page': 'Page {page} of {total}',
+  // ---- website chat: contact details form (R151) ----
+  'chatCapture.title': 'How can we reach you?',
+  'chatCapture.name': 'Your name',
+  'chatCapture.email': 'Email',
+  'chatCapture.phone': 'Phone',
+  'chatCapture.consent': 'I agree that you contact me about my enquiry.',
+  'chatCapture.marketing': 'Send me offers and news (optional)',
+  'chatCapture.submit': 'Continue',
+  'chatCapture.skip': 'Not now',
+  'chatCapture.error': 'Please check your details and try again.',
 } as const;
 
 export type MessageKey = keyof typeof en;
