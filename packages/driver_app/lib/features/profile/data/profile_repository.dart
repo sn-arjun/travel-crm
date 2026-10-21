@@ -11,6 +11,25 @@ class ProfileRepository {
     return response.data;
   }
 
+  /// The crew role in a profile payload: `driver`, `tour_leader` or `both`.
+  /// Reads `crewRole`, then `crew_role`; an older server sends neither, and
+  /// the person is then a plain driver.
+  static String crewRoleOf(Map<String, dynamic>? profile) {
+    final v = profile?['crewRole'] ?? profile?['crew_role'];
+    return v is String && v.isNotEmpty ? v : 'driver';
+  }
+
+  /// True for `tour_leader` and `both`.
+  static bool isTourLeaderRole(String? role) =>
+      role == 'tour_leader' || role == 'both';
+
+  /// Reads the crew role from the profile endpoint.
+  Future<String> getCrewRole() async {
+    final response = await getProfile();
+    final data = response['data'];
+    return crewRoleOf(data is Map ? Map<String, dynamic>.from(data) : null);
+  }
+
   Future<Map<String, dynamic>> updateProfile(
       Map<String, dynamic> data) async {
     final response = await _dio.put(ApiEndpoints.driverProfile, data: data);

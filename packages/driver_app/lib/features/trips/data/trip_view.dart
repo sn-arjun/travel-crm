@@ -1,3 +1,5 @@
+import 'package:shared/shared.dart';
+
 /// Read-only view over a raw trip map returned by the driver API.
 ///
 /// The backend (`formatTripForDriver`) returns camelCase keys with the vehicle
@@ -60,6 +62,9 @@ class TripView {
   double? get dropLat => _num(raw['dropLat']);
   double? get dropLng => _num(raw['dropLng']);
 
+  /// An ISO-8601 string (such as a stop's `scheduledAt`) in the device time zone.
+  static DateTime? parseTime(String? iso) => _date(iso);
+
   static String? _str(dynamic v) {
     if (v == null) return null;
     final s = v.toString();
@@ -115,4 +120,155 @@ class TripView {
 /// Convenience accessor: `trip.view` on a raw trip map.
 extension TripMapView on Map<String, dynamic> {
   TripView get view => TripView(this);
+}
+
+// ── Coach trips (R145 fields) ─────────────────────────────
+
+/// The "N stops, M passengers" summary a trip list row carries for a coach.
+class CoachSummary {
+  final int stopCount;
+  final int passengerCount;
+  final String? nextStopName;
+  final DateTime? nextStopAt;
+
+  const CoachSummary({
+    required this.stopCount,
+    required this.passengerCount,
+    this.nextStopName,
+    this.nextStopAt,
+  });
+}
+
+/// Seats per boarding state for [passengers] (all of them, or the ones of one
+/// stop when the caller filters first).
+TripHeadcount computeHeadcount(
+  List<TripStop> stops,
+  List<TripPassenger> passengers,
+) {
+  var expected = 0, boarded = 0, noShow = 0, docs = 0;
+  final per = <String?, List<int>>{}; // expected, boarded, noShow
+  final stopIds = stops.map((s) => s.id).toSet();
+  for (final p in passengers) {
+    final key = p.tripStopId != null && stopIds.contains(p.tripStopId)
+        ? p.tripStopId
+        : null;
+    final slot = per.putIfAbsent(key, () => [0, 0, 0]);
+    expected += p.seats;
+    slot[0] += p.seats;
+    if (p.boarding == 'boarded') {
+      boarded += p.seats;
+      slot[1] += p.seats;
+    } else if (p.boarding == 'no_show') {
+      noShow += p.seats;
+      slot[2] += p.seats;
+    }
+    if (p.documentsChecked) docs += p.seats;
+  }
+  TripStopHeadcount row(String? id, String? name, int order) {
+    final s = per[id] ?? [0, 0, 0];
+    return TripStopHeadcount(
+      stopId: id,
+      name: name,
+      sortOrder: order,
+      expected: s[0],
+      boarded: s[1],
+      noShow: s[2],
+      pending: s[0] - s[1] - s[2],
+    );
+  }
+
+  return TripHeadcount(
+    expected: expected,
+    boarded: boarded,
+    noShow: noShow,
+    pending: expected - boarded - noShow,
+    documentsChecked: docs,
+    byStop: [
+      for (final s in stops) row(s.id, s.name, s.sortOrder),
+      if (per.containsKey(null)) row(null, null, 0),
+    ],
+  );
+}
+
+/// Coach fields of a trip map. Every getter is null-safe: a transfer has none
+/// of them, and a driver the agency does not allow to see passengers gets no
+/// `passengers` key at all.
+extension CoachTripView on TripView {
+  bool get isCoach => raw['tripKind'] == 'coach';
+
+  /// `tour_leader` or `driver` (the server's `myRole` on the trip detail).
+  String? get myRole => TripView._str(raw['myRole']);
+
+  /// Stops in the order the coach visits them.
+  List<TripStop> get stops {
+    final list = _parseList<TripStop>(raw['stops'], TripStop.fromJson);
+    list.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    return list;
+  }
+
+  /// Null when the server did not send passengers (a driver without the right).
+  List<TripPassenger>? get passengers => raw['passengers'] is List
+      ? _parseList<TripPassenger>(raw['passengers'], TripPassenger.fromJson)
+      : null;
+
+  bool get hasPassengers => passengers != null;
+
+  /// The head count: computed from the passengers when present (so a tick
+  /// shows at once), else the server's.
+  TripHeadcount? get headcount {
+    final p = passengers;
+    if (p != null) return computeHeadcount(stops, p);
+    final h = raw['headcount'];
+    if (h is! Map) return null;
+    try {
+      return TripHeadcount.fromJson(Map<String, dynamic>.from(h));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// "N stops, M passengers" and the next stop: from the list row's `coach`
+  /// block, else worked out from the stops and passengers of the detail.
+  CoachSummary? get coachSummary {
+    if (!isCoach) return null;
+    final c = raw['coach'];
+    if (c is Map) {
+      final next = c['nextStop'];
+      return CoachSummary(
+        stopCount: (c['stopCount'] as num?)?.toInt() ?? 0,
+        passengerCount: (c['passengerCount'] as num?)?.toInt() ?? 0,
+        nextStopName: next is Map ? TripView._str(next['name']) : null,
+        nextStopAt: next is Map ? TripView._date(next['scheduledAt']) : null,
+      );
+    }
+    final s = stops;
+    final p = passengers;
+    final next = s.where((x) => x.status == 'pending' || x.status == 'arrived');
+    final first = next.isEmpty ? null : next.first;
+    return CoachSummary(
+      stopCount: s.length,
+      passengerCount: p?.fold<int>(0, (sum, x) => sum + x.seats) ??
+          headcount?.expected ??
+          0,
+      nextStopName: first?.name,
+      nextStopAt: first == null ? null : TripView._date(first.scheduledAt),
+    );
+  }
+
+  static List<T> _parseList<T>(
+    dynamic data,
+    T Function(Map<String, dynamic>) parse,
+  ) {
+    if (data is! List) return <T>[];
+    final out = <T>[];
+    for (final item in data) {
+      if (item is! Map) continue;
+      try {
+        out.add(parse(Map<String, dynamic>.from(item)));
+      } catch (_) {
+        // One malformed row must not hide the rest of the trip.
+      }
+    }
+    return out;
+  }
 }
