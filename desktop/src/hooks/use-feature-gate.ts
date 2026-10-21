@@ -15,7 +15,13 @@ export type GatedFeature =
   | 'ai_extraction'
   | 'ai_intelligence'
   | 'ai_chatbot'
-  | 'whatsapp_campaigns';
+  | 'whatsapp_campaigns'
+  | 'group_departures'
+  | 'public_booking'
+  | 'coach_trips'
+  | 'age_band_pricing'
+  | 'margin_scheme'
+  | 'quote_acceptance';
 
 export type FeatureGateReason = 'ok' | 'platform_disabled' | 'not_in_plan' | 'cap_exceeded' | 'country_unavailable';
 

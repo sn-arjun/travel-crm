@@ -47,3 +47,15 @@ describe('calling country gate (R301)', () => {
     expect(renderHook(() => useCallingOffered()).result.current).toBe(true);
   });
 });
+
+describe('tour operator feature keys (R143)', () => {
+  it.each(['group_departures', 'public_booking', 'coach_trips', 'age_band_pricing', 'margin_scheme', 'quote_acceptance'] as const)(
+    '%s is gated by the plan like any other feature',
+    (key) => {
+      settings.value.features = [{ key, enabled: true, tier: 'pro', overridden: false }];
+      expect(renderHook(() => useFeatureGate(key)).result.current).toMatchObject({ enabled: true, reason: 'ok' });
+      settings.value.features = [{ key, enabled: false, tier: 'basic', overridden: false }];
+      expect(renderHook(() => useFeatureGate(key)).result.current).toMatchObject({ enabled: false, reason: 'not_in_plan' });
+    },
+  );
+});

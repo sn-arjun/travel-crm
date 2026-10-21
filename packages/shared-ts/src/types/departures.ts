@@ -112,13 +112,41 @@ export interface SeatBooking {
   seats: number;
   holdExpiresAt: string | null;
   waitlistPosition: number | null;
+  /** Set when a waitlisted party was offered seats (R143). */
+  offeredAt?: string | null;
   confirmedAt: string | null;
+  /** A user id, or auto, deposit or quote_accept (R143). */
+  confirmedBy?: string | null;
   cancelledAt: string | null;
   cancelReason: string | null;
   source: SeatBookingSource;
+  roomNotes?: string | null;
   notes: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+  /** Joined fields of the list and detail endpoints (R143). */
+  contactName?: string | null;
+  leadTitle?: string | null;
+  departureCode?: string | null;
+  passengersCount?: number;
+}
+
+/** GET /seat-bookings/:id and the results of the actions on it (R143). */
+export interface SeatBookingDetail extends SeatBooking {
+  passengers: SeatPassenger[];
+}
+
+/** One row of GET /leads/:id/seat-bookings (R143). */
+export interface LeadSeatBooking extends SeatBooking {
+  departureStartDate: string;
+  departureEndDate: string;
+  departureStatus: DepartureStatus;
+  tourTitle: string;
+}
+
+/** Why a seat request was refused: 409 SEATS_UNAVAILABLE carries the seats that are left. */
+export interface SeatsUnavailableDetails {
+  seatsLeft: number;
 }
 
 export interface SeatPassenger {
@@ -134,6 +162,9 @@ export interface SeatPassenger {
   bandKey: string | null;
   pickupStopId: string | null;
   roomType: string | null;
+  shareOk?: boolean;
+  shareGender?: boolean;
+  roomGroup?: string | null;
   seatNumber: string | null;
   mealPreference: string | null;
   documentsStatus: 'unknown' | 'provided' | 'checked' | 'problem';
