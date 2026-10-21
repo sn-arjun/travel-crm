@@ -22,10 +22,23 @@ import { generateId } from '../utils/uuid';
 import { logActivity } from '../utils/activity-logger';
 import { logLeadActivity } from '../utils/lead-activity-logger';
 import { createLead } from '../services/domain/leads';
+import { loadLocaleContext } from '../utils/money';
 import { emitFromRequest, requestDepth } from '../services/automation/events';
 import { success, created, paginated, error, notFound } from '../utils/response';
 
 const leadRoutes = new Hono<AppContext>();
+
+/** Lead response; a legacy row without a currency shows the agency currency (read only when needed). */
+async function parseLeadFor(c: Context<AppContext>, row: Record<string, unknown>) {
+  const agencyCurrency = row.currency ? null : (await loadLocaleContext(c.get('tenantDb'))).currency;
+  return parseLead(row, agencyCurrency);
+}
+
+/** Same for a page of rows: one settings read at most. */
+async function parseLeadsFor(c: Context<AppContext>, rows: Record<string, unknown>[]) {
+  const agencyCurrency = rows.some((r) => !r.currency) ? (await loadLocaleContext(c.get('tenantDb'))).currency : null;
+  return rows.map((r) => parseLead(r, agencyCurrency));
+}
 
 // ── Zod Schemas ───────────────────────────────────────────────
 
@@ -39,7 +52,8 @@ const createLeadSchema = z.object({
   paxChildren: z.number().int().min(0).default(0),
   paxInfants: z.number().int().min(0).default(0),
   budget: z.number().positive().optional().nullable(),
-  currency: z.string().default('INR'),
+  // Absent means the agency currency (filled in by createLead), never a fixed one.
+  currency: z.string().optional(),
   tripType: z.enum(['domestic', 'international', 'honeymoon', 'family', 'group', 'corporate', 'adventure', 'pilgrimage']),
   source: z.enum(['manual', 'website', 'facebook', 'google', 'referral', 'walkin']),
   priority: z.enum(['hot', 'warm', 'cold']).optional().nullable(),
@@ -97,7 +111,7 @@ const noteSchema = z.object({
 // ── Helper: build lead response object ───────────────────────
 // Raw D1 SQL returns snake_case columns; Flutter models expect camelCase.
 
-function parseLead(row: Record<string, unknown>) {
+function parseLead(row: Record<string, unknown>, agencyCurrency: string | null = null) {
   let destinations: string[] = [];
   try {
     const raw = (row.destination ?? row.destinations) as string | null;
@@ -124,7 +138,7 @@ function parseLead(row: Record<string, unknown>) {
     paxChildren: row.pax_children ?? row.paxChildren ?? 0,
     paxInfants: row.pax_infants ?? row.paxInfants ?? 0,
     budget: row.budget ?? null,
-    currency: row.currency ?? 'INR',
+    currency: row.currency ?? agencyCurrency,
     tripType: row.trip_type ?? row.tripType,
     source: row.source,
     status: row.status ?? 'new',
@@ -355,7 +369,7 @@ leadRoutes.get('/', requirePermission('leads', 'view'), async (c) => {
         .all<{ status: string; count: number; total_value: number }>(),
     ]);
 
-    const allLeads = rows.results.map(parseLead);
+    const allLeads = await parseLeadsFor(c, rows.results);
     const stageLabels: Record<string, string> = {
       new: 'New', contacted: 'Contacted', requirement_gathered: 'Requirement Gathered',
       proposal_sent: 'Proposal Sent', negotiation: 'Negotiation',
@@ -408,7 +422,7 @@ leadRoutes.get('/', requirePermission('leads', 'view'), async (c) => {
   const total = countRow?.total ?? 0;
   const totalPages = Math.ceil(total / limitNum);
 
-  return paginated(c, rows.results.map(parseLead), total, pageNum, limitNum);
+  return paginated(c, await parseLeadsFor(c, rows.results), total, pageNum, limitNum);
 });
 
 // ============================================================
@@ -467,7 +481,7 @@ leadRoutes.get('/unassigned', requirePermission('leads', 'view'), async (c) => {
     `)
     .all<Record<string, unknown>>();
 
-  return success(c, rows.results.map(parseLead));
+  return success(c, await parseLeadsFor(c, rows.results));
 });
 
 // ============================================================
@@ -594,7 +608,7 @@ leadRoutes.post(
 
     const lead = await tenantDb.prepare('SELECT l.*, c.name as contact_name FROM leads l LEFT JOIN contacts c ON l.contact_id = c.id WHERE l.id = ?').bind(id).first<Record<string, unknown>>();
 
-    return created(c, parseLead(lead ?? { id }));
+    return created(c, await parseLeadFor(c, lead ?? { id }));
   }
 );
 
@@ -621,7 +635,7 @@ leadRoutes.get('/:id', requirePermission('leads', 'view'), async (c) => {
 
   if (!lead) return notFound(c, 'Lead');
 
-  return success(c, parseLead(lead));
+  return success(c, await parseLeadFor(c, lead));
 });
 
 // ============================================================
@@ -685,7 +699,7 @@ leadRoutes.put(
       .prepare('SELECT l.*, c.name as contact_name FROM leads l LEFT JOIN contacts c ON l.contact_id = c.id WHERE l.id = ?')
       .bind(id).first<Record<string, unknown>>();
 
-    return success(c, parseLead(updated ?? { id }));
+    return success(c, await parseLeadFor(c, updated ?? { id }));
   }
 );
 
@@ -796,7 +810,7 @@ leadRoutes.put(
       .prepare('SELECT l.*, c.name as contact_name FROM leads l LEFT JOIN contacts c ON l.contact_id = c.id WHERE l.id = ?')
       .bind(id).first<Record<string, unknown>>();
 
-    return success(c, parseLead(updated ?? { id }));
+    return success(c, await parseLeadFor(c, updated ?? { id }));
   }
 );
 

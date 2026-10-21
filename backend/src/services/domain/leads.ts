@@ -7,6 +7,7 @@ import { logLeadActivity } from '../../utils/lead-activity-logger';
 import { broadcastToTenant } from '../../utils/realtime';
 import { resolveAssignee } from '../lead-assignment';
 import { emitEvent } from '../automation/events';
+import { loadLocaleContext } from '../../utils/money';
 
 export interface CreateLeadInput {
   contactId: string;
@@ -67,6 +68,9 @@ export async function createLead(
     ? null
     : await resolveAssignee(tenantDb, env.CACHE, tenantId, input.source, input.assignedTo);
 
+  // No currency on the enquiry means the agency's own, read once here.
+  const currency = input.currency?.trim() ? input.currency.trim().toUpperCase() : (await loadLocaleContext(tenantDb)).currency;
+
   const id = generateId();
   const now = new Date().toISOString();
 
@@ -81,7 +85,7 @@ export async function createLead(
     paxChildren: input.paxChildren ?? 0,
     paxInfants: input.paxInfants ?? 0,
     budget: input.budget ?? null,
-    currency: input.currency ?? 'INR',
+    currency,
     tripType: input.tripType ?? null,
     source: input.source,
     status: 'new',

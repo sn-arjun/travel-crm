@@ -11,6 +11,7 @@ import { zValidator } from '../utils/validator';
 import type { AppContext } from '../types';
 import { success, error, notFound, paginated } from '../utils/response';
 import { generateId } from '../utils/uuid';
+import { loadLocaleContext } from '../utils/money';
 import { AIRouter } from '../services/ai-router';
 import { incrementUsage } from '../middleware/usage-cap';
 
@@ -141,6 +142,7 @@ aiRoutes.post('/extract-lead', zValidator('json', extractLeadSchema), async (c) 
 
   const startTime = Date.now();
   const router = new AIRouter(env, undefined, c.get('tenantId'));
+  const agencyCurrency = (await loadLocaleContext(db)).currency;
 
   const systemPrompt = `You are a travel CRM assistant that extracts lead data from text.
 Extract the following fields from the input text and return as JSON:
@@ -153,7 +155,7 @@ Extract the following fields from the input text and return as JSON:
   "paxCount": number_of_travelers,
   "paxDetails": [{"type": "adult/child/infant", "count": N}],
   "budget": number_or_null,
-  "budgetCurrency": "INR/USD/etc",
+  "budgetCurrency": "ISO 4217 code of the budget, ${agencyCurrency} if the text names no currency",
   "tripType": "honeymoon/family/adventure/business/pilgrimage/group/solo",
   "preferences": ["preference1", "preference2"],
   "hotelPreference": "budget/mid-range/luxury",
@@ -413,7 +415,7 @@ aiRoutes.post('/generate-itinerary', zValidator('json', generateItinerarySchema)
   let context = '';
   if (body.destination) context += `Destination: ${body.destination}\n`;
   if (body.duration) context += `Duration: ${body.duration} days\n`;
-  if (body.budget) context += `Budget: ${body.budgetCurrency || 'INR'} ${body.budget}\n`;
+  if (body.budget) context += `Budget: ${body.budgetCurrency || (await loadLocaleContext(db)).currency} ${body.budget}\n`;
   if (body.paxCount) context += `Travelers: ${body.paxCount}\n`;
   if (body.tripType) context += `Trip type: ${body.tripType}\n`;
   if (body.preferences?.length) context += `Preferences: ${body.preferences.join(', ')}\n`;
@@ -573,7 +575,8 @@ Return the same JSON structure but with enriched descriptions, added restaurant 
 
 aiRoutes.post('/generate-invoice', zValidator('json', z.object({
   itinerary: z.any(),
-  currency: z.string().default('INR'),
+  // Absent means the agency currency.
+  currency: z.string().optional(),
   gstRate: z.number().default(5),
   tcsRate: z.number().default(5),
   markupPercent: z.number().default(15),
@@ -585,6 +588,7 @@ aiRoutes.post('/generate-invoice', zValidator('json', z.object({
 
   const startTime = Date.now();
   const router = new AIRouter(env, undefined, c.get('tenantId'));
+  const currency = body.currency?.trim() ? body.currency.trim().toUpperCase() : (await loadLocaleContext(db)).currency;
 
   const systemPrompt = `You are a travel invoice generator. Convert this itinerary into structured invoice line items.
 Apply markup of ${body.markupPercent}%, GST at ${body.gstRate}%, and TCS at ${body.tcsRate}%.
@@ -598,7 +602,7 @@ Return as JSON:
   "gstAmount": 0,
   "tcsAmount": 0,
   "totalAmount": 0,
-  "currency": "${body.currency}",
+  "currency": "${currency}",
   "notes": "..."
 }`;
 

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { drizzle } from 'drizzle-orm/d1';
 import type { AppContext } from '../types';
 import { generateId } from '../utils/uuid';
+import { loadLocaleContext } from '../utils/money';
 import { success, created, paginated, error, notFound, forbidden } from '../utils/response';
 import { generateInvoiceNumber } from '../services/numbering';
 import { logActivity } from '../utils/activity-logger';
@@ -78,7 +79,7 @@ creditNoteRoutes.post('/', zValidator('json', createCreditNoteSchema), async (c)
     // Verify invoice exists
     const invoice = await tenantDb
       .prepare(
-        `SELECT id, contact_id, invoice_number, total, tax_regime, tax_type, tax_breakdown, tax_notes,
+        `SELECT id, contact_id, invoice_number, total, currency, tax_regime, tax_type, tax_breakdown, tax_notes,
                 place_of_supply, seller_tax_id, buyer_tax_id, cgst FROM invoices WHERE id = ?1`
       )
       .bind(data.invoiceId)
@@ -127,7 +128,7 @@ creditNoteRoutes.post('/', zValidator('json', createCreditNoteSchema), async (c)
         subtotal,
         totalTax,
         total,
-        'INR',
+        invoice.currency || (await loadLocaleContext(tenantDb)).currency,
         'draft',
         JSON.stringify({ reason: data.reason, appliedTo: data.invoiceId, notes: data.notes }),
         userId,
@@ -375,7 +376,7 @@ debitNoteRoutes.post('/', zValidator('json', createDebitNoteSchema), async (c) =
     // Verify invoice exists
     const invoice = await tenantDb
       .prepare(
-        `SELECT id, contact_id, invoice_number, total, tax_regime, tax_type, tax_breakdown, tax_notes,
+        `SELECT id, contact_id, invoice_number, total, currency, tax_regime, tax_type, tax_breakdown, tax_notes,
                 place_of_supply, seller_tax_id, buyer_tax_id, cgst FROM invoices WHERE id = ?1`
       )
       .bind(data.invoiceId)
@@ -424,7 +425,7 @@ debitNoteRoutes.post('/', zValidator('json', createDebitNoteSchema), async (c) =
         subtotal,
         totalTax,
         total,
-        'INR',
+        invoice.currency || (await loadLocaleContext(tenantDb)).currency,
         'draft',
         JSON.stringify({ reason: data.reason, appliedTo: data.invoiceId, notes: data.notes }),
         userId,

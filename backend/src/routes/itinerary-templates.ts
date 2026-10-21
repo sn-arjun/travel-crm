@@ -13,6 +13,7 @@ import {
 } from '../db/tenant-schema';
 import { requirePermission } from '../middleware/rbac';
 import { generateId } from '../utils/uuid';
+import { isValidCurrency, loadLocaleContext } from '../utils/money';
 import { logActivity } from '../utils/activity-logger';
 import { success, created, paginated, error, notFound } from '../utils/response';
 
@@ -243,6 +244,8 @@ templateRoutes.post('/create-from', requirePermission('itineraries', 'create'), 
   if (!lead) return notFound(c, 'Lead');
 
   const data = template.templateData ? JSON.parse(template.templateData) : { days: [] };
+  // The quote follows the template's own currency, else the agency's.
+  const currency = isValidCurrency(data.currency) ? data.currency.toUpperCase() : (await loadLocaleContext(c.get('tenantDb'))).currency;
   const itineraryId = generateId();
   const now = new Date().toISOString();
 
@@ -267,7 +270,7 @@ templateRoutes.post('/create-from', requirePermission('itineraries', 'create'), 
     inclusions: data.inclusions ? JSON.stringify(data.inclusions) : null,
     exclusions: data.exclusions ? JSON.stringify(data.exclusions) : null,
     termsConditions: data.termsConditions || null,
-    currency: 'INR',
+    currency,
     totalCost,
     totalSelling,
     totalTax,

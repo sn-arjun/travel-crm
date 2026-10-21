@@ -71,7 +71,8 @@ const createItinerarySchema = z.object({
   inclusions: z.array(z.string()).optional().default([]),
   exclusions: z.array(z.string()).optional().default([]),
   termsConditions: z.string().optional().nullable(),
-  currency: z.string().optional().default('INR'),
+  // Absent means the agency currency, filled in by the handler.
+  currency: z.string().optional(),
   markupType: z.enum(['percentage', 'fixed']).optional().nullable(),
   markupValue: z.number().optional().nullable(),
   days: z.array(itineraryDaySchema).min(1),
@@ -306,7 +307,7 @@ itineraryRoutes.post('/', requirePermission('itineraries', 'create'), zValidator
     inclusions: JSON.stringify(body.inclusions),
     exclusions: JSON.stringify(body.exclusions),
     termsConditions: body.termsConditions || null,
-    currency: body.currency || 'INR',
+    currency: body.currency?.trim() ? body.currency.trim().toUpperCase() : (await loadLocaleContext(c.get('tenantDb'))).currency,
     totalCost: totals.totalCost,
     totalSelling: totals.totalSelling,
     totalTax: totals.totalTax,
@@ -940,11 +941,25 @@ itineraryRoutes.get('/:id/pdf', requirePermission('itineraries', 'view'), async 
   if (!full) return notFound(c, 'Itinerary');
 
   const itin = full;
+  // Money prints in the quote's currency with the agency's number format.
+  const localeCtx = await loadLocaleContext(c.get('tenantDb'));
+  const currency = itin.currency || localeCtx.currency;
   const daysData = full.days;
 
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  // The built-in PDF fonts only encode Latin text; a symbol or digit set they cannot draw falls back to the code.
+  const money = (amount: number): string => {
+    const text = formatMoney(amount, currency, localeCtx.locale);
+    try {
+      font.encodeText(text);
+      return text;
+    } catch {
+      return `${currency} ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)}`;
+    }
+  };
 
   const pageWidth = 595; // A4 portrait
   const pageHeight = 842;
@@ -982,7 +997,7 @@ itineraryRoutes.get('/:id/pdf', requirePermission('itineraries', 'view'), async 
     drawText(`Valid until: ${itin.validityDate}`, margin, y, { size: 9, color: rgb(0.4, 0.4, 0.4) });
     y -= 14;
   }
-  drawText(`Currency: ${itin.currency || 'INR'}`, margin, y, { size: 9, color: rgb(0.4, 0.4, 0.4) });
+  drawText(`Currency: ${currency}`, margin, y, { size: 9, color: rgb(0.4, 0.4, 0.4) });
   y -= 25;
 
   // Separator
@@ -1006,7 +1021,7 @@ itineraryRoutes.get('/:id/pdf', requirePermission('itineraries', 'view'), async 
       const typeLabel: Record<string, string> = { hotel: '[Hotel]', transport: '[Transport]', activity: '[Activity]', meal: '[Meal]', flight: '[Flight]' };
       const label = typeLabel[item.type] || '[*]';
       drawText(`${label} ${item.title || item.type}`, margin + 15, y, { size: 10 });
-      const price = `${itin.currency || 'INR'} ${(item.sellingPrice || 0).toFixed(2)}`;
+      const price = money(item.sellingPrice || 0);
       const priceWidth = font.widthOfTextAtSize(price, 10);
       drawText(price, pageWidth - margin - priceWidth, y, { size: 10 });
       y -= 14;
@@ -1026,13 +1041,13 @@ itineraryRoutes.get('/:id/pdf', requirePermission('itineraries', 'view'), async 
   y -= 18;
   const summaryX = pageWidth - margin - 120;
   drawText('Subtotal:', margin + 10, y, { size: 10 });
-  drawText(`${itin.currency || 'INR'} ${(itin.totalSelling || 0).toFixed(2)}`, summaryX, y, { size: 10 });
+  drawText(money(itin.totalSelling || 0), summaryX, y, { size: 10 });
   y -= 14;
   drawText('Tax:', margin + 10, y, { size: 10 });
-  drawText(`${itin.currency || 'INR'} ${(itin.totalTax || 0).toFixed(2)}`, summaryX, y, { size: 10 });
+  drawText(money(itin.totalTax || 0), summaryX, y, { size: 10 });
   y -= 14;
   drawText('Grand Total:', margin + 10, y, { font: boldFont, size: 11 });
-  drawText(`${itin.currency || 'INR'} ${(itin.grandTotal || 0).toFixed(2)}`, summaryX, y, { font: boldFont, size: 11, color: rgb(0.1, 0.5, 0.1) });
+  drawText(money(itin.grandTotal || 0), summaryX, y, { font: boldFont, size: 11, color: rgb(0.1, 0.5, 0.1) });
   y -= 25;
 
   // Inclusions
