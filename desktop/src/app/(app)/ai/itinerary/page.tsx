@@ -237,6 +237,7 @@ export default function ItineraryPage() {
               <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
                 <Loader2 className="h-8 w-8 animate-spin mb-3" />
                 <p className="text-sm">Crafting your perfect itinerary...</p>
+                <p className="text-xs mt-1">This can take up to a minute. Please keep this page open.</p>
               </div>
             )}
 

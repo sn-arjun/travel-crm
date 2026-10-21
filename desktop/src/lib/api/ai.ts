@@ -878,6 +878,12 @@ function mapAiUnavailable(err: unknown): never {
  * AiUnavailableError so every AI surface can show the same friendly notice.
  * Arguments are passed through untouched.
  */
+/**
+ * Generation calls (an itinerary plan) can take about a minute on the model; the default 30 s client
+ * limit aborted them while the server went on to answer 200. Stay above the server's own time.
+ */
+export const AI_GENERATION_TIMEOUT_MS = 120_000;
+
 const aiClient = {
   get: <T>(...args: Parameters<typeof client.get>): Promise<T> => client.get<T>(...args).catch(mapAiUnavailable),
   post: <T>(...args: Parameters<typeof client.post>): Promise<T> => client.post<T>(...args).catch(mapAiUnavailable),
@@ -1105,6 +1111,7 @@ export const aiApi = {
     const res = await aiClient.post<ApiResponse<GeneratedItinerary | RawGenerateItineraryResponse>>(
       API_ENDPOINTS.ai.generateItinerary,
       data,
+      { timeout: AI_GENERATION_TIMEOUT_MS },
     );
     const raw = res.data as RawGenerateItineraryResponse | undefined;
     if (!raw || typeof raw !== 'object' || !('itinerary' in raw)) return res as ApiResponse<GeneratedItinerary>;

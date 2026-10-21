@@ -11,7 +11,7 @@ vi.mock('./client', () => ({
 }));
 
 import { client } from './client';
-import { aiApi, AiUnavailableError, isAiUnavailableError } from './ai';
+import { aiApi, AI_GENERATION_TIMEOUT_MS, AiUnavailableError, isAiUnavailableError } from './ai';
 
 describe('aiApi', () => {
   beforeEach(() => {
@@ -84,13 +84,17 @@ describe('aiApi', () => {
     it('should call POST /ai/generate-itinerary', async () => {
       vi.mocked(client.post).mockResolvedValue({ data: { title: 'Bali 5D', items: [] } });
       await aiApi.generateItinerary({ prompt: 'Relaxed beach holiday', destination: 'Bali', duration: 5 });
-      expect(client.post).toHaveBeenCalledWith('/ai/generate-itinerary', { prompt: 'Relaxed beach holiday', destination: 'Bali', duration: 5 });
+      expect(client.post).toHaveBeenCalledWith('/ai/generate-itinerary', { prompt: 'Relaxed beach holiday', destination: 'Bali', duration: 5 }, { timeout: AI_GENERATION_TIMEOUT_MS });
     });
 
     it('should pass budget and preferences', async () => {
       vi.mocked(client.post).mockResolvedValue({ data: {} });
       await aiApi.generateItinerary({ prompt: 'Culture and food week', destination: 'Paris', duration: 7, budget: 50000, preferences: ['culture', 'food'] });
-      expect(client.post).toHaveBeenCalledWith('/ai/generate-itinerary', { prompt: 'Culture and food week', destination: 'Paris', duration: 7, budget: 50000, preferences: ['culture', 'food'] });
+      expect(client.post).toHaveBeenCalledWith('/ai/generate-itinerary', { prompt: 'Culture and food week', destination: 'Paris', duration: 7, budget: 50000, preferences: ['culture', 'food'] }, { timeout: AI_GENERATION_TIMEOUT_MS });
+    });
+
+    it('gives generation a timeout above the 30 s client default, so a slow plan is not aborted', () => {
+      expect(AI_GENERATION_TIMEOUT_MS).toBeGreaterThan(60_000);
     });
 
     it('should return generated itinerary', async () => {
