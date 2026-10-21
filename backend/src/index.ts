@@ -47,6 +47,8 @@ import integrationRoutes from './routes/integrations';
 import paymentWebhookRoutes from './routes/payment-webhooks';
 import assistantRoutes from './routes/assistant';
 import automationRoutes from './routes/automations';
+import tourRoutes from './routes/tours';
+import departureRoutes from './routes/departures';
 import { setRootApp } from './app-ref';
 import { verifyAccessToken } from './utils/jwt';
 import pushTokenRoutes from './routes/push-tokens';
@@ -267,6 +269,12 @@ for (const prefix of ['/api/v1', '/api']) {
   app.use(`${prefix}/whatsapp-campaigns/*`, requireFeature('whatsapp_campaigns'));
 }
 
+// Group departures (R139): tours and departures (and, in later batches, seat bookings and the manifest under /departures)
+for (const prefix of ['/api/v1', '/api']) {
+  app.use(`${prefix}/tours/*`, requireFeature('group_departures'));
+  app.use(`${prefix}/departures/*`, requireFeature('group_departures'));
+}
+
 // AI assistant — feature gate + usage cap
 for (const prefix of ['/api/v1', '/api']) {
   app.use(`${prefix}/ai/*`, requireFeature('ai_assistant'));
@@ -338,6 +346,8 @@ const routeMounts: Array<[string, typeof authRoutes]> = [
   ['integrations', integrationRoutes],
   ['assistant', assistantRoutes],
   ['automations', automationRoutes],
+  ['tours', tourRoutes],
+  ['departures', departureRoutes],
   ['admin/auth', adminAuthRoutes],
   ['admin/tenants', adminTenantsRoutes],
   ['admin/enquiries', adminEnquiryRoutes],
