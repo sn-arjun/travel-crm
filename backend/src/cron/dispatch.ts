@@ -91,12 +91,11 @@ const EVERY5_JOBS: TenantJob[] = [
   { name: 'voip.usage-import', period: 'tick', run: (env, id, _db, now) => importTenantUsage(env, id, now) },
   // R306: copies that failed (or never ran) are retried, and a provider copy that could not be deleted is deleted. Not paused by automations_paused.
   { name: 'calls.recordings-retry', period: 'tick', run: (env, id, db, now) => retryPendingRecordings(env, id, db, now) },
+  // R137: the backup for the provider's regulatory bundle status callback: a tick job that asks at most once an hour per agency.
+  { name: 'voip.regulatory-poll', period: 'tick', run: (env, id, db, now) => runRegulatoryPoll(env, id, db, now) },
 ];
 
 const HOURLY_JOBS: TenantJob[] = [
-  // R137: the backup for the provider's regulatory bundle status callback. The hourly set fires once an hour, so a tick period
-  // is at most one poll an hour per agency; an agency with no bundle in review costs one indexed query.
-  { name: 'voip.regulatory-poll', period: 'tick', run: (env, id) => pollRegulatory(env, id) },
   { name: 'invoices.reminders', period: 'local-day', run: (env, id, db, now) => processInvoiceRemindersForTenant(env, db, id, now) },
   { name: 'tasks.overdue', period: 'local-day', run: (env, id, db, now) => processOverdueTasks(env, id, db, now) },
   { name: 'fleet.alerts', period: 'local-day', run: (env, id, db, now) => processFleetAlerts(env, id, db, now) },
@@ -145,6 +144,13 @@ async function pruneJobRuns(db: D1Database, now: Date): Promise<void> {
 export function tickKey(firedAt: string): string {
   const t = new Date(firedAt).getTime();
   return new Date(Math.floor(t / 300000) * 300000).toISOString().slice(0, 16) + 'Z';
+}
+
+/** R137: poll the provider about regulatory bundles in review, once per agency per UTC hour (the claim is the hour key). */
+export async function runRegulatoryPoll(env: Env, tenantId: string, db: D1Database, now: Date): Promise<unknown> {
+  const hourKey = `hour:${now.toISOString().slice(0, 13)}`;
+  if (!(await claimJob(db, tenantId, 'voip.regulatory-poll.hourly', hourKey))) return { skipped: true };
+  return pollRegulatory(env, tenantId);
 }
 
 /** True when this run owns (job, period); false when an earlier delivery already did. */

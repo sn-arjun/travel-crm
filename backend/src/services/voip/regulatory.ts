@@ -50,6 +50,11 @@ const KNOWN_PROVIDER_STATUSES = new Set(['draft', 'pending-review', 'in-review',
 
 export const NUMBER_TYPES: readonly VoipNumberType[] = ['local', 'mobile', 'national'];
 
+/** Where an agency's uploaded number documents live in storage (readable by its admins only, see routes/files.ts). */
+export function kycPrefix(tenantId: string): string {
+  return `${tenantId}/kyc/`;
+}
+
 export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 export const MAX_DOCUMENT_FILES = 6;
 export const ALLOWED_DOCUMENT_TYPES = ['application/pdf', 'image/png', 'image/jpeg'];

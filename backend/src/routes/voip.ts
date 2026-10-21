@@ -29,6 +29,7 @@ import {
   MAX_DOCUMENT_FILES,
   NUMBER_TYPES,
   hasBundleFlow,
+  kycPrefix,
   providerView,
   validateAgainstRequirements,
 } from '../services/voip/regulatory';
@@ -449,7 +450,7 @@ voipRoutes.post('/numbers/documents', rbac(['admin']), async (c) => {
         if (uploads.length >= MAX_DOCUMENT_FILES) return error(c, `At most ${MAX_DOCUMENT_FILES} files can be sent.`, 400, { code: 'TOO_MANY_FILES' });
         if (value.size > MAX_DOCUMENT_BYTES) return error(c, `${value.name} is larger than ${MAX_DOCUMENT_BYTES / 1024 / 1024} MB.`, 400, { code: 'FILE_TOO_LARGE' });
         if (!ALLOWED_DOCUMENT_TYPES.includes(value.type)) return error(c, `${value.name}: only PDF, PNG and JPEG files are accepted.`, 400, { code: 'FILE_TYPE_NOT_ALLOWED' });
-        const key = `${tenant.id}/kyc/${own}/${generateId()}-${safeFileName(value.name)}`;
+        const key = `${kycPrefix(tenant.id)}${own}/${generateId()}-${safeFileName(value.name)}`;
         uploads.push({ key, file: value });
         files.push({ name: value.name, key, field: name, contentType: value.type, size: value.size });
         continue;

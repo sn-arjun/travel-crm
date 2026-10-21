@@ -564,8 +564,6 @@ Deactivate the older rows they supersede (the newest active row wins anyway, but
 | 01a157e5-2f49-7b07-ab9d-d61de0260def | email | EU | SendGrid (draft $0.0005 an email) | 0.00046 | EUR | 30 | 2026-11-01T00:00:00Z | 1 | A |
 | 01a157e5-2f4a-752c-9ea7-ca87c01b6c58 | call_minute | EU | Twilio DE, 70% mobile + softphone + recording | 0.04076 | EUR | 30 | 2026-11-01T00:00:00Z | 1 | A (active since R137, migration 0029) |
 | 01a157e5-2f4b-7261-9e7a-8bfe8eda9884 | phone_number | EU | Twilio DE local number, monthly | 1.2396 | EUR | 30 | 2026-11-01T00:00:00Z | 1 | A (active since R137, migration 0029) |
-| 01a15fab-db01-7d72-bf77-cee76f237fa0 | phone_number | NL | DRAFT: enter Twilio's NL price before selling | 0 | EUR | 30 | 2026-11-01T00:00:00Z | 0 | R137 draft: owner enters the price, then activates |
-| 01a15fab-db02-7c41-83ce-0f5ac346d509 | call_minute | NL | DRAFT: enter Twilio's NL price before selling | 0 | USD | 30 | 2026-11-01T00:00:00Z | 0 | R137 draft: destination weight, USD like the other country rows |
 | 01a157e5-2f4c-7037-be21-5389912999ae | whatsapp | ANZ | Meta Rest of Asia Pacific +15%, marketing rate (interim) | 0.12421 | AUD | 30 | 2026-11-01T00:00:00Z | 1 | A |
 | 01a157e5-2f4d-76f6-b8d9-e37b7af8772b | whatsapp | ANZ | Meta Rest of Asia Pacific +15%, utility rate | 0.01667 | AUD | 30 | 2026-11-01T00:00:01Z | 0 | B: set is_active 1 |
 | 01a157e5-2f4e-70ba-a8bb-4dc679ecd296 | whatsapp_marketing | ANZ | Meta Rest of Asia Pacific +15%, marketing rate | 0.12421 | AUD | 30 | 2026-11-01T00:00:00Z | 0 | B: set is_active 1 |
@@ -659,9 +657,8 @@ New rows (`fixed_price` NULL means the engine prices the pack from `comm_unit_co
 | whatsapp_marketing_250_eu | 250 WhatsApp marketing messages | comm_pack | whatsapp_marketing | 250 | NULL | EUR | EU | 0 |
 | otp_100_eu | 100 login codes | comm_pack | otp | 100 | NULL | EUR | EU | 1 |
 | email_20000_eu | 20,000 emails | comm_pack | email | 20000 | NULL | EUR | EU | 1 |
-| call_minutes_500_eu | 500 call minutes | comm_pack | call_minute | 500 | NULL | EUR | EU | 1 (active since R137) |
-| phone_number_eu | Phone number (per month) | comm_pack | phone_number | 1 | NULL | EUR | EU | 1 (active since R137) |
-| phone_number_nl | Phone number (per month) | comm_pack | phone_number | 1 | NULL | EUR | NL | 0 (R137 draft; activate after entering the NL price) |
+| call_minutes_500_eu | 500 call minutes | comm_pack | call_minute | 500 | NULL | EUR | EU | 1 |
+| phone_number_eu | Phone number (per month) | comm_pack | phone_number | 1 | NULL | EUR | EU | 1 |
 | ai_credits_10000_anz | 10,000 AI credits | ai_credit_pack | NULL | 10000 | 13 | AUD | ANZ | 1 |
 | ai_credits_50000_anz | 50,000 AI credits | ai_credit_pack | NULL | 50000 | 49 | AUD | ANZ | 1 |
 | sms_500_anz | 500 SMS | comm_pack | sms | 500 | NULL | AUD | ANZ | 1 |
@@ -716,6 +713,19 @@ In step B, set every `whatsapp_marketing_*` row to `is_active` 1.
 - `catalogue_notes`: replace the `drafts` row with "Prices and allowances from docs/PRICING.md (2026-10-20), approved by the owner on <date>. Founder prices valid 2026-11-01 to 2027-03-31; list prices from 2027-04-01."
 - `platform_settings`: `voip_calling_on_trial` stays '0'.
 - Go-live: `VOIP_CALLING_COUNTRIES` = `US` until the market split ships; add `GB,AU,SG` after it (section 8, change 1). Otherwise a UK or Australian agency in `WEST` would buy minute packs priced at the US minute and use them on dearer UK or Australian minutes.
+
+### 7.8 Rows added after step B: Netherlands drafts (R137, migration 0029)
+
+Migration 0029 also switches the EU call-minute and phone-number unit costs and the `call_minutes_500_eu` and `phone_number_eu` add-ons on (is_active 1 in 7.5 and 7.6 above). Kept apart from 7.5 and 7.6 on purpose: those tables are the step A and B load and a test compares them with migrations 0026 and 0028. These rows are **drafts with no price**; the owner enters Twilio's real NL prices in the super admin catalogue and activates them.
+
+| id | channel | market | provider | unit_cost | currency | margin_pct | effective_from | is_active |
+|---|---|---|---|---|---|---|---|---|
+| 01a15fab-db01-7d72-bf77-cee76f237fa0 | phone_number | NL | DRAFT: enter Twilio's NL price before selling | 0 | EUR | 30 | 2026-11-01T00:00:00Z | 0 |
+| 01a15fab-db02-7c41-83ce-0f5ac346d509 | call_minute | NL | DRAFT: enter Twilio's NL price before selling | 0 | USD | 30 | 2026-11-01T00:00:00Z | 0 |
+
+| key | name | kind | channel | units | fixed_price | currency | market | is_active |
+|---|---|---|---|---|---|---|---|---|
+| phone_number_nl | Phone number (per month) | comm_pack | phone_number | 1 | NULL | EUR | NL | 0 |
 
 ---
 

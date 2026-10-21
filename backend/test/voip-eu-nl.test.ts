@@ -16,7 +16,7 @@ import { preflightOutbound } from '../src/services/voip/fraud';
 import { loadRecordingSettings } from '../src/services/voip/recordings';
 import { PROMPTS, PROMPT_LANGUAGES, promptText, resolvePromptLanguage } from '../src/services/voip/prompts';
 import { pollRegulatory, regulatoryState, regulatoryWebhookKey } from '../src/services/voip/regulatory';
-import { JOB_SETS } from '../src/cron/dispatch';
+import { JOB_SETS, runRegulatoryPoll } from '../src/cron/dispatch';
 import { superAdminToken } from './utils/super-admin';
 import submitFixture from './fixtures/twilio-regulatory/submit-bundle.json';
 import approvedFixture from './fixtures/twilio-regulatory/status-approved.json';
@@ -350,6 +350,11 @@ describe('regulatory bundle flow (mock provider)', () => {
     const key = JSON.parse(stored.files)[0].key as string;
     expect(key.startsWith(`${TENANT_ID}/kyc/NL/`)).toBe(true);
     expect(await testEnv.FILE_STORAGE.head(key)).not.toBeNull();
+    // Admins can read the stored document through the files route; nobody can delete it there.
+    const read = await call('GET', `/files/${encodeURIComponent(key)}`, admin);
+    expect(read.status).toBe(200);
+    expect([...new Uint8Array(await read.arrayBuffer())]).toEqual([...PDF]);
+    expect((await call('DELETE', `/files/${encodeURIComponent(key)}`, admin)).status).toBe(403);
 
     res = await buy();
     expect((await data(res)).error.details).toMatchObject({ code: 'KYC_REQUIRED', kycStatus: 'pending' });
@@ -500,8 +505,13 @@ describe('regulatory bundle: rejection, delay, retry and poll (mock provider)', 
     expect(await pollRegulatory(slow, TENANT_ID)).toEqual({ checked: 1, changed: 1 });
     expect((await one<any>('SELECT provider_status FROM number_documents')).provider_status).toBe('twilio-approved');
     expect(await pollRegulatory(slow, TENANT_ID)).toEqual({ checked: 0, changed: 0 });
-    expect(JOB_SETS.hourly.map((j) => j.name)).toContain('voip.regulatory-poll');
-    expect(JOB_SETS.hourly.find((j) => j.name === 'voip.regulatory-poll')?.period).toBe('tick');
+    expect(JOB_SETS.every5.find((j) => j.name === 'voip.regulatory-poll')?.period).toBe('tick');
+    // The job asks the provider at most once an hour per agency, however many ticks fire.
+    const hour = new Date('2026-11-03T10:05:00Z');
+    expect(await runRegulatoryPoll(slow, TENANT_ID, testEnv.MASTER_DB, hour)).toEqual({ checked: 0, changed: 0 });
+    expect(await runRegulatoryPoll(slow, TENANT_ID, testEnv.MASTER_DB, new Date('2026-11-03T10:50:00Z'))).toEqual({ skipped: true });
+    expect(await runRegulatoryPoll(slow, TENANT_ID, testEnv.MASTER_DB, new Date('2026-11-03T11:05:00Z'))).toEqual({ checked: 0, changed: 0 });
+    await run("DELETE FROM cron_job_runs WHERE job = 'voip.regulatory-poll.hourly'");
   });
 
   it('a submission the provider refuses is recorded (platform_review with the reason) and the admin can retry or reset', async () => {

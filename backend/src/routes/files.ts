@@ -5,6 +5,7 @@ import { success, error } from '../utils/response';
 import { uploadRateLimit } from '../middleware/rate-limit';
 import { verifyPrivacyDownload } from '../services/privacy/export-contact';
 import { RECORDING_ROLES, recordingPrefix, verifyRecordingLink } from '../services/voip/recordings';
+import { kycPrefix } from '../services/voip/regulatory';
 
 const fileRoutes = new Hono<AppContext>();
 
@@ -108,6 +109,9 @@ fileRoutes.get('/*', async (c) => {
     }
   }
 
+  // R137: the agency's number documents (<tenant>/kyc/...: business registration extract, representative) are for its admins only.
+  if (resolved.key.startsWith(kycPrefix(c.get('tenantId'))) && c.get('role') !== 'admin') return error(c, 'Access denied', 403);
+
   // R306: call recordings (<tenant>/recordings/...) play only through the short-lived link GET /calls/:id/recording issues,
   // bound to the person it was issued to. A key typed by hand, an expired link or another person's link is refused.
   const isRecording = resolved.key.startsWith(recordingPrefix(c.get('tenantId')));
@@ -150,6 +154,11 @@ fileRoutes.get('/*', async (c) => {
 fileRoutes.delete('/*', async (c) => {
   const resolved = resolveTenantKey(keyFromPath(c.req.path), c.get('tenantId'));
   if ('status' in resolved) return error(c, resolved.message, resolved.status);
+
+  // R137: number documents are replaced when the agency sends them again, so the review never points at a missing file.
+  if (resolved.key.startsWith(kycPrefix(c.get('tenantId')))) {
+    return error(c, 'Number documents are replaced when they are sent again', 403);
+  }
 
   // R306: recordings leave through the retention job or contact erasure, so the call record never points at a missing file.
   if (resolved.key.startsWith(recordingPrefix(c.get('tenantId')))) {
