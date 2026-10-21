@@ -1,7 +1,7 @@
 # Dutch review list: foundation (batch R136)
 
 All Dutch below is machine-made (written by an AI model on 2026-10-21, no native speaker involved). See
- for how to review a file and mark it .
+`docs/i18n/NL-REVIEW.md` for how to review a file and mark it `reviewed`.
 
 ## Desktop catalogue (every English key that exists after R136)
 
@@ -33,16 +33,16 @@ All Dutch below is machine-made (written by an AI model on 2026-10-21, no native
 | `desktop/src/messages/nl/vouchers.json` | 10 | needs native review |
 
 The namespace files R136 pre-created empty for the rest of the wave (departures, tours, booking, trip, ...) have no text
-yet; the batch that fills one lists it in its own .
+yet; the batch that fills one lists it in its own `docs/i18n/nl-review/<batch>.md`.
 
 ## Backend documents
 
 | File | What | Status |
 | --- | --- | --- |
-|  | system emails (welcome, invitation, password reset and change, two-factor, payment receipt and failure, trial ending, number release, website ready, usage alert), voucher PDF labels, unsubscribe page and quotation errors | needs native review |
+| `backend/src/i18n/nl.ts` | system emails (welcome, invitation, password reset and change, two-factor, payment receipt and failure, trial ending, number release, website ready, usage alert), voucher PDF labels, unsubscribe page and quotation errors | needs native review |
 
 ## Driver app
 
 | File | What | Status |
 | --- | --- | --- |
-|  | every string of the driver app | needs native review |
+| `packages/driver_app/lib/l10n/intl_nl.arb` | every string of the driver app | needs native review |
