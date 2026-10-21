@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-21T20:00+05:30",
+  "updated": "2026-10-21T20:30+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -88,7 +88,7 @@
       "status": "running",
       "howItRuns": "one Sonnet agent per batch in .claude/worktrees/<id> on branch batch/<id>; node_modules are PowerShell junctions into the main checkout (remove junctions before git worktree remove); orchestrator gates and merges into launch-readiness",
       "batches": {
-        "R100": "owner action pending",
+        "R100": "DEFERRED by owner 2026-10-21 (secrets are dummy; repo privacy later).",
         "R101": "merged (8a08cf5, b9762b8): backend tsc 0, 59 files / 1317 tests",
         "R114": "merged (e543b39..5d33400): desktop tsc 0, 64 files / 1297 tests, lint 0; installer built and smoke-tested in the worktree (install, login, server stops on close). Open: electron-updater not installed yet (install after R103 finishes, then rebuild and run the update-available smoke test).",
         "R102": "merged (0e62374): backend tsc 0, 60 files / 1325 tests",
@@ -142,7 +142,8 @@
         "R129": "merged: master 0026 loads PRICING.md step A (plans 4, plan_prices 54 founder+list across 9 markets, plan_allowances 36, plan_features 96, comm_unit_costs 69, addon_products 68; step-B rows inactive), markets IN/UK/EU/ANZ/WEST/SG/GULF/MY_TH/LK_NP_BD, founder window 2026-11-01..2027-03-31 with a 24-month lock on the subscription, earliest row used before any window opens, packOffers per market, packs carry into the next month (usage_period_history), MIN_COMM_MARGIN_PCT 25, landing shows founder prices, console shows founder and list rows. Merged line: backend 104/2034, desktop 94/1544, lint 0, super-admin tsc + lint + build OK, landing build + links OK; e2e handoff 41/41 and locale 5/5 (slot 2, multi, pool 8) after orchestrator fix to locale.spec (agency browser clock and agency today). Follow-ups: nothing re-prices the gateway subscription at month 24; UK/AU calling stays off until VOIP_CALLING_COUNTRIES is widened; NZ and non-DE EU call-minute weights fall back to 1.",
         "R132": "merged: default = Cloudflare for platform system mail with SendGrid fallback (gen-wrangler default cloudflare; no binding or refusal -> SendGrid, reason logged; test/local -> outbox); agency mail always SendGrid; resolution console > EMAIL_SYSTEM_PROVIDER > built-in; console Email page (/email): routing per kind, provider status, switches (provider, fallback, reply addresses) with audited reason, test send, delivery log; master platform_email_log (masked addresses, SendGrid events update it, Cloudflare rows \"accepted\", 90-day purge); campaign queue and template sends now through sendMail. Master 0027. Merged line: backend 105/2053, gen-wrangler self-test OK, super-admin tsc + lint + build OK; e2e communication-inbox + campaigns + marketing-opt-out + first-login + two-factor 67 passed (slot 1). Orchestrator: backend network guard (test/setup/network-guard.ts) after finding security-hardening sent 6 real SendGrid requests per run with the test key.",
         "R130": "merged: whatsapp (utility/service) and whatsapp_marketing meter channels with their own caps, packs (market-filtered) and 402s; category = marketing for campaigns and promotional templates, utility for everything else paid (Meta and Twilio alike); refunds go back to the charged channel; plan_allowances gains a nullable market column (agency market row preferred, admin PUT ?market=), no per-market rows seeded (PRICING.md gives no amounts); master 0028 switches step-B rows on, whatsapp allowances 20/250/750/2000, marketing 10/50/200/500, interim marketing-rate whatsapp unit costs off; usage screen shows the two lines, usage-limits.tsx through t() (en/ar/hi). Merged line (identical to the tested branch): backend 106/2074, desktop 94/1545, lint 0, i18n PASS (ar 811/811), super-admin tsc 0; e2e whatsapp-campaigns + communication-inbox + marketing-opt-out 56 passed (slot 2). Owner: per-market allowance numbers for EU/DE, MY_TH, LK_NP_BD Enterprise when wanted.",
-        "R133": "merged: root cause of the \"invoice timeouts\" in full runs = test pollution, not slowness: first-login.spec (sorted before invoices.spec) set the shared invoice prefix to TRV on a single-tenant stack, so invoices.spec waited for INV-/PI- numbers. first-login.spec now skips on single-tenant stacks; guard test e2e-single-tenant-guard.test.ts. Client timeout 30 s (not changed). Verify: full run reached 883 with 810 passed and 0 failed before the memory monitor stopped it; second verify not run. Merged line: desktop 95/1548, lint 0. Open: the one-off 30 s \"Couldn't load invoices\" in locale.spec on a multi stack is unexplained; slot API log (desktop/audit/fix/stack/slot0-api.log) was empty, so fix-stack should capture wrangler http.request timings."
+        "R133": "merged: root cause of the \"invoice timeouts\" in full runs = test pollution, not slowness: first-login.spec (sorted before invoices.spec) set the shared invoice prefix to TRV on a single-tenant stack, so invoices.spec waited for INV-/PI- numbers. first-login.spec now skips on single-tenant stacks; guard test e2e-single-tenant-guard.test.ts. Client timeout 30 s (not changed). Verify: full run reached 883 with 810 passed and 0 failed before the memory monitor stopped it; second verify not run. Merged line: desktop 95/1548, lint 0. Open: the one-off 30 s \"Couldn't load invoices\" in locale.spec on a multi stack is unexplained; slot API log (desktop/audit/fix/stack/slot0-api.log) was empty, so fix-stack should capture wrangler http.request timings.",
+        "R212": "DEFERRED by owner 2026-10-21 (single location for now)."
       },
       "merged": [
         "R101",
@@ -273,6 +274,10 @@
     },
     "2026-10-21c": {
       "email": "Default = Cloudflare + SendGrid (Cloudflare for platform system mail, SendGrid fallback; SendGrid for agency mail); routing editable later from the super admin console; close the R131 gaps -> R132."
+    },
+    "2026-10-21d": {
+      "R212": "Deferred: keep all agency data in one place for now (owner: \"I don't think we have regions in Cloudflare\").",
+      "R100": "Deferred: the owner will make the repo private and rotate later; all secrets in the repo are dummy values. Owner: \"you just complete all the tasks\"."
     }
   },
   "goLiveConfig": [

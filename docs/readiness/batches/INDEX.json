@@ -5,7 +5,7 @@
     "title": "Owner action: make the repository private, revoke the old token, list secrets to rotate",
     "size": "S",
     "dependsOn": [],
-    "blockedOnOwner": "owner action: GitHub settings and token revocation"
+    "blockedOnOwner": "DEFERRED 2026-10-21: owner will make the repo private later; secrets are dummy"
   },
   {
     "id": "R101",
@@ -429,7 +429,7 @@
       "R104",
       "R103"
     ],
-    "blockedOnOwner": "owner decision Q7 (which regions at launch)"
+    "blockedOnOwner": "DEFERRED 2026-10-21: single location for now"
   },
   {
     "id": "R213",
