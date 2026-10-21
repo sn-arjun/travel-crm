@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-21T23:08:18.380Z",
+  "updated": "2026-10-21T23:23:14.528Z",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -312,6 +312,12 @@
           "head": "20030e7",
           "what": "NL calling screens: requirements form from API, 6-state bundle chip + resubmit, buy disabled until approved/priced, recording default card with Dutch preview, super admin bundle review actions + draft price guard, NL phone paste/grouping fixes; open: console cannot download agency-uploaded KYC files (needs backend route, carry to R151)",
           "gates": "merged line desktop 107/1660, lint PASS, i18n PASS, super-admin tsc/lint/build PASS; e2e calling-nl 9, voip-settings 12, super-admin 6"
+        },
+        "R147": {
+          "status": "merged",
+          "head": "a76e5db",
+          "what": "driver app coach trips: stop/passenger/headcount models, stop timeline with arrive/depart, stop screen with boarded/no-show/documents ticks, offline check-in queue (Hive, opId, backoff), cached trip + banners; emulator run not done (optional in spec)",
+          "gates": "shared flutter analyze clean, 98 tests; driver_app analyze clean, 150 tests"
         }
       }
     }
