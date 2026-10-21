@@ -21,7 +21,8 @@ export type Module =
   | 'settings'
   | 'users'
   | 'marketing'
-  | 'automations';
+  | 'automations'
+  | 'departures';
 
 export type Permission = 'view' | 'create' | 'edit' | 'delete' | 'export' | 'import';
 
@@ -55,6 +56,7 @@ export const PERMISSIONS: PermissionMatrix = {
     users: ALL,
     marketing: ALL,
     automations: ALL,
+    departures: ALL,
   },
   sales_manager: {
     dashboard: VIEW_ONLY_PERMS,
@@ -76,6 +78,7 @@ export const PERMISSIONS: PermissionMatrix = {
     reports: VIEW_EXPORT,
     marketing: ALL,
     automations: ['view', 'edit'],
+    departures: ALL,
   },
   salesperson: {
     dashboard: VIEW_ONLY_PERMS,
@@ -91,6 +94,7 @@ export const PERMISSIONS: PermissionMatrix = {
     campaigns: ['view'],
     tasks: VIEW_CREATE_EDIT,
     planner: VIEW_CREATE_EDIT,
+    departures: VIEW_CREATE_EDIT,
   },
   operations: {
     dashboard: VIEW_ONLY_PERMS,
@@ -107,6 +111,7 @@ export const PERMISSIONS: PermissionMatrix = {
     tasks: VIEW_CREATE_EDIT,
     planner: VIEW_CREATE_EDIT,
     automations: VIEW_ONLY_PERMS,
+    departures: ALL,
   },
   accountant: {
     dashboard: VIEW_ONLY_PERMS,
@@ -117,6 +122,7 @@ export const PERMISSIONS: PermissionMatrix = {
     suppliers: VIEW_ONLY_PERMS,
     reports: ALL,
     automations: VIEW_ONLY_PERMS,
+    departures: VIEW_EXPORT,
   },
   view_only: {
     dashboard: VIEW_ONLY_PERMS,
@@ -130,6 +136,7 @@ export const PERMISSIONS: PermissionMatrix = {
     travellers: VIEW_ONLY_PERMS,
     campaigns: VIEW_ONLY_PERMS,
     reports: VIEW_ONLY_PERMS,
+    departures: VIEW_ONLY_PERMS,
   },
 };
 

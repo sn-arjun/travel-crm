@@ -37,6 +37,8 @@ const AI_FEATURE_KEYS = [
   // must stay listed here or the gate always reports "not_in_plan".
   'ai_assistant', 'ai_extraction', 'ai_intelligence', 'ai_chatbot', 'whatsapp_campaigns',
   'voip_calling',
+  // Tour operator wave (R139): read by the desktop gate the same way (the list's AI name is historical).
+  'group_departures', 'public_booking', 'coach_trips', 'age_band_pricing', 'margin_scheme', 'quote_acceptance',
 ] as const;
 
 // Usage cap keys for AI features

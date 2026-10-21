@@ -7,7 +7,7 @@ export interface FeatureDef {
   key: string;
   name: string;
   description: string;
-  area: 'Core' | 'Communication' | 'Calling' | 'AI' | 'Platform';
+  area: 'Core' | 'Tours' | 'Communication' | 'Calling' | 'AI' | 'Platform';
 }
 
 const f = (key: string, name: string, area: FeatureDef['area'], description: string): FeatureDef => ({ key, name, description, area });
@@ -19,6 +19,13 @@ export const FEATURE_REGISTRY: readonly FeatureDef[] = [
   f('visa_management', 'Visa management', 'Core', 'Visa applications and document checklists.'),
   f('supplier_management', 'Supplier management', 'Core', 'Suppliers, rate cards and supplier payments.'),
   f('advanced_reports', 'Advanced reports', 'Core', 'Profitability, forecasting and scheduled reports.'),
+  // Tours and the rest of the tour operator wave (R139)
+  f('group_departures', 'Group departures', 'Tours', 'Tours, dated departures, seats, waitlist, manifest, extras and departure messages.'),
+  f('public_booking', 'Public booking pages', 'Tours', 'The booking page of a departure and the self-service extras, details and payment page. Needs group departures.'),
+  f('coach_trips', 'Coach trips and check-in', 'Core', 'Ordered stops and passenger check-in on a coach trip.'),
+  f('age_band_pricing', 'Age-band pricing', 'Core', 'Prices by age band on templates and quotes.'),
+  f('margin_scheme', 'Margin-scheme invoices', 'Core', 'Invoices taxed on the margin, with the legal wording.'),
+  f('quote_acceptance', 'Accept quotes online', 'Core', 'An Accept and book button on the quote link.'),
   // Communication
   f('bulk_sms', 'Bulk SMS', 'Communication', 'SMS campaigns to many contacts.'),
   f('bulk_whatsapp', 'Bulk WhatsApp', 'Communication', 'WhatsApp campaigns to many contacts.'),
