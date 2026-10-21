@@ -1,1 +1,4 @@
-{}
+{
+  "ai.itinerary.budgetIn": "الميزانية ({currency})",
+  "ai.itinerary.budgetPlaceholder": "مثال: 150,000"
+}

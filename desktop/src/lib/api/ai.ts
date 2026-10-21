@@ -1107,7 +1107,7 @@ export const aiApi = {
     return { ...res, data: normalizeExtractedLead(raw) } as ApiResponse<ExtractedLead>;
   },
 
-  generateItinerary: async (data: { prompt: string; destination: string; duration: number; budget?: number; preferences?: string[] }) => {
+  generateItinerary: async (data: { prompt: string; destination: string; duration: number; budget?: number; budgetCurrency?: string; preferences?: string[] }) => {
     const res = await aiClient.post<ApiResponse<GeneratedItinerary | RawGenerateItineraryResponse>>(
       API_ENDPOINTS.ai.generateItinerary,
       data,

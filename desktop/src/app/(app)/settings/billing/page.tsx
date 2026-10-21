@@ -10,6 +10,7 @@ import { useApiQuery } from '@/hooks/use-api';
 import { useAuthStore } from '@/stores/auth-store';
 import { formatCurrency } from '@/lib/utils';
 import { formatDisplayDate } from '@/lib/dates';
+import { useLocale } from '@/lib/locale';
 import { billingApi, openCheckout, type BillingQuote, type SubscriptionStatus } from '@/lib/api/billing';
 import type { ApiError } from '@/lib/api/client';
 import { BuyMoreDialog } from '@/components/domain/buy-more-dialog';
@@ -31,6 +32,7 @@ function errorMessage(err: unknown, fallback: string): string {
 export default function BillingSettingsPage() {
   const router = useRouter();
   const params = useSearchParams();
+  const { currency: agencyCurrency } = useLocale();
   const role = useAuthStore((s) => s.user?.role);
   const isAdmin = role === 'admin';
 
@@ -189,7 +191,7 @@ export default function BillingSettingsPage() {
   }
 
   const sub = overview.subscription;
-  const money = (amount: number, currency: string | null) => formatCurrency(amount, currency ?? 'INR');
+  const money = (amount: number, currency: string | null) => formatCurrency(amount, currency ?? agencyCurrency);
   const selected = overview.plans.find((p) => p.key === planKey);
 
   return (

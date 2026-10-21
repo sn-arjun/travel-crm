@@ -11,8 +11,9 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+import { useLocale } from '@/lib/locale';
 import { AiUnavailableNotice } from '@/components/domain/ai/ai-unavailable-notice';
-import { CurrencyInput } from '@/components/ui/currency-input';
+import { BudgetField } from '@/components/domain/ai/budget-field';
 import { aiApi, isAiUnavailableError, type AiUnavailableError, type GeneratedItinerary } from '@/lib/api/ai';
 import { itinerariesApi } from '@/lib/api/itineraries';
 import { leadsApi } from '@/lib/api/leads';
@@ -26,6 +27,7 @@ import { RelationCombobox } from '@/components/domain/relation-combobox';
 
 export default function ItineraryPage() {
   const router = useRouter();
+  const { currency: agencyCurrency } = useLocale();
   const [destination, setDestination] = React.useState('');
   const [duration, setDuration] = React.useState('7');
   const [budget, setBudget] = React.useState<number | undefined>(undefined);
@@ -48,12 +50,13 @@ export default function ItineraryPage() {
 
     try {
       const trimmedDuration = parseInt(duration, 10);
-      const prompt = `Plan a ${trimmedDuration}-day trip to ${destination.trim()}${budget ? ` with a budget of ${budget}` : ''}${preferences.trim() ? `, focused on ${preferences.trim()}` : ''}.`;
+      const prompt = `Plan a ${trimmedDuration}-day trip to ${destination.trim()}${budget ? ` with a budget of ${budget} ${agencyCurrency}` : ''}${preferences.trim() ? `, focused on ${preferences.trim()}` : ''}.`;
       const response = await aiApi.generateItinerary({
         prompt,
         destination: destination.trim(),
         duration: trimmedDuration,
         budget,
+        budgetCurrency: budget ? agencyCurrency : undefined,
         preferences: preferences
           ? preferences.split(',').map((p) => p.trim()).filter(Boolean)
           : undefined,
@@ -160,15 +163,7 @@ export default function ItineraryPage() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="budget">Budget (INR)</Label>
-              <CurrencyInput
-                id="budget"
-                placeholder="e.g., 150,000"
-                value={budget}
-                onChange={setBudget}
-              />
-            </div>
+            <BudgetField value={budget} onChange={setBudget} />
 
             <div className="space-y-2">
               <Label htmlFor="preferences">Interests (comma-separated)</Label>
