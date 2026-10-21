@@ -322,6 +322,8 @@ async function up() {
     [
       'wrangler', 'dev', '--port', String(apiPort), '-c', devConfig,
       '--var', 'TEST_MODE:true',
+      // The web app of this slot: payment return links (the test gateway's pay page) are followed only inside APP_URL.
+      '--var', 'APP_URL:' + webUrl,
       '--var', 'TENANCY_MODE:' + mode,
       // Local stacks exercise calling for every agency; the real allow-list (R301) applies in production,
       // which refuses '*'. Override with FIX_STACK_CALLING_COUNTRIES to test the country gate end to end.
