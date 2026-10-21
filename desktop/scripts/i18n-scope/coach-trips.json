@@ -1,0 +1,5 @@
+[
+  "src/app/(app)/fleet/trips/_components",
+  "src/app/(app)/fleet/drivers/_components",
+  "src/lib/headcount.ts"
+]

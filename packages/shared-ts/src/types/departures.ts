@@ -171,3 +171,87 @@ export interface SeatPassenger {
   extraFields: Record<string, unknown> | null;
   status: 'active' | 'cancelled';
 }
+
+// ---------------------------------------------------------------- coach trips (R145)
+
+/** A crew member is a driver, a tour leader, or both (drivers.crew_role). */
+export type CrewRole = 'driver' | 'tour_leader' | 'both';
+
+/** trip_assignments.trip_kind: a coach trip has ordered stops and passengers to tick off. */
+export type TripKind = 'transfer' | 'coach';
+
+export type TripStopStatus = 'pending' | 'arrived' | 'departed' | 'skipped';
+
+export type BoardingStatus = 'pending' | 'boarded' | 'no_show';
+
+/** One stop of a coach trip (GET /fleet/trips/:id/stops). */
+export interface TripStop {
+  id: string;
+  tripId: string;
+  /** The departure stop this one was copied from; null for a trip without a departure. */
+  departureStopId: string | null;
+  sortOrder: number;
+  name: string;
+  address: string | null;
+  lat: number | null;
+  lng: number | null;
+  /** UTC instant. */
+  scheduledAt: string | null;
+  documentsCheck: boolean;
+  status: TripStopStatus;
+  arrivedAt: string | null;
+  departedAt: string | null;
+  arrivedLat: number | null;
+  arrivedLng: number | null;
+}
+
+/** One person on a coach trip, at one stop. */
+export interface TripPassenger {
+  id: string;
+  tripId: string;
+  tripStopId: string | null;
+  /** The manifest row this was copied from; null for a passenger added by hand. */
+  seatPassengerId: string | null;
+  contactId: string | null;
+  name: string;
+  phone: string | null;
+  seats: number;
+  boarding: BoardingStatus;
+  boardedAt: string | null;
+  documentsChecked: boolean;
+  documentsCheckedAt: string | null;
+  notes: string | null;
+}
+
+/** GET /fleet/trips/:id/passengers: by stop, in stop order; people without a stop last. */
+export interface TripPassengersByStop {
+  stops: Array<TripStop & { passengers: TripPassenger[] }>;
+  unassigned: TripPassenger[];
+}
+
+/** Heads (seats) expected, boarded and marked no-show (GET .../headcount). */
+export interface TripHeadcount {
+  expected: number;
+  boarded: number;
+  noShow: number;
+  pending: number;
+  /** Passengers with the documents-checked mark. */
+  documentsChecked: number;
+  byStop: Array<{ stopId: string | null; name: string | null; sortOrder: number; expected: number; boarded: number; noShow: number; pending: number }>;
+}
+
+/** The body of PUT .../passengers/:pid. `opId` makes a retry safe; `at` is the clock time of the tick. */
+export interface TripTickRequest {
+  boarding?: BoardingStatus;
+  documentsChecked?: boolean;
+  opId: string;
+  at?: string;
+}
+
+/** The answer to a tick. Nothing changed when `applied` is false: a repeated opId (`duplicate`) or an older tick (`stale`). */
+export interface TripTickResult {
+  passenger: TripPassenger;
+  applied: boolean;
+  duplicate: boolean;
+  stale: boolean;
+}

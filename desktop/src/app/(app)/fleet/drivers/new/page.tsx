@@ -8,6 +8,7 @@ import { Input, Textarea, SectionCard, PhoneInput, DatePicker } from '@/componen
 import { fleetApi } from '@/lib/api/fleet';
 import { toast } from 'sonner';
 import { toLocalDateString } from '@/lib/dates';
+import { CrewSection } from '../_components/crew-section';
 
 const schema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -23,6 +24,8 @@ const schema = z.object({
   emergencyContactPhone: z.string().optional(),
   emergencyContactRelation: z.string().optional(),
   notes: z.string().optional(),
+  crewRole: z.enum(['driver', 'tour_leader', 'both']),
+  userId: z.string().optional(),
 });
 type DriverFormValues = z.infer<typeof schema>;
 
@@ -38,6 +41,7 @@ export default function NewDriverPage() {
         name: '', phone: '', email: '', dateOfBirth: undefined, address: '',
         licenseNumber: '', licenseExpiry: undefined, licenseType: '', badgeNumber: '',
         emergencyContactName: '', emergencyContactPhone: '', emergencyContactRelation: '', notes: '',
+        crewRole: 'driver', userId: '',
       }}
       onCancel={() => router.back()}
       onSubmit={async (v) => {
@@ -55,6 +59,8 @@ export default function NewDriverPage() {
           emergencyContactPhone: v.emergencyContactPhone || undefined,
           emergencyContactRelation: v.emergencyContactRelation || undefined,
           notes: v.notes || undefined,
+          crewRole: v.crewRole,
+          userId: v.userId || null,
         });
         if (result) {
           toast.success('Driver created successfully');
@@ -91,6 +97,13 @@ export default function NewDriverPage() {
               </FormRow>
             </div>
           </SectionCard>
+
+          <CrewSection
+            crewRole={form.watch('crewRole')}
+            userId={form.watch('userId') ?? ''}
+            onCrewRole={(r) => form.setValue('crewRole', r, { shouldDirty: true })}
+            onUserId={(id) => form.setValue('userId', id, { shouldDirty: true })}
+          />
 
           <SectionCard title="License & credentials">
             <div className="grid gap-ds-4 sm:grid-cols-2">

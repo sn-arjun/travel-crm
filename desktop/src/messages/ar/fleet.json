@@ -11,5 +11,18 @@
   "fleet.editVehicle": "تعديل المركبة",
   "fleet.deleteVehicle": "حذف المركبة",
   "fleet.viewDetails": "عرض التفاصيل",
-  "fleet.noVehicles": "لا توجد مركبات"
+  "fleet.noVehicles": "لا توجد مركبات",
+  "fleet.crew.title": "دور الطاقم",
+  "fleet.crew.description": "هل يقود هذا الشخص أم يرشد الرحلات أم يقوم بالاثنين.",
+  "fleet.crew.roleLabel": "الدور",
+  "fleet.crew.role.driver": "سائق",
+  "fleet.crew.role.tour_leader": "مرشد رحلة",
+  "fleet.crew.role.both": "سائق ومرشد رحلة",
+  "fleet.crew.userLabel": "مستخدم الموظفين المرتبط",
+  "fleet.crew.userHint": "اختياري. يتيح لهذا الشخص تسجيل الصعود من سطح المكتب أيضا.",
+  "fleet.crew.userPlaceholder": "اختر مستخدما",
+  "fleet.crew.userSearch": "الاسم أو البريد الإلكتروني...",
+  "fleet.crew.column": "دور الطاقم",
+  "fleet.crew.filter": "دور الطاقم",
+  "fleet.crew.allRoles": "كل الطاقم"
 }

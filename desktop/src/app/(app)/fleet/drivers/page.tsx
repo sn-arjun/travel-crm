@@ -11,6 +11,9 @@ import { fleetApi, type Driver } from '@/lib/api/fleet';
 import { DRIVER_STATUS_LABELS } from '@travelcrm/shared';
 import { toast } from 'sonner';
 import { toLocalDateString } from '@/lib/dates';
+import { useT } from '@/lib/i18n';
+import { crewRoleLabel } from './_components/crew-section';
+import type { CrewRole } from '@/lib/api/fleet';
 
 function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
   if (status === 'active') return 'success';
@@ -33,8 +36,10 @@ function toCsvValue(v: unknown) {
 }
 
 export default function DriversPage() {
+  const t = useT();
   const router = useRouter();
   const [statusFilter, setStatusFilter] = React.useState('');
+  const [crewFilter, setCrewFilter] = React.useState<'' | CrewRole>('');
   const [refreshKey, setRefreshKey] = React.useState(0);
 
   return (
@@ -49,6 +54,7 @@ export default function DriversPage() {
           limit,
           search: search || undefined,
           status: statusFilter || undefined,
+          crewRole: crewFilter || undefined,
         })
       }
       searchPlaceholder="Search drivers by name or phone..."
@@ -61,6 +67,10 @@ export default function DriversPage() {
               <p className="text-xs text-ds-foreground-muted flex items-center gap-1"><Phone className="h-3 w-3" />{d.phone}</p>
             </div>
           ),
+        },
+        {
+          key: 'crewRole', header: t('fleet.crew.column'),
+          cell: (d) => <Tag tone={d.crewRole && d.crewRole !== 'driver' ? 'primary' : 'neutral'}>{crewRoleLabel(d.crewRole, t)}</Tag>,
         },
         {
           key: 'rating', header: 'Rating', sortable: true,
@@ -93,19 +103,33 @@ export default function DriversPage() {
         </Button>
       }
       headerActions={
-        <Select value={statusFilter || 'all'} onValueChange={(v) => setStatusFilter(v === 'all' ? '' : v)}>
-          <SelectTrigger className="w-40 h-9"><SelectValue placeholder="All statuses" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
-            {Object.entries(DRIVER_STATUS_LABELS).map(([value, label]) => (
-              <SelectItem key={value} value={value}>{label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <>
+          <Select value={statusFilter || 'all'} onValueChange={(v) => setStatusFilter(v === 'all' ? '' : v)}>
+            <SelectTrigger className="w-40 h-9"><SelectValue placeholder="All statuses" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              {Object.entries(DRIVER_STATUS_LABELS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>{label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={crewFilter || 'all'} onValueChange={(v) => setCrewFilter(v === 'all' ? '' : (v as CrewRole))}>
+            <SelectTrigger className="w-44 h-9" aria-label={t('fleet.crew.filter')} data-testid="crew-role-filter"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t('fleet.crew.allRoles')}</SelectItem>
+              <SelectItem value="driver">{t('fleet.crew.role.driver')}</SelectItem>
+              <SelectItem value="tour_leader">{t('fleet.crew.role.tour_leader')}</SelectItem>
+              <SelectItem value="both">{t('fleet.crew.role.both')}</SelectItem>
+            </SelectContent>
+          </Select>
+        </>
       }
-      filters={statusFilter ? [{ id: 'status', label: 'Status', value: DRIVER_STATUS_LABELS[statusFilter as keyof typeof DRIVER_STATUS_LABELS] || statusFilter }] : []}
-      onRemoveFilter={() => setStatusFilter('')}
-      onClearFilters={() => setStatusFilter('')}
+      filters={[
+        ...(statusFilter ? [{ id: 'status', label: 'Status', value: DRIVER_STATUS_LABELS[statusFilter as keyof typeof DRIVER_STATUS_LABELS] || statusFilter }] : []),
+        ...(crewFilter ? [{ id: 'crew', label: t('fleet.crew.filter'), value: crewRoleLabel(crewFilter, t) }] : []),
+      ]}
+      onRemoveFilter={(id) => (id === 'crew' ? setCrewFilter('') : setStatusFilter(''))}
+      onClearFilters={() => { setStatusFilter(''); setCrewFilter(''); }}
       rowActions={(d) => (
         <>
           <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => router.push(`/fleet/drivers/${d.id}`)}>

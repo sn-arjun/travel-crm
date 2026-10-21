@@ -31,6 +31,8 @@ import {
 import { TRIP_LOAD_MAX_RETRIES, tripLoadView } from '@/components/domain/fleet/trip-load-state';
 import { formatDisplayDate } from '@/lib/dates';
 import { formatPhone } from '@/lib/phone';
+import { useT } from '@/lib/i18n';
+import { CoachTripPanel } from '../_components/passenger-checkin';
 
 const TRIP_STATUS_ORDER = ['assigned', 'accepted', 'en_route', 'started', 'completed'] as const;
 
@@ -57,6 +59,7 @@ function formatClock(d: Date) {
 }
 
 export default function TripDetailPage() {
+  const t = useT();
   const router = useRouter();
   const params = useParams();
   const tripId = params.id as string;
@@ -461,6 +464,12 @@ export default function TripDetailPage() {
               <Stat label="Total costs" value={formatCurrency(totalCosts)} icon={<DollarSign aria-hidden="true" />} />
             </div>
 
+            {trip.tripKind === 'coach' && (
+              <SectionCard title={t('coachTrips.detail.checkin')} description={t('coachTrips.detail.checkinHint')}>
+                <CoachTripPanel tripId={tripId} readOnly={trip.status === 'completed' || trip.status === 'cancelled'} />
+              </SectionCard>
+            )}
+
             <SectionCard title="Route">
               <div className="flex items-center gap-ds-4">
                 <div className="flex-1">
@@ -542,7 +551,21 @@ export default function TripDetailPage() {
                       </p>
                     </div>
                   </div>
-                  {!vehicle && !driver && (
+                  {trip.tourLeaderId && (
+                    <div className="flex items-center gap-ds-3" data-testid="trip-tour-leader">
+                      <Avatar className="h-9 w-9">
+                        <AvatarFallback>{(trip.tourLeaderName || 'T').split(' ').map((n: string) => n[0]).join('').slice(0, 2)}</AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{trip.tourLeaderName || '—'}</p>
+                        <p className="text-xs text-ds-foreground-muted flex items-center gap-ds-1">
+                          {t('coachTrips.detail.tourLeader')}
+                          {trip.tourLeaderPhone && <> · <Phone className="h-3 w-3" aria-hidden="true" />{formatPhone(trip.tourLeaderPhone)}</>}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {!vehicle && !driver && !trip.tourLeaderId && (
                     <p className="text-xs text-ds-foreground-muted flex items-center gap-ds-1">
                       <User className="h-3 w-3" aria-hidden="true" />No vehicle or driver assigned yet.
                     </p>

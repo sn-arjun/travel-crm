@@ -13,6 +13,7 @@ import { parseLocalDate, toLocalDateString } from '@/lib/dates';
 import { useT } from '@/lib/i18n';
 import { useLocale } from '@/lib/locale';
 import { bankCountryOf } from '@/lib/bank-details';
+import { CrewSection } from '../../_components/crew-section';
 
 const schema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -32,6 +33,8 @@ const schema = z.object({
   bankIFSC: z.string().optional(),
   bankIBAN: z.string().optional(),
   notes: z.string().optional(),
+  crewRole: z.enum(['driver', 'tour_leader', 'both']),
+  userId: z.string().optional(),
 });
 type DriverFormValues = z.infer<typeof schema>;
 
@@ -94,6 +97,8 @@ export default function EditDriverPage() {
         bankIFSC: driver.bankIFSC || '',
         bankIBAN: driver.bankIBAN || '',
         notes: driver.notes || '',
+        crewRole: driver.crewRole ?? 'driver',
+        userId: driver.userId ?? '',
       }}
       onCancel={() => router.back()}
       onSubmit={async (v) => {
@@ -115,6 +120,9 @@ export default function EditDriverPage() {
           bankIFSC: inIndia ? v.bankIFSC || undefined : undefined,
           bankIBAN: inIndia ? undefined : v.bankIBAN || undefined,
           notes: v.notes || undefined,
+          crewRole: v.crewRole,
+          // an empty selection unlinks the staff user
+          userId: v.userId || null,
         });
         if (result) {
           toast.success('Driver updated successfully');
@@ -151,6 +159,13 @@ export default function EditDriverPage() {
               </FormRow>
             </div>
           </SectionCard>
+
+          <CrewSection
+            crewRole={form.watch('crewRole')}
+            userId={form.watch('userId') ?? ''}
+            onCrewRole={(r) => form.setValue('crewRole', r, { shouldDirty: true })}
+            onUserId={(id) => form.setValue('userId', id, { shouldDirty: true })}
+          />
 
           <SectionCard title="License & credentials">
             <div className="grid gap-ds-4 sm:grid-cols-2">

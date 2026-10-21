@@ -7,6 +7,8 @@ import {
   TripFormSections, safeTripDate, safeTripType, toIso, tripFormSchema, type TripFormValues,
 } from '@/components/domain/fleet/trip-form';
 import { toE164 } from '@/lib/phone';
+import { fromTripStopRows } from '../_components/stops-editor';
+import { useT } from '@/lib/i18n';
 import { toast } from 'sonner';
 
 // Stable reference: EntityForm memoises its initial values on this object.
@@ -22,8 +24,11 @@ const PREFILL = {
 } as const;
 
 export default function NewTripPage() {
+  const t = useT();
   const router = useRouter();
   const searchParams = useSearchParams();
+  // ?kind=coach opens the form as a coach trip (the Create coach trip button of a departure uses it)
+  const urlKind = searchParams?.get('kind') === 'coach' ? 'coach' : 'transfer';
   const urlTripType = safeTripType(searchParams?.get('tripType'));
   // The assistant passes the arrival day; the times are still the person's to enter.
   const urlDate = safeTripDate(searchParams?.get('date'));
@@ -34,6 +39,9 @@ export default function NewTripPage() {
       description="Assign a vehicle and driver to a new trip."
       schema={tripFormSchema}
       defaultValues={{
+        tripKind: urlKind,
+        tourLeaderId: '',
+        stops: [],
         vehicleId: '',
         driverId: '',
         leadId: '',
@@ -56,9 +64,14 @@ export default function NewTripPage() {
       onCancel={() => router.back()}
       onSubmit={async (v) => {
         // Errors propagate to EntityForm, which shows field errors and a toast.
+        const isCoach = v.tripKind === 'coach';
+        const stops = isCoach ? fromTripStopRows(v.stops ?? []) : undefined;
         await fleetApi.trips.create({
-            vehicleId: v.vehicleId,
-            driverId: v.driverId,
+            vehicleId: v.vehicleId || undefined,
+            driverId: v.driverId || undefined,
+            tripKind: v.tripKind,
+            tourLeaderId: isCoach ? v.tourLeaderId || undefined : undefined,
+            stops,
             leadId: v.leadId || undefined,
             contactId: v.contactId || undefined,
             rateCardId: v.rateCardId || undefined,
@@ -66,14 +79,15 @@ export default function NewTripPage() {
             passengerName: v.passengerName || undefined,
             passengerPhone: toE164(v.passengerPhone) || undefined,
             specialInstructions: v.specialInstructions || undefined,
-            startLocation: v.startLocation,
-            endLocation: v.endLocation,
+            // a coach trip starts at its first stop and ends at its last
+            startLocation: v.startLocation || stops?.[0]?.name || '',
+            endLocation: v.endLocation || stops?.[stops.length - 1]?.name || '',
             startTime: toIso(v.startDate, v.startClock),
             endTime: toIso(v.endDate, v.endClock),
             distance: v.distance,
             fare: v.fare,
         });
-        toast.success('Trip created successfully');
+        toast.success(isCoach ? t('coachTrips.form.createdCoach') : 'Trip created successfully');
         router.push('/fleet/trips');
       }}
       renderSections={(form) => <TripFormSections form={form} />}

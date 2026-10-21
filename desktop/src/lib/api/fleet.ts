@@ -1,5 +1,10 @@
 import { client, type ApiResponse, type PaginatedResponse } from './client';
 import { API_ENDPOINTS } from './config';
+import type {
+  BoardingStatus, CrewRole, TripHeadcount, TripKind, TripPassengersByStop, TripPassenger, TripStop, TripStopStatus, TripTickRequest, TripTickResult,
+} from '@travelcrm/shared';
+
+export type { BoardingStatus, CrewRole, TripHeadcount, TripKind, TripPassengersByStop, TripPassenger, TripStop, TripStopStatus, TripTickRequest, TripTickResult };
 
 export interface Vehicle {
   id: string;
@@ -135,6 +140,11 @@ export interface Driver {
   bankIBAN?: string;
   dateOfJoining?: string;
   notes?: string;
+  /** Driver, tour leader or both (R145). */
+  crewRole?: CrewRole;
+  /** The staff user this crew member is, if linked. */
+  userId?: string | null;
+  userName?: string | null;
   customFields?: Record<string, unknown>;
 }
 
@@ -189,6 +199,17 @@ export interface Trip {
   estimatedCost?: number;
   actualCost?: number;
   estimatedDistanceKm?: number;
+  /** Coach trips (R145). A transfer has tripKind 'transfer' and no stops. */
+  tripKind?: TripKind;
+  departureId?: string | null;
+  tourLeaderId?: string | null;
+  tourLeaderName?: string | null;
+  tourLeaderPhone?: string | null;
+  /** On the list: number of stops and the heads expected, boarded and marked no-show. */
+  stopCount?: number;
+  headcount?: { expected: number; boarded: number; noShow: number } & Partial<TripHeadcount>;
+  /** On the detail of a coach trip. */
+  stops?: TripStop[];
   customFields?: Record<string, unknown>;
 }
 
@@ -328,9 +349,13 @@ export interface CreateDriverRequest {
   emergencyContactRelation?: string;
   dateOfJoining?: string;
   notes?: string;
+  crewRole?: CrewRole;
+  userId?: string | null;
 }
 
 export interface UpdateDriverRequest {
+  crewRole?: CrewRole;
+  userId?: string | null;
   name?: string;
   phone?: string;
   email?: string;
@@ -354,9 +379,34 @@ export interface UpdateDriverRequest {
   customFields?: Record<string, unknown>;
 }
 
+/** A stop in a trip request: scheduledAt is a UTC instant. */
+export interface TripStopInput {
+  id?: string;
+  name: string;
+  address?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  scheduledAt?: string | null;
+  documentsCheck?: boolean;
+}
+
+export interface AddTripPassengerRequest {
+  tripStopId?: string | null;
+  name: string;
+  phone?: string | null;
+  seats?: number;
+  contactId?: string | null;
+  notes?: string | null;
+}
+
 export interface CreateTripRequest {
-  vehicleId: string;
-  driverId: string;
+  /** Required for a transfer; a coach trip may have no vehicle or driver yet. */
+  vehicleId?: string;
+  driverId?: string;
+  tripKind?: TripKind;
+  tourLeaderId?: string | null;
+  departureId?: string | null;
+  stops?: TripStopInput[];
   leadId?: string;
   passengerName?: string;
   passengerPhone?: string;
@@ -377,6 +427,8 @@ export interface CreateTripRequest {
 export interface UpdateTripRequest {
   vehicleId?: string;
   driverId?: string;
+  tripKind?: TripKind;
+  tourLeaderId?: string | null;
   leadId?: string;
   passengerName?: string;
   passengerPhone?: string;
@@ -822,6 +874,8 @@ export const fleetApi = {
       limit?: number;
       search?: string;
       status?: string;
+      /** 'tour_leader' lists everyone who can lead a tour, 'driver' everyone who can drive (a "both" person is in each). */
+      crewRole?: CrewRole;
       sortBy?: string;
       sortOrder?: 'asc' | 'desc';
     }) =>
@@ -885,6 +939,8 @@ export const fleetApi = {
       driverId?: string;
       leadId?: string;
       status?: string;
+      tripKind?: TripKind;
+      departureId?: string;
       from?: string;
       to?: string;
       sortBy?: string;
@@ -912,6 +968,10 @@ export const fleetApi = {
         tripType: data.tripType || undefined,
         contactId: data.contactId || undefined,
         rateCardId: data.rateCardId || undefined,
+        tripKind: data.tripKind,
+        tourLeaderId: data.tourLeaderId || undefined,
+        departureId: data.departureId || undefined,
+        stops: data.stops,
       }),
 
     update: (id: string, data: UpdateTripRequest) => {
@@ -931,6 +991,9 @@ export const fleetApi = {
         tripType: data.tripType,
         status: data.status,
         customFields: data.customFields,
+        tripKind: data.tripKind,
+        // null clears the tour leader; undefined leaves it alone
+        tourLeaderId: data.tourLeaderId,
       };
       for (const k of Object.keys(body)) if (body[k] === undefined) delete body[k];
       return client.put<ApiResponse<Trip>>(API_ENDPOINTS.fleet.trips.byId(id), body);
@@ -982,6 +1045,41 @@ export const fleetApi = {
 
     calculateDistance: (data: { startLocation: string; endLocation: string }) =>
       client.post<ApiResponse<{ distanceKm: number; durationMinutes?: number }>>(FLEET.calculateDistance, data),
+
+    // ---- coach trips (R145): stops, passengers by stop, check-in and head count (feature coach_trips)
+    getStops: (id: string) => client.get<ApiResponse<TripStop[]>>(`/fleet/trips/${id}/stops`),
+
+    /** Ordered replace: a stop with an id is updated in place, one without is added, one left out is removed. */
+    putStops: (id: string, stops: TripStopInput[]) => client.put<ApiResponse<TripStop[]>>(`/fleet/trips/${id}/stops`, { stops }),
+
+    arriveAtStop: (id: string, stopId: string, position?: { lat: number; lng: number }) =>
+      client.post<ApiResponse<TripStop>>(`/fleet/trips/${id}/stops/${stopId}/arrive`, position ?? {}),
+
+    departStop: (id: string, stopId: string, position?: { lat: number; lng: number }) =>
+      client.post<ApiResponse<TripStop>>(`/fleet/trips/${id}/stops/${stopId}/depart`, position ?? {}),
+
+    getPassengers: (id: string) => client.get<ApiResponse<TripPassengersByStop>>(`/fleet/trips/${id}/passengers`),
+
+    addPassenger: (id: string, data: AddTripPassengerRequest) => client.post<ApiResponse<TripPassenger>>(`/fleet/trips/${id}/passengers`, data),
+
+    removePassenger: (id: string, passengerId: string) => client.delete<ApiResponse<{ message: string }>>(`/fleet/trips/${id}/passengers/${passengerId}`),
+
+    /** One tick. The same opId sent twice changes nothing the second time. */
+    tickPassenger: (id: string, passengerId: string, body: TripTickRequest) =>
+      client.put<ApiResponse<TripTickResult>>(`/fleet/trips/${id}/passengers/${passengerId}`, body),
+
+    getHeadcount: (id: string) => client.get<ApiResponse<TripHeadcount>>(`/fleet/trips/${id}/headcount`),
+  },
+
+  /** Coach trips of a departure (needs coach_trips and group_departures). */
+  departureTrips: {
+    /** Creates one coach trip per coach of the departure; a second call returns the trips that exist (created is false). */
+    create: (departureId: string, opts?: { replace?: boolean }) =>
+      client.post<ApiResponse<{ created: boolean; trips: Array<{ id: string; vehicleRegistration: string | null; driverName: string | null; tourLeaderName: string | null }> }>>(
+        `/departures/${departureId}/trips${opts?.replace ? '?replace=1' : ''}`,
+      ),
+    headcount: (departureId: string) =>
+      client.get<ApiResponse<TripHeadcount & { departureId: string; trips: Array<TripHeadcount & { tripId: string }> }>>(`/departures/${departureId}/headcount`),
   },
 
   rateCards: {

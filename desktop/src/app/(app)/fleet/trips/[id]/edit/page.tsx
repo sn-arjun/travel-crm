@@ -13,6 +13,7 @@ import {
 } from '@/components/domain/fleet/trip-form';
 import { useApiQuery } from '@/hooks/use-api';
 import { toE164 } from '@/lib/phone';
+import { fromTripStopRows, toTripStopRows } from '../../_components/stops-editor';
 import { toast } from 'sonner';
 
 export default function EditTripPage() {
@@ -65,6 +66,9 @@ export default function EditTripPage() {
       description={`${trip.startLocation} → ${trip.endLocation}`}
       schema={tripFormSchema}
       defaultValues={{
+        tripKind: trip.tripKind === 'coach' ? 'coach' : 'transfer',
+        tourLeaderId: trip.tourLeaderId || '',
+        stops: toTripStopRows(trip.stops ?? []),
         vehicleId: trip.vehicleId || '',
         driverId: trip.driverId || '',
         leadId: trip.leadId || '',
@@ -86,21 +90,28 @@ export default function EditTripPage() {
       onCancel={() => router.back()}
       onSubmit={async (v) => {
         // Errors propagate to EntityForm, which shows field errors and a toast.
+        const isCoach = v.tripKind === 'coach';
+        const stops = isCoach ? fromTripStopRows(v.stops ?? []) : undefined;
         await fleetApi.trips.update(tripId, {
-          vehicleId: v.vehicleId,
-          driverId: v.driverId,
+          vehicleId: v.vehicleId || undefined,
+          driverId: v.driverId || undefined,
+          tripKind: v.tripKind,
+          // an empty selection clears the tour leader
+          tourLeaderId: isCoach ? v.tourLeaderId || null : undefined,
           leadId: v.leadId || undefined,
           passengerName: v.passengerName ?? '',
           passengerPhone: toE164(v.passengerPhone),
           specialInstructions: v.specialInstructions ?? '',
-          startLocation: v.startLocation,
-          endLocation: v.endLocation,
+          startLocation: v.startLocation || stops?.[0]?.name || '',
+          endLocation: v.endLocation || stops?.[stops.length - 1]?.name || '',
           startTime: toIso(v.startDate, v.startClock),
           endTime: toIso(v.endDate, v.endClock),
           distance: v.distance,
           fare: v.fare,
           tripType: safeTripType(v.tripType),
         });
+        // The stops are their own list on the server: ordered replace, kept stops keep their arrival.
+        if (stops) await fleetApi.trips.putStops(tripId, stops);
         toast.success('Trip updated successfully');
         router.push(`/fleet/trips/${tripId}`);
       }}

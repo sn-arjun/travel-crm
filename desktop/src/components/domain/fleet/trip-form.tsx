@@ -14,10 +14,17 @@ import { fleetApi } from '@/lib/api/fleet';
 import type { Driver, FleetRateCard, Vehicle } from '@/lib/api/fleet';
 import { leadsApi } from '@/lib/api/leads';
 import { TRIP_TYPE_OPTIONS } from './trip-format';
+import { TripStopsEditor, type TripStopRow } from '@/app/(app)/fleet/trips/_components/stops-editor';
+import { useFeatureGate } from '@/hooks/use-feature-gate';
+import { useT } from '@/lib/i18n';
 
 export const tripFormSchema = z.object({
-  vehicleId: z.string().min(1, 'Pick a vehicle'),
-  driverId: z.string().min(1, 'Pick a driver'),
+  // R145: a coach trip may have no vehicle or driver yet, and has stops and a tour leader
+  tripKind: z.enum(['transfer', 'coach']),
+  tourLeaderId: z.string().optional(),
+  stops: z.array(z.custom<TripStopRow>()),
+  vehicleId: z.string().optional(),
+  driverId: z.string().optional(),
   leadId: z.string().optional(),
   contactId: z.string().optional(),
   rateCardId: z.string().optional(),
@@ -25,14 +32,21 @@ export const tripFormSchema = z.object({
   passengerName: z.string().optional(),
   passengerPhone: z.string().optional(),
   specialInstructions: z.string().optional(),
-  startLocation: z.string().min(1, 'Start location is required'),
-  endLocation: z.string().min(1, 'End location is required'),
+  startLocation: z.string().optional(),
+  endLocation: z.string().optional(),
   startDate: z.date({ error: 'Start date is required' }),
   startClock: z.string().min(1, 'Start time is required'),
   endDate: z.date({ error: 'End date is required' }),
   endClock: z.string().min(1, 'End time is required'),
   distance: z.number().optional(),
   fare: z.number().optional(),
+}).superRefine((v, ctx) => {
+  // A transfer is one vehicle, one driver and one route; a coach trip gets its route from the stops.
+  if (v.tripKind === 'coach') return;
+  if (!v.vehicleId) ctx.addIssue({ code: 'custom', path: ['vehicleId'], message: 'Pick a vehicle' });
+  if (!v.driverId) ctx.addIssue({ code: 'custom', path: ['driverId'], message: 'Pick a driver' });
+  if (!v.startLocation) ctx.addIssue({ code: 'custom', path: ['startLocation'], message: 'Start location is required' });
+  if (!v.endLocation) ctx.addIssue({ code: 'custom', path: ['endLocation'], message: 'End location is required' });
 });
 export type TripFormValues = z.infer<typeof tripFormSchema>;
 
@@ -161,7 +175,13 @@ function useFareSuggestion(
 
 /** The shared body of the new / edit trip forms. */
 export function TripFormSections({ form }: { form: UseFormReturn<TripFormValues> }) {
-  const vehicleId = form.watch('vehicleId');
+  const t = useT();
+  const coachGate = useFeatureGate('coach_trips');
+  const tripKind = form.watch('tripKind');
+  const isCoach = tripKind === 'coach';
+  // The kind choice is offered when the agency has coach trips; a coach trip that exists keeps its fields either way.
+  const offerKind = coachGate.enabled || isCoach;
+  const vehicleId = form.watch('vehicleId') ?? '';
   const tripType = form.watch('tripType');
   const distance = form.watch('distance');
   const fare = form.watch('fare');
@@ -197,9 +217,43 @@ export function TripFormSections({ form }: { form: UseFormReturn<TripFormValues>
 
   return (
     <>
-      <SectionCard title="Vehicle & driver" required>
+      {offerKind && (
+        <SectionCard title={t('coachTrips.form.kindTitle')}>
+          <div className="grid gap-ds-4 sm:grid-cols-2">
+            <FormRow name="tripKind" label={t('coachTrips.form.kind')} hint={t('coachTrips.form.kindHint')}>
+              <Select value={tripKind} onValueChange={(v) => form.setValue('tripKind', v as 'transfer' | 'coach', { shouldDirty: true })}>
+                <SelectTrigger id="tripKind" className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="transfer">{t('coachTrips.form.kindTransfer')}</SelectItem>
+                  <SelectItem value="coach">{t('coachTrips.form.kindCoach')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </FormRow>
+            {isCoach && (
+              <FormRow name="tourLeaderId" label={t('coachTrips.form.tourLeader')} hint={t('coachTrips.form.tourLeaderHint')}>
+                <RelationCombobox<Driver>
+                  value={form.watch('tourLeaderId') || null}
+                  onChange={(id) => form.setValue('tourLeaderId', id ?? '', { shouldDirty: true })}
+                  fetcher={async (q, page) => {
+                    const r = await fleetApi.drivers.list({ search: q, page, limit: 20, crewRole: 'tour_leader' });
+                    return toPage<Driver>(r.data as ListPayload<Driver>);
+                  }}
+                  getOptionId={(d) => d.id}
+                  getOptionLabel={(d) => d.name}
+                  getOptionDescription={(d) => d.phone}
+                  resolveSelected={async (id) => (await fleetApi.drivers.getById(id)).data}
+                  placeholder={t('coachTrips.form.tourLeaderPlaceholder')}
+                  searchPlaceholder={t('coachTrips.form.tourLeaderSearch')}
+                />
+              </FormRow>
+            )}
+          </div>
+        </SectionCard>
+      )}
+
+      <SectionCard title="Vehicle & driver" required={!isCoach}>
         <div className="grid gap-ds-4 sm:grid-cols-2">
-          <FormRow name="vehicleId" label="Vehicle" required>
+          <FormRow name="vehicleId" label="Vehicle" required={!isCoach}>
             <RelationCombobox<Vehicle>
               value={form.watch('vehicleId') || null}
               onChange={(id) => form.setValue('vehicleId', id ?? '', { shouldDirty: true })}
@@ -213,10 +267,10 @@ export function TripFormSections({ form }: { form: UseFormReturn<TripFormValues>
               resolveSelected={async (id) => (await fleetApi.vehicles.getById(id)).data}
               placeholder="Select vehicle"
               searchPlaceholder="Registration or make/model..."
-              required
+              required={!isCoach}
             />
           </FormRow>
-          <FormRow name="driverId" label="Driver" required>
+          <FormRow name="driverId" label="Driver" required={!isCoach}>
             <RelationCombobox<Driver>
               value={form.watch('driverId') || null}
               onChange={(id) => form.setValue('driverId', id ?? '', { shouldDirty: true })}
@@ -230,13 +284,19 @@ export function TripFormSections({ form }: { form: UseFormReturn<TripFormValues>
               resolveSelected={async (id) => (await fleetApi.drivers.getById(id)).data}
               placeholder="Select driver"
               searchPlaceholder="Driver name or phone..."
-              required
+              required={!isCoach}
             />
           </FormRow>
         </div>
       </SectionCard>
 
-      <SectionCard title="Route & schedule" required>
+      {isCoach && (
+        <SectionCard title={t('coachTrips.form.stopsTitle')} description={t('coachTrips.form.stopsHint')}>
+          <TripStopsEditor value={form.watch('stops') ?? []} onChange={(rows) => form.setValue('stops', rows, { shouldDirty: true })} />
+        </SectionCard>
+      )}
+
+      <SectionCard title="Route & schedule" required={!isCoach}>
         <div className="grid gap-ds-4 sm:grid-cols-2">
           <FormRow name="tripType" label="Trip type" required hint="Drives the rate card used to suggest the fare.">
             <Select
@@ -250,16 +310,16 @@ export function TripFormSections({ form }: { form: UseFormReturn<TripFormValues>
             </Select>
           </FormRow>
           <div className="hidden sm:block" aria-hidden="true" />
-          <FormRow name="startLocation" label="Start location" required wide>
+          <FormRow name="startLocation" label="Start location" required={!isCoach} wide>
             <AddressAutocomplete
-              value={form.watch('startLocation')}
+              value={form.watch('startLocation') ?? ''}
               onChange={(v) => form.setValue('startLocation', v, { shouldDirty: true })}
               placeholder="Enter pickup location"
             />
           </FormRow>
-          <FormRow name="endLocation" label="End location" required wide>
+          <FormRow name="endLocation" label="End location" required={!isCoach} wide>
             <AddressAutocomplete
-              value={form.watch('endLocation')}
+              value={form.watch('endLocation') ?? ''}
               onChange={(v) => form.setValue('endLocation', v, { shouldDirty: true })}
               placeholder="Enter drop location"
             />

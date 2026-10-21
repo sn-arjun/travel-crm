@@ -4,10 +4,11 @@
 import { formatExactCurrency } from '@/lib/format';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Eye, MapPin, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Eye, ListChecks, MapPin, Pencil, Plus, Trash2 } from 'lucide-react';
 import { ListPage } from '@/components/domain';
 import {
   Button, Tag, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, useConfirm,
+  Sheet, SheetContent, SheetHeader, SheetTitle,
 } from '@/components/ui';
 import { fleetApi } from '@/lib/api/fleet';
 import type { Trip } from '@/lib/api/fleet';
@@ -16,6 +17,9 @@ import { TRIP_STATUS_LABELS } from '@travelcrm/shared';
 import { formatTripDateTime, formatTripWhenShort, tripStatusTone, tripTypeLabel } from '@/components/domain/fleet/trip-format';
 import { formatPhone } from '@/lib/phone';
 import { toLocalDateString } from '@/lib/dates';
+import { useFeatureGate } from '@/hooks/use-feature-gate';
+import { useT } from '@/lib/i18n';
+import { CoachTripPanel } from './_components/passenger-checkin';
 
 function toCsvValue(v: unknown) {
   const s = String(v ?? '');
@@ -23,17 +27,22 @@ function toCsvValue(v: unknown) {
 }
 
 export default function TripsPage() {
+  const t = useT();
   const router = useRouter();
   const { confirm, dialog } = useConfirm();
+  const coachGate = useFeatureGate('coach_trips');
   const [statusFilter, setStatusFilter] = React.useState('');
+  const [kindFilter, setKindFilter] = React.useState<'' | 'coach' | 'transfer'>('');
+  // The coach trip whose check-in drawer is open
+  const [checkinTrip, setCheckinTrip] = React.useState<Trip | null>(null);
   const [refreshKey, setRefreshKey] = React.useState(0);
 
   const fetchTrips = React.useCallback(
     ({ page, limit, search }: { page: number; limit: number; search?: string }) =>
-      fleetApi.trips.list({ page, limit, search: search || undefined, status: statusFilter || undefined }),
+      fleetApi.trips.list({ page, limit, search: search || undefined, status: statusFilter || undefined, tripKind: kindFilter || undefined }),
     // refreshKey re-creates the fetcher so the list reloads after a mutation
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [statusFilter, refreshKey],
+    [statusFilter, kindFilter, refreshKey],
   );
 
   async function handleDelete(trip: Trip) {
@@ -60,6 +69,22 @@ export default function TripsPage() {
   return (
     <>
       {dialog}
+      <Sheet open={checkinTrip !== null} onOpenChange={(open) => { if (!open) setCheckinTrip(null); }}>
+        <SheetContent className="w-full overflow-y-auto sm:max-w-2xl" data-testid="trip-checkin-drawer">
+          <SheetHeader>
+            <SheetTitle>{checkinTrip ? `${checkinTrip.startLocation || t('coachTrips.list.coachTrip')} → ${checkinTrip.endLocation || ''}` : ''}</SheetTitle>
+          </SheetHeader>
+          {checkinTrip && (
+            <div className="px-ds-4 pb-ds-4">
+              <CoachTripPanel
+                tripId={checkinTrip.id}
+                readOnly={checkinTrip.status === 'completed' || checkinTrip.status === 'cancelled'}
+                onChanged={() => setRefreshKey((k) => k + 1)}
+              />
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
       <ListPage<Trip>
         title="Trips"
         description="Assign vehicles and drivers to trips, and track them to completion."
@@ -106,6 +131,21 @@ export default function TripsPage() {
             cell: (t) => t.driver?.name || t.driverName || '—',
           },
           {
+            key: 'coach',
+            header: t('coachTrips.list.column'),
+            cell: (tr) =>
+              tr.tripKind === 'coach' ? (
+                <span className="flex flex-col leading-tight text-sm" data-testid="trip-coach-cell">
+                  <span>{t('coachTrips.list.stops', { count: tr.stopCount ?? 0 })}</span>
+                  <span className="text-xs text-ds-foreground-muted tabular-nums">
+                    {t('coachTrips.list.onBoard', { boarded: tr.headcount?.boarded ?? 0, expected: tr.headcount?.expected ?? 0 })}
+                  </span>
+                </span>
+              ) : (
+                '—'
+              ),
+          },
+          {
             key: 'startTime',
             header: 'Start',
             sortable: true,
@@ -138,33 +178,53 @@ export default function TripsPage() {
           </Button>
         }
         headerActions={
-          <Select value={statusFilter || 'all'} onValueChange={(v) => setStatusFilter(v === 'all' ? '' : v)}>
-            <SelectTrigger className="w-40 h-9"><SelectValue placeholder="All statuses" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
-              {Object.entries(TRIP_STATUS_LABELS).map(([value, label]) => (
-                <SelectItem key={value} value={value}>{label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        }
-        filters={statusFilter ? [{ id: 'status', label: 'Status', value: TRIP_STATUS_LABELS[statusFilter as keyof typeof TRIP_STATUS_LABELS] || statusFilter }] : []}
-        onRemoveFilter={() => setStatusFilter('')}
-        onClearFilters={() => setStatusFilter('')}
-        rowActions={(t) => (
           <>
-            <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => router.push(`/fleet/trips/${t.id}`)}>
+            <Select value={statusFilter || 'all'} onValueChange={(v) => setStatusFilter(v === 'all' ? '' : v)}>
+              <SelectTrigger className="w-40 h-9"><SelectValue placeholder="All statuses" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                {Object.entries(TRIP_STATUS_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {(coachGate.enabled || kindFilter !== '') && (
+              <Select value={kindFilter || 'all'} onValueChange={(v) => setKindFilter(v === 'all' ? '' : (v as 'coach' | 'transfer'))}>
+                <SelectTrigger className="w-40 h-9" aria-label={t('coachTrips.list.kindFilter')} data-testid="trip-kind-filter"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('coachTrips.list.allKinds')}</SelectItem>
+                  <SelectItem value="coach">{t('coachTrips.list.coach')}</SelectItem>
+                  <SelectItem value="transfer">{t('coachTrips.list.transfer')}</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          </>
+        }
+        filters={[
+          ...(statusFilter ? [{ id: 'status', label: 'Status', value: TRIP_STATUS_LABELS[statusFilter as keyof typeof TRIP_STATUS_LABELS] || statusFilter }] : []),
+          ...(kindFilter ? [{ id: 'kind', label: t('coachTrips.list.kindFilter'), value: kindFilter === 'coach' ? t('coachTrips.list.coach') : t('coachTrips.list.transfer') }] : []),
+        ]}
+        onRemoveFilter={(id) => (id === 'kind' ? setKindFilter('') : setStatusFilter(''))}
+        onClearFilters={() => { setStatusFilter(''); setKindFilter(''); }}
+        rowActions={(tr) => (
+          <>
+            {tr.tripKind === 'coach' && (
+              <Button variant="ghost" size="icon-sm" aria-label={t('coachTrips.list.checkin')} onClick={() => setCheckinTrip(tr)} data-testid="trip-checkin-button">
+                <ListChecks />
+              </Button>
+            )}
+            <Button variant="ghost" size="icon-sm" aria-label="View" onClick={() => router.push(`/fleet/trips/${tr.id}`)}>
               <Eye />
             </Button>
-            <Button variant="ghost" size="icon-sm" aria-label="Edit" onClick={() => router.push(`/fleet/trips/${t.id}/edit`)}>
+            <Button variant="ghost" size="icon-sm" aria-label="Edit" onClick={() => router.push(`/fleet/trips/${tr.id}/edit`)}>
               <Pencil />
             </Button>
-            <Button variant="ghost" size="icon-sm" aria-label="Delete" onClick={() => void handleDelete(t)}>
+            <Button variant="ghost" size="icon-sm" aria-label="Delete" onClick={() => void handleDelete(tr)}>
               <Trash2 />
             </Button>
           </>
         )}
-        onRowClick={(t) => router.push(`/fleet/trips/${t.id}`)}
+        onRowClick={(tr) => router.push(`/fleet/trips/${tr.id}`)}
         bulkActions={[
           {
             label: 'Delete',

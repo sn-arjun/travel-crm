@@ -23,6 +23,8 @@ import { toast } from 'sonner';
 import { DRIVER_STATUS_LABELS, TRIP_STATUS_LABELS } from '@travelcrm/shared';
 import { DriverScheduleCalendar } from '@/components/domain/fleet/driver-schedule-calendar';
 import type { TimelineItem } from '@/components/ui/timeline';
+import { useT } from '@/lib/i18n';
+import { crewRoleLabel } from '../_components/crew-section';
 
 function statusTone(status: string): 'success' | 'danger' | 'info' | 'warning' | 'neutral' {
   if (status === 'active') return 'success';
@@ -44,6 +46,7 @@ const DRIVER_DOC_TYPE_LABELS: Record<string, string> = {
 };
 
 export default function DriverDetailPage() {
+  const t = useT();
   const router = useRouter();
   const params = useParams();
   const driverId = params.id as string;
@@ -278,6 +281,8 @@ export default function DriverDetailPage() {
                       <p className="text-xs text-ds-foreground-muted">{driver.phone}</p>
                     </div>
                   </div>
+                  <Row label={t('fleet.crew.column')} value={crewRoleLabel(driver.crewRole, t)} />
+                  {driver.userName && <Row label={t('fleet.crew.userLabel')} value={driver.userName} />}
                   {driver.email && <Row label="Email" value={driver.email} />}
                   {driver.address && <Row label="Address" value={driver.address} />}
                   {driver.dateOfBirth && <Row label="Date of birth" value={formatLocaleDate(driver.dateOfBirth)} />}
