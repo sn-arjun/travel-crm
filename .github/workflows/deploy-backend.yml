@@ -20,6 +20,32 @@ jobs:
       API_URL: ${{ vars.API_URL }}
       CORS_ORIGINS: ${{ vars.CORS_ORIGINS }}
       EMAIL_FROM: ${{ vars.EMAIL_FROM }}
+      # Every plain setting backend/scripts/gen-wrangler.mjs reads, from GitHub repository variables (Settings, Variables),
+      # so a CI deploy writes the same [vars] as a manual one. An unset variable is an empty string: the generator then uses
+      # its default (or omits the optional setting). SECRETS ARE NOT PASSED: scripts/push-secrets.sh pushes them separately.
+      # TEST_MODE, BILLING_GATEWAY and VOIP_PROVIDER are deliberately not listed (the generator refuses them for production).
+      EMAIL_SYSTEM_PROVIDER: ${{ vars.EMAIL_SYSTEM_PROVIDER }}
+      EMAIL_INBOUND_DOMAIN: ${{ vars.EMAIL_INBOUND_DOMAIN }}
+      EMAIL_FROM_NAME: ${{ vars.EMAIL_FROM_NAME }}
+      PLATFORM_SUPPORT_EMAIL: ${{ vars.PLATFORM_SUPPORT_EMAIL }}
+      QUOTES_URL: ${{ vars.QUOTES_URL }}
+      ALLOW_LOOPBACK_ORIGINS: ${{ vars.ALLOW_LOOPBACK_ORIGINS }}
+      CREDENTIALS_ACTIVE_KEY_ID: ${{ vars.CREDENTIALS_ACTIVE_KEY_ID }}
+      SUPER_ADMIN_EMAIL: ${{ vars.SUPER_ADMIN_EMAIL }}
+      PLATFORM_TAX_COUNTRY: ${{ vars.PLATFORM_TAX_COUNTRY }}
+      PLATFORM_TAX_STATE: ${{ vars.PLATFORM_TAX_STATE }}
+      PLATFORM_TAX_ID: ${{ vars.PLATFORM_TAX_ID }}
+      PLATFORM_GST_RATE: ${{ vars.PLATFORM_GST_RATE }}
+      PLATFORM_VAT_COUNTRIES: ${{ vars.PLATFORM_VAT_COUNTRIES }}
+      PLATFORM_VAT_RATE: ${{ vars.PLATFORM_VAT_RATE }}
+      BILLING_GRACE_DAYS: ${{ vars.BILLING_GRACE_DAYS }}
+      VOIP_CALLING_COUNTRIES: ${{ vars.VOIP_CALLING_COUNTRIES }}
+      WHATSAPP_META_GRAPH_VERSION: ${{ vars.WHATSAPP_META_GRAPH_VERSION }}
+      WHATSAPP_META_PHONE_NUMBER_ID: ${{ vars.WHATSAPP_META_PHONE_NUMBER_ID }}
+      OCI_PROVISIONER_URL: ${{ vars.OCI_PROVISIONER_URL }}
+      WP_SITES_DOMAIN: ${{ vars.WP_SITES_DOMAIN }}
+      DAILY_JOB_HOUR: ${{ vars.DAILY_JOB_HOUR }}
+      APP_VERSION: ${{ vars.APP_VERSION }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

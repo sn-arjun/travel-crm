@@ -16,6 +16,12 @@
  *   EMAIL_FROM_NAME, PLATFORM_SUPPORT_EMAIL, QUOTES_URL, EMAIL_INBOUND_DOMAIN (R131: domain for reply+<token>@ addresses).
  *   EMAIL_SYSTEM_PROVIDER (sendgrid | cloudflare, default cloudflare with SendGrid fallback; the console Email page overrides it at runtime; mock for local only) is always written. Also written: API_PUBLIC_URL, TENANT_PROVISIONER=cloudflare,
  *   CF_WORKER_SCRIPT_NAME.
+ *   Staging and production also get (default in brackets, override with the same-named variable): PLATFORM_TAX_COUNTRY (IN),
+ *   PLATFORM_GST_RATE (18), BILLING_GRACE_DAYS (7), VOIP_CALLING_COUNTRIES (US), WHATSAPP_META_GRAPH_VERSION (v21.0); and, only when set:
+ *   SUPER_ADMIN_EMAIL, PLATFORM_TAX_STATE, PLATFORM_TAX_ID, PLATFORM_VAT_COUNTRIES, PLATFORM_VAT_RATE, WHATSAPP_META_PHONE_NUMBER_ID,
+ *   OCI_PROVISIONER_URL, WP_SITES_DOMAIN, DAILY_JOB_HOUR, APP_VERSION (see OPTIONAL_PLAIN_VARS).
+ *   REFUSED for staging and production (the generator fails): BILLING_GATEWAY=mock, TEST_MODE, VOIP_PROVIDER=mock, VOIP_CALLING_COUNTRIES='*'.
+ *   Secrets never appear in the generated file: scripts/push-secrets.sh pushes them.
  *   DOMAIN (the one place the public domain is set; APP_URL, API_URL, CORS_ORIGINS and EMAIL_FROM default
  *   from it), and the explicit overrides APP_URL, API_URL, CORS_ORIGINS, EMAIL_FROM.
  *
@@ -162,6 +168,74 @@ export function emailSystemProvider(env) {
   return v;
 }
 
+/**
+ * Plain settings written to [vars] only when the same-named environment variable is set (no default).
+ * Nothing here is a secret. Secrets are pushed by scripts/push-secrets.sh and never appear in the generated file.
+ */
+export const OPTIONAL_PLAIN_VARS = [
+  'EMAIL_FROM_NAME',
+  'PLATFORM_SUPPORT_EMAIL',
+  'QUOTES_URL',
+  'SUPER_ADMIN_EMAIL', // receives call fraud / spend-spike alerts
+  'PLATFORM_TAX_STATE',
+  'PLATFORM_TAX_ID',
+  'PLATFORM_VAT_COUNTRIES',
+  'PLATFORM_VAT_RATE',
+  'WHATSAPP_META_PHONE_NUMBER_ID', // an id, not a credential
+  'OCI_PROVISIONER_URL', // WordPress provisioner base URL (the signing secret PROVISIONER_SECRET is a secret)
+  'WP_SITES_DOMAIN',
+  'DAILY_JOB_HOUR',
+  'APP_VERSION',
+];
+
+/** Plain settings written with a default for staging and production (override with the same-named variable). */
+export const DEFAULTED_PLAIN_VARS = {
+  PLATFORM_TAX_COUNTRY: 'IN',
+  PLATFORM_GST_RATE: '18',
+  BILLING_GRACE_DAYS: '7',
+  VOIP_CALLING_COUNTRIES: 'US', // explicit on purpose: the code default GB,US,AU,SG would open three markets with unpriced numbers
+  WHATSAPP_META_GRAPH_VERSION: 'v21.0',
+};
+
+const isTruthyFlag = (v) => !!v && !['', '0', 'false', 'no', 'off'].includes(String(v).trim().toLowerCase());
+
+/** Refuse settings that must never reach a deployed Worker. Exits through die(). */
+export function assertDeploySafe(env) {
+  if (env === 'local') return;
+  const e = process.env;
+  if ((e.BILLING_GATEWAY || '').trim().toLowerCase() === 'mock') die(`BILLING_GATEWAY=mock is refused for ${env}: the mock gateway takes no real payments. Unset it.`);
+  if (isTruthyFlag(e.TEST_MODE)) die(`TEST_MODE is refused for ${env}: it opens /api/v1/test/* and lifts rate limits. Unset it.`);
+  if ((e.VOIP_PROVIDER || '').trim().toLowerCase() === 'mock') die(`VOIP_PROVIDER=mock is refused for ${env}.`);
+  if ((e.VOIP_CALLING_COUNTRIES || '').includes('*')) die(`VOIP_CALLING_COUNTRIES='*' is refused for ${env}: list the countries explicitly.`);
+}
+
+/** [vars] lines for the defaulted and validated plain settings of a deployed environment. */
+export function deployPlainVars(env) {
+  assertDeploySafe(env);
+  const get = (k) => (process.env[k] ?? '').trim() || DEFAULTED_PLAIN_VARS[k];
+  const countries = (k, v) => {
+    const list = v.split(',').map((c) => c.trim().toUpperCase()).filter(Boolean);
+    if (list.length === 0 || !list.every((c) => /^[A-Z]{2}$/.test(c))) die(`${k} must be a comma list of two-letter country codes (got ${JSON.stringify(v)}).`);
+    return [...new Set(list)].join(',');
+  };
+  const pct = (k, v) => {
+    if (!/^\d+(\.\d+)?$/.test(v) || Number(v) > 100) die(`${k} must be a percentage from 0 to 100 (got ${JSON.stringify(v)}).`);
+    return v;
+  };
+  const out = [];
+  out.push(`PLATFORM_TAX_COUNTRY = ${q(countries('PLATFORM_TAX_COUNTRY', get('PLATFORM_TAX_COUNTRY')))}`);
+  out.push(`PLATFORM_GST_RATE = ${q(pct('PLATFORM_GST_RATE', get('PLATFORM_GST_RATE')))}`);
+  const grace = get('BILLING_GRACE_DAYS');
+  if (!/^\d+$/.test(grace) || Number(grace) > 60) die(`BILLING_GRACE_DAYS must be a whole number from 0 to 60 (got ${JSON.stringify(grace)}).`);
+  out.push(`BILLING_GRACE_DAYS = ${q(grace)}`);
+  out.push(`VOIP_CALLING_COUNTRIES = ${q(countries('VOIP_CALLING_COUNTRIES', get('VOIP_CALLING_COUNTRIES')))}`);
+  out.push(`WHATSAPP_META_GRAPH_VERSION = ${q(get('WHATSAPP_META_GRAPH_VERSION'))}`);
+  // Validate the optional ones that have a format.
+  if ((process.env.PLATFORM_VAT_COUNTRIES || '').trim()) countries('PLATFORM_VAT_COUNTRIES', process.env.PLATFORM_VAT_COUNTRIES);
+  if ((process.env.PLATFORM_VAT_RATE || '').trim()) pct('PLATFORM_VAT_RATE', process.env.PLATFORM_VAT_RATE.trim());
+  return out;
+}
+
 /** Build the full TOML text. `tenantSchemaMaster` points MASTER_DB at the tenant migrations (local single mode). */
 export function buildConfig({ env, registry, pool, single, tenantSchemaMaster = false }) {
   const base = readFileSync(path.join(backendDir, 'wrangler.base.toml'), 'utf8');
@@ -224,9 +298,11 @@ export function buildConfig({ env, registry, pool, single, tenantSchemaMaster = 
       `TENANT_PROVISIONER = ${q('cloudflare')}`,
       `CF_WORKER_SCRIPT_NAME = ${q(workerName)}`,
     );
-    for (const k of ['EMAIL_FROM_NAME', 'PLATFORM_SUPPORT_EMAIL', 'QUOTES_URL']) {
-      if (process.env[k]) vars.push(`${k} = ${q(process.env[k])}`);
+    for (const k of OPTIONAL_PLAIN_VARS) {
+      const v = (process.env[k] ?? '').trim();
+      if (v) vars.push(`${k} = ${q(v)}`);
     }
+    vars.push(...deployPlainVars(env));
   }
   const varsText = vars.join('\n');
 

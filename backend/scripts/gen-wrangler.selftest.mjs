@@ -126,6 +126,62 @@ try {
   run(['--env', 'production', '--registry', sample, '--out', dflt], { ...ids, DOMAIN: '', APP_URL: '', API_URL: '', CORS_ORIGINS: '', EMAIL_FROM: '' });
   check(dt.includes("TENANT_PROVISIONER = \"cloudflare\"") && dt.includes("CF_WORKER_SCRIPT_NAME = \"travelcrm-api\"") && dt.includes("API_PUBLIC_URL = \"https://api.acme.test\"") && dt.includes("ALLOW_LOOPBACK_ORIGINS = \"true\""), "plain settings (provisioner, worker name, API_PUBLIC_URL, loopback) are written to [vars], not left to secrets");
   check(readFileSync(dflt, "utf8").includes("https://app.YOUR-DOMAIN.example"), "without DOMAIN the clearly marked YOUR-DOMAIN.example placeholder is used");
+
+  // ---- R134: every plain setting the code reads ----
+  const clean = { PLATFORM_TAX_COUNTRY: '', PLATFORM_GST_RATE: '', BILLING_GRACE_DAYS: '', VOIP_CALLING_COUNTRIES: '', WHATSAPP_META_GRAPH_VERSION: '', SUPER_ADMIN_EMAIL: '', PLATFORM_TAX_STATE: '', PLATFORM_TAX_ID: '', PLATFORM_VAT_COUNTRIES: '', PLATFORM_VAT_RATE: '', WHATSAPP_META_PHONE_NUMBER_ID: '', OCI_PROVISIONER_URL: '', WP_SITES_DOMAIN: '', DAILY_JOB_HOUR: '', APP_VERSION: '', TEST_MODE: '', BILLING_GATEWAY: '', VOIP_PROVIDER: '' };
+  const gen2 = (envName, extra = {}, file = 'r134.toml') => {
+    const o = path.join(tmp, file);
+    const rr = run(['--env', envName, '--registry', sample, '--out', o], { ...ids, ...clean, ...extra });
+    return { rr, text: existsSync(o) ? readFileSync(o, 'utf8') : '' };
+  };
+  const d = gen2('production');
+  check(d.rr.status === 0, `defaults: production generation exits 0 ${d.rr.status === 0 ? '' : d.rr.stderr}`);
+  const dEnv = d.text.slice(d.text.indexOf('[env.production]'));
+  for (const [k, v] of [['PLATFORM_TAX_COUNTRY', 'IN'], ['PLATFORM_GST_RATE', '18'], ['BILLING_GRACE_DAYS', '7'], ['VOIP_CALLING_COUNTRIES', 'US'], ['WHATSAPP_META_GRAPH_VERSION', 'v21.0'], ['ENVIRONMENT', 'production']]) {
+    const line = `${k} = "${v}"`;
+    check(d.text.split(line).length === 3 && dEnv.includes(line), `default ${line} written at top level and in [env.production.vars]`);
+  }
+  for (const k of ['SUPER_ADMIN_EMAIL', 'PLATFORM_TAX_STATE', 'PLATFORM_TAX_ID', 'PLATFORM_VAT_COUNTRIES', 'PLATFORM_VAT_RATE', 'WHATSAPP_META_PHONE_NUMBER_ID', 'OCI_PROVISIONER_URL', 'WP_SITES_DOMAIN', 'DAILY_JOB_HOUR', 'APP_VERSION']) {
+    check(!new RegExp(`^${k} =`, 'm').test(d.text), `${k} is not written when unset`);
+  }
+  const stg = gen2('staging', {}, 'r134-stg.toml');
+  check(stg.rr.status === 0 && /ENVIRONMENT = "staging"/.test(stg.text) && /VOIP_CALLING_COUNTRIES = "US"/.test(stg.text), 'staging gets ENVIRONMENT=staging and the same defaults');
+
+  const set = {
+    PLATFORM_TAX_COUNTRY: 'gb', PLATFORM_GST_RATE: '5', BILLING_GRACE_DAYS: '14', VOIP_CALLING_COUNTRIES: 'us, gb,US', WHATSAPP_META_GRAPH_VERSION: 'v22.0',
+    SUPER_ADMIN_EMAIL: 'owner@acme.test', PLATFORM_TAX_STATE: 'MH', PLATFORM_TAX_ID: '27AAAAA0000A1Z5', PLATFORM_VAT_COUNTRIES: 'GB,DE', PLATFORM_VAT_RATE: '20',
+    WHATSAPP_META_PHONE_NUMBER_ID: '123456', OCI_PROVISIONER_URL: 'https://wp-api.acme.test', WP_SITES_DOMAIN: 'sites.acme.test', DAILY_JOB_HOUR: '8', APP_VERSION: '1.2.3',
+  };
+  const s = gen2('production', set, 'r134-set.toml');
+  const expected = { ...set, PLATFORM_TAX_COUNTRY: 'GB', VOIP_CALLING_COUNTRIES: 'US,GB' };
+  check(s.rr.status === 0, `overrides: production generation exits 0 ${s.rr.status === 0 ? '' : s.rr.stderr}`);
+  for (const [k, v] of Object.entries(expected)) {
+    check(s.text.split(`${k} = "${v}"`).length === 3, `${k} from the environment reaches [vars] and [env.production.vars]`);
+  }
+  check(!/mock/i.test(s.text.replace(/#.*$/gm, '')), 'no mock setting in the generated production file');
+
+  const secretNames = ['JWT_SECRET', 'JWT_REFRESH_SECRET', 'SUPER_ADMIN_JWT_SECRET', 'CREDENTIALS_KEYS', 'HEALTH_TOKEN', 'CF_API_TOKEN', 'SENDGRID_API_KEY', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'RAZORPAY_KEY_SECRET', 'WHATSAPP_META_TOKEN', 'WHATSAPP_META_APP_SECRET', 'PROVISIONER_SECRET', 'BILLING_MOCK_SECRET', 'UNSUB_SECRET'];
+  const leak = gen2('production', Object.fromEntries(secretNames.map((n) => [n, 'LEAKCHECK-VALUE'])), 'r134-leak.toml');
+  check(leak.rr.status === 0 && !/LEAKCHECK-VALUE/.test(leak.text) && secretNames.every((n) => !new RegExp(`^${n} =`, 'm').test(leak.text)), 'secrets in the environment never reach the generated file');
+
+  // refusals
+  const refuse = (extra, envName = 'production') => gen2(envName, extra, 'r134-refuse.toml').rr.status !== 0;
+  check(refuse({ BILLING_GATEWAY: 'mock' }) && refuse({ BILLING_GATEWAY: 'mock' }, 'staging'), 'BILLING_GATEWAY=mock is refused for production and staging');
+  check(refuse({ TEST_MODE: 'true' }) && refuse({ TEST_MODE: '1' }, 'staging'), 'TEST_MODE is refused for production and staging');
+  check(!refuse({ TEST_MODE: 'false' }), 'TEST_MODE=false is not a refusal (and is never written)');
+  check(refuse({ VOIP_PROVIDER: 'mock' }) && refuse({ VOIP_CALLING_COUNTRIES: '*' }), "VOIP_PROVIDER=mock and VOIP_CALLING_COUNTRIES='*' are refused");
+  check(refuse({ VOIP_CALLING_COUNTRIES: 'USA' }) && refuse({ BILLING_GRACE_DAYS: '99' }) && refuse({ PLATFORM_GST_RATE: 'abc' }) && refuse({ PLATFORM_VAT_RATE: '150' }), 'malformed country list, grace days and tax rates are refused');
+  const refMsg = gen2('production', { BILLING_GATEWAY: 'mock' }, 'r134-msg.toml').rr.stderr;
+  check(/BILLING_GATEWAY=mock/.test(refMsg), 'the refusal names the offending setting');
+  check(!/PLATFORM_GST_RATE|BILLING_GRACE_DAYS|VOIP_CALLING_COUNTRIES/.test(lt), 'local config gets no deploy-only settings');
+
+  // the CI workflow passes every plain setting the generator reads, and no mock / test setting
+  const mod = await import('./gen-wrangler.mjs');
+  const wf = readFileSync(path.join(here, '..', '..', '.github', 'workflows', 'deploy-backend.yml'), 'utf8');
+  const generatorReads = [...mod.OPTIONAL_PLAIN_VARS, ...Object.keys(mod.DEFAULTED_PLAIN_VARS), 'EMAIL_SYSTEM_PROVIDER', 'EMAIL_INBOUND_DOMAIN', 'ALLOW_LOOPBACK_ORIGINS', 'CREDENTIALS_ACTIVE_KEY_ID', 'APP_URL', 'API_URL', 'CORS_ORIGINS', 'EMAIL_FROM'];
+  const notPassed = generatorReads.filter((k) => !new RegExp(`^\\s+${k}: \\$\\{\\{ vars\\.${k} \\}\\}`, 'm').test(wf));
+  check(notPassed.length === 0, `deploy-backend.yml passes all ${generatorReads.length} plain settings from GitHub variables ${notPassed.join(',')}`);
+  check(!/^\s+(TEST_MODE|BILLING_GATEWAY|VOIP_PROVIDER|BILLING_MOCK_SECRET|JWT_SECRET|STRIPE_SECRET_KEY|PROVISIONER_SECRET):/m.test(wf), 'deploy-backend.yml passes no mock, test or secret setting to the generator');
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

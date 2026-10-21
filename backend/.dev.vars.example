@@ -6,7 +6,8 @@
 # The values below are safe local placeholders. Names come from backend/src/types.ts (interface Env).
 # Needed by `npm run dev:api`, `wrangler dev` and `node desktop/scripts/fix-stack.mjs up` (the local stack reads the login
 # secrets from here). NOT needed by the backend tests or the fresh-clone check, which bring their own test-only values.
-# Production values are set with `wrangler secret put <NAME>` (see scripts/push-secrets.sh).
+# Production: secrets are pushed with scripts/push-secrets.sh; every plain setting is written into the generated config by
+# backend/scripts/gen-wrangler.mjs (from GitHub variables in CI). Nothing is set by hand.
 
 # --- Mode ---
 # single = one D1 database holds everything (local default). multi = one D1 database per agency.
@@ -107,3 +108,36 @@ ERROR_REPORTER_DSN=
 # Hour (0-23, agency local time) at which daily jobs run. Default 9.
 DAILY_JOB_HOUR=
 APP_VERSION=
+
+# --- Subscription billing (leave blank locally: the in-process mock gateway is used when TEST_MODE=true) ---
+# 'mock' forces the mock gateway. Local and tests only: gen-wrangler REFUSES it for staging and production.
+BILLING_GATEWAY=
+# Signs mock-gateway events. Local only: push-secrets.sh never pushes it.
+BILLING_MOCK_SECRET=local-dev-billing-mock-secret-0123456789
+# Real gateways (use TEST keys here, never live ones).
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+RAZORPAY_KEY_ID=
+RAZORPAY_KEY_SECRET=
+RAZORPAY_WEBHOOK_SECRET=
+# Platform tax on subscription invoices. Blank = defaults (country IN, GST 18, no VAT, grace 7 days).
+PLATFORM_TAX_COUNTRY=
+PLATFORM_TAX_STATE=
+PLATFORM_TAX_ID=
+PLATFORM_GST_RATE=
+PLATFORM_VAT_COUNTRIES=
+PLATFORM_VAT_RATE=
+BILLING_GRACE_DAYS=
+
+# --- Calling (Twilio resale) ---
+# 'mock' selects the in-memory VoIP provider (local only; never in production).
+VOIP_PROVIDER=
+# Countries where calling is offered, e.g. US or US,GB. '*' = all (honoured outside production only).
+# Blank = code default GB,US,AU,SG. Deployed environments get US from gen-wrangler unless you set it.
+VOIP_CALLING_COUNTRIES=
+
+# --- System mail routing ---
+# sendgrid | cloudflare | mock. Blank = the code default. gen-wrangler writes cloudflare for deployed environments.
+EMAIL_SYSTEM_PROVIDER=
+# Domain that receives agency replies through Cloudflare Email Routing (reply+<token>@<domain>).
+EMAIL_INBOUND_DOMAIN=
