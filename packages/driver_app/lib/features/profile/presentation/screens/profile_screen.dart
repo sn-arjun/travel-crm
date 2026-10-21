@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:driver_app/l10n/app_localizations.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/providers/locale_provider.dart';
 import '../../../../core/storage/hive_storage.dart';
 import '../../../../core/widgets/app_widgets.dart';
 import '../../../auth/data/driver_auth_provider.dart';
@@ -214,6 +215,8 @@ class ProfileScreen extends ConsumerWidget {
         return l10n.arabic;
       case 'hi':
         return l10n.hindi;
+      case 'nl':
+        return l10n.dutch;
       default:
         return l10n.english;
     }
@@ -234,6 +237,7 @@ class ProfileScreen extends ConsumerWidget {
               onChanged: (v) {
                 if (v == null) return;
                 HiveStorage.locale = v;
+                ref.read(localeProvider.notifier).state = Locale(v);
                 Navigator.pop(ctx);
               },
               child: Column(
@@ -249,6 +253,10 @@ class ProfileScreen extends ConsumerWidget {
                   RadioListTile<String>(
                     title: Text(l10n.hindi),
                     value: 'hi',
+                  ),
+                  RadioListTile<String>(
+                    title: Text(l10n.dutch),
+                    value: 'nl',
                   ),
                 ],
               ),

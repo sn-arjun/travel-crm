@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'package:shared/shared.dart';
 import '../../../core/storage/hive_storage.dart';
+import '../../../core/constants/country_codes.dart';
 import '../../../core/utils/phone.dart';
 
 /// What the public agency-code lookup reveals: the agency id, its display
@@ -30,14 +32,35 @@ class AgencyInfo {
   });
 }
 
+/// The calling code (`+31`) numbers typed without one are read in: the agency's phone country saved when the agency
+/// code was confirmed, else its country, else the phone's own region, else the launch market.
+String agencyDialCode() {
+  String? agencyIso;
+  try {
+    agencyIso = HiveStorage.agencyPhoneCountry ?? HiveStorage.agencyCountry;
+  } catch (_) {
+    agencyIso = null;
+  }
+  String? deviceIso;
+  try {
+    deviceIso = WidgetsBinding.instance.platformDispatcher.locale.countryCode;
+  } catch (_) {
+    deviceIso = null;
+  }
+  return resolveDefaultCountry(agencyIso: agencyIso, deviceIso: deviceIso).dial;
+}
+
 class DriverAuthRepository {
   final Dio _dio;
   final String? Function() _tenantId;
+  final String Function() _dialCode;
 
   /// [tenantId] returns the stored agency id; it defaults to the value saved
-  /// by the agency-code screen.
-  DriverAuthRepository(this._dio, {String? Function()? tenantId})
-      : _tenantId = tenantId ?? (() => HiveStorage.tenantId);
+  /// by the agency-code screen. [dialCode] returns the agency's calling code
+  /// (see [agencyDialCode]).
+  DriverAuthRepository(this._dio, {String? Function()? tenantId, String Function()? dialCode})
+      : _tenantId = tenantId ?? (() => HiveStorage.tenantId),
+        _dialCode = dialCode ?? agencyDialCode;
 
   String _requireTenant() {
     final id = _tenantId();
@@ -70,7 +93,7 @@ class DriverAuthRepository {
     final response = await _dio.post(
       ApiEndpoints.driverLogin,
       data: {
-        'phone': normalizePhone(phone),
+        'phone': normalizePhone(phone, defaultCountryCode: _dialCode()),
         'tenantId': _requireTenant(),
       },
     );
@@ -81,7 +104,7 @@ class DriverAuthRepository {
     final response = await _dio.post(
       ApiEndpoints.driverLoginVerify,
       data: {
-        'phone': normalizePhone(phone),
+        'phone': normalizePhone(phone, defaultCountryCode: _dialCode()),
         'tenantId': _requireTenant(),
         'otp': otp,
       },

@@ -46,7 +46,8 @@ abstract class LeadModel with _$LeadModel {
     @Default(0) int paxChildren,
     @Default(0) int paxInfants,
     double? budget,
-    @Default('INR') String currency,
+    // The agency's currency as the server sent it; null when it did not.
+    String? currency,
     required String tripType,
     String? source,
     @Default('new') String status,

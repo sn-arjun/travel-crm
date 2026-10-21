@@ -412,7 +412,8 @@ void main() {
       expect(lead.paxAdults, 1);
       expect(lead.paxChildren, 0);
       expect(lead.paxInfants, 0);
-      expect(lead.currency, 'INR');
+      // R136: the currency is the server's; there is no hidden INR default
+      expect(lead.currency, isNull);
       expect(lead.status, 'new');
     });
   });

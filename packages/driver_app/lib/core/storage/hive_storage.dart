@@ -136,6 +136,9 @@ class HiveStorage {
   static set locale(String value) =>
       _settings.put('locale', value);
 
+  /// The language the driver picked in the app, or null when none was picked (the phone's language applies).
+  static String? get chosenLocale => _settings.get('locale') as String?;
+
   // ── Trip Cache ──────────────────────────────────────────
   static Box get _tripsCache => Hive.box(_tripsCacheBox);
 

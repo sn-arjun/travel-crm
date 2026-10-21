@@ -8,9 +8,11 @@ import 'package:shared/shared.dart';
 /// * a leading `00` is treated as `+`;
 /// * a single national trunk `0` is dropped (07911 123456 becomes +447911123456);
 /// * digits that already start with the country's calling code and are too long to be national keep it;
-/// * otherwise [defaultCountryCode] is prefixed;
+/// * otherwise [defaultCountryCode] (the agency's dial code, `+31` for a Dutch agency) is prefixed;
 /// * a longer number that fits no country rule is assumed to already include its country code.
-String normalizePhone(String raw, {String defaultCountryCode = '+91'}) {
+///
+/// There is no default country: the caller passes the dial code of the agency the driver belongs to.
+String normalizePhone(String raw, {required String defaultCountryCode}) {
   var value = raw.trim().replaceAll(RegExp(r'[\s\-().]'), '');
   if (value.isEmpty) return value;
 

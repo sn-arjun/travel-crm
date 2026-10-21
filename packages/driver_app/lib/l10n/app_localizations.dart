@@ -8,6 +8,7 @@ import 'package:intl/intl.dart' as intl;
 import 'app_localizations_ar.dart';
 import 'app_localizations_en.dart';
 import 'app_localizations_hi.dart';
+import 'app_localizations_nl.dart';
 
 // ignore_for_file: type=lint
 
@@ -98,6 +99,7 @@ abstract class AppLocalizations {
     Locale('ar'),
     Locale('en'),
     Locale('hi'),
+    Locale('nl'),
   ];
 
   /// No description provided for @appTitle.
@@ -730,6 +732,12 @@ abstract class AppLocalizations {
   /// **'Hindi'**
   String get hindi;
 
+  /// No description provided for @dutch.
+  ///
+  /// In en, this message translates to:
+  /// **'Dutch'**
+  String get dutch;
+
   /// No description provided for @loginTagline.
   ///
   /// In en, this message translates to:
@@ -994,7 +1002,7 @@ class _AppLocalizationsDelegate
 
   @override
   bool isSupported(Locale locale) =>
-      <String>['ar', 'en', 'hi'].contains(locale.languageCode);
+      <String>['ar', 'en', 'hi', 'nl'].contains(locale.languageCode);
 
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;
@@ -1009,6 +1017,8 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
       return AppLocalizationsEn();
     case 'hi':
       return AppLocalizationsHi();
+    case 'nl':
+      return AppLocalizationsNl();
   }
 
   throw FlutterError(

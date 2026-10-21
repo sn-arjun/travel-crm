@@ -133,6 +133,7 @@
   "english": "अंग्रेज़ी",
   "arabic": "अरबी",
   "hindi": "हिंदी",
+  "dutch": "डच",
   "loginTagline": "Your trips, check-ins and navigation in one place",
   "tripsLoadError": "Couldn't load your trips",
   "tripLoadError": "Couldn't load this trip",

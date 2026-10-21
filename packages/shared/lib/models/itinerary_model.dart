@@ -76,7 +76,8 @@ abstract class ItineraryModel with _$ItineraryModel {
     @Default([]) List<String> inclusions,
     @Default([]) List<String> exclusions,
     String? termsConditions,
-    @Default('INR') String currency,
+    // The agency's currency as the server sent it; null when it did not.
+    String? currency,
     @Default(0.0) double totalCost,
     @Default(0.0) double totalSelling,
     @Default(0.0) double totalTax,
@@ -110,7 +111,8 @@ abstract class ItinerarySummary with _$ItinerarySummary {
     required String title,
     @Default(1) int version,
     @Default('draft') String status,
-    @Default('INR') String currency,
+    // The agency's currency as the server sent it; null when it did not.
+    String? currency,
     double? totalCost,
     double? totalSelling,
     double? grandTotal,

@@ -333,6 +333,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get hindi => 'Hindi';
 
   @override
+  String get dutch => 'Dutch';
+
+  @override
   String get loginTagline =>
       'Your trips, check-ins and navigation in one place';
 

@@ -332,6 +332,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get hindi => 'الهندية';
 
   @override
+  String get dutch => 'الهولندية';
+
+  @override
   String get loginTagline =>
       'Your trips, check-ins and navigation in one place';
 

@@ -15,8 +15,8 @@ void main() {
     });
 
     test('India is unchanged', () {
-      expect(normalizePhone('09876543210'), '+919876543210');
-      expect(normalizePhone('919876543210'), '+919876543210');
+      expect(normalizePhone('09876543210', defaultCountryCode: '+91'), '+919876543210');
+      expect(normalizePhone('919876543210', defaultCountryCode: '+91'), '+919876543210');
     });
 
     test('the sign-in field drops the trunk zero and checks the length per country', () {
@@ -62,8 +62,14 @@ void main() {
       expect(formatAgencyMoney(99.5, currency: 'USD', locale: 'en-US', whole: false), '\$99.50');
     });
 
-    test('with nothing stored it reads as INR', () {
-      expect(formatAgencyMoney(4500), '₹4,500');
+    test('with nothing stored the amount is a plain number: the app never guesses a currency', () {
+      expect(formatAgencyMoney(4500), '4,500');
+      expect(formatAgencyMoney(4500, locale: 'nl-NL'), '4.500');
+    });
+
+    test('a Dutch agency reads euros the Dutch way', () {
+      expect(formatAgencyMoney(1250, currency: 'EUR', locale: 'nl-NL', whole: false), contains('1.250,00'));
+      expect(formatAgencyMoney(1250, currency: 'EUR', locale: 'nl-NL', whole: false), contains('€'));
     });
   });
 }
