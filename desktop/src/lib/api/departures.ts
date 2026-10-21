@@ -1,5 +1,5 @@
 import { client } from './client';
-import { unwrapEntity } from './envelope';
+import { unwrapEntity, unwrapList } from './envelope';
 import { CursorPager } from './cursor-pager';
 import type { Price, Stop } from './tours';
 
@@ -153,6 +153,10 @@ export interface PassengerInput {
   shareOk?: boolean;
   shareGender?: boolean;
   mealPreference?: string | null;
+  /** Staff-side details: left out, the saved value stays; null clears it. */
+  seatNumber?: string | null;
+  roomGroup?: string | null;
+  documentsStatus?: Passenger['documentsStatus'];
   extraFields?: Record<string, string | number | boolean | null>;
 }
 
@@ -189,6 +193,8 @@ export interface DepartureListParams {
   to?: string;
   hasSeats?: boolean;
   q?: string;
+  /** Part of the tour's destination. */
+  destination?: string;
 }
 
 export interface DepartureInput {
@@ -208,6 +214,65 @@ export interface DepartureInput {
   tourLeaderUserId?: string | null;
   notes?: string | null;
   vehicles?: DepartureVehicle[];
+}
+
+/** One departure with its seats, as the lead, the quote and the calendar events carry it (R146). */
+export interface DepartureSummary {
+  id: string;
+  code: string;
+  status: DepartureStatus;
+  tourTitle: string;
+  startDate: string;
+  endDate?: string;
+  seats: SeatsSummary;
+}
+
+/** The `seats` field of a quote (GET /itineraries/:id) that is linked to a departure. */
+export interface QuoteSeats {
+  requested: number | null;
+  left: number;
+  /** The seats requested fit in the seats left. */
+  fits: boolean;
+}
+
+export type ManifestView = 'pickup' | 'rooming' | 'full';
+export type ManifestFormat = 'csv' | 'pdf';
+export type ManifestCell = string | number | null;
+
+export interface ManifestGroup {
+  key: string;
+  title: string;
+  time: string | null;
+  documentsCheck: boolean;
+  rows: Array<Record<string, ManifestCell>>;
+}
+
+export interface Manifest {
+  view: ManifestView;
+  title: string;
+  groupLabel: string | null;
+  columns: Array<{ key: string; label: string }>;
+  groups: ManifestGroup[];
+  totals: { passengers: number; seats: number };
+  documentNumbersIncluded: boolean;
+}
+
+export interface RoomSuggestion {
+  room: string;
+  passengers: Array<{ id: string; name: string }>;
+}
+
+export interface CoachTrip {
+  id: string;
+  vehicleId: string | null;
+  vehicleRegistration: string | null;
+  driverId: string | null;
+  driverName: string | null;
+  tourLeaderId: string | null;
+  tourLeaderName: string | null;
+  status: string;
+  pickupDatetime: string | null;
+  dropDatetime: string | null;
 }
 
 export interface HoldSeatsInput {
@@ -243,6 +308,7 @@ export const departuresApi = {
     to: f.to,
     hasSeats: f.hasSeats ? 'true' : undefined,
     q: f.q || undefined,
+    destination: f.destination || undefined,
   }),
 
   get: async (id: string) => unwrapEntity<DepartureDetail>(await client.get<unknown>(`/departures/${id}`)),
@@ -277,6 +343,44 @@ export const departuresApi = {
 
   bookingsPager: (departureId: string) =>
     new CursorPager<SeatBooking>((cursor, p) => client.get<unknown>(`/departures/${departureId}/bookings`, { params: { ...p, cursor } })),
+
+  /** The pickup, rooming or full list as data (the Manifest tab); CSV and PDF come from `downloadManifest`. */
+  manifest: async (id: string, view: ManifestView, bookings: 'all' | 'confirmed' = 'all') =>
+    unwrapEntity<Manifest>(await client.get<unknown>(`/departures/${id}/manifest`, { params: { view, format: 'json', bookings } })),
+
+  /** The manifest as a file. The server names it `<departure code>-<view>.<csv|pdf>`. */
+  downloadManifest: async (id: string, view: ManifestView, format: ManifestFormat, bookings: 'all' | 'confirmed' = 'all') =>
+    (await client.get<Blob>(`/departures/${id}/manifest`, { params: { view, format, bookings }, responseType: 'blob' })) as unknown as Blob,
+
+  /** Pairs of passengers who agreed to share a room; nothing is saved until `saveRooms`. */
+  roomSuggestions: async (id: string) => unwrapEntity<RoomSuggestion[]>(await client.get<unknown>(`/departures/${id}/rooms/suggestions`)),
+
+  saveRooms: async (id: string, assignments: Array<{ passengerId: string; roomGroup: string | null }>) =>
+    unwrapEntity<{ updated: number }>(await client.put<unknown>(`/departures/${id}/rooms`, { assignments })),
+
+  /** One coach trip per vehicle of the departure (needs the coach_trips feature). `replace` rebuilds trips that were made before. */
+  createTrips: async (id: string, replace = false) =>
+    unwrapEntity<{ created: boolean; trips: CoachTrip[] }>(await client.post<unknown>(`/departures/${id}/trips`, {}, { params: replace ? { replace: '1' } : undefined })),
+
+  /** The coach trips that were made from this departure. */
+  trips: async (id: string) => unwrapList<Partial<CoachTrip> & { id: string }>(await client.get<unknown>('/fleet/trips', { params: { departureId: id, limit: 50 } })).data,
+
+  /** Points the enquiry at a departure (or clears it) without holding seats. */
+  linkLead: async (leadId: string, departureId: string | null) =>
+    unwrapEntity<{ id: string; departureId: string | null }>(await client.put<unknown>(`/leads/${leadId}/departure`, { departureId })),
+
+  /** Points a quote at a departure with the seats it asks for (default: the lead's party size). */
+  linkQuote: async (itineraryId: string, departureId: string | null, seatsRequested?: number) =>
+    unwrapEntity<{ id: string; departureId: string | null; seatsRequested: number | null }>(
+      await client.put<unknown>(`/itineraries/${itineraryId}/departure`, { departureId, ...(seatsRequested ? { seatsRequested } : {}) }),
+    ),
+
+  /** Seats held and confirmed by one lead. */
+  leadBookings: async (leadId: string) => unwrapEntity<SeatBooking[]>(await client.get<unknown>(`/leads/${leadId}/seat-bookings`)),
+
+  /** Holds seats for a lead that already exists. */
+  holdForLead: async (leadId: string, departureId: string, seats: number) =>
+    unwrapEntity<SeatBooking>(await client.post<unknown>(`/leads/${leadId}/hold-seats`, { departureId, seats })),
 
   /** Holds seats (or joins the waitlist when the departure is full and the agency has one). */
   holdSeats: async (departureId: string, input: HoldSeatsInput) =>

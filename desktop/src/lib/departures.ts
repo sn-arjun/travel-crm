@@ -111,6 +111,12 @@ export function seatsTone(seats: SeatsSummary): 'success' | 'warning' | 'danger'
   return 'success';
 }
 
+/** The chip on a calendar entry, a lead and a quote: "12 left", "Waitlist 3" (full, with people waiting) or "Full". */
+export function seatsChipText(seats: SeatsSummary, t: TranslateFn = tEn): string {
+  if (seats.left > 0) return t('departures.chip.left', { left: seats.left });
+  return seats.waitlisted > 0 ? t('departures.chip.waitlist', { count: seats.waitlisted }) : t('departures.chip.full');
+}
+
 /** Widths (0..100) of the confirmed and held parts of a seats bar. */
 export function seatsBarParts(seats: SeatsSummary): { confirmed: number; held: number } {
   if (seats.capacity <= 0) return { confirmed: 0, held: 0 };

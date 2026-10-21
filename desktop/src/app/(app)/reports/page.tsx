@@ -5,7 +5,7 @@ import Link from 'next/link';
 import {
   TrendingUp, BarChart3, Users, Target, DollarSign,
   Truck, AlertCircle, ArrowUpRight, Activity,
-  PieChart, FileText, Search, Star, StarOff, History, X, Car, RefreshCw,
+  PieChart, FileText, Search, Star, StarOff, History, X, Car, RefreshCw, Ticket,
 } from 'lucide-react';
 
 import { PageContainer } from '@/components/layout/page-container';
@@ -14,6 +14,8 @@ import { formatReportCurrency } from '@/components/domain/reports/shared';
 import { useApiQuery } from '@/hooks/use-api';
 import { unwrapEntity } from '@/lib/api/envelope';
 import { reportsApi, type DashboardResponse } from '@/lib/api/reports';
+import { useGroupTours } from '@/hooks/use-group-tours';
+import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 interface ReportCategory {
@@ -25,7 +27,7 @@ interface ReportCategory {
   reportCount: number;
 }
 
-const reportCards: ReportCategory[] = [
+const baseReportCards: ReportCategory[] = [
   {
     id: 'sales',
     title: 'Sales Reports',
@@ -202,6 +204,8 @@ function writeIds(key: string, ids: string[]) {
 }
 
 export default function ReportsHub() {
+  const t = useT();
+  const groupTours = useGroupTours();
   const [search, setSearch] = React.useState('');
   const [favorites, setFavorites] = React.useState<string[]>([]);
   const [recentlyViewed, setRecentlyViewed] = React.useState<string[]>([]);
@@ -243,6 +247,17 @@ export default function ReportsHub() {
       return next;
     });
   };
+
+  // The Tours group shows only when the plan has group departures and the agency switched them on.
+  const reportCards: ReportCategory[] = React.useMemo(
+    () => [
+      ...baseReportCards,
+      ...(groupTours.enabled
+        ? [{ id: 'tours', title: t('reports.hub.toursTitle'), description: t('reports.hub.toursDescription'), icon: Ticket, href: '/reports/tours', reportCount: 3 }]
+        : []),
+    ],
+    [groupTours.enabled, t],
+  );
 
   const filteredCards = reportCards.filter((r) => {
     if (!search.trim()) return true;

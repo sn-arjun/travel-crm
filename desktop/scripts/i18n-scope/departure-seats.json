@@ -1,0 +1,7 @@
+[
+  "src/components/domain/departure-seats.tsx",
+  "src/hooks/use-departure-seats-live.ts",
+  "src/app/(app)/leads/[id]/_components",
+  "src/app/(app)/itineraries/[id]/_components",
+  "src/app/(app)/reports/tours"
+]

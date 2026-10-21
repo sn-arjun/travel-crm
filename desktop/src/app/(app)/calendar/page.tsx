@@ -36,6 +36,11 @@ import { toLocalDateString, toLocalDayKey } from '@/lib/dates';
 import { PageContainer } from '@/components/layout/page-container';
 import { chartColors } from '@/design-system/tokens';
 import { unwrapList, unwrapEntity } from '@/lib/api/envelope';
+import { DepartureQuickDrawer, DepartureSeatsChip } from '@/components/domain/departure-seats';
+import { useDepartureSeatsLive } from '@/hooks/use-departure-seats-live';
+import { useGroupTours } from '@/hooks/use-group-tours';
+import { useT } from '@/lib/i18n';
+import type { SeatsSummary } from '@/lib/api/departures';
 
 const DEFAULT_EVENT_COLOR = chartColors['chart-1'].light;
 
@@ -133,10 +138,11 @@ function getEventHourPosition(event: ReturnType<typeof normalizeEvent>) {
 
 // ─── Calendar Grid (Month View) ───
 function CalendarGrid({
-  year, month, onDateSelect, events, selectedDate, onEventDrop,
+  year, month, onDateSelect, events, selectedDate, onEventDrop, onDepartureOpen,
 }: {
   year: number; month: number;
   onDateSelect: (date: string) => void;
+  onDepartureOpen: (departureId: string) => void;
   events: ReturnType<typeof normalizeEvent>[];
   selectedDate: string | null;
   onEventDrop: (eventId: string, newDateStr: string) => void;
@@ -217,12 +223,20 @@ function CalendarGrid({
                   {dayEvents.slice(0, 3).map((event) => (
                     <div
                       key={event.id}
-                      draggable
+                      // A departure moves with its dates, not by dragging its calendar entry.
+                      draggable={!event.departure}
                       onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData('text/event-id', event.id); }}
-                      className={cn('cursor-grab truncate rounded-ds-sm px-ds-2 py-0.5 text-xs active:cursor-grabbing', getTypeConfig(event.type).bg)}
+                      onClick={event.departure ? (e) => { e.stopPropagation(); onDepartureOpen(event.departure!.id); } : undefined}
+                      className={cn(
+                        'truncate rounded-ds-sm px-ds-2 py-0.5 text-xs',
+                        event.departure ? 'flex cursor-pointer items-center justify-between gap-ds-1' : 'cursor-grab active:cursor-grabbing',
+                        getTypeConfig(event.type).bg,
+                      )}
                       title={event.title}
+                      data-testid={event.departure ? 'calendar-departure-event' : undefined}
                     >
-                      {event.title}
+                      <span className="truncate">{event.title}</span>
+                      {event.departure && <DepartureSeatsChip seats={event.departure.seats} />}
                     </div>
                   ))}
                   {dayEvents.length > 3 && (
@@ -307,11 +321,12 @@ function WeekView({
                   return (
                     <div
                       key={event.id}
-                      className={cn('text-xs px-1.5 py-0.5 rounded truncate cursor-pointer mb-0.5', cfg.bg)}
+                      className={cn('mb-0.5 flex cursor-pointer items-center justify-between gap-1 truncate rounded px-1.5 py-0.5 text-xs', cfg.bg)}
                       title={event.title}
                       onClick={() => onEventClick(event)}
                     >
-                      {event.title}
+                      <span className="truncate">{event.title}</span>
+                      {event.departure && <DepartureSeatsChip seats={event.departure.seats} />}
                     </div>
                   );
                 })}
@@ -382,8 +397,9 @@ function WeekView({
                       title={`${event.title}\n${formatLocaleTime(event.startTime, { hour: '2-digit', minute: '2-digit' })} - ${event.endTime ? formatLocaleTime(event.endTime, { hour: '2-digit', minute: '2-digit' }) : ''}`}
                       onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
                     >
-                      <div className="text-xs font-semibold truncate leading-tight">
-                        {event.title}
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="truncate text-xs font-semibold leading-tight">{event.title}</span>
+                        {event.departure && <DepartureSeatsChip seats={event.departure.seats} />}
                       </div>
                       {pos.height * ROW_HEIGHT > 30 && (
                         <div className="text-xs opacity-75 truncate">
@@ -448,10 +464,11 @@ function DayView({
             return (
               <div
                 key={event.id}
-                className={cn('text-xs px-2 py-1 rounded cursor-pointer', cfg.bg)}
+                className={cn('flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1 text-xs', cfg.bg)}
                 onClick={() => onEventClick(event)}
               >
-                {event.title}
+                <span className="truncate">{event.title}</span>
+                {event.departure && <DepartureSeatsChip seats={event.departure.seats} />}
               </div>
             );
           })}
@@ -506,7 +523,10 @@ function DayView({
                   title={event.title}
                   onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
                 >
-                  <div className="text-xs font-semibold truncate">{event.title}</div>
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="truncate text-xs font-semibold">{event.title}</span>
+                    {event.departure && <DepartureSeatsChip seats={event.departure.seats} />}
+                  </div>
                   {pos.height * ROW_HEIGHT > 36 && (
                     <div className="text-xs opacity-75 mt-0.5">
                       {formatLocaleTime(event.startTime, { hour: '2-digit', minute: '2-digit' })}
@@ -699,6 +719,11 @@ export default function CalendarPage() {
   const [editFormData, setEditFormData] = React.useState<EventFormData>(EMPTY_FORM);
   const [search, setSearch] = React.useState('');
   const [typeFilter, setTypeFilter] = React.useState<string>('');
+  // A group departure's entry opens its drawer; its seats redraw when the API announces a change.
+  const [drawerDeparture, setDrawerDeparture] = React.useState<string | null>(null);
+  const [liveSeats, setLiveSeats] = React.useState<Record<string, SeatsSummary>>({});
+  const { enabled: groupToursOn } = useGroupTours();
+  const t = useT();
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -738,9 +763,24 @@ export default function CalendarPage() {
   const rescheduleMutation = useApiMutation(({ id, data }: { id: string; data: { start_at: string; end_at?: string } }) => eventsApi.reschedule(id, data));
 
   const rawEvents = unwrapList<CalendarEvent>(eventsResp).data;
+
+  // Seats announced since the list was read are shown until the next read.
+  useDepartureSeatsLive((e) => {
+    if (e.seats) setLiveSeats((prev) => ({ ...prev, [e.departureId]: e.seats! }));
+  });
+  React.useEffect(() => setLiveSeats({}), [eventsResp]);
+
   const allEvents = React.useMemo(
-    () => rawEvents.map(normalizeEvent),
-    [rawEvents],
+    () =>
+      rawEvents.map((raw) => {
+        const e = normalizeEvent(raw);
+        // Seat chips show only when the plan has group departures and the agency switched them on.
+        if (!e.departure) return e;
+        if (!groupToursOn) return { ...e, departure: undefined };
+        const live = liveSeats[e.departure.id];
+        return live ? { ...e, departure: { ...e.departure, seats: live } } : e;
+      }),
+    [rawEvents, liveSeats, groupToursOn],
   );
 
   const events = React.useMemo(() => {
@@ -892,6 +932,10 @@ export default function CalendarPage() {
   };
 
   const handleEventClick = (event: typeof events[number]) => {
+    if (event.departure) {
+      setDrawerDeparture(event.departure.id);
+      return;
+    }
     // Set selected date to the event's date and open side panel
     const eventDate = toLocalDayKey(event.startTime || '');
     if (eventDate) {
@@ -1077,6 +1121,7 @@ export default function CalendarPage() {
             events={events}
             selectedDate={selectedDate}
             onEventDrop={handleEventDrop}
+            onDepartureOpen={setDrawerDeparture}
           />
         )}
 
@@ -1133,6 +1178,18 @@ export default function CalendarPage() {
                             {event.all_day ? <Badge variant="outline" className="text-xs">All Day</Badge> : null}
                           </div>
                           <h3 className="font-semibold text-sm">{event.title}</h3>
+                          {event.departure && (
+                            <div className="flex items-center gap-2">
+                              <DepartureSeatsChip seats={event.departure.seats} />
+                              <button
+                                type="button"
+                                className="text-xs text-primary hover:underline"
+                                onClick={() => setDrawerDeparture(event.departure!.id)}
+                              >
+                                {t('departures.calendar.openDeparture')}
+                              </button>
+                            </div>
+                          )}
                           {!event.all_day && event.startTime && (
                             <p className="text-xs text-muted-foreground flex items-center gap-1">
                               <Clock className="h-3 w-3" />
@@ -1192,6 +1249,8 @@ export default function CalendarPage() {
           )}
         </SheetContent>
       </Sheet>
+
+      <DepartureQuickDrawer departureId={drawerDeparture} onClose={() => setDrawerDeparture(null)} />
 
       {/* Create Event Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>

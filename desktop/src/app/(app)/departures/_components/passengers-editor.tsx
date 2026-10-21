@@ -16,8 +16,6 @@ import { TravellerCombobox } from './relation-pickers';
 export interface PassengerRow extends PassengerInput {
   _key: string;
   bandKey?: string | null;
-  seatNumber?: string | null;
-  documentsStatus?: Passenger['documentsStatus'];
 }
 
 let counter = 0;
@@ -45,19 +43,24 @@ export function rowFromPassenger(p: Passenger): PassengerRow {
     extraFields: (p.extraFields ?? {}) as PassengerInput['extraFields'],
     bandKey: p.bandKey,
     seatNumber: p.seatNumber,
+    roomGroup: p.roomGroup,
     documentsStatus: p.documentsStatus,
   };
 }
 
 /** The body of PUT /seat-bookings/:id/passengers for these rows. */
 export function inputsFromRows(rows: readonly PassengerRow[]): PassengerInput[] {
-  return rows.map(({ _key, bandKey: _b, seatNumber: _s, documentsStatus: _d, ...input }) => ({
+  return rows.map(({ _key, bandKey: _b, ...input }) => ({
     ...input,
     firstName: input.firstName.trim(),
     lastName: input.lastName.trim(),
+    // A seat number or room that was cleared is sent as null, so the API clears it; one never set is left out.
+    ...(input.seatNumber !== undefined && { seatNumber: input.seatNumber?.trim() || null }),
+    ...(input.roomGroup !== undefined && { roomGroup: input.roomGroup?.trim() || null }),
   }));
 }
 
+const DOCUMENT_STATUSES = ['unknown', 'provided', 'checked', 'problem'] as const;
 const BUILT_IN_EXTRA = ['nationality', 'documentType', 'documentNumber', 'documentExpiry', 'documentExpiry2'] as const;
 const EXTRA_DATE_KEYS: ReadonlySet<string> = new Set(['documentExpiry', 'documentExpiry2']);
 
@@ -93,7 +96,7 @@ function DateField({ value, onChange, disabled, label, from, to }: { value: stri
  * out from the date of birth (or the age) on the departure's first day; the API re-derives it with the agency's band list on
  * save. A traveller can be linked from the travellers list, or created from the booking on save.
  */
-export function PassengersEditor({ value, onChange, fields, roomTypes, stops, travelDate, preferredSeat, disabled }: PassengersEditorProps) {
+export function PassengersEditor({ value, onChange, fields, roomTypes, stops, travelDate, disabled }: PassengersEditorProps) {
   const t = useT();
   const pickups = stops.filter((s) => s.id && (s.kind === 'pickup' || s.kind === 'both' || !s.kind));
   const thisYear = new Date().getFullYear();
@@ -120,7 +123,6 @@ export function PassengersEditor({ value, onChange, fields, roomTypes, stops, tr
                 {row.documentsStatus && row.documentsStatus !== 'unknown' && (
                   <Tag tone={row.documentsStatus === 'problem' ? 'danger' : 'success'}>{t('departures.passengers.docs', { status: t(`departures.passengers.docsStatus.${row.documentsStatus}`) })}</Tag>
                 )}
-                {preferredSeat && row.seatNumber && <Tag>{t('departures.passengers.seat', { seat: row.seatNumber })}</Tag>}
               </div>
               <Button variant="ghost" size="icon-sm" aria-label={t('departures.passengers.remove')} disabled={disabled} onClick={() => onChange(value.filter((r) => r._key !== row._key))}>
                 <Trash2 aria-hidden="true" />
@@ -228,6 +230,27 @@ export function PassengersEditor({ value, onChange, fields, roomTypes, stops, tr
                   <Input id={`${id}-meal`} value={row.mealPreference ?? ''} disabled={disabled} onChange={(e) => patch(row._key, { mealPreference: e.target.value || null })} />
                 </div>
               )}
+
+              <div className="space-y-ds-1">
+                <Label htmlFor={`${id}-seat`}>{t('departures.passengers.seatNumber')}</Label>
+                <Input id={`${id}-seat`} value={row.seatNumber ?? ''} maxLength={20} disabled={disabled} onChange={(e) => patch(row._key, { seatNumber: e.target.value || null })} />
+              </div>
+
+              <div className="space-y-ds-1">
+                <Label htmlFor={`${id}-roomgroup`}>{t('departures.passengers.roomGroup')}</Label>
+                <Input id={`${id}-roomgroup`} value={row.roomGroup ?? ''} maxLength={40} disabled={disabled} onChange={(e) => patch(row._key, { roomGroup: e.target.value || null })} />
+              </div>
+
+              <div className="space-y-ds-1">
+                <Label htmlFor={`${id}-docs`}>{t('departures.passengers.documentsStatus')}</Label>
+                <SimpleSelect
+                  id={`${id}-docs`}
+                  value={row.documentsStatus ?? 'unknown'}
+                  onChange={(v) => patch(row._key, { documentsStatus: (v as PassengerInput['documentsStatus']) ?? 'unknown' })}
+                  disabled={disabled}
+                  options={DOCUMENT_STATUSES.map((s) => ({ value: s, label: t(`departures.passengers.docsStatus.${s}`) }))}
+                />
+              </div>
 
               {BUILT_IN_EXTRA.filter((k) => passengerFieldOn(fields, k)).map((k) => (
                 <div key={k} className="space-y-ds-1">

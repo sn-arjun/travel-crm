@@ -29,6 +29,7 @@ import { unwrapList } from '@/lib/api/envelope';
 import { formatDisplayDate, formatDisplayDateTime, toLocalDateString } from '@/lib/dates';
 import { Skeleton } from '@/components/ui';
 import { PageContainer } from '@/components/layout/page-container';
+import { DepartureCard } from './_components/departure-card';
 import {
   leadDestination, leadSourceLabel, passengerSummary, priorityLabel, tripTypeLabel, type LeadRow,
 } from '../lead-labels';
@@ -392,6 +393,14 @@ export default function LeadDetailPage() {
                 </div>
               </div>
             </SectionCard>
+
+            <DepartureCard
+              leadId={leadId}
+              departureId={lead.departureId ?? null}
+              destination={lead.destinations?.[0] ?? null}
+              partySize={(lead.paxAdults ?? 1) + (lead.paxChildren ?? 0)}
+              onChanged={refreshAll}
+            />
 
             <SectionCard title="Lead Details">
               <div className="grid gap-ds-6 sm:grid-cols-2">

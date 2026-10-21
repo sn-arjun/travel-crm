@@ -36,6 +36,7 @@ import {
 } from '@/components/communication/send-message-dialog';
 import { useAuthStore } from '@/stores/auth-store';
 import { getApiBaseUrl } from '@/lib/api/config';
+import { DeparturePanel } from './_components/departure-panel';
 
 /** Trip facts the itinerary borrows from its lead. */
 interface LeadTrip {
@@ -129,7 +130,7 @@ export default function ItineraryDetailPage() {
   const [cloneLoading, setCloneLoading] = React.useState(false);
   const [createVersionLoading, setCreateVersionLoading] = React.useState(false);
 
-  const { data: itinerary, loading, error } = useApiQuery(
+  const { data: itinerary, loading, error, refetch: refetchItinerary } = useApiQuery(
     () => itinerariesApi.getById(id).then(toItineraryDetail),
     [id],
   );
@@ -397,6 +398,13 @@ export default function ItineraryDetailPage() {
         {/* Itinerary Tab */}
         <TabsContent value="itinerary">
           <div className="max-w-4xl space-y-ds-4">
+            <DeparturePanel
+              itineraryId={id}
+              departure={itinerary.departure}
+              seats={itinerary.seats}
+              destination={Array.isArray(leadTrip?.destinations) ? leadTrip?.destinations[0] : undefined}
+              onChanged={() => void refetchItinerary({ silent: true })}
+            />
             <div className={cn('grid gap-ds-4', canSeeCost ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-2')}>
               <Card>
                 <CardContent>

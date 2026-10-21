@@ -1,3 +1,4 @@
+import type { DepartureSummary, QuoteSeats } from './departures';
 import { client, type ApiResponse, type PaginatedResponse } from './client';
 import { API_ENDPOINTS } from './config';
 import type { Itinerary } from '@travelcrm/shared';
@@ -133,6 +134,9 @@ export interface ItineraryDetail {
   days?: ItineraryDay[];
   lead?: { id?: string; title?: string; destination?: unknown } | null;
   contact?: ItineraryContact | null;
+  /** The group departure the quote is for and its seats; null when none is linked (R146). */
+  departure?: DepartureSummary | null;
+  seats?: QuoteSeats | null;
 }
 
 /** Message of a thrown `ApiError` (a plain `{ status, message }` object) or `Error`; `fallback` otherwise. */

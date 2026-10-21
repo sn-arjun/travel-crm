@@ -128,6 +128,9 @@ export async function buildManifest(db: D1Database, departureId: string, view: M
   const sharingOf = (r: Row): string => [toBool(r.share_ok) ? L('manifest.share.ok') : '', toBool(r.share_gender) ? L('manifest.share.sameGender') : ''].filter(Boolean).join(', ');
   const roomTypeOf = (r: Row): string => (r.room_type ? roomLabels.get(r.room_type) ?? r.room_type : '');
   const extras = (r: Row): Record<string, unknown> => parseJson<Record<string, unknown>>(r.extra_fields, {});
+  const stopNames = new Map(stops.map((s) => [s.id as string, s.name as string]));
+  /** Keys with an underscore are not columns: they let the screen filter any view by pickup point, room type and documents. */
+  const meta = (r: Row) => ({ _stop: r.pickup_stop_id ? stopNames.get(r.pickup_stop_id) ?? '' : '', _roomType: (r.room_type ?? '') as string, _documents: (r.documents_status ?? 'unknown') as string });
 
   let columns: ManifestColumn[];
   let groupLabel: string | null = null;
@@ -146,7 +149,7 @@ export async function buildManifest(db: D1Database, departureId: string, view: M
       const key = p.pickup_stop_id && stops.some((s) => s.id === p.pickup_stop_id) ? p.pickup_stop_id : '';
       byStop.set(key, [...(byStop.get(key) ?? []), p]);
     }
-    const rowFor = (p: Row) => ({ name: fullName(p), seats: p.booking_seats as number, phone: phoneOf(p), documents: docsLabel(p.documents_status) });
+    const rowFor = (p: Row) => ({ name: fullName(p), seats: p.booking_seats as number, phone: phoneOf(p), documents: docsLabel(p.documents_status), ...meta(p) });
     for (const s of stops) {
       const here = byStop.get(s.id) ?? [];
       // Waypoints and drop-offs with nobody boarding are not part of a pickup list.
@@ -171,7 +174,7 @@ export async function buildManifest(db: D1Database, departureId: string, view: M
       byRoom.set(key, [...(byRoom.get(key) ?? []), p]);
     }
     const rowFor = (p: Row) => ({
-      name: fullName(p), gender: genderLabel(p.gender), roomType: roomTypeOf(p), sharing: sharingOf(p), meal: p.meal_preference ?? '', notes: p.booking_room_notes ?? '',
+      name: fullName(p), gender: genderLabel(p.gender), roomType: roomTypeOf(p), sharing: sharingOf(p), meal: p.meal_preference ?? '', notes: p.booking_room_notes ?? '', ...meta(p),
     });
     for (const key of [...byRoom.keys()].filter((k) => k !== '').sort(naturalCompare)) {
       groups.push({ key, title: key, time: null, documentsCheck: false, rows: byRoom.get(key)!.map(rowFor) });
@@ -204,7 +207,6 @@ export async function buildManifest(db: D1Database, departureId: string, view: M
       { key: 'documents', label: L('manifest.col.documents') },
       ...agencyFields.map((f) => ({ key: `field:${f.key}`, label: f.label })),
     ];
-    const stopName = new Map(stops.map((s) => [s.id, s.name as string]));
     const today = dep.row.start_date as string;
     const rows = passengers.map((p) => {
       const fields = extras(p);
@@ -219,13 +221,14 @@ export async function buildManifest(db: D1Database, departureId: string, view: M
         dateOfBirth: p.date_of_birth ?? '',
         age: p.date_of_birth ? ageAt(p.date_of_birth, today) : p.age_years ?? '',
         band: p.band_key ?? '',
-        pickup: p.pickup_stop_id ? stopName.get(p.pickup_stop_id) ?? '' : '',
+        pickup: p.pickup_stop_id ? stopNames.get(p.pickup_stop_id) ?? '' : '',
         roomType: roomTypeOf(p),
         roomGroup: p.room_group ?? '',
         sharing: sharingOf(p),
         seatNumber: p.seat_number ?? '',
         meal: p.meal_preference ?? '',
         documents: docsLabel(p.documents_status),
+        ...meta(p),
       };
       for (const f of agencyFields) {
         let value: unknown = fields[f.key];

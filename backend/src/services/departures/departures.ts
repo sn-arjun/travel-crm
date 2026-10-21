@@ -112,6 +112,8 @@ export interface DepartureListFilters {
   to?: string;
   hasSeats?: 'true' | 'false' | '1' | '0';
   q?: string;
+  /** Part of the tour's destination (the lead page offers departures that go where the enquiry wants to go). */
+  destination?: string;
   cursor?: string;
   limit: number;
 }
@@ -127,6 +129,7 @@ export async function listDepartures(db: D1Database, f: DepartureListFilters) {
     const inUse = `COALESCE((SELECT SUM(sb.seats) FROM seat_bookings sb WHERE sb.departure_id = d.id AND sb.status IN ('held', 'confirmed')), 0)`;
     where.push(f.hasSeats === 'true' || f.hasSeats === '1' ? `d.capacity - ${inUse} > 0` : `d.capacity - ${inUse} <= 0`);
   }
+  if (f.destination) { where.push('t.destination LIKE ?'); binds.push(`%${f.destination}%`); }
   if (f.q) {
     where.push('(d.code LIKE ? OR t.code LIKE ? OR t.title LIKE ?)');
     binds.push(`%${f.q}%`, `%${f.q}%`, `%${f.q}%`);

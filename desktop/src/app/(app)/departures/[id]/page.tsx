@@ -3,12 +3,13 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { AlertCircle, ArrowLeft, FileText, Ticket } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Ticket } from 'lucide-react';
 
 import { PageContainer } from '@/components/layout/page-container';
 import {
-  Alert, AlertDescription, Button, PageHeader, SectionCard, Skeleton, Tabs, TabsContent, TabsList, TabsTrigger,
+  Alert, AlertDescription, Button, PageHeader, Skeleton, Tabs, TabsContent, TabsList, TabsTrigger,
 } from '@/components/ui';
+import { useDepartureSeatsLive } from '@/hooks/use-departure-seats-live';
 import { useGroupTours } from '@/hooks/use-group-tours';
 import { usePermission } from '@/hooks/use-permission';
 import { departuresApi, type DepartureDetail } from '@/lib/api/departures';
@@ -19,6 +20,8 @@ import { useLocale } from '@/lib/locale';
 import { useT } from '@/lib/i18n';
 import { BookingDrawer } from '../_components/booking-drawer';
 import { BookingsPanel } from '../_components/bookings-panel';
+import { CoachTripsButton } from '../_components/coach-trips-button';
+import { ManifestTab } from '../_components/manifest-tab';
 import { DepartureOverview } from '../_components/departure-overview';
 import { DepartureCostsTab, DeparturePricesTab, DepartureStopsTab } from '../_components/departure-data-tabs';
 import { HoldSeatsDialog } from '../_components/hold-seats-dialog';
@@ -80,6 +83,17 @@ export default function DepartureDetailPage() {
     };
   }, [tourId]);
 
+  // Seat bookings are made from other screens and other people's sessions: the API announces each change, and the window
+  // catches up when it is used again. The new seat counts show at once; the lists behind them are read after a short pause,
+  // so a burst of changes is one read.
+  const liveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  React.useEffect(() => () => { if (liveTimer.current) clearTimeout(liveTimer.current); }, []);
+  useDepartureSeatsLive((e) => {
+    if (e.seats) setDeparture((d) => (d ? { ...d, seats: e.seats! } : d));
+    if (liveTimer.current) clearTimeout(liveTimer.current);
+    liveTimer.current = setTimeout(() => { liveTimer.current = null; changed(); }, 300);
+  }, id);
+
   // Seat bookings are made from other screens and other people's sessions: catch up when the window is used again.
   React.useEffect(() => {
     const onFocus = () => changed();
@@ -132,6 +146,7 @@ export default function DepartureDetailPage() {
                 <Button variant="outline" size="sm">{t('departures.detail.openTour')}</Button>
               </Link>
             )}
+            <CoachTripsButton departure={departure} canEdit={canEdit} />
             {canEdit && (
               <Button size="sm" onClick={() => setHoldOpen(true)} disabled={!accepts} data-testid="hold-seats-header">
                 <Ticket aria-hidden="true" /> {t('departures.bookings.holdSeats')}
@@ -188,11 +203,7 @@ export default function DepartureDetailPage() {
         </TabsContent>
 
         <TabsContent value="manifest" className="pt-ds-4">
-          <SectionCard title={t('departures.manifest.title')} description={t('departures.manifest.description')}>
-            <Button variant="outline" disabled data-testid="manifest-placeholder">
-              <FileText aria-hidden="true" /> {t('departures.manifest.open')}
-            </Button>
-          </SectionCard>
+          <ManifestTab departure={departure} canEdit={canEdit} roomTypes={roomTypes} refreshKey={refreshKey} onChanged={() => setRefreshKey((k) => k + 1)} />
         </TabsContent>
       </Tabs>
 

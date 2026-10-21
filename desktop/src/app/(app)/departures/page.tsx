@@ -10,9 +10,12 @@ import { ListPage } from '@/components/domain';
 import type { ListFilter } from '@/components/domain';
 import { Button, DatePicker, Tag } from '@/components/ui';
 import type { DataTableColumn } from '@/components/ui';
+import { useDepartureSeatsLive } from '@/hooks/use-departure-seats-live';
 import { useGroupTours } from '@/hooks/use-group-tours';
 import { usePermission } from '@/hooks/use-permission';
-import { departuresApi, type Departure, type DepartureDetail, type DepartureStatus, type PassengerFieldDef, type RoomTypeDef } from '@/lib/api/departures';
+import {
+  departuresApi, type Departure, type DepartureDetail, type DepartureStatus, type PassengerFieldDef, type RoomTypeDef, type SeatsSummary,
+} from '@/lib/api/departures';
 import { toursApi } from '@/lib/api/tours';
 import { formatDisplayDate, parseLocalDate, toLocalDateString } from '@/lib/dates';
 import {
@@ -48,6 +51,12 @@ export default function DeparturesPage() {
   const [holdOpen, setHoldOpen] = React.useState(false);
   const pager = React.useMemo(() => departuresApi.pager(), []);
   const refresh = React.useCallback(() => setRefreshKey((k) => k + 1), []);
+  // Seats announced by the API since the list was read: the bars redraw without reading the list again.
+  const [liveSeats, setLiveSeats] = React.useState<Record<string, SeatsSummary>>({});
+  useDepartureSeatsLive((e) => {
+    if (e.seats) setLiveSeats((prev) => ({ ...prev, [e.departureId]: e.seats! }));
+  });
+  React.useEffect(() => setLiveSeats({}), [refreshKey]);
 
   const activeFilters = React.useMemo<ListFilter[]>(() => {
     const f: ListFilter[] = [];
@@ -96,7 +105,11 @@ export default function DeparturesPage() {
       ),
     },
     { key: 'status', header: t('departures.columns.status'), cell: (d) => <Tag tone={departureStatusTone(d.status)}>{departureStatusLabel(d.status, t)}</Tag> },
-    { key: 'seats', header: t('departures.columns.seats'), minWidth: 'min-w-48', cell: (d) => (d.seats ? <SeatsBar seats={d.seats} /> : null) },
+    { key: 'seats', header: t('departures.columns.seats'), minWidth: 'min-w-48', cell: (d) => {
+        const seats = liveSeats[d.id] ?? d.seats;
+        return seats ? <SeatsBar seats={seats} /> : null;
+      },
+    },
   ];
 
   return (

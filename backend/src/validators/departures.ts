@@ -205,6 +205,7 @@ export const departureListSchema = z.object({
   to: dateStr.optional(),
   hasSeats: z.enum(['true', 'false', '1', '0']).optional(),
   q: z.string().max(100).optional(),
+  destination: z.string().max(100).optional(),
   cursor: z.string().max(300).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),
 });

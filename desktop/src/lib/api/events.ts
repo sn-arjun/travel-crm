@@ -1,3 +1,4 @@
+import type { DepartureSummary } from './departures';
 import { client, type ApiResponse, type PaginatedResponse } from './client';
 import { API_ENDPOINTS } from './config';
 
@@ -32,6 +33,9 @@ export interface CalendarEvent {
   leadId?: string | null;
   lead_title?: string | null;
   related_task_id?: string | null;
+  /** Set on the calendar entry of a group departure (R146): the departure and its seats, from the API. */
+  related_departure_id?: string | null;
+  departure?: DepartureSummary;
   assigned_to?: string | null;
   assignee_name?: string | null;
   created_by: string;

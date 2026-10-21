@@ -22,6 +22,7 @@ import {
   nextStatuses,
   seatsBarParts,
   seatsBreakdown,
+  seatsChipText,
   seatsText,
   seatsTone,
   STATUS_TRANSITIONS,
@@ -53,6 +54,14 @@ const settings = (): GroupToursSettings => ({
   deposit: { type: 'none', value: null },
   publicBooking: { requireTerms: true, termsText: '', marketingOptIn: true },
   driverSeesPassengers: false,
+});
+
+describe('seats chip', () => {
+  it('shows the seats left, the waitlist when full with people waiting, or Full', () => {
+    expect(seatsChipText(seats(40, 8, 20))).toBe('12 left');
+    expect(seatsChipText(seats(10, 3, 7, 3))).toBe('Waitlist 3');
+    expect(seatsChipText(seats(10, 3, 7))).toBe('Full');
+  });
 });
 
 describe('seats text', () => {

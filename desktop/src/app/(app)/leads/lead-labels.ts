@@ -9,6 +9,8 @@ export type LeadRow = Lead & {
   assignedUser?: { name?: string | null } | null;
   assignedToName?: string | null;
   notes?: string;
+  /** The group departure the enquiry is about (R146). */
+  departureId?: string | null;
 };
 
 export function leadDestination(lead: Pick<LeadRow, 'destinations' | 'destination'>): string {
