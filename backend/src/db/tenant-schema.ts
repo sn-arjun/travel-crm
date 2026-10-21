@@ -405,6 +405,8 @@ export const invoices = sqliteTable('invoices', {
   paymentLinkUrl: text('payment_link_url'),
   paymentLinkGateway: text('payment_link_gateway'), // razorpay, stripe
   paymentLinkStatus: text('payment_link_status'), // created, paid, expired, cancelled
+  paymentLinkAmount: real('payment_link_amount'), // what the current link collects: a deposit, the balance or a custom amount (R142)
+  paymentLinkPurpose: text('payment_link_purpose'), // deposit, balance, custom
   createdBy: text('created_by').references(() => users.id),
   createdAt: text('created_at').default(timestamp),
   updatedAt: text('updated_at').default(timestamp),
@@ -2600,7 +2602,7 @@ export const assistantMessageAnalysis = sqliteTable('assistant_message_analysis'
 // R207: the agency's own Razorpay or Stripe account. Secrets are sealed (crypto-box) and never returned.
 export const paymentGatewayAccounts = sqliteTable('payment_gateway_accounts', {
   id: text('id').primaryKey(),
-  gateway: text('gateway').notNull(), // razorpay, stripe
+  gateway: text('gateway').notNull(), // razorpay, stripe, mock (test gateway, local only)
   mode: text('mode').notNull().default('test'), // test, live
   keyId: text('key_id'),
   secretEnc: text('secret_enc'),

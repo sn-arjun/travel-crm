@@ -17,6 +17,8 @@ import { loadLocaleContext, validateLocaleSettings } from '../utils/money';
 import { isUiLanguage, UI_LANGUAGES } from '../i18n';
 import { DEFAULT_VAT_RATES, loadTaxSettings, normalizeCountry } from '../services/tax-calculator';
 import { normalizeBankDetails, validateBankDetails } from '../utils/bank-details';
+import { loadPaymentDefaults, normalizePaymentDefaults, PAYMENT_DEFAULTS_KEY } from '../services/payments/accounts';
+import { STRIPE_METHOD_CURRENCIES } from '../services/payments/agency-gateway';
 
 const settingsRoutes = new Hono<AppContext>();
 
@@ -464,6 +466,56 @@ settingsRoutes.get('/invoice-defaults', async (c) => {
   }
 
   return success(c, result);
+});
+
+// ============================================================
+// GET / PUT /payment-defaults — Deposit, Stripe methods and bank reference for payment links (R142, design 4.3)
+// ============================================================
+
+settingsRoutes.get('/payment-defaults', async (c) => {
+  return success(c, await loadPaymentDefaults(c.get('tenantDb')));
+});
+
+const paymentDefaultsSchema = z.object({
+  deposit: z
+    .object({
+      type: z.enum(['none', 'percent', 'fixed']),
+      value: z.number().positive().nullable().optional(),
+    })
+    .refine((d) => d.type === 'none' || (typeof d.value === 'number' && d.value > 0), { message: 'Enter the deposit amount' })
+    .refine((d) => d.type !== 'percent' || (d.value ?? 0) <= 100, { message: 'A deposit percentage cannot be above 100' })
+    .optional(),
+  // null or an empty list = Stripe's dynamic payment methods.
+  stripeMethodTypes: z.array(z.enum(Object.keys(STRIPE_METHOD_CURRENCIES) as [string, ...string[]])).nullable().optional(),
+  bankReference: z.string().trim().min(1).max(80).optional(),
+});
+
+settingsRoutes.put('/payment-defaults', rbac(['admin']), zValidator('json', paymentDefaultsSchema), async (c) => {
+  const db = drizzle(c.get('tenantDb'));
+  const userId = c.get('userId');
+  const body = c.req.valid('json');
+  const current = await loadPaymentDefaults(c.get('tenantDb'));
+  const next = normalizePaymentDefaults({
+    deposit: body.deposit ? { type: body.deposit.type, value: body.deposit.type === 'none' ? null : body.deposit.value } : current.deposit,
+    stripeMethodTypes: body.stripeMethodTypes === undefined ? current.stripeMethodTypes : body.stripeMethodTypes,
+    bankReference: body.bankReference ?? current.bankReference,
+  });
+  const value = JSON.stringify(next);
+  const now = new Date().toISOString();
+  const [existing] = await db.select().from(settings).where(eq(settings.key, PAYMENT_DEFAULTS_KEY)).limit(1);
+  if (existing) {
+    await db.update(settings).set({ value, updatedBy: userId, updatedAt: now }).where(eq(settings.key, PAYMENT_DEFAULTS_KEY));
+  } else {
+    await db.insert(settings).values({ key: PAYMENT_DEFAULTS_KEY, value, updatedBy: userId, updatedAt: now });
+  }
+  await logActivity(db, {
+    userId,
+    action: 'update_settings',
+    entityType: 'settings',
+    details: JSON.stringify({ key: PAYMENT_DEFAULTS_KEY }),
+    ipAddress: c.get('clientIp'),
+  });
+  return success(c, next);
 });
 
 // ============================================================

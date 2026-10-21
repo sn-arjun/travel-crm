@@ -17,9 +17,10 @@ import { broadcastToTenant } from '../utils/realtime';
 import { tenantToday, tenantTimeZone, sqlOffsetModifier } from '../utils/tz';
 import { formatMoney, loadLocaleContext } from '../utils/money';
 import { agencyEmailHtml, escapeHtml, queueAgencyEmail, textToHtml } from '../services/mail/delivery';
-import { cancelPaymentLink, createPaymentLink, type AgencyGatewayId } from '../services/payments/agency-gateway';
-import { isCredentialError, listAccounts, openCredentials, type AccountRow } from '../services/payments/accounts';
-import { GatewayError } from '../services/billing/gateway';
+import { cancelPaymentLink, createPaymentLink, stripeMethodsError, type AgencyGatewayId } from '../services/payments/agency-gateway';
+import { depositAmount, isCredentialError, listAccounts, loadPaymentDefaults, openCredentials, webhookKeyFor, type AccountRow } from '../services/payments/accounts';
+import { createMockPaymentLink } from '../services/payments/mock-agency';
+import { GatewayError, mockAllowed } from '../services/billing/gateway';
 import { loadAgencyBankDetails } from '../utils/bank-details';
 
 const invoiceRoutes = new Hono<AppContext>();
@@ -344,6 +345,7 @@ invoiceRoutes.get('/:id', async (c) => {
           i.issue_date, i.terms,
           i.paid_amount, i.balance_due, i.notes, i.bank_details, i.created_by,
           i.payment_link_id, i.payment_link_url, i.payment_link_status, i.payment_link_gateway,
+          i.payment_link_amount, i.payment_link_purpose,
           i.created_at, i.updated_at,
           c.name as contact_name, c.email as contact_email, c.phone as contact_phone
         FROM invoices i
@@ -909,15 +911,20 @@ Please find your invoice below.`) +
 // customer goes through the Communication Hub (SendMessageDialog), never mailto: or wa.me.
 
 const paymentLinkSchema = z.object({
-  gateway: z.enum(['razorpay', 'stripe']).optional(),
+  gateway: z.enum(['razorpay', 'stripe', 'mock']).optional(),
+  // R142: omitted = the balance due. purpose 'deposit' uses the agency's deposit default (Settings > Invoice defaults)
+  // unless an amount is given; 'custom' needs an amount.
+  amount: z.number().positive().optional(),
+  purpose: z.enum(['deposit', 'balance', 'custom']).optional(),
 });
 
 /** The gateway to use: the one asked for, else Razorpay for rupees and Stripe for everything else, else whatever is connected. */
-function pickGateway(accounts: AccountRow[], currency: string, asked?: AgencyGatewayId): AccountRow | null {
-  const active = accounts.filter((a) => a.is_active && a.secret_enc);
+function pickGateway(accounts: AccountRow[], currency: string, asked?: AgencyGatewayId, allowMock = false): AccountRow | null {
+  // The test gateway is a candidate only where it is allowed, and only when asked for or when it is all that is connected.
+  const active = accounts.filter((a) => a.is_active && (a.gateway === 'mock' ? allowMock : a.secret_enc));
   if (asked) return active.find((a) => a.gateway === asked) ?? null;
   const preferred = currency.toUpperCase() === 'INR' ? 'razorpay' : 'stripe';
-  return active.find((a) => a.gateway === preferred) ?? active[0] ?? null;
+  return active.find((a) => a.gateway === preferred) ?? active.find((a) => a.gateway !== 'mock') ?? active[0] ?? null;
 }
 
 invoiceRoutes.post('/:id/payment-link', zValidator('json', paymentLinkSchema), async (c) => {
@@ -931,13 +938,13 @@ invoiceRoutes.post('/:id/payment-link', zValidator('json', paymentLinkSchema), a
 
   const invoice = await tenantDb
     .prepare(
-      `SELECT i.id, i.invoice_number, i.status, i.currency, i.balance_due, i.payment_link_id, i.payment_link_status, i.payment_link_gateway,
+      `SELECT i.id, i.invoice_number, i.status, i.currency, i.total, i.balance_due, i.payment_link_id, i.payment_link_status, i.payment_link_gateway,
               c.name as contact_name, c.email as contact_email, c.phone as contact_phone
        FROM invoices i LEFT JOIN contacts c ON i.contact_id = c.id WHERE i.id = ?1`,
     )
     .bind(invoiceId)
     .first<{
-      id: string; invoice_number: string; status: string; currency: string | null; balance_due: number;
+      id: string; invoice_number: string; status: string; currency: string | null; total: number; balance_due: number;
       payment_link_id: string | null; payment_link_status: string | null; payment_link_gateway: string | null;
       contact_name: string | null; contact_email: string | null; contact_phone: string | null;
     }>();
@@ -947,26 +954,56 @@ invoiceRoutes.post('/:id/payment-link', zValidator('json', paymentLinkSchema), a
   }
 
   const currency = invoice.currency || (await loadLocaleContext(tenantDb)).currency;
+  const body = c.req.valid('json');
+  if (body.gateway === 'mock' && !mockAllowed(c.env)) return error(c, 'The test gateway is not available in production', 400, { code: 'MOCK_NOT_ALLOWED' });
+
+  // The amount this link collects (R142): a deposit, the balance or a custom amount, never more than is owed.
+  const purpose = body.purpose ?? (body.amount !== undefined ? 'custom' : 'balance');
+  const defaults = await loadPaymentDefaults(tenantDb);
+  let linkAmount: number | null;
+  if (body.amount !== undefined) linkAmount = body.amount;
+  else if (purpose === 'deposit') linkAmount = depositAmount(defaults, invoice.total, invoice.balance_due);
+  else if (purpose === 'custom') linkAmount = null;
+  else linkAmount = invoice.balance_due;
+  if (linkAmount === null) {
+    return error(c, purpose === 'custom' ? 'Enter the amount to collect' : 'No deposit is set. Set one in Settings > Invoice defaults, or enter an amount', 400, { code: 'AMOUNT_REQUIRED' });
+  }
+  linkAmount = Math.round(linkAmount * 100) / 100;
+  if (!(linkAmount > 0)) return error(c, 'The amount must be more than zero', 400, { code: 'AMOUNT_INVALID' });
+  if (linkAmount > Math.round(invoice.balance_due * 100) / 100) {
+    return error(c, 'The amount cannot be more than the balance due', 400, { code: 'AMOUNT_ABOVE_BALANCE' });
+  }
+
   const accounts = await listAccounts(tenantDb);
-  const account = pickGateway(accounts, currency, c.req.valid('json').gateway);
+  const account = pickGateway(accounts, currency, body.gateway, mockAllowed(c.env));
   if (!account) {
     return error(c, 'Connect Razorpay or Stripe in Settings > Integrations to create payment links', 409, { code: 'NO_GATEWAY' });
   }
 
-  let creds;
-  try {
-    creds = await openCredentials(c.env, account);
-  } catch (e) {
-    if (isCredentialError(e)) return error(c, 'Stored gateway keys cannot be opened; enter them again in Settings > Integrations', 503, { code: 'CREDENTIALS_UNAVAILABLE' });
-    throw e;
+  // Stripe: dynamic payment methods unless the agency chose a list; the list must fit the currency.
+  const stripeMethods = account.gateway === 'stripe' ? defaults.stripeMethodTypes : null;
+  if (stripeMethods) {
+    const problem = stripeMethodsError(stripeMethods, currency);
+    if (problem) return error(c, problem, 400, { code: 'PAYMENT_METHOD_CURRENCY' });
   }
-  if (!creds) return error(c, 'No gateway keys saved', 409, { code: 'NO_GATEWAY' });
+
+  let creds = null;
+  if (account.gateway !== 'mock') {
+    try {
+      creds = await openCredentials(c.env, account);
+    } catch (e) {
+      if (isCredentialError(e)) return error(c, 'Stored gateway keys cannot be opened; enter them again in Settings > Integrations', 503, { code: 'CREDENTIALS_UNAVAILABLE' });
+      throw e;
+    }
+    if (!creds) return error(c, 'No gateway keys saved', 409, { code: 'NO_GATEWAY' });
+  }
 
   // One live link per invoice: stop the previous one so it cannot be paid as well as the new one.
   if (invoice.payment_link_id && invoice.payment_link_status === 'created') {
     const previous = accounts.find((a) => a.gateway === invoice.payment_link_gateway);
     try {
-      const old = previous ? await openCredentials(c.env, previous) : null;
+      // A test-gateway link needs no cancelling at a provider: the new link id replaces it on the invoice.
+      const old = previous && previous.gateway !== 'mock' ? await openCredentials(c.env, previous) : null;
       if (old) await cancelPaymentLink(old, invoice.payment_link_id);
     } catch {
       // keys unreadable: the new link still replaces it in the CRM
@@ -974,17 +1011,28 @@ invoiceRoutes.post('/:id/payment-link', zValidator('json', paymentLinkSchema), a
   }
 
   let link;
+  const linkParams = {
+    linkRef: generateId(),
+    invoiceId,
+    invoiceNumber: invoice.invoice_number,
+    amount: linkAmount,
+    currency,
+    customerName: invoice.contact_name,
+    customerEmail: invoice.contact_email,
+    customerPhone: invoice.contact_phone,
+    purpose,
+    ...(stripeMethods ? { paymentMethodTypes: stripeMethods } : {}),
+  };
   try {
-    link = await createPaymentLink(creds, {
-      linkRef: generateId(),
-      invoiceId,
-      invoiceNumber: invoice.invoice_number,
-      amount: invoice.balance_due,
-      currency,
-      customerName: invoice.contact_name,
-      customerEmail: invoice.contact_email,
-      customerPhone: invoice.contact_phone,
-    });
+    if (account.gateway === 'mock') {
+      // The link points at this API's own pay page, built from its public address like the subscription mock checkout.
+      const tenantId = c.get('tenantId');
+      const tenantKey = (await webhookKeyFor(c.env, tenantId, true))!;
+      const base = c.env.API_PUBLIC_URL?.trim() || new URL(c.req.url).origin;
+      link = await createMockPaymentLink(c.env, tenantId, tenantKey, base, linkParams);
+    } else {
+      link = await createPaymentLink(creds!, linkParams);
+    }
   } catch (e) {
     if (e instanceof GatewayError) return error(c, `${account.gateway === 'razorpay' ? 'Razorpay' : 'Stripe'}: ${e.message}`, 502, { code: 'GATEWAY_ERROR' });
     throw e;
@@ -993,16 +1041,16 @@ invoiceRoutes.post('/:id/payment-link', zValidator('json', paymentLinkSchema), a
   const now = new Date().toISOString();
   await tenantDb
     .prepare(
-      `UPDATE invoices SET payment_link = ?1, payment_link_id = ?2, payment_link_url = ?1, payment_link_status = 'created', payment_link_gateway = ?5, updated_at = ?3 WHERE id = ?4`,
+      `UPDATE invoices SET payment_link = ?1, payment_link_id = ?2, payment_link_url = ?1, payment_link_status = 'created', payment_link_gateway = ?5, payment_link_amount = ?6, payment_link_purpose = ?7, updated_at = ?3 WHERE id = ?4`,
     )
-    .bind(link.url, link.id, now, invoiceId, account.gateway)
+    .bind(link.url, link.id, now, invoiceId, account.gateway, linkAmount, purpose)
     .run();
   await logActivity(drizzle(tenantDb), {
     userId,
     action: 'payment_link_created',
     entityType: 'invoice',
     entityId: invoiceId,
-    details: JSON.stringify({ gateway: account.gateway, mode: account.mode, linkId: link.id, amount: invoice.balance_due, currency }),
+    details: JSON.stringify({ gateway: account.gateway, mode: account.mode, linkId: link.id, amount: linkAmount, purpose, currency }),
   });
 
   return created(c, {
@@ -1012,7 +1060,9 @@ invoiceRoutes.post('/:id/payment-link', zValidator('json', paymentLinkSchema), a
     linkId: link.id,
     url: link.url,
     status: 'created',
-    amount: invoice.balance_due,
+    amount: linkAmount,
+    purpose,
+    balanceDue: invoice.balance_due,
     currency,
   });
 });

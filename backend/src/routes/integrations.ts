@@ -22,6 +22,7 @@ import { CredentialsKeyMissing, hashApiKey } from '../utils/crypto-box';
 import { success, created, error, notFound } from '../utils/response';
 import { normalizeAddress } from '../services/inbound/ingest';
 import { isAgencyGateway, testConnection } from '../services/payments/agency-gateway';
+import { mockAllowed } from '../services/billing/gateway';
 import {
   isCredentialError, listAccounts, loadAccount, openCredentials, seal, secretAad, webhookKeyFor, webhookSecretAad, webhookUrl,
   type AccountRow,
@@ -202,12 +203,15 @@ integrationRoutes.delete('/api-keys/:id', async (c) => {
 //   PUT    /integrations/payment-gateways/:gateway      connect or update (keys pasted by the agency)
 //   POST   /integrations/payment-gateways/:gateway/test "Test connection" (an authenticated read at the gateway)
 //   DELETE /integrations/payment-gateways/:gateway      disconnect
+// R142: 'mock' is the test gateway (local and test stacks only, mockAllowed): connecting it stores an account with no secrets;
+// in production it is refused with a 400. GET reports mockAvailable so the page shows the test card only where it works.
 // The webhook URL to paste into the gateway's dashboard is returned with each account.
 
 const keyField = z.string().trim().min(8).max(200);
 
 const connectGatewaySchema = z.object({
-  mode: z.enum(['test', 'live']),
+  // Required for Razorpay and Stripe; the test gateway is always 'test'.
+  mode: z.enum(['test', 'live']).optional(),
   keyId: z.string().trim().min(3).max(120).optional(),
   keySecret: keyField.optional(),
   webhookSecret: keyField.optional(),
@@ -235,7 +239,9 @@ function accountView(c: Context<AppContext>, row: AccountRow, key: string | null
 integrationRoutes.get('/payment-gateways', async (c) => {
   const rows = await listAccounts(c.get('tenantDb'));
   const key = rows.length ? await webhookKeyFor(c.env, c.get('tenantId'), true) : null;
-  return success(c, { accounts: rows.map((row) => accountView(c, row, key)) });
+  // A test account left over from a local stack is not offered in production.
+  const visible = mockAllowed(c.env) ? rows : rows.filter((row) => row.gateway !== 'mock');
+  return success(c, { accounts: visible.map((row) => accountView(c, row, key)), mockAvailable: mockAllowed(c.env) });
 });
 
 integrationRoutes.put('/payment-gateways/:gateway', zValidator('json', connectGatewaySchema), async (c) => {
@@ -243,16 +249,33 @@ integrationRoutes.put('/payment-gateways/:gateway', zValidator('json', connectGa
   if (!isAgencyGateway(gateway)) return notFound(c, 'Payment gateway');
   const body = c.req.valid('json');
   const db = c.get('tenantDb');
+
+  if (gateway === 'mock') {
+    if (!mockAllowed(c.env)) return error(c, 'The test gateway is not available in production', 400, { code: 'MOCK_NOT_ALLOWED' });
+    const found = await loadAccount(db, 'mock');
+    if (found) {
+      await db.prepare('UPDATE payment_gateway_accounts SET is_active = ?, updated_at = ? WHERE id = ?').bind(body.isActive === false ? 0 : 1, new Date().toISOString(), found.id).run();
+    } else {
+      await db
+        .prepare(`INSERT INTO payment_gateway_accounts (id, gateway, mode, key_id, secret_enc, secret_last4, webhook_secret_enc, is_active) VALUES (?, 'mock', 'test', NULL, NULL, NULL, NULL, ?)`)
+        .bind(generateId(), body.isActive === false ? 0 : 1)
+        .run();
+    }
+    const key = await webhookKeyFor(c.env, c.get('tenantId'), true);
+    return success(c, accountView(c, (await loadAccount(db, 'mock'))!, key));
+  }
+  if (!body.mode) return error(c, 'Choose test or live mode', 400);
+  const mode = body.mode;
   const existing = await loadAccount(db, gateway);
 
   const keyId = body.keyId ?? existing?.key_id ?? null;
   if (gateway === 'razorpay') {
     if (!keyId) return error(c, 'Enter the Razorpay key id', 400);
     if (!/^rzp_(test|live)_/.test(keyId)) return error(c, 'A Razorpay key id starts with rzp_test_ or rzp_live_', 400);
-    if (keyId.startsWith('rzp_live_') !== (body.mode === 'live')) return error(c, `This key id is for ${body.mode === 'live' ? 'test' : 'live'} mode`, 400);
+    if (keyId.startsWith('rzp_live_') !== (mode === 'live')) return error(c, `This key id is for ${mode === 'live' ? 'test' : 'live'} mode`, 400);
   } else if (body.keySecret) {
     if (!/^(sk|rk)_(test|live)_/.test(body.keySecret)) return error(c, 'A Stripe secret key starts with sk_test_, sk_live_ or rk_', 400);
-    if (/_live_/.test(body.keySecret) !== (body.mode === 'live')) return error(c, `This key is for ${body.mode === 'live' ? 'test' : 'live'} mode`, 400);
+    if (/_live_/.test(body.keySecret) !== (mode === 'live')) return error(c, `This key is for ${mode === 'live' ? 'test' : 'live'} mode`, 400);
   }
   if (!existing?.secret_enc && !body.keySecret) return error(c, 'Enter the secret key', 400);
   if (body.webhookSecret && gateway === 'stripe' && !body.webhookSecret.startsWith('whsec_')) {
@@ -270,14 +293,14 @@ integrationRoutes.put('/payment-gateways/:gateway', zValidator('json', connectGa
         .prepare(
           `UPDATE payment_gateway_accounts SET mode = ?, key_id = ?, secret_enc = ?, secret_last4 = ?, webhook_secret_enc = ?, is_active = ?, updated_at = ? WHERE id = ?`,
         )
-        .bind(body.mode, keyId, secretEnc, secretLast4, webhookEnc, active, new Date().toISOString(), id)
+        .bind(mode, keyId, secretEnc, secretLast4, webhookEnc, active, new Date().toISOString(), id)
         .run();
     } else {
       await db
         .prepare(
           `INSERT INTO payment_gateway_accounts (id, gateway, mode, key_id, secret_enc, secret_last4, webhook_secret_enc, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .bind(id, gateway, body.mode, keyId, secretEnc, secretLast4, webhookEnc, active)
+        .bind(id, gateway, mode, keyId, secretEnc, secretLast4, webhookEnc, active)
         .run();
     }
   } catch (e) {
@@ -296,6 +319,10 @@ integrationRoutes.post('/payment-gateways/:gateway/test', async (c) => {
   const db = c.get('tenantDb');
   const row = await loadAccount(db, gateway);
   if (!row) return notFound(c, 'Payment gateway');
+  if (gateway === 'mock') {
+    if (!mockAllowed(c.env)) return error(c, 'The test gateway is not available in production', 400, { code: 'MOCK_NOT_ALLOWED' });
+    return success(c, { ok: true, message: 'Test gateway: no provider is contacted' });
+  }
   let creds;
   try {
     creds = await openCredentials(c.env, row);

@@ -16,7 +16,8 @@ import { handleQueue } from '../src/queues/index';
 const testEnv = env as any;
 const TENANT_ID = '00000000-0000-0000-0000-000000000000';
 const ADMIN_EMAIL = 'admin@e2e.test';
-// Production-like for the event webhook: only a genuinely signed event passes.
+// Production-like for the event webhook: only a genuinely signed event passes. The queue consumers also run with it (R142): in
+// TEST_MODE agency mail goes to the local outbox and never reaches SendGrid, and these tests assert what reaches SendGrid.
 const strict = { ...testEnv, TEST_MODE: 'false' };
 
 let admin = '';
@@ -77,7 +78,7 @@ function fakeSendGrid() {
 async function drain(): Promise<void> {
   const jobs = queued.splice(0);
   for (const body of jobs) {
-    await handleQueue({ queue: 'travelcrm-email-queue', messages: [{ body, ack() {}, retry() { throw new Error(`queue retried: ${JSON.stringify(body).slice(0, 200)}`); } }] } as any, testEnv);
+    await handleQueue({ queue: 'travelcrm-email-queue', messages: [{ body, ack() {}, retry() { throw new Error(`queue retried: ${JSON.stringify(body).slice(0, 200)}`); } }] } as any, strict);
   }
 }
 
@@ -222,7 +223,7 @@ describe('email delivery bugs (R128)', () => {
       // marketing campaign recipient (campaign-queue sends it directly)
       await sql(`INSERT INTO marketing_campaigns (id, name, type, status, email_subject, message_body) VALUES ('r128-mc', 'R128 marketing', 'email', 'sending', 'Offer', '<p>Offer</p>')`).run();
       await sql(`INSERT INTO campaign_recipients (id, campaign_id, contact_id, email, status) VALUES ('r128-mr', 'r128-mc', ?, 'hub-r128@example.com', 'pending')`, contactId).run();
-      await handleQueue({ queue: 'travelcrm-campaign-queue', messages: [{ body: { type: 'email_campaign', data: { campaignId: 'r128-mc', tenantId: TENANT_ID, campaignType: 'email' } }, ack() {}, retry() { throw new Error('retried'); } }] } as any, { ...testEnv, CAMPAIGN_QUEUE: { send: async () => {} } });
+      await handleQueue({ queue: 'travelcrm-campaign-queue', messages: [{ body: { type: 'email_campaign', data: { campaignId: 'r128-mc', tenantId: TENANT_ID, campaignType: 'email' } }, ack() {}, retry() { throw new Error('retried'); } }] } as any, { ...strict, CAMPAIGN_QUEUE: { send: async () => {} } });
       const rec = await one('SELECT status, message_id FROM campaign_recipients WHERE id = ?', 'r128-mr');
       expect(rec.status).toBe('sent');
       expect(rec.message_id).toBe(sent[1].messageId);

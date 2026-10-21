@@ -1086,5 +1086,17 @@ export const TENANT_MIGRATIONS: BundledMigration[] = [
       "CREATE INDEX IF NOT EXISTS leads_departure_idx ON leads(departure_id)",
       "CREATE INDEX IF NOT EXISTS events_related_departure_idx ON events(related_departure_id)"
     ]
+  },
+  {
+    "name": "0058_payment_link_amounts.sql",
+    "queries": [
+      "-- R142: deposit, balance and custom amounts on a payment link, and the test gateway for agency links.\n--\n-- An invoice remembers the amount and purpose of its current payment link (the link is no longer always the full balance).\nALTER TABLE invoices ADD COLUMN payment_link_amount REAL",
+      "ALTER TABLE invoices ADD COLUMN payment_link_purpose TEXT",
+      "-- The test gateway ('mock', local stacks and tests only) is a third gateway value, so the CHECK on payment_gateway_accounts\n-- widens. SQLite cannot change a CHECK in place: the table is rebuilt with the same columns and rows. A mock account holds\n-- no secrets (secret_enc stays NULL). Nothing references this table by foreign key.\nCREATE TABLE payment_gateway_accounts_new (\n  id TEXT PRIMARY KEY,\n  gateway TEXT NOT NULL CHECK (gateway IN ('razorpay', 'stripe', 'mock')),\n  mode TEXT NOT NULL DEFAULT 'test' CHECK (mode IN ('test', 'live')),\n  key_id TEXT,\n  secret_enc TEXT,\n  secret_last4 TEXT,\n  webhook_secret_enc TEXT,\n  is_active INTEGER NOT NULL DEFAULT 1,\n  last_tested_at TEXT,\n  created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\n  updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))\n)",
+      "INSERT INTO payment_gateway_accounts_new (id, gateway, mode, key_id, secret_enc, secret_last4, webhook_secret_enc, is_active, last_tested_at, created_at, updated_at)\nSELECT id, gateway, mode, key_id, secret_enc, secret_last4, webhook_secret_enc, is_active, last_tested_at, created_at, updated_at\nFROM payment_gateway_accounts",
+      "DROP TABLE payment_gateway_accounts",
+      "ALTER TABLE payment_gateway_accounts_new RENAME TO payment_gateway_accounts",
+      "CREATE UNIQUE INDEX IF NOT EXISTS payment_gateway_accounts_gateway_idx ON payment_gateway_accounts(gateway)"
+    ]
   }
 ];

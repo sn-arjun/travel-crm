@@ -20,8 +20,9 @@ import {
 import { RAZORPAY_API, RazorpayGateway } from '../billing/razorpay';
 import { STRIPE_API, StripeGateway, stripeForm } from '../billing/stripe';
 
-export type AgencyGatewayId = 'razorpay' | 'stripe';
-export const AGENCY_GATEWAYS: readonly AgencyGatewayId[] = ['razorpay', 'stripe'];
+/** 'mock' is the test gateway (R142): it exists only where mockAllowed(env) is true and never talks to a provider. */
+export type AgencyGatewayId = 'razorpay' | 'stripe' | 'mock';
+export const AGENCY_GATEWAYS: readonly AgencyGatewayId[] = ['razorpay', 'stripe', 'mock'];
 
 export function isAgencyGateway(value: string): value is AgencyGatewayId {
   return (AGENCY_GATEWAYS as readonly string[]).includes(value);
@@ -48,6 +49,29 @@ export interface PaymentLinkParams {
   customerName?: string | null;
   customerEmail?: string | null;
   customerPhone?: string | null;
+  /** What this link collects, shown in the provider's description: deposit, balance or custom. */
+  purpose?: 'deposit' | 'balance' | 'custom';
+  /** Stripe only: an explicit list of payment_method_types. Omitted means dynamic payment methods (the Stripe dashboard decides). */
+  paymentMethodTypes?: string[];
+}
+
+/** Stripe payment_method_types an agency may ask for, and the currencies each one works in (null = any). */
+export const STRIPE_METHOD_CURRENCIES: Record<string, readonly string[] | null> = {
+  card: null,
+  ideal: ['EUR'],
+  bancontact: ['EUR'],
+  sepa_debit: ['EUR'],
+};
+
+/** A readable reason when the list cannot be used for this currency, else null. */
+export function stripeMethodsError(types: readonly string[], currency: string): string | null {
+  const cur = currency.toUpperCase();
+  for (const t of types) {
+    if (!(t in STRIPE_METHOD_CURRENCIES)) return `"${t}" is not a payment method we can request from Stripe`;
+    const only = STRIPE_METHOD_CURRENCIES[t];
+    if (only && !only.includes(cur)) return `${t === 'ideal' ? 'iDEAL' : t === 'bancontact' ? 'Bancontact' : 'SEPA Direct Debit'} is only available for ${only.join(', ')} invoices, and this invoice is in ${cur}`;
+  }
+  return null;
 }
 
 export interface PaymentLinkResult {
@@ -78,7 +102,9 @@ export async function createPaymentLink(
   const currency = params.currency.toUpperCase();
   const minor = toMinorUnits(params.amount, currency);
   if (!(minor > 0)) throw new GatewayError('Nothing to collect on this invoice');
-  const description = `Invoice ${params.invoiceNumber}`;
+  const description = `Invoice ${params.invoiceNumber}${params.purpose === 'deposit' ? ' (deposit)' : params.purpose === 'balance' ? ' (balance)' : ''}`;
+
+  if (creds.gateway === 'mock') throw new GatewayError('The test gateway creates its links in mock-agency.ts');
 
   if (creds.gateway === 'razorpay') {
     const phone = (params.customerPhone ?? '').replace(/[^\d+]/g, '');
@@ -134,6 +160,8 @@ export async function createPaymentLink(
       'metadata[invoice_number]': params.invoiceNumber,
       'metadata[link_ref]': params.linkRef,
       'payment_intent_data[metadata][invoice_id]': params.invoiceId,
+      // No payment_method_types by default: Stripe's dynamic payment methods show what the agency enabled (iDEAL for EUR).
+      ...Object.fromEntries((params.paymentMethodTypes ?? []).map((t, i) => [`payment_method_types[${i}]`, t])),
     }),
   });
   const link = await readJson(linkRes);
@@ -220,6 +248,8 @@ export interface AgencyPaymentEvent {
   /** The provider's id for the payment: stored as the payment reference, a second guard against double recording. */
   paymentRef: string | null;
   closedStatus?: 'expired' | 'cancelled';
+  /** The method the customer paid with, when the provider says (the test gateway does). */
+  method?: string | null;
 }
 
 export function parseAgencyEvent(gateway: AgencyGatewayId, rawBody: string, headers: Headers): AgencyPaymentEvent | null {
@@ -230,6 +260,32 @@ export function parseAgencyEvent(gateway: AgencyGatewayId, rawBody: string, head
     return null;
   }
   if (!event || typeof event !== 'object') return null;
+
+  if (gateway === 'mock') {
+    // The test gateway's own event shape (see mock-agency.ts): amounts are already major units.
+    if (typeof event.id !== 'string' || typeof event.type !== 'string') return null;
+    const base = {
+      gateway,
+      eventId: event.id as string,
+      type: event.type as string,
+      invoiceId: typeof event.invoice_id === 'string' ? event.invoice_id : null,
+      linkId: typeof event.link_id === 'string' ? event.link_id : null,
+    };
+    if (event.type === 'payment.paid') {
+      return {
+        ...base,
+        kind: 'paid',
+        amount: typeof event.amount === 'number' ? event.amount : null,
+        currency: typeof event.currency === 'string' ? event.currency.toUpperCase() : null,
+        paymentRef: typeof event.payment_ref === 'string' ? event.payment_ref : null,
+        method: typeof event.method === 'string' ? event.method : null,
+      };
+    }
+    if (event.type === 'payment.cancelled' || event.type === 'payment.failed') {
+      return { ...base, kind: 'closed', closedStatus: 'cancelled', amount: null, currency: null, paymentRef: null };
+    }
+    return { ...base, kind: 'ignored', amount: null, currency: null, paymentRef: null };
+  }
 
   if (gateway === 'razorpay') {
     if (typeof event.event !== 'string') return null;

@@ -87,3 +87,61 @@ export function webhookUrl(env: Pick<Env, 'API_PUBLIC_URL'>, requestUrl: string,
   const base = (env.API_PUBLIC_URL?.trim() || new URL(requestUrl).origin).replace(/\/+$/, '');
   return `${base}/api/v1/webhooks/payments/${key}/${gateway}`;
 }
+
+// ----------------------------------------------------------------------------
+// payment_defaults (R142, design section 4.3): the deposit for a payment link, the Stripe methods to request and the
+// reference customers use for a bank transfer. One settings key, JSON.
+// ----------------------------------------------------------------------------
+
+export type DepositType = 'none' | 'percent' | 'fixed';
+
+export interface PaymentDefaults {
+  deposit: { type: DepositType; value: number | null };
+  /** null = Stripe dynamic payment methods (the agency's Stripe dashboard decides). A list is sent as payment_method_types[]. */
+  stripeMethodTypes: string[] | null;
+  bankReference: string;
+}
+
+export const DEFAULT_BANK_REFERENCE = '{invoice_number}';
+
+export const PAYMENT_DEFAULTS_KEY = 'payment_defaults';
+
+export function defaultPaymentDefaults(): PaymentDefaults {
+  return { deposit: { type: 'none', value: null }, stripeMethodTypes: null, bankReference: DEFAULT_BANK_REFERENCE };
+}
+
+/** Read whatever is stored into the full shape, ignoring anything malformed. */
+export function normalizePaymentDefaults(raw: unknown): PaymentDefaults {
+  const out = defaultPaymentDefaults();
+  if (!raw || typeof raw !== 'object') return out;
+  const r = raw as Record<string, any>;
+  const type = r.deposit?.type;
+  const value = typeof r.deposit?.value === 'number' && Number.isFinite(r.deposit.value) ? r.deposit.value : null;
+  if ((type === 'percent' || type === 'fixed') && value !== null && value > 0 && (type === 'fixed' || value <= 100)) {
+    out.deposit = { type, value };
+  }
+  if (Array.isArray(r.stripeMethodTypes)) {
+    const list = r.stripeMethodTypes.filter((t: unknown): t is string => typeof t === 'string' && t.length > 0);
+    out.stripeMethodTypes = list.length ? Array.from(new Set(list)) : null;
+  }
+  if (typeof r.bankReference === 'string' && r.bankReference.trim()) out.bankReference = r.bankReference.trim().slice(0, 80);
+  return out;
+}
+
+export async function loadPaymentDefaults(db: D1Database): Promise<PaymentDefaults> {
+  try {
+    const row = await db.prepare('SELECT value FROM settings WHERE key = ?').bind(PAYMENT_DEFAULTS_KEY).first<{ value: string | null }>();
+    return normalizePaymentDefaults(row?.value ? JSON.parse(row.value) : null);
+  } catch {
+    return defaultPaymentDefaults();
+  }
+}
+
+/** The deposit for a total under the agency default, in major units rounded to the currency's cents, or null when none is set. */
+export function depositAmount(defaults: PaymentDefaults, total: number, balanceDue: number): number | null {
+  const { type, value } = defaults.deposit;
+  if (type === 'none' || value === null) return null;
+  const raw = type === 'percent' ? (total * value) / 100 : value;
+  const rounded = Math.round(raw * 100) / 100;
+  return Math.min(rounded, balanceDue);
+}
