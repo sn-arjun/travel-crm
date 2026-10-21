@@ -7,7 +7,7 @@ const supplierReports: ReportDefinition[] = [
         name: 'Supplier Usage & Bookings',
         category: 'supplier',
         description: 'Number of trips and total spend per supplier.',
-        requiredRole: ['admin', 'manager', 'accountant'],
+        requiredRole: ['admin', 'sales_manager', 'accountant'],
         allowedFilters: ['category'],
         allowedGroupBy: ['category'],
         defaultSort: { column: 'total_spend', order: 'desc' },
