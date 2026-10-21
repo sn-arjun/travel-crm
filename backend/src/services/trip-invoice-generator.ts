@@ -7,6 +7,7 @@
 
 import { generateId } from '../utils/uuid';
 import { getTenantTimeZone, localDateString, addDaysLocal } from '../utils/tz';
+import { loadLocaleContext } from '../utils/money';
 import { computeDocumentTotals, loadTaxBuyer, loadTaxSettings, taxColumns } from './tax-calculator';
 import { calculateTripCost, haversineDistance, type RateCard } from './trip-cost-calculator';
 
@@ -105,6 +106,11 @@ export async function generateTripInvoice(
 
   // Use cost override if set
   const finalCost = (trip.cost_override as number | null) ?? actualCost ?? (trip.estimated_cost as number ?? 0);
+  // The invoice is in the rate card's currency when the trip has one, else the agency's.
+  const rateCardCurrency = trip.rate_card_id
+    ? (await db.prepare('SELECT currency FROM vehicle_rate_cards WHERE id = ?').bind(trip.rate_card_id).first() as { currency: string | null } | null)?.currency
+    : null;
+  const currency = (rateCardCurrency || (await loadLocaleContext(db)).currency).toUpperCase();
 
   // Tax follows the agency's own tax system (settings) and the contact, like every other invoice
   const { regime, seller } = await loadTaxSettings(db);
@@ -178,10 +184,10 @@ export async function generateTripInvoice(
       currency, status, due_date, paid_amount, balance_due, notes,
       created_by, created_at, updated_at,
       tax_regime, tax_breakdown, seller_tax_id, buyer_tax_id, place_of_supply, tax_notes
-    ) VALUES (?, ?, ?, ?, 'tax_invoice', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'INR', 'draft', ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, 'tax_invoice', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     invoiceId, contactId, trip.lead_id ?? null, invoiceNumber,
-    subtotal, subtotal, taxCols.tax_type, cgst, sgst, igst, vatAmount, totalTax, total,
+    subtotal, subtotal, taxCols.tax_type, cgst, sgst, igst, vatAmount, totalTax, total, currency,
     dueDate, total,
     `Auto-generated from trip ${trip.id}`,
     userId, now, now,

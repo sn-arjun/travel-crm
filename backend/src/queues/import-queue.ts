@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { drizzle, type DrizzleD1Database } from 'drizzle-orm/d1';
 import type { Env } from '../types';
 import { resolveTenantDb as resolveTenantD1 } from '../services/tenant-db';
+import { loadLocaleContext } from '../utils/money';
 import * as schema from '../db/tenant-schema';
 import { FileParser } from '../services/imports/file-parser';
 import { ImportValidator } from '../services/imports/import-validator';
@@ -40,8 +41,9 @@ async function resolveTenantDb(env: Env, tenantId?: string): Promise<TenantDb | 
 export async function handleImportJob(data: ImportJobMessage, env: Env): Promise<void> {
     const jobId = data.jobId;
     // Use tenantId from the queue message to resolve the correct tenant DB
-    const db = await resolveTenantDb(env, data.tenantId || undefined);
-    if (!db) {
+    const rawDb = data.tenantId ? await resolveTenantD1(env, data.tenantId) : null;
+    const db: TenantDb | null = rawDb ? drizzle(rawDb, { schema }) : null;
+    if (!db || !rawDb) {
         console.error(`Import job ${jobId}: tenant ${data.tenantId} has no resolvable database; dropped`);
         return;
     }
@@ -70,10 +72,11 @@ export async function handleImportJob(data: ImportJobMessage, env: Env): Promise
         const buffer = await object.arrayBuffer();
 
         // 3. Initialize Services
+        const agencyCurrency = (await loadLocaleContext(rawDb)).currency;
         const parser = new FileParser();
         const validator = new ImportValidator();
         const duplicateDetector = new DuplicateDetector();
-        const rowInserter = new RowInserter();
+        const rowInserter = new RowInserter(agencyCurrency);
 
         // 4. Parse file
         const parseResult = await parser.parseFile(buffer, job.fileName);

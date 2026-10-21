@@ -4,6 +4,9 @@ import * as schema from '../../db/tenant-schema';
 import { generateId } from '../../utils/uuid';
 
 export class RowInserter {
+    /** `agencyCurrency` fills rows whose file names no currency. */
+    constructor(private readonly agencyCurrency: string) {}
+
     public async insertRow(
         db: DrizzleD1Database<typeof schema>,
         importType: string,
@@ -166,7 +169,7 @@ export class RowInserter {
                                 serviceType: validData.serviceType,
                                 costPrice: Number(validData.costPrice),
                                 sellingPrice: (validData.sellingPrice || validData.sellPrice) ? Number(validData.sellingPrice || validData.sellPrice) : null,
-                                currency: validData.currency || 'INR',
+                                currency: (validData.currency || this.agencyCurrency).toUpperCase(),
                                 validFrom: validData.seasonStart || validData.validFrom || null,
                                 validTo: validData.seasonEnd || validData.validTo || null,
                                 updatedAt: now
@@ -180,7 +183,7 @@ export class RowInserter {
                             name: validData.name || `${validData.serviceType} Rate`,
                             costPrice: Number(validData.costPrice),
                             sellingPrice: (validData.sellingPrice || validData.sellPrice) ? Number(validData.sellingPrice || validData.sellPrice) : null,
-                            currency: validData.currency || 'INR',
+                            currency: (validData.currency || this.agencyCurrency).toUpperCase(),
                             validFrom: validData.seasonStart || validData.validFrom || null,
                             validTo: validData.seasonEnd || validData.validTo || null,
                             createdBy,

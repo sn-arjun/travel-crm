@@ -359,13 +359,13 @@ export async function evaluateCustomRule(ctx: RecipeContext, rule: CustomRule, e
 }
 
 /** One sentence describing a rule, for lists. */
-export function describeRule(rule: CustomRuleInput): string {
+export function describeRule(rule: CustomRuleInput, locale = 'en-US'): string {
   const trigger = CUSTOM_TRIGGERS.find((t) => t.value === rule.trigger)?.label ?? rule.trigger;
   const conditions = rule.conditions.map((condition) => {
     const field = CUSTOM_FIELDS.find((f) => f.value === condition.field);
     const op = CUSTOM_OPERATORS.find((o) => o.value === condition.op)?.label ?? condition.op;
     const amount = Number(condition.value);
-    const value = field?.kind === 'number' && Number.isFinite(amount) ? amount.toLocaleString('en-IN') : condition.value.replace(/_/g, ' ');
+    const value = field?.kind === 'number' && Number.isFinite(amount) ? amount.toLocaleString(locale) : condition.value.replace(/_/g, ' ');
     return `${(field?.label ?? condition.field).toLowerCase()} ${op} ${value}`;
   });
   const actions = rule.actions.map((action) => {

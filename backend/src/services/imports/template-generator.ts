@@ -43,7 +43,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateField[]> = {
         { header: 'Service Name', required: false, format: 'text', example: 'Deluxe Room (Double)' },
         { header: 'Cost Price *', required: true, format: 'number (no symbols)', example: '5000' },
         { header: 'Sell Price', required: false, format: 'number (no symbols)', example: '7000' },
-        { header: 'Currency', required: false, format: 'text', allowedValues: 'INR|USD|EUR|AED|THB', example: 'INR' },
+        { header: 'Currency', required: false, format: 'text', allowedValues: '', example: '' },
         { header: 'Valid From', required: false, format: 'date (YYYY-MM-DD)', example: '2026-01-01' },
         { header: 'Valid To', required: false, format: 'date (YYYY-MM-DD)', example: '2026-12-31' },
     ],
@@ -57,13 +57,19 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateField[]> = {
     ],
 };
 
+/** The Currency column lists the agency currency first and uses it as the example. */
+function currencyField(agencyCurrency: string): TemplateField {
+    const codes = [agencyCurrency, ...['EUR', 'USD', 'GBP', 'AED', 'THB'].filter((c) => c !== agencyCurrency)];
+    return { header: 'Currency', required: false, format: 'text', allowedValues: codes.join('|'), example: agencyCurrency };
+}
+
 export class TemplateGenerator {
     /**
      * Generates a template Excel file for a specific import type.
      * Includes human-readable headers with * for required, a sample data row, and a Field Guide sheet.
      */
-    public generateTemplate(importType: string): Buffer {
-        const fields = TEMPLATE_DEFINITIONS[importType];
+    public generateTemplate(importType: string, agencyCurrency: string): Buffer {
+        const fields = TEMPLATE_DEFINITIONS[importType]?.map((f) => (f.header === 'Currency' ? currencyField(agencyCurrency) : f));
         if (!fields) {
             throw new Error(`Unsupported import type: ${importType}`);
         }

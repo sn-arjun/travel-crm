@@ -22,6 +22,7 @@ import { RECIPES, RECIPES_BY_KEY } from '../services/automation/recipes';
 import { loadRuleStates, automationsPaused, PAUSE_SETTING_KEY } from '../services/automation/engine';
 import { emitEvent } from '../services/automation/events';
 import { localDateString, getTenantTimeZone } from '../utils/tz';
+import { loadLocaleContext } from '../utils/money';
 import {
   CUSTOM_FIELDS,
   CUSTOM_OPERATORS,
@@ -43,6 +44,7 @@ const AI_FEATURE_KEY = 'ai_copilot';
 
 automationRoutes.get('/', requirePermission('automations', 'view'), async (c) => {
   const db = c.get('tenantDb');
+  const locale = (await loadLocaleContext(db)).locale;
   const [states, tenant, paused, customRules] = await Promise.all([
     loadRuleStates(db),
     getTenantFeatures(c.env, c.get('tenantId')),
@@ -84,7 +86,7 @@ automationRoutes.get('/', requirePermission('automations', 'view'), async (c) =>
       id: rule.id,
       key: rule.key,
       name: rule.name,
-      description: describeRule(rule),
+      description: describeRule(rule, locale),
       trigger: rule.trigger,
       conditions: rule.conditions,
       actions: rule.actions,
@@ -133,7 +135,7 @@ automationRoutes.post('/custom', requirePermission('automations', 'create'), zVa
 
   const id = generateId();
   await saveCustomRule(db, id, { ...rule, name: rule.name.trim() }, c.get('userId'), true);
-  return success(c, { id, key: `${CUSTOM_PREFIX}${id}`, description: describeRule(rule) }, 201);
+  return success(c, { id, key: `${CUSTOM_PREFIX}${id}`, description: describeRule(rule, (await loadLocaleContext(db)).locale) }, 201);
 });
 
 automationRoutes.put('/custom/:id', requirePermission('automations', 'create'), zValidator('json', customRuleInputSchema), async (c) => {
@@ -147,7 +149,7 @@ automationRoutes.put('/custom/:id', requirePermission('automations', 'create'), 
   if (existing.some((other) => other.id !== id && other.name.toLowerCase() === rule.name.trim().toLowerCase())) return error(c, 'A rule with this name already exists', 409);
 
   await saveCustomRule(db, id, { ...rule, name: rule.name.trim() }, c.get('userId'), false);
-  return success(c, { id, key: `${CUSTOM_PREFIX}${id}`, description: describeRule(rule) });
+  return success(c, { id, key: `${CUSTOM_PREFIX}${id}`, description: describeRule(rule, (await loadLocaleContext(db)).locale) });
 });
 
 automationRoutes.delete('/custom/:id', requirePermission('automations', 'delete'), async (c) => {

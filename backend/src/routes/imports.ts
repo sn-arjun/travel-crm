@@ -10,6 +10,7 @@ import * as XLSX from 'xlsx';
 import { FileParser } from '../services/imports/file-parser';
 import { TemplateGenerator } from '../services/imports/template-generator';
 import { generateId } from '../utils/uuid';
+import { loadLocaleContext } from '../utils/money';
 
 const importRoutes = new Hono<AppContext>();
 
@@ -249,7 +250,7 @@ importRoutes.get('/templates/:type', async (c) => {
 
     try {
         const generator = new TemplateGenerator();
-        const buffer = generator.generateTemplate(type);
+        const buffer = generator.generateTemplate(type, (await loadLocaleContext(c.get('tenantDb'))).currency);
 
         c.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         c.header('Content-Disposition', `attachment; filename="${type}_import_template.xlsx"`);

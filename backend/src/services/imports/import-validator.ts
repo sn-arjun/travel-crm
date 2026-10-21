@@ -54,7 +54,7 @@ export const ImportSchemas = {
         costPrice: z.number().or(z.string().regex(/^\d+(\.\d{1,2})?$/, 'Must be a number')),
         sellPrice: z.number().or(z.string().regex(/^\d+(\.\d{1,2})?$/, 'Must be a number')).optional(),
         sellingPrice: z.number().or(z.string().regex(/^\d+(\.\d{1,2})?$/, 'Must be a number')).optional(),
-        currency: z.string().min(3, 'Currency code requires 3 chars').max(3).optional().default('INR'),
+        currency: z.string().min(3, 'Currency code requires 3 chars').max(3).optional(),
         seasonStart: z.string().optional(),
         seasonEnd: z.string().optional(),
         validFrom: z.string().optional(),
