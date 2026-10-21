@@ -260,7 +260,7 @@ Recorded and rendered on 2026-10-21 on the local stacks (no deploy), following `
   - **driver:** uses the 2026-10-04 recording with a title line saying the current app asks for the agency code first. Re-record on an emulator.
   - **platform-owner:** shows the agency code `skyline-holidays-2`.
 
-**Product bugs the recording found (not fixed yet)**
+**Product bugs the recording found (fixed in R135 on 2026-10-21, except the landing footer)**
 - Team report (`/reports/team`) returns 403 for sales managers: the route requires `manager` but the role is `sales_manager`.
 - The inbox list does not refresh when a message arrives (the bell does).
 - AI itinerary generation takes about 60 s, so the UI reports "Failed to generate itinerary" even though the server returned the plan.

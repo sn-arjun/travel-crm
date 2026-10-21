@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-21T22:00+05:30",
+  "updated": "2026-10-21T23:10+05:30",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -144,7 +144,13 @@
         "R130": "merged: whatsapp (utility/service) and whatsapp_marketing meter channels with their own caps, packs (market-filtered) and 402s; category = marketing for campaigns and promotional templates, utility for everything else paid (Meta and Twilio alike); refunds go back to the charged channel; plan_allowances gains a nullable market column (agency market row preferred, admin PUT ?market=), no per-market rows seeded (PRICING.md gives no amounts); master 0028 switches step-B rows on, whatsapp allowances 20/250/750/2000, marketing 10/50/200/500, interim marketing-rate whatsapp unit costs off; usage screen shows the two lines, usage-limits.tsx through t() (en/ar/hi). Merged line (identical to the tested branch): backend 106/2074, desktop 94/1545, lint 0, i18n PASS (ar 811/811), super-admin tsc 0; e2e whatsapp-campaigns + communication-inbox + marketing-opt-out 56 passed (slot 2). Owner: per-market allowance numbers for EU/DE, MY_TH, LK_NP_BD Enterprise when wanted.",
         "R133": "merged: root cause of the \"invoice timeouts\" in full runs = test pollution, not slowness: first-login.spec (sorted before invoices.spec) set the shared invoice prefix to TRV on a single-tenant stack, so invoices.spec waited for INV-/PI- numbers. first-login.spec now skips on single-tenant stacks; guard test e2e-single-tenant-guard.test.ts. Client timeout 30 s (not changed). Verify: full run reached 883 with 810 passed and 0 failed before the memory monitor stopped it; second verify not run. Merged line: desktop 95/1548, lint 0. Open: the one-off 30 s \"Couldn't load invoices\" in locale.spec on a multi stack is unexplained; slot API log (desktop/audit/fix/stack/slot0-api.log) was empty, so fix-stack should capture wrangler http.request timings.",
         "R212": "DEFERRED by owner 2026-10-21 (single location for now).",
-        "R134": "merged: push-secrets.sh covers 30 secret names (7 required, fail before pushing, also in --dry-run; --partial; placeholders count as missing; CF_API_TOKEN never from the deploy token; BILLING_MOCK_SECRET and TEST_MODE never pushed); gen-wrangler writes every plain var (platform tax, BILLING_GRACE_DAYS, VOIP_CALLING_COUNTRIES default US, WHATSAPP_META_GRAPH_VERSION, optional provider vars) and refuses mock billing, TEST_MODE, mock VoIP and a * calling list on staging/production; deploy-backend.yml passes every plain var. Self-tests: gen-wrangler ALL PASSED, shell-scripts ALL PASSED. Go-live note: delete any hand-set secrets that are now plain vars before the first deploy (wrangler rejects a name that is both)."
+        "R134": "merged: push-secrets.sh covers 30 secret names (7 required, fail before pushing, also in --dry-run; --partial; placeholders count as missing; CF_API_TOKEN never from the deploy token; BILLING_MOCK_SECRET and TEST_MODE never pushed); gen-wrangler writes every plain var (platform tax, BILLING_GRACE_DAYS, VOIP_CALLING_COUNTRIES default US, WHATSAPP_META_GRAPH_VERSION, optional provider vars) and refuses mock billing, TEST_MODE, mock VoIP and a * calling list on staging/production; deploy-backend.yml passes every plain var. Self-tests: gen-wrangler ALL PASSED, shell-scripts ALL PASSED. Go-live note: delete any hand-set secrets that are now plain vars before the first deploy (wrangler rejects a name that is both).",
+        "R135": {
+          "status": "merged",
+          "head": "5e788ff",
+          "what": "bugs found while recording: team report for sales_manager, inbox realtime refresh, AI itinerary 120 s client timeout, mock hang-up of simulator calls, softphone token only where calling is on, empty transcript 200 null, mock checkout URL port, zero amounts neutral",
+          "gates": "backend tsc 0, vitest 108 files / 2079; desktop typecheck 0, vitest 1557, lint-gate PASS, i18n PASS; e2e inbox 33/33, softphone 6/6, calls/simulator/reports 70 + rewritten softphone test"
+        }
       },
       "merged": [
         "R101",
@@ -324,8 +330,8 @@
   ],
   "todo": [
     "Push: only on an explicit owner \"push\" (repo is public; owner will make it private later). Secret scan done before it.",
-    "Bugs found while recording (LAUNCH-REPORT section 8): not yet fixed.",
-    "Re-record website (after domain) and driver (on an emulator)."
+    "Re-record website (after domain) and driver (on an emulator).",
+    "Skanda Travels client demo film: plan in prospects/skanda/ (gitignored), then record with the driver app on the Resizable_Experimental emulator."
   ],
   "e2eBaseline": {
     "date": "2026-10-15",
