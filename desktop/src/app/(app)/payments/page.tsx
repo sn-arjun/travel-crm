@@ -12,20 +12,16 @@ import { PaymentReceipt } from '@/components/domain/payment-receipt';
 import { formatCurrency } from '@/lib/utils';
 import { formatDisplayDate } from '@/lib/dates';
 import { labelForMethod, methodTone } from './_methods';
-
-const METHOD_FILTERS = [
-  { value: 'cash', label: 'Cash' },
-  { value: 'check', label: 'Cheque' },
-  { value: 'card', label: 'Card' },
-  { value: 'bank_transfer', label: 'Bank Transfer' },
-  { value: 'upi', label: 'UPI' },
-  { value: 'other', label: 'Other' },
-];
+import { useT } from '@/lib/i18n';
+import { usePaymentMethodOptions } from '@/lib/payment-methods';
 
 export default function PaymentsPage() {
   const router = useRouter();
+  const t = useT();
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [methodFilter, setMethodFilter] = React.useState<string | null>(null);
+  // The agency country's methods (UPI only in India, iDEAL and SEPA in Europe); a filter already set stays listed.
+  const methodFilters = usePaymentMethodOptions(methodFilter);
   const [receiptPayment, setReceiptPayment] = React.useState<PaymentRecord | null>(null);
   const [refreshKey, setRefreshKey] = React.useState(0);
 
@@ -67,7 +63,7 @@ export default function PaymentsPage() {
         fetcher={fetcher}
         refreshKey={refreshKey}
         searchPlaceholder="Search payments..."
-        filters={methodFilter ? [{ id: 'method', label: 'Method', value: labelForMethod(methodFilter) }] : []}
+        filters={methodFilter ? [{ id: 'method', label: 'Method', value: labelForMethod(methodFilter, t) }] : []}
         headerActions={
           <Select value={methodFilter ?? 'all'} onValueChange={(v) => setMethodFilter(v === 'all' ? null : v)}>
             <SelectTrigger size="sm" aria-label="Filter by method" className="w-44">
@@ -75,7 +71,7 @@ export default function PaymentsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All methods</SelectItem>
-              {METHOD_FILTERS.map((m) => (
+              {methodFilters.map((m) => (
                 <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
               ))}
             </SelectContent>
@@ -102,7 +98,7 @@ export default function PaymentsPage() {
           },
           {
             key: 'method', header: 'Method',
-            cell: (p) => <Tag tone={methodTone[p.method] ?? 'neutral'}>{labelForMethod(p.method)}</Tag>,
+            cell: (p) => <Tag tone={methodTone[p.method] ?? 'neutral'}>{labelForMethod(p.method, t)}</Tag>,
           },
           {
             key: 'reference', header: 'Reference',
@@ -152,7 +148,7 @@ export default function PaymentsPage() {
             p.invoiceNumber ?? '',
             p.clientName ?? '',
             String(p.amount ?? 0),
-            labelForMethod(p.method),
+            labelForMethod(p.method, t),
             p.reference ?? '',
           ]);
           const csv = [header, ...csvRows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');

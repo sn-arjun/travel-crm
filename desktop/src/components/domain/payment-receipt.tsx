@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { formatDisplayDate } from '@/lib/dates';
 import { formatCurrency as formatMoney } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
+import { paymentMethodLabel } from '@/lib/payment-methods';
 
 interface PaymentReceiptProps {
   payment: {
@@ -54,17 +56,6 @@ function numberToWords(num: number): string {
   return result;
 }
 
-const METHOD_LABELS: Record<string, string> = {
-  bank_transfer: 'Bank Transfer',
-  transfer: 'Bank Transfer',
-  upi: 'UPI',
-  cash: 'Cash',
-  card: 'Card',
-  cheque: 'Cheque',
-  check: 'Cheque',
-  other: 'Other',
-};
-
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -97,13 +88,14 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
 }
 
 export function PaymentReceipt({ payment, companyName, onClose }: PaymentReceiptProps) {
+  const t = useT();
   const receiptRef = React.useRef<HTMLDivElement>(null);
 
   const formattedDate = formatDisplayDate(payment.paymentDate || payment.date, 'long')
     || formatDisplayDate(new Date(), 'long');
 
   const method = payment.paymentMethod || payment.method || 'N/A';
-  const methodText = METHOD_LABELS[method] ?? method;
+  const methodText = method === 'N/A' ? method : paymentMethodLabel(method, t);
   const receiptNumber = `REC-${payment.id.slice(0, 8).toUpperCase()}`;
   const company = companyName || 'TravelCRM';
 

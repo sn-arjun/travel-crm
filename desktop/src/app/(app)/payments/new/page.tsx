@@ -14,6 +14,7 @@ import { unwrapList } from '@/lib/api/envelope';
 import { formatCurrency } from '@/lib/utils';
 import { toLocalDateString } from '@/lib/dates';
 import type { Lead } from '@travelcrm/shared';
+import { usePaymentMethodOptions } from '@/lib/payment-methods';
 
 const schema = z.object({
   amount: z.number({ message: 'Amount is required' }).positive('Amount must be greater than zero'),
@@ -58,6 +59,7 @@ function InvoicePrefill({
 
 export default function NewPaymentPage() {
   const router = useRouter();
+  const methodOptions = usePaymentMethodOptions();
   const [selectedInvoice, setSelectedInvoice] = React.useState<InvoiceDetail | null>(null);
 
   return (
@@ -122,12 +124,9 @@ export default function NewPaymentPage() {
                 <Select value={form.watch('paymentMethod')} onValueChange={(v) => form.setValue('paymentMethod', v, { shouldDirty: true })}>
                   <SelectTrigger id="paymentMethod" aria-label="Payment method"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="cash">Cash</SelectItem>
-                    <SelectItem value="check">Cheque</SelectItem>
-                    <SelectItem value="card">Card</SelectItem>
-                    <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                    <SelectItem value="upi">UPI</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
+                    {methodOptions.map(({ value, label }) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </FormRow>

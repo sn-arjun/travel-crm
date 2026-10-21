@@ -1,1 +1,13 @@
-{}
+{
+  "payments.method.cash": "نقداً",
+  "payments.method.bank_transfer": "تحويل بنكي",
+  "payments.method.transfer": "تحويل بنكي",
+  "payments.method.card": "بطاقة",
+  "payments.method.cheque": "شيك",
+  "payments.method.check": "شيك",
+  "payments.method.online": "عبر الإنترنت",
+  "payments.method.upi": "UPI",
+  "payments.method.ideal": "iDEAL",
+  "payments.method.sepa_transfer": "تحويل SEPA",
+  "payments.method.other": "أخرى"
+}

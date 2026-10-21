@@ -1,1 +1,13 @@
-{}
+{
+  "payments.method.cash": "Contant",
+  "payments.method.bank_transfer": "Bankoverschrijving",
+  "payments.method.transfer": "Bankoverschrijving",
+  "payments.method.card": "Kaart",
+  "payments.method.cheque": "Cheque",
+  "payments.method.check": "Cheque",
+  "payments.method.online": "Online",
+  "payments.method.upi": "UPI",
+  "payments.method.ideal": "iDEAL",
+  "payments.method.sepa_transfer": "SEPA-overschrijving",
+  "payments.method.other": "Overig"
+}

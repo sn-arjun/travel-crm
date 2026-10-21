@@ -1,1 +1,13 @@
-{}
+{
+  "payments.method.cash": "Cash",
+  "payments.method.bank_transfer": "Bank transfer",
+  "payments.method.transfer": "Bank transfer",
+  "payments.method.card": "Card",
+  "payments.method.cheque": "Cheque",
+  "payments.method.check": "Cheque",
+  "payments.method.online": "Online",
+  "payments.method.upi": "UPI",
+  "payments.method.ideal": "iDEAL",
+  "payments.method.sepa_transfer": "SEPA transfer",
+  "payments.method.other": "Other"
+}

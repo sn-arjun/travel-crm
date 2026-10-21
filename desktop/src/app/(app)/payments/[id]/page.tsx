@@ -11,6 +11,7 @@ import { paymentsApi, type PaymentRecord } from '@/lib/api/payments';
 import { contactsApi } from '@/lib/api/contacts';
 import { PaymentReceipt } from '@/components/domain/payment-receipt';
 import { toast } from 'sonner';
+import { useT } from '@/lib/i18n';
 import { formatCurrency } from '@/lib/utils';
 import { formatDisplayDate } from '@/lib/dates';
 import { labelForMethod, methodTone } from '../_methods';
@@ -18,6 +19,7 @@ import { labelForMethod, methodTone } from '../_methods';
 export default function PaymentDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const t = useT();
   const paymentId = params.id as string;
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [showReceipt, setShowReceipt] = React.useState(false);
@@ -76,7 +78,7 @@ export default function PaymentDetailPage() {
         entity={payment}
         title={money(payment.amount ?? 0)}
         subtitle={payment.invoiceNumber ? `Against invoice ${payment.invoiceNumber}` : 'Advance payment'}
-        status={<Tag tone={methodTone[payment.method] ?? 'neutral'}>{labelForMethod(payment.method)}</Tag>}
+        status={<Tag tone={methodTone[payment.method] ?? 'neutral'}>{labelForMethod(payment.method, t)}</Tag>}
         onBack={() => router.push('/payments')}
         messaging={clientName && payment.contactId ? {
           recipientId: payment.contactId,
@@ -103,7 +105,7 @@ export default function PaymentDetailPage() {
                 </div>
                 <div>
                   <p className="text-sm text-ds-foreground-muted mb-ds-1">Method</p>
-                  <Tag tone={methodTone[payment.method] ?? 'neutral'}>{labelForMethod(payment.method)}</Tag>
+                  <Tag tone={methodTone[payment.method] ?? 'neutral'}>{labelForMethod(payment.method, t)}</Tag>
                 </div>
                 <div>
                   <p className="text-sm text-ds-foreground-muted mb-ds-1">Reference</p>

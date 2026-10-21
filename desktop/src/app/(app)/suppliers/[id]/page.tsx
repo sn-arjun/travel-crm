@@ -18,6 +18,8 @@ import { useApiMutation, useApiQuery } from '@/hooks/use-api';
 import { suppliersApi, type SupplierLedger, type SupplierPayment, type SupplierRateCard } from '@/lib/api/suppliers';
 import { unwrapList } from '@/lib/api/envelope';
 import { formatDisplayDate, toLocalDateString } from '@/lib/dates';
+import { useT } from '@/lib/i18n';
+import { paymentMethodLabel, usePaymentMethodOptions } from '@/lib/payment-methods';
 
 interface SupplierDocument {
   id: string;
@@ -109,6 +111,9 @@ function SupplierDocuments({ supplierId }: { supplierId: string }) {
 
 export default function SupplierDetailPage() {
   const router = useRouter();
+  const t = useT();
+  // Supplier payments accept every method but 'other' and 'check' (the supplier API's own list).
+  const supplierMethods = usePaymentMethodOptions().filter((m) => m.value !== 'other');
   const params = useParams();
   const supplierId = params.id as string;
   const { confirm, dialog: confirmDialog } = useConfirm();
@@ -394,7 +399,7 @@ export default function SupplierDetailPage() {
                       <TableCell className="font-mono font-semibold text-sm">
                         {formatExactCurrency(pay.amount)}
                       </TableCell>
-                      <TableCell className="text-sm capitalize">{pay.method.replace(/_/g, ' ')}</TableCell>
+                      <TableCell className="text-sm capitalize">{paymentMethodLabel(pay.method, t)}</TableCell>
                       <TableCell className="text-sm">
                         {formatLocaleDate(pay.date, { day: 'numeric', month: 'short', year: 'numeric' })}
                       </TableCell>
@@ -475,11 +480,9 @@ export default function SupplierDetailPage() {
               <Select value={paymentForm.method} onValueChange={(v) => setPaymentForm((f) => ({ ...f, method: v }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                  <SelectItem value="cash">Cash</SelectItem>
-                  <SelectItem value="cheque">Cheque</SelectItem>
-                  <SelectItem value="upi">UPI</SelectItem>
-                  <SelectItem value="card">Card</SelectItem>
+                  {supplierMethods.map(({ value, label }) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
