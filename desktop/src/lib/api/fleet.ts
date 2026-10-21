@@ -131,6 +131,8 @@ export interface Driver {
   bankAccountName?: string;
   bankAccountNumber?: string;
   bankIFSC?: string;
+  /** Outside India the payout account is an IBAN (R140); the IFSC applies to India only. */
+  bankIBAN?: string;
   dateOfJoining?: string;
   notes?: string;
   customFields?: Record<string, unknown>;
@@ -344,6 +346,8 @@ export interface UpdateDriverRequest {
   bankAccountName?: string;
   bankAccountNumber?: string;
   bankIFSC?: string;
+  /** Outside India the payout account is an IBAN (R140); the IFSC applies to India only. */
+  bankIBAN?: string;
   notes?: string;
   status?: 'active' | 'inactive' | 'on_leave';
   experience?: number;

@@ -5,6 +5,7 @@ import { usersApi } from './users';
 import type { User } from '@travelcrm/shared';
 import { setLocaleContext } from '../locale';
 import { useAuthStore } from '@/stores/auth-store';
+import { readBankDetails } from '@/lib/bank-details';
 
 // The backend stores company settings as flat key/value rows. The UI works
 // with camelCase fields, so every call below maps between the two shapes.
@@ -128,8 +129,16 @@ export interface InvoiceDefaults {
   accountNumber: string;
   ifsc: string;
   branch: string;
+  /** The account name (stored as accountName; accountHolderName is kept alongside for older readers). */
   accountHolderName: string;
   upiId: string;
+  /** Country-shaped bank fields (R140): which of them show follows the agency country (lib/bank-details.ts). */
+  iban?: string;
+  bic?: string;
+  sortCode?: string;
+  routingNumber?: string;
+  bsb?: string;
+  swift?: string;
   gstin: string;
   companyState: string;
   taxSystem: TaxSystem;
@@ -184,14 +193,21 @@ const num = (v: unknown, fallback: number) => {
 };
 
 function fromInvoiceDefaults(r: Raw): InvoiceDefaults {
-  const bank = (r.bank_details ?? {}) as Raw;
+  // Old and new keys alike (accountHolderName / accountName, the separate upi_id) read as one shape.
+  const bank = readBankDetails(r.bank_details, r.upi_id);
   return {
     bankName: str(bank.bankName),
     accountNumber: str(bank.accountNumber),
     ifsc: str(bank.ifsc),
     branch: str(bank.branch),
-    accountHolderName: str(bank.accountHolderName),
-    upiId: str(r.upi_id),
+    accountHolderName: str(bank.accountName),
+    upiId: str(bank.upiId),
+    iban: str(bank.iban),
+    bic: str(bank.bic),
+    sortCode: str(bank.sortCode),
+    routingNumber: str(bank.routingNumber),
+    bsb: str(bank.bsb),
+    swift: str(bank.swift),
     gstin: str(r.gstin),
     companyState: str(r.company_state),
     taxSystem: str(r.tax_system, 'gst') as TaxSystem,
@@ -213,7 +229,15 @@ function toInvoiceDefaults(d: InvoiceDefaults): Raw {
       accountNumber: d.accountNumber,
       ifsc: d.ifsc,
       branch: d.branch,
+      accountName: d.accountHolderName,
       accountHolderName: d.accountHolderName,
+      upiId: d.upiId,
+      iban: d.iban ?? '',
+      bic: d.bic ?? '',
+      sortCode: d.sortCode ?? '',
+      routingNumber: d.routingNumber ?? '',
+      bsb: d.bsb ?? '',
+      swift: d.swift ?? '',
     },
     upi_id: d.upiId,
     gstin: d.gstin,

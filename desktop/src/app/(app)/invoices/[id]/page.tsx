@@ -22,13 +22,11 @@ import { leadsApi } from '@/lib/api/leads';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/lib/utils';
 import { formatDisplayDate, toLocalDateString } from '@/lib/dates';
-import { buildInvoicePdf, downloadInvoiceCsv } from './_documents';
+import { buildInvoicePdf, downloadInvoiceCsv, pdfBankLabels } from './_documents';
+import { useT } from '@/lib/i18n';
+import { paymentMethodLabel, usePaymentMethodOptions } from '@/lib/payment-methods';
 import { NoteDialog } from './_note-dialog';
 import { PaymentLinkCard } from './_payment-link';
-
-const METHOD_LABELS: Record<string, string> = {
-  cash: 'Cash', transfer: 'Bank Transfer', card: 'Card', check: 'Cheque', upi: 'UPI', other: 'Other',
-};
 
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
@@ -38,12 +36,14 @@ export default function InvoiceDetailPage() {
   const params = useParams();
   const router = useRouter();
   const invoiceId = params.id as string;
+  const t = useT();
+  const methodOptions = usePaymentMethodOptions();
   const { confirm, dialog: confirmDialog } = useConfirm();
 
   const [payDialogOpen, setPayDialogOpen] = React.useState(false);
   const [payAmount, setPayAmount] = React.useState<number | undefined>(undefined);
   const [payDate, setPayDate] = React.useState<Date | undefined>(new Date());
-  const [payMethod, setPayMethod] = React.useState('transfer');
+  const [payMethod, setPayMethod] = React.useState('bank_transfer');
   const [payReference, setPayReference] = React.useState('');
   const [payError, setPayError] = React.useState<string | null>(null);
   const [isPaying, setIsPaying] = React.useState(false);
@@ -69,7 +69,7 @@ export default function InvoiceDetailPage() {
   const handleDownloadPdf = async () => {
     if (!invoice) return;
     try {
-      const doc = await buildInvoicePdf(invoice);
+      const doc = await buildInvoicePdf(invoice, pdfBankLabels(t));
       doc.save(`${invoice.invoiceNumber || 'invoice'}.pdf`);
       toast.success('Invoice PDF downloaded');
     } catch {
@@ -86,7 +86,7 @@ export default function InvoiceDetailPage() {
   const handlePrint = async () => {
     if (!invoice) return;
     try {
-      const doc = await buildInvoicePdf(invoice);
+      const doc = await buildInvoicePdf(invoice, pdfBankLabels(t));
       const url = URL.createObjectURL(doc.output('blob'));
       const printWindow = window.open(url);
       printWindow?.addEventListener('load', () => printWindow.print());
@@ -99,7 +99,7 @@ export default function InvoiceDetailPage() {
     const balance = invoice?.balanceDue ?? 0;
     setPayAmount(balance > 0 ? balance : invoice?.totalAmount);
     setPayDate(new Date());
-    setPayMethod('transfer');
+    setPayMethod('bank_transfer');
     setPayReference('');
     setPayError(null);
     setPayDialogOpen(true);
@@ -417,7 +417,7 @@ export default function InvoiceDetailPage() {
                   <div key={payment.id || idx} className="grid grid-cols-[8rem_8rem_8rem_1fr] gap-ds-3 items-center px-ds-2 py-ds-2 border-b border-ds-border last:border-0">
                     <span className="text-sm">{formatDisplayDate(payment.date) || '—'}</span>
                     <span className="text-sm font-medium">{money(payment.amount)}</span>
-                    <Badge variant="outline" className="w-fit text-xs">{METHOD_LABELS[payment.method] ?? payment.method.replace('_', ' ')}</Badge>
+                    <Badge variant="outline" className="w-fit text-xs">{paymentMethodLabel(payment.method, t)}</Badge>
                     <span className="text-sm text-ds-foreground-muted truncate">{payment.reference ?? '—'}</span>
                   </div>
                 ))}
@@ -456,7 +456,7 @@ export default function InvoiceDetailPage() {
               <Select value={payMethod} onValueChange={setPayMethod}>
                 <SelectTrigger aria-label="Payment method"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {Object.entries(METHOD_LABELS).map(([value, label]) => (
+                  {methodOptions.map(({ value, label }) => (
                     <SelectItem key={value} value={value}>{label}</SelectItem>
                   ))}
                 </SelectContent>

@@ -3,6 +3,7 @@ import { client, type ApiResponse, type PaginatedResponse } from './client';
 import { unwrapEntity } from './envelope';
 import { API_ENDPOINTS } from './config';
 import type { Invoice } from '@travelcrm/shared';
+import { readBankDetails, type BankDetails } from '@/lib/bank-details';
 
 export interface InvoiceLineItem {
   description: string;
@@ -158,6 +159,9 @@ export interface InvoiceDetail {
   balanceDue: number;
   notes: string | null;
   terms: string | null;
+  /** Bank details the invoice was issued with (or the agency's current ones), and the country whose field set prints. */
+  bankDetails: BankDetails;
+  bankCountry: string;
   items: InvoiceItemRow[];
   payments: InvoicePaymentRow[];
   /** The payment link on this invoice, if one was created. */
@@ -278,6 +282,8 @@ export function normalizeInvoiceDetail(input: unknown): InvoiceDetail | null {
     balanceDue: balance === undefined || balance === null ? total - paid : numOf(balance),
     notes: strOrNull(raw.notes),
     terms: strOrNull(raw.terms),
+    bankDetails: readBankDetails(pick(raw, 'bankDetails', 'bank_details')),
+    bankCountry: String(pick(raw, 'bankCountry', 'bank_country') ?? ''),
     items: asRows(raw.items).map(normalizeInvoiceItem),
     payments: asRows(raw.payments).map(normalizeInvoicePayment),
     paymentLink: normalizePaymentLink(raw),

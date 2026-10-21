@@ -19,6 +19,25 @@ import { toast } from 'sonner';
 import { settingsApi, type TaxSystem } from '@/lib/api/settings';
 import { useApiQuery } from '@/hooks/use-api';
 import { PageContainer } from '@/components/layout/page-container';
+import { useT } from '@/lib/i18n';
+import { useLocale } from '@/lib/locale';
+import { bankCountryOf, bankFieldError, bankFieldsFor, type BankField } from '@/lib/bank-details';
+
+/** Element ids of the bank fields. The account name keeps the id it has always had. */
+const BANK_FIELD_ID: Record<BankField, string> = {
+  accountName: 'accountHolderName',
+  bankName: 'bankName',
+  iban: 'iban',
+  bic: 'bic',
+  sortCode: 'sortCode',
+  accountNumber: 'accountNumber',
+  routingNumber: 'routingNumber',
+  bsb: 'bsb',
+  swift: 'swift',
+  ifsc: 'ifsc',
+  upiId: 'upiId',
+  branch: 'branch',
+};
 
 const schema = z.object({
   bankName: z.string().optional(),
@@ -27,6 +46,12 @@ const schema = z.object({
   branch: z.string().optional(),
   accountHolderName: z.string().optional(),
   upiId: z.string().optional(),
+  iban: z.string().optional(),
+  bic: z.string().optional(),
+  sortCode: z.string().optional(),
+  routingNumber: z.string().optional(),
+  bsb: z.string().optional(),
+  swift: z.string().optional(),
   gstin: z.string().optional(),
   companyState: z.string().optional(),
   country: z.string().optional(),
@@ -43,6 +68,8 @@ type InvoiceDefaultsForm = z.infer<typeof schema>;
 
 export default function InvoiceDefaultsPage() {
   const router = useRouter();
+  const t = useT();
+  const { country: localeCountry, currency } = useLocale();
   const { data: response, loading } = useApiQuery(() => settingsApi.invoiceDefaults.get(), []);
 
   const d = React.useMemo(() => {
@@ -72,6 +99,12 @@ export default function InvoiceDefaultsPage() {
         branch: d?.branch ?? '',
         accountHolderName: d?.accountHolderName ?? '',
         upiId: d?.upiId ?? '',
+        iban: d?.iban ?? '',
+        bic: d?.bic ?? '',
+        sortCode: d?.sortCode ?? '',
+        routingNumber: d?.routingNumber ?? '',
+        bsb: d?.bsb ?? '',
+        swift: d?.swift ?? '',
         gstin: d?.gstin ?? '',
         companyState: d?.companyState ?? '',
         country: d?.country ?? '',
@@ -86,6 +119,14 @@ export default function InvoiceDefaultsPage() {
       }}
       onCancel={() => router.push('/settings')}
       onSubmit={async (v) => {
+        // The fields of the agency's country are checked before saving (the API checks them again).
+        const bankProblem = bankFieldError(bankCountryOf(v.country, localeCountry, currency), {
+          iban: v.iban, bic: v.bic, swift: v.swift, sortCode: v.sortCode, bsb: v.bsb, routingNumber: v.routingNumber,
+        });
+        if (bankProblem) {
+          toast.error(t(bankProblem.key));
+          return;
+        }
         try {
           await settingsApi.invoiceDefaults.update({
             bankName: v.bankName ?? '',
@@ -94,6 +135,12 @@ export default function InvoiceDefaultsPage() {
             branch: v.branch ?? '',
             accountHolderName: v.accountHolderName ?? '',
             upiId: v.upiId ?? '',
+            iban: v.iban ?? '',
+            bic: v.bic ?? '',
+            sortCode: v.sortCode ?? '',
+            routingNumber: v.routingNumber ?? '',
+            bsb: v.bsb ?? '',
+            swift: v.swift ?? '',
             gstin: v.gstin ?? '',
             companyState: v.companyState ?? '',
             country: v.country ?? '',
@@ -115,29 +162,22 @@ export default function InvoiceDefaultsPage() {
       }}
       renderSections={(form) => {
         const taxSystem = form.watch('taxSystem');
+        // Only the fields of the agency's country: IBAN and BIC for Europe, IFSC and UPI for India only.
+        const bankCountry = bankCountryOf(form.watch('country'), localeCountry, currency);
         return (
         <>
-          <SectionCard title="Bank Details" description="Your bank account details for invoices">
+          <SectionCard title={t('banks.card.title')} description={t('banks.card.description')}>
             <div className="grid gap-ds-4 sm:grid-cols-2">
-              <FormRow name="bankName" label="Bank Name">
-                <Input {...form.register('bankName')} id="bankName" placeholder="e.g., State Bank of India" />
-              </FormRow>
-              <FormRow name="accountNumber" label="Account Number">
-                <Input {...form.register('accountNumber')} id="accountNumber" placeholder="e.g., 1234567890" />
-              </FormRow>
-              <FormRow name="ifsc" label="IFSC Code">
-                <Input {...form.register('ifsc')} id="ifsc" placeholder="e.g., SBIN0001234" />
-              </FormRow>
-              <FormRow name="branch" label="Branch">
-                <Input {...form.register('branch')} id="branch" placeholder="e.g., MG Road Branch" />
-              </FormRow>
-              <FormRow name="accountHolderName" label="Account Holder Name">
-                <Input {...form.register('accountHolderName')} id="accountHolderName" placeholder="e.g., TravelCRM Pvt Ltd" />
-              </FormRow>
-              <FormRow name="upiId" label="UPI ID">
-                <Input {...form.register('upiId')} id="upiId" placeholder="e.g., company@upi" />
-              </FormRow>
+              {bankFieldsFor(bankCountry).map((field) => {
+                const name = (field === 'accountName' ? 'accountHolderName' : field) as keyof InvoiceDefaultsForm & string;
+                return (
+                  <FormRow key={field} name={name} label={t(`banks.field.${field}`)}>
+                    <Input {...form.register(name)} id={BANK_FIELD_ID[field]} placeholder={t(`banks.placeholder.${field}`)} />
+                  </FormRow>
+                );
+              })}
             </div>
+            {bankCountry === '' && <p className="mt-ds-3 text-sm text-ds-foreground-muted">{t('banks.card.countryHint')}</p>}
           </SectionCard>
 
           <SectionCard title="Tax" description="Registration and default tax applied to new invoices" required>

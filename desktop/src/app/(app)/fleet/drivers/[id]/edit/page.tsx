@@ -10,6 +10,9 @@ import { useApiQuery } from '@/hooks/use-api';
 import { fleetApi } from '@/lib/api/fleet';
 import { toast } from 'sonner';
 import { parseLocalDate, toLocalDateString } from '@/lib/dates';
+import { useT } from '@/lib/i18n';
+import { useLocale } from '@/lib/locale';
+import { bankCountryOf } from '@/lib/bank-details';
 
 const schema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -27,6 +30,7 @@ const schema = z.object({
   bankAccountName: z.string().optional(),
   bankAccountNumber: z.string().optional(),
   bankIFSC: z.string().optional(),
+  bankIBAN: z.string().optional(),
   notes: z.string().optional(),
 });
 type DriverFormValues = z.infer<typeof schema>;
@@ -37,6 +41,10 @@ function toDate(v?: string): Date | undefined {
 
 export default function EditDriverPage() {
   const router = useRouter();
+  const t = useT();
+  const { country, currency } = useLocale();
+  // The IFSC is an Indian code; every other country gets an IBAN next to the account number.
+  const inIndia = bankCountryOf('', country, currency) === 'IN';
   const params = useParams();
   const driverId = params.id as string;
 
@@ -84,6 +92,7 @@ export default function EditDriverPage() {
         bankAccountName: driver.bankAccountName || '',
         bankAccountNumber: driver.bankAccountNumber || '',
         bankIFSC: driver.bankIFSC || '',
+        bankIBAN: driver.bankIBAN || '',
         notes: driver.notes || '',
       }}
       onCancel={() => router.back()}
@@ -103,7 +112,8 @@ export default function EditDriverPage() {
           emergencyContactRelation: v.emergencyContactRelation || undefined,
           bankAccountName: v.bankAccountName || undefined,
           bankAccountNumber: v.bankAccountNumber || undefined,
-          bankIFSC: v.bankIFSC || undefined,
+          bankIFSC: inIndia ? v.bankIFSC || undefined : undefined,
+          bankIBAN: inIndia ? undefined : v.bankIBAN || undefined,
           notes: v.notes || undefined,
         });
         if (result) {
@@ -181,15 +191,21 @@ export default function EditDriverPage() {
 
           <SectionCard title="Bank details" description="For payouts">
             <div className="grid gap-ds-4 sm:grid-cols-3">
-              <FormRow name="bankAccountName" label="Account holder name">
-                <Input {...form.register('bankAccountName')} id="bankAccountName" placeholder="Name as per bank" />
+              <FormRow name="bankAccountName" label={t('banks.field.accountName')}>
+                <Input {...form.register('bankAccountName')} id="bankAccountName" placeholder={t('banks.placeholder.accountName')} />
               </FormRow>
-              <FormRow name="bankAccountNumber" label="Account number">
-                <Input {...form.register('bankAccountNumber')} id="bankAccountNumber" placeholder="XXXXXXXXXXXX" />
+              <FormRow name="bankAccountNumber" label={t('banks.field.accountNumber')}>
+                <Input {...form.register('bankAccountNumber')} id="bankAccountNumber" placeholder={t('banks.placeholder.accountNumber')} />
               </FormRow>
-              <FormRow name="bankIFSC" label="IFSC code">
-                <Input {...form.register('bankIFSC')} id="bankIFSC" placeholder="e.g., SBIN0001234" />
-              </FormRow>
+              {inIndia ? (
+                <FormRow name="bankIFSC" label={t('banks.field.ifsc')}>
+                  <Input {...form.register('bankIFSC')} id="bankIFSC" placeholder={t('banks.placeholder.ifsc')} />
+                </FormRow>
+              ) : (
+                <FormRow name="bankIBAN" label={t('banks.field.iban')}>
+                  <Input {...form.register('bankIBAN')} id="bankIBAN" placeholder={t('banks.placeholder.iban')} />
+                </FormRow>
+              )}
             </div>
           </SectionCard>
 
