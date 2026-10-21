@@ -19,7 +19,7 @@
 import type { Env } from '../../types';
 import { generateId } from '../../utils/uuid';
 import { invalidateTenantCache } from '../tenant-db';
-import type { TaxLine } from '../tax-calculator';
+import { normalizeCountry, type TaxLine } from '../tax-calculator';
 import {
   activePriceFrom,
   currentPeriodKey,
@@ -85,9 +85,17 @@ function ensureCanBuy(tenant: TenantRow): void {
   }
 }
 
-/** The price of one pack in the agency's market, with the communication margin floor applied. Null when it has no price. */
-function packUnitPrice(catalogue: Catalogue, product: AddonProduct, market: string, now: Date): { price: number; currency: string } | null {
-  if (!product.isActive || product.market !== market) return null;
+/**
+ * The price of one pack in the agency's market, with the communication margin floor applied. Null when it has no price.
+ * R137: a phone-number product can be set for one country (market = its ISO code, for example NL). It is sold to an agency
+ * in that country, and once such a product exists - active or still a draft - it is the only phone-number product that
+ * country can buy, so a draft never falls back to the market's (for NL, the Germany-based EU) price.
+ */
+function packUnitPrice(catalogue: Catalogue, product: AddonProduct, market: string, now: Date, country: string | null = null): { price: number; currency: string } | null {
+  if (!product.isActive) return null;
+  const countryProduct = !!country && country !== market && product.channel === 'phone_number' && product.market === country;
+  if (product.market !== market && !countryProduct) return null;
+  if (!countryProduct && country && country !== market && product.channel === 'phone_number' && catalogue.addons.some((a) => a.channel === 'phone_number' && a.market === country)) return null;
   return packSalePriceFrom(catalogue, product, now);
 }
 
@@ -121,6 +129,7 @@ export async function quoteAddon(env: Env, tenant: TenantRow, productKey: string
     throw new BillingError('INVALID_QUANTITY', `Quantity must be a whole number from 1 to ${max}.`, 400);
   }
   const market = marketForCountry(tenant.country);
+  const country = normalizeCountry(tenant.country);
   const notConfigured = new BillingError('PRICE_NOT_CONFIGURED', 'Pricing for your region is not available yet. Please contact support.', 409);
 
   let unitPrice: number;
@@ -138,7 +147,7 @@ export async function quoteAddon(env: Env, tenant: TenantRow, productKey: string
     expiresAt = year.periodEnd;
     description = `Extra users x ${quantity} (until ${year.periodEnd.slice(0, 10)})`;
   } else {
-    const priced = packUnitPrice(catalogue, product, market, now);
+    const priced = packUnitPrice(catalogue, product, market, now, country);
     if (!priced) throw notConfigured;
     unitPrice = priced.price;
     currency = priced.currency;
