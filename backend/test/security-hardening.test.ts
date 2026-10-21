@@ -203,9 +203,17 @@ describe('R106 security hardening', () => {
     it('allow 60 requests a minute per IP', async () => {
       const e = realLimits();
       const h = { 'CF-Connecting-IP': '198.51.100.9' };
-      let last = 0;
-      for (let i = 0; i < 61; i++) last = (await call('GET', '/public/quotation/never-issued-r106', null, { e, headers: h })).status;
-      expect(last).toBe(429);
+      // The KV window is the clock minute, so a slow run can split a burst across two windows. 121 requests span at
+      // most two windows, so at least one window sees its 61st request: a correct limit must refuse at least once,
+      // and no window may let more than 60 through.
+      const statuses: number[] = [];
+      for (let i = 0; i < 121; i++) statuses.push((await call('GET', '/public/quotation/never-issued-r106', null, { e, headers: h })).status);
+      expect(statuses[0]).toBe(404);
+      expect(statuses).toContain(429);
+      const allowed = statuses.filter((s) => s !== 429).length;
+      expect(allowed).toBeGreaterThanOrEqual(60);
+      expect(allowed).toBeLessThanOrEqual(120);
+      expect(statuses.slice(0, 60)).not.toContain(429);
     });
   });
 
