@@ -110,7 +110,8 @@ describe('catalogue rows equal PRICING.md section 7 (step A, with the step B swi
       expect(Object.keys(plan.allowances)).toHaveLength(cols.length);
     }
     const count = (key: string) => catalogue.plans.find((p) => p.key === key)!.features.length;
-    expect([count('trial'), count('basic'), count('pro'), count('enterprise')]).toEqual([21, 11, 23, 41]);
+    // PRICING.md 7.4 counts 21, 11, 23, 41; master migration 0030 (R139) adds the tour-operator keys: +6 trial, +4 basic, +6 pro, +6 enterprise.
+    expect([count('trial'), count('basic'), count('pro'), count('enterprise')]).toEqual([21 + 6, 11 + 4, 23 + 6, 41 + 6]);
     const features = (key: string) => catalogue.plans.find((p) => p.key === key)!.features;
     expect(features('trial')).not.toContain('voip_calling');
     expect(features('trial')).not.toContain('custom_domain');
