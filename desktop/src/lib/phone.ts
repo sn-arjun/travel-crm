@@ -71,7 +71,16 @@ const GROUPS: Record<string, Record<number, number[]>> = {
   AE: { 9: [2, 3, 4] },
   SG: { 8: [4, 4] },
   AU: { 9: [3, 3, 3] },
+  // Netherlands: landlines and service numbers show as 85 208 0400; mobile numbers (6...) are grouped on their own below
+  NL: { 9: [2, 3, 4] },
 };
+
+/** The grouping of one national number: by country and length, with the Dutch mobile range (6...) grouped on its own. */
+function groupSizes(country: PhoneCountry | undefined, national: string): number[] | undefined {
+  if (!country) return undefined;
+  if (country.iso === 'NL' && national.length === 9 && national.startsWith('6')) return [1, 4, 4];
+  return (GROUPS[country.iso] ?? (country.dial === '1' ? GROUPS.US : undefined))?.[national.length];
+}
 
 function group(national: string, sizes: number[]): string {
   const parts: string[] = [];
@@ -94,7 +103,7 @@ export function formatPhone(phone: string | null | undefined): string {
   const { countryCode, national } = splitPhone(raw);
   if (!national) return raw;
   const country = countryByDial(countryCode);
-  const sizes = country ? (GROUPS[country.iso] ?? (country.dial === '1' ? GROUPS.US : undefined))?.[national.length] : undefined;
+  const sizes = groupSizes(country, national);
   return `${countryCode} ${sizes ? group(national, sizes) : national}`;
 }
 

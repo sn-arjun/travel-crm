@@ -5,7 +5,7 @@ import { ChevronDown } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { joinPhone, phonePlaceholder, splitPhone } from '@/lib/phone';
-import { COUNTRIES, countryByDial, countryByIso, flagOf } from '@/lib/countries';
+import { COUNTRIES, countryByDial, countryByIso, flagOf, splitE164, toE164 as toE164For } from '@/lib/countries';
 import { useLocale } from '@/lib/locale';
 import { useT } from '@/lib/i18n';
 import {
@@ -79,6 +79,17 @@ export function PhoneInput({
   const effectiveCode = countryCode ?? `+${(countryByIso(phoneDefaultCountry) ?? countryByIso('IN')!).dial}`;
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    // A number pasted with its country code ("+31 6 1234 5678", "0031 ...") sets the picker and keeps only the national
+    // digits, so the code is never typed into the national field twice.
+    const typed = e.target.value.trim();
+    if (typed.startsWith('+') || typed.startsWith('00')) {
+      const split = splitE164(toE164For(typed));
+      if (split) {
+        onCountryCodeChange?.(`+${split.country.dial}`, split.country.iso);
+        onChange(split.national);
+        return;
+      }
+    }
     const raw = e.target.value.replace(/[^0-9\s-]/g, '');
     onChange(raw);
   }
@@ -164,6 +175,8 @@ export function E164PhoneInput({ value, onChange, placeholder, className, disabl
   const [pickedIso, setPickedIso] = React.useState<string | undefined>(undefined);
   const countryCode = parts.national ? parts.countryCode : (pickedCode ?? parts.countryCode);
   const iso = countryCode === pickedCode ? pickedIso : undefined;
+  // The code picked or pasted in this very change, before the re-render hands it down
+  const nextCode = React.useRef<string | null>(null);
 
   return (
     <PhoneInput
@@ -173,8 +186,13 @@ export function E164PhoneInput({ value, onChange, placeholder, className, disabl
       placeholder={placeholder}
       className={className}
       disabled={disabled}
-      onChange={(national) => onChange(joinPhone(countryCode, national))}
+      onChange={(national) => {
+        const code = nextCode.current ?? countryCode;
+        nextCode.current = null;
+        onChange(joinPhone(code, national));
+      }}
       onCountryCodeChange={(code, pickedCountry) => {
+        nextCode.current = code;
         setPickedCode(code);
         setPickedIso(pickedCountry);
         if (parts.national) onChange(joinPhone(code, parts.national));
