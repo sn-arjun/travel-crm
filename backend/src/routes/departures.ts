@@ -1,9 +1,11 @@
 /**
  * Departures API (R139), mounted at /departures and gated by the plan feature group_departures in index.ts.
- * Seat bookings, the manifest and departure messages are added by later batches under the same mount.
+ * Seat bookings of one departure are here (R143, /:id/bookings); the others are under /seat-bookings. The manifest and departure
+ * messages are added by later batches under the same mount.
  */
 
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import { zValidator } from '../utils/validator';
 import type { AppContext } from '../types';
 import { success, created, notFound } from '../utils/response';
@@ -16,12 +18,25 @@ import {
   replaceVehicles, updateDeparture,
 } from '../services/departures/departures';
 import { getGroupToursSettings, putGroupToursSettings } from '../services/departures/settings';
+import { emit, seatCtxFromRequest } from '../services/departures/seat-support';
+import { getBookingDetail, listBookings, requestSeats } from '../services/departures/seats';
+import { runWaitlistStep } from '../services/departures/waitlist';
 import {
   bulkDepartureSchema, costsBodySchema, createDepartureSchema, departureListSchema, departureStatusBodySchema, groupToursSettingsSchema,
   pricesBodySchema, stopsBodySchema, updateDepartureSchema, vehiclesBodySchema,
 } from '../validators/departures';
+import { bookingListSchema, requestSeatsBodySchema } from '../validators/seat-bookings';
 
 const departures = new Hono<AppContext>();
+
+/** More seats than before: tell the automations and let the waitlist have the new seats. */
+async function afterCapacityChange(c: Context<AppContext>, id: string, before: number | undefined): Promise<void> {
+  const after = (await getDepartureRow(c.get('tenantDb'), id))?.capacity;
+  if (before === undefined || after === undefined || after <= before) return;
+  const ctx = seatCtxFromRequest(c);
+  await emit(ctx, 'departure.capacity_changed', 'departure', id, { departureId: id, from: before, to: after });
+  await runWaitlistStep(ctx, id);
+}
 
 // ---- agency settings (group_tours): registered before /:id so "settings" is not read as a departure id
 
@@ -74,8 +89,10 @@ departures.put('/:id', requirePermission('departures', 'edit'), zValidator('json
   guarded(c, async () => {
     const db = c.get('tenantDb');
     const id = c.req.param('id');
+    const before = await getDepartureRow(db, id);
     if (!(await updateDeparture(db, id, c.req.valid('json'), c.get('userId')))) return notFound(c, 'Departure');
     await logActivity(db, { userId: c.get('userId'), action: 'update', entityType: 'departure', entityId: id });
+    await afterCapacityChange(c, id, before?.capacity);
     return success(c, await getDepartureDetail(db, id));
   }),
 );
@@ -85,9 +102,11 @@ departures.post('/:id/status', requirePermission('departures', 'edit'), zValidat
     const db = c.get('tenantDb');
     const id = c.req.param('id');
     const { status, reason } = c.req.valid('json');
+    const from = (await getDepartureRow(db, id))?.status;
     const updated = await changeDepartureStatus(db, id, status, reason, c.get('userId'));
     if (!updated) return notFound(c, 'Departure');
     await logActivity(db, { userId: c.get('userId'), action: 'status_change', entityType: 'departure', entityId: id, details: JSON.stringify({ status, reason }) });
+    await emit(seatCtxFromRequest(c), 'departure.status_changed', 'departure', id, { departureId: id, from, to: status, ...(reason && { reason }) });
     return success(c, await getDepartureDetail(db, id));
   }),
 );
@@ -114,8 +133,10 @@ departures.put('/:id/vehicles', requirePermission('departures', 'edit'), zValida
   guarded(c, async () => {
     const db = c.get('tenantDb');
     const id = c.req.param('id');
-    if (!(await getDepartureRow(db, id))) return notFound(c, 'Departure');
+    const before = await getDepartureRow(db, id);
+    if (!before) return notFound(c, 'Departure');
     await replaceVehicles(db, id, c.req.valid('json').vehicles, c.get('userId'));
+    await afterCapacityChange(c, id, before.capacity);
     return success(c, await getDepartureDetail(db, id));
   }),
 );
@@ -169,6 +190,26 @@ departures.put('/:id/costs', requirePermission('departures', 'edit'), zValidator
     const id = c.req.param('id');
     await replaceCosts(db, id, c.req.valid('json').costs, c.get('userId'));
     return success(c, await getCosts(db, id));
+  }),
+);
+
+// ---- seat bookings of one departure (R143)
+
+departures.get('/:id/bookings', requirePermission('departures', 'view'), zValidator('query', bookingListSchema), async (c) => {
+  const db = c.get('tenantDb');
+  const id = c.req.param('id');
+  if (!(await getDepartureRow(db, id))) return notFound(c, 'Departure');
+  const filters = c.req.valid('query');
+  const { items, total, hasMore, nextCursor } = await listBookings(db, id, filters);
+  return c.json({ success: true, data: items, pagination: { total, limit: filters.limit, hasMore, nextCursor } });
+});
+
+departures.post('/:id/bookings', requirePermission('departures', 'create'), zValidator('json', requestSeatsBodySchema), (c) =>
+  guarded(c, async () => {
+    const { hold: _hold, ...body } = c.req.valid('json');
+    const booking = await requestSeats(seatCtxFromRequest(c), { ...body, departureId: c.req.param('id'), source: 'staff' });
+    await logActivity(c.get('tenantDb'), { userId: c.get('userId'), action: 'create', entityType: 'seat_booking', entityId: booking.id, details: JSON.stringify({ status: booking.status, seats: booking.seats }) });
+    return created(c, booking);
   }),
 );
 

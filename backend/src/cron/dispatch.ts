@@ -36,6 +36,7 @@ import { retryPendingRecordings, runRecordingRetention } from '../services/voip/
 import { processOverdueTasks } from './overdue-tasks';
 import { sweepWordpressSites } from '../services/wordpress/sites';
 import { processFleetAlerts } from './fleet-alerts';
+import { expireHoldsForTenant, runDepartureLifecycle } from '../services/departures/waitlist';
 import { purgePlatformMailLog } from '../services/mail/platform-log';
 import {
   processBirthdaysForTenant,
@@ -93,6 +94,10 @@ const EVERY5_JOBS: TenantJob[] = [
   { name: 'calls.recordings-retry', period: 'tick', run: (env, id, db, now) => retryPendingRecordings(env, id, db, now) },
   // R137: the backup for the provider's regulatory bundle status callback: a tick job that asks at most once an hour per agency.
   { name: 'voip.regulatory-poll', period: 'tick', run: (env, id, db, now) => runRegulatoryPoll(env, id, db, now) },
+  // R143: held seats past their hold expire, and the waitlist gets the freed seats. Not paused by automations_paused (seats are not an automation).
+  { name: 'departures.expire-holds', period: 'tick', run: (env, id, db, now) => expireHoldsForTenant(env, id, db, now) },
+  // R143: departures close at their booking cut-off date, depart on their start date and complete the day after they end.
+  { name: 'departures.lifecycle', period: 'local-day', run: (env, id, db, now) => runDepartureLifecycle(env, id, db, now) },
 ];
 
 const HOURLY_JOBS: TenantJob[] = [

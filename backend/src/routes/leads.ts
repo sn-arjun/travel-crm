@@ -1110,4 +1110,31 @@ leadRoutes.get('/:id/follow-ups', requirePermission('leads', 'view'), async (c) 
   return success(c, rows.results);
 });
 
+// ============================================================
+// Seat bookings of a lead (R143): the lead page's seats list and its "Hold seats" action
+// ============================================================
+
+import { guarded as departureGuarded } from '../services/departures/common';
+import { seatCtxFromRequest } from '../services/departures/seat-support';
+import { listLeadBookings, requestSeats } from '../services/departures/seats';
+import { holdSeatsBodySchema } from '../validators/seat-bookings';
+import { requireFeature } from '../middleware/feature-gate';
+
+leadRoutes.get('/:id/seat-bookings', requireFeature('group_departures'), requirePermission('departures', 'view'), async (c) => {
+  return success(c, await listLeadBookings(c.get('tenantDb'), c.req.param('id')));
+});
+
+leadRoutes.post(
+  '/:id/hold-seats',
+  requireFeature('group_departures'),
+  requirePermission('departures', 'create'),
+  zValidator('json', holdSeatsBodySchema),
+  (c) =>
+    departureGuarded(c, async () => {
+      const { departureId, seats, notes } = c.req.valid('json');
+      const booking = await requestSeats(seatCtxFromRequest(c), { departureId, seats, leadId: c.req.param('id'), notes, source: 'staff' });
+      return created(c, booking);
+    }),
+);
+
 export default leadRoutes;

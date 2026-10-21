@@ -41,6 +41,29 @@ export const CALL_EVENT_TYPES = [
 ] as const;
 export type CallEventType = (typeof CALL_EVENT_TYPES)[number];
 
+/**
+ * Group departure events (R143, design 9.1). Emitted by services/departures/*, once per real transition. Payloads carry ids only:
+ *  - departure.status_changed: departureId, from, to, automatic?, reason?
+ *  - departure.capacity_changed: departureId, from, to (more seats than before)
+ *  - departure.seats_low / departure.full: departureId, tourId, code, startDate, left, capacity, threshold
+ *  - seat_booking.held / confirmed / waitlisted / cancelled / expired: seatBookingId, departureId, leadId, contactId, seats, status, source
+ *    (+ departureCode and confirmMode on held, confirmedBy on confirmed, previousStatus and reason on cancelled)
+ *  - waitlist.offered: the seat_booking payload + offeredUntil
+ */
+export const DEPARTURE_EVENT_TYPES = [
+  'departure.status_changed',
+  'departure.capacity_changed',
+  'departure.seats_low',
+  'departure.full',
+  'seat_booking.held',
+  'seat_booking.confirmed',
+  'seat_booking.waitlisted',
+  'seat_booking.cancelled',
+  'seat_booking.expired',
+  'waitlist.offered',
+] as const;
+export type DepartureEventType = (typeof DEPARTURE_EVENT_TYPES)[number];
+
 interface Waiter {
   waitUntil(promise: Promise<unknown>): void;
 }
