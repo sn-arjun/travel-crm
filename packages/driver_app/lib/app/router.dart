@@ -11,6 +11,7 @@ import '../features/trips/presentation/screens/trip_detail_screen.dart';
 import '../features/trips/presentation/screens/check_in_screen.dart';
 import '../features/trips/presentation/screens/check_out_screen.dart';
 import '../features/trips/presentation/screens/trip_history_screen.dart';
+import '../features/trips/presentation/screens/stop_screen.dart';
 import '../features/profile/presentation/screens/profile_screen.dart';
 import '../features/profile/presentation/screens/edit_profile_screen.dart';
 import '../features/profile/presentation/screens/documents_screen.dart';
@@ -64,6 +65,14 @@ final routerProvider = Provider<GoRouter>((ref) {
                         parentNavigatorKey: _rootNavigatorKey,
                         builder: (context, state) => CheckInScreen(
                           tripId: state.pathParameters['id']!,
+                        ),
+                      ),
+                      GoRoute(
+                        path: 'stops/:sid',
+                        parentNavigatorKey: _rootNavigatorKey,
+                        builder: (context, state) => StopScreen(
+                          tripId: state.pathParameters['id']!,
+                          stopId: state.pathParameters['sid']!,
                         ),
                       ),
                       GoRoute(

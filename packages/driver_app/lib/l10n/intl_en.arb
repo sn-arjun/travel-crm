@@ -182,5 +182,100 @@
   "agencyLabel": "Agency",
   "selectCountry": "Select country",
   "countrySearchHint": "Search country or code",
-  "noCountryFound": "No country found"
+  "noCountryFound": "No country found",
+  "stopsTitle": "Stops",
+  "coachSummary": "{stops, plural, =1{1 stop} other{{stops} stops}}, {passengers, plural, =1{1 passenger} other{{passengers} passengers}}",
+  "@coachSummary": {
+    "placeholders": {
+      "stops": {
+        "type": "int"
+      },
+      "passengers": {
+        "type": "int"
+      }
+    }
+  },
+  "nextStopAt": "Next: {name} at {time}",
+  "@nextStopAt": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "nextStopOnly": "Next: {name}",
+  "@nextStopOnly": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "crewTourLeader": "Tour leader",
+  "stopStatusPending": "Pending",
+  "stopStatusArrived": "Arrived",
+  "stopStatusDeparted": "Departed",
+  "stopStatusSkipped": "Skipped",
+  "stopArrived": "Arrived",
+  "stopDepart": "Depart",
+  "documentsCheckBadge": "Documents check",
+  "documentsChecked": "Documents checked",
+  "markDocumentsChecked": "Mark documents checked",
+  "passengerBoarded": "Boarded",
+  "passengerNoShow": "No-show",
+  "passengerMore": "More",
+  "passengerSeats": "{count} seats",
+  "@passengerSeats": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "completeStop": "Complete stop",
+  "completeStopPendingTitle": "Passengers not ticked",
+  "completeStopPendingBody": "{count, plural, =1{1 passenger has} other{{count} passengers have}} not been ticked yet. Complete the stop anyway?",
+  "@completeStopPendingBody": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "headcountThisStop": "This stop",
+  "headcountOverall": "Overall",
+  "headcountBoarded": "{boarded} of {expected} boarded",
+  "@headcountBoarded": {
+    "placeholders": {
+      "boarded": {
+        "type": "int"
+      },
+      "expected": {
+        "type": "int"
+      }
+    }
+  },
+  "headcountNoShow": "{count} no-show",
+  "@headcountNoShow": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "passengersAtStop": "Passengers boarding here",
+  "noPassengersAtStop": "No passengers board here",
+  "changesWaiting": "{count, plural, =1{1 change waiting to be sent} other{{count} changes waiting to be sent}}",
+  "@changesWaiting": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "savedTripNoSignal": "No signal. Showing the saved trip.",
+  "stopGone": "This stop is no longer on the trip."
 }

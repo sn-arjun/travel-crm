@@ -470,4 +470,135 @@ class AppLocalizationsNl extends AppLocalizations {
 
   @override
   String get noCountryFound => 'Geen land gevonden';
+
+  @override
+  String get stopsTitle => 'Haltes';
+
+  @override
+  String coachSummary(int stops, int passengers) {
+    String _temp0 = intl.Intl.pluralLogic(
+      stops,
+      locale: localeName,
+      other: '$stops haltes',
+      one: '1 halte',
+    );
+    String _temp1 = intl.Intl.pluralLogic(
+      passengers,
+      locale: localeName,
+      other: '$passengers passagiers',
+      one: '1 passagier',
+    );
+    return '$_temp0, $_temp1';
+  }
+
+  @override
+  String nextStopAt(String name, String time) {
+    return 'Volgende: $name om $time';
+  }
+
+  @override
+  String nextStopOnly(String name) {
+    return 'Volgende: $name';
+  }
+
+  @override
+  String get crewTourLeader => 'Reisleider';
+
+  @override
+  String get stopStatusPending => 'Gepland';
+
+  @override
+  String get stopStatusArrived => 'Aangekomen';
+
+  @override
+  String get stopStatusDeparted => 'Vertrokken';
+
+  @override
+  String get stopStatusSkipped => 'Overgeslagen';
+
+  @override
+  String get stopArrived => 'Aangekomen';
+
+  @override
+  String get stopDepart => 'Vertrek';
+
+  @override
+  String get documentsCheckBadge => 'Documentcontrole';
+
+  @override
+  String get documentsChecked => 'Documenten gecontroleerd';
+
+  @override
+  String get markDocumentsChecked => 'Documenten als gecontroleerd markeren';
+
+  @override
+  String get passengerBoarded => 'Aan boord';
+
+  @override
+  String get passengerNoShow => 'Niet verschenen';
+
+  @override
+  String get passengerMore => 'Meer';
+
+  @override
+  String passengerSeats(int count) {
+    return '$count plaatsen';
+  }
+
+  @override
+  String get completeStop => 'Halte afronden';
+
+  @override
+  String get completeStopPendingTitle => 'Passagiers niet afgevinkt';
+
+  @override
+  String completeStopPendingBody(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count passagiers zijn',
+      one: '1 passagier is',
+    );
+    return '$_temp0 nog niet afgevinkt. De halte toch afronden?';
+  }
+
+  @override
+  String get headcountThisStop => 'Deze halte';
+
+  @override
+  String get headcountOverall => 'Totaal';
+
+  @override
+  String headcountBoarded(int boarded, int expected) {
+    return '$boarded van $expected aan boord';
+  }
+
+  @override
+  String headcountNoShow(int count) {
+    return '$count niet verschenen';
+  }
+
+  @override
+  String get passengersAtStop => 'Passagiers die hier instappen';
+
+  @override
+  String get noPassengersAtStop => 'Hier stapt niemand in';
+
+  @override
+  String changesWaiting(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count wijzigingen wachten om verzonden te worden',
+      one: '1 wijziging wacht om verzonden te worden',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get savedTripNoSignal =>
+      'Geen verbinding. De opgeslagen rit wordt getoond.';
+
+  @override
+  String get stopGone => 'Deze halte staat niet meer op de rit.';
 }

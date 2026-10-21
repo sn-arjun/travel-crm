@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:driver_app/l10n/app_localizations.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../data/trip_view.dart';
 import 'trip_status_badge.dart';
@@ -7,7 +8,11 @@ import 'trip_status_badge.dart';
 class TripCard extends StatelessWidget {
   final Map<String, dynamic> trip;
 
-  const TripCard({super.key, required this.trip});
+  /// The signed-in person's crew role (`driver`, `tour_leader`, `both`).
+  /// A tour leader sees a crew badge on coach trips.
+  final String? crewRole;
+
+  const TripCard({super.key, required this.trip, this.crewRole});
 
   @override
   Widget build(BuildContext context) {
@@ -56,6 +61,11 @@ class TripCard extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               TripRoute(pickup: view.pickupLocation, drop: view.dropLocation),
+              if (view.coachSummary != null)
+                _CoachLine(
+                  summary: view.coachSummary!,
+                  tourLeader: crewRole == 'tour_leader' || crewRole == 'both',
+                ),
               if (passenger.isNotEmpty || vehicle.isNotEmpty) ...[
                 const SizedBox(height: 14),
                 Divider(color: scheme.outlineVariant),
@@ -93,6 +103,76 @@ class TripCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// "N stops, M passengers" and the next stop of a coach trip.
+class _CoachLine extends StatelessWidget {
+  final CoachSummary summary;
+  final bool tourLeader;
+
+  const _CoachLine({required this.summary, required this.tourLeader});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final name = summary.nextStopName;
+    final at = summary.nextStopAt;
+    final next = name == null
+        ? null
+        : at == null
+            ? l10n.nextStopOnly(name)
+            : l10n.nextStopAt(name, TripView.formatTime(at));
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        key: const Key('coach-line'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.alt_route, size: 18, color: scheme.primary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  l10n.coachSummary(summary.stopCount, summary.passengerCount),
+                  key: const Key('coach-summary'),
+                  style: text.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                ),
+              ),
+              if (tourLeader)
+                Container(
+                  key: const Key('crew-badge'),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: scheme.secondaryContainer,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    l10n.crewTourLeader,
+                    style: text.labelSmall?.copyWith(
+                        color: scheme.onSecondaryContainer,
+                        fontWeight: FontWeight.w700),
+                  ),
+                ),
+            ],
+          ),
+          if (next != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, left: 24),
+              child: Text(
+                next,
+                key: const Key('coach-next-stop'),
+                style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+              ),
+            ),
+        ],
       ),
     );
   }

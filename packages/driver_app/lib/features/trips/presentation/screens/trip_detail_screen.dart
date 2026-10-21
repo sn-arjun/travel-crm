@@ -11,6 +11,8 @@ import '../../../../core/utils/phone.dart';
 import '../../../../core/widgets/app_widgets.dart';
 import '../../data/trip_provider.dart';
 import '../../data/trip_view.dart';
+import '../widgets/headcount_bar.dart';
+import '../widgets/stop_timeline.dart';
 import '../widgets/trip_card.dart';
 import '../widgets/trip_status_badge.dart';
 import '../widgets/trip_timeline.dart';
@@ -83,6 +85,14 @@ class TripDetailScreen extends ConsumerWidget {
           children: [
             _HeaderCard(view: view, status: status),
             const SizedBox(height: 12),
+
+            // Coach trip: head count and the stops in order
+            if (view.isCoach)
+              _CoachSection(
+                tripId: tripId,
+                view: view,
+                fromCache: state.fromCache,
+              ),
 
             // Route with "Open in Maps"
             SectionCard(
@@ -252,6 +262,85 @@ class TripDetailScreen extends ConsumerWidget {
       'outstation': 'Outstation',
     };
     return labels[type] ?? type;
+  }
+}
+
+/// Head count and ordered stops of a coach trip, with Arrived / Depart.
+class _CoachSection extends ConsumerWidget {
+  final String tripId;
+  final TripView view;
+  final bool fromCache;
+
+  const _CoachSection({
+    required this.tripId,
+    required this.view,
+    required this.fromCache,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context)!;
+    final pending = ref.watch(pendingCheckinsProvider(tripId));
+    final notifier = ref.read(tripDetailProvider(tripId).notifier);
+    final stops = view.stops;
+    final headcount = view.headcount;
+    final open = !const {'completed', 'cancelled'}.contains(view.status);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (fromCache) ...[
+          InfoBanner(
+            key: const Key('offline-banner'),
+            icon: Icons.cloud_off_outlined,
+            message: l10n.savedTripNoSignal,
+          ),
+          const SizedBox(height: 8),
+        ],
+        if (pending > 0) ...[
+          InfoBanner(
+            key: const Key('pending-banner'),
+            icon: Icons.sync,
+            message: l10n.changesWaiting(pending),
+          ),
+          const SizedBox(height: 8),
+        ],
+        if (view.myRole == 'tour_leader') ...[
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: Chip(
+              key: const Key('crew-badge'),
+              avatar: const Icon(Icons.flag_outlined, size: 18),
+              label: Text(l10n.crewTourLeader),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        if (headcount != null) ...[
+          HeadcountBar(overall: headcount),
+          const SizedBox(height: 12),
+        ],
+        if (stops.isNotEmpty) ...[
+          SectionCard(
+            icon: Icons.alt_route,
+            title: l10n.stopsTitle,
+            children: [
+              StopTimeline(
+                stops: stops,
+                headcount: view.hasPassengers ? headcount : null,
+                actionsEnabled: open,
+                onOpen: view.hasPassengers
+                    ? (s) => context.push('/trips/$tripId/stops/${s.id}')
+                    : null,
+                onArrive: (s) => notifier.arriveStop(s.id),
+                onDepart: (s) => notifier.departStop(s.id),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+        ],
+      ],
+    );
   }
 }
 

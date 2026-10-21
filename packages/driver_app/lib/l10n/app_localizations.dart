@@ -989,6 +989,186 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No country found'**
   String get noCountryFound;
+
+  /// No description provided for @stopsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Stops'**
+  String get stopsTitle;
+
+  /// No description provided for @coachSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'{stops, plural, =1{1 stop} other{{stops} stops}}, {passengers, plural, =1{1 passenger} other{{passengers} passengers}}'**
+  String coachSummary(int stops, int passengers);
+
+  /// No description provided for @nextStopAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Next: {name} at {time}'**
+  String nextStopAt(String name, String time);
+
+  /// No description provided for @nextStopOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Next: {name}'**
+  String nextStopOnly(String name);
+
+  /// No description provided for @crewTourLeader.
+  ///
+  /// In en, this message translates to:
+  /// **'Tour leader'**
+  String get crewTourLeader;
+
+  /// No description provided for @stopStatusPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Pending'**
+  String get stopStatusPending;
+
+  /// No description provided for @stopStatusArrived.
+  ///
+  /// In en, this message translates to:
+  /// **'Arrived'**
+  String get stopStatusArrived;
+
+  /// No description provided for @stopStatusDeparted.
+  ///
+  /// In en, this message translates to:
+  /// **'Departed'**
+  String get stopStatusDeparted;
+
+  /// No description provided for @stopStatusSkipped.
+  ///
+  /// In en, this message translates to:
+  /// **'Skipped'**
+  String get stopStatusSkipped;
+
+  /// No description provided for @stopArrived.
+  ///
+  /// In en, this message translates to:
+  /// **'Arrived'**
+  String get stopArrived;
+
+  /// No description provided for @stopDepart.
+  ///
+  /// In en, this message translates to:
+  /// **'Depart'**
+  String get stopDepart;
+
+  /// No description provided for @documentsCheckBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Documents check'**
+  String get documentsCheckBadge;
+
+  /// No description provided for @documentsChecked.
+  ///
+  /// In en, this message translates to:
+  /// **'Documents checked'**
+  String get documentsChecked;
+
+  /// No description provided for @markDocumentsChecked.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark documents checked'**
+  String get markDocumentsChecked;
+
+  /// No description provided for @passengerBoarded.
+  ///
+  /// In en, this message translates to:
+  /// **'Boarded'**
+  String get passengerBoarded;
+
+  /// No description provided for @passengerNoShow.
+  ///
+  /// In en, this message translates to:
+  /// **'No-show'**
+  String get passengerNoShow;
+
+  /// No description provided for @passengerMore.
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get passengerMore;
+
+  /// No description provided for @passengerSeats.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} seats'**
+  String passengerSeats(int count);
+
+  /// No description provided for @completeStop.
+  ///
+  /// In en, this message translates to:
+  /// **'Complete stop'**
+  String get completeStop;
+
+  /// No description provided for @completeStopPendingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Passengers not ticked'**
+  String get completeStopPendingTitle;
+
+  /// No description provided for @completeStopPendingBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 passenger has} other{{count} passengers have}} not been ticked yet. Complete the stop anyway?'**
+  String completeStopPendingBody(int count);
+
+  /// No description provided for @headcountThisStop.
+  ///
+  /// In en, this message translates to:
+  /// **'This stop'**
+  String get headcountThisStop;
+
+  /// No description provided for @headcountOverall.
+  ///
+  /// In en, this message translates to:
+  /// **'Overall'**
+  String get headcountOverall;
+
+  /// No description provided for @headcountBoarded.
+  ///
+  /// In en, this message translates to:
+  /// **'{boarded} of {expected} boarded'**
+  String headcountBoarded(int boarded, int expected);
+
+  /// No description provided for @headcountNoShow.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} no-show'**
+  String headcountNoShow(int count);
+
+  /// No description provided for @passengersAtStop.
+  ///
+  /// In en, this message translates to:
+  /// **'Passengers boarding here'**
+  String get passengersAtStop;
+
+  /// No description provided for @noPassengersAtStop.
+  ///
+  /// In en, this message translates to:
+  /// **'No passengers board here'**
+  String get noPassengersAtStop;
+
+  /// No description provided for @changesWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 change waiting to be sent} other{{count} changes waiting to be sent}}'**
+  String changesWaiting(int count);
+
+  /// No description provided for @savedTripNoSignal.
+  ///
+  /// In en, this message translates to:
+  /// **'No signal. Showing the saved trip.'**
+  String get savedTripNoSignal;
+
+  /// No description provided for @stopGone.
+  ///
+  /// In en, this message translates to:
+  /// **'This stop is no longer on the trip.'**
+  String get stopGone;
 }
 
 class _AppLocalizationsDelegate

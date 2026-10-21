@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:driver_app/l10n/app_localizations.dart';
 import '../../data/trip_provider.dart';
+import '../../data/trip_view.dart';
+import '../../../profile/data/crew_role_provider.dart';
 import '../../../../core/widgets/app_widgets.dart';
 import '../widgets/trip_card.dart';
 
@@ -24,6 +26,8 @@ class _MyTripsScreenState extends ConsumerState<MyTripsScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    // Ticks left over from a session without signal are sent on start.
+    ref.read(checkinQueueProvider);
     _tabController.addListener(_onTabChanged);
     _startAutoRefresh();
   }
@@ -155,7 +159,12 @@ class _TripTabView extends ConsumerWidget {
                 ),
               );
             }
-            return TripCard(trip: state.trips[tripIndex]);
+            final trip = state.trips[tripIndex];
+            // The crew role is only looked up when a coach trip is on screen.
+            final role = trip.view.isCoach
+                ? ref.watch(crewRoleProvider).valueOrNull
+                : null;
+            return TripCard(trip: trip, crewRole: role);
           },
         ),
       ),
