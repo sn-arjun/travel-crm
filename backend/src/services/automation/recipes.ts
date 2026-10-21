@@ -114,6 +114,15 @@ function moneyFmt(ctx: RecipeContext): Promise<MoneyFmt> {
   return p;
 }
 
+/**
+ * A customer wrote an amount in a currency other than the one it is compared with (the agency's, or an invoice's).
+ * The amount is kept as written and the suggestion says so; nothing is converted.
+ */
+function otherCurrencyNote(e: MessageEntities, amount: number | undefined, compareWith: string): string | null {
+  if (!e.currency || amount === undefined || e.currency.toUpperCase() === compareWith.toUpperCase()) return null;
+  return `Customer mentions ${e.currency} ${amount}; ${compareWith} is the currency here`;
+}
+
 function shortDate(iso: string): string {
   const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
@@ -174,6 +183,7 @@ const readMessages: Recipe = {
   usesAi: true,
   async evaluate(ctx, event) {
     const inr = await moneyFmt(ctx);
+    const loc = await loadLocaleContext(ctx.db);
     const message = await ctx.db
       .prepare(`SELECT id, contact_id, lead_id, channel, subject, content, from_address, metadata FROM message_log WHERE id = ? AND direction = 'incoming'`)
       .bind(event.entityId)
@@ -202,6 +212,8 @@ const readMessages: Recipe = {
         companyName: await companyName(ctx),
         knownDestinations: await knownDestinations(ctx),
         today: await today(ctx),
+        currency: loc.currency,
+        locale: loc.locale,
         leadContext: lead ? `${lead.title} (${parseDestinations(lead.destination).join(', ') || 'destination open'}; status ${lead.status})` : null,
       },
       { aiAllowed: ctx.aiAllowed, db: ctx.db },
@@ -227,6 +239,9 @@ const readMessages: Recipe = {
     };
     const proposals: Proposal[] = [];
     const day = (await today(ctx));
+    // A budget written in another currency is kept on the analysis with its currency and said in the suggestion;
+    // it is not put on the lead as if it were in the agency's currency.
+    const budgetNote = otherCurrencyNote(e, e.budget, loc.currency);
 
     if (analysis.intent === 'enquiry' && !lead) {
       const isEmail = (message.from_address ?? '').includes('@');
@@ -236,7 +251,7 @@ const readMessages: Recipe = {
         ...where,
         action: 'create_lead_from_enquiry',
         title: contact ? `Create a lead for ${sender}` : `Create contact and lead for ${sender}`,
-        reason: describeTrip(e, inr) || 'New travel enquiry',
+        reason: [describeTrip(budgetNote ? { ...e, budget: undefined } : e, inr) || 'New travel enquiry', budgetNote].filter(Boolean).join('. '),
         params: {
           contactId: contact?.id ?? null,
           name: contact ? null : senderName,
@@ -248,7 +263,7 @@ const readMessages: Recipe = {
           returnDate: e.returnDate ?? null,
           paxAdults: e.paxAdults ?? 1,
           paxChildren: e.paxChildren ?? 0,
-          budget: e.budget ?? null,
+          budget: budgetNote ? null : (e.budget ?? null),
           tripType: e.tripType ?? null,
           specialRequirements: e.specialRequirements ?? null,
           source: message.channel,
@@ -270,7 +285,7 @@ const readMessages: Recipe = {
       if (e.returnDate && e.returnDate !== lead.return_date) changes.returnDate = e.returnDate;
       if (e.paxAdults && e.paxAdults !== lead.pax_adults) changes.paxAdults = e.paxAdults;
       if (e.paxChildren !== undefined && e.paxChildren !== (lead.pax_children ?? 0)) changes.paxChildren = e.paxChildren;
-      if (e.budget && e.budget !== lead.budget) changes.budget = e.budget;
+      if (e.budget && !budgetNote && e.budget !== lead.budget) changes.budget = e.budget;
       if (Object.keys(changes).length > 0) {
         proposals.push({
           ...where,
@@ -278,7 +293,7 @@ const readMessages: Recipe = {
           entityId: lead.id,
           action: 'update_lead',
           title: `Update "${lead.title}" from ${sender}'s message`,
-          reason: describeTrip({ ...e, destinations: added }, inr) || Object.keys(changes).join(', '),
+          reason: [describeTrip({ ...e, destinations: added, budget: budgetNote ? undefined : e.budget }, inr) || Object.keys(changes).join(', '), budgetNote].filter(Boolean).join('. '),
           params: { leadId: lead.id, changes },
           dedupeKey: `update-lead:${message.id}`,
           confidence: analysis.source === 'ai' ? 0.85 : 0.6,
@@ -294,7 +309,9 @@ const readMessages: Recipe = {
         entityId: lead.id,
         action: 'mark_lead_won',
         title: `${sender} confirmed: mark "${lead.title}" as won`,
-        reason: e.paymentAmount ? `The customer says they paid ${inr(e.paymentAmount)}` : 'The customer agreed to go ahead',
+        reason: e.paymentAmount
+          ? `The customer says they paid ${e.currency && e.currency.toUpperCase() !== loc.currency.toUpperCase() ? `${e.currency} ${e.paymentAmount}` : inr(e.paymentAmount)}`
+          : 'The customer agreed to go ahead',
         params: { leadId: lead.id },
         dedupeKey: `won:${lead.id}`,
         confidence: analysis.source === 'ai' ? 0.85 : 0.65,
@@ -305,19 +322,25 @@ const readMessages: Recipe = {
     if (contact && e.paymentAmount) {
       const invoice = await ctx.db
         .prepare(
-          `SELECT id, invoice_number, balance_due, total FROM invoices
+          `SELECT id, invoice_number, balance_due, total, currency FROM invoices
            WHERE contact_id = ? AND status NOT IN ('paid', 'cancelled') ORDER BY created_at DESC LIMIT 1`,
         )
         .bind(contact.id)
-        .first<{ id: string; invoice_number: string; balance_due: number | null; total: number }>();
+        .first<{ id: string; invoice_number: string; balance_due: number | null; total: number; currency: string | null }>();
       if (invoice) {
+        // A payment written in another currency than the invoice's is offered with a warning, at low confidence.
+        const mismatch = otherCurrencyNote(e, e.paymentAmount, invoice.currency || loc.currency);
         proposals.push({
           ...where,
           entityType: 'invoice',
           entityId: invoice.id,
           action: 'record_payment',
-          title: `Record ${inr(e.paymentAmount)} from ${sender} on ${invoice.invoice_number}`,
-          reason: e.paymentReference ? `Reference ${e.paymentReference} in the message` : 'The customer says they have paid',
+          title: mismatch
+            ? `Check before recording: ${e.currency} ${e.paymentAmount} from ${sender} on ${invoice.invoice_number}`
+            : `Record ${inr(e.paymentAmount)} from ${sender} on ${invoice.invoice_number}`,
+          reason: mismatch
+            ? `Warning: ${mismatch}. Check the amount before recording it.`
+            : e.paymentReference ? `Reference ${e.paymentReference} in the message` : 'The customer says they have paid',
           params: {
             invoiceId: invoice.id,
             amount: e.paymentAmount,
@@ -326,7 +349,7 @@ const readMessages: Recipe = {
             notes: 'Recorded from the customer\'s message by the assistant',
           },
           dedupeKey: `payment:${message.id}`,
-          confidence: e.paymentReference ? 0.85 : 0.6,
+          confidence: mismatch ? 0.3 : e.paymentReference ? 0.85 : 0.6,
         });
       }
     }
@@ -650,9 +673,9 @@ const paymentFromMessage: Recipe = {
   async evaluate(ctx, event) {
     const inr = await moneyFmt(ctx);
     const invoice = await ctx.db
-      .prepare(`SELECT id, invoice_number, contact_id, lead_id, total, paid_amount FROM invoices WHERE id = ? AND status NOT IN ('paid', 'cancelled')`)
+      .prepare(`SELECT id, invoice_number, contact_id, lead_id, total, paid_amount, currency FROM invoices WHERE id = ? AND status NOT IN ('paid', 'cancelled')`)
       .bind(event.entityId)
-      .first<{ id: string; invoice_number: string; contact_id: string; lead_id: string | null; total: number; paid_amount: number | null }>();
+      .first<{ id: string; invoice_number: string; contact_id: string; lead_id: string | null; total: number; paid_amount: number | null; currency: string | null }>();
     if (!invoice) return [];
     const recent = await ctx.db
       .prepare(
@@ -670,12 +693,21 @@ const paymentFromMessage: Recipe = {
     } catch {
       return [];
     }
-    if (!entities.paymentAmount || entities.paymentAmount > invoice.total) return [];
+    if (!entities.paymentAmount) return [];
+    // In another currency than the invoice the amount cannot be compared with the total: the payment is still offered,
+    // with a warning, and is never applied by itself (recording a payment always waits for a click).
+    const invoiceCurrency = invoice.currency || (await loadLocaleContext(ctx.db)).currency;
+    const mismatch = otherCurrencyNote(entities, entities.paymentAmount, invoiceCurrency);
+    if (!mismatch && entities.paymentAmount > invoice.total) return [];
     const contact = await loadContact(ctx, invoice.contact_id);
     return [{
       action: 'record_payment',
-      title: `Record ${inr(entities.paymentAmount)} from ${contact?.name ?? 'the customer'} on ${invoice.invoice_number}`,
-      reason: entities.paymentReference ? `Reference ${entities.paymentReference} in their message` : 'The customer wrote that they have paid',
+      title: mismatch
+        ? `Check before recording: ${entities.currency} ${entities.paymentAmount} from ${contact?.name ?? 'the customer'} on ${invoice.invoice_number}`
+        : `Record ${inr(entities.paymentAmount)} from ${contact?.name ?? 'the customer'} on ${invoice.invoice_number}`,
+      reason: mismatch
+        ? `Warning: ${mismatch}. Check the amount before recording it.`
+        : entities.paymentReference ? `Reference ${entities.paymentReference} in their message` : 'The customer wrote that they have paid',
       params: { invoiceId: invoice.id, amount: entities.paymentAmount, method: 'transfer', reference: entities.paymentReference, notes: 'Recorded from the customer\'s message by the assistant' },
       entityType: 'invoice',
       entityId: invoice.id,
@@ -684,6 +716,7 @@ const paymentFromMessage: Recipe = {
       dedupeKey: `payment:${recent.id}`,
       sourceType: 'message',
       sourceId: recent.id,
+      ...(mismatch ? { confidence: 0.3 } : {}),
     }];
   },
 };
