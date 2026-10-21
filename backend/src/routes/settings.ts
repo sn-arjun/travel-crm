@@ -16,6 +16,7 @@ import { rateLimit } from '../middleware/rate-limiter';
 import { loadLocaleContext, validateLocaleSettings } from '../utils/money';
 import { isUiLanguage, UI_LANGUAGES } from '../i18n';
 import { DEFAULT_VAT_RATES, loadTaxSettings, normalizeCountry } from '../services/tax-calculator';
+import { normalizeBankDetails, validateBankDetails } from '../utils/bank-details';
 
 const settingsRoutes = new Hono<AppContext>();
 
@@ -438,6 +439,10 @@ settingsRoutes.get('/invoice-defaults', async (c) => {
     }
   }
 
+  // Bank details come back in the current shape whichever keys they were saved under (R140): accountHolderName is
+  // accountName, and the separate upi_id setting is upiId.
+  result.bank_details = normalizeBankDetails(result.bank_details, result.upi_id);
+
   // Defaults
   if (!result.default_due_days) result.default_due_days = 30;
   // Tax fallbacks follow the agency country, by the same rule as the tax engine: India is GST at 18, a country with
@@ -512,6 +517,18 @@ settingsRoutes.put(
       return error(c, 'Enter the sales tax rate', 400);
     }
     if (body.gstin) body.gstin = body.gstin.trim().toUpperCase();
+
+    // Bank details are validated for the fields of the agency's country (design 4.4) and stored in the current shape.
+    // An agency that never saved a country is a pre-R202 Indian agency, as in the GET above.
+    if (body.bank_details !== undefined) {
+      const bankCountry = normalizeCountry(body.country) ?? normalizeCountry(stored.seller.country) ?? normalizeCountry((await loadLocaleContext(c.get('tenantDb'))).country) ?? 'IN';
+      const bank = normalizeBankDetails(body.bank_details, body.upi_id);
+      const problem = validateBankDetails(bankCountry, bank);
+      if (problem) return error(c, problem, 400);
+      body.bank_details = bank;
+      // The UPI id keeps its own setting for Indian agencies, so older readers still find it.
+      if (bank.upiId && body.upi_id === undefined && bankCountry === 'IN') body.upi_id = bank.upiId;
+    }
 
     for (const [key, value] of Object.entries(body)) {
       if (value === undefined) continue;

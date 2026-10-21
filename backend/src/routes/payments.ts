@@ -16,10 +16,17 @@ const paymentRoutes = new Hono<AppContext>();
 // Zod Schemas
 // ============================================================
 
+/**
+ * The union of the methods an agency in any country can record (desktop/src/lib/payment-methods.ts decides which it is
+ * offered): cash, bank transfer, card, cheque, online everywhere; UPI for India; iDEAL and SEPA transfer for Europe.
+ * 'transfer' and 'check' are what older rows and the assistant wrote and stay valid.
+ */
+export const PAYMENT_METHODS = ['cash', 'bank_transfer', 'transfer', 'card', 'cheque', 'check', 'online', 'upi', 'ideal', 'sepa_transfer', 'other'] as const;
+
 const recordPaymentSchema = z.object({
   invoiceId: z.string().min(1),
   amount: z.number().positive(),
-  method: z.string().min(1),
+  method: z.enum(PAYMENT_METHODS),
   reference: z.string().optional(),
   notes: z.string().optional(),
   date: z.string().optional(), // defaults to the tenant-local today in the handler

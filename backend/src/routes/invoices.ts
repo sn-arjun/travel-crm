@@ -19,6 +19,7 @@ import { agencyEmailHtml, escapeHtml, queueAgencyEmail, textToHtml } from '../se
 import { cancelPaymentLink, createPaymentLink, type AgencyGatewayId } from '../services/payments/agency-gateway';
 import { isCredentialError, listAccounts, openCredentials, type AccountRow } from '../services/payments/accounts';
 import { GatewayError } from '../services/billing/gateway';
+import { loadAgencyBankDetails } from '../utils/bank-details';
 
 const invoiceRoutes = new Hono<AppContext>();
 
@@ -264,6 +265,13 @@ invoiceRoutes.post('/', zValidator('json', createInvoiceSchema), async (c) => {
     // Generate invoice number
     const { invoiceNumber } = await generateInvoiceNumber(tenantDb, data.type);
 
+    const agencyBank = data.bankDetails ? null : await loadAgencyBankDetails(tenantDb);
+    const bankSnapshot = data.bankDetails
+      ? JSON.stringify(data.bankDetails)
+      : agencyBank && Object.keys(agencyBank.details).length > 0
+        ? JSON.stringify(agencyBank.details)
+        : null;
+
     // Create invoice
     const invoiceId = generateId();
     const now = new Date().toISOString();
@@ -308,7 +316,8 @@ invoiceRoutes.post('/', zValidator('json', createInvoiceSchema), async (c) => {
         0, // paid_amount
         totals.total, // balance_due
         data.notes || null,
-        data.bankDetails ? JSON.stringify(data.bankDetails) : null,
+        // An invoice keeps the bank details it was issued with: the ones sent, else the agency's current ones.
+        bankSnapshot,
         userId,
         now,
         now,
@@ -528,8 +537,16 @@ invoiceRoutes.get('/:id', async (c) => {
       .bind(invoiceId)
       .all<Record<string, unknown>>();
 
+    // The invoice prints the bank details it was issued with; an older one that has none shows the agency's current
+    // details. bank_country says which country's field set to print (R140).
+    const agencyBank = await loadAgencyBankDetails(tenantDb);
+    let bankDetails = invoice.bank_details;
+    if (!bankDetails && Object.keys(agencyBank.details).length > 0) bankDetails = JSON.stringify(agencyBank.details);
+
     return success(c, {
       ...invoice,
+      bank_details: bankDetails ?? null,
+      bank_country: agencyBank.country,
       items: items.results || [],
       payments: payments.results || [],
     });
