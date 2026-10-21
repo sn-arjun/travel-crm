@@ -13,10 +13,11 @@ import { CredentialDecryptError, CredentialsKeyMissing, decryptColumn, encryptSe
 import { TwilioVoipProvider } from './twilio-voice';
 import { PlivoVoipProvider } from './plivo-voice';
 import { MockVoipProvider } from './voip/mock-provider';
+import type { PromptLanguage } from './voip/prompts';
 import { isTestMode } from '../utils/test-mode';
 import type {
   VoipSubAccountInput, VoipSubAccount, VoipPlaceCallOptions, VoipFetchUsageInput, VoipUsageRecord,
-  VoipRecordingRef, VoipRecordingFile, VoipProviderDeps,
+  VoipRecordingRef, VoipRecordingFile, VoipProviderDeps, VoipRegulatoryInput, VoipRegulatoryResult, VoipRegulatoryStatus,
 } from './voip/contract';
 import { TwilioMessagingProvider } from './twilio-messaging';
 import { PlivoMessagingProvider } from './plivo-messaging';
@@ -150,8 +151,14 @@ export interface VoipProvider {
 
   // Phone number management
   searchAvailableNumbers(country: string, areaCode?: string, contains?: string): Promise<VoipAvailableNumber[]>;
-  purchaseNumber(phoneNumber: string, friendlyName?: string, webhookBaseUrl?: string): Promise<VoipPurchasedNumber>;
+  /** R137: a country with a regulatory bundle passes the approved bundle and address with the purchase. */
+  purchaseNumber(phoneNumber: string, friendlyName?: string, webhookBaseUrl?: string, regulatory?: { bundleSid: string; addressSid: string }): Promise<VoipPurchasedNumber>;
   releaseNumber(providerNumberId: string): Promise<void>;
+
+  /** R137: submit the agency's business identity, address and documents for review (optional; see contract.ts). Acts as the agency's sub-account. */
+  submitRegulatoryBundle?(input: VoipRegulatoryInput): Promise<VoipRegulatoryResult>;
+  /** R137: where a submitted bundle stands. */
+  getRegulatoryBundleStatus?(bundleSid: string): Promise<VoipRegulatoryStatus>;
 
   // Client token for browser/app calling
   generateClientToken(userId: string, opts?: { ttlSeconds?: number }): Promise<VoipClientToken>;
@@ -161,11 +168,12 @@ export interface VoipProvider {
   // Call response markup (XML) generation
   generateDialMarkup(number: string, callerId: string, record: boolean): string;
   /** Ring an agent. With actionUrl the provider calls it when the dial ends (answered or not), so a no-answer reaches the fallback. */
-  generateClientDialMarkup(clientIdentity: string, callerId: string, record: boolean, opts?: { actionUrl?: string; timeout?: number; announcement?: string }): string;
-  generateIvrMarkup(greeting: string, options: IvrOption[], actionUrl: string): string;
-  generateVoicemailMarkup(recordingCallbackUrl: string, greetingUrl?: string): string;
+  generateClientDialMarkup(clientIdentity: string, callerId: string, record: boolean, opts?: { actionUrl?: string; timeout?: number; announcement?: string; language?: PromptLanguage }): string;
+  /** R137: the optional language picks the voice and the wording of the fixed prompts (services/voip/prompts.ts); none = English as before. */
+  generateIvrMarkup(greeting: string, options: IvrOption[], actionUrl: string, language?: PromptLanguage): string;
+  generateVoicemailMarkup(recordingCallbackUrl: string, greetingUrl?: string, language?: PromptLanguage): string;
   generateTransferMarkup(targetNumber: string, callerId: string): string;
-  generateHangupMarkup(message?: string): string;
+  generateHangupMarkup(message?: string, language?: PromptLanguage): string;
   generateEmptyResponse(): string;
 
   // Webhook signature validation
@@ -234,7 +242,11 @@ export function resolveCredentials(settings: VoipSettingsRow): VoipProviderCrede
 export function createVoipProvider(env: Env, settings: VoipSettingsRow): VoipProvider {
   const provider = settings.voipProvider || 'twilio';
   const creds = resolveCredentials(settings);
-  const deps: VoipProviderDeps = { sealSecret: (plain, aad) => encryptSecret(env, plain, aad) };
+  const delay = Number(env.MOCK_BUNDLE_DELAY_SECONDS);
+  const deps: VoipProviderDeps = {
+    sealSecret: (plain, aad) => encryptSecret(env, plain, aad),
+    mockBundleDelaySeconds: Number.isFinite(delay) && delay > 0 ? delay : 0,
+  };
 
   // The mock is explicit (VOIP_PROVIDER=mock; never a stored row, whose signed callbacks must stay verifiable) or, in test mode only, the fallback when no
   // credentials exist anywhere. Production can never reach it.

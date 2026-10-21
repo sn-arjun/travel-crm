@@ -21,7 +21,17 @@ import { createVoipProvider, loadVoipSettings, sealVoipSecret } from '../service
 import { voipErrorHandler } from '../services/voip/http';
 import { loadTenant } from '../services/billing/subscriptions';
 import { accountView, agencyCountry, decisionFor, enableCalling, getAccount } from '../services/voip/subaccounts';
-import { getKyc, kycView, numberOffer, purchaseNumber, releaseTenantNumber, searchNumbers, submitKyc, type RegistryRow } from '../services/voip/numbers';
+import { getKyc, kycView, numberOffer, purchaseNumber, releaseTenantNumber, searchNumbers, submitKyc, type KycFile, type RegistryRow } from '../services/voip/numbers';
+import { getCountryPolicy } from '../services/voip/country-policy';
+import {
+  ALLOWED_DOCUMENT_TYPES,
+  MAX_DOCUMENT_BYTES,
+  MAX_DOCUMENT_FILES,
+  NUMBER_TYPES,
+  hasBundleFlow,
+  providerView,
+  validateAgainstRequirements,
+} from '../services/voip/regulatory';
 import type { VoipSettingsRow, VoipProviderName } from '../services/voip-provider';
 
 const voipRoutes = new Hono<AppContext>();
@@ -371,7 +381,8 @@ voipRoutes.get('/kyc', rbac(['admin']), async (c) => {
   const tenant = await loadTenant(c.env, c.get('tenantId'));
   if (!tenant) return error(c, 'Agency not found', 404);
   const country = (c.req.query('country') || (await agencyCountry(c.env, tenant, c.get('tenantDb')))).toUpperCase();
-  return success(c, { country, document: kycView(await getKyc(c.env, tenant.id, country)) });
+  const bundleFlow = hasBundleFlow(await getCountryPolicy(c.env, country));
+  return success(c, { country, document: kycView(await getKyc(c.env, tenant.id, country), bundleFlow) });
 });
 
 voipRoutes.post('/kyc', rbac(['admin']), zValidator('json', kycSchema), async (c) => {
@@ -383,7 +394,125 @@ voipRoutes.post('/kyc', rbac(['admin']), zValidator('json', kycSchema), async (c
   // Documents are for the agency's own country only.
   if (!country || country !== own) return error(c, 'Documents can be submitted for your own country only.', 403, { code: 'COUNTRY_MISMATCH', country: own });
   const row = await submitKyc(c.env, tenant.id, country, { details: data.details as Record<string, string>, files: data.files });
-  return success(c, { document: kycView(row) });
+  return success(c, { document: kycView(row, hasBundleFlow(await getCountryPolicy(c.env, country))) });
+});
+
+// ── Country requirements and the structured documents form (R137) ──
+
+/** What the agency's country asks for before a number can be bought, and where its documents stand. */
+voipRoutes.get('/numbers/requirements', rbac(['admin']), async (c) => {
+  const tenant = await loadTenant(c.env, c.get('tenantId'));
+  if (!tenant) return error(c, 'Agency not found', 404);
+  const own = (await agencyCountry(c.env, tenant, c.get('tenantDb'))).toUpperCase();
+  const country = (c.req.query('country') || own).toUpperCase();
+  const policy = await getCountryPolicy(c.env, country);
+  const bundleFlow = hasBundleFlow(policy);
+  const document = await getKyc(c.env, tenant.id, country);
+  return success(c, {
+    country,
+    kycRequired: !!policy?.kycRequired,
+    bundleFlow,
+    requirements: policy?.kycRequirements ?? null,
+    notes: policy?.notes ?? null,
+    recordingDefault: policy?.recordingDefault ?? 'announce',
+    numberTypes: NUMBER_TYPES,
+    ...providerView(document, bundleFlow),
+    document: kycView(document, bundleFlow),
+  });
+});
+
+const safeFileName = (name: string) => name.replace(/[^A-Za-z0-9._-]+/g, '_').slice(-80) || 'document';
+
+/**
+ * Send the documents for the agency's own country. Either a JSON body (details + links, the earlier flow) or multipart/form-data
+ * for a country with a requirement list: one form field per text requirement (an address as a JSON string of street, city,
+ * postalCode, region), one file part per file requirement named by its key, optional numberType, or a single "details" JSON field.
+ * Files go into our storage; the provider receives them from there when the super admin has approved.
+ */
+voipRoutes.post('/numbers/documents', rbac(['admin']), async (c) => {
+  const tenant = await loadTenant(c.env, c.get('tenantId'));
+  if (!tenant) return error(c, 'Agency not found', 404);
+  const own = (await agencyCountry(c.env, tenant, c.get('tenantDb'))).toUpperCase();
+
+  let country = own;
+  let numberType: string | undefined;
+  const details: Record<string, unknown> = {};
+  const files: KycFile[] = [];
+  const uploads: Array<{ key: string; file: File }> = [];
+
+  const contentType = c.req.header('Content-Type') || '';
+  if (contentType.includes('multipart/form-data')) {
+    const form = await c.req.formData();
+    const requirements = (await getCountryPolicy(c.env, own))?.kycRequirements ?? [];
+    for (const [name, value] of form.entries() as unknown as Iterable<[string, string | File]>) {
+      if (typeof value !== 'string') {
+        if (uploads.length >= MAX_DOCUMENT_FILES) return error(c, `At most ${MAX_DOCUMENT_FILES} files can be sent.`, 400, { code: 'TOO_MANY_FILES' });
+        if (value.size > MAX_DOCUMENT_BYTES) return error(c, `${value.name} is larger than ${MAX_DOCUMENT_BYTES / 1024 / 1024} MB.`, 400, { code: 'FILE_TOO_LARGE' });
+        if (!ALLOWED_DOCUMENT_TYPES.includes(value.type)) return error(c, `${value.name}: only PDF, PNG and JPEG files are accepted.`, 400, { code: 'FILE_TYPE_NOT_ALLOWED' });
+        const key = `${tenant.id}/kyc/${own}/${generateId()}-${safeFileName(value.name)}`;
+        uploads.push({ key, file: value });
+        files.push({ name: value.name, key, field: name, contentType: value.type, size: value.size });
+        continue;
+      }
+      if (name === 'country') country = value.trim().toUpperCase();
+      else if (name === 'numberType') numberType = value.trim();
+      else if (name === 'details') {
+        try {
+          Object.assign(details, JSON.parse(value));
+        } catch {
+          return error(c, 'details must be JSON', 400, { code: 'INVALID_DETAILS' });
+        }
+      } else if (requirements.find((r) => r.key === name)?.type === 'address' && value.trim().startsWith('{')) {
+        try {
+          details[name] = JSON.parse(value);
+        } catch {
+          return error(c, `${name} must be JSON with street, city and postalCode`, 400, { code: 'INVALID_DETAILS' });
+        }
+      } else details[name] = value.trim();
+    }
+  } else {
+    const body = (await c.req.json().catch(() => null)) as { country?: string; numberType?: string; details?: Record<string, unknown>; files?: Array<{ name?: string; url?: string; field?: string }> } | null;
+    if (!body || typeof body !== 'object' || !body.details || typeof body.details !== 'object') return error(c, 'details are required', 400, { code: 'INVALID_DETAILS' });
+    if (body.country) country = String(body.country).trim().toUpperCase();
+    numberType = body.numberType;
+    Object.assign(details, body.details);
+    // Links only: a storage key is never taken from the client.
+    for (const f of (body.files ?? []).slice(0, 10)) {
+      if (typeof f?.name === 'string' && typeof f?.url === 'string' && /^https?:\/\//.test(f.url)) files.push({ name: f.name.slice(0, 200), url: f.url.slice(0, 2000), field: typeof f.field === 'string' ? f.field : undefined });
+    }
+  }
+
+  // Documents are for the agency's own country only.
+  if (!country || country !== own) return error(c, 'Documents can be submitted for your own country only.', 403, { code: 'COUNTRY_MISMATCH', country: own });
+  if (numberType && !NUMBER_TYPES.includes(numberType as (typeof NUMBER_TYPES)[number])) return error(c, 'numberType must be local, mobile or national', 400, { code: 'INVALID_NUMBER_TYPE' });
+
+  const policy = await getCountryPolicy(c.env, country);
+  const bundleFlow = hasBundleFlow(policy);
+  // Check completeness before anything is stored (submitKyc checks again with the stored keys).
+  if (bundleFlow && policy?.kycRequirements) {
+    const problems = validateAgainstRequirements(policy.kycRequirements, details, files);
+    if (problems.length > 0) return error(c, 'Some required information is missing or not valid.', 400, { code: 'KYC_INCOMPLETE', problems });
+  } else if (!details.businessName || !details.address) {
+    return error(c, 'Business name and address are required.', 400, { code: 'KYC_INCOMPLETE' });
+  }
+
+  const before = await getKyc(c.env, tenant.id, country);
+  for (const u of uploads) await c.env.FILE_STORAGE.put(u.key, await u.file.arrayBuffer(), { httpMetadata: { contentType: u.file.type } });
+  let row;
+  try {
+    row = await submitKyc(c.env, tenant.id, country, { details, files, numberType });
+  } catch (err) {
+    await Promise.all(uploads.map((u) => c.env.FILE_STORAGE.delete(u.key).catch(() => undefined)));
+    throw err;
+  }
+  // The replaced submission's files are not kept.
+  try {
+    const old = (before?.files ? JSON.parse(before.files) : []) as KycFile[];
+    await Promise.all(old.filter((f) => f.key && !files.some((n) => n.key === f.key)).map((f) => c.env.FILE_STORAGE.delete(f.key!).catch(() => undefined)));
+  } catch {
+    // an unreadable old list: nothing to clean
+  }
+  return success(c, { document: kycView(row, bundleFlow) });
 });
 
 // ── Numbers CRUD — Provider-agnostic (TICKET-390), rented through the agency's sub-account (R304) ──

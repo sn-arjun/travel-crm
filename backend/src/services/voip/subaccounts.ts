@@ -108,7 +108,10 @@ export async function accountProvider(env: Env, account: Pick<VoipAccountRow, 't
     throw new VoipAccountError('CALLING_NOT_ENABLED', 'Calling is not turned on for this agency.', 409);
   }
   const platform = platformProvider(env);
-  if (platform.providerName === 'mock') return new MockVoipProvider(blankSettings({ voipProvider: 'mock' }));
+  if (platform.providerName === 'mock') {
+    const delay = Number(env.MOCK_BUNDLE_DELAY_SECONDS);
+    return new MockVoipProvider(blankSettings({ voipProvider: 'mock' }), { mockBundleDelaySeconds: Number.isFinite(delay) && delay > 0 ? delay : 0 });
+  }
   const { value } = await decryptSecret(env, account.credentials_enc, subAccountSecretAad(account.tenant_id, account.sub_account_id));
   return createVoipProvider(env, blankSettings({ providerAccountId: account.sub_account_id, providerAuthToken: value }));
 }

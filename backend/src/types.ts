@@ -68,6 +68,8 @@ export interface Env {
   TEST_MODE?: string;
   /** 'mock' selects the in-memory VoIP provider (never in production). */
   VOIP_PROVIDER?: string;
+  /** R137: seconds the mock provider takes to approve a regulatory bundle (default 0). Mock only. */
+  MOCK_BUNDLE_DELAY_SECONDS?: string;
   /** Comma-separated ISO country codes where calling is offered; default GB,US,AU,SG. '*' = all (non-production only). */
   VOIP_CALLING_COUNTRIES?: string;
   CF_ACCOUNT_ID?: string;

@@ -8,11 +8,14 @@ import { loadTenant } from '../services/billing/subscriptions';
 import { voipErrorHandler } from '../services/voip/http';
 import {
   CALL_POSITIONS,
+  RECORDING_DEFAULTS,
   TRIAL_CALLING_SETTING,
   callingAllowedOnTrial,
+  getCountryPolicy,
   listCountryPolicies,
   setPlatformSetting,
 } from '../services/voip/country-policy';
+import { afterPlatformApproval, hasBundleFlow, refreshProviderStatus, resetProvider, submitToProvider } from '../services/voip/regulatory';
 import {
   accountView,
   closeAccount,
@@ -55,11 +58,12 @@ import {
  *
  *   GET/PUT /voip/settings                       the "calling on free trials" switch (default off; owner has not confirmed)
  *   GET     /voip/country-policy                 where calling is offered, and where numbers need documents
- *   PUT     /voip/country-policy/:country        change a country's position
+ *   PUT     /voip/country-policy/:country        change a country's position, recording default and requirement list
  *   GET     /voip/documents?status=pending       number documents waiting for review
  *   GET     /tenants/:id/voip                    an agency's account, numbers, documents and what the policy says
  *   POST    /tenants/:id/voip/enable|suspend|resume|close
- *   PUT     /tenants/:id/voip/documents/:country approve or reject number documents
+ *   PUT     /tenants/:id/voip/documents/:country approve or reject number documents (an approval in a country with a regulatory bundle also submits it to the provider, R137)
+ *   POST    /tenants/:id/voip/documents/:country/submit-to-provider | refresh-status | reset   the provider side of the bundle (R137)
  *   POST    /tenants/:id/voip/numbers/:numberId/release
  *   GET     /voip/fraud-events?status=active     fraud limits that fired (blocks and flags), newest first
  *   POST    /voip/fraud-events/:id/lift          lift a block / dismiss a flag (audited)
@@ -89,6 +93,20 @@ const policySchema = z.object({
   provider: z.string().trim().max(60).nullable().optional(),
   kycRequired: z.boolean().optional(),
   notes: z.string().trim().max(500).nullable().optional(),
+  recordingDefault: z.enum(RECORDING_DEFAULTS as unknown as [string, ...string[]]).optional(),
+  /** The fields and documents the agency form asks for; null removes the list (free-form upload, no provider bundle). */
+  kycRequirements: z
+    .array(
+      z.object({
+        key: z.string().trim().min(1).max(40).regex(/^[A-Za-z][A-Za-z0-9_]*$/),
+        label: z.string().trim().min(1).max(120),
+        type: z.enum(['text', 'address', 'file', 'date']),
+        required: z.boolean().default(true),
+      }),
+    )
+    .max(20)
+    .nullable()
+    .optional(),
 });
 
 app.put('/voip/country-policy/:country', zValidator('json', policySchema), async (c) => {
@@ -96,14 +114,24 @@ app.put('/voip/country-policy/:country', zValidator('json', policySchema), async
   if (!/^[A-Z]{2}$/.test(country)) return error(c, 'Country must be a two-letter code', 400);
   const body = c.req.valid('json');
   const before = (await listCountryPolicies(c.env)).find((p) => p.country === country) ?? null;
+  const requirements = body.kycRequirements === undefined ? before?.kycRequirements ?? null : body.kycRequirements;
   await c.env.MASTER_DB
     .prepare(
-      `INSERT INTO call_country_policy (country, position, provider, kyc_required, notes, updated_at)
-       VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+      `INSERT INTO call_country_policy (country, position, provider, kyc_required, notes, recording_default, kyc_requirements, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
        ON CONFLICT(country) DO UPDATE SET position = excluded.position, provider = excluded.provider,
-         kyc_required = excluded.kyc_required, notes = excluded.notes, updated_at = excluded.updated_at`,
+         kyc_required = excluded.kyc_required, notes = excluded.notes, recording_default = excluded.recording_default,
+         kyc_requirements = excluded.kyc_requirements, updated_at = excluded.updated_at`,
     )
-    .bind(country, body.position, body.provider ?? before?.provider ?? null, body.kycRequired === undefined ? (before?.kycRequired ? 1 : 0) : body.kycRequired ? 1 : 0, body.notes ?? before?.notes ?? null)
+    .bind(
+      country,
+      body.position,
+      body.provider ?? before?.provider ?? null,
+      body.kycRequired === undefined ? (before?.kycRequired ? 1 : 0) : body.kycRequired ? 1 : 0,
+      body.notes ?? before?.notes ?? null,
+      body.recordingDefault ?? before?.recordingDefault ?? 'announce',
+      requirements && requirements.length > 0 ? JSON.stringify(requirements) : null,
+    )
     .run();
   const after = (await listCountryPolicies(c.env)).find((p) => p.country === country);
   await logAdminAction(c.env, actorFrom(c), 'voip.country_policy.update', null, before, after ?? null, { entityType: 'call_country_policy', entityId: country });
@@ -119,7 +147,12 @@ app.get('/voip/documents', async (c) => {
     )
     .bind(...(status ? [status] : []))
     .all<any>();
-  return success(c, (rows.results ?? []).map((r) => ({ tenantId: r.tenant_id, companyName: r.company_name, ...kycView(r) })));
+  const policies = await listCountryPolicies(c.env);
+  return success(c, (rows.results ?? []).map((r) => ({
+    tenantId: r.tenant_id,
+    companyName: r.company_name,
+    ...kycView(r, hasBundleFlow(policies.find((p) => p.country === r.country)), true),
+  })));
 });
 
 app.get('/voip/fraud-events', async (c) => {
@@ -213,6 +246,7 @@ app.get('/tenants/:id/voip', async (c) => {
   if (!tenant) return notFound(c, 'Tenant');
   const decision = await decisionFor(c.env, tenant);
   const docs = await c.env.MASTER_DB.prepare('SELECT * FROM number_documents WHERE tenant_id = ? ORDER BY country').bind(tenant.id).all<any>();
+  const policies = await listCountryPolicies(c.env);
   const numbers = await c.env.MASTER_DB.prepare(`SELECT * FROM voip_number_registry WHERE tenant_id = ? ORDER BY created_at DESC LIMIT 100`).bind(tenant.id).all<RegistryRow>();
   return success(c, {
     tenantId: tenant.id,
@@ -220,7 +254,7 @@ app.get('/tenants/:id/voip', async (c) => {
     country: decision.country,
     calling: { allowed: decision.allowed, reason: decision.reason, message: decision.message, position: decision.policy?.position ?? null, kycRequired: decision.policy?.kycRequired ?? false },
     account: accountView(await getAccount(c.env, tenant.id)),
-    documents: (docs.results ?? []).map(kycView),
+    documents: (docs.results ?? []).map((d) => kycView(d, hasBundleFlow(policies.find((p) => p.country === d.country)), true)),
     numbers: (numbers.results ?? []).map(registryView),
     ...(await callingSafety(c.env, tenant.id)),
   });
@@ -275,7 +309,53 @@ app.put('/tenants/:id/voip/documents/:country', zValidator('json', reviewSchema)
   if (!before) return notFound(c, 'Documents');
   const row = await reviewKyc(c.env, tenant.id, country, { status: body.status, note: body.note ?? null, reviewer: actorFrom(c)?.email ?? null });
   await logAdminAction(c.env, actorFrom(c), `voip.documents.${body.status}`, tenant.id, { status: before.status }, { status: row?.status, country, note: body.note ?? null });
-  return success(c, kycView(row));
+  // R137: an approval in a country with a regulatory bundle hands the bundle to the provider now. A failure does not undo the
+  // approval: the row shows state platform_review with the reason, and "submit to provider" tries again.
+  let submission: { submitted: boolean; error: string | null } = { submitted: false, error: null };
+  if (body.status === 'approved') {
+    submission = await afterPlatformApproval(c.env, tenant.id, country, { baseUrl: publicBase(c) });
+    if (submission.submitted) await logAdminAction(c.env, actorFrom(c), 'voip.regulatory.submit', tenant.id, null, { country, trigger: 'approval' });
+  }
+  return success(c, { ...(await documentView(c.env, tenant.id, country)), submittedToProvider: submission.submitted, submitError: submission.error });
+});
+
+function publicBase(c: { env: AppContext['Bindings']; req: { url: string } }): string {
+  return c.env.API_PUBLIC_URL?.trim().replace(/\/+$/, '') || new URL(c.req.url).origin;
+}
+
+/** The console view of one document set after a change. */
+async function documentView(env: AppContext['Bindings'], tenantId: string, country: string) {
+  const row = await getKyc(env, tenantId, country);
+  return kycView(row, hasBundleFlow(await getCountryPolicy(env, country)), true);
+}
+
+app.post('/tenants/:id/voip/documents/:country/submit-to-provider', async (c) => {
+  const tenant = await loadTenant(c.env, c.req.param('id'));
+  if (!tenant) return notFound(c, 'Tenant');
+  const country = c.req.param('country').toUpperCase();
+  const result = await submitToProvider(c.env, tenant.id, country, { baseUrl: publicBase(c) });
+  await logAdminAction(c.env, actorFrom(c), 'voip.regulatory.submit', tenant.id, null, { country, providerStatus: result.providerStatus });
+  return success(c, await documentView(c.env, tenant.id, country));
+});
+
+app.post('/tenants/:id/voip/documents/:country/refresh-status', async (c) => {
+  const tenant = await loadTenant(c.env, c.req.param('id'));
+  if (!tenant) return notFound(c, 'Tenant');
+  const country = c.req.param('country').toUpperCase();
+  if (!(await getKyc(c.env, tenant.id, country))) return notFound(c, 'Documents');
+  await refreshProviderStatus(c.env, tenant.id, country);
+  return success(c, await documentView(c.env, tenant.id, country));
+});
+
+app.post('/tenants/:id/voip/documents/:country/reset', async (c) => {
+  const tenant = await loadTenant(c.env, c.req.param('id'));
+  if (!tenant) return notFound(c, 'Tenant');
+  const country = c.req.param('country').toUpperCase();
+  const before = await getKyc(c.env, tenant.id, country);
+  if (!before) return notFound(c, 'Documents');
+  await resetProvider(c.env, tenant.id, country);
+  await logAdminAction(c.env, actorFrom(c), 'voip.regulatory.reset', tenant.id, { providerStatus: before.provider_status }, { providerStatus: null, country });
+  return success(c, await documentView(c.env, tenant.id, country));
 });
 
 app.post('/tenants/:id/voip/numbers/:numberId/release', async (c) => {

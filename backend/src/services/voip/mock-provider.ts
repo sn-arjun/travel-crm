@@ -18,7 +18,8 @@ import type {
 import {
   subAccountSecretAad,
   type VoipFetchUsageInput, type VoipPlaceCallOptions, type VoipProviderDeps, type VoipRecordingFile,
-  type VoipRecordingRef, type VoipSubAccount, type VoipSubAccountInput, type VoipUsageRecord,
+  type VoipRecordingRef, type VoipRegulatoryInput, type VoipRegulatoryResult, type VoipRegulatoryStatus,
+  type VoipSubAccount, type VoipSubAccountInput, type VoipUsageRecord,
 } from './contract';
 
 /** The token the mock provider signs webhooks with when neither the workspace row nor the environment names one. */
@@ -46,8 +47,26 @@ export interface MockCallRecord {
   maxDurationSeconds?: number;
 }
 
+/** A regulatory bundle the mock holds (R137). It is approved (or rejected) once approveAt has passed. */
+export interface MockBundle {
+  bundleSid: string;
+  addressSid: string;
+  country: string;
+  input: VoipRegulatoryInput;
+  approveAt: number;
+  /** Set when the bundle will be rejected, with the provider's reason. */
+  rejection: string | null;
+  /** Forced by a test: overrides the clock. */
+  forced: string | null;
+}
+
 interface MockState {
   counter: number;
+  bundles: Map<string, MockBundle>;
+  /** Reason the next submitted bundles are rejected with, null = approve (MockVoipProvider.rejectBundles). */
+  rejectBundlesWith: string | null;
+  /** Every number purchase that carried a regulatory bundle, in order. */
+  bundlePurchases: Array<{ phoneNumber: string; bundleSid: string; addressSid: string }>;
   calls: MockCallRecord[];
   subAccounts: Map<string, { tenantId: string; name: string; closed: boolean; suspended?: boolean }>;
   numbers: Map<string, { providerNumberId: string; phoneNumber: string }>;
@@ -59,7 +78,7 @@ interface MockState {
 }
 
 function fresh(): MockState {
-  return { counter: 0, calls: [], subAccounts: new Map(), numbers: new Map(), usage: [], recordings: new Map(), deletedRecordings: [], log: [] };
+  return { counter: 0, bundles: new Map(), rejectBundlesWith: null, bundlePurchases: [], calls: [], subAccounts: new Map(), numbers: new Map(), usage: [], recordings: new Map(), deletedRecordings: [], log: [] };
 }
 
 let state: MockState = fresh();
@@ -70,7 +89,7 @@ function nextId(prefix: string): string {
   return prefix + state.counter.toString(16).padStart(32, '0');
 }
 
-const COUNTRY_PREFIX: Record<string, string> = { GB: '+4420300', US: '+1415555', AU: '+6129000', SG: '+65310', DE: '+4930300', MY: '+60312' };
+const COUNTRY_PREFIX: Record<string, string> = { GB: '+4420300', US: '+1415555', AU: '+6129000', SG: '+65310', DE: '+4930300', MY: '+60312', NL: '+3120300' };
 
 export class MockVoipProvider extends TwilioVoipProvider {
   override readonly providerName = 'mock' as const;
@@ -100,6 +119,29 @@ export class MockVoipProvider extends TwilioVoipProvider {
 
   static get subAccounts(): ReadonlyMap<string, { tenantId: string; name: string; closed: boolean; suspended?: boolean }> {
     return state.subAccounts;
+  }
+
+  /** R137: regulatory bundles submitted to the mock, by sid. */
+  static get bundles(): ReadonlyMap<string, MockBundle> {
+    return state.bundles;
+  }
+
+  /** R137: purchases that carried a bundle and address, in order. */
+  static get bundlePurchases(): ReadonlyArray<{ phoneNumber: string; bundleSid: string; addressSid: string }> {
+    return state.bundlePurchases;
+  }
+
+  /** R137: bundles submitted from now on are rejected with this reason (null goes back to approving them). */
+  static rejectBundles(reason: string | null): void {
+    state.rejectBundlesWith = reason;
+  }
+
+  /** R137: decide a submitted bundle now, whatever the delay ('twilio-approved' or 'twilio-rejected'). */
+  static decideBundle(bundleSid: string, status: 'twilio-approved' | 'twilio-rejected', reason: string | null = null): void {
+    const bundle = state.bundles.get(bundleSid);
+    if (!bundle) throw new VoipProviderError('mock', 'BUNDLE_NOT_FOUND', `No mock bundle ${bundleSid}`, 'not_found');
+    bundle.forced = status;
+    bundle.rejection = status === 'twilio-rejected' ? reason ?? 'Rejected by the mock provider' : null;
   }
 
   /** Phone numbers currently held at the provider (bought and not released). */
@@ -263,9 +305,16 @@ export class MockVoipProvider extends TwilioVoipProvider {
     return out;
   }
 
-  override async purchaseNumber(phoneNumber: string, friendlyName?: string): Promise<VoipPurchasedNumber> {
+  override async purchaseNumber(phoneNumber: string, friendlyName?: string, _webhookBaseUrl?: string, regulatory?: { bundleSid: string; addressSid: string }): Promise<VoipPurchasedNumber> {
     if (!/^\+[1-9]\d{9,14}$/.test(phoneNumber)) throw new VoipProviderError('mock', 21452, 'Invalid phone number', 'invalid_request');
     if (state.numbers.has(phoneNumber)) throw new VoipProviderError('mock', 21422, 'Phone number is not available', 'unavailable');
+    if (regulatory) {
+      // Like Twilio: the bundle must exist, belong to the address and be approved.
+      const bundle = state.bundles.get(regulatory.bundleSid);
+      if (!bundle || bundle.addressSid !== regulatory.addressSid) throw new VoipProviderError('mock', 21649, 'The bundle or address is not valid for this account', 'invalid_request');
+      if (this.bundleStatus(bundle).status !== 'twilio-approved') throw new VoipProviderError('mock', 21649, 'The regulatory bundle is not approved', 'invalid_request');
+      state.bundlePurchases.push({ phoneNumber, bundleSid: regulatory.bundleSid, addressSid: regulatory.addressSid });
+    }
     const providerNumberId = nextId('PN');
     state.numbers.set(phoneNumber, { providerNumberId, phoneNumber });
     state.log.push(`purchaseNumber:${phoneNumber}`);
@@ -281,6 +330,40 @@ export class MockVoipProvider extends TwilioVoipProvider {
       }
     }
     throw new VoipProviderError('mock', 20404, 'Number not found', 'not_found');
+  }
+
+  // ── Regulatory bundles (R137) ─────────────────────────────
+
+  override async submitRegulatoryBundle(input: VoipRegulatoryInput): Promise<VoipRegulatoryResult> {
+    if (!input.address.street || !input.address.city || !input.address.postalCode) {
+      throw new VoipProviderError('mock', 'ADDRESS_INCOMPLETE', 'The address is incomplete', 'invalid_request');
+    }
+    const bundleSid = nextId('BU');
+    const addressSid = nextId('AD');
+    const delayMs = Math.max(0, Number(this.mockDeps?.mockBundleDelaySeconds) || 0) * 1000;
+    state.bundles.set(bundleSid, {
+      bundleSid,
+      addressSid,
+      country: input.country.toUpperCase(),
+      input,
+      approveAt: Date.now() + delayMs,
+      rejection: state.rejectBundlesWith,
+      forced: null,
+    });
+    state.log.push(`submitRegulatoryBundle:${input.country.toUpperCase()}`);
+    return { bundleSid, addressSid, status: 'pending-review' };
+  }
+
+  override async getRegulatoryBundleStatus(bundleSid: string): Promise<VoipRegulatoryStatus> {
+    const bundle = state.bundles.get(bundleSid);
+    if (!bundle) throw new VoipProviderError('mock', 'BUNDLE_NOT_FOUND', 'Bundle not found', 'not_found');
+    return this.bundleStatus(bundle);
+  }
+
+  private bundleStatus(bundle: MockBundle): VoipRegulatoryStatus {
+    if (bundle.forced) return { status: bundle.forced, failureReason: bundle.rejection };
+    if (Date.now() < bundle.approveAt) return { status: 'pending-review', failureReason: null };
+    return bundle.rejection ? { status: 'twilio-rejected', failureReason: bundle.rejection } : { status: 'twilio-approved', failureReason: null };
   }
 
   // ── Token, recordings, connection ─────────────────────────

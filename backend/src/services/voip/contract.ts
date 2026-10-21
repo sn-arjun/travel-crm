@@ -103,4 +103,64 @@ export interface VoipRecordingFile {
 
 export interface VoipProviderDeps {
   sealSecret?: VoipSecretSealer;
+  /** R137, mock provider only: seconds before a submitted regulatory bundle is approved (default 0). */
+  mockBundleDelaySeconds?: number;
+}
+
+// ── Regulatory bundles (R137) ─────────────────────────────────────────────────
+// Some countries (the Netherlands among them) only let a number be bought once the agency's business identity and
+// address are approved by the provider. The platform submits them as a "bundle" after its own review; the provider
+// answers by a signed status callback or when polled. Optional on VoipProvider: an adapter without it throws
+// NotImplementedForProvider and the country simply has no bundle flow.
+
+export type VoipNumberType = 'local' | 'mobile' | 'national';
+
+/** A document the agency uploaded, read back from our storage so the adapter can stream it to the provider. */
+export interface VoipRegulatoryDocument {
+  /** The requirement key it answers (for example registrationExtract). */
+  field: string;
+  name: string;
+  contentType: string;
+  bytes: ArrayBuffer;
+}
+
+export interface VoipRegulatoryAddress {
+  /** Who the address is registered to (the business name). */
+  customerName: string;
+  street: string;
+  city: string;
+  region: string;
+  postalCode: string;
+  /** ISO 3166 alpha-2. */
+  isoCountry: string;
+}
+
+export interface VoipRegulatoryInput {
+  /** ISO 3166 alpha-2 of the numbers the bundle is for. */
+  country: string;
+  numberType: VoipNumberType;
+  endUser: {
+    /** Business name (the end user's friendly name). */
+    name: string;
+    /** The business identity fields, by the requirement keys (registrationNumber, representativeName, ...). */
+    attributes: Record<string, string>;
+  };
+  address: VoipRegulatoryAddress;
+  documents: VoipRegulatoryDocument[];
+  /** Contact email the provider writes to about the bundle. */
+  email: string;
+  /** Where the provider posts status changes (the signed /voip/regulatory-callback/:tenantKey URL). */
+  statusCallbackUrl?: string;
+}
+
+/** The provider's bundle states, kept as the provider names them: draft, pending-review, in-review, twilio-approved, twilio-rejected. */
+export interface VoipRegulatoryResult {
+  bundleSid: string;
+  addressSid: string;
+  status: string;
+}
+
+export interface VoipRegulatoryStatus {
+  status: string;
+  failureReason: string | null;
 }

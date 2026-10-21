@@ -28,6 +28,15 @@ import { appUrl } from '../../utils/app-urls';
 import { createVoipProvider, loadVoipSettings, type VoipAvailableNumber, type VoipProvider } from '../voip-provider';
 import { getCountryPolicy, type CountryPolicy } from './country-policy';
 import {
+  NUMBER_TYPES,
+  bundleForPurchase,
+  hasBundleFlow,
+  providerView,
+  regulatoryState,
+  validateAgainstRequirements,
+  type RegulatoryFile,
+} from './regulatory';
+import {
   VoipAccountError,
   accountProvider,
   agencyCountry,
@@ -85,7 +94,8 @@ export function registryView(row: RegistryRow) {
 
 // ── KYC documents ──────────────────────────────────────────────────────────────
 
-export interface KycFile { name: string; url: string }
+/** A file the agency attached: a link (earlier flow) or an upload in our storage (R137, with the requirement it answers). */
+export type KycFile = RegulatoryFile;
 
 export interface KycRow {
   id: string;
@@ -99,21 +109,34 @@ export interface KycRow {
   reviewed_at: string | null;
   created_at: string;
   updated_at: string;
+  provider_bundle_sid: string | null;
+  provider_address_sid: string | null;
+  provider_status: string | null;
+  provider_status_at: string | null;
+  provider_failure_reason: string | null;
+  number_type: string | null;
 }
 
-export function kycView(row: KycRow | null) {
+/**
+ * The agency's and the console's view of a document set. `bundleFlow` says whether its country has a provider bundle, which
+ * decides the regulatory state (services/voip/regulatory.ts); `admin` adds the provider's sids and storage keys.
+ */
+export function kycView(row: KycRow | null, bundleFlow = false, admin = false) {
   if (!row) return null;
   const parse = (v: string | null) => { try { return v ? JSON.parse(v) : null; } catch { return null; } };
+  const files = (parse(row.files) ?? []) as KycFile[];
   return {
     id: row.id,
     country: row.country,
     status: row.status,
     details: parse(row.details),
-    files: parse(row.files) ?? [],
+    // A storage key is internal; the agency sees the file name and the requirement it answers.
+    files: admin ? files : files.map(({ key: _key, ...rest }) => rest),
     reviewNote: row.review_note,
     reviewedAt: row.reviewed_at,
     submittedAt: row.created_at,
     updatedAt: row.updated_at,
+    regulatory: providerView(row, bundleFlow, admin),
   };
 }
 
@@ -126,20 +149,36 @@ export async function submitKyc(
   env: Env,
   tenantId: string,
   country: string,
-  input: { details: Record<string, string>; files: KycFile[] },
+  input: { details: Record<string, unknown>; files: KycFile[]; numberType?: string },
 ): Promise<KycRow> {
+  const policy = await getCountryPolicy(env, country);
+  const bundleFlow = hasBundleFlow(policy);
   const existing = await getKyc(env, tenantId, country);
-  if (existing?.status === 'approved') throw new VoipAccountError('KYC_ALREADY_APPROVED', 'Your documents for this country are already approved.', 409);
+  // An approved set is final; so is one that is with the provider. A rejected one (by us or by the provider) can be corrected and sent again.
+  const state = regulatoryState(existing, bundleFlow);
+  if (state === 'approved') throw new VoipAccountError('KYC_ALREADY_APPROVED', 'Your documents for this country are already approved.', 409);
+  if (state === 'platform_review' || state === 'provider_review') {
+    throw new VoipAccountError('KYC_IN_REVIEW', 'Your documents are approved and with the phone provider. They cannot be changed while the provider reviews them.', 409, { state });
+  }
+  if (bundleFlow && policy?.kycRequirements) {
+    const problems = validateAgainstRequirements(policy.kycRequirements, input.details, input.files);
+    if (problems.length > 0) throw new VoipAccountError('KYC_INCOMPLETE', 'Some required information is missing or not valid.', 400, { problems });
+  }
+  const numberType = NUMBER_TYPES.find((t) => t === input.numberType) ?? existing?.number_type ?? 'local';
   const stamp = new Date().toISOString();
   if (existing) {
+    // A new submission starts the review again: the provider side is cleared (state: submitted).
     await env.MASTER_DB
-      .prepare(`UPDATE number_documents SET status = 'pending', details = ?, files = ?, review_note = NULL, reviewed_by = NULL, reviewed_at = NULL, updated_at = ? WHERE id = ?`)
-      .bind(JSON.stringify(input.details), JSON.stringify(input.files), stamp, existing.id)
+      .prepare(
+        `UPDATE number_documents SET status = 'pending', details = ?, files = ?, number_type = ?, review_note = NULL, reviewed_by = NULL, reviewed_at = NULL,
+           provider_bundle_sid = NULL, provider_address_sid = NULL, provider_status = NULL, provider_status_at = NULL, provider_failure_reason = NULL, updated_at = ? WHERE id = ?`,
+      )
+      .bind(JSON.stringify(input.details), JSON.stringify(input.files), numberType, stamp, existing.id)
       .run();
   } else {
     await env.MASTER_DB
-      .prepare(`INSERT INTO number_documents (id, tenant_id, country, status, details, files, created_at, updated_at) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)`)
-      .bind(generateId(), tenantId, country, JSON.stringify(input.details), JSON.stringify(input.files), stamp, stamp)
+      .prepare(`INSERT INTO number_documents (id, tenant_id, country, status, details, files, number_type, created_at, updated_at) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?)`)
+      .bind(generateId(), tenantId, country, JSON.stringify(input.details), JSON.stringify(input.files), numberType, stamp, stamp)
       .run();
   }
   return (await getKyc(env, tenantId, country))!;
@@ -169,8 +208,15 @@ export interface NumberPrice { productKey: string; unitPrice: number; currency: 
 /** The monthly price of one number for this agency (provider monthly cost + margin, R206 engine). Null with a reason when it has none. */
 export async function numberPrice(env: Env, tenant: TenantRow, country: string): Promise<{ price: NumberPrice | null; reason: string | null }> {
   const catalogue = await getCatalogue(env);
-  const market = marketForCountry(country || tenant.country);
-  const product = catalogue.addons.find((a) => a.channel === 'phone_number' && a.isActive && a.market === market);
+  const code = (country || tenant.country || '').trim().toUpperCase();
+  const market = marketForCountry(code);
+  // R137: a product set for the agency's own country (market = its ISO code, for example NL) wins. Once one exists, active or
+  // still a draft, it is the only one this country can use, so a draft never falls back to the market's price (NL: the Germany-based EU price).
+  const countryProducts = code && code !== market ? catalogue.addons.filter((a) => a.channel === 'phone_number' && a.market === code) : [];
+  const product =
+    countryProducts.length > 0
+      ? countryProducts.find((a) => a.isActive)
+      : catalogue.addons.find((a) => a.channel === 'phone_number' && a.isActive && a.market === market);
   if (!product) return { price: null, reason: 'PRICE_NOT_CONFIGURED' };
   try {
     const q = await quoteAddon(env, { ...tenant, country: country || tenant.country }, product.key, 1);
@@ -217,7 +263,14 @@ export async function numberOffer(env: Env, tenantId: string, db: D1Database) {
     account: account ? { status: account.status, provider: account.provider } : null,
     price: price ? { productKey: price.productKey, monthly: price.unitPrice, tax: price.taxTotal, total: price.total, currency: price.currency, includesMarginPct: 20 } : null,
     priceReason,
-    kyc: { required: !!policy?.kycRequired, status: kycRow?.status ?? 'none', document: kycView(kycRow) },
+    kyc: { required: !!policy?.kycRequired, status: kycRow?.status ?? 'none', document: kycView(kycRow, hasBundleFlow(policy)) },
+    // R137: the country's requirement list and where the provider bundle stands, for the Phone numbers screen.
+    regulatory: {
+      bundleFlow: hasBundleFlow(policy),
+      requirements: policy?.kycRequirements ?? null,
+      recordingDefault: policy?.recordingDefault ?? 'announce',
+      ...providerView(kycRow, hasBundleFlow(policy)),
+    },
     addon: { freeThisMonth: grants.length, productKey: price?.productKey ?? null },
     numbers: (live.results ?? []).map(registryView),
   };
@@ -317,11 +370,14 @@ export async function purchaseNumber(
   }
 
   const policy: CountryPolicy | null = decision.policy ?? (await getCountryPolicy(env, country));
+  let regulatory: { bundleSid: string; addressSid: string } | null = null;
   if (policy?.kycRequired) {
     const kyc = await getKyc(env, tenantId, country);
     if (kyc?.status !== 'approved') {
       throw new VoipAccountError('KYC_REQUIRED', 'Numbers in your country need approved business documents first.', 409, { country, kycStatus: kyc?.status ?? 'none' });
     }
+    // R137: a country with a regulatory bundle also needs the provider's approval; the error says which step is pending.
+    regulatory = await bundleForPurchase(env, tenantId, country, policy);
   }
 
   // Claim the add-on grant and the number in one row; the unique indexes are the lock.
@@ -359,7 +415,7 @@ export async function purchaseNumber(
   const provider = await accountProvider(env, account);
   let bought;
   try {
-    bought = await provider.purchaseNumber(phone, input.friendlyName, input.webhookBaseUrl);
+    bought = await provider.purchaseNumber(phone, input.friendlyName, input.webhookBaseUrl, regulatory ?? undefined);
   } catch (err) {
     await env.MASTER_DB.prepare(`DELETE FROM voip_number_registry WHERE id = ?`).bind(registryId).run().catch(() => undefined);
     throw err;

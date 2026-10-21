@@ -11,12 +11,19 @@ import type {
 } from './voip-provider';
 import type {
   VoipSubAccountInput, VoipSubAccount, VoipPlaceCallOptions, VoipFetchUsageInput, VoipUsageRecord,
-  VoipRecordingRef, VoipRecordingFile, VoipProviderDeps,
+  VoipRecordingRef, VoipRecordingFile, VoipProviderDeps, VoipRegulatoryInput, VoipRegulatoryResult, VoipRegulatoryStatus,
 } from './voip/contract';
 import { subAccountSecretAad } from './voip/contract';
 import { VoipProviderError, escapeXml, voipClientIdentity, errorKindForStatus } from './voip-base';
+import { DEFAULT_PROMPT_LANGUAGE, promptText, sayAttributes, type PromptLanguage } from './voip/prompts';
 
 const TWILIO_API = 'https://api.twilio.com';
+// R137: Regulatory Compliance v2. Request shapes are written from Twilio's documentation and replayed against recorded
+// fixtures (test/fixtures/twilio-regulatory); every one is to be re-checked against the live API at go-live (docs/GO-LIVE.md phase 9).
+const REGULATORY_API = 'https://numbers.twilio.com/v2/RegulatoryCompliance';
+const REGULATORY_UPLOAD_API = 'https://numbers-upload.twilio.com/v2/RegulatoryCompliance';
+/** The supporting-document type each uploaded requirement is filed under (verify at go-live; the default fits a company registry extract). */
+const DEFAULT_REGULATORY_DOCUMENT_TYPE = 'commercial_registrar_excerpt';
 
 // ── Legacy types (re-exported for backward compat) ──────────
 
@@ -316,9 +323,14 @@ export class TwilioVoipProvider implements VoipProvider {
     }));
   }
 
-  async purchaseNumber(phoneNumber: string, friendlyName?: string, webhookBaseUrl?: string): Promise<VoipPurchasedNumber> {
+  async purchaseNumber(phoneNumber: string, friendlyName?: string, webhookBaseUrl?: string, regulatory?: { bundleSid: string; addressSid: string }): Promise<VoipPurchasedNumber> {
     const params = new URLSearchParams({ PhoneNumber: phoneNumber });
     if (friendlyName) params.set('FriendlyName', friendlyName);
+    // R137: a country with a regulatory bundle needs the approved bundle and its address on the purchase.
+    if (regulatory) {
+      params.set('BundleSid', regulatory.bundleSid);
+      params.set('AddressSid', regulatory.addressSid);
+    }
     if (webhookBaseUrl) {
       params.set('VoiceUrl', `${webhookBaseUrl}/api/v1/voip/twiml/inbound`);
       params.set('VoiceMethod', 'POST');
@@ -342,6 +354,95 @@ export class TwilioVoipProvider implements VoipProvider {
 
   async releaseNumber(providerNumberId: string): Promise<void> {
     await this.twilioRequest('DELETE', `/IncomingPhoneNumbers/${providerNumberId}.json`);
+  }
+
+  // ── VoipProvider: Regulatory bundles (R137) ───────────────
+
+  /**
+   * Submit a bundle for review, acting as the agency's sub-account: regulation lookup, end user, address, one supporting
+   * document per uploaded file (streamed as multipart), the bundle, its item assignments, then Status=pending-review.
+   * The address is referenced by the documents' address_sids and passed again with the number purchase.
+   */
+  async submitRegulatoryBundle(input: VoipRegulatoryInput): Promise<VoipRegulatoryResult> {
+    const country = input.country.toUpperCase();
+    const regulations = await this.twilioRequest<any>(
+      'GET',
+      `${REGULATORY_API}/Regulations?${new URLSearchParams({ IsoCountry: country, NumberType: input.numberType, EndUserType: 'business' })}`,
+    );
+    const regulationSid: string | undefined = regulations?.results?.[0]?.sid;
+    if (!regulationSid) {
+      throw new VoipProviderError('twilio', 'NO_REGULATION', `The provider has no regulation for ${input.numberType} numbers in ${country}`, 'invalid_request');
+    }
+
+    const attributes: Record<string, string> = { business_name: input.endUser.name };
+    for (const [key, value] of Object.entries(input.endUser.attributes)) {
+      if (!value) continue;
+      if (key === 'registrationNumber') attributes.business_registration_number = value;
+      else if (key === 'representativeName') {
+        const parts = value.trim().split(/\s+/);
+        attributes.first_name = parts[0] ?? '';
+        attributes.last_name = parts.slice(1).join(' ') || parts[0] || '';
+      } else attributes[key] = value;
+    }
+    const endUser = await this.twilioRequest<any>(
+      'POST',
+      `${REGULATORY_API}/EndUsers`,
+      new URLSearchParams({ FriendlyName: input.endUser.name, Type: 'business', Attributes: JSON.stringify(attributes) }),
+    );
+
+    const a = input.address;
+    const address = await this.twilioRequest<any>(
+      'POST',
+      '/Addresses.json',
+      new URLSearchParams({ CustomerName: a.customerName, Street: a.street, City: a.city, Region: a.region, PostalCode: a.postalCode, IsoCountry: a.isoCountry, FriendlyName: a.customerName }),
+    );
+
+    const documentSids: string[] = [];
+    for (const doc of input.documents) {
+      const form = new FormData();
+      form.set('FriendlyName', doc.name);
+      form.set('Type', DEFAULT_REGULATORY_DOCUMENT_TYPE);
+      form.set('MimeType', doc.contentType);
+      form.set('Attributes', JSON.stringify({ business_name: input.endUser.name, address_sids: [address.sid] }));
+      form.set('File', new Blob([doc.bytes], { type: doc.contentType }), doc.name);
+      const created = await this.twilioRequest<any>('POST', `${REGULATORY_UPLOAD_API}/SupportingDocuments`, form);
+      documentSids.push(created.sid);
+    }
+
+    const bundleParams = new URLSearchParams({
+      FriendlyName: `${input.endUser.name} ${country} ${input.numberType}`,
+      Email: input.email,
+      RegulationSid: regulationSid,
+      IsoCountry: country,
+      NumberType: input.numberType,
+      EndUserType: 'business',
+    });
+    if (input.statusCallbackUrl) bundleParams.set('StatusCallback', input.statusCallbackUrl);
+    const bundle = await this.twilioRequest<any>('POST', `${REGULATORY_API}/Bundles`, bundleParams);
+
+    for (const objectSid of [endUser.sid, ...documentSids]) {
+      await this.twilioRequest('POST', `${REGULATORY_API}/Bundles/${bundle.sid}/ItemAssignments`, new URLSearchParams({ ObjectSid: objectSid }));
+    }
+    const submitted = await this.twilioRequest<any>('POST', `${REGULATORY_API}/Bundles/${bundle.sid}`, new URLSearchParams({ Status: 'pending-review' }));
+    return { bundleSid: bundle.sid, addressSid: address.sid, status: submitted?.status ?? 'pending-review' };
+  }
+
+  /** Where a bundle stands; a rejected one carries the provider's explanation when it gives one. */
+  async getRegulatoryBundleStatus(bundleSid: string): Promise<VoipRegulatoryStatus> {
+    const data = await this.twilioRequest<any>('GET', `${REGULATORY_API}/Bundles/${encodeURIComponent(bundleSid)}`);
+    const status: string = data?.status ?? 'draft';
+    let failureReason: string | null = data?.failure_reason ?? null;
+    if (status === 'twilio-rejected' && !failureReason) {
+      try {
+        const evaluations = await this.twilioRequest<any>('GET', `${REGULATORY_API}/Bundles/${encodeURIComponent(bundleSid)}/Evaluations`);
+        const failed = (evaluations?.results?.[0]?.results ?? []).filter((r: any) => r?.passed === false);
+        const text = failed.map((r: any) => r.failure_reason || r.friendly_name).filter(Boolean).join('; ');
+        failureReason = text || null;
+      } catch {
+        failureReason = null;
+      }
+    }
+    return { status, failureReason };
   }
 
   // ── VoipProvider: Client Token ────────────────────────────
@@ -420,11 +521,11 @@ export class TwilioVoipProvider implements VoipProvider {
 </Response>`;
   }
 
-  generateClientDialMarkup(clientIdentity: string, callerId: string, record = false, opts: { actionUrl?: string; timeout?: number; announcement?: string } = {}): string {
+  generateClientDialMarkup(clientIdentity: string, callerId: string, record = false, opts: { actionUrl?: string; timeout?: number; announcement?: string; language?: PromptLanguage } = {}): string {
     const recordAttr = record ? ' record="record-from-answer-dual"' : '';
-    // R306: the recording announcement is played to the caller before the agent is rung.
+    // R306: the recording announcement is played to the caller before the agent is rung (R137: in the agency's language).
     const say = opts.announcement ? `
-  <Say>${escapeXml(opts.announcement)}</Say>` : '';
+  <Say${sayAttributes(opts.language)}>${escapeXml(opts.announcement)}</Say>` : '';
     const actionAttr = opts.actionUrl ? ` action="${escapeXml(opts.actionUrl)}" method="POST"` : '';
     const timeoutAttr = opts.timeout ? ` timeout="${Math.floor(opts.timeout)}"` : '';
     return `<?xml version="1.0" encoding="UTF-8"?>
@@ -435,25 +536,27 @@ export class TwilioVoipProvider implements VoipProvider {
 </Response>`;
   }
 
-  generateIvrMarkup(greeting: string, options: IvrOption[], actionUrl: string): string {
+  generateIvrMarkup(greeting: string, options: IvrOption[], actionUrl: string, language?: PromptLanguage): string {
+    const lang = language ?? DEFAULT_PROMPT_LANGUAGE;
+    const attrs = sayAttributes(language);
     const optionsText = options
-      .map((o) => `Press ${o.digit} for ${o.label}.`)
+      .map((o) => promptText(lang, 'ivrPress', { digit: o.digit, label: o.label }))
       .join(' ');
 
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Gather input="dtmf" numDigits="1" timeout="10" action="${escapeXml(actionUrl)}">
-    <Say>${escapeXml(greeting)} ${escapeXml(optionsText)}</Say>
+    <Say${attrs}>${escapeXml(greeting)} ${escapeXml(optionsText)}</Say>
   </Gather>
-  <Say>We didn't receive any input. Goodbye.</Say>
+  <Say${attrs}>${escapeXml(promptText(lang, 'ivrNoInput'))}</Say>
 </Response>`;
   }
 
-  generateVoicemailMarkup(recordingCallbackUrl: string, greetingUrl?: string): string {
+  generateVoicemailMarkup(recordingCallbackUrl: string, greetingUrl?: string, language?: PromptLanguage): string {
     const effectiveGreetingUrl = greetingUrl || this.settings.voicemailGreetingUrl;
     const greetingElement = effectiveGreetingUrl
       ? `<Play>${escapeXml(effectiveGreetingUrl)}</Play>`
-      : '<Say>Please leave a message after the beep.</Say>';
+      : `<Say${sayAttributes(language)}>${escapeXml(promptText(language ?? DEFAULT_PROMPT_LANGUAGE, 'leaveMessage'))}</Say>`;
 
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -472,10 +575,10 @@ export class TwilioVoipProvider implements VoipProvider {
 </Response>`;
   }
 
-  generateHangupMarkup(message?: string): string {
+  generateHangupMarkup(message?: string, language?: PromptLanguage): string {
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  ${message ? `<Say>${escapeXml(message)}</Say>` : ''}
+  ${message ? `<Say${sayAttributes(language)}>${escapeXml(message)}</Say>` : ''}
   <Hangup/>
 </Response>`;
   }
@@ -527,7 +630,7 @@ export class TwilioVoipProvider implements VoipProvider {
   private async twilioRequest<T>(
     method: string,
     path: string,
-    body?: URLSearchParams,
+    body?: URLSearchParams | FormData,
     retries = 3,
   ): Promise<T> {
     let lastError: Error | null = null;
@@ -539,10 +642,11 @@ export class TwilioVoipProvider implements VoipProvider {
           method,
           headers: {
             Authorization: this.authHeader,
-            ...(body ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}),
+            // A multipart body (a document upload, R137) sets its own Content-Type with the boundary.
+            ...(body && !(body instanceof FormData) ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}),
           },
         };
-        if (body && method !== 'GET') opts.body = body.toString();
+        if (body && method !== 'GET') opts.body = body instanceof FormData ? body : body.toString();
 
         const res = await fetch(url, opts);
 

@@ -1,0 +1,24 @@
+{
+  "note": "Buying a number in a bundle country: the approved bundle and its address go with the purchase. Written from Twilio's documentation; verify at go-live.",
+  "account": "ACsub0000000000000000000000000000",
+  "calls": [
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/ACsub0000000000000000000000000000/IncomingPhoneNumbers.json",
+        "form": {
+          "PhoneNumber": "+31203000111",
+          "FriendlyName": "Company line",
+          "BundleSid": "BU00000000000000000000000000000001",
+          "AddressSid": "AD00000000000000000000000000000001",
+          "VoiceUrl": "https://api.example.test/api/v1/voip/twiml/inbound",
+          "VoiceMethod": "POST",
+          "StatusCallback": "https://api.example.test/api/v1/voip/status-callback",
+          "StatusCallbackMethod": "POST"
+        }
+      },
+      "response": { "status": 201, "body": { "sid": "PN00000000000000000000000000000001", "phone_number": "+31203000111", "friendly_name": "Company line", "capabilities": { "voice": true, "sms": false } } }
+    }
+  ],
+  "result": { "providerNumberId": "PN00000000000000000000000000000001", "phoneNumber": "+31203000111" }
+}

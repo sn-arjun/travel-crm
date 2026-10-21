@@ -27,6 +27,7 @@ import { expireTrials } from '../services/plans/trial';
 import { refreshExchangeRates } from '../services/exchange-rate';
 import { runBillingDaily } from '../services/billing/subscriptions';
 import { runNumberLifecycle } from '../services/voip/numbers';
+import { pollRegulatory } from '../services/voip/regulatory';
 import { importTenantUsage } from '../services/voip/metering';
 import { checkFollowUpReminders } from '../services/follow-up-reminders';
 import { runScheduledAutomationsForTenant } from '../services/automation/schedule';
@@ -93,6 +94,9 @@ const EVERY5_JOBS: TenantJob[] = [
 ];
 
 const HOURLY_JOBS: TenantJob[] = [
+  // R137: the backup for the provider's regulatory bundle status callback. The hourly set fires once an hour, so a tick period
+  // is at most one poll an hour per agency; an agency with no bundle in review costs one indexed query.
+  { name: 'voip.regulatory-poll', period: 'tick', run: (env, id) => pollRegulatory(env, id) },
   { name: 'invoices.reminders', period: 'local-day', run: (env, id, db, now) => processInvoiceRemindersForTenant(env, db, id, now) },
   { name: 'tasks.overdue', period: 'local-day', run: (env, id, db, now) => processOverdueTasks(env, id, db, now) },
   { name: 'fleet.alerts', period: 'local-day', run: (env, id, db, now) => processFleetAlerts(env, id, db, now) },
