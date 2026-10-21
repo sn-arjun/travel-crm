@@ -1,0 +1,12 @@
+{
+  "messages.confirmDelete": "क्या आप निश्चित हैं कि आप इसे हटाना चाहते हैं?",
+  "messages.deleteSuccess": "सफलतापूर्वक हटाया गया",
+  "messages.saveSuccess": "सफलतापूर्वक सहेजा गया",
+  "messages.updateSuccess": "सफलतापूर्वक अपडेट किया गया",
+  "messages.createSuccess": "सफलतापूर्वक बनाया गया",
+  "messages.error": "कुछ गलत हो गया",
+  "messages.errorMessage": "एक त्रुटि हुई। कृपया दोबारा प्रयास करें।",
+  "messages.noResults": "कोई परिणाम नहीं मिली",
+  "messages.loading": "लोड हो रहा है...",
+  "messages.retry": "पुनः प्रयास करें"
+}

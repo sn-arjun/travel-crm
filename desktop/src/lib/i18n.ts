@@ -1,21 +1,19 @@
 'use client';
 
 import * as React from 'react';
-import en from '@/messages/en.json';
-import hi from '@/messages/hi.json';
-import ar from '@/messages/ar.json';
+import { messages, type Catalogue } from '@/messages';
 import { LOCALE_STORAGE_KEY } from '@/lib/i18n-boot';
 
 /**
  * Interface text (not number/date/currency formatting: that stays on lib/locale.ts, R202).
  *
- * Adding a language = one catalogue file in src/messages + one entry in LANGUAGES below
+ * Adding a language = one folder of catalogue files in src/messages (registered in messages/index.ts) + one entry in LANGUAGES below
  * (code, native name, `dir`, enabled). Nothing else changes.
  */
-export type Locale = 'en' | 'hi' | 'ar';
+export type Locale = 'en' | 'hi' | 'ar' | 'nl';
 export type Direction = 'ltr' | 'rtl';
 export type TranslationVars = Record<string, string | number>;
-export type Catalogue = Record<string, string>;
+export type { Catalogue };
 
 export interface LanguageInfo {
   code: Locale;
@@ -32,9 +30,10 @@ export const LANGUAGES: readonly LanguageInfo[] = [
   { code: 'en', label: 'English', dir: 'ltr', enabled: true },
   { code: 'hi', label: 'हिन्दी', dir: 'ltr', enabled: true },
   { code: 'ar', label: 'العربية', dir: 'rtl', enabled: true },
+  { code: 'nl', label: 'Nederlands', dir: 'ltr', enabled: true },
 ];
 
-export const catalogues: Record<Locale, Catalogue> = { en, hi, ar };
+export const catalogues: Record<Locale, Catalogue> = messages;
 
 export { LOCALE_STORAGE_KEY };
 

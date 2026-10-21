@@ -1,0 +1,8 @@
+{
+  "validation.required": "Dit veld is verplicht",
+  "validation.email": "Voer een geldig e-mailadres in",
+  "validation.phone": "Voer een geldig telefoonnummer in",
+  "validation.minLength": "Minimaal {min} tekens vereist",
+  "validation.maxLength": "Maximaal {max} tekens toegestaan",
+  "validation.pattern": "Ongeldige notatie"
+}

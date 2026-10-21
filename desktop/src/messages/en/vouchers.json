@@ -1,0 +1,12 @@
+{
+  "vouchers.voucherCode": "Voucher Code",
+  "vouchers.type": "Type",
+  "vouchers.supplier": "Supplier",
+  "vouchers.amount": "Amount",
+  "vouchers.expiryDate": "Expiry Date",
+  "vouchers.status": "Status",
+  "vouchers.createVoucher": "Create Voucher",
+  "vouchers.editVoucher": "Edit Voucher",
+  "vouchers.deleteVoucher": "Delete Voucher",
+  "vouchers.used": "Used"
+}

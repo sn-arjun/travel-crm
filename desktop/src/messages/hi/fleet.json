@@ -1,0 +1,15 @@
+{
+  "fleet.vehicleName": "वाहन का नाम",
+  "fleet.licensePlate": "लाइसेंस प्लेट",
+  "fleet.type": "प्रकार",
+  "fleet.capacity": "क्षमता",
+  "fleet.driver": "चालक",
+  "fleet.status": "स्थिति",
+  "fleet.location": "स्थान",
+  "fleet.maintenance": "रखरखाव",
+  "fleet.createVehicle": "वाहन जोड़ें",
+  "fleet.editVehicle": "वाहन संपादित करें",
+  "fleet.deleteVehicle": "वाहन हटाएं",
+  "fleet.viewDetails": "विवरण देखें",
+  "fleet.noVehicles": "कोई वाहन नहीं मिली"
+}

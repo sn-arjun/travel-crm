@@ -1,0 +1,15 @@
+{
+  "actions.edit": "تعديل",
+  "actions.delete": "حذف",
+  "actions.view": "عرض",
+  "actions.add": "إضافة",
+  "actions.remove": "إزالة",
+  "actions.copy": "نسخ",
+  "actions.download": "تنزيل",
+  "actions.upload": "رفع",
+  "actions.send": "إرسال",
+  "actions.share": "مشاركة",
+  "actions.export": "تصدير",
+  "actions.import": "استيراد",
+  "actions.print": "طباعة"
+}

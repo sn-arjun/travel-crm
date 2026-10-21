@@ -1,0 +1,11 @@
+{
+  "itineraries.name": "यात्रा कार्यक्रम का नाम",
+  "itineraries.destination": "गंतव्य",
+  "itineraries.startDate": "शुरुआत की तारीख",
+  "itineraries.endDate": "समाप्ति की तारीख",
+  "itineraries.days": "दिन",
+  "itineraries.createItinerary": "यात्रा कार्यक्रम बनाएं",
+  "itineraries.editItinerary": "यात्रा कार्यक्रम संपादित करें",
+  "itineraries.viewDetails": "विवरण देखें",
+  "itineraries.noItineraries": "कोई यात्रा कार्यक्रम नहीं मिली"
+}

@@ -1,0 +1,18 @@
+{
+  "dashboard.revenueThisMonth": "Revenue This Month",
+  "dashboard.leadsThisMonth": "Leads This Month",
+  "dashboard.conversionRate": "Conversion Rate",
+  "dashboard.pendingFollowUps": "Pending Follow-ups",
+  "dashboard.pipeline": "Pipeline Value",
+  "dashboard.recentActivity": "Recent Activity",
+  "dashboard.topPerformers": "Top Performers",
+  "dashboard.monthlyTrend": "Monthly Trend",
+  "dashboard.leadsBy Source": "Leads by Source",
+  "dashboard.invoiceStatus": "Invoice Status",
+  "dashboard.upcomingTrips": "Upcoming Trips",
+  "dashboard.tasksDueToday": "Tasks Due Today",
+  "dashboard.newLeads": "New Leads",
+  "dashboard.closedDeals": "Closed Deals",
+  "dashboard.totalRevenue": "Total Revenue",
+  "dashboard.averageDealSize": "Average Deal Size"
+}

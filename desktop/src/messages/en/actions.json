@@ -1,0 +1,15 @@
+{
+  "actions.edit": "Edit",
+  "actions.delete": "Delete",
+  "actions.view": "View",
+  "actions.add": "Add",
+  "actions.remove": "Remove",
+  "actions.copy": "Copy",
+  "actions.download": "Download",
+  "actions.upload": "Upload",
+  "actions.send": "Send",
+  "actions.share": "Share",
+  "actions.export": "Export",
+  "actions.import": "Import",
+  "actions.print": "Print"
+}

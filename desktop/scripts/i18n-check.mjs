@@ -4,11 +4,17 @@
  *   node scripts/i18n-check.mjs [--json]
  *
  * Fails (exit 1) when
- *   1. a key used in code (t('x'), titleKey: 'x', ...) is missing from messages/en.json,
+ *   1. a key used in code (t('x'), titleKey: 'x', ...) is missing from the English catalogue,
  *   2. a file in SCOPE still has a hard-coded user-visible string (JSX text, text props such as
  *      placeholder / aria-label / title, toast and setError messages),
- *   3. a hi / ar entry has no English key, or uses different {placeholders} than English.
- * Always prints the hi / ar coverage of the English catalogue (a partial catalogue is allowed: it falls back to English).
+ *   3. a catalogue entry has no English key, or uses different {placeholders} than English,
+ *   4. a COMPLETE language (en, nl) lacks a key the English catalogue has,
+ *   5. a key sits in the wrong catalogue file (a key lives in <lang>/<first dot segment>.json).
+ * Always prints the coverage of every language against English (hi and ar may be partial: they fall back to English).
+ * --json prints the result object instead of the text report (same exit codes).
+ *
+ * The catalogues are src/messages/<lang>/<namespace>.json. SCOPE comes from scripts/i18n-scope/*.json (each an array of
+ * paths relative to desktop/), so a batch that converts more screens adds its own scope file and never edits this script.
  *
  * A string that is deliberately not translatable (an example value, a brand) is marked with `i18n-ignore`
  * in a comment on the same line or the line above.
@@ -24,45 +30,27 @@ const ts = require('typescript');
 const desktopDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const srcDir = path.join(desktopDir, 'src');
 
-/** Files and folders (relative to desktop/) whose strings must all come from the catalogue. */
-export const SCOPE = [
-  'src/components/layout',
-  'src/app/(auth)',
-  'src/app/(app)/layout.tsx',
-  'src/components/auth/change-password-form.tsx',
-  'src/components/domain/language-switcher.tsx',
-  'src/components/domain/filter-bar.tsx',
-  'src/components/domain/command-palette.tsx',
-  'src/components/ui/empty-state.tsx',
-  'src/components/ui/confirm-dialog.tsx',
-  'src/components/ui/pagination.tsx',
-  'src/components/ui/form-field.tsx',
-  'src/components/ui/page-header.tsx',
-  'src/components/ui/combobox.tsx',
-  'src/components/ui/data-table.tsx',
-  'src/components/ui/file-dropzone.tsx',
-  'src/components/ui/multi-step-wizard.tsx',
-  'src/components/ui/dialog.tsx',
-  'src/components/ui/sheet.tsx',
-  'src/components/ui/date-picker.tsx',
-  'src/components/ui/phone-input.tsx',
-  'src/components/ui/address-autocomplete.tsx',
-  'src/components/ui/rich-text-editor.tsx',
-  'src/components/ui/chart.tsx',
-  'src/components/ui/command.tsx',
-  'src/components/ui/split-button.tsx',
-  'src/components/ui/tag.tsx',
-  'src/components/domain/list-page.tsx',
-  'src/components/domain/data-table.tsx',
-  'src/components/domain/detail-page.tsx',
-  'src/components/domain/entity-form.tsx',
-  'src/components/domain/relation-combobox.tsx',
-  'src/components/domain/file-upload.tsx',
-  'src/components/domain/kanban-board.tsx',
-  'src/components/domain/stat-card.tsx',
-  'src/components/domain/keyboard-shortcuts-provider.tsx',
-  'src/components/domain/usage-limits.tsx',
-];
+const scopeDir = path.join(desktopDir, 'scripts', 'i18n-scope');
+const messagesDir = path.join(srcDir, 'messages');
+
+/** Languages that must have every English key. The others may be partial (missing keys fall back to English). */
+export const COMPLETE_LANGUAGES = ['en', 'nl'];
+const ALL_LANGUAGES = ['en', 'nl', 'hi', 'ar'];
+
+/** Files and folders (relative to desktop/) whose strings must all come from the catalogue, from scripts/i18n-scope/*.json. */
+export function loadScope(dir = scopeDir) {
+  const out = [];
+  if (!existsSync(dir)) return out;
+  for (const name of readdirSync(dir).sort()) {
+    if (!name.endsWith('.json')) continue;
+    const list = JSON.parse(readFileSync(path.join(dir, name), 'utf8'));
+    if (!Array.isArray(list)) throw new Error(`i18n-scope/${name} must be an array of paths`);
+    for (const p of list) if (typeof p === 'string' && !out.includes(p)) out.push(p);
+  }
+  return out;
+}
+
+export const SCOPE = loadScope();
 
 const TEXT_PROPS = new Set([
   'placeholder', 'aria-label', 'aria-description', 'title', 'alt', 'label', 'description',
@@ -193,14 +181,33 @@ function placeholdersOf(s) {
   return [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
 }
 
-function loadCatalogue(name) {
-  return JSON.parse(readFileSync(path.join(srcDir, 'messages', `${name}.json`), 'utf8'));
+/**
+ * One language: every <lang>/*.json merged into a flat catalogue. A key must live in the file named after its first
+ * dot segment; keys that start with an underscore are notes and may sit anywhere (they are not text).
+ */
+export function loadCatalogue(lang, dir = messagesDir, problems = []) {
+  const langDir = path.join(dir, lang);
+  const merged = {};
+  if (!existsSync(langDir)) return merged;
+  for (const name of readdirSync(langDir).sort()) {
+    if (!name.endsWith('.json')) continue;
+    const ns = name.slice(0, -5);
+    const cat = JSON.parse(readFileSync(path.join(langDir, name), 'utf8'));
+    for (const [k, v] of Object.entries(cat)) {
+      if (!k.startsWith('_') && k.split('.')[0] !== ns) {
+        problems.push(`key "${k}" is in ${lang}/${name}; it belongs in ${lang}/${k.split('.')[0]}.json`);
+      }
+      if (k in merged) problems.push(`key "${k}" appears twice in ${lang}`);
+      merged[k] = v;
+    }
+  }
+  return merged;
 }
 
-export function run() {
-  const en = loadCatalogue('en');
+export function run({ dir = messagesDir, scope = SCOPE } = {}) {
   const problems = [];
-  const files = [...new Set(SCOPE.flatMap(listFiles))];
+  const en = loadCatalogue('en', dir, problems);
+  const files = [...new Set(scope.flatMap(listFiles))];
   let usedCount = 0;
 
   const has = (key) => key in en || `${key}_other` in en;
@@ -209,29 +216,42 @@ export function run() {
     for (const f of findings) problems.push(`hard-coded ${f.what}: ${f.file}:${f.line}  "${f.value}"`);
     for (const u of usedKeys) {
       usedCount++;
-      if (!has(u.key)) problems.push(`missing key "${u.key}" (en.json): ${rel}:${u.line}`);
+      if (!has(u.key)) problems.push(`missing key "${u.key}" (en): ${rel}:${u.line}`);
     }
   }
 
+  const enKeys = Object.keys(en).filter((k) => !k.startsWith('_'));
   const coverage = {};
-  for (const lang of ['hi', 'ar']) {
-    const cat = loadCatalogue(lang);
-    const keys = Object.keys(cat);
+  for (const lang of ALL_LANGUAGES.filter((l) => l !== 'en')) {
+    const cat = loadCatalogue(lang, dir, problems);
     let translated = 0;
-    for (const k of Object.keys(en)) if (k in cat && String(cat[k]).trim() !== '') translated++;
-    coverage[lang] = { translated, total: Object.keys(en).length, percent: Math.round((translated / Object.keys(en).length) * 1000) / 10 };
-    for (const k of keys) {
+    for (const k of enKeys) if (k in cat && String(cat[k]).trim() !== '') translated++;
+    coverage[lang] = {
+      translated,
+      total: enKeys.length,
+      percent: enKeys.length ? Math.round((translated / enKeys.length) * 1000) / 10 : 100,
+    };
+    if (COMPLETE_LANGUAGES.includes(lang)) {
+      for (const k of enKeys) {
+        if (!(k in cat) || String(cat[k]).trim() === '') problems.push(`${lang} is missing key "${k}" (${lang} must be complete)`);
+      }
+    }
+    for (const k of Object.keys(cat)) {
       if (k.startsWith('_')) continue; // notes (for example a native-review flag), not text
-      if (!(k in en)) problems.push(`${lang}.json has key "${k}" that en.json does not`);
-      else if (placeholdersOf(cat[k]) !== placeholdersOf(en[k])) problems.push(`${lang}.json "${k}" uses different {placeholders} than en.json`);
+      if (!(k in en)) problems.push(`${lang} has key "${k}" that en does not`);
+      else if (placeholdersOf(cat[k]) !== placeholdersOf(en[k])) problems.push(`${lang} "${k}" uses different {placeholders} than en`);
     }
   }
-  return { problems, coverage, fileCount: files.length, usedCount, keyCount: Object.keys(en).length };
+  return { problems, coverage, fileCount: files.length, usedCount, keyCount: enKeys.length };
 }
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
 if (isMain) {
   const r = run();
+  if (process.argv.includes('--json')) {
+    console.log(JSON.stringify(r, null, 2));
+    process.exit(r.problems.length ? 1 : 0);
+  }
   for (const p of r.problems) console.error(`FAIL ${p}`);
   console.log(`i18n-check: ${r.fileCount} files in scope, ${r.usedCount} key uses, ${r.keyCount} English keys`);
   for (const [lang, c] of Object.entries(r.coverage)) console.log(`  ${lang}: ${c.translated}/${c.total} keys (${c.percent}%)`);

@@ -1,0 +1,22 @@
+{
+  "tasks.title": "Title",
+  "tasks.description": "Description",
+  "tasks.priority": "Priority",
+  "tasks.status": "Status",
+  "tasks.dueDate": "Due Date",
+  "tasks.assignedTo": "Assigned To",
+  "tasks.createTask": "Create Task",
+  "tasks.editTask": "Edit Task",
+  "tasks.deleteTask": "Delete Task",
+  "tasks.markComplete": "Mark as Complete",
+  "tasks.noTasks": "No tasks",
+  "tasks.overdue": "Overdue",
+  "tasks.today": "Today",
+  "tasks.upcoming": "Upcoming",
+  "tasks.completed": "Completed",
+  "tasks.filterByStatus": "Filter by Status",
+  "tasks.filterByPriority": "Filter by Priority",
+  "tasks.high": "High",
+  "tasks.medium": "Medium",
+  "tasks.low": "Low"
+}

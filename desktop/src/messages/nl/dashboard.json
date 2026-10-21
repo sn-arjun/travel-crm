@@ -1,0 +1,18 @@
+{
+  "dashboard.revenueThisMonth": "Omzet deze maand",
+  "dashboard.leadsThisMonth": "Leads deze maand",
+  "dashboard.conversionRate": "Conversiepercentage",
+  "dashboard.pendingFollowUps": "Openstaande opvolgingen",
+  "dashboard.pipeline": "Waarde van de pipeline",
+  "dashboard.recentActivity": "Recente activiteit",
+  "dashboard.topPerformers": "Beste presteerders",
+  "dashboard.monthlyTrend": "Maandelijkse trend",
+  "dashboard.leadsBy Source": "Leads per bron",
+  "dashboard.invoiceStatus": "Factuurstatus",
+  "dashboard.upcomingTrips": "Komende reizen",
+  "dashboard.tasksDueToday": "Taken die vandaag aflopen",
+  "dashboard.newLeads": "Nieuwe leads",
+  "dashboard.closedDeals": "Gesloten deals",
+  "dashboard.totalRevenue": "Totale omzet",
+  "dashboard.averageDealSize": "Gemiddelde dealwaarde"
+}

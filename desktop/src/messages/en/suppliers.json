@@ -1,0 +1,13 @@
+{
+  "suppliers.supplierName": "Supplier Name",
+  "suppliers.contactPerson": "Contact Person",
+  "suppliers.email": "Email",
+  "suppliers.phone": "Phone",
+  "suppliers.category": "Category",
+  "suppliers.rating": "Rating",
+  "suppliers.createSupplier": "Add Supplier",
+  "suppliers.editSupplier": "Edit Supplier",
+  "suppliers.deleteSupplier": "Delete Supplier",
+  "suppliers.viewDetails": "View Details",
+  "suppliers.noSuppliers": "No suppliers found"
+}

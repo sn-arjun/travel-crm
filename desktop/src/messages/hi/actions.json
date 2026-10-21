@@ -1,0 +1,15 @@
+{
+  "actions.edit": "संपादित करें",
+  "actions.delete": "हटाएं",
+  "actions.view": "देखें",
+  "actions.add": "जोड़ें",
+  "actions.remove": "निकालें",
+  "actions.copy": "कॉपी करें",
+  "actions.download": "डाउनलोड करें",
+  "actions.upload": "अपलोड करें",
+  "actions.send": "भेजें",
+  "actions.share": "साझा करें",
+  "actions.export": "निर्यात करें",
+  "actions.import": "आयात करें",
+  "actions.print": "प्रिंट करें"
+}

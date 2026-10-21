@@ -1,0 +1,23 @@
+{
+  "contacts.name": "Naam",
+  "contacts.email": "E-mail",
+  "contacts.phone": "Telefoon",
+  "contacts.type": "Type",
+  "contacts.tags": "Labels",
+  "contacts.company": "Bedrijf",
+  "contacts.city": "Plaats",
+  "contacts.country": "Land",
+  "contacts.notes": "Notities",
+  "contacts.customer": "Klant",
+  "contacts.supplier": "Leverancier",
+  "contacts.agent": "Agent",
+  "contacts.partner": "Partner",
+  "contacts.createContact": "Contact aanmaken",
+  "contacts.editContact": "Contact bewerken",
+  "contacts.deleteContact": "Contact verwijderen",
+  "contacts.viewDetails": "Details bekijken",
+  "contacts.noContacts": "Geen contacten gevonden",
+  "contacts.filterByType": "Filteren op type",
+  "contacts.exportContacts": "Contacten exporteren",
+  "contacts.importContacts": "Contacten importeren"
+}

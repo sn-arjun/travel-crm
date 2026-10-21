@@ -1,0 +1,15 @@
+{
+  "fleet.vehicleName": "Voertuignaam",
+  "fleet.licensePlate": "Kenteken",
+  "fleet.type": "Type",
+  "fleet.capacity": "Capaciteit",
+  "fleet.driver": "Chauffeur",
+  "fleet.status": "Status",
+  "fleet.location": "Locatie",
+  "fleet.maintenance": "Onderhoud",
+  "fleet.createVehicle": "Voertuig toevoegen",
+  "fleet.editVehicle": "Voertuig bewerken",
+  "fleet.deleteVehicle": "Voertuig verwijderen",
+  "fleet.viewDetails": "Details bekijken",
+  "fleet.noVehicles": "Geen voertuigen gevonden"
+}

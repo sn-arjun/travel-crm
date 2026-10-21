@@ -130,3 +130,28 @@ export function systemTimeZone(): string {
     return '';
   }
 }
+
+/**
+ * Agency locales (BCP 47) offered for number, date and currency formatting. Independent of the interface language:
+ * a Dutch agency can run the interface in English and still format money and dates the Dutch way (and the reverse).
+ * "en-NL" is English text with Dutch conventions (day-month order, comma decimals, euro).
+ */
+export const LOCALE_NAMES: Record<string, string> = {
+  'en-IN': 'English (India)',
+  'en-GB': 'English (United Kingdom)',
+  'en-US': 'English (United States)',
+  'en-AU': 'English (Australia)',
+  'en-NL': 'English (Netherlands)',
+  'nl-NL': 'Nederlands (Nederland)',
+  'nl-BE': 'Nederlands (België)',
+  'ar-AE': 'العربية (الإمارات)',
+};
+
+/** Locale tags to offer: the agency's own first, then the given values, then the standard set. */
+export function localeOptions(...also: Array<string | null | undefined>): Array<{ value: string; label: string }> {
+  const out: Array<{ value: string; label: string }> = [];
+  for (const tag of [getLocaleContext().locale, ...also, ...Object.keys(LOCALE_NAMES)]) {
+    if (tag && !out.some((o) => o.value === tag)) out.push({ value: tag, label: LOCALE_NAMES[tag] ?? tag });
+  }
+  return out;
+}

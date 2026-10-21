@@ -1,0 +1,12 @@
+{
+  "messages.confirmDelete": "هل أنت متأكد من رغبتك في الحذف؟",
+  "messages.deleteSuccess": "تم الحذف بنجاح",
+  "messages.saveSuccess": "تم الحفظ بنجاح",
+  "messages.updateSuccess": "تم التحديث بنجاح",
+  "messages.createSuccess": "تم الإنشاء بنجاح",
+  "messages.error": "حدث خطأ ما",
+  "messages.errorMessage": "حدث خطأ. يرجى المحاولة مرة أخرى.",
+  "messages.noResults": "لم يتم العثور على نتائج",
+  "messages.loading": "جارٍ التحميل...",
+  "messages.retry": "إعادة المحاولة"
+}

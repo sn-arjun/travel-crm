@@ -1,0 +1,22 @@
+{
+  "tasks.title": "शीर्षक",
+  "tasks.description": "विवरण",
+  "tasks.priority": "प्राथमिकता",
+  "tasks.status": "स्थिति",
+  "tasks.dueDate": "देय तारीख",
+  "tasks.assignedTo": "को असाइन किया गया",
+  "tasks.createTask": "कार्य बनाएं",
+  "tasks.editTask": "कार्य संपादित करें",
+  "tasks.deleteTask": "कार्य हटाएं",
+  "tasks.markComplete": "पूर्ण के रूप में चिह्नित करें",
+  "tasks.noTasks": "कोई कार्य नहीं",
+  "tasks.overdue": "अतिदेय",
+  "tasks.today": "आज",
+  "tasks.upcoming": "आने वाला",
+  "tasks.completed": "पूर्ण",
+  "tasks.filterByStatus": "स्थिति के अनुसार फ़िल्टर करें",
+  "tasks.filterByPriority": "प्राथमिकता के अनुसार फ़िल्टर करें",
+  "tasks.high": "उच्च",
+  "tasks.medium": "मध्यम",
+  "tasks.low": "कम"
+}

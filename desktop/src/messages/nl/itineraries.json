@@ -1,0 +1,11 @@
+{
+  "itineraries.name": "Naam van het reisschema",
+  "itineraries.destination": "Bestemming",
+  "itineraries.startDate": "Startdatum",
+  "itineraries.endDate": "Einddatum",
+  "itineraries.days": "Dagen",
+  "itineraries.createItinerary": "Reisschema aanmaken",
+  "itineraries.editItinerary": "Reisschema bewerken",
+  "itineraries.viewDetails": "Details bekijken",
+  "itineraries.noItineraries": "Geen reisschema's gevonden"
+}

@@ -12,6 +12,7 @@ import {
   type Locale,
 } from './i18n';
 import { getPageTitle } from '@/components/layout/nav-config';
+import originalEnKeys from './fixtures/i18n-split-en-keys.json';
 
 const sample: Record<Locale, Catalogue> = {
   en: {
@@ -27,6 +28,7 @@ const sample: Record<Locale, Catalogue> = {
     'x.items_other': '{count} वस्तुएं',
   },
   ar: {},
+  nl: {},
 };
 
 describe('translate', () => {
@@ -89,7 +91,7 @@ describe('real catalogues', () => {
 
   it('every non-English entry has an English key with the same placeholders', () => {
     const names = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
-    for (const code of ['hi', 'ar'] as const) {
+    for (const code of ['hi', 'ar', 'nl'] as const) {
       for (const [key, value] of Object.entries(catalogues[code])) {
         if (key.startsWith('_')) continue; // notes such as the native-review flag
         expect(catalogues.en[key], `${code}:${key} has no English source`).toBeDefined();
@@ -99,16 +101,38 @@ describe('real catalogues', () => {
   });
 });
 
+describe('split catalogues', () => {
+  it('the merged English catalogue still has every key it had before the split into one file per namespace', () => {
+    const before: string[] = originalEnKeys;
+    expect(before).toHaveLength(811);
+    const now = new Set(Object.keys(catalogues.en));
+    expect(before.filter((k) => !now.has(k))).toEqual([]);
+  });
+
+  it('Dutch is complete: every English key has a Dutch text', () => {
+    const missing = Object.keys(catalogues.en).filter((k) => !k.startsWith('_') && !(k in catalogues.nl));
+    expect(missing).toEqual([]);
+  });
+
+  it('Dutch reads Dutch and keeps placeholders', () => {
+    expect(translate('nl', 'nav.items.itineraries')).toBe("Reisschema's");
+    expect(translate('nl', 'shell.sidebar.accountMenuFor', { name: 'Sam' })).toBe('Accountmenu van Sam');
+  });
+});
+
 describe('languages', () => {
-  it('English is the default; Hindi and Arabic (rtl) are offered', () => {
+  it('English is the default; Hindi, Arabic (rtl) and Dutch are offered', () => {
     expect(DEFAULT_LOCALE).toBe('en');
     expect(isEnabledLocale('en')).toBe(true);
     expect(isEnabledLocale('hi')).toBe(true);
     expect(isEnabledLocale('ar')).toBe(true);
+    expect(isEnabledLocale('nl')).toBe(true);
+    expect(directionOf('nl')).toBe('ltr');
     expect(isEnabledLocale('fr')).toBe(false);
     expect(directionOf('ar')).toBe('rtl');
     expect(directionOf('hi')).toBe('ltr');
-    expect(LANGUAGES.map((l) => l.code)).toEqual(['en', 'hi', 'ar']);
+    expect(LANGUAGES.map((l) => l.code)).toEqual(['en', 'hi', 'ar', 'nl']);
+    expect(LANGUAGES.find((l) => l.code === 'nl')?.label).toBe('Nederlands');
   });
 });
 

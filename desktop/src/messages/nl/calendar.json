@@ -1,0 +1,21 @@
+{
+  "calendar.today": "Vandaag",
+  "calendar.month": "Maand",
+  "calendar.week": "Week",
+  "calendar.day": "Dag",
+  "calendar.createEvent": "Afspraak aanmaken",
+  "calendar.editEvent": "Afspraak bewerken",
+  "calendar.deleteEvent": "Afspraak verwijderen",
+  "calendar.eventTitle": "Titel van de afspraak",
+  "calendar.eventDescription": "Omschrijving",
+  "calendar.startTime": "Starttijd",
+  "calendar.endTime": "Eindtijd",
+  "calendar.allDay": "Hele dag",
+  "calendar.recurring": "Terugkerend",
+  "calendar.noEvents": "Geen afspraken",
+  "calendar.eventTypes": "Soorten afspraken",
+  "calendar.meeting": "Vergadering",
+  "calendar.call": "Gesprek",
+  "calendar.task": "Taak",
+  "calendar.trip": "Reis"
+}

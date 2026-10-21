@@ -1,0 +1,8 @@
+{
+  "validation.required": "هذا الحقل مطلوب",
+  "validation.email": "يرجى إدخال بريد إلكتروني صالح",
+  "validation.phone": "يرجى إدخال رقم هاتف صالح",
+  "validation.minLength": "الحد الأدنى {min} أحرف",
+  "validation.maxLength": "الحد الأقصى {max} حرفًا",
+  "validation.pattern": "صيغة غير صالحة"
+}

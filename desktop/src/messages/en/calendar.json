@@ -1,0 +1,21 @@
+{
+  "calendar.today": "Today",
+  "calendar.month": "Month",
+  "calendar.week": "Week",
+  "calendar.day": "Day",
+  "calendar.createEvent": "Create Event",
+  "calendar.editEvent": "Edit Event",
+  "calendar.deleteEvent": "Delete Event",
+  "calendar.eventTitle": "Event Title",
+  "calendar.eventDescription": "Description",
+  "calendar.startTime": "Start Time",
+  "calendar.endTime": "End Time",
+  "calendar.allDay": "All Day",
+  "calendar.recurring": "Recurring",
+  "calendar.noEvents": "No events",
+  "calendar.eventTypes": "Event Types",
+  "calendar.meeting": "Meeting",
+  "calendar.call": "Call",
+  "calendar.task": "Task",
+  "calendar.trip": "Trip"
+}

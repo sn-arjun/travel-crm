@@ -1,0 +1,21 @@
+{
+  "calendar.today": "اليوم",
+  "calendar.month": "شهر",
+  "calendar.week": "أسبوع",
+  "calendar.day": "يوم",
+  "calendar.createEvent": "إنشاء حدث",
+  "calendar.editEvent": "تعديل الحدث",
+  "calendar.deleteEvent": "حذف الحدث",
+  "calendar.eventTitle": "عنوان الحدث",
+  "calendar.eventDescription": "الوصف",
+  "calendar.startTime": "وقت البدء",
+  "calendar.endTime": "وقت الانتهاء",
+  "calendar.allDay": "طوال اليوم",
+  "calendar.recurring": "متكرر",
+  "calendar.noEvents": "لا توجد أحداث",
+  "calendar.eventTypes": "أنواع الأحداث",
+  "calendar.meeting": "اجتماع",
+  "calendar.call": "مكالمة",
+  "calendar.task": "مهمة",
+  "calendar.trip": "رحلة"
+}

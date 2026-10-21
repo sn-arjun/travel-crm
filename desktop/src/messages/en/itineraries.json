@@ -1,0 +1,11 @@
+{
+  "itineraries.name": "Itinerary Name",
+  "itineraries.destination": "Destination",
+  "itineraries.startDate": "Start Date",
+  "itineraries.endDate": "End Date",
+  "itineraries.days": "Days",
+  "itineraries.createItinerary": "Create Itinerary",
+  "itineraries.editItinerary": "Edit Itinerary",
+  "itineraries.viewDetails": "View Details",
+  "itineraries.noItineraries": "No itineraries found"
+}

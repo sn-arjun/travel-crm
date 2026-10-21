@@ -1,0 +1,12 @@
+{
+  "vouchers.voucherCode": "Vouchercode",
+  "vouchers.type": "Type",
+  "vouchers.supplier": "Leverancier",
+  "vouchers.amount": "Bedrag",
+  "vouchers.expiryDate": "Vervaldatum",
+  "vouchers.status": "Status",
+  "vouchers.createVoucher": "Voucher aanmaken",
+  "vouchers.editVoucher": "Voucher bewerken",
+  "vouchers.deleteVoucher": "Voucher verwijderen",
+  "vouchers.used": "Gebruikt"
+}

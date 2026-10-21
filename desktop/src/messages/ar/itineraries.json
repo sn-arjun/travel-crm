@@ -1,0 +1,11 @@
+{
+  "itineraries.name": "اسم البرنامج",
+  "itineraries.destination": "الوجهة",
+  "itineraries.startDate": "تاريخ البدء",
+  "itineraries.endDate": "تاريخ الانتهاء",
+  "itineraries.days": "الأيام",
+  "itineraries.createItinerary": "إنشاء برنامج سياحي",
+  "itineraries.editItinerary": "تعديل البرنامج السياحي",
+  "itineraries.viewDetails": "عرض التفاصيل",
+  "itineraries.noItineraries": "لا توجد برامج سياحية"
+}

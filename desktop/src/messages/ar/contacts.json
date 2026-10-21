@@ -1,0 +1,23 @@
+{
+  "contacts.name": "الاسم",
+  "contacts.email": "البريد الإلكتروني",
+  "contacts.phone": "الهاتف",
+  "contacts.type": "النوع",
+  "contacts.tags": "الوسوم",
+  "contacts.company": "الشركة",
+  "contacts.city": "المدينة",
+  "contacts.country": "الدولة",
+  "contacts.notes": "ملاحظات",
+  "contacts.customer": "عميل",
+  "contacts.supplier": "مورد",
+  "contacts.agent": "وكيل",
+  "contacts.partner": "شريك",
+  "contacts.createContact": "إنشاء جهة اتصال",
+  "contacts.editContact": "تعديل جهة الاتصال",
+  "contacts.deleteContact": "حذف جهة الاتصال",
+  "contacts.viewDetails": "عرض التفاصيل",
+  "contacts.noContacts": "لا توجد جهات اتصال",
+  "contacts.filterByType": "التصفية حسب النوع",
+  "contacts.exportContacts": "تصدير جهات الاتصال",
+  "contacts.importContacts": "استيراد جهات الاتصال"
+}

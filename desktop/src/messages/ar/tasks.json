@@ -1,0 +1,22 @@
+{
+  "tasks.title": "العنوان",
+  "tasks.description": "الوصف",
+  "tasks.priority": "الأولوية",
+  "tasks.status": "الحالة",
+  "tasks.dueDate": "تاريخ الاستحقاق",
+  "tasks.assignedTo": "مسندة إلى",
+  "tasks.createTask": "إنشاء مهمة",
+  "tasks.editTask": "تعديل المهمة",
+  "tasks.deleteTask": "حذف المهمة",
+  "tasks.markComplete": "تحديد كمكتملة",
+  "tasks.noTasks": "لا توجد مهام",
+  "tasks.overdue": "متأخرة",
+  "tasks.today": "اليوم",
+  "tasks.upcoming": "القادمة",
+  "tasks.completed": "المكتملة",
+  "tasks.filterByStatus": "التصفية حسب الحالة",
+  "tasks.filterByPriority": "التصفية حسب الأولوية",
+  "tasks.high": "عالية",
+  "tasks.medium": "متوسطة",
+  "tasks.low": "منخفضة"
+}

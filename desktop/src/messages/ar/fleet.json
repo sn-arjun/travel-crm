@@ -1,0 +1,15 @@
+{
+  "fleet.vehicleName": "اسم المركبة",
+  "fleet.licensePlate": "رقم اللوحة",
+  "fleet.type": "النوع",
+  "fleet.capacity": "السعة",
+  "fleet.driver": "السائق",
+  "fleet.status": "الحالة",
+  "fleet.location": "الموقع",
+  "fleet.maintenance": "الصيانة",
+  "fleet.createVehicle": "إضافة مركبة",
+  "fleet.editVehicle": "تعديل المركبة",
+  "fleet.deleteVehicle": "حذف المركبة",
+  "fleet.viewDetails": "عرض التفاصيل",
+  "fleet.noVehicles": "لا توجد مركبات"
+}

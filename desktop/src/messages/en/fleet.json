@@ -1,0 +1,15 @@
+{
+  "fleet.vehicleName": "Vehicle Name",
+  "fleet.licensePlate": "License Plate",
+  "fleet.type": "Type",
+  "fleet.capacity": "Capacity",
+  "fleet.driver": "Driver",
+  "fleet.status": "Status",
+  "fleet.location": "Location",
+  "fleet.maintenance": "Maintenance",
+  "fleet.createVehicle": "Add Vehicle",
+  "fleet.editVehicle": "Edit Vehicle",
+  "fleet.deleteVehicle": "Delete Vehicle",
+  "fleet.viewDetails": "View Details",
+  "fleet.noVehicles": "No vehicles found"
+}

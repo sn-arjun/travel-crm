@@ -1,0 +1,13 @@
+{
+  "suppliers.supplierName": "Naam leverancier",
+  "suppliers.contactPerson": "Contactpersoon",
+  "suppliers.email": "E-mail",
+  "suppliers.phone": "Telefoon",
+  "suppliers.category": "Categorie",
+  "suppliers.rating": "Beoordeling",
+  "suppliers.createSupplier": "Leverancier toevoegen",
+  "suppliers.editSupplier": "Leverancier bewerken",
+  "suppliers.deleteSupplier": "Leverancier verwijderen",
+  "suppliers.viewDetails": "Details bekijken",
+  "suppliers.noSuppliers": "Geen leveranciers gevonden"
+}

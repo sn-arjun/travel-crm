@@ -1,0 +1,23 @@
+{
+  "contacts.name": "नाम",
+  "contacts.email": "ईमेल",
+  "contacts.phone": "फोन",
+  "contacts.type": "प्रकार",
+  "contacts.tags": "टैग",
+  "contacts.company": "कंपनी",
+  "contacts.city": "शहर",
+  "contacts.country": "देश",
+  "contacts.notes": "नोट्स",
+  "contacts.customer": "ग्राहक",
+  "contacts.supplier": "आपूर्तिकर्ता",
+  "contacts.agent": "एजेंट",
+  "contacts.partner": "साझेदार",
+  "contacts.createContact": "संपर्क बनाएं",
+  "contacts.editContact": "संपर्क संपादित करें",
+  "contacts.deleteContact": "संपर्क हटाएं",
+  "contacts.viewDetails": "विवरण देखें",
+  "contacts.noContacts": "कोई संपर्क नहीं मिली",
+  "contacts.filterByType": "प्रकार के अनुसार फ़िल्टर करें",
+  "contacts.exportContacts": "संपर्क निर्यात करें",
+  "contacts.importContacts": "संपर्क आयात करें"
+}
