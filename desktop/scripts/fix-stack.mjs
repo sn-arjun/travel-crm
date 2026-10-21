@@ -138,7 +138,24 @@ function killListeners(port) {
 
 function spawnLogged(cmd, args, { cwd, env, logName }) {
   mkdirSync(stackDir, { recursive: true });
-  const fd = openSync(path.join(stackDir, logName), 'w');
+  const logPath = path.join(stackDir, logName);
+  if (isWin) {
+    // A detached process on Windows has no console, and the output of what it starts was lost even with a file
+    // handle or a cmd.exe redirect (the logs stayed empty: no http.request timings). A small Node runner is the
+    // detached process instead; it starts the real command with pipes and appends to the log itself.
+    writeFileSync(logPath, '');
+    const child = spawn(process.execPath, [path.join(desktopDir, 'scripts', 'stack-log-runner.mjs'), logPath, cmd, ...args], {
+      cwd,
+      env: { ...process.env, ...env },
+      detached: true,
+      shell: false,
+      windowsHide: true,
+      stdio: 'ignore',
+    });
+    child.unref();
+    return child.pid;
+  }
+  const fd = openSync(logPath, 'w');
   const child = spawn(cmd, args, {
     cwd,
     env: { ...process.env, ...env },
