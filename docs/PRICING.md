@@ -193,7 +193,7 @@ The draft pack (5,000 credits for INR 250) is retired. The new India price per c
 | EU | 250 WhatsApp marketing | EUR 31.33 | EUR 40.74 | EUR 2.57 | EUR 38.17 | 1.218 |
 | EU | 100 login codes | EUR 14.88 | EUR 19.34 | EUR 1.22 | EUR 18.12 | 1.218 |
 | EU | 20,000 emails | EUR 9.18 | EUR 11.94 | EUR 0.75 | EUR 11.19 | 1.218 |
-| EU | 500 call minutes (inactive until the second wave) | EUR 20.38 | EUR 26.50 | EUR 1.67 | EUR 24.83 | 1.218 |
+| EU | 500 call minutes (active since R137, migration 0029) | EUR 20.38 | EUR 26.50 | EUR 1.67 | EUR 24.83 | 1.218 |
 | ANZ | 500 SMS | AUD 37.99 | AUD 49.40 | AUD 3.11 | AUD 46.29 | 1.218 |
 | ANZ | 1,000 WhatsApp utility (step B) | AUD 16.67 | AUD 21.68 | AUD 1.37 | AUD 20.31 | 1.218 |
 | ANZ | 500 WhatsApp marketing | AUD 62.10 | AUD 80.74 | AUD 5.09 | AUD 75.65 | 1.218 |
@@ -278,10 +278,13 @@ Where they come from:
 | ANZ | AUD 4.43 | AUD 5.76 | 1.219 |
 | WEST (US) | USD 1.15 | USD 1.50 | 1.222 |
 | SG | USD 5.00 | USD 6.50 | 1.218 |
-| EU (second wave) | EUR 1.24 | EUR 1.62 | 1.225 |
+| EU (active since R137; Germany-based price) | EUR 1.24 | EUR 1.62 | 1.225 |
+| NL (draft, **not for sale**) | not entered | not entered | n/a |
 | MY_TH (second wave, Malaysia) | USD 4.00 | USD 5.20 | 1.218 |
 
 Release rules already approved: 14 days after cancelling, 7 days of unpaid rent.
+
+**How a number is priced (R137).** The number price is looked up by the agency's own country first, then by its market. A `phone_number` product whose market is the agency's ISO country code (for example `NL`) wins, and once such a product exists, active or draft, it is the only one that country can buy. A Dutch agency therefore gets `PRICE_NOT_CONFIGURED` (the agency is told pricing is not available yet) until the owner enters Twilio's real NL number price and activates the `NL` row and the `phone_number_nl` add-on in the super admin catalogue; it never pays the Germany-based EU price by accident. German agencies and other EU countries without a country row keep the EU price. Call minutes keep their rule: a destination row counts only when active with a price above zero, so a minute to a Dutch number is priced by the EU market row while the NL draft is off.
 
 ### 3.7 Headline add-on prices
 
@@ -559,8 +562,10 @@ Deactivate the older rows they supersede (the newest active row wins anyway, but
 | 01a157e5-2f47-717d-8d11-0129f13da077 | sms | EU | Twilio DE | 0.10284 | EUR | 30 | 2026-11-01T00:00:00Z | 1 | A |
 | 01a157e5-2f48-7cbe-961b-293b8742c271 | otp | EU | Twilio Verify $0.05 + Twilio DE | 0.14875 | EUR | 30 | 2026-11-01T00:00:00Z | 1 | A |
 | 01a157e5-2f49-7b07-ab9d-d61de0260def | email | EU | SendGrid (draft $0.0005 an email) | 0.00046 | EUR | 30 | 2026-11-01T00:00:00Z | 1 | A |
-| 01a157e5-2f4a-752c-9ea7-ca87c01b6c58 | call_minute | EU | Twilio DE, 70% mobile + softphone + recording | 0.04076 | EUR | 30 | 2026-11-01T00:00:00Z | 0 | A (second wave) |
-| 01a157e5-2f4b-7261-9e7a-8bfe8eda9884 | phone_number | EU | Twilio DE local number, monthly | 1.2396 | EUR | 30 | 2026-11-01T00:00:00Z | 0 | A (second wave) |
+| 01a157e5-2f4a-752c-9ea7-ca87c01b6c58 | call_minute | EU | Twilio DE, 70% mobile + softphone + recording | 0.04076 | EUR | 30 | 2026-11-01T00:00:00Z | 1 | A (active since R137, migration 0029) |
+| 01a157e5-2f4b-7261-9e7a-8bfe8eda9884 | phone_number | EU | Twilio DE local number, monthly | 1.2396 | EUR | 30 | 2026-11-01T00:00:00Z | 1 | A (active since R137, migration 0029) |
+| 01a15fab-db01-7d72-bf77-cee76f237fa0 | phone_number | NL | DRAFT: enter Twilio's NL price before selling | 0 | EUR | 30 | 2026-11-01T00:00:00Z | 0 | R137 draft: owner enters the price, then activates |
+| 01a15fab-db02-7c41-83ce-0f5ac346d509 | call_minute | NL | DRAFT: enter Twilio's NL price before selling | 0 | USD | 30 | 2026-11-01T00:00:00Z | 0 | R137 draft: destination weight, USD like the other country rows |
 | 01a157e5-2f4c-7037-be21-5389912999ae | whatsapp | ANZ | Meta Rest of Asia Pacific +15%, marketing rate (interim) | 0.12421 | AUD | 30 | 2026-11-01T00:00:00Z | 1 | A |
 | 01a157e5-2f4d-76f6-b8d9-e37b7af8772b | whatsapp | ANZ | Meta Rest of Asia Pacific +15%, utility rate | 0.01667 | AUD | 30 | 2026-11-01T00:00:01Z | 0 | B: set is_active 1 |
 | 01a157e5-2f4e-70ba-a8bb-4dc679ecd296 | whatsapp_marketing | ANZ | Meta Rest of Asia Pacific +15%, marketing rate | 0.12421 | AUD | 30 | 2026-11-01T00:00:00Z | 0 | B: set is_active 1 |
@@ -654,8 +659,9 @@ New rows (`fixed_price` NULL means the engine prices the pack from `comm_unit_co
 | whatsapp_marketing_250_eu | 250 WhatsApp marketing messages | comm_pack | whatsapp_marketing | 250 | NULL | EUR | EU | 0 |
 | otp_100_eu | 100 login codes | comm_pack | otp | 100 | NULL | EUR | EU | 1 |
 | email_20000_eu | 20,000 emails | comm_pack | email | 20000 | NULL | EUR | EU | 1 |
-| call_minutes_500_eu | 500 call minutes | comm_pack | call_minute | 500 | NULL | EUR | EU | 0 |
-| phone_number_eu | Phone number (per month) | comm_pack | phone_number | 1 | NULL | EUR | EU | 0 |
+| call_minutes_500_eu | 500 call minutes | comm_pack | call_minute | 500 | NULL | EUR | EU | 1 (active since R137) |
+| phone_number_eu | Phone number (per month) | comm_pack | phone_number | 1 | NULL | EUR | EU | 1 (active since R137) |
+| phone_number_nl | Phone number (per month) | comm_pack | phone_number | 1 | NULL | EUR | NL | 0 (R137 draft; activate after entering the NL price) |
 | ai_credits_10000_anz | 10,000 AI credits | ai_credit_pack | NULL | 10000 | 13 | AUD | ANZ | 1 |
 | ai_credits_50000_anz | 50,000 AI credits | ai_credit_pack | NULL | 50000 | 49 | AUD | ANZ | 1 |
 | sms_500_anz | 500 SMS | comm_pack | sms | 500 | NULL | AUD | ANZ | 1 |
