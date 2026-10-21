@@ -38,11 +38,15 @@ class TripDetailState {
   final String? error;
   final bool isActionLoading;
 
+  /// The trip on screen is the copy saved on the phone (no signal).
+  final bool fromCache;
+
   const TripDetailState({
     this.isLoading = false,
     this.trip,
     this.error,
     this.isActionLoading = false,
+    this.fromCache = false,
   });
 
   TripDetailState copyWith({
@@ -50,12 +54,14 @@ class TripDetailState {
     Map<String, dynamic>? trip,
     String? error,
     bool? isActionLoading,
+    bool? fromCache,
   }) {
     return TripDetailState(
       isLoading: isLoading ?? this.isLoading,
       trip: trip ?? this.trip,
       error: error,
       isActionLoading: isActionLoading ?? this.isActionLoading,
+      fromCache: fromCache ?? this.fromCache,
     );
   }
 }

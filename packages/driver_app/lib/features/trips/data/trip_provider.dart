@@ -1,12 +1,27 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/api_client_provider.dart';
 import '../../../core/storage/hive_storage.dart';
 import '../../../core/utils/api_error.dart';
+import 'checkin_queue.dart';
 import 'trip_repository.dart';
+import 'trip_view.dart';
 import 'trip_state.dart';
 
 final tripRepositoryProvider = Provider<TripRepository>((ref) {
   return TripRepository(ref.watch(dioProvider));
+});
+
+/// The ticks and stop changes waiting to be sent to the office.
+final checkinQueueProvider =
+    StateNotifierProvider<CheckinQueue, List<CheckinOp>>((ref) {
+  return CheckinQueue(ref.watch(tripRepositoryProvider));
+});
+
+/// How many changes of [tripId] have not reached the office yet.
+final pendingCheckinsProvider = Provider.family<int, String>((ref, tripId) {
+  return ref.watch(checkinQueueProvider).where((o) => o.tripId == tripId).length;
 });
 
 // ── Pagination helpers ──────────────────────────────────
@@ -156,36 +171,133 @@ class TripListNotifier extends StateNotifier<TripListState> {
 
 final tripDetailProvider = StateNotifierProvider.family<TripDetailNotifier,
     TripDetailState, String>((ref, tripId) {
-  return TripDetailNotifier(ref.watch(tripRepositoryProvider), tripId);
+  return TripDetailNotifier(
+    ref.watch(tripRepositoryProvider),
+    tripId,
+    queue: ref.read(checkinQueueProvider.notifier),
+  );
 });
 
 class TripDetailNotifier extends StateNotifier<TripDetailState> {
   final TripRepository _repo;
   final String _tripId;
+  final CheckinQueue? _queue;
+  StreamSubscription<String>? _sub;
 
-  TripDetailNotifier(this._repo, this._tripId)
-      : super(const TripDetailState()) {
+  TripDetailNotifier(this._repo, this._tripId, {CheckinQueue? queue})
+      : _queue = queue,
+        super(const TripDetailState()) {
+    // When the queue has sent every change of this trip, show what the
+    // office now has.
+    _sub = queue?.tripChanges.where((id) => id == _tripId).listen((_) {
+      if (mounted) loadDetail();
+    });
     loadDetail();
   }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  /// Changes made on the phone and not yet sent, laid over a server copy.
+  Map<String, dynamic> _withPending(Map<String, dynamic> trip) =>
+      _queue == null ? trip : applyPendingOps(trip, _queue.state);
 
   Future<void> loadDetail() async {
     state = state.copyWith(isLoading: true);
     try {
       final response = await _repo.getTripDetail(_tripId);
+      if (!mounted) return;
+      final data = response['data'];
+      if (data is Map<String, dynamic> && TripView(data).isCoach) {
+        _cacheDetail(data);
+      }
       // A reload ends any action in flight: the new status decides which
       // action the driver sees next, and it must not inherit a spinner.
       state = state.copyWith(
         isLoading: false,
         isActionLoading: false,
-        trip: response['data'],
+        trip: data is Map<String, dynamic> ? _withPending(data) : data,
+        fromCache: false,
       );
     } catch (e) {
+      if (!mounted) return;
+      final cached = state.trip == null ? _readDetailCache() : null;
       state = state.copyWith(
         isLoading: false,
         isActionLoading: false,
+        trip: cached == null ? null : _withPending(cached),
         error: extractApiError(e),
+        fromCache: cached != null || state.trip != null,
       );
     }
+  }
+
+  void _cacheDetail(Map<String, dynamic> trip) {
+    try {
+      HiveStorage.cacheTripDetail(_tripId, trip);
+    } catch (_) {}
+  }
+
+  Map<String, dynamic>? _readDetailCache() {
+    try {
+      final raw = HiveStorage.getCachedTripDetail(_tripId);
+      if (raw == null) return null;
+      // Hive hands back loosely typed maps; a JSON round trip types them.
+      final map = jsonDecode(jsonEncode(raw));
+      return map is Map<String, dynamic> ? map : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ── Coach trips: ticks and stops are shown at once, then sent in order ──
+
+  /// Ticks a passenger boarded / no_show / pending and/or documents checked.
+  Future<void> tickPassenger(
+    String passengerId, {
+    String? boarding,
+    bool? documentsChecked,
+  }) async {
+    final queue = _queue;
+    if (queue == null) return;
+    final op = CheckinOp.tick(
+      tripId: _tripId,
+      passengerId: passengerId,
+      boarding: boarding,
+      documentsChecked: documentsChecked,
+    );
+    _showNow(op);
+    await queue.enqueue(op);
+  }
+
+  /// The coach reached a stop.
+  Future<void> arriveStop(String stopId) => _stopOp(stopId, 'arrive');
+
+  /// The coach left a stop (arrives first when that was not recorded).
+  Future<void> departStop(String stopId) async {
+    final stop =
+        TripView(state.trip ?? const {}).stops.where((s) => s.id == stopId);
+    if (stop.isNotEmpty && stop.first.status == 'pending') {
+      await _stopOp(stopId, 'arrive');
+    }
+    await _stopOp(stopId, 'depart');
+  }
+
+  Future<void> _stopOp(String stopId, String action) async {
+    final queue = _queue;
+    if (queue == null) return;
+    final op = CheckinOp.stop(tripId: _tripId, stopId: stopId, action: action);
+    _showNow(op);
+    await queue.enqueue(op);
+  }
+
+  void _showNow(CheckinOp op) {
+    final trip = state.trip;
+    if (trip == null || !mounted) return;
+    state = state.copyWith(trip: applyPendingOps(trip, [op]), error: state.error);
   }
 
   Future<bool> acceptTrip() async {

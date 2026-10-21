@@ -8,6 +8,7 @@ class HiveStorage {
   static const String _profileCacheBox = 'profile_cache';
   static const String _offlineQueueBox = 'offline_queue';
   static const String _settingsBox = 'driver_settings';
+  static const String _checkinQueueBox = 'checkin_queue';
 
   static Future<void> init() async {
     await Hive.initFlutter();
@@ -17,6 +18,7 @@ class HiveStorage {
       Hive.openBox(_profileCacheBox),
       Hive.openBox(_offlineQueueBox),
       Hive.openBox(_settingsBox),
+      Hive.openBox(_checkinQueueBox),
     ]);
   }
 
@@ -122,7 +124,18 @@ class HiveStorage {
     await _tripsCache.clear();
     await Hive.box(_profileCacheBox).clear();
     await _offlineQueue.clear();
+    await _settings.delete('crewRole');
+    try {
+      await _checkinQueue.clear();
+    } catch (_) {
+      // The box is opened at start up; only a bare test has none.
+    }
   }
+
+  // ── Crew role (cached from the profile, for the trip list badge) ──
+
+  static String? get crewRole => _settings.get('crewRole') as String?;
+  static set crewRole(String? value) => _settings.put('crewRole', value);
 
   // ── Settings ────────────────────────────────────────────
 
@@ -156,6 +169,37 @@ class HiveStorage {
     if (cached == null) return false;
     return DateTime.now().difference(cached) < maxAge;
   }
+
+  /// The last trip detail the phone saw, with its stops and passengers, so a
+  /// coach trip can be read (and ticked) without signal.
+  static void cacheTripDetail(String tripId, Map<String, dynamic> trip) {
+    _tripsCache.put('detail_$tripId', trip);
+  }
+
+  static dynamic getCachedTripDetail(String tripId) =>
+      _tripsCache.get('detail_$tripId');
+
+  // ── Check-in queue (stop and passenger ticks made offline) ──
+  static Box get _checkinQueue => Hive.box(_checkinQueueBox);
+
+  /// Appends an op; keys grow in order, so the queue is first in, first out.
+  static Future<int> addCheckin(Map<String, dynamic> op) =>
+      _checkinQueue.add(op);
+
+  static List<MapEntry<dynamic, Map<String, dynamic>>> pendingCheckins() {
+    final keys = _checkinQueue.keys.toList()
+      ..sort((a, b) => (a as int).compareTo(b as int));
+    return [
+      for (final k in keys)
+        if (_checkinQueue.get(k) is Map)
+          MapEntry(k, Map<String, dynamic>.from(_checkinQueue.get(k) as Map)),
+    ];
+  }
+
+  static Future<void> updateCheckin(dynamic key, Map<String, dynamic> op) =>
+      _checkinQueue.put(key, op);
+
+  static Future<void> removeCheckin(dynamic key) => _checkinQueue.delete(key);
 
   // ── Offline Queue ───────────────────────────────────────
   static Box get _offlineQueue => Hive.box(_offlineQueueBox);
