@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-21T19:42:30.302Z",
+  "updated": "2026-10-21T19:59:38.568Z",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -270,6 +270,12 @@
           "head": "26608f3",
           "what": "departures model: tenant 0057, master 0030 feature keys, tours/departures API, capacity by vehicles, calendar sync, privacy registry + erasure, shared types",
           "gates": "merged line backend 111/2167; e2e calendar+super-admin 15/15"
+        },
+        "R138": {
+          "status": "merged",
+          "head": "6ac6c5b",
+          "what": "India defaults removed: template/lead/itinerary/credit-note currency from agency, PDF money by locale, AI budget label, invoice defaults by country, guard test no-india-defaults, monotonic UUIDv7 (Dart + TS)",
+          "gates": "merged line backend 113/2192, desktop 99/1570, lint PASS, i18n PASS"
         }
       }
     }
