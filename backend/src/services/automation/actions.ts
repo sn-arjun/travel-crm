@@ -283,6 +283,27 @@ const markLeadWon: ActionDefinition = {
   undo: restoreLeadStatus,
 };
 
+/** Mark a lead lost through the same endpoint as the status dropdown (the lost reason is required there). */
+const markLeadLost: ActionDefinition = {
+  type: 'mark_lead_lost',
+  label: 'Mark as lost',
+  module: 'leads',
+  permission: 'edit',
+  risk: 'medium',
+  schema: z.object({ leadId: z.string().min(1), reason: z.string().min(1).max(300).default('No longer interested') }),
+  async execute(ctx, p) {
+    const lead = await ctx.db
+      .prepare('SELECT status, title FROM leads WHERE id = ? AND COALESCE(is_deleted, 0) = 0')
+      .bind(p.leadId)
+      .first<{ status: string; title: string }>();
+    if (!lead) throw new Error('This lead no longer exists');
+    if (lead.status === 'lost') return { entities: [{ type: 'lead', id: p.leadId, label: lead.title }], summary: 'The lead is already lost' };
+    must(await ctx.api('PUT', `/leads/${p.leadId}/status`, { status: 'lost', lostReason: p.reason }), 'Could not mark the lead as lost');
+    return { entities: [{ type: 'lead', id: p.leadId, label: lead.title }], undo: { leadId: p.leadId, previousStatus: lead.status }, summary: 'Marked as lost' };
+  },
+  undo: restoreLeadStatus,
+};
+
 // ── Follow-ups and tasks ─────────────────────────────────────
 
 const createFollowUp: ActionDefinition = {
@@ -484,6 +505,40 @@ const createVouchers: ActionDefinition = {
   },
 };
 
+// ── Group departures (R143) ──────────────────────────────────
+
+/** Confirming held seats never takes more than the departure has (the capacity rule is in the endpoint), so it may run without a click. */
+const confirmSeatBooking: ActionDefinition = {
+  type: 'confirm_seat_booking',
+  label: 'Confirm seats',
+  module: 'departures',
+  permission: 'edit',
+  risk: 'low',
+  schema: z.object({
+    seatBookingId: z.string().min(1),
+    /** Set by the deposit rule; a person's click or an automatic run records who confirmed otherwise. */
+    by: z.enum(['deposit', 'quote_accept']).optional(),
+  }),
+  async execute(ctx, p) {
+    must(await ctx.api('POST', `/seat-bookings/${p.seatBookingId}/confirm`, p.by ? { by: p.by } : {}), 'Could not confirm the seats');
+    return { entities: [{ type: 'seat_booking', id: p.seatBookingId }], summary: 'Seats confirmed' };
+  },
+};
+
+/** Holds the freed seats for a waitlisted party; they are told through the waitlist.offered recipe. */
+const offerSeats: ActionDefinition = {
+  type: 'offer_seats',
+  label: 'Offer seats',
+  module: 'departures',
+  permission: 'edit',
+  risk: 'medium',
+  schema: z.object({ seatBookingId: z.string().min(1) }),
+  async execute(ctx, p) {
+    must(await ctx.api('POST', `/seat-bookings/${p.seatBookingId}/offer`, {}), 'Could not offer the seats');
+    return { entities: [{ type: 'seat_booking', id: p.seatBookingId }], summary: 'Seats offered' };
+  },
+};
+
 // ── Messages ─────────────────────────────────────────────────
 
 /**
@@ -636,6 +691,7 @@ export const ACTIONS: Record<string, ActionDefinition> = Object.fromEntries(
     updateLead,
     advanceLeadStatus,
     markLeadWon,
+    markLeadLost,
     createFollowUp,
     createTask,
     createItineraryFromTemplate,
@@ -646,5 +702,7 @@ export const ACTIONS: Record<string, ActionDefinition> = Object.fromEntries(
     openPrefilledForm,
     linkMessageToLead,
     logCallActivity,
+    confirmSeatBooking,
+    offerSeats,
   ].map((action) => [action.type, action]),
 );

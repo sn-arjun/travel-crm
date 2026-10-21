@@ -10,6 +10,9 @@ import { getTenantTimeZone, localDateString, addDaysLocal, localClock, localDate
 import { analyzeMessage, type MessageAnalysis, type MessageEntities } from './message-analysis';
 import type { DomainEvent, Proposal, Recipe, RecipeContext } from './types';
 import { formatMoney, loadLocaleContext } from '../../utils/money';
+import { loadDepartureContext } from '../departures/seat-support';
+import { nextFittingWaitlist } from '../departures/waitlist';
+import { seatsLeft } from '../departures/seat-support';
 
 const OPEN_LEAD_SQL = `status NOT IN ('won', 'lost', 'booking_confirmed', 'completed') AND COALESCE(is_deleted, 0) = 0`;
 
@@ -1434,6 +1437,10 @@ const paymentThankYou: Recipe = {
   },
 };
 
+/** The date a lead travels: the start of its held or confirmed group departure (R143), else the lead's own travel date. Needs the alias l for leads. */
+const TRAVEL_DATE_SQL = `COALESCE((SELECT d.start_date FROM seat_bookings sb JOIN departures d ON d.id = sb.departure_id
+  WHERE sb.lead_id = l.id AND sb.status IN ('held', 'confirmed') ORDER BY d.start_date LIMIT 1), l.travel_date)`;
+
 const balanceBeforeTravel: Recipe = {
   key: 'payments.balance_before_travel',
   area: 'Payments',
@@ -1449,11 +1456,11 @@ const balanceBeforeTravel: Recipe = {
     const until = addDaysLocal(day, ctx.settings.days);
     const rows = await ctx.db
       .prepare(
-        `SELECT i.id, i.invoice_number, i.balance_due, i.contact_id, l.id AS lead_id, l.title, l.travel_date FROM invoices i
+        `SELECT i.id, i.invoice_number, i.balance_due, i.contact_id, l.id AS lead_id, l.title, ${TRAVEL_DATE_SQL} AS travel_date FROM invoices i
          JOIN leads l ON l.id = i.lead_id
          WHERE i.status = 'partially_paid' AND COALESCE(i.balance_due, 0) > 0
-           AND l.travel_date IS NOT NULL AND substr(l.travel_date, 1, 10) >= ? AND substr(l.travel_date, 1, 10) <= ?
-         ORDER BY l.travel_date LIMIT 25`,
+           AND ${TRAVEL_DATE_SQL} IS NOT NULL AND substr(${TRAVEL_DATE_SQL}, 1, 10) >= ? AND substr(${TRAVEL_DATE_SQL}, 1, 10) <= ?
+         ORDER BY ${TRAVEL_DATE_SQL} LIMIT 25`,
       )
       .bind(day, until)
       .all<{ id: string; invoice_number: string; balance_due: number; contact_id: string; lead_id: string; title: string; travel_date: string }>();
@@ -1501,7 +1508,8 @@ const collectTravellerDetails: Recipe = {
     if (!lead || !contact || contact.opted_out) return [];
     const channel = replyChannel(lead.source ?? 'whatsapp', contact);
     if (!channel) return [];
-    const pax = (lead.pax_adults ?? 1) + (lead.pax_children ?? 0);
+    const seatsBooked = (await ctx.db.prepare(`SELECT COALESCE(SUM(seats), 0) AS n FROM seat_bookings WHERE lead_id = ? AND status IN ('held', 'confirmed')`).bind(lead.id).first<{ n: number }>())?.n ?? 0;
+    const pax = seatsBooked > 0 ? seatsBooked : (lead.pax_adults ?? 1) + (lead.pax_children ?? 0);
     const abroad = lead.trip_type === 'international';
     const company = await companyName(ctx);
     return [{
@@ -1861,6 +1869,320 @@ const summariseCall: Recipe = {
   },
 };
 
+// ── Group departures (R143) ──────────────────────────────────
+
+interface BookingRow {
+  id: string;
+  departure_id: string;
+  lead_id: string;
+  contact_id: string;
+  status: string;
+  seats: number;
+  invoice_id: string | null;
+  hold_expires_at: string | null;
+  dep_code: string;
+  start_date: string;
+  end_date: string;
+  dep_status: string;
+  tour_title: string;
+  tour_leader_user_id: string | null;
+  dep_created_by: string | null;
+  public_booking_enabled: number | null;
+}
+
+const BOOKING_SQL = `SELECT sb.id, sb.departure_id, sb.lead_id, sb.contact_id, sb.status, sb.seats, sb.invoice_id, sb.hold_expires_at,
+    d.code AS dep_code, d.start_date, d.end_date, d.status AS dep_status, d.tour_leader_user_id, d.created_by AS dep_created_by, d.public_booking_enabled,
+    t.title AS tour_title
+  FROM seat_bookings sb JOIN departures d ON d.id = sb.departure_id JOIN tours t ON t.id = d.tour_id`;
+
+function loadBooking(ctx: RecipeContext, id: unknown): Promise<BookingRow | null> {
+  if (typeof id !== 'string' || !id) return Promise.resolve(null);
+  return ctx.db.prepare(`${BOOKING_SQL} WHERE sb.id = ?`).bind(id).first<BookingRow>();
+}
+
+/** The deposit a booking owes before it is confirmed (design 4.1): percent of the invoice, per seat, a fixed sum, or none (any payment counts). */
+function depositAmount(deposit: { type: string; value: number | null }, seats: number, invoiceTotal: number): number {
+  const v = deposit.value ?? 0;
+  if (deposit.type === 'percent') return (invoiceTotal * v) / 100;
+  if (deposit.type === 'per_seat') return v * seats;
+  if (deposit.type === 'fixed') return v;
+  return 0;
+}
+
+const confirmSeats: Recipe = {
+  key: 'departures.confirm_seats',
+  area: 'Group departures',
+  title: 'Confirm held seats',
+  description: 'Held seats are confirmed with one click (or automatically), and the customer is told. Follows the confirm mode of the departure: on deposit, the seats are confirmed when the deposit is paid.',
+  triggers: ['seat_booking.held', 'seat_booking.confirmed', 'payment.recorded'],
+  defaultMode: 'suggest',
+  autoEligible: true,
+  featureKey: 'group_departures',
+  async evaluate(ctx, event) {
+    if (event.type === 'seat_booking.held') {
+      const b = await loadBooking(ctx, event.payload.seatBookingId ?? event.entityId);
+      if (!b || b.status !== 'held') return [];
+      // auto_when_available is confirmed by the request itself and on_deposit waits for the payment; only manual needs a person.
+      if ((await loadDepartureContext(ctx.db, b.departure_id)).effective.confirmMode !== 'manual') return [];
+      const contact = await loadContact(ctx, b.contact_id);
+      return [{
+        action: 'confirm_seat_booking',
+        title: `Confirm ${b.seats} seat${b.seats === 1 ? '' : 's'} on ${b.dep_code}${contact ? ` for ${contact.name}` : ''}`,
+        reason: `Held until ${b.hold_expires_at ? shortDate(b.hold_expires_at) : 'confirmed'}; ${b.tour_title} starts ${shortDate(b.start_date)}`,
+        params: { seatBookingId: b.id },
+        entityType: 'seat_booking', entityId: b.id, contactId: b.contact_id, leadId: b.lead_id,
+        dedupeKey: `confirm-seats:${b.id}`,
+      }];
+    }
+
+    if (event.type === 'payment.recorded') {
+      const invoiceId = event.payload.invoiceId;
+      if (typeof invoiceId !== 'string') return [];
+      const invoice = await ctx.db.prepare('SELECT total, paid_amount FROM invoices WHERE id = ?').bind(invoiceId).first<{ total: number; paid_amount: number | null }>();
+      if (!invoice) return [];
+      const rows = await ctx.db.prepare(`${BOOKING_SQL} WHERE sb.invoice_id = ? AND sb.status = 'held'`).bind(invoiceId).all<BookingRow>();
+      const proposals: Proposal[] = [];
+      for (const b of rows.results) {
+        const dep = await loadDepartureContext(ctx.db, b.departure_id);
+        if (dep.effective.confirmMode !== 'on_deposit') continue;
+        const due = depositAmount(dep.effective.deposit, b.seats, invoice.total ?? 0);
+        const paid = invoice.paid_amount ?? 0;
+        if (paid <= 0 || paid + 0.005 < due) continue;
+        proposals.push({
+          action: 'confirm_seat_booking',
+          title: `Confirm ${b.seats} seat${b.seats === 1 ? '' : 's'} on ${b.dep_code}: the deposit is paid`,
+          reason: 'The deposit for these seats has been received',
+          params: { seatBookingId: b.id, by: 'deposit' },
+          entityType: 'seat_booking', entityId: b.id, contactId: b.contact_id, leadId: b.lead_id,
+          dedupeKey: `confirm-seats-deposit:${b.id}`,
+        });
+      }
+      return proposals;
+    }
+
+    // seat_booking.confirmed: tell the customer.
+    const b = await loadBooking(ctx, event.payload.seatBookingId ?? event.entityId);
+    const contact = await loadContact(ctx, b?.contact_id);
+    if (!b || !contact || contact.opted_out) return [];
+    const channel = replyChannel('whatsapp', contact);
+    if (!channel) return [];
+    const company = await companyName(ctx);
+    return [{
+      action: 'draft_reply',
+      title: `Tell ${contact.name} the seats are confirmed`,
+      reason: `${b.seats} seat${b.seats === 1 ? '' : 's'} confirmed on ${b.dep_code}`,
+      params: {
+        contactId: contact.id, leadId: b.lead_id, channel,
+        subject: channel === 'email' ? `Your seats are confirmed: ${b.tour_title}` : null,
+        body: `Hi ${contact.name.split(' ')[0]},\n\nYour ${b.seats} seat${b.seats === 1 ? ' is' : 's are'} confirmed on ${b.tour_title}, departing ${shortDate(b.start_date)}.${company ? `\n\nWarm regards,\n${company}` : ''}`,
+      },
+      entityType: 'seat_booking', entityId: b.id, contactId: contact.id, leadId: b.lead_id,
+      dedupeKey: `seats-confirmed:${b.id}`,
+    }];
+  },
+};
+
+const waitlistOffer: Recipe = {
+  key: 'departures.waitlist_offer',
+  area: 'Group departures',
+  title: 'Offer freed seats to the waitlist',
+  description: 'When seats are freed, suggests offering them to the next waitlisted party (or tells the party when seats were held for them automatically).',
+  triggers: ['seat_booking.cancelled', 'seat_booking.expired', 'departure.status_changed', 'departure.capacity_changed', 'waitlist.offered'],
+  defaultMode: 'suggest',
+  autoEligible: false,
+  featureKey: 'group_departures',
+  async evaluate(ctx, event) {
+    if (event.type === 'waitlist.offered') {
+      const b = await loadBooking(ctx, event.payload.seatBookingId ?? event.entityId);
+      const contact = await loadContact(ctx, b?.contact_id);
+      if (!b || b.status !== 'held' || !contact || contact.opted_out) return [];
+      const channel = replyChannel('whatsapp', contact);
+      if (!channel) return [];
+      const until = typeof event.payload.offeredUntil === 'string' ? event.payload.offeredUntil : b.hold_expires_at;
+      const company = await companyName(ctx);
+      return [{
+        action: 'draft_reply',
+        title: `Tell ${contact.name} seats are available`,
+        reason: `${b.seats} seat${b.seats === 1 ? '' : 's'} held for them on ${b.dep_code}`,
+        params: {
+          contactId: contact.id, leadId: b.lead_id, channel,
+          subject: channel === 'email' ? `Seats available: ${b.tour_title}` : null,
+          body: `Hi ${contact.name.split(' ')[0]},\n\nGood news: ${b.seats} seat${b.seats === 1 ? ' has' : 's have'} become available on ${b.tour_title}, departing ${shortDate(b.start_date)}. We are holding ${b.seats === 1 ? 'it' : 'them'} for you${until ? ` until ${shortDate(until)}` : ''}. Reply to confirm.${company ? `\n\nWarm regards,\n${company}` : ''}`,
+        },
+        entityType: 'seat_booking', entityId: b.id, contactId: contact.id, leadId: b.lead_id,
+        dedupeKey: `waitlist-offered:${b.id}:${until ?? ''}`,
+      }];
+    }
+
+    const departureId = event.payload.departureId;
+    if (typeof departureId !== 'string') return [];
+    // auto_hold hands the seats over inside the service; this recipe only proposes in suggest mode.
+    let dep;
+    try {
+      dep = await loadDepartureContext(ctx.db, departureId);
+    } catch {
+      return [];
+    }
+    if (dep.settings.waitlist.offerMode !== 'suggest') return [];
+    const left = await seatsLeft(ctx.db, departureId, dep.row.capacity);
+    const proposals: Proposal[] = [];
+    for (const row of await nextFittingWaitlist(ctx.db, departureId)) {
+      const b = await loadBooking(ctx, row.id);
+      const contact = await loadContact(ctx, row.contact_id);
+      if (!b || !contact) continue;
+      proposals.push({
+        action: 'offer_seats',
+        title: `Offer ${b.seats} seat${b.seats === 1 ? '' : 's'} to ${contact.name}`,
+        reason: `${left} seat${left === 1 ? ' is' : 's are'} free on ${b.dep_code}; they are next on the waitlist`,
+        params: { seatBookingId: b.id },
+        entityType: 'seat_booking', entityId: b.id, contactId: b.contact_id, leadId: b.lead_id,
+        dedupeKey: `waitlist-offer:${b.id}:${left}`,
+      });
+    }
+    return proposals;
+  },
+};
+
+const holdExpiring: Recipe = {
+  key: 'departures.hold_expiring',
+  area: 'Group departures',
+  title: 'Remind customers before a seat hold runs out',
+  description: 'Holds that run out soon get a reminder draft to the customer, or a task for staff when there is no way to reach them.',
+  triggers: ['schedule.tick'],
+  defaultMode: 'suggest',
+  autoEligible: false,
+  featureKey: 'group_departures',
+  settings: [{ key: 'hours', label: 'Hold runs out within', type: 'number', default: 24, min: 1, max: 168, unit: 'hours' }],
+  async evaluate(ctx) {
+    const now = new Date();
+    const until = new Date(now.getTime() + ctx.settings.hours * 3_600_000).toISOString();
+    const rows = await ctx.db
+      .prepare(`${BOOKING_SQL} WHERE sb.status = 'held' AND sb.hold_expires_at IS NOT NULL AND sb.hold_expires_at > ? AND sb.hold_expires_at <= ? ORDER BY sb.hold_expires_at LIMIT 50`)
+      .bind(now.toISOString(), until)
+      .all<BookingRow>();
+    const company = await companyName(ctx);
+    const day = await today(ctx);
+    const proposals: Proposal[] = [];
+    for (const b of rows.results) {
+      const contact = await loadContact(ctx, b.contact_id);
+      if (!contact) continue;
+      const channel = contact.opted_out ? null : replyChannel('whatsapp', contact);
+      const expires = b.hold_expires_at!;
+      const key = `hold-expiring:${b.id}:${expires}`;
+      if (channel) {
+        proposals.push({
+          action: 'draft_reply',
+          title: `Remind ${contact.name} their hold on ${b.dep_code} runs out`,
+          reason: `${b.seats} seat${b.seats === 1 ? '' : 's'} held until ${shortDate(expires)}`,
+          params: {
+            contactId: contact.id, leadId: b.lead_id, channel,
+            subject: channel === 'email' ? `Your held seats on ${b.tour_title}` : null,
+            body: `Hi ${contact.name.split(' ')[0]},\n\nWe are holding ${b.seats} seat${b.seats === 1 ? '' : 's'} for you on ${b.tour_title} (${shortDate(b.start_date)}) until ${shortDate(expires)}. Let us know if you would like to confirm; after that the seats are released.${company ? `\n\nWarm regards,\n${company}` : ''}`,
+          },
+          entityType: 'seat_booking', entityId: b.id, contactId: contact.id, leadId: b.lead_id,
+          dedupeKey: key,
+        });
+      } else {
+        const lead = await loadLead(ctx, b.lead_id);
+        proposals.push({
+          action: 'create_task',
+          title: `Contact ${contact.name}: the seat hold on ${b.dep_code} runs out`,
+          reason: `No message can be sent to this customer; the hold ends ${shortDate(expires)}`,
+          params: { title: `Call ${contact.name} about the held seats on ${b.dep_code}`, description: `${b.seats} seat(s) held until ${expires}`, dueDate: day, priority: 'high', assignedTo: lead?.assigned_to ?? null, relatedLeadId: b.lead_id },
+          entityType: 'seat_booking', entityId: b.id, contactId: contact.id, leadId: b.lead_id,
+          assignedTo: lead?.assigned_to ?? null,
+          dedupeKey: key,
+        });
+      }
+    }
+    return proposals;
+  },
+};
+
+const seatsLow: Recipe = {
+  key: 'departures.seats_low',
+  area: 'Group departures',
+  title: 'Seats are running low',
+  description: 'When a departure crosses the seats-left line, a task for the departure owner, and a prompt to promote the last seats when the departure takes public bookings.',
+  triggers: ['departure.seats_low'],
+  defaultMode: 'suggest',
+  autoEligible: false,
+  featureKey: 'group_departures',
+  async evaluate(ctx, event) {
+    const departureId = event.payload.departureId;
+    if (typeof departureId !== 'string') return [];
+    const d = await ctx.db
+      .prepare(`SELECT d.id, d.code, d.start_date, d.public_booking_enabled, d.tour_leader_user_id, d.created_by, t.title AS tour_title
+        FROM departures d JOIN tours t ON t.id = d.tour_id WHERE d.id = ? AND d.is_deleted = 0`)
+      .bind(departureId)
+      .first<{ id: string; code: string; start_date: string; public_booking_enabled: number | null; tour_leader_user_id: string | null; created_by: string | null; tour_title: string }>();
+    if (!d) return [];
+    const left = Number(event.payload.left ?? 0);
+    const owner = d.tour_leader_user_id ?? d.created_by;
+    const day = await today(ctx);
+    const proposals: Proposal[] = [{
+      action: 'create_task',
+      title: `${left} seat${left === 1 ? '' : 's'} left on ${d.code}`,
+      reason: `${d.tour_title} departs ${shortDate(d.start_date)}`,
+      params: { title: `Review the last ${left} seat${left === 1 ? '' : 's'} on ${d.code}`, description: `${d.tour_title}, departing ${d.start_date}`, dueDate: day, priority: 'medium', assignedTo: owner },
+      entityType: 'departure', entityId: d.id, assignedTo: owner,
+      dedupeKey: `seats-low:${event.id}`,
+    }];
+    if (d.public_booking_enabled) {
+      proposals.push({
+        action: 'create_task',
+        title: `Promote the last seats on ${d.code} to past travellers`,
+        reason: 'The departure takes public bookings; a campaign to people who travelled this tour before can fill the last seats',
+        params: { title: `Send a campaign for the last ${left} seat${left === 1 ? '' : 's'} on ${d.code}`, description: 'Segment: past travellers of this tour', dueDate: day, priority: 'medium', assignedTo: owner },
+        entityType: 'departure', entityId: d.id, assignedTo: owner,
+        dedupeKey: `seats-low-campaign:${event.id}`,
+      });
+    }
+    return proposals;
+  },
+};
+
+/**
+ * The self-service link of a booking (details, extras, pay) exists from R150. Until then no link can be built, so the
+ * collect-details recipe is listed but proposes nothing.
+ */
+async function selfServiceLink(_ctx: RecipeContext, _booking: BookingRow): Promise<string | null> {
+  return null;
+}
+
+const collectDepartureDetails: Recipe = {
+  key: 'departures.collect_details',
+  area: 'Group departures',
+  title: 'Send the self-service link when seats are confirmed',
+  description: 'Drafts a message with the link where the customer adds passenger details, extras and payment. Needs the booking page (a later release); until then nothing is proposed.',
+  triggers: ['seat_booking.confirmed'],
+  defaultMode: 'suggest',
+  autoEligible: false,
+  featureKey: 'group_departures',
+  async evaluate(ctx, event) {
+    const b = await loadBooking(ctx, event.payload.seatBookingId ?? event.entityId);
+    const contact = await loadContact(ctx, b?.contact_id);
+    if (!b || !contact || contact.opted_out) return [];
+    const link = await selfServiceLink(ctx, b);
+    if (!link) return [];
+    const channel = replyChannel('whatsapp', contact);
+    if (!channel) return [];
+    const company = await companyName(ctx);
+    return [{
+      action: 'draft_reply',
+      title: `Send ${contact.name} the link for passenger details`,
+      reason: `${b.seats} seat${b.seats === 1 ? '' : 's'} confirmed on ${b.dep_code}`,
+      params: {
+        contactId: contact.id, leadId: b.lead_id, channel,
+        subject: channel === 'email' ? `Complete your booking: ${b.tour_title}` : null,
+        body: `Hi ${contact.name.split(' ')[0]},\n\nPlease add the details of everyone travelling, choose any extras and pay here: ${link}${company ? `\n\nWarm regards,\n${company}` : ''}`,
+      },
+      entityType: 'seat_booking', entityId: b.id, contactId: contact.id, leadId: b.lead_id,
+      dedupeKey: `departure-details:${b.id}`,
+    }];
+  },
+};
+
 export const RECIPES: Recipe[] = [
   readMessages,
   replyAfterCapture,
@@ -1896,6 +2218,11 @@ export const RECIPES: Recipe[] = [
   dormantWinBack,
   rateCardExpiry,
   arrivalTransfer,
+  confirmSeats,
+  waitlistOffer,
+  holdExpiring,
+  seatsLow,
+  collectDepartureDetails,
 ];
 
 export const RECIPES_BY_KEY: Record<string, Recipe> = Object.fromEntries(RECIPES.map((recipe) => [recipe.key, recipe]));
