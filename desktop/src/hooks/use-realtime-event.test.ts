@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useRealtimeEvent, useRealtimeConnected } from './use-realtime-event';
+import { useRealtimeEvent, useRealtimeConnected, useRealtimeRefresh, MESSAGE_ARRIVED_EVENTS } from './use-realtime-event';
 import { useRealtimeStore } from '@/stores/realtime-store';
 
 describe('useRealtimeEvent', () => {
@@ -141,5 +141,40 @@ describe('useRealtimeConnected', () => {
     });
 
     expect(result.current).toBe(false);
+  });
+});
+
+describe('useRealtimeRefresh (R135-2)', () => {
+  beforeEach(() => {
+    useRealtimeStore.setState({ ws: null, connected: false, reconnectAttempts: 0, listeners: new Map() });
+    vi.useFakeTimers();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const fire = (type: string) => useRealtimeStore.getState().listeners.get(type)!.forEach((h) => h({}));
+
+  it('refreshes once when a message arrives, even though the bell and the message event both fire', () => {
+    const refresh = vi.fn();
+    renderHook(() => useRealtimeRefresh(MESSAGE_ARRIVED_EVENTS, refresh));
+    act(() => {
+      fire('notification:new');
+      fire('message:received');
+      vi.advanceTimersByTime(400);
+    });
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not refresh for unrelated events and stops after unmount', () => {
+    const refresh = vi.fn();
+    const { unmount } = renderHook(() => useRealtimeRefresh(MESSAGE_ARRIVED_EVENTS, refresh));
+    expect(useRealtimeStore.getState().listeners.has('badge_counts:update')).toBe(false);
+    act(() => {
+      fire('message:received');
+    });
+    unmount();
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(refresh).not.toHaveBeenCalled();
   });
 });

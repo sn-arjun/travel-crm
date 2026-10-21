@@ -20,6 +20,7 @@ import { contactsApi } from '@/lib/api/contacts';
 import { toLocalDateString } from '@/lib/dates';
 import { AssistantPanel } from '@/components/domain/assistant/assistant-panel';
 import { useSuggestions } from '@/hooks/use-suggestions';
+import { MESSAGE_ARRIVED_EVENTS, useRealtimeRefresh } from '@/hooks/use-realtime-event';
 
 // The log endpoint returns raw contactId only — resolve display names client-side
 // for the page of rows currently shown, caching across re-fetches.
@@ -107,6 +108,10 @@ export default function CommunicationPage() {
   const router = useRouter();
   const [channel, setChannel] = React.useState('all');
 
+  // A message arrived (the same realtime events the notification bell listens to): reload the list from page 1.
+  const [arrivals, setArrivals] = React.useState(0);
+  useRealtimeRefresh(MESSAGE_ARRIVED_EVENTS, () => setArrivals((n) => n + 1));
+
   // Which rows the assistant has something waiting for: by the message itself or by its contact.
   const { suggestions: waiting } = useSuggestions({ status: 'pending', limit: 100 });
   const waitingFor = React.useCallback(
@@ -124,6 +129,7 @@ export default function CommunicationPage() {
       title="Inbox"
       description="All messages sent and received across every channel."
       getRowId={(l) => l.id}
+      refreshKey={arrivals}
       fetcher={async ({ page, limit, search }) => {
         const res = await communicationsApi.getLog({
           page,

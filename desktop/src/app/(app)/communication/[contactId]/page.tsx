@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/select';
 
 import { useApiQuery } from '@/hooks/use-api';
+import { MESSAGE_ARRIVED_EVENTS, useRealtimeRefresh } from '@/hooks/use-realtime-event';
 import { communicationsApi, isIncomingMessage, type CommunicationLog } from '@/lib/api/communications';
 import { contactsApi } from '@/lib/api/contacts';
 
@@ -71,6 +72,8 @@ export default function ContactCommunicationHubPage() {
     }),
     [contactId, channelFilter],
   );
+  // A message arrived while the thread is open: reload it quietly, without a loading flash.
+  useRealtimeRefresh(MESSAGE_ARRIVED_EVENTS, () => void refetchLog({ silent: true }));
   const logs = (Array.isArray(logResponse?.data) ? logResponse.data : (logResponse?.data?.data ?? [])) as CommunicationLog[];
 
   const contactName = contact?.name ?? `Contact ${contactId.slice(0, 8)}`;

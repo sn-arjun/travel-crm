@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures';
-import { waitForLoad, navigateTo, API_URL, getAuthToken } from './helpers/auth';
+import { waitForLoad, navigateTo, API_URL, getAuthToken, TENANT_ID } from './helpers/auth';
 import { seedContact, seedEmailTemplate, api } from './helpers/api-seed';
 
 // ─── A. INBOX LIST ─────────────────────────────────────────────────────────
@@ -205,6 +205,32 @@ test.describe('A. Inbox list', () => {
     await waitForLoad(page);
     await navigateTo(page, '/communication', 'Inbox');
     await expect(page).toHaveURL(/\/communication$/);
+  });
+
+  test('A11 (R135-2): a WhatsApp message arriving while the inbox is open appears without a reload', async ({ page }) => {
+    await page.goto('/communication');
+    await waitForLoad(page);
+    await expect(page.getByPlaceholder(/Search conversations/i)).toBeVisible();
+
+    const body = `Live arrival ${Date.now()}`;
+    await expect(page.getByText(body)).toHaveCount(0);
+
+    const res = await fetch(`${API_URL}/test/inbound`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tenantId: TENANT_ID,
+        channel: 'whatsapp',
+        from: `+4477009${String(Date.now()).slice(-5)}`,
+        fromName: 'Live Arrival',
+        to: '+918047182290',
+        body,
+      }),
+    });
+    expect(res.ok).toBe(true);
+
+    // No page.reload() and no navigation: the realtime event refreshes the list on its own.
+    await expect(page.getByText(body).first()).toBeVisible({ timeout: 15_000 });
   });
 
 });
