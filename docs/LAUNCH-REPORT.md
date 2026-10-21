@@ -194,16 +194,15 @@ From the batch notes and `notes` in `docs/launch/STATE.json`.
 - After `build:web`, run `build:desktop` again before the next installer (they share `desktop/.next`).
 - Two harmless lint warnings in `super-admin/src/app/(authenticated)/seo/page.tsx`.
 
-**Documents that are out of date and should be refreshed before they are relied on**
-- `docs/GO-LIVE.md`, `docs/INFRA.md` and `docs/KEYS-AND-ACCOUNTS.md` were written on 2026-10-15 and updated only for a few batches. They still say billing is "not built" and that abroad needs Tier 2. STATE shows R205 to R207 and the rest of Tier 2 are merged. Use STATE `goLiveConfig` as the newer source.
-- `docs/FEATURES.md` text header says "refreshed 2026-10-20" and lists batches to R210. Its counts (358 features, 219 / 134 / 5 / 0) match the JSON.
-- `docs/decisions/ADR-002-email.md` recommends Amazon SES for agency mail. The owner chose SendGrid on 2026-10-21. `ADR-001-voip.md` recommends Plivo first, and has Addendum A for the change to Twilio.
+**Documents**
+- `docs/GO-LIVE.md`, `docs/INFRA.md` and `docs/KEYS-AND-ACCOUNTS.md` were brought up to date with the final code on 2026-10-21, and R134 made the deploy tools cover every setting.
+- `docs/decisions/ADR-002-email.md` records the owner's Cloudflare + SendGrid decision. `ADR-001-voip.md` recommends Plivo first, and has Addendum A for the change to Twilio.
 
 **Housekeeping**
 - Leftover worktree folders under `.claude/worktrees` to delete by hand after closing editors: R103, R106, R107, R112, R115, R120, R123, R133, R306. Unlink their `node_modules` junctions first (`docs/launch/STATE.json` notes). R213 is no longer there.
 - Build log files `r114-*.log` sit in the same folder.
-- The push to the remote is blocked until the owner says "push". Video work (`studio/`, `desktop/e2e/showcase/`, `docs/videos/`) is not committed.
-- Programme tasks still open in STATE: W6 videos, `docs/LAUNCH-REPORT.md` (this file), push on explicit owner request.
+- The video tooling and recording specs are committed; the rendered videos stay local in `studio/out/`.
+- Bugs found while recording are listed in section 8.
 
 ---
 
@@ -242,4 +241,33 @@ From the batch notes and `notes` in `docs/launch/STATE.json`.
 
 ## 8. Videos
 
-To be filled in when the films are rendered (see docs/videos/CATALOGUE.md)
+Recorded and rendered on 2026-10-21 on the local stacks (no deploy), following `docs/videos/RECORDING-RUNBOOK.md`. Narration is the local `af_heart` voice. Outputs are in `studio/out/` (gitignored, so they are not in the repo); raw takes are in `desktop/showcase/.work/`.
+
+| Output | Count | Where |
+|---|---|---|
+| Films (one per role, area and topic) | 25 | `studio/out/<film>.mp4`, each with `.srt`, chapters and timeline |
+| Hero film for the landing page | 1 (80 s) | `studio/out/hero.mp4` |
+| Master end-to-end cut | 1 (47.4 min, 122 chapters) | `studio/out/master.mp4` |
+| Feature shorts | 116 with subtitles | `studio/out/shorts/<film>/` |
+
+- **Films:** 6 roles (admin, sales manager, salesperson, operations, accountant, view-only); 12 areas (leads, contacts, itineraries, bookings, finance, communications, marketing, automations, calls, fleet, reports, settings); automations and calls; driver; platform owner (super admin to client handoff); plans (Basic, Pro, Enterprise with India, UK and US founder prices); international; website; AI session.
+- **Coverage:** `node docs/videos/coverage.mjs` passes. All 353 working or partial features are covered: 342 appear in a chapter, and 11 are not filmed, with the reason in `docs/videos/not-filmed.json`.
+- **AI cost:** the AI session used about 11 of its 12 allowed requests over 2 takes. The itinerary, lead score and insights scenes were cut to stay in budget; the closing scene names them.
+- **Gates:** every film passes its render gate except `role-sales-manager`. It is 56.3 s against a 60 s minimum and was left as it is, not padded.
+- **Retakes:** `role-admin` needed 4 attempts (an empty assistant queue on a fresh seed; the spec now seeds two messages), one more than the 2-retake rule. `plans` needed 3.
+- **To re-record later:**
+  - **website:** shows `YOUR-DOMAIN.example` until the domain is chosen, and does not click "Create website" because there is no provisioner locally.
+  - **driver:** uses the 2026-10-04 recording with a title line saying the current app asks for the agency code first. Re-record on an emulator.
+  - **platform-owner:** shows the agency code `skyline-holidays-2`.
+
+**Product bugs the recording found (not fixed yet)**
+- Team report (`/reports/team`) returns 403 for sales managers: the route requires `manager` but the role is `sales_manager`.
+- The inbox list does not refresh when a message arrives (the bell does).
+- AI itinerary generation takes about 60 s, so the UI reports "Failed to generate itinerary" even though the server returned the plan.
+- Hanging up a simulated inbound call from the call panel returns 500 ("[mock] Call not found").
+- The mock checkout URL is built without the API port, so the opened tab cannot load (mock billing only).
+- `/voip/token` is requested on every page and returns 403 where calling is off (noise).
+- A call with no transcript yet returns 404 on its detail.
+- A red "£0" or "AED 0" on the dashboard looks like an error state.
+- The landing footer still says "LEGAL (DRAFTS)".
+- The landing form limit (5 per hour per IP, 3 per day per email) blocks a retake within the same hour. This is by design; mentioned for anyone recording.
