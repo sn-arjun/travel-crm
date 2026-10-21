@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-21T20:52:53.122Z",
+  "updated": "2026-10-21T22:13:45.845Z",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -288,6 +288,12 @@
           "head": "3191b7c",
           "what": "bank details by country (IBAN mod-97, BIC, sort code, BSB, US routing), invoice bank snapshot + PDF, payment methods by country (UPI India only, iDEAL/SEPA EU), message reader currencies + child ages, recipes warn on foreign currency",
           "gates": "merged line backend 118/2319, desktop 101/1595, lint PASS, i18n PASS"
+        },
+        "R144": {
+          "status": "merged",
+          "head": "5b47703",
+          "what": "departures desktop: group tours switch + Settings > Group tours, tours list/form, departures list/page (bookings, waitlist, stops, prices, costs), hold-seats dialog, bulk confirm/move/cancel/offer, passengers editor; open: seatNumber/documentsStatus not in passenger schema, no realtime seat events (carry to R146)",
+          "gates": "merged line desktop 102/1617, lint PASS, i18n PASS; e2e 32/32 on multi stack"
         }
       }
     }
