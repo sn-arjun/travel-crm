@@ -2,6 +2,7 @@ import { env, createExecutionContext, waitOnExecutionContext, applyD1Migrations 
 import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import worker from '../src/index';
 import { signedMockPaidEvent, loadMockPayLink } from '../src/services/payments/mock-agency';
+import { seedMemoryRateLimit } from '../src/middleware/rate-limit';
 
 /**
  * R142: the test gateway for agency payment links. A link opens a pay page served by the API; paying signs an event and runs
@@ -254,7 +255,11 @@ describe('R142 test gateway for agency payment links', () => {
     expect(hook.status).toBe(404);
     expect(await paymentsFor(inv.id)).toHaveLength(0);
 
-    // The login in production needs the same tokens: reuse the admin token against the production env
+    // The login in production needs the same tokens: reuse the admin token against the production env.
+    // prodEnv runs the real per-user limit (600 a minute) on the in-memory counter, which every file in the run shares;
+    // clear this user's count so requests made by other test files under the raised test limit cannot trip it.
+    const adminId = JSON.parse(atob(admin.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).sub;
+    seedMemoryRateLimit(`rl:api:${adminId}`, null);
     const connect = await call('PUT', '/integrations/payment-gateways/mock', admin, {}, prodEnv);
     expect(connect.status).toBe(400);
     expect(((await connect.json()) as any).error.details.code).toBe('MOCK_NOT_ALLOWED');
