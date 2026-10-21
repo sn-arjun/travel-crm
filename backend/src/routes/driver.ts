@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import { emitEvent } from '../services/automation/events';
 import { zValidator } from '../utils/validator';
 import { SignJWT, jwtVerify } from 'jose';
@@ -26,6 +27,14 @@ import {
   updateProfileSchema,
   registerPushTokenSchema,
 } from '../validators/driver';
+import { stopWhereSchema, tickPassengerSchema } from '../validators/fleet';
+import { requireFeatures } from '../middleware/feature-gate';
+import { resolveFeature } from '../services/features/resolve';
+import { DepartureError, departureErrorResponse } from '../services/departures/common';
+import { getGroupToursSettings } from '../services/departures/settings';
+import {
+  headcountOf, listPassengersFlat, listStops, setStopStatus, tickPassenger, type CoachCtx, type TripPassenger,
+} from '../services/fleet/coach-trips';
 
 const driver = new Hono<AppContext>();
 
@@ -465,8 +474,8 @@ driver.get('/trips', zValidator('query', tripListSchema), async (c) => {
 
   const countResult = await db.prepare(`
     SELECT COUNT(*) as count FROM trip_assignments ta
-    WHERE ta.driver_id = ? AND ta.is_deleted = 0 ${dateFilter}
-  `).bind(driverId, ...dateParams).first() as { count: number } | null;
+    WHERE (ta.driver_id = ? OR ta.tour_leader_id = ?) AND ta.is_deleted = 0 ${dateFilter}
+  `).bind(driverId, driverId, ...dateParams).first() as { count: number } | null;
   const total = countResult?.count ?? 0;
 
   const rows = await db.prepare(`
@@ -476,14 +485,19 @@ driver.get('/trips', zValidator('query', tripListSchema), async (c) => {
            ta.accepted_at, ta.en_route_at, ta.started_at, ta.completed_at, ta.created_at,
            v.registration_number as vehicle_registration, v.type as vehicle_type,
            v.make as vehicle_make, v.model as vehicle_model,
-           l.title as lead_title
+           l.title as lead_title,
+           ta.trip_kind, ta.departure_id, ta.tour_leader_id, ta.driver_id,
+           (SELECT COUNT(*) FROM trip_stops ts WHERE ts.trip_id = ta.id) as stop_count,
+           (SELECT COALESCE(SUM(tp.seats), 0) FROM trip_passengers tp WHERE tp.trip_id = ta.id) as passenger_count,
+           (SELECT ts.id || '|' || ts.name || '|' || COALESCE(ts.scheduled_at, '') FROM trip_stops ts
+             WHERE ts.trip_id = ta.id AND ts.status IN ('pending', 'arrived') ORDER BY ts.sort_order LIMIT 1) as next_stop
     FROM trip_assignments ta
     LEFT JOIN vehicles v ON v.id = ta.vehicle_id
     LEFT JOIN leads l ON l.id = ta.lead_id
-    WHERE ta.driver_id = ? AND ta.is_deleted = 0 ${dateFilter}
+    WHERE (ta.driver_id = ? OR ta.tour_leader_id = ?) AND ta.is_deleted = 0 ${dateFilter}
     ORDER BY ${orderBy}
     LIMIT ? OFFSET ?
-  `).bind(driverId, ...dateParams, limit, offset).all();
+  `).bind(driverId, driverId, ...dateParams, limit, offset).all();
 
   const trips = (rows.results || []).map(formatTripForDriver);
   return paginated(c, trips, total, page, limit);
@@ -503,10 +517,11 @@ driver.get('/trips/:id', async (c) => {
     FROM trip_assignments ta
     LEFT JOIN vehicles v ON v.id = ta.vehicle_id
     LEFT JOIN leads l ON l.id = ta.lead_id
-    WHERE ta.id = ? AND ta.driver_id = ? AND ta.is_deleted = 0
-  `).bind(tripId, driverId).first();
+    WHERE ta.id = ? AND (ta.driver_id = ? OR ta.tour_leader_id = ?) AND ta.is_deleted = 0
+  `).bind(tripId, driverId, driverId).first();
 
   if (!trip) return notFound(c, 'Trip');
+  const coach = trip.trip_kind === 'coach' && (await resolveFeature(c.env, c.get('tenantId'), 'coach_trips')).enabled ? await coachDetail(c, trip, driverId) : null;
 
   // Get timeline
   const timeline = await db.prepare(
@@ -535,8 +550,106 @@ driver.get('/trips/:id', async (c) => {
       longitude: t.longitude,
       createdAt: t.created_at,
     })),
+    ...(coach ?? {}),
   });
 });
+
+// ============================================================================
+// COACH TRIPS (R145): stops, passenger check-in, head count for the crew of a coach trip
+// ============================================================================
+
+/** The trip when this crew member is its driver or its tour leader. */
+async function crewTrip(c: Context<AppContext>, tripId: string): Promise<Record<string, any> | null> {
+  const driverId = c.get('userId');
+  return c.get('tenantDb')
+    .prepare('SELECT * FROM trip_assignments WHERE id = ? AND is_deleted = 0 AND (driver_id = ? OR tour_leader_id = ?)')
+    .bind(tripId, driverId, driverId)
+    .first<Record<string, any>>();
+}
+
+/** Tour leaders (crew role tour_leader or both) see and tick passengers; a driver does when the agency setting says so. */
+async function seesPassengers(c: Context<AppContext>): Promise<boolean> {
+  const db = c.get('tenantDb');
+  const me = await db.prepare('SELECT crew_role FROM drivers WHERE id = ? AND is_deleted = 0').bind(c.get('userId')).first<{ crew_role: string | null }>();
+  if (me?.crew_role === 'tour_leader' || me?.crew_role === 'both') return true;
+  return (await getGroupToursSettings(db)).driverSeesPassengers === true;
+}
+
+/** What the app gets about a passenger: never document numbers, notes or contact links. */
+function passengerForCrew(p: TripPassenger) {
+  return {
+    id: p.id, tripStopId: p.tripStopId, name: p.name, seats: p.seats, phone: p.phone,
+    boarding: p.boarding, boardedAt: p.boardedAt, documentsChecked: p.documentsChecked, documentsCheckedAt: p.documentsCheckedAt,
+  };
+}
+
+function crewCtx(c: Context<AppContext>): CoachCtx {
+  let waiter: CoachCtx['waiter'];
+  try { waiter = c.executionCtx; } catch { waiter = undefined; }
+  return { env: c.env, tenantId: c.get('tenantId'), db: c.get('tenantDb'), driverId: c.get('userId'), waiter };
+}
+
+async function coachDetail(c: Context<AppContext>, trip: Record<string, any>, driverId: string) {
+  const db = c.get('tenantDb');
+  const canSee = await seesPassengers(c);
+  const [stops, headcount, passengers] = await Promise.all([
+    listStops(db, trip.id),
+    headcountOf(db, trip.id),
+    canSee ? listPassengersFlat(db, trip.id) : Promise.resolve(null),
+  ]);
+  return {
+    tripKind: 'coach',
+    departureId: trip.departure_id ?? null,
+    myRole: trip.tour_leader_id === driverId ? 'tour_leader' : 'driver',
+    canSeePassengers: canSee,
+    stops,
+    headcount,
+    ...(passengers && { passengers: passengers.map(passengerForCrew) }),
+  };
+}
+
+async function crewGuard(c: Context<AppContext>, body: (trip: Record<string, any>) => Promise<Response>, opts: { passengers?: boolean } = {}): Promise<Response> {
+  try {
+    const trip = await crewTrip(c, c.req.param('id') as string);
+    if (!trip) return notFound(c, 'Trip');
+    if (opts.passengers && !(await seesPassengers(c))) return forbidden(c, 'You cannot see the passengers of this trip');
+    return await body(trip);
+  } catch (e) {
+    if (e instanceof DepartureError) return departureErrorResponse(c, e);
+    throw e;
+  }
+}
+
+driver.use('/trips/:id/stops/*', requireFeatures('driver_app', 'coach_trips'));
+driver.use('/trips/:id/passengers', requireFeatures('driver_app', 'coach_trips'));
+driver.use('/trips/:id/passengers/*', requireFeatures('driver_app', 'coach_trips'));
+driver.use('/trips/:id/headcount', requireFeatures('driver_app', 'coach_trips'));
+
+const optionalJson = async (c: Context<AppContext>): Promise<unknown> => {
+  try { return await c.req.json(); } catch { return {}; }
+};
+
+driver.post('/trips/:id/stops/:sid/:action{arrive|depart}', (c) =>
+  crewGuard(c, async () => {
+    const where = stopWhereSchema.safeParse(await optionalJson(c));
+    if (!where.success) return error(c, 'The position is not valid', 400);
+    const action = c.req.param('action') as 'arrive' | 'depart';
+    return success(c, await setStopStatus(crewCtx(c), c.req.param('id') as string, c.req.param('sid') as string, action, where.data));
+  }),
+);
+
+driver.get('/trips/:id/passengers', (c) =>
+  crewGuard(c, async (trip) => success(c, (await listPassengersFlat(c.get('tenantDb'), trip.id)).map(passengerForCrew)), { passengers: true }),
+);
+
+driver.put('/trips/:id/passengers/:pid', zValidator('json', tickPassengerSchema), (c) =>
+  crewGuard(c, async () => {
+    const result = await tickPassenger(crewCtx(c), c.req.param('id') as string, c.req.param('pid') as string, c.req.valid('json'));
+    return success(c, { ...result, passenger: passengerForCrew(result.passenger) });
+  }, { passengers: true }),
+);
+
+driver.get('/trips/:id/headcount', (c) => crewGuard(c, async (trip) => success(c, await headcountOf(c.get('tenantDb'), trip.id))));
 
 // Accept trip
 driver.post('/trips/:id/accept', async (c) => {
@@ -803,11 +916,12 @@ driver.get('/profile', async (c) => {
   const driverRecord = await db.prepare(`
     SELECT id, name, phone, email, photo_url, license_number, license_expiry,
            address, emergency_contact_name, emergency_contact_phone,
-           status, rating, total_trips, date_of_joining, created_at
+           status, rating, total_trips, date_of_joining, created_at, crew_role
     FROM drivers WHERE id = ? AND is_deleted = 0
   `).bind(driverId).first();
 
   if (!driverRecord) return notFound(c, 'Driver');
+  const canSeePassengers = driverRecord.crew_role === 'tour_leader' || driverRecord.crew_role === 'both' || (await getGroupToursSettings(db)).driverSeesPassengers === true;
 
   // Get documents
   const docs = await db.prepare(
@@ -840,6 +954,10 @@ driver.get('/profile', async (c) => {
     totalTrips: driverRecord.total_trips,
     dateOfJoining: driverRecord.date_of_joining,
     createdAt: driverRecord.created_at,
+    // R145: new fields only, so an old app keeps working
+    crewRole: driverRecord.crew_role ?? 'driver',
+    crew_role: driverRecord.crew_role ?? 'driver',
+    canSeePassengers,
     documents: (docs.results || []).map(d => ({
       id: d.id,
       type: d.type,
@@ -1037,7 +1155,24 @@ function formatTripForDriver(row: any) {
     } : null,
     leadTitle: row.lead_title,
     createdAt: row.created_at,
+    // R145: new fields only (a transfer looks the same as before)
+    ...(row.trip_kind === 'coach' && {
+      tripKind: 'coach',
+      departureId: row.departure_id ?? null,
+      coach: {
+        stopCount: row.stop_count ?? 0,
+        passengerCount: row.passenger_count ?? 0,
+        nextStop: row.next_stop ? nextStopOf(row.next_stop) : null,
+      },
+    }),
   };
+}
+
+/** "id|name|scheduledAt" from the list query. A name may hold a pipe, so only the first and last separators count. */
+function nextStopOf(packed: string) {
+  const first = packed.indexOf('|');
+  const last = packed.lastIndexOf('|');
+  return { id: packed.slice(0, first), name: packed.slice(first + 1, last), scheduledAt: packed.slice(last + 1) || null };
 }
 
 export default driver;

@@ -17,6 +17,8 @@ import {
   getDepartureRow, getDepartureStops, getVehicles, listDepartures, replaceCosts, replaceDepartureStops, replaceDeparturePrices,
   replaceVehicles, updateDeparture,
 } from '../services/departures/departures';
+import { createTripsFromDeparture, departureHeadcount, type CoachCtx } from '../services/fleet/coach-trips';
+import { requireFeature } from '../middleware/feature-gate';
 import { getGroupToursSettings, putGroupToursSettings } from '../services/departures/settings';
 import { emit, seatCtxFromRequest } from '../services/departures/seat-support';
 import { getBookingDetail, listBookings, requestSeats } from '../services/departures/seats';
@@ -212,5 +214,42 @@ departures.post('/:id/bookings', requirePermission('departures', 'create'), zVal
     return created(c, booking);
   }),
 );
+
+// ---- coach trips of one departure (R145): they need coach_trips on top of group_departures (the mount already checks the latter)
+
+departures.post('/:id/trips', requireFeature('coach_trips'), requirePermission('departures', 'edit'), (c) =>
+  guarded(c, async () => {
+    let waiter: CoachCtx['waiter'];
+    try { waiter = c.executionCtx; } catch { waiter = undefined; }
+    const ctx: CoachCtx = { env: c.env, tenantId: c.get('tenantId'), db: c.get('tenantDb'), userId: c.get('userId'), waiter };
+    const id = c.req.param('id');
+    const result = await createTripsFromDeparture(ctx, id, { replace: c.req.query('replace') === '1' });
+    if (result.created) {
+      await logActivity(ctx.db, { userId: c.get('userId'), action: 'create', entityType: 'departure', entityId: id, details: JSON.stringify({ coachTrips: result.tripIds.length }) });
+    }
+    const trips = [];
+    for (const tripId of result.tripIds) {
+      const row = await ctx.db.prepare(
+        `SELECT ta.id, ta.vehicle_id, ta.driver_id, ta.tour_leader_id, ta.status, ta.pickup_datetime, ta.drop_datetime,
+                v.registration_number, d.name AS driver_name, tl.name AS tour_leader_name
+         FROM trip_assignments ta LEFT JOIN vehicles v ON v.id = ta.vehicle_id LEFT JOIN drivers d ON d.id = ta.driver_id LEFT JOIN drivers tl ON tl.id = ta.tour_leader_id
+         WHERE ta.id = ?`,
+      ).bind(tripId).first<Record<string, any>>();
+      trips.push({
+        id: tripId, vehicleId: row?.vehicle_id ?? null, vehicleRegistration: row?.registration_number ?? null, driverId: row?.driver_id ?? null,
+        driverName: row?.driver_name ?? null, tourLeaderId: row?.tour_leader_id ?? null, tourLeaderName: row?.tour_leader_name ?? null,
+        status: row?.status, pickupDatetime: row?.pickup_datetime ?? null, dropDatetime: row?.drop_datetime ?? null,
+      });
+    }
+    const body = { created: result.created, trips };
+    return result.created ? created(c, body) : success(c, body);
+  }),
+);
+
+departures.get('/:id/headcount', requireFeature('coach_trips'), requirePermission('departures', 'view'), async (c) => {
+  const db = c.get('tenantDb');
+  if (!(await getDepartureRow(db, c.req.param('id')))) return notFound(c, 'Departure');
+  return success(c, await departureHeadcount(db, c.req.param('id')));
+});
 
 export default departures;

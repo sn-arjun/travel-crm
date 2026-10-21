@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import { zValidator } from '../utils/validator';
 import type { AppContext } from '../types';
 import { success, created, paginated, error, notFound } from '../utils/response';
@@ -15,7 +16,15 @@ import {
   availabilitySchema, scheduleSchema,
   createRateCardSchema, updateRateCardSchema, rateCardListSchema, rateCardLookupSchema,
   costEstimateSchema, calculateDistanceSchema,
+  tripStopsBodySchema, stopWhereSchema, addTripPassengerSchema, tickPassengerSchema,
 } from '../validators/fleet';
+import { requireFeature } from '../middleware/feature-gate';
+import { resolveFeature } from '../services/features/resolve';
+import { DepartureError, departureErrorResponse, guarded } from '../services/departures/common';
+import {
+  addPassenger, headcountOf, listPassengersGrouped, listStops, removePassenger, replaceStops, setStopStatus, tickPassenger,
+  type CoachCtx,
+} from '../services/fleet/coach-trips';
 import { calculateTripCost, calculateDistance, type RateCard } from '../services/trip-cost-calculator';
 
 const fleet = new Hono<AppContext>();
@@ -610,13 +619,17 @@ fleet.get('/vehicles/:id/availability', async (c) => {
 
 fleet.get('/drivers', zValidator('query', driverListSchema), async (c) => {
   const db = c.get('tenantDb');
-  const { page, limit, status, search, availableFrom, availableTo, sortBy, sortOrder } = c.req.valid('query');
+  const { page, limit, status, search, availableFrom, availableTo, crewRole, sortBy, sortOrder } = c.req.valid('query');
   const offset = (page - 1) * limit;
 
   const conditions: string[] = ['d.is_deleted = 0'];
   const params: any[] = [];
 
   if (status) { conditions.push('d.status = ?'); params.push(status); }
+  // R145: "driver" and "tour_leader" mean everyone who can do that job, so a person with both roles is in both lists
+  if (crewRole === 'driver') conditions.push("d.crew_role IN ('driver', 'both')");
+  else if (crewRole === 'tour_leader') conditions.push("d.crew_role IN ('tour_leader', 'both')");
+  else if (crewRole === 'both') conditions.push("d.crew_role = 'both'");
   if (search) {
     conditions.push('(d.name LIKE ? OR d.phone LIKE ?)');
     params.push(`%${search}%`, `%${search}%`);
@@ -718,10 +731,10 @@ fleet.get('/drivers/:id', async (c) => {
     SELECT ta.*, v.registration_number, v.type as vehicle_type
     FROM trip_assignments ta
     LEFT JOIN vehicles v ON v.id = ta.vehicle_id
-    WHERE ta.driver_id = ? AND ta.is_deleted = 0
+    WHERE (ta.driver_id = ? OR ta.tour_leader_id = ?) AND ta.is_deleted = 0
       AND ta.status NOT IN ('completed', 'cancelled')
     ORDER BY ta.pickup_datetime ASC LIMIT 5
-  `).bind(id).all();
+  `).bind(id, id).all();
 
   const ratings = await db.prepare(
     'SELECT * FROM driver_ratings WHERE driver_id = ? ORDER BY created_at DESC LIMIT 10'
@@ -752,8 +765,14 @@ fleet.get('/drivers/:id', async (c) => {
       GROUP BY strftime('%Y-%m', i.created_at) ORDER BY month DESC`).bind(id).all(),
   ]);
 
+  const linkedUser = driver.user_id
+    ? await db.prepare('SELECT name, email FROM users WHERE id = ?').bind(driver.user_id).first<{ name: string; email: string }>()
+    : null;
+
   return success(c, {
     ...parseDriver(driver),
+    userName: linkedUser?.name ?? null,
+    userEmail: linkedUser?.email ?? null,
     documents: (docs.results || []).map((r: any) => parseDriverDocument(r, todayDrv)),
     upcomingTrips: (trips.results || []).map(parseTripRow),
     recentRatings: ratings.results || [],
@@ -791,15 +810,16 @@ fleet.post('/drivers', zValidator('json', createDriverSchema), async (c) => {
     `SELECT id FROM drivers WHERE phone IN (${inPlaceholders(phoneVariants)}) AND is_deleted = 0`
   ).bind(...phoneVariants).first();
   if (existing) return error(c, 'Driver with this phone number already exists', 409);
+  if (data.userId && !(await db.prepare('SELECT id FROM users WHERE id = ?').bind(data.userId).first())) return error(c, 'The linked staff user was not found', 400);
 
   await db.prepare(`
-    INSERT INTO drivers (id, tenant_id, name, phone, email, license_number, license_expiry, address, emergency_contact_name, emergency_contact_phone, date_of_joining, notes, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO drivers (id, tenant_id, name, phone, email, license_number, license_expiry, address, emergency_contact_name, emergency_contact_phone, date_of_joining, notes, crew_role, user_id, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     id, tenantId, data.name, phone,
     data.email ?? null, data.licenseNumber ?? null, data.licenseExpiry ?? null,
     data.address ?? null, data.emergencyContactName ?? null, normalizePhone(data.emergencyContactPhone ?? '', phoneCountry) || null,
-    data.dateOfJoining ?? null, data.notes ?? null, userId, now, now,
+    data.dateOfJoining ?? null, data.notes ?? null, data.crewRole ?? 'driver', data.userId ?? null, userId, now, now,
   ).run();
 
   await logActivity(db as any, {
@@ -844,6 +864,11 @@ fleet.put('/drivers/:id', zValidator('json', updateDriverSchema), async (c) => {
   if (data.emergencyContactPhone !== undefined) { sets.push('emergency_contact_phone = ?'); params.push(normalizePhone(data.emergencyContactPhone ?? '', phoneCountry) || null); }
   if (data.dateOfJoining !== undefined) { sets.push('date_of_joining = ?'); params.push(data.dateOfJoining); }
   if (data.notes !== undefined) { sets.push('notes = ?'); params.push(data.notes); }
+  if (data.crewRole !== undefined) { sets.push('crew_role = ?'); params.push(data.crewRole); }
+  if (data.userId !== undefined) {
+    if (data.userId && !(await db.prepare('SELECT id FROM users WHERE id = ?').bind(data.userId).first())) return error(c, 'The linked staff user was not found', 400);
+    sets.push('user_id = ?'); params.push(data.userId);
+  }
 
   params.push(id);
   await db.prepare(`UPDATE drivers SET ${sets.join(', ')} WHERE id = ?`).bind(...params).run();
@@ -858,8 +883,8 @@ fleet.delete('/drivers/:id', async (c) => {
   const userId = c.get('userId');
 
   const activeTrip = await db.prepare(
-    "SELECT id FROM trip_assignments WHERE driver_id = ? AND status NOT IN ('completed', 'cancelled') AND is_deleted = 0"
-  ).bind(id).first();
+    "SELECT id FROM trip_assignments WHERE (driver_id = ? OR tour_leader_id = ?) AND status NOT IN ('completed', 'cancelled') AND is_deleted = 0"
+  ).bind(id, id).first();
   if (activeTrip) return error(c, 'Cannot delete driver with active trips', 400);
 
   await db.prepare("UPDATE drivers SET is_deleted = 1, updated_at = ? WHERE id = ?")
@@ -935,18 +960,18 @@ fleet.get('/drivers/:id/trips', async (c) => {
   const offset = (page - 1) * limit;
 
   const countResult = await db.prepare(
-    'SELECT COUNT(*) as count FROM trip_assignments WHERE driver_id = ? AND is_deleted = 0'
-  ).bind(id).first<{ count: number }>();
+    'SELECT COUNT(*) as count FROM trip_assignments WHERE (driver_id = ? OR tour_leader_id = ?) AND is_deleted = 0'
+  ).bind(id, id).first<{ count: number }>();
   const total = countResult?.count ?? 0;
 
   const rows = await db.prepare(`
     SELECT ta.*, v.registration_number, v.type as vehicle_type
     FROM trip_assignments ta
     LEFT JOIN vehicles v ON v.id = ta.vehicle_id
-    WHERE ta.driver_id = ? AND ta.is_deleted = 0
+    WHERE (ta.driver_id = ? OR ta.tour_leader_id = ?) AND ta.is_deleted = 0
     ORDER BY ta.pickup_datetime DESC
     LIMIT ? OFFSET ?
-  `).bind(id, limit, offset).all();
+  `).bind(id, id, limit, offset).all();
 
   return paginated(c, (rows.results || []).map(parseTripRow), total, page, limit);
 });
@@ -1097,7 +1122,7 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 
 fleet.get('/trips', zValidator('query', tripListSchema), async (c) => {
   const db = c.get('tenantDb');
-  const { page, limit, status, driverId, vehicleId, leadId, from, to, search, sortBy, sortOrder } = c.req.valid('query');
+  const { page, limit, status, driverId, vehicleId, tripKind, departureId, leadId, from, to, search, sortBy, sortOrder } = c.req.valid('query');
   const offset = (page - 1) * limit;
 
   const conditions: string[] = ['ta.is_deleted = 0'];
@@ -1107,6 +1132,8 @@ fleet.get('/trips', zValidator('query', tripListSchema), async (c) => {
   if (driverId) { conditions.push('ta.driver_id = ?'); params.push(driverId); }
   if (vehicleId) { conditions.push('ta.vehicle_id = ?'); params.push(vehicleId); }
   if (leadId) { conditions.push('ta.lead_id = ?'); params.push(leadId); }
+  if (tripKind) { conditions.push('ta.trip_kind = ?'); params.push(tripKind); }
+  if (departureId) { conditions.push('ta.departure_id = ?'); params.push(departureId); }
   if (from) { conditions.push('ta.pickup_datetime >= ?'); params.push(from); }
   if (to) { conditions.push('ta.pickup_datetime <= ?'); params.push(to); }
   if (search) {
@@ -1128,10 +1155,15 @@ fleet.get('/trips', zValidator('query', tripListSchema), async (c) => {
 
   const rows = await db.prepare(`
     SELECT ta.*, d.name as driver_name, d.phone as driver_phone,
-           v.registration_number, v.type as vehicle_type
+           v.registration_number, v.type as vehicle_type, tl.name as tour_leader_name,
+           (SELECT COUNT(*) FROM trip_stops ts WHERE ts.trip_id = ta.id) as stop_count,
+           (SELECT COALESCE(SUM(tp.seats), 0) FROM trip_passengers tp WHERE tp.trip_id = ta.id) as pax_expected,
+           (SELECT COALESCE(SUM(tp.seats), 0) FROM trip_passengers tp WHERE tp.trip_id = ta.id AND tp.boarding_status = 'boarded') as pax_boarded,
+           (SELECT COALESCE(SUM(tp.seats), 0) FROM trip_passengers tp WHERE tp.trip_id = ta.id AND tp.boarding_status = 'no_show') as pax_no_show
     FROM trip_assignments ta
     LEFT JOIN vehicles v ON v.id = ta.vehicle_id
     LEFT JOIN drivers d ON d.id = ta.driver_id
+    LEFT JOIN drivers tl ON tl.id = ta.tour_leader_id
     WHERE ${whereClause}
     ORDER BY ${orderCol} ${orderDir}
     LIMIT ? OFFSET ?
@@ -1148,10 +1180,11 @@ fleet.get('/trips/:id', async (c) => {
     SELECT ta.*, d.name as driver_name, d.phone as driver_phone, d.photo_url as driver_photo,
            v.registration_number, v.type as vehicle_type, v.make as vehicle_make, v.model as vehicle_model,
            v.seating_capacity, v.photo_url as vehicle_photo,
-           l.title as lead_title
+           l.title as lead_title, tl.name as tour_leader_name, tl.phone as tour_leader_phone
     FROM trip_assignments ta
     LEFT JOIN vehicles v ON v.id = ta.vehicle_id
     LEFT JOIN drivers d ON d.id = ta.driver_id
+    LEFT JOIN drivers tl ON tl.id = ta.tour_leader_id
     LEFT JOIN leads l ON l.id = ta.lead_id
     WHERE ta.id = ? AND ta.is_deleted = 0
   `).bind(id).first();
@@ -1179,6 +1212,8 @@ fleet.get('/trips/:id', async (c) => {
     seatingCapacity: trip.seating_capacity,
     vehiclePhoto: trip.vehicle_photo,
     leadTitle: trip.lead_title,
+    tourLeaderPhone: trip.tour_leader_phone ?? null,
+    ...(trip.trip_kind === 'coach' && { stops: await listStops(db, id), headcount: await headcountOf(db, id) }),
     timeline: timeline.results || [],
     costs: costs.results || [],
     totalCost: costTotal?.total ?? 0,
@@ -1193,21 +1228,30 @@ fleet.post('/trips', zValidator('json', createTripSchema), async (c) => {
   const id = generateId();
   const now = new Date().toISOString();
 
+  // R145: coach trips, a tour leader or a departure link need the coach_trips feature and valid references
+  const tripKind = data.tripKind ?? 'transfer';
+  const coachProblem = await coachFieldsProblem(c, db, { tripKind, tourLeaderId: data.tourLeaderId, departureId: data.departureId });
+  if (coachProblem) return coachProblem;
+
   // Validate vehicle availability
-  const vehicleConflict = await db.prepare(`
-    SELECT id FROM trip_assignments
-    WHERE vehicle_id = ? AND is_deleted = 0 AND status NOT IN ('completed', 'cancelled')
-      AND pickup_datetime <= ? AND drop_datetime >= ?
-  `).bind(data.vehicleId, data.dropDatetime, data.pickupDatetime).first();
-  if (vehicleConflict) return error(c, 'Vehicle is not available for the selected date range', 400);
+  if (data.vehicleId) {
+    const vehicleConflict = await db.prepare(`
+      SELECT id FROM trip_assignments
+      WHERE vehicle_id = ? AND is_deleted = 0 AND status NOT IN ('completed', 'cancelled')
+        AND pickup_datetime <= ? AND drop_datetime >= ?
+    `).bind(data.vehicleId, data.dropDatetime, data.pickupDatetime).first();
+    if (vehicleConflict) return error(c, 'Vehicle is not available for the selected date range', 400);
+  }
 
   // Validate driver availability
-  const driverConflict = await db.prepare(`
-    SELECT id FROM trip_assignments
-    WHERE driver_id = ? AND is_deleted = 0 AND status NOT IN ('completed', 'cancelled')
-      AND pickup_datetime <= ? AND drop_datetime >= ?
-  `).bind(data.driverId, data.dropDatetime, data.pickupDatetime).first();
-  if (driverConflict) return error(c, 'Driver is not available for the selected date range', 400);
+  if (data.driverId) {
+    const driverConflict = await db.prepare(`
+      SELECT id FROM trip_assignments
+      WHERE driver_id = ? AND is_deleted = 0 AND status NOT IN ('completed', 'cancelled')
+        AND pickup_datetime <= ? AND drop_datetime >= ?
+    `).bind(data.driverId, data.dropDatetime, data.pickupDatetime).first();
+    if (driverConflict) return error(c, 'Driver is not available for the selected date range', 400);
+  }
 
   // Store the passenger phone as E.164 (empty -> null)
   const passengerPhoneE164 = normalizePhone(data.passengerPhone ?? '', await tenantPhoneCountry(db)) || null;
@@ -1220,10 +1264,11 @@ fleet.post('/trips', zValidator('json', createTripSchema), async (c) => {
       trip_type, rate_card_id, estimated_distance_km, estimated_duration_min,
       estimated_cost, estimated_breakdown,
       pickup_lat, pickup_lng, drop_lat, drop_lng, contact_id,
+      trip_kind, tour_leader_id, departure_id,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
-    id, tenantId, data.leadId ?? null, data.vehicleId, data.driverId,
+    id, tenantId, data.leadId ?? null, data.vehicleId ?? null, data.driverId ?? null,
     data.pickupLocation ?? null, data.dropLocation ?? null,
     data.pickupDatetime, data.dropDatetime,
     data.passengerName ?? null, passengerPhoneE164,
@@ -1234,6 +1279,7 @@ fleet.post('/trips', zValidator('json', createTripSchema), async (c) => {
     data.pickupLat ?? null, data.pickupLng ?? null,
     data.dropLat ?? null, data.dropLng ?? null,
     data.contactId ?? null,
+    tripKind, data.tourLeaderId ?? null, data.departureId ?? null,
     now, now,
   ).run();
 
@@ -1243,6 +1289,16 @@ fleet.post('/trips', zValidator('json', createTripSchema), async (c) => {
     VALUES (?, ?, 'assigned', ?, 'Trip created', ?)
   `).bind(generateId(), id, userId, now).run();
 
+  if (data.stops?.length) {
+    try {
+      await replaceStops(coachCtx(c), id, data.stops);
+    } catch (e) {
+      if (!(e instanceof DepartureError)) throw e;
+      await db.prepare('UPDATE trip_assignments SET is_deleted = 1 WHERE id = ?').bind(id).run();
+      return departureErrorResponse(c, e);
+    }
+  }
+
   await logActivity(db as any, {
     userId, action: 'create', entityType: 'trip_assignment', entityId: id,
     details: JSON.stringify({ vehicleId: data.vehicleId, driverId: data.driverId }),
@@ -1250,7 +1306,7 @@ fleet.post('/trips', zValidator('json', createTripSchema), async (c) => {
   });
 
   // Send customer notification (async, non-blocking)
-  if (passengerPhoneE164) {
+  if (passengerPhoneE164 && data.vehicleId && data.driverId) {
     try {
       const driver = await db.prepare('SELECT name, phone FROM drivers WHERE id = ?').bind(data.driverId).first();
       const vehicle = await db.prepare('SELECT registration_number, type FROM vehicles WHERE id = ?').bind(data.vehicleId).first();
@@ -1272,17 +1328,18 @@ fleet.post('/trips', zValidator('json', createTripSchema), async (c) => {
   const row = await db.prepare(`
     SELECT ta.*, d.name as driver_name, d.phone as driver_phone,
            v.registration_number, v.type as vehicle_type,
-           co.name as contact_name, vrc.name as rate_card_name
+           co.name as contact_name, vrc.name as rate_card_name, tl.name as tour_leader_name
     FROM trip_assignments ta
     LEFT JOIN vehicles v ON v.id = ta.vehicle_id
     LEFT JOIN drivers d ON d.id = ta.driver_id
     LEFT JOIN contacts co ON co.id = ta.contact_id
     LEFT JOIN vehicle_rate_cards vrc ON vrc.id = ta.rate_card_id
+    LEFT JOIN drivers tl ON tl.id = ta.tour_leader_id
     WHERE ta.id = ?
   `).bind(id).first();
 
   // Auto-create voucher if requested
-  if (data.autoCreateVoucher !== false && data.passengerName) {
+  if (data.autoCreateVoucher !== false && data.passengerName && data.vehicleId && data.driverId && tripKind !== 'coach') {
     try {
       const voucherId = generateId();
       const driver = await db.prepare('SELECT name, phone FROM drivers WHERE id = ?').bind(data.driverId).first();
@@ -1311,12 +1368,13 @@ fleet.post('/trips', zValidator('json', createTripSchema), async (c) => {
   const finalRow = await db.prepare(`
     SELECT ta.*, d.name as driver_name, d.phone as driver_phone,
            v.registration_number, v.type as vehicle_type,
-           co.name as contact_name, vrc.name as rate_card_name
+           co.name as contact_name, vrc.name as rate_card_name, tl.name as tour_leader_name
     FROM trip_assignments ta
     LEFT JOIN vehicles v ON v.id = ta.vehicle_id
     LEFT JOIN drivers d ON d.id = ta.driver_id
     LEFT JOIN contacts co ON co.id = ta.contact_id
     LEFT JOIN vehicle_rate_cards vrc ON vrc.id = ta.rate_card_id
+    LEFT JOIN drivers tl ON tl.id = ta.tour_leader_id
     WHERE ta.id = ?
   `).bind(id).first();
 
@@ -1335,8 +1393,24 @@ fleet.put('/trips/:id', zValidator('json', updateTripSchema), async (c) => {
   if (!existing) return notFound(c, 'Trip');
   if (existing.status !== 'assigned') return error(c, 'Can only edit trips with status "assigned"', 400);
 
+  const coachProblem = await coachFieldsProblem(c, db, {
+    tripKind: data.tripKind,
+    tourLeaderId: data.tourLeaderId,
+    departureId: data.departureId,
+  });
+  if (coachProblem) return coachProblem;
+  if (data.tripKind === 'transfer' && existing.trip_kind === 'coach') {
+    const used = await db.prepare(
+      'SELECT (SELECT COUNT(*) FROM trip_stops WHERE trip_id = ?1) + (SELECT COUNT(*) FROM trip_passengers WHERE trip_id = ?1) AS n',
+    ).bind(id).first<{ n: number }>();
+    if ((used?.n ?? 0) > 0) return error(c, 'A coach trip with stops or passengers cannot become a transfer', 409);
+  }
+
   const sets: string[] = ['updated_at = ?'];
   const params: any[] = [now];
+  if (data.tripKind !== undefined) { sets.push('trip_kind = ?'); params.push(data.tripKind); }
+  if (data.tourLeaderId !== undefined) { sets.push('tour_leader_id = ?'); params.push(data.tourLeaderId); }
+  if (data.departureId !== undefined) { sets.push('departure_id = ?'); params.push(data.departureId); }
 
   if (data.vehicleId !== undefined) {
     // Check availability
@@ -1401,12 +1475,13 @@ fleet.put('/trips/:id', zValidator('json', updateTripSchema), async (c) => {
   const row = await db.prepare(`
     SELECT ta.*, d.name as driver_name, d.phone as driver_phone,
            v.registration_number, v.type as vehicle_type,
-           co.name as contact_name, vrc.name as rate_card_name
+           co.name as contact_name, vrc.name as rate_card_name, tl.name as tour_leader_name
     FROM trip_assignments ta
     LEFT JOIN vehicles v ON v.id = ta.vehicle_id
     LEFT JOIN drivers d ON d.id = ta.driver_id
     LEFT JOIN contacts co ON co.id = ta.contact_id
     LEFT JOIN vehicle_rate_cards vrc ON vrc.id = ta.rate_card_id
+    LEFT JOIN drivers tl ON tl.id = ta.tour_leader_id
     WHERE ta.id = ?
   `).bind(id).first();
 
@@ -1510,6 +1585,117 @@ fleet.get('/trips/:id/timeline', async (c) => {
 
   return success(c, rows.results || []);
 });
+
+// ============================================================================
+// COACH TRIPS (R145): stops, passengers, check-in, head count
+// ============================================================================
+
+/** Who acts in the coach service: this staff user, with the request's waiter so automations run after the response. */
+function coachCtx(c: Context<AppContext>): CoachCtx {
+  let waiter: CoachCtx['waiter'];
+  try { waiter = c.executionCtx; } catch { waiter = undefined; }
+  return { env: c.env, tenantId: c.get('tenantId'), db: c.get('tenantDb'), userId: c.get('userId'), waiter };
+}
+
+/**
+ * The coach fields of a trip body: a coach trip, a tour leader or a departure link need the coach_trips feature (the routes under
+ * /trips/:id/stops and so on are gated by middleware; this covers the trip body). A tour leader must be crew with that role.
+ */
+async function coachFieldsProblem(
+  c: Context<AppContext>,
+  db: D1Database,
+  f: { tripKind?: string; tourLeaderId?: string | null; departureId?: string | null },
+): Promise<Response | null> {
+  const used = f.tripKind === 'coach' || Boolean(f.tourLeaderId) || Boolean(f.departureId);
+  if (!used) return null;
+  const feature = await resolveFeature(c.env, c.get('tenantId'), 'coach_trips');
+  if (!feature.enabled) return c.json({ error: 'Feature "coach_trips" is not available for this agency.', featureKey: 'coach_trips', upgrade: feature.source !== 'platform' }, 403);
+  if (f.tourLeaderId) {
+    const leader = await db.prepare("SELECT id FROM drivers WHERE id = ? AND is_deleted = 0 AND crew_role IN ('tour_leader', 'both')").bind(f.tourLeaderId).first();
+    if (!leader) return error(c, 'The tour leader was not found, or is not a tour leader', 400);
+  }
+  if (f.departureId) {
+    const dep = await db.prepare('SELECT id FROM departures WHERE id = ? AND is_deleted = 0').bind(f.departureId).first();
+    if (!dep) return error(c, 'The departure was not found', 400);
+  }
+  return null;
+}
+
+// Stops, passengers and head count exist only with the coach_trips feature.
+fleet.use('/trips/:id/stops', requireFeature('coach_trips'));
+fleet.use('/trips/:id/stops/*', requireFeature('coach_trips'));
+fleet.use('/trips/:id/passengers', requireFeature('coach_trips'));
+fleet.use('/trips/:id/passengers/*', requireFeature('coach_trips'));
+fleet.use('/trips/:id/headcount', requireFeature('coach_trips'));
+
+fleet.get('/trips/:id/stops', (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    if (!(await db.prepare('SELECT id FROM trip_assignments WHERE id = ? AND is_deleted = 0').bind(c.req.param('id')).first())) return notFound(c, 'Trip');
+    return success(c, await listStops(db, c.req.param('id')));
+  }),
+);
+
+fleet.put('/trips/:id/stops', zValidator('json', tripStopsBodySchema), (c) =>
+  guarded(c, async () => {
+    const id = c.req.param('id');
+    const stops = await replaceStops(coachCtx(c), id, c.req.valid('json').stops);
+    await logActivity(c.get('tenantDb') as any, { userId: c.get('userId'), action: 'update', entityType: 'trip_assignment', entityId: id, details: JSON.stringify({ stops: stops.length }), ipAddress: c.get('clientIp') });
+    return success(c, stops);
+  }),
+);
+
+// The body is optional (the position is only a courtesy); an empty body parses as {}.
+const optionalJson = async (c: Context<AppContext>): Promise<unknown> => {
+  try { return await c.req.json(); } catch { return {}; }
+};
+
+fleet.post('/trips/:id/stops/:sid/arrive', (c) =>
+  guarded(c, async () => {
+    const where = stopWhereSchema.safeParse(await optionalJson(c));
+    if (!where.success) return error(c, 'The position is not valid', 400);
+    return success(c, await setStopStatus(coachCtx(c), c.req.param('id'), c.req.param('sid'), 'arrive', where.data));
+  }),
+);
+
+fleet.post('/trips/:id/stops/:sid/depart', (c) =>
+  guarded(c, async () => {
+    const where = stopWhereSchema.safeParse(await optionalJson(c));
+    if (!where.success) return error(c, 'The position is not valid', 400);
+    return success(c, await setStopStatus(coachCtx(c), c.req.param('id'), c.req.param('sid'), 'depart', where.data));
+  }),
+);
+
+fleet.get('/trips/:id/passengers', (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    if (!(await db.prepare('SELECT id FROM trip_assignments WHERE id = ? AND is_deleted = 0').bind(c.req.param('id')).first())) return notFound(c, 'Trip');
+    return success(c, await listPassengersGrouped(db, c.req.param('id')));
+  }),
+);
+
+fleet.post('/trips/:id/passengers', zValidator('json', addTripPassengerSchema), (c) =>
+  guarded(c, async () => created(c, await addPassenger(coachCtx(c), c.req.param('id'), c.req.valid('json')))),
+);
+
+fleet.put('/trips/:id/passengers/:pid', zValidator('json', tickPassengerSchema), (c) =>
+  guarded(c, async () => success(c, await tickPassenger(coachCtx(c), c.req.param('id'), c.req.param('pid'), c.req.valid('json')))),
+);
+
+fleet.delete('/trips/:id/passengers/:pid', (c) =>
+  guarded(c, async () => {
+    await removePassenger(coachCtx(c), c.req.param('id'), c.req.param('pid'));
+    return success(c, { message: 'Passenger removed' });
+  }),
+);
+
+fleet.get('/trips/:id/headcount', (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    if (!(await db.prepare('SELECT id FROM trip_assignments WHERE id = ? AND is_deleted = 0').bind(c.req.param('id')).first())) return notFound(c, 'Trip');
+    return success(c, await headcountOf(db, c.req.param('id')));
+  }),
+);
 
 // ============================================================================
 // TRIP COST TRACKING (TICKET-317)
@@ -1840,6 +2026,8 @@ function parseDriver(row: Record<string, any>) {
     totalTrips: row.total_trips ?? 0,
     dateOfJoining: row.date_of_joining ?? null,
     notes: row.notes ?? null,
+    crewRole: row.crew_role ?? 'driver',
+    userId: row.user_id ?? null,
     createdBy: row.created_by ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -1914,6 +2102,15 @@ function parseTripRow(row: Record<string, any>) {
     contactId: row.contact_id ?? null,
     invoiceId: row.invoice_id ?? null,
     voucherId: row.voucher_id ?? null,
+    // R145: coach trips
+    tripKind: row.trip_kind ?? 'transfer',
+    departureId: row.departure_id ?? null,
+    tourLeaderId: row.tour_leader_id ?? null,
+    tourLeaderName: row.tour_leader_name ?? null,
+    ...(row.stop_count !== undefined && {
+      stopCount: row.stop_count ?? 0,
+      headcount: { expected: row.pax_expected ?? 0, boarded: row.pax_boarded ?? 0, noShow: row.pax_no_show ?? 0 },
+    }),
     // Joined fields
     driverName: row.driver_name ?? null,
     driverPhone: row.driver_phone ?? null,
