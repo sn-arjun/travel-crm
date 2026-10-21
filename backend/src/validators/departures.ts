@@ -229,3 +229,16 @@ export type CostInput = z.infer<typeof costItem>;
 export type CreateDepartureInput = z.infer<typeof createDepartureSchema>;
 export type UpdateDepartureInput = z.infer<typeof updateDepartureSchema>;
 export type GroupToursSettingsInput = z.infer<typeof groupToursSettingsSchema>;
+
+// ---- manifest and rooms (R146)
+
+export const manifestQuerySchema = z.object({
+  view: z.enum(['pickup', 'rooming', 'full']).default('pickup'),
+  format: z.enum(['json', 'csv', 'pdf']).default('json'),
+  /** `confirmed` leaves out parties whose seats are only held. */
+  bookings: z.enum(['all', 'confirmed']).default('all'),
+});
+
+export const roomAssignmentsSchema = z.object({
+  assignments: z.array(z.object({ passengerId: z.string().min(1).max(64), roomGroup: z.string().trim().max(40).nullable() })).min(1).max(400),
+});

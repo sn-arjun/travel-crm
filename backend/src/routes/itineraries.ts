@@ -22,6 +22,8 @@ import { quoteUrl } from '../utils/app-urls';
 import { formatMoney, loadLocaleContext } from '../utils/money';
 import { agencyEmailHtml, escapeHtml, queueAgencyEmail, textToHtml } from '../services/mail/delivery';
 import { success, created, paginated, error, notFound } from '../utils/response';
+import { requireFeature } from '../middleware/feature-gate';
+import { getDepartureSummary } from '../services/departures/capacity';
 
 const itineraryRoutes = new Hono<AppContext>();
 
@@ -395,7 +397,11 @@ itineraryRoutes.get('/:id', requirePermission('itineraries', 'view'), async (c) 
   const id = c.req.param('id');
   const full = await getFullItinerary(db, id);
   if (!full) return notFound(c, 'Itinerary');
-  return success(c, full);
+  // A quote for a group departure shows the departure and the seats left without opening it (R146).
+  if (!full.departureId) return success(c, { ...full, departure: null, seats: null });
+  const departure = await getDepartureSummary(c.get('tenantDb'), full.departureId);
+  const requested = full.seatsRequested ?? null;
+  return success(c, { ...full, departure, seats: departure && { requested, left: departure.seats.left, fits: requested === null || requested <= departure.seats.left } });
 });
 
 // ============================================================
@@ -728,6 +734,32 @@ itineraryRoutes.post('/:id/new-version', requirePermission('itineraries', 'creat
   });
 
   return created(c, { id: newId, version: newVersion });
+});
+
+// ============================================================
+// PUT /:id/departure — Link the quote to a group departure (R146)
+// ============================================================
+
+const linkDepartureSchema = z.object({
+  departureId: z.string().min(1).max(64).nullable(),
+  seatsRequested: z.number().int().min(1).max(200).nullable().optional(),
+});
+
+itineraryRoutes.put('/:id/departure', requireFeature('group_departures'), requirePermission('itineraries', 'edit'), zValidator('json', linkDepartureSchema), async (c) => {
+  const db = c.get('tenantDb');
+  const id = c.req.param('id');
+  const { departureId, seatsRequested } = c.req.valid('json');
+  const itin = await db.prepare('SELECT i.id, l.pax_adults, l.pax_children FROM itineraries i LEFT JOIN leads l ON l.id = i.lead_id WHERE i.id = ? AND i.is_deleted = 0').bind(id).first<{ pax_adults: number | null; pax_children: number | null }>();
+  if (!itin) return notFound(c, 'Itinerary');
+  let seats: number | null = null;
+  if (departureId) {
+    const departure = await getDepartureSummary(db, departureId);
+    if (!departure) return error(c, 'Departure not found', 404, { code: 'DEPARTURE_NOT_FOUND' });
+    // No number given: the party size of the lead, so the quote shows whether the party fits.
+    seats = seatsRequested ?? (Math.max(1, (itin.pax_adults ?? 0) + (itin.pax_children ?? 0)));
+  }
+  await db.prepare('UPDATE itineraries SET departure_id = ?, seats_requested = ?, updated_at = ? WHERE id = ?').bind(departureId, seats, new Date().toISOString(), id).run();
+  return success(c, { id, departureId, seatsRequested: seats });
 });
 
 // ============================================================

@@ -7,6 +7,7 @@ import type { AppContext } from '../types';
 import { success, error } from '../utils/response';
 import { expandRecurrence } from '../services/recurrence-engine';
 import { generateId } from '../utils/uuid';
+import { attachDepartureSummaries } from '../services/departures/calendar';
 import { tenantToday, localDateString, addDaysLocal, getTenantTimeZone, isValidTimeZone } from '../utils/tz';
 
 const plannerRoutes = new Hono<AppContext>();
@@ -69,6 +70,7 @@ plannerRoutes.get('/', async (c) => {
             }
         }
 
+        await attachDepartureSummaries(db, allEvents);
         return success(c, allEvents);
     } catch (e: any) {
         console.error('Events list error:', e);
@@ -93,7 +95,9 @@ plannerRoutes.get('/:id', async (c) => {
 
         if (!event) return error(c, 'Event not found', 404);
 
-        return success(c, { ...event, is_recurring: !!event.recurrence_rule });
+        const detail: any = { ...event, is_recurring: !!event.recurrence_rule };
+        await attachDepartureSummaries(db, [detail]);
+        return success(c, detail);
     } catch (e: any) {
         return error(c, e.message || 'Failed to fetch event', 500);
     }

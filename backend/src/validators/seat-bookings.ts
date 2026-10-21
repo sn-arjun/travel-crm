@@ -21,6 +21,10 @@ export const passengerInputSchema = z.object({
   shareOk: z.boolean().optional(),
   shareGender: z.boolean().optional(),
   mealPreference: z.string().max(60).nullable().optional(),
+  /** Staff-side details (R146): left out, the saved value stays; null clears it. */
+  seatNumber: z.string().trim().max(20).nullable().optional(),
+  roomGroup: z.string().trim().max(40).nullable().optional(),
+  documentsStatus: z.enum(['unknown', 'provided', 'checked', 'problem']).optional(),
   /** Values of the agency-defined passenger fields and the optional built-in ones (nationality, document type, ...). */
   extraFields: z.record(z.string().max(40), z.union([z.string().max(300), z.number(), z.boolean(), z.null()])).optional(),
 });

@@ -73,3 +73,27 @@ export function setCapacityStatement(db: D1Database, departureId: string, capaci
     )
     .bind(capacity, new Date().toISOString(), departureId, capacity, departureId);
 }
+
+export interface DepartureSummary {
+  id: string;
+  code: string;
+  status: string;
+  tourTitle: string;
+  startDate: string;
+  endDate: string;
+  seats: SeatsSummary;
+}
+
+/** One departure with its tour title and seats, for the cards on a lead and a quote (R146). Null when it is gone. */
+export async function getDepartureSummary(db: D1Database, departureId: string): Promise<DepartureSummary | null> {
+  const r = await db
+    .prepare(
+      `SELECT d.id, d.code, d.status, d.capacity, d.start_date, d.end_date, t.title AS tour_title
+       FROM departures d JOIN tours t ON t.id = d.tour_id WHERE d.id = ? AND d.is_deleted = 0`,
+    )
+    .bind(departureId)
+    .first<{ id: string; code: string; status: string; capacity: number; start_date: string; end_date: string; tour_title: string }>();
+  if (!r) return null;
+  const seats = (await seatsSummary(db, [{ id: r.id, capacity: r.capacity }])).get(r.id)!;
+  return { id: r.id, code: r.code, status: r.status, tourTitle: r.tour_title, startDate: r.start_date, endDate: r.end_date, seats };
+}

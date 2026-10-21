@@ -7,13 +7,14 @@
 import type { Context } from 'hono';
 import type { AppContext, Env } from '../../types';
 import { emitEvent, requestDepth } from '../automation/events';
+import { broadcastToTenant } from '../../utils/realtime';
 import { DepartureError, nowIso, parseJson } from './common';
 import { getDepartureRow } from './departures';
 import { getTourRow } from './tours';
 import {
   effectiveSettings, getGroupToursSettings, type GroupToursSettings, type PassengerFieldDef, type RoomTypeDef,
 } from './settings';
-import { seatsInUse } from './capacity';
+import { seatsInUse, seatsSummary } from './capacity';
 
 type Row = Record<string, any>;
 
@@ -37,6 +38,25 @@ export const addHoursIso = (from: Date, hours: number): string => new Date(from.
 
 export async function emit(ctx: SeatCtx, type: string, entityType: string, entityId: string, payload: Record<string, unknown>): Promise<void> {
   await emitEvent(ctx.env, ctx.tenantId, ctx.db, { type, entityType, entityId, payload, actorId: ctx.userId, depth: ctx.depth ?? 0 }, ctx.waiter);
+  if (typeof payload.departureId === 'string') await announceSeats(ctx, payload.departureId, type);
+}
+
+/** The realtime event the browser listens to: the seats or passengers of a departure changed. Ids and counts only, never names. */
+export const SEATS_CHANGED_EVENT = 'departure:seats_changed';
+
+/**
+ * Tells every open screen of the agency that the seats of a departure moved (a hold, a confirmation, a cancellation, an expiry,
+ * a move, a capacity or status change, a passenger edit), with the new seat counts so a calendar chip can redraw without a read.
+ * Never throws: the realtime channel is a convenience, the write has already happened.
+ */
+export async function announceSeats(ctx: Pick<SeatCtx, 'env' | 'tenantId' | 'db'>, departureId: string, reason: string): Promise<void> {
+  try {
+    const row = await ctx.db.prepare('SELECT capacity FROM departures WHERE id = ?').bind(departureId).first<{ capacity: number }>();
+    const seats = row ? (await seatsSummary(ctx.db, [{ id: departureId, capacity: row.capacity }])).get(departureId) : undefined;
+    await broadcastToTenant(ctx.env, ctx.tenantId, { type: SEATS_CHANGED_EVENT, data: { departureId, reason, ...(seats && { seats }) } });
+  } catch (err) {
+    console.error('[realtime] seats announcement failed:', departureId, err);
+  }
 }
 
 export interface DepartureContext {

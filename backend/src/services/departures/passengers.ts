@@ -115,6 +115,10 @@ export interface PreparedPassenger {
   shareGender: boolean;
   mealPreference: string | null;
   extraFields: Record<string, unknown> | null;
+  /** Staff-side details: undefined leaves the saved value alone, null clears it. */
+  seatNumber?: string | null;
+  roomGroup?: string | null;
+  documentsStatus?: 'unknown' | 'provided' | 'checked' | 'problem';
 }
 
 const present = (v: unknown): boolean => v !== undefined && v !== null && !(typeof v === 'string' && v.trim() === '');
@@ -144,13 +148,19 @@ export async function preparePassengers(db: D1Database, dep: DepartureContext, i
   const roomKeys = new Set(dep.effective.roomTypes.map((r) => r.key));
   const customByKey = new Map(dep.effective.passengerFields.filter((f) => f.custom).map((f) => [f.key, f]));
 
-  const [{ results: stopRows }, bands, ownRows] = await Promise.all([
+  const [{ results: stopRows }, bands, ownRows, { results: takenSeats }] = await Promise.all([
     db.prepare('SELECT id FROM departure_stops WHERE departure_id = ?').bind(dep.row.id).all<{ id: string }>(),
     loadBands(db),
     bookingId ? db.prepare('SELECT id FROM seat_passengers WHERE seat_booking_id = ?').bind(bookingId).all<{ id: string }>() : Promise.resolve({ results: [] as Array<{ id: string }> }),
+    db
+      .prepare(`SELECT seat_number FROM seat_passengers WHERE departure_id = ? AND status = 'active' AND seat_number IS NOT NULL AND seat_booking_id != ?`)
+      .bind(dep.row.id, bookingId ?? '')
+      .all<{ seat_number: string }>(),
   ]);
   const stops = new Set((stopRows ?? []).map((s) => s.id));
   const own = new Set((ownRows.results ?? []).map((s) => s.id));
+  const seatNumbersUsed = new Set((takenSeats ?? []).map((r) => r.seat_number.toLowerCase()));
+  const seatNumbersInList = new Set<string>();
 
   const travellerIds = [...new Set(inputs.map((p) => p.travellerId).filter((v): v is string => !!v))];
   const knownTravellers = new Set<string>();
@@ -174,6 +184,11 @@ export async function preparePassengers(db: D1Database, dep: DepartureContext, i
     }
     if (p.dateOfBirth && p.dateOfBirth > startDate) fail('dateOfBirth', 'The date of birth is after the departure date');
     if (p.roomType && !roomKeys.has(p.roomType)) fail('roomType', 'This room type is not offered on the departure');
+    if (p.seatNumber) {
+      const key = p.seatNumber.toLowerCase();
+      if (seatNumbersUsed.has(key) || seatNumbersInList.has(key)) fail('seatNumber', 'This seat number is already given to another passenger of the departure');
+      seatNumbersInList.add(key);
+    }
     if (p.travellerId && !knownTravellers.has(p.travellerId)) fail('travellerId', 'The traveller was not found');
     for (const [key, value] of Object.entries(p.extraFields ?? {})) {
       const def = customByKey.get(key);
@@ -200,6 +215,9 @@ export async function preparePassengers(db: D1Database, dep: DepartureContext, i
       shareGender: !!p.shareGender,
       mealPreference: p.mealPreference ?? null,
       extraFields: p.extraFields && Object.keys(p.extraFields).length ? p.extraFields : null,
+      seatNumber: p.seatNumber === undefined ? undefined : p.seatNumber || null,
+      roomGroup: p.roomGroup === undefined ? undefined : p.roomGroup || null,
+      documentsStatus: p.documentsStatus,
     });
   });
   if (errors.length) throw new DepartureError(400, 'PASSENGER_INVALID', 'Some passenger details are missing or not valid', { errors });
@@ -211,26 +229,39 @@ export function insertPassengerStatement(db: D1Database, bookingId: string, depa
   return db
     .prepare(
       `INSERT INTO seat_passengers (id, seat_booking_id, departure_id, traveller_id, first_name, last_name, gender, date_of_birth, age_years, band_key,
-         pickup_stop_id, room_type, share_ok, share_gender, meal_preference, extra_fields, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+         pickup_stop_id, room_type, share_ok, share_gender, meal_preference, extra_fields, seat_number, room_group, documents_status, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
     )
     .bind(
       p.id, bookingId, departureId, p.travellerId, p.firstName, p.lastName, p.gender, p.dateOfBirth, p.ageYears, p.bandKey,
-      p.pickupStopId, p.roomType, fromBool(p.shareOk), fromBool(p.shareGender), p.mealPreference, p.extraFields ? JSON.stringify(p.extraFields) : null, now, now,
+      p.pickupStopId, p.roomType, fromBool(p.shareOk), fromBool(p.shareGender), p.mealPreference, p.extraFields ? JSON.stringify(p.extraFields) : null,
+      p.seatNumber ?? null, p.roomGroup ?? null, p.documentsStatus ?? 'unknown', now, now,
     );
 }
 
-function updatePassengerStatement(db: D1Database, p: PreparedPassenger): D1PreparedStatement {
-  return db
-    .prepare(
-      `UPDATE seat_passengers SET traveller_id = ?, first_name = ?, last_name = ?, gender = ?, date_of_birth = ?, age_years = ?, band_key = ?,
-         pickup_stop_id = ?, room_type = ?, share_ok = ?, share_gender = ?, meal_preference = ?, extra_fields = ?, status = 'active', updated_at = ?
-       WHERE id = ?`,
-    )
-    .bind(
-      p.travellerId, p.firstName, p.lastName, p.gender, p.dateOfBirth, p.ageYears, p.bandKey, p.pickupStopId, p.roomType,
-      fromBool(p.shareOk), fromBool(p.shareGender), p.mealPreference, p.extraFields ? JSON.stringify(p.extraFields) : null, nowIso(), p.id,
-    );
+/** The staff-side columns (seat number, room, documents) change only when the input carried them; a documents status of checked stamps who and when. */
+function updatePassengerStatement(db: D1Database, p: PreparedPassenger, userId: string | null): D1PreparedStatement {
+  const now = nowIso();
+  const sets = [
+    'traveller_id = ?', 'first_name = ?', 'last_name = ?', 'gender = ?', 'date_of_birth = ?', 'age_years = ?', 'band_key = ?', 'pickup_stop_id = ?', 'room_type = ?',
+    'share_ok = ?', 'share_gender = ?', 'meal_preference = ?', 'extra_fields = ?', "status = 'active'", 'updated_at = ?',
+  ];
+  const binds: unknown[] = [
+    p.travellerId, p.firstName, p.lastName, p.gender, p.dateOfBirth, p.ageYears, p.bandKey, p.pickupStopId, p.roomType,
+    fromBool(p.shareOk), fromBool(p.shareGender), p.mealPreference, p.extraFields ? JSON.stringify(p.extraFields) : null, now,
+  ];
+  if (p.seatNumber !== undefined) { sets.push('seat_number = ?'); binds.push(p.seatNumber); }
+  if (p.roomGroup !== undefined) { sets.push('room_group = ?'); binds.push(p.roomGroup); }
+  if (p.documentsStatus !== undefined) {
+    // Stamps are written first: the SET clauses read the old status.
+    if (p.documentsStatus === 'checked') {
+      sets.unshift("documents_checked_at = CASE WHEN documents_status = 'checked' THEN documents_checked_at ELSE ? END", "documents_checked_by_user_id = CASE WHEN documents_status = 'checked' THEN documents_checked_by_user_id ELSE ? END");
+      binds.unshift(now, userId);
+    }
+    sets.push('documents_status = ?');
+    binds.push(p.documentsStatus);
+  }
+  return db.prepare(`UPDATE seat_passengers SET ${sets.join(', ')} WHERE id = ?`).bind(...binds, p.id);
 }
 
 // ---------------------------------------------------------------- travellers
@@ -319,7 +350,7 @@ export async function replacePassengers(
       ctx.db.prepare(`UPDATE seat_passengers SET status = 'cancelled', updated_at = ? WHERE id = ?`).bind(nowIso(), row.id),
     );
   }
-  for (const p of prepared) statements.push(p.existing ? updatePassengerStatement(ctx.db, p) : insertPassengerStatement(ctx.db, bookingId, dep.row.id, p));
+  for (const p of prepared) statements.push(p.existing ? updatePassengerStatement(ctx.db, p, ctx.userId) : insertPassengerStatement(ctx.db, bookingId, dep.row.id, p));
   for (const part of chunk(statements, 80)) if (part.length) await ctx.db.batch(part);
   return { seatsAdded, seatsFreed };
 }

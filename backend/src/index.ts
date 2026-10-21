@@ -72,6 +72,7 @@ import { registerFleetReports } from './services/reports/fleet-reports';
 import { registerSupplierReports } from './services/reports/supplier-reports';
 import { registerVisaReports } from './services/reports/visa-reports';
 import { registerMarketingReports } from './services/reports/marketing-reports';
+import { registerTourReports } from './services/reports/tour-reports';
 import testRoutes from './routes/test';
 import plannerRoutes from './routes/planner';
 import taskRoutes from './routes/tasks';
@@ -124,6 +125,7 @@ registerFleetReports();
 registerSupplierReports();
 registerVisaReports();
 registerMarketingReports();
+registerTourReports();
 
 // --- Global Middleware ---
 

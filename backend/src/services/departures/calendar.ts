@@ -5,7 +5,8 @@
 
 import { generateId } from '../../utils/uuid';
 import { getTenantTimeZone } from '../../utils/tz';
-import { localDateTimeToUtcIso, nowIso } from './common';
+import { chunk, localDateTimeToUtcIso, nowIso, placeholders } from './common';
+import { seatsSummary } from './capacity';
 
 type Row = Record<string, any>;
 
@@ -70,4 +71,31 @@ export async function syncDepartureEvent(db: D1Database, departureId: string, ac
 export async function removeDepartureEvent(db: D1Database, eventId: string | null | undefined): Promise<void> {
   if (!eventId) return;
   await db.prepare('UPDATE events SET is_deleted = 1, updated_at = ? WHERE id = ?').bind(nowIso(), eventId).run();
+}
+
+/**
+ * Adds `departure: {id, code, status, tourTitle, startDate, seats}` to the calendar events that belong to a departure
+ * (related_departure_id), from one aggregate query for all of them (R146). Events of other kinds are left as they are.
+ */
+export async function attachDepartureSummaries(db: D1Database, events: Array<Record<string, any>>): Promise<void> {
+  const ids = [...new Set(events.map((e) => e.related_departure_id).filter((v): v is string => typeof v === 'string' && v !== ''))];
+  if (!ids.length) return;
+  const rows: Row[] = [];
+  for (const part of chunk(ids)) {
+    const { results } = await db
+      .prepare(
+        `SELECT d.id, d.code, d.status, d.capacity, d.start_date, t.title AS tour_title
+         FROM departures d JOIN tours t ON t.id = d.tour_id
+         WHERE d.id IN (${placeholders(part.length)}) AND d.is_deleted = 0`,
+      )
+      .bind(...part)
+      .all<Row>();
+    rows.push(...(results ?? []));
+  }
+  const seats = await seatsSummary(db, rows.map((r) => ({ id: r.id, capacity: r.capacity })));
+  const byId = new Map(rows.map((r) => [r.id as string, { id: r.id, code: r.code, status: r.status, tourTitle: r.tour_title, startDate: r.start_date, seats: seats.get(r.id)! }]));
+  for (const e of events) {
+    const summary = e.related_departure_id ? byId.get(e.related_departure_id) : undefined;
+    if (summary) e.departure = summary;
+  }
 }

@@ -15,7 +15,7 @@ import { guarded, DepartureError } from '../services/departures/common';
 import { bulkConfirm, cancelBooking, changeSeats, confirmBooking, getBookingDetail, moveBooking } from '../services/departures/seats';
 import { offerBooking, runWaitlistStep } from '../services/departures/waitlist';
 import { replacePassengers } from '../services/departures/passengers';
-import { emitCapacityEvents, loadDepartureContext, requireBookingRow, seatCtxFromRequest } from '../services/departures/seat-support';
+import { announceSeats, emitCapacityEvents, loadDepartureContext, requireBookingRow, seatCtxFromRequest } from '../services/departures/seat-support';
 import {
   bulkConfirmBodySchema, cancelBodySchema, changeSeatsBodySchema, confirmBodySchema, moveBodySchema, passengersBodySchema,
 } from '../validators/seat-bookings';
@@ -111,6 +111,7 @@ seatBookings.put('/:id/passengers', requirePermission('departures', 'edit'), zVa
     const { seatsAdded, seatsFreed } = await replacePassengers(ctx, id, passengers, { createTravellers });
     if (seatsAdded > 0) await emitCapacityEvents(ctx, await loadDepartureContext(db, row.departure_id), seatsAdded);
     if (seatsFreed > 0) await runWaitlistStep(ctx, row.departure_id);
+    await announceSeats(ctx, row.departure_id, 'seat_booking.passengers_changed');
     await log(c, 'update', id, { passengers: passengers.length });
     return success(c, await getBookingDetail(db, id));
   }),

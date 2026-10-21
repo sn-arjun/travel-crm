@@ -20,12 +20,14 @@ import {
 import { createTripsFromDeparture, departureHeadcount, type CoachCtx } from '../services/fleet/coach-trips';
 import { requireFeature } from '../middleware/feature-gate';
 import { getGroupToursSettings, putGroupToursSettings } from '../services/departures/settings';
-import { emit, seatCtxFromRequest } from '../services/departures/seat-support';
+import { announceSeats, emit, seatCtxFromRequest } from '../services/departures/seat-support';
+import { buildManifest, manifestCsv, manifestPdf, saveRoomGroups, suggestRooms } from '../services/departures/manifest';
+import { hasPermission, type Role } from '../constants/permissions';
 import { getBookingDetail, listBookings, requestSeats } from '../services/departures/seats';
 import { runWaitlistStep } from '../services/departures/waitlist';
 import {
   bulkDepartureSchema, costsBodySchema, createDepartureSchema, departureListSchema, departureStatusBodySchema, groupToursSettingsSchema,
-  pricesBodySchema, stopsBodySchema, updateDepartureSchema, vehiclesBodySchema,
+  manifestQuerySchema, roomAssignmentsSchema, pricesBodySchema, stopsBodySchema, updateDepartureSchema, vehiclesBodySchema,
 } from '../validators/departures';
 import { bookingListSchema, requestSeatsBodySchema } from '../validators/seat-bookings';
 
@@ -212,6 +214,52 @@ departures.post('/:id/bookings', requirePermission('departures', 'create'), zVal
     const booking = await requestSeats(seatCtxFromRequest(c), { ...body, departureId: c.req.param('id'), source: 'staff' });
     await logActivity(c.get('tenantDb'), { userId: c.get('userId'), action: 'create', entityType: 'seat_booking', entityId: booking.id, details: JSON.stringify({ status: booking.status, seats: booking.seats }) });
     return created(c, booking);
+  }),
+);
+
+// ---- manifest (R146): pickup list, rooming list and the full list, as JSON, CSV or PDF
+
+departures.get('/:id/manifest', requirePermission('departures', 'view'), zValidator('query', manifestQuerySchema), (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    const id = c.req.param('id');
+    const { view, format, bookings } = c.req.valid('query');
+    // Passport and document numbers are personal data: only roles that may export travellers see them, and only in the full view.
+    const canSeeDocuments = hasPermission(c.get('role') as Role, 'travellers', 'export');
+    const manifest = await buildManifest(db, id, view, { userId: c.get('userId'), canSeeDocuments, bookings });
+    if (format === 'json') return success(c, manifest);
+    await logActivity(db, { userId: c.get('userId'), action: 'export', entityType: 'departure', entityId: id, details: JSON.stringify({ manifest: view, format }) });
+    const fileName = `${manifest.departure.code}-${view}`.replace(/[^A-Za-z0-9._-]+/g, '_');
+    if (format === 'csv') {
+      c.header('Content-Type', 'text/csv; charset=utf-8');
+      c.header('Content-Disposition', `attachment; filename="${fileName}.csv"`);
+      return c.body(manifestCsv(manifest));
+    }
+    const pdf = await manifestPdf(manifest);
+    c.header('Content-Type', 'application/pdf');
+    c.header('Content-Disposition', `attachment; filename="${fileName}.pdf"`);
+    return c.body(pdf as unknown as ArrayBuffer);
+  }),
+);
+
+// Rooms: a suggestion that pairs the passengers who agreed to share, and the save of the groups staff confirmed.
+departures.get('/:id/rooms/suggestions', requirePermission('departures', 'edit'), (c) =>
+  guarded(c, async () => {
+    const id = c.req.param('id');
+    if (!(await getDepartureRow(c.get('tenantDb'), id))) return notFound(c, 'Departure');
+    return success(c, await suggestRooms(c.get('tenantDb'), id));
+  }),
+);
+
+departures.put('/:id/rooms', requirePermission('departures', 'edit'), zValidator('json', roomAssignmentsSchema), (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    const id = c.req.param('id');
+    if (!(await getDepartureRow(db, id))) return notFound(c, 'Departure');
+    const updated = await saveRoomGroups(db, id, c.req.valid('json').assignments);
+    await logActivity(db, { userId: c.get('userId'), action: 'update', entityType: 'departure', entityId: id, details: JSON.stringify({ rooms: updated }) });
+    await announceSeats(seatCtxFromRequest(c), id, 'departure.rooms_changed');
+    return success(c, { updated });
   }),
 );
 

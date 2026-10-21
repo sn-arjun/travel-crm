@@ -18,7 +18,7 @@ import { emitEvent } from '../automation/events';
 import { chunk, decodeCursor, DepartureError, encodeCursor, nowIso } from './common';
 import { seatsInUse } from './capacity';
 import {
-  addHoursIso, bookingPayload, cancelPassengersStatement, emit, emitCapacityEvents, fitsSql, getBookingRow, loadDepartureContext, nowOf,
+  addHoursIso, announceSeats, bookingPayload, cancelPassengersStatement, emit, emitCapacityEvents, fitsSql, getBookingRow, loadDepartureContext, nowOf,
   requireBookingRow, rowToBooking, seatsLeft, type DepartureContext, type SeatBookingDto, type SeatBookingSource, type SeatCtx,
 } from './seat-support';
 import {
@@ -407,6 +407,7 @@ export async function changeSeats(ctx: SeatCtx, bookingId: string, seats: number
     if (seats < booking.seats) await runWaitlistStep(ctx, dep.row.id);
     else await emitCapacityEvents(ctx, dep, seats - booking.seats);
   }
+  await announceSeats(ctx, dep.row.id, 'seat_booking.seats_changed');
   return (await getBookingDetail(ctx.db, bookingId))!;
 }
 
@@ -480,5 +481,6 @@ export async function moveBooking(ctx: SeatCtx, bookingId: string, toDepartureId
   await emit(ctx, 'seat_booking.cancelled', 'seat_booking', bookingId, bookingPayload(old, { previousStatus: booking.status, reason: 'moved', movedTo: newId }));
   if (booking.status !== 'waitlisted') await runWaitlistStep(ctx, booking.departure_id);
   if (booking.status !== 'waitlisted') await emitCapacityEvents(ctx, target, booking.seats);
+  await announceSeats(ctx, toDepartureId, 'seat_booking.moved_in');
   return (await getBookingDetail(ctx.db, newId))!;
 }

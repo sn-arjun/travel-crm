@@ -156,6 +156,7 @@ function parseLead(row: Record<string, unknown>, agencyCurrency: string | null =
     probability: row.probability ?? null,
     expectedCloseDate: row.expected_close_date ?? row.expectedCloseDate ?? null,
     notes: row.notes ?? null,
+    departureId: row.departure_id ?? row.departureId ?? null,
     createdBy: row.created_by ?? row.createdBy ?? null,
     createdByName: row.created_by_name ?? row.createdByName ?? null,
     createdAt: row.created_at ?? row.createdAt ?? null,
@@ -1119,6 +1120,7 @@ import { seatCtxFromRequest } from '../services/departures/seat-support';
 import { listLeadBookings, requestSeats } from '../services/departures/seats';
 import { holdSeatsBodySchema } from '../validators/seat-bookings';
 import { requireFeature } from '../middleware/feature-gate';
+import { getDepartureSummary } from '../services/departures/capacity';
 
 leadRoutes.get('/:id/seat-bookings', requireFeature('group_departures'), requirePermission('departures', 'view'), async (c) => {
   return success(c, await listLeadBookings(c.get('tenantDb'), c.req.param('id')));
@@ -1135,6 +1137,24 @@ leadRoutes.post(
       const booking = await requestSeats(seatCtxFromRequest(c), { departureId, seats, leadId: c.req.param('id'), notes, source: 'staff' });
       return created(c, booking);
     }),
+);
+
+// Links the enquiry to a group departure (or clears the link) without holding seats (R146).
+leadRoutes.put(
+  '/:id/departure',
+  requireFeature('group_departures'),
+  requirePermission('leads', 'edit'),
+  zValidator('json', z.object({ departureId: z.string().min(1).max(64).nullable() })),
+  async (c) => {
+    const db = c.get('tenantDb');
+    const id = c.req.param('id');
+    const { departureId } = c.req.valid('json');
+    const lead = await db.prepare('SELECT id FROM leads WHERE id = ? AND is_deleted = 0').bind(id).first();
+    if (!lead) return notFound(c, 'Lead');
+    if (departureId && !(await getDepartureSummary(db, departureId))) return error(c, 'Departure not found', 404, { code: 'DEPARTURE_NOT_FOUND' });
+    await db.prepare('UPDATE leads SET departure_id = ?, updated_at = ? WHERE id = ?').bind(departureId, new Date().toISOString(), id).run();
+    return success(c, { id, departureId });
+  },
 );
 
 export default leadRoutes;

@@ -47,8 +47,10 @@ export interface DrillDownConfig {
 export interface ReportDefinition {
     id: string;
     name: string;
-    category: 'sales' | 'leads' | 'financial' | 'team' | 'customer' | 'visa' | 'supplier' | 'fleet' | 'marketing';
+    category: 'sales' | 'leads' | 'financial' | 'team' | 'customer' | 'visa' | 'supplier' | 'fleet' | 'marketing' | 'tours';
     description: string;
+    /** Plan feature the report belongs to; the reports routes hide and refuse it for an agency without it. */
+    featureKey?: string;
     baseQuery: string;
     allowedFilters: string[];
     allowedGroupBy: string[];

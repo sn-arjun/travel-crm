@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type MiddlewareHandler } from 'hono';
 import { authMiddleware } from '../middleware/auth';
 import { AppContext } from '../types';
 import { reportEngine, ForbiddenError } from '../services/report-engine';
@@ -10,10 +10,20 @@ import { loadLocaleContext } from '../utils/money';
 import { success, error } from '../utils/response';
 import { excelExportService } from '../services/exports/excel-export';
 import { pdfExportService } from '../services/exports/pdf-export';
+import { requireFeature } from '../middleware/feature-gate';
+import { resolveFeature } from '../services/features/resolve';
 
 const reportRoutes = new Hono<AppContext>();
 
 reportRoutes.use('*', authMiddleware);
+
+// A report that belongs to a plan feature (the tour reports, group_departures) is refused without it; the list below leaves it out.
+const gateReportFeature: MiddlewareHandler<AppContext> = async (c, next) => {
+  const featureKey = reportRegistry.get(c.req.param('id') ?? '')?.featureKey;
+  return featureKey ? requireFeature(featureKey)(c, next) : next();
+};
+reportRoutes.use('/:id', gateReportFeature);
+reportRoutes.use('/:id/export', gateReportFeature);
 
 // Dashboard endpoint — aggregated lead stats for widgets
 reportRoutes.get('/dashboard', async (c) => {
@@ -127,7 +137,16 @@ reportRoutes.get('/dashboard', async (c) => {
 
 // Existing routes ...
 reportRoutes.get('/', async (c) => {
-  const reports = reportRegistry.getAll();
+  const tenantId = c.get('tenantId');
+  const features = new Map<string, boolean>();
+  const reports = [];
+  for (const report of reportRegistry.getAll()) {
+    if (report.featureKey) {
+      if (!features.has(report.featureKey)) features.set(report.featureKey, !!tenantId && (await resolveFeature(c.env, tenantId, report.featureKey)).enabled);
+      if (!features.get(report.featureKey)) continue;
+    }
+    reports.push(report);
+  }
   return success(c, reports);
 });
 
