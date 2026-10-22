@@ -22,6 +22,7 @@ import { settingsApi } from '@/lib/api/settings';
 import { useApiQuery } from '@/hooks/use-api';
 import { PageContainer } from '@/components/layout/page-container';
 import { AgeBandsCard } from '../../itineraries/_components/age-bands-card';
+import { QuoteLinkCard } from '../../itineraries/_components/quote-link-card';
 
 const percent = (message: string) =>
   z.string().refine((v) => v !== '' && Number(v) >= 0 && Number(v) <= 100, message);
@@ -141,6 +142,8 @@ export default function ItineraryDefaultsPage() {
           </SectionCard>
 
           <AgeBandsCard />
+
+          <QuoteLinkCard />
         </>
       )}
     />

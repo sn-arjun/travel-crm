@@ -334,6 +334,7 @@ export default function ItineraryDetailPage() {
   const termsConditions = itinerary.termsConditions ?? '';
   const shareLinkActive = itinerary.shareLinkActive ?? !!shareLink;
   const viewCount = itinerary.viewCount ?? 0;
+  const acceptedKind = itinerary.acceptedVia === 'share_link' ? 'link' : (itinerary.acceptedVia ?? 'link');
   const lastViewedAt = itinerary.lastViewedAt ?? null;
 
   const metaParts = [
@@ -346,7 +347,16 @@ export default function ItineraryDetailPage() {
     <PageContainer>
       <PageHeader
         title={itinerary.title}
-        badge={<StatusBadge status={itinerary.status ?? 'draft'} />}
+        badge={
+          <>
+            <StatusBadge status={itinerary.status ?? 'draft'} />
+            {itinerary.acceptedAt && (
+              <Badge variant="outline" className="ms-2 text-xs" data-testid="accepted-badge">
+                {t(`quotes.badge.${acceptedKind}${itinerary.acceptedName ? '' : 'NoName'}`, { name: itinerary.acceptedName ?? '', date: formatDisplayDate(itinerary.acceptedAt) })}
+              </Badge>
+            )}
+          </>
+        }
         breadcrumbs={[{ label: 'Itineraries', href: '/itineraries' }, { label: itinerary.title }]}
         description={metaParts.join(' · ')}
         actions={

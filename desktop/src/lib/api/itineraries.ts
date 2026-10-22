@@ -139,6 +139,10 @@ export interface ItineraryDetail {
   /** The group departure the quote is for and its seats; null when none is linked (R146). */
   departure?: DepartureSummary | null;
   seats?: QuoteSeats | null;
+  /** Set once the quote is accepted (R155): when, how (share_link, staff, message) and the name given. */
+  acceptedAt?: string | null;
+  acceptedVia?: 'share_link' | 'staff' | 'message' | null;
+  acceptedName?: string | null;
   /** The band list the quantities were filled with; null = the agency's bands (R149). */
   ageBands?: AgeBand[] | null;
   /** What the last fill used (R149). */
@@ -342,4 +346,23 @@ export const itinerariesApi = {
 
   revokeShareLink: (id: string) =>
     client.delete<ApiResponse<void>>(API_ENDPOINTS.itineraries.shareLink(id)),
+};
+
+/** Settings > Itinerary defaults > Quote link (R155, design 4.6). */
+export interface QuoteAcceptSettings {
+  enabled: boolean;
+  label: string;
+  requireName: boolean;
+  requireTerms: boolean;
+  holdSeats: boolean;
+  createInvoice: 'none' | 'proforma' | 'invoice';
+  offerDeposit: boolean;
+}
+
+export const quoteAcceptApi = {
+  get: () => client.get<ApiResponse<QuoteAcceptSettings>>('/settings/quotes-accept'),
+  save: (data: Partial<QuoteAcceptSettings>) => client.put<ApiResponse<QuoteAcceptSettings>>('/settings/quotes-accept', data),
+  /** Staff record an acceptance that came by message or call; the lead moves to won. */
+  markAccepted: (id: string, data: { via?: 'staff' | 'message'; name?: string }) =>
+    client.post<ApiResponse<{ id: string; changed: boolean; acceptedAt: string | null }>>(`/itineraries/${id}/mark-accepted`, data),
 };
