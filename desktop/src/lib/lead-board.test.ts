@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  boardFromResponse, boardParams, boardReducer, columnValueLabel, hasMore, isMove, leadAmount, locateLead, needsLostReason,
+  boardFromResponse, boardParams, boardReducer, columnValueLabel, failureReason, hasMore, isMove, leadAmount, locateLead, needsLostReason,
   needsWonConfirmation, parseView, viewStorageKey, type BoardLead, type BoardState,
 } from './lead-board';
 
@@ -151,5 +151,15 @@ describe('move rules and params', () => {
     expect(parseView('list')).toBe('list');
     expect(parseView('weird')).toBe('list');
     expect(parseView(null)).toBe('list');
+  });
+});
+
+describe('failureReason', () => {
+  it('reads the message of an Error or of the API client plain error object', () => {
+    expect(failureReason(new Error('Lost reason is required'))).toBe('Lost reason is required');
+    expect(failureReason({ status: 400, message: ' Create an itinerary first ' })).toBe('Create an itinerary first');
+    expect(failureReason({ status: 500 })).toBe('');
+    expect(failureReason(null)).toBe('');
+    expect(failureReason('boom')).toBe('');
   });
 });

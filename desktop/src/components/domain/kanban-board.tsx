@@ -29,6 +29,8 @@ interface KanbanColumn {
 interface KanbanBoardProps {
   columns: KanbanColumn[];
   className?: string;
+  /** Columns share the width of the board (at least 13rem each) instead of being 20rem wide, so more of them show without scrolling. */
+  fit?: boolean;
   onAddItem?: (columnId: string) => void;
   /** Makes the columns drop targets (HTML5 drag and drop); the card's own drag handlers live in the cards. */
   onDropItem?: (columnId: string, event: React.DragEvent) => void;
@@ -62,17 +64,53 @@ function KanbanColumnHeader({ column, onAdd }: { column: KanbanColumn; onAdd?: (
   );
 }
 
-export function KanbanBoard({ columns, className, onAddItem, onDropItem }: KanbanBoardProps) {
+/** Scrolls the board sideways while a card is held near its left or right edge, so columns out of view can be reached. */
+function createEdgeScroller() {
+  let viewport: HTMLElement | null = null;
+  let dir = 0;
+  let last = 0;
+  let raf = 0;
+
+  function tick() {
+    if (!viewport || dir === 0 || performance.now() - last > 200) {
+      raf = 0;
+      return;
+    }
+    viewport.scrollLeft += dir * 18;
+    raf = requestAnimationFrame(tick);
+  }
+
+  return {
+    onDragOver(e: React.DragEvent<HTMLElement>) {
+      const el = e.currentTarget.closest<HTMLElement>('[data-slot="scroll-area-viewport"]');
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const edge = 72;
+      viewport = el;
+      dir = e.clientX < rect.left + edge ? -1 : e.clientX > rect.right - edge ? 1 : 0;
+      last = performance.now();
+      if (dir !== 0 && raf === 0) raf = requestAnimationFrame(tick);
+    },
+    stop() {
+      cancelAnimationFrame(raf);
+      raf = 0;
+    },
+  };
+}
+
+export function KanbanBoard({ columns, className, fit, onAddItem, onDropItem }: KanbanBoardProps) {
   const t = useT();
   const [overId, setOverId] = React.useState<string | null>(null);
+  const [scroller] = React.useState(createEdgeScroller);
+  React.useEffect(() => scroller.stop, [scroller]);
   return (
     <ScrollArea className={cn('w-full', className)}>
-      <div className="flex gap-4 pb-4 min-w-max">
+      <div className={cn('flex pb-4', fit ? 'min-w-full gap-3' : 'min-w-max gap-4')} onDragOver={onDropItem ? scroller.onDragOver : undefined}>
         {columns.map((column, idx) => (
           <section
             key={column.id}
             aria-label={t('ui.kanban.column', { title: column.title, count: column.count })}
-            className="w-80 shrink-0 animate-slide-up"
+            className={cn('animate-slide-up', fit ? 'min-w-52 flex-1 basis-52' : 'w-80 shrink-0')}
             style={{ animationDelay: `${idx * 50}ms`, animationFillMode: 'both' }}
             onDragOver={onDropItem ? (e) => {
               e.preventDefault();

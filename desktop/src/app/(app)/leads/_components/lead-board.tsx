@@ -20,7 +20,7 @@ import { leadsApi } from '@/lib/api/leads';
 import { formatWholeCurrency } from '@/lib/format';
 import { useT } from '@/lib/i18n';
 import {
-  EMPTY_BOARD, STATUS_COLORS, boardFromResponse, boardParams, boardReducer, columnValueLabel, hasMore, isMove, locateLead,
+  EMPTY_BOARD, STATUS_COLORS, boardFromResponse, boardParams, boardReducer, columnValueLabel, failureReason, hasMore, isMove, locateLead,
   needsLostReason, needsWonConfirmation, type BoardFilters, type BoardLead,
 } from '@/lib/lead-board';
 
@@ -122,7 +122,7 @@ export function LeadBoard({
       announce(message);
     } catch (err) {
       dispatch({ type: 'rollback', leadId: lead.id, from: at.status, to, index: at.index });
-      const why = err instanceof Error && err.message ? err.message : t('pipeline.move.failedGeneric');
+      const why = failureReason(err) || t('pipeline.move.failedGeneric');
       const message = t('pipeline.move.failed', { title: lead.title, reason: why });
       toast.error(message);
       announce(message);
@@ -212,6 +212,7 @@ export function LeadBoard({
       <p role="status" aria-live="polite" className="sr-only" data-testid="lead-board-status">{announcement}</p>
 
       <KanbanBoard
+        fit
         onDropItem={handleDrop}
         columns={board.columns.map((col) => {
           const targets = board.columns

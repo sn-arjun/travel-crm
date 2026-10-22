@@ -1013,11 +1013,12 @@
     "usesAi": false,
     "aiCreditClass": null,
     "needsExternal": [],
-    "status": "partial",
-    "statusReason": "Board component and toggle exist in the page; the e2e spec covers the table view and status change from the detail page, not dragging on the board. Not verified.",
+    "status": "works",
+    "statusReason": "",
     "evidence": [
-      "desktop/src/app/(app)/leads/page.tsx",
-      "desktop/src/components/domain/kanban-board.tsx"
+      "desktop/e2e/leads-board.spec.ts",
+      "backend/test/leads-board.test.ts",
+      "desktop/src/app/(app)/leads/_components/lead-board.tsx"
     ],
     "route": "/leads",
     "filmed": true,

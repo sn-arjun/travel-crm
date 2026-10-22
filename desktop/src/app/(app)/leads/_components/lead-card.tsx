@@ -162,7 +162,7 @@ export function LeadCard({
       <div className="mt-ds-3 flex items-center justify-between gap-ds-2">
         <div className="flex min-w-0 items-center gap-ds-2" title={owner ? t('pipeline.card.owner', { name: owner }) : t('pipeline.card.unassigned')}>
           <Avatar className="size-6">
-            <AvatarFallback className="text-[10px]">{owner ? initialsOf(owner) : '?'}</AvatarFallback>
+            <AvatarFallback className="text-ds-xs">{owner ? initialsOf(owner) : '?'}</AvatarFallback>
           </Avatar>
           <span className="max-w-24 truncate text-xs text-ds-foreground-muted">{owner || t('pipeline.card.unassigned')}</span>
         </div>

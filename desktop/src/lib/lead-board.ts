@@ -270,3 +270,11 @@ export type LeadsView = 'list' | 'board';
 export function parseView(raw: string | null | undefined): LeadsView {
   return raw === 'board' ? 'board' : 'list';
 }
+
+/** The reason a request failed, from an Error or the API client's plain error object; '' when there is none to show. */
+export function failureReason(err: unknown): string {
+  if (err && typeof err === 'object' && 'message' in err && typeof (err as { message: unknown }).message === 'string') {
+    return (err as { message: string }).message.trim();
+  }
+  return '';
+}

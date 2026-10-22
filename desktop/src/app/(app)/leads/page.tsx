@@ -114,7 +114,7 @@ export default function LeadsPage() {
     </div>
   );
 
-  const filterControls = (
+  const filterSelects = (
     <>
       <Select value={statusFilter || 'all'} onValueChange={(v) => setStatusFilter(v === 'all' ? '' : v)}>
         <SelectTrigger className="w-40 h-9" aria-label="Filter by status"><SelectValue placeholder="All statuses" /></SelectTrigger>
@@ -143,10 +143,13 @@ export default function LeadsPage() {
           </SelectContent>
         </Select>
       )}
-      <Button size="sm" variant="outline" onClick={() => router.push('/leads/unassigned')}>
-        <UserPlus aria-hidden="true" /> Unassigned
-      </Button>
     </>
+  );
+
+  const unassignedButton = (
+    <Button size="sm" variant="outline" onClick={() => router.push('/leads/unassigned')}>
+      <UserPlus aria-hidden="true" /> Unassigned
+    </Button>
   );
 
   const newLeadButton = (
@@ -171,12 +174,12 @@ export default function LeadsPage() {
   return (
     <>
       {boardView ? (
-        <PageContainer>
+        <PageContainer className="max-w-none">
           <PageHeader
             title="Leads"
             description="Track and convert your sales pipeline."
             count={boardTotal}
-            actions={<>{filterControls}{viewToggle}{newLeadButton}</>}
+            actions={<>{unassignedButton}{viewToggle}{newLeadButton}</>}
           />
           <FilterBar
             searchValue={search}
@@ -185,6 +188,7 @@ export default function LeadsPage() {
             activeFilters={activeFilters}
             onRemoveFilter={removeFilter}
             onClearFilters={clearFilters}
+            actions={filterSelects}
           />
           <LeadBoard
             filters={{
@@ -256,7 +260,7 @@ export default function LeadsPage() {
           },
         ]}
         primaryAction={newLeadButton}
-        headerActions={<>{filterControls}{viewToggle}</>}
+        headerActions={<>{filterSelects}{unassignedButton}{viewToggle}</>}
         filters={activeFilters}
         onRemoveFilter={removeFilter}
         onClearFilters={clearFilters}
