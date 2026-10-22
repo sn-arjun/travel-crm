@@ -9,6 +9,8 @@ import { generateId } from '../utils/uuid';
 import { getTenantTimeZone, localDateString, addDaysLocal } from '../utils/tz';
 import { loadLocaleContext } from '../utils/money';
 import { computeDocumentTotals, loadTaxBuyer, loadTaxSettings, taxColumns } from './tax-calculator';
+import { loadInvoiceTaxContext, marginColumns, resolveMarginCost, type MarginCost } from './margin-scheme';
+import type { Env } from '../types';
 import { calculateTripCost, haversineDistance, type RateCard } from './trip-cost-calculator';
 
 /**
@@ -19,6 +21,8 @@ export async function generateTripInvoice(
   db: any,
   trip: Record<string, any>,
   userId: string,
+  /** Needed to apply the margin scheme (feature switch); without it the invoice follows the ordinary tax regime. */
+  tenant?: { env: Env; tenantId: string },
 ): Promise<Record<string, any>> {
   const now = new Date().toISOString();
   const contactId = trip.contact_id;
@@ -113,7 +117,16 @@ export async function generateTripInvoice(
   const currency = (rateCardCurrency || (await loadLocaleContext(db)).currency).toUpperCase();
 
   // Tax follows the agency's own tax system (settings) and the contact, like every other invoice
-  const { regime, seller } = await loadTaxSettings(db);
+  const taxCtx = tenant
+    ? await loadInvoiceTaxContext(tenant.env, tenant.tenantId, db, { origin: 'trip' })
+    : { ...(await loadTaxSettings(db)), margin: null, scheme: null };
+  const { regime, seller } = taxCtx;
+  let marginCost: MarginCost | null = null;
+  if (regime === 'margin' && taxCtx.margin && taxCtx.scheme) {
+    // A transport trip has no departure or itinerary behind it: the cost is typed on the invoice.
+    marginCost = await resolveMarginCost(db, { scheme: taxCtx.scheme, currency });
+    taxCtx.margin = { ...taxCtx.margin, cost: marginCost.cost };
+  }
   const buyer = (await loadTaxBuyer(db, contactId)) ?? {};
   // GST: travel and transport services are typically 5% in India (SAC 996411). Other regimes use the
   // agency's configured rate (undefined here).
@@ -162,7 +175,7 @@ export async function generateTripInvoice(
     items.map((i) => ({ rate: i.rate, quantity: 1, taxRate: i.taxRate })),
     undefined,
     0,
-    { regime, seller, buyer },
+    { regime, seller, buyer, margin: taxCtx.margin },
   );
   const taxCols = taxColumns(doc.tax);
   const { subtotal, total } = doc;
@@ -194,6 +207,12 @@ export async function generateTripInvoice(
     taxCols.tax_regime, taxCols.tax_breakdown, taxCols.seller_tax_id, taxCols.buyer_tax_id,
     taxCols.place_of_supply, taxCols.tax_notes,
   ).run();
+
+  if (regime === 'margin') {
+    const m = marginColumns(regime, taxCtx.margin, marginCost);
+    await db.prepare('UPDATE invoices SET margin_cost = ?, margin_cost_source = ?, margin_vat_rate = ?, margin_wording = ? WHERE id = ?')
+      .bind(m.margin_cost, m.margin_cost_source, m.margin_vat_rate, m.margin_wording, invoiceId).run();
+  }
 
   // Create line items
   for (let i = 0; i < items.length; i++) {

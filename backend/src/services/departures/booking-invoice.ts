@@ -13,7 +13,8 @@
 
 import type { Env } from '../../types';
 import { createInvoice, InvoiceContactNotFound, type CreateInvoiceItemInput } from '../domain/invoices';
-import { computeDocumentTotals, loadTaxBuyer, loadTaxSettings, taxColumns, TaxConfigError } from '../tax-calculator';
+import { computeDocumentTotals, loadTaxBuyer, loadTaxSettings, taxColumns, TaxConfigError, type MarginInput } from '../tax-calculator';
+import { bookingOfInvoice, loadMarginScheme, resolveMarginCost, MarginSchemeError } from '../margin-scheme';
 import { loadLocaleContext } from '../../utils/money';
 import { generateId } from '../../utils/uuid';
 import { logActivity } from '../../utils/activity-logger';
@@ -167,7 +168,7 @@ export async function createBookingInvoice(env: Env, tenantId: string, db: D1Dat
       if (invoice.status !== 'draft' || (invoice.paid_amount ?? 0) > 0) {
         throw new DepartureError(409, 'INVOICE_LOCKED', 'The invoice has been sent or paid, so it is no longer changed from the passengers', { invoiceNumber: invoice.invoice_number });
       }
-      const total = await refreshDraft(db, invoice.id, booking.contact_id, lines.map(toItem));
+      const total = await refreshDraft(db, invoice.id, booking.contact_id, lines.map(toItem), { currency });
       await db.prepare('UPDATE invoices SET currency = ?, updated_at = ? WHERE id = ?').bind(currency, nowIso(), invoice.id).run();
       return { invoiceId: invoice.id, invoiceNumber: invoice.invoice_number, currency, total, created: false };
     }
@@ -183,12 +184,14 @@ export async function createBookingInvoice(env: Env, tenantId: string, db: D1Dat
         type: 'tax_invoice',
         items: lines.map(toItem),
         currency,
+        origin: 'booking',
+        seatBookingId,
         notes: t(lang, 'booking.invoice.notes', { tour: dep.tour.title, code: dep.row.code }),
       },
       { userId: actor.userId, depth: actor.depth, waiter: actor.waiter },
     );
   } catch (e) {
-    if (e instanceof TaxConfigError) throw new DepartureError(409, 'TAX_CONFIG', e.message);
+    if (e instanceof TaxConfigError || e instanceof MarginSchemeError) throw new DepartureError(409, 'TAX_CONFIG', e.message);
     if (e instanceof InvoiceContactNotFound) throw new DepartureError(404, 'CONTACT_NOT_FOUND', 'Contact not found');
     throw e;
   }
@@ -197,14 +200,48 @@ export async function createBookingInvoice(env: Env, tenantId: string, db: D1Dat
   return { invoiceId: made.id, invoiceNumber: made.invoiceNumber, currency: made.currency, total: made.totals.total, created: true };
 }
 
-/** Recomputes a draft invoice from new lines: totals, tax and items, in one batch. Returns the new total. */
-export async function refreshDraft(db: D1Database, invoiceId: string, contactId: string, items: CreateInvoiceItemInput[]): Promise<number> {
+/**
+ * Recomputes a draft invoice from new lines: totals, tax and items, in one batch. Returns the new total.
+ * A draft under the margin scheme stays under it: its cost is taken from the departure again unless a person typed one (R152).
+ */
+export async function refreshDraft(
+  db: D1Database,
+  invoiceId: string,
+  contactId: string,
+  items: CreateInvoiceItemInput[],
+  opts: { currency?: string } = {},
+): Promise<number> {
   const buyer = await loadTaxBuyer(db, contactId);
   if (!buyer) throw new DepartureError(404, 'CONTACT_NOT_FOUND', 'Contact not found');
-  const { regime, seller } = await loadTaxSettings(db);
+  const settings = await loadTaxSettings(db);
+  const { seller } = settings;
+  const current = await db
+    .prepare('SELECT tax_regime, currency, margin_cost, margin_cost_source, margin_vat_rate, margin_wording FROM invoices WHERE id = ?')
+    .bind(invoiceId)
+    .first<{ tax_regime: string; currency: string | null; margin_cost: number | null; margin_cost_source: string | null; margin_vat_rate: number | null; margin_wording: string | null }>();
+  const underMargin = current?.tax_regime === 'margin';
+  let regime: 'gst' | 'vat' | 'sales_tax' | 'none' | 'margin' = settings.regime;
+  let margin: MarginInput | null = null;
+  let marginCols = { margin_cost: null as number | null, margin_cost_source: null as string | null, margin_vat_rate: null as number | null, margin_wording: null as string | null };
+  if (underMargin && current) {
+    regime = 'margin';
+    const scheme = await loadMarginScheme(db);
+    let cost = current.margin_cost;
+    let source = current.margin_cost_source;
+    if (source !== 'manual') {
+      const seatBookingId = await bookingOfInvoice(db, invoiceId);
+      if (seatBookingId) {
+        const fresh = await resolveMarginCost(db, { scheme, currency: (opts.currency ?? current.currency ?? 'INR'), seatBookingId });
+        cost = fresh.cost;
+        source = fresh.source;
+      }
+    }
+    margin = { wording: current.margin_wording ?? (scheme.wording || null), cost, vatRate: current.margin_vat_rate };
+    marginCols = { margin_cost: cost, margin_cost_source: source, margin_vat_rate: current.margin_vat_rate, margin_wording: margin.wording };
+  }
   let doc;
   try {
-    doc = computeDocumentTotals(items, undefined, 0, { regime, seller, buyer });
+    doc = computeDocumentTotals(items, undefined, 0, { regime, seller, buyer, margin });
   } catch (e) {
     if (e instanceof TaxConfigError) throw new DepartureError(409, 'TAX_CONFIG', e.message);
     throw e;
@@ -216,12 +253,14 @@ export async function refreshDraft(db: D1Database, invoiceId: string, contactId:
       .prepare(
         `UPDATE invoices SET subtotal = ?, discount_type = NULL, discount_value = NULL, discount_amount = ?, taxable_amount = ?, tax_type = ?,
            cgst = ?, sgst = ?, igst = ?, vat_amount = ?, total_tax = ?, total = ?, balance_due = ?, tax_regime = ?, tax_breakdown = ?,
-           seller_tax_id = ?, buyer_tax_id = ?, place_of_supply = ?, tax_notes = ?, updated_at = ? WHERE id = ?`,
+           seller_tax_id = ?, buyer_tax_id = ?, place_of_supply = ?, tax_notes = ?, margin_cost = ?, margin_cost_source = ?,
+           margin_vat_rate = ?, margin_wording = ?, updated_at = ? WHERE id = ?`,
       )
       .bind(
         doc.subtotal, doc.discountAmount, doc.taxableAmount, cols.tax_type,
         doc.tax.cgst, doc.tax.sgst, doc.tax.igst, doc.tax.vatAmount, doc.tax.totalTax, doc.total, doc.total, cols.tax_regime, cols.tax_breakdown,
-        cols.seller_tax_id, cols.buyer_tax_id, cols.place_of_supply, cols.tax_notes, now, invoiceId,
+        cols.seller_tax_id, cols.buyer_tax_id, cols.place_of_supply, cols.tax_notes,
+        marginCols.margin_cost, marginCols.margin_cost_source, marginCols.margin_vat_rate, marginCols.margin_wording, now, invoiceId,
       ),
     db.prepare('DELETE FROM invoice_items WHERE invoice_id = ?').bind(invoiceId),
   ];

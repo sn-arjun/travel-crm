@@ -12,7 +12,8 @@ import { success, error, notFound, paginated } from '../utils/response';
 import { generateId } from '../utils/uuid';
 import { rbac } from '../middleware/rbac';
 import { loadLocaleContext } from '../utils/money';
-import { computeDocumentTotals, loadTaxBuyer, loadTaxSettings, taxColumns, TaxConfigError } from '../services/tax-calculator';
+import { computeDocumentTotals, loadTaxBuyer, taxColumns, TaxConfigError } from '../services/tax-calculator';
+import { loadInvoiceTaxContext, marginColumns, resolveMarginCost } from '../services/margin-scheme';
 
 const aiExtractionRoutes = new Hono<AppContext>();
 
@@ -375,14 +376,17 @@ aiExtractionRoutes.post('/:id/create-invoice', async (c) => {
 
   // Tax follows the agency's own regime and rules (settings), the same engine invoices use.
   const currency = String(extraction.budget_currency || (await loadLocaleContext(db)).currency).toUpperCase();
-  const { regime, seller } = await loadTaxSettings(db);
+  const taxCtx = await loadInvoiceTaxContext(c.env, c.get('tenantId'), db, { origin: 'manual' });
+  const { regime, seller } = taxCtx;
+  const marginCost = regime === 'margin' && taxCtx.scheme ? await resolveMarginCost(db, { scheme: taxCtx.scheme, currency }) : null;
+  if (taxCtx.margin) taxCtx.margin = { ...taxCtx.margin, cost: marginCost?.cost ?? null };
   const buyer = (await loadTaxBuyer(db, contactId)) ?? {};
   const unitRate = budget > 0 ? Math.round(budget / paxCount) : 0;
   const subtotalBase = budget > 0 ? budget : 0;
   let doc;
   try {
     // 5% is the Indian GST rate for a travel package; other regimes use the agency's configured rate.
-    doc = computeDocumentTotals([{ rate: subtotalBase, quantity: 1 }], undefined, 0, { regime, seller, buyer, gstDefaultRate: 5 });
+    doc = computeDocumentTotals([{ rate: subtotalBase, quantity: 1 }], undefined, 0, { regime, seller, buyer, gstDefaultRate: 5, margin: taxCtx.margin });
   } catch (e) {
     if (e instanceof TaxConfigError) return error(c, e.message, 400);
     throw e;
@@ -405,6 +409,12 @@ aiExtractionRoutes.post('/:id/create-invoice', async (c) => {
     `Auto-generated from AI extraction for ${dest} (${paxCount} pax)`,
     userId,
   ).run();
+
+  if (regime === 'margin') {
+    const m = marginColumns(regime, taxCtx.margin, marginCost);
+    await db.prepare('UPDATE invoices SET margin_cost = ?, margin_cost_source = ?, margin_vat_rate = ?, margin_wording = ? WHERE id = ?')
+      .bind(m.margin_cost, m.margin_cost_source, m.margin_vat_rate, m.margin_wording, invoiceId).run();
+  }
 
   // Add line item
   const itemId = generateId();

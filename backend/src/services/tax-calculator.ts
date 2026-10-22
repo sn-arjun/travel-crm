@@ -194,11 +194,11 @@ export function isValidTaxRate(rate: number): boolean {
 // Currencies without 2 minor digits (JPY, KWD) are not handled yet (R202).
 // ============================================================================
 
-export type TaxRegime = 'gst' | 'vat' | 'sales_tax' | 'none';
+export type TaxRegime = 'gst' | 'vat' | 'sales_tax' | 'none' | 'margin';
 
 /** The way tax was applied to a document; stored in invoices.tax_type. */
 export type TaxTreatment =
-  | 'cgst_sgst' | 'igst' | 'export_zero' | 'vat' | 'reverse_charge' | 'sales_tax' | 'none';
+  | 'cgst_sgst' | 'igst' | 'export_zero' | 'vat' | 'reverse_charge' | 'sales_tax' | 'none' | 'margin';
 
 export type TaxCode = 'CGST' | 'SGST' | 'IGST' | 'VAT' | 'SALES_TAX';
 
@@ -208,6 +208,30 @@ export interface TaxLine {
   base: number;
   amount: number;
   label: string;
+}
+
+/**
+ * An entry kept in tax_breakdown that is never printed (R152): the VAT on the margin of a margin-scheme invoice, for the
+ * accountant's report. `inputs_missing` says the cost or the agency's rate was not known when the invoice was made.
+ */
+export interface HiddenTaxEntry {
+  code: 'MARGIN_VAT';
+  hidden: true;
+  base?: number;
+  rate?: number;
+  amount?: number;
+  status?: 'inputs_missing';
+}
+
+/** What the margin scheme needs besides the lines: the agency's wording, the cost of the sold services and its own VAT rate. */
+export interface MarginInput {
+  wording: string | null;
+  /** In the invoice currency; null = not recorded. */
+  cost: number | null;
+  /** Percent; null = the agency has not entered a rate (none is ever assumed). */
+  vatRate: number | null;
+  /** The price the buyer pays (after any document discount); omitted = the sum of the line bases. */
+  price?: number;
 }
 
 export interface TaxSellerInput {
@@ -261,6 +285,8 @@ export interface ComputeInvoiceTaxInput {
   frozen?: FrozenTaxRules | null;
   /** GST only: rate for lines that carry none (the form's single GST rate). */
   gstDefaultRate?: number | null;
+  /** Margin regime only: wording, cost and the agency's rate. */
+  margin?: MarginInput | null;
 }
 
 export interface ComputedTaxLine {
@@ -274,6 +300,8 @@ export interface ComputeInvoiceTaxResult {
   treatment: TaxTreatment;
   lines: ComputedTaxLine[];
   taxLines: TaxLine[];
+  /** Entries stored with the breakdown but never printed (margin scheme). */
+  hiddenLines: HiddenTaxEntry[];
   totalTax: number;
   cgst: number;
   sgst: number;
@@ -345,6 +373,29 @@ function taxMinor(baseMinor: number, ratePercent: number, divisor = 1): number {
 }
 
 /**
+ * VAT contained in a margin (the margin is VAT-inclusive): margin x rate / (100 + rate), rounded half-up in minor units.
+ * A margin of zero or less carries no VAT. The rate has up to 3 decimals.
+ */
+export function vatOnMarginMinor(marginMinor: number, ratePercent: number): number {
+  if (!(marginMinor > 0) || !(ratePercent > 0)) return 0;
+  const rateMilli = Math.round(ratePercent * 1000);
+  const denom = 100000 + rateMilli;
+  return Math.floor((marginMinor * rateMilli * 2 + denom) / (denom * 2));
+}
+
+/** The hidden MARGIN_VAT entry: complete only when both the cost and the agency's rate are known. */
+export function marginVatEntry(priceMinor: number, cost: number | null, vatRate: number | null): HiddenTaxEntry {
+  if (cost === null || cost === undefined || vatRate === null || vatRate === undefined) {
+    return { code: 'MARGIN_VAT', hidden: true, status: 'inputs_missing' };
+  }
+  const marginMinor = priceMinor - toMinor(cost);
+  return {
+    code: 'MARGIN_VAT', hidden: true, base: fromMinor(marginMinor), rate: vatRate,
+    amount: fromMinor(vatOnMarginMinor(marginMinor, vatRate)),
+  };
+}
+
+/**
  * Decide and compute the tax of one document. Pure: all inputs (agency settings, buyer, lines)
  * are arguments; throws TaxConfigError when a required rate is missing.
  */
@@ -400,11 +451,16 @@ export function computeInvoiceTax(input: ComputeInvoiceTaxInput): ComputeInvoice
     defaultRate = seller.salesTaxRate;
     treatment = 'sales_tax';
     placeOfSupply = clean(buyer.state) ?? clean(seller.state);
+  } else if (regime === 'margin') {
+    // Margin scheme (R152): VAT is included in the price and not shown. The agency's own wording is the only note.
+    treatment = 'margin';
+    const wording = clean(input.margin?.wording);
+    if (wording) notes.push(wording);
   } else {
     treatment = 'none';
   }
 
-  const zeroRated = treatment === 'export_zero' || treatment === 'reverse_charge' || treatment === 'none';
+  const zeroRated = treatment === 'export_zero' || treatment === 'reverse_charge' || treatment === 'none' || treatment === 'margin';
   const lineResults: ComputedTaxLine[] = [];
   const groups = new Map<string, TaxLine & { baseMinor: number; amountMinor: number }>();
 
@@ -461,14 +517,22 @@ export function computeInvoiceTax(input: ComputeInvoiceTaxInput): ComputeInvoice
     taxLines.filter((t) => t.code === code).reduce((s, t) => s + toMinor(t.amount), 0);
   const totalTaxMinor = lineResults.reduce((s, l) => s + toMinor(l.taxAmount), 0);
 
-  const sellerTaxId = frozen && frozen.sellerTaxId !== undefined ? frozen.sellerTaxId : clean(seller.taxId);
-  const buyerTaxId = frozen && frozen.buyerTaxId !== undefined ? frozen.buyerTaxId : clean(buyer.taxId);
+  // No VAT number of the buyer and none of the seller's is printed on a margin invoice (the buyer is not charged VAT).
+  const margin = treatment === 'margin';
+  const sellerTaxId = margin ? null : frozen && frozen.sellerTaxId !== undefined ? frozen.sellerTaxId : clean(seller.taxId);
+  const buyerTaxId = margin ? null : frozen && frozen.buyerTaxId !== undefined ? frozen.buyerTaxId : clean(buyer.taxId);
+  const hiddenLines: HiddenTaxEntry[] = [];
+  if (margin && input.margin) {
+    const priceMinor = input.margin.price !== undefined ? toMinor(input.margin.price) : lines.reduce((s, l) => s + toMinor(l.amount), 0);
+    hiddenLines.push(marginVatEntry(priceMinor, input.margin.cost, input.margin.vatRate));
+  }
 
   return {
     regime,
     treatment,
     lines: lineResults,
     taxLines,
+    hiddenLines,
     totalTax: fromMinor(totalTaxMinor),
     cgst: fromMinor(sumCode('CGST')),
     sgst: fromMinor(sumCode('SGST')),
@@ -493,8 +557,8 @@ export function frozenRulesFromInvoice(row: {
   buyer_tax_id?: string | null;
   cgst?: number | null;
 }): FrozenTaxRules {
-  const regime = (['gst', 'vat', 'sales_tax', 'none'].includes(row.tax_regime ?? '') ? row.tax_regime : 'gst') as TaxRegime;
-  const known: TaxTreatment[] = ['cgst_sgst', 'igst', 'export_zero', 'vat', 'reverse_charge', 'sales_tax', 'none'];
+  const regime = (['gst', 'vat', 'sales_tax', 'none', 'margin'].includes(row.tax_regime ?? '') ? row.tax_regime : 'gst') as TaxRegime;
+  const known: TaxTreatment[] = ['cgst_sgst', 'igst', 'export_zero', 'vat', 'reverse_charge', 'sales_tax', 'none', 'margin'];
   let treatment = known.find((t) => t === row.tax_type);
   if (!treatment) {
     treatment = regime === 'gst' ? ((row.cgst ?? 0) > 0 ? 'cgst_sgst' : 'igst') : regime;
@@ -527,7 +591,7 @@ export function taxColumns(r: ComputeInvoiceTaxResult) {
   return {
     tax_regime: r.regime,
     tax_type: r.treatment,
-    tax_breakdown: JSON.stringify(r.taxLines),
+    tax_breakdown: JSON.stringify([...r.taxLines, ...r.hiddenLines]),
     seller_tax_id: r.sellerTaxId,
     buyer_tax_id: r.buyerTaxId,
     place_of_supply: r.placeOfSupply,
@@ -555,7 +619,18 @@ function settingNumber(raw: string | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export async function loadTaxSettings(db: D1Like): Promise<{ regime: TaxRegime; seller: TaxSellerInput }> {
+/** Country default for an agency whose tax system is the margin scheme but which issues an ordinary invoice: India GST, a known VAT country VAT, else none. */
+export function ordinaryRegimeForCountry(country: string | null | undefined): Exclude<TaxRegime, 'margin'> {
+  const c = normalizeCountry(country) ?? 'IN';
+  return c === 'IN' ? 'gst' : DEFAULT_VAT_RATES[c] !== undefined ? 'vat' : 'none';
+}
+
+/**
+ * The agency's tax settings. `regime` is always an ordinary regime (the one an invoice that is not under the margin scheme
+ * follows); `marginDefault` is true when the agency chose the margin scheme as its tax system. services/margin-scheme.ts
+ * decides, per invoice, whether the margin scheme applies.
+ */
+export async function loadTaxSettings(db: D1Like): Promise<{ regime: Exclude<TaxRegime, 'margin'>; marginDefault: boolean; seller: TaxSellerInput }> {
   const res = await db
     .prepare(
       `SELECT key, value FROM settings WHERE key IN
@@ -565,11 +640,16 @@ export async function loadTaxSettings(db: D1Like): Promise<{ regime: TaxRegime; 
   const m: Record<string, string> = {};
   for (const r of res.results ?? []) m[r.key] = r.value;
   const system = settingText(m.tax_system) ?? 'gst';
-  const regime = (['gst', 'vat', 'sales_tax', 'none'].includes(system) ? system : 'gst') as TaxRegime;
+  const marginDefault = system === 'margin';
+  const sellerCountry = settingText(m.country) ?? settingText(m.company_country);
+  const regime = (marginDefault
+    ? ordinaryRegimeForCountry(sellerCountry)
+    : ['gst', 'vat', 'sales_tax', 'none'].includes(system) ? system : 'gst') as Exclude<TaxRegime, 'margin'>;
   return {
     regime,
+    marginDefault,
     seller: {
-      country: settingText(m.country) ?? settingText(m.company_country),
+      country: sellerCountry,
       state: settingText(m.company_state),
       taxId: regime === 'gst' ? (settingText(m.gstin) ?? settingText(m.seller_tax_id)) : settingText(m.seller_tax_id),
       vatRate: settingNumber(m.vat_rate),
@@ -623,11 +703,16 @@ export function computeDocumentTotals(
     const discMinor = Math.round((grossMinor * (it.discountPercent ?? 0)) / 100);
     return { amount: fromMinor(grossMinor - discMinor), taxRate: it.taxRate };
   });
-  const tax = computeInvoiceTax({ ...ctx, lines });
   let discountMinor = 0;
   if (discountType === 'percentage') discountMinor = Math.round((subtotalMinor * discountValue) / 100);
   else if (discountType === 'fixed') discountMinor = toMinor(discountValue);
   const taxableMinor = subtotalMinor - discountMinor;
+  // On a margin invoice the buyer pays the price after the document discount; the margin is that price less the cost.
+  const tax = computeInvoiceTax({
+    ...ctx,
+    lines,
+    margin: ctx.margin ? { ...ctx.margin, price: fromMinor(taxableMinor) } : ctx.margin,
+  });
   return {
     tax,
     subtotal: fromMinor(subtotalMinor),

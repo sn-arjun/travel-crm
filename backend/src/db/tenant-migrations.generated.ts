@@ -1137,5 +1137,14 @@ export const TENANT_MIGRATIONS: BundledMigration[] = [
       "ALTER TABLE chatbot_conversations ADD COLUMN contact_consent_text TEXT",
       "ALTER TABLE chatbot_conversations ADD COLUMN contact_marketing_opt_in INTEGER DEFAULT 0"
     ]
+  },
+  {
+    "name": "0062_margin_scheme.sql",
+    "queries": [
+      "-- R152: margin-scheme invoices (design 4.5 and 12).\n--\n-- invoices.margin_cost         what the sold services cost the agency, in the invoice currency; NULL = not recorded.\n-- invoices.margin_cost_source  where margin_cost came from: departure, itinerary or manual; NULL = none yet.\n-- invoices.margin_vat_rate     the agency's own VAT rate (percent) at the time, NULL when the agency has not entered one. Never defaulted.\n-- invoices.margin_wording      the legal mention printed under the totals, a snapshot of the agency wording.\n-- invoices.tax_regime already holds 'margin' as a value (it is plain text).\nALTER TABLE invoices ADD COLUMN margin_cost REAL",
+      "ALTER TABLE invoices ADD COLUMN margin_cost_source TEXT",
+      "ALTER TABLE invoices ADD COLUMN margin_vat_rate REAL",
+      "ALTER TABLE invoices ADD COLUMN margin_wording TEXT"
+    ]
   }
 ];

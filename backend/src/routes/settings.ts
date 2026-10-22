@@ -16,10 +16,14 @@ import { rateLimit } from '../middleware/rate-limiter';
 import { loadLocaleContext, validateLocaleSettings } from '../utils/money';
 import { isUiLanguage, UI_LANGUAGES } from '../i18n';
 import { DEFAULT_VAT_RATES, loadTaxSettings, normalizeCountry } from '../services/tax-calculator';
+import {
+  DEFAULT_MARGIN_SCHEME, loadMarginScheme, MARGIN_FEATURE, MARGIN_SCHEME_KEY, normalizeMarginScheme, marginSchemeAllowed,
+} from '../services/margin-scheme';
 import { normalizeBankDetails, validateBankDetails } from '../utils/bank-details';
 import { loadPaymentDefaults, normalizePaymentDefaults, PAYMENT_DEFAULTS_KEY } from '../services/payments/accounts';
 import { STRIPE_METHOD_CURRENCIES } from '../services/payments/agency-gateway';
 import { requireFeature } from '../middleware/feature-gate';
+import { resolveFeature } from '../services/features/resolve';
 import { AGE_BANDS_SETTING_KEY, DEFAULT_AGE_BANDS, loadAgencyBands, parseBands } from '../services/pricing/age-bands';
 
 const settingsRoutes = new Hono<AppContext>();
@@ -500,6 +504,14 @@ settingsRoutes.get('/invoice-defaults', async (c) => {
   const countrySystem: 'gst' | 'vat' | 'none' = country === 'IN' ? 'gst' : DEFAULT_VAT_RATES[country] !== undefined ? 'vat' : 'none';
   if (!result.tax_system) result.tax_system = countrySystem;
   if (!result.default_tax_type) result.default_tax_type = result.tax_system;
+  // R152: an agency that chose the margin scheme as its tax system is told so only while the scheme can actually be used.
+  if (result.tax_system === 'margin' || result.default_tax_type === 'margin') {
+    const allowed = await marginSchemeAllowed(c.env, c.get('tenantId'), await loadMarginScheme(c.get('tenantDb')));
+    if (!allowed) {
+      if (result.tax_system === 'margin') result.tax_system = countrySystem;
+      if (result.default_tax_type === 'margin') result.default_tax_type = countrySystem;
+    }
+  }
   if (!result.default_tax_rate) {
     const system = result.default_tax_type;
     if (system === 'gst') result.default_tax_rate = 18;
@@ -510,6 +522,48 @@ settingsRoutes.get('/invoice-defaults', async (c) => {
   }
 
   return success(c, result);
+});
+
+// ============================================================
+// GET / PUT /margin-scheme — Margin-scheme invoices: wording, the agency's own VAT rate, cost source (R152, design 4.5)
+// ============================================================
+
+settingsRoutes.get('/margin-scheme', requireFeature(MARGIN_FEATURE), async (c) => {
+  return success(c, { ...(await loadMarginScheme(c.get('tenantDb'))), defaults: DEFAULT_MARGIN_SCHEME });
+});
+
+const marginSchemeSchema = z.object({
+  enabled: z.boolean().optional(),
+  defaultFor: z.enum(['none', 'tour_bookings', 'all_invoices']).optional(),
+  wording: z.string().trim().max(500).optional(),
+  // No default is ever applied: null (or leaving it out) means the agency has not entered a rate.
+  vatRate: z.number().min(0).max(100).nullable().optional(),
+  costSource: z.enum(['auto', 'manual']).optional(),
+});
+
+settingsRoutes.put('/margin-scheme', requireFeature(MARGIN_FEATURE), rbac(['admin']), zValidator('json', marginSchemeSchema), async (c) => {
+  const db = drizzle(c.get('tenantDb'));
+  const userId = c.get('userId');
+  const body = c.req.valid('json');
+  const current = await loadMarginScheme(c.get('tenantDb'));
+  const next = normalizeMarginScheme({ ...current, ...body });
+  if (next.enabled && !next.wording) return error(c, 'Enter the wording that is printed on the invoice. Presets are only suggestions: check them with your accountant.', 400);
+  if (!next.enabled && (await loadTaxSettings(c.get('tenantDb'))).marginDefault) {
+    return error(c, 'The margin scheme is the tax system of this agency. Choose another tax system first.', 400);
+  }
+  const value = JSON.stringify(next);
+  const now = new Date().toISOString();
+  const [existing] = await db.select().from(settings).where(eq(settings.key, MARGIN_SCHEME_KEY)).limit(1);
+  if (existing) await db.update(settings).set({ value, updatedBy: userId, updatedAt: now }).where(eq(settings.key, MARGIN_SCHEME_KEY));
+  else await db.insert(settings).values({ key: MARGIN_SCHEME_KEY, value, updatedBy: userId, updatedAt: now });
+  await logActivity(db, {
+    userId,
+    action: 'update_settings',
+    entityType: 'settings',
+    details: JSON.stringify({ key: MARGIN_SCHEME_KEY }),
+    ipAddress: c.get('clientIp'),
+  });
+  return success(c, { ...next, defaults: DEFAULT_MARGIN_SCHEME });
 });
 
 // ============================================================
@@ -570,11 +624,11 @@ const invoiceDefaultsSchema = z.object({
   bank_details: z.record(z.string(), z.any()).optional(),
   default_payment_terms: z.string().optional(),
   default_due_days: z.number().int().min(1).max(365).optional(),
-  default_tax_type: z.enum(['gst', 'vat', 'sales_tax', 'none']).optional(),
+  default_tax_type: z.enum(['gst', 'vat', 'sales_tax', 'none', 'margin']).optional(),
   default_tax_rate: z.number().min(0).max(100).optional(),
   gstin: z.string().optional(),
   company_state: z.string().optional(),
-  tax_system: z.enum(['gst', 'vat', 'sales_tax', 'none']).optional(),
+  tax_system: z.enum(['gst', 'vat', 'sales_tax', 'none', 'margin']).optional(),
   upi_id: z.string().optional(),
   // Tax engine (R201): the agency's own country and rates. Defaults for VAT by country are in
   // services/tax-calculator.ts (DEFAULT_VAT_RATES) and apply only while vat_rate is unset.
@@ -600,7 +654,17 @@ settingsRoutes.put(
 
     // Validation per tax regime, against the values this save leaves in place
     const stored = await loadTaxSettings(c.get('tenantDb'));
-    const regime = body.tax_system ?? stored.regime;
+    // R152: the margin scheme as the agency's tax system needs the feature, the scheme switched on and its wording.
+    if (body.tax_system === 'margin' || body.default_tax_type === 'margin') {
+      if (!(await resolveFeature(c.env, c.get('tenantId'), MARGIN_FEATURE)).enabled) {
+        return error(c, 'The margin scheme is not available for this agency', 403);
+      }
+      const scheme = await loadMarginScheme(c.get('tenantDb'));
+      if (!scheme.enabled || !scheme.wording) {
+        return error(c, 'Switch on the margin scheme and enter its wording before choosing it as the tax system', 400);
+      }
+    }
+    const regime = body.tax_system === 'margin' ? 'margin' : body.tax_system ?? stored.regime;
     if (regime === 'gst' && body.gstin && !GSTIN_PATTERN.test(body.gstin.trim().toUpperCase())) {
       return error(c, 'GSTIN must be 15 characters, for example 22AAAAA0000A1Z5', 400);
     }

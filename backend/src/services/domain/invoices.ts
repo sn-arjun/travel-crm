@@ -4,13 +4,12 @@ import { notifications } from '../../db/tenant-schema';
 import { generateId } from '../../utils/uuid';
 import { logActivity } from '../../utils/activity-logger';
 import { generateInvoiceNumber } from '../numbering';
-import {
-  computeDocumentTotals, loadTaxBuyer, loadTaxSettings, taxColumns,
-} from '../tax-calculator';
+import { computeDocumentTotals, loadTaxBuyer, taxColumns } from '../tax-calculator';
 import { formatMoney, loadLocaleContext } from '../../utils/money';
 import { getTenantTimeZone, localDateString } from '../../utils/tz';
 import { loadAgencyBankDetails } from '../../utils/bank-details';
 import { emitEvent } from '../automation/events';
+import { loadInvoiceTaxContext, marginColumns, resolveMarginCost, type InvoiceOrigin, type MarginCost } from '../margin-scheme';
 
 export interface CreateInvoiceItemInput {
   description: string;
@@ -36,6 +35,19 @@ export interface CreateInvoiceInput {
   /** Omitted: the agency's currency setting applies. */
   currency?: string;
   gstRate?: number;
+  /**
+   * 'margin' puts the invoice under the margin scheme (refused with MarginSchemeError unless the agency switched it on);
+   * 'standard' keeps the agency's ordinary regime. Omitted: the agency's settings decide (tax system, "start new invoices in").
+   */
+  taxRegime?: 'margin' | 'standard';
+  /** Where the invoice comes from; a seat booking's invoice starts in margin mode when the setting says so. */
+  origin?: InvoiceOrigin;
+  /** Margin scheme: the seat booking whose departure costs are the cost of this invoice. */
+  seatBookingId?: string | null;
+  /** Margin scheme: the itinerary whose cost is the cost of this invoice. */
+  itineraryId?: string | null;
+  /** Margin scheme: a cost typed on the invoice (always a manual cost). */
+  marginCost?: number | null;
 }
 
 export interface InvoiceActor {
@@ -76,9 +88,18 @@ export async function createInvoice(
   if (!buyer) throw new InvoiceContactNotFound();
 
   // Tax follows the agency's own tax system (settings) and the buyer, and is stored on the invoice
-  const { regime, seller } = await loadTaxSettings(tenantDb);
-  const doc = computeDocumentTotals(data.items, data.discountType, data.discountValue ?? 0, { regime, seller, buyer, gstDefaultRate: data.gstRate });
+  const taxCtx = await loadInvoiceTaxContext(env, tenantId, tenantDb, { origin: data.origin ?? 'manual', request: data.taxRegime });
+  const { regime, seller } = taxCtx;
+  let marginCost: MarginCost | null = null;
+  if (regime === 'margin' && taxCtx.margin) {
+    marginCost = await resolveMarginCost(tenantDb, {
+      scheme: taxCtx.scheme, currency, manualCost: data.marginCost, seatBookingId: data.seatBookingId, itineraryId: data.itineraryId,
+    });
+    taxCtx.margin = { ...taxCtx.margin, cost: marginCost.cost };
+  }
+  const doc = computeDocumentTotals(data.items, data.discountType, data.discountValue ?? 0, { regime, seller, buyer, gstDefaultRate: data.gstRate, margin: taxCtx.margin });
   const taxCols = taxColumns(doc.tax);
+  const marginCols = marginColumns(regime, taxCtx.margin, marginCost);
   const totals = {
     subtotal: doc.subtotal,
     discountAmount: doc.discountAmount,
@@ -114,12 +135,13 @@ export async function createInvoice(
         tax_type, cgst, sgst, igst, vat_amount, total_tax, total,
         currency, status, due_date, paid_amount, balance_due, notes,
         bank_details, created_by, created_at, updated_at, issue_date, terms,
-        tax_regime, tax_breakdown, seller_tax_id, buyer_tax_id, place_of_supply, tax_notes
+        tax_regime, tax_breakdown, seller_tax_id, buyer_tax_id, place_of_supply, tax_notes,
+        margin_cost, margin_cost_source, margin_vat_rate, margin_wording
       ) VALUES (
         ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
         ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20,
         ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29,
-        ?30, ?31, ?32, ?33, ?34, ?35
+        ?30, ?31, ?32, ?33, ?34, ?35, ?36, ?37, ?38, ?39
       )`
     )
     .bind(
@@ -158,7 +180,11 @@ export async function createInvoice(
       taxCols.seller_tax_id,
       taxCols.buyer_tax_id,
       taxCols.place_of_supply,
-      taxCols.tax_notes
+      taxCols.tax_notes,
+      marginCols.margin_cost,
+      marginCols.margin_cost_source,
+      marginCols.margin_vat_rate,
+      marginCols.margin_wording
     )
     .run();
 
@@ -241,5 +267,5 @@ export async function createInvoice(
     actor.waiter,
   );
 
-  return { id: invoiceId, invoiceNumber, currency, totals, doc };
+  return { id: invoiceId, invoiceNumber, currency, totals, doc, marginCost };
 }

@@ -9,6 +9,7 @@ import { success, created, paginated, error, notFound, forbidden } from '../util
 import { generateInvoiceNumber } from '../services/numbering';
 import {
   computeDocumentTotals, frozenRulesFromInvoice, loadTaxBuyer, loadTaxSettings, taxColumns, TaxConfigError,
+  type MarginInput, type TaxRegime,
 } from '../services/tax-calculator';
 import { logActivity } from '../utils/activity-logger';
 import { drizzle } from 'drizzle-orm/d1';
@@ -22,6 +23,11 @@ import { depositAmount, isCredentialError, listAccounts, loadPaymentDefaults, op
 import { createMockPaymentLink } from '../services/payments/mock-agency';
 import { GatewayError, mockAllowed } from '../services/billing/gateway';
 import { loadAgencyBankDetails } from '../utils/bank-details';
+import { hasPermission } from '../constants/permissions';
+import {
+  bookingOfInvoice, loadInvoiceTaxContext, loadMarginScheme, marginColumns, marginOf, MarginSchemeError, resolveMarginCost,
+  stripMarginFigures, type MarginCost,
+} from '../services/margin-scheme';
 
 const invoiceRoutes = new Hono<AppContext>();
 
@@ -56,6 +62,11 @@ const createInvoiceSchema = z.object({
   // GST only: rate for items that carry no taxRate (the form sends one rate for the whole invoice).
   // VAT and sales tax invoices use the agency's rate; 'none' charges no tax.
   gstRate: z.number().min(0).max(100).optional(),
+  // R152: 'margin' = margin scheme (only when the agency switched it on), 'standard' = the agency's ordinary tax regime.
+  // Omitted: the agency's settings decide for a new invoice and a draft keeps its regime.
+  taxRegime: z.enum(['margin', 'standard']).optional(),
+  // R152: the cost of the sold services, typed on a margin invoice (a manual cost). Staff with finance rights only.
+  marginCost: z.number().min(0).nullable().optional(),
 });
 
 const updateInvoiceSchema = createInvoiceSchema.partial();
@@ -74,6 +85,11 @@ const recordPaymentSchema = z.object({
 
 function checkInvoicePermission(role: string): boolean {
   return ['admin', 'sales_manager', 'accountant'].includes(role);
+}
+
+/** The cost and margin of a margin-scheme invoice are for staff who can edit invoices (R152). */
+function canSeeMargin(role: string): boolean {
+  return hasPermission(role as any, 'invoices', 'edit');
 }
 
 // ============================================================
@@ -158,6 +174,7 @@ invoiceRoutes.get('/', async (c) => {
         i.subtotal, i.discount_type, i.discount_value, i.discount_amount,
         i.taxable_amount, i.tax_type, i.cgst, i.sgst, i.igst, i.vat_amount,
         i.tax_regime, i.tax_breakdown, i.seller_tax_id, i.buyer_tax_id, i.place_of_supply, i.tax_notes,
+        i.margin_cost, i.margin_cost_source, i.margin_vat_rate, i.margin_wording,
         i.total_tax, i.total, i.currency, i.status, i.due_date,
         i.issue_date, i.terms,
         i.paid_amount, i.balance_due, i.notes, i.created_by, i.created_at, i.updated_at,
@@ -174,7 +191,8 @@ invoiceRoutes.get('/', async (c) => {
       .bind(...params, limit, offset)
       .all<Record<string, unknown>>();
 
-    return paginated(c, invoices.results || [], total, page, limit);
+    const rows = canSeeMargin(role) ? invoices.results || [] : (invoices.results || []).map(stripMarginFigures);
+    return paginated(c, rows, total, page, limit);
   } catch (err) {
     console.error('Error listing invoices:', err);
     return error(c, 'Failed to list invoices', 500);
@@ -236,7 +254,8 @@ invoiceRoutes.post('/', zValidator('json', createInvoiceSchema), async (c) => {
   try {
     let waiter: { waitUntil(p: Promise<unknown>): void } | undefined;
     try { waiter = c.executionCtx; } catch { waiter = undefined; }
-    const { id: invoiceId, invoiceNumber, totals, doc } = await createInvoice(c.env, c.get('tenantId'), tenantDb, data, {
+    // A cost can only be typed by staff who may see it (checkInvoicePermission already limits who creates at all).
+    const { id: invoiceId, invoiceNumber, totals, doc, marginCost } = await createInvoice(c.env, c.get('tenantId'), tenantDb, data, {
       userId, depth: requestDepth(c), waiter,
     });
 
@@ -252,13 +271,16 @@ invoiceRoutes.post('/', zValidator('json', createInvoiceSchema), async (c) => {
       buyerTaxId: doc.tax.buyerTaxId,
       placeOfSupply: doc.tax.placeOfSupply,
       taxNotes: doc.tax.notes,
+      ...(doc.tax.regime === 'margin'
+        ? { marginCost: marginCost?.cost ?? null, marginCostSource: marginCost?.source ?? null, margin: marginOf(totals.total, marginCost?.cost) }
+        : {}),
       status: 'draft',
       paidAmount: 0,
       balanceDue: totals.total,
     });
   } catch (err) {
     if (err instanceof InvoiceContactNotFound) return notFound(c, 'Contact');
-    if (err instanceof TaxConfigError) return error(c, err.message, 400);
+    if (err instanceof TaxConfigError || err instanceof MarginSchemeError) return error(c, err.message, 400);
     console.error('Error creating invoice:', err);
     return error(c, 'Failed to create invoice', 500);
   }
@@ -281,28 +303,63 @@ const taxPreviewSchema = z.object({
   gstRate: z.number().min(0).max(100).optional(),
   // Edit form: show the rules the invoice was issued under, not today's settings
   invoiceId: z.string().optional().nullable(),
+  // R152: preview the margin scheme ('margin') or the ordinary regime ('standard') instead of what the settings pick.
+  taxRegime: z.enum(['margin', 'standard']).optional(),
+  marginCost: z.number().min(0).nullable().optional(),
+  origin: z.enum(['booking', 'extras', 'itinerary', 'trip', 'manual']).optional(),
 });
 
 invoiceRoutes.post('/tax-preview', zValidator('json', taxPreviewSchema), async (c) => {
   const tenantDb = c.get('tenantDb');
   const data = c.req.valid('json');
   try {
-    const { regime, seller } = await loadTaxSettings(tenantDb);
+    const ctx = await loadInvoiceTaxContext(c.env, c.get('tenantId'), tenantDb, { origin: data.origin ?? 'manual', request: data.taxRegime });
+    let { regime, margin } = ctx;
+    const { seller } = ctx;
     let frozen = null;
     let contactId = data.contactId ?? null;
+    let seatBookingId: string | null = null;
     if (data.invoiceId) {
       const inv = await tenantDb
-        .prepare('SELECT contact_id, tax_regime, tax_type, tax_breakdown, tax_notes, place_of_supply, seller_tax_id, buyer_tax_id, cgst FROM invoices WHERE id = ?1')
+        .prepare('SELECT contact_id, tax_regime, tax_type, tax_breakdown, tax_notes, place_of_supply, seller_tax_id, buyer_tax_id, cgst, currency, margin_cost, margin_cost_source, margin_vat_rate, margin_wording FROM invoices WHERE id = ?1')
         .bind(data.invoiceId)
         .first<Record<string, any>>();
       if (inv) {
-        frozen = frozenRulesFromInvoice(inv);
         contactId = inv.contact_id;
+        seatBookingId = await bookingOfInvoice(tenantDb, data.invoiceId);
+        // The invoice keeps the rules it was issued under unless the form asks for another regime.
+        if (!data.taxRegime || (data.taxRegime === 'margin') === (inv.tax_regime === 'margin')) {
+          frozen = frozenRulesFromInvoice(inv);
+          regime = frozen.regime;
+          margin = inv.tax_regime === 'margin'
+            ? { wording: inv.margin_wording, cost: inv.margin_cost, vatRate: inv.margin_vat_rate }
+            : null;
+        }
       }
     }
+    const seesMargin = canSeeMargin(c.get('role'));
+    let cost: MarginCost | null = null;
+    if (regime === 'margin' && margin) {
+      const scheme = await loadMarginScheme(tenantDb);
+      const typed = seesMargin ? data.marginCost : undefined;
+      const currency = (await loadLocaleContext(tenantDb)).currency;
+      if (typed !== undefined && typed !== null) cost = await resolveMarginCost(tenantDb, { scheme, currency, manualCost: typed });
+      else if (!frozen) cost = await resolveMarginCost(tenantDb, { scheme, currency, seatBookingId });
+      else cost = { cost: margin.cost, source: null };
+      margin = { ...margin, cost: cost.cost };
+    }
     const buyer = (contactId ? await loadTaxBuyer(tenantDb, contactId) : null) ?? {};
-    const doc = computeDocumentTotals(data.items, data.discountType, data.discountValue, { regime, seller, buyer, frozen, gstDefaultRate: data.gstRate });
+    const doc = computeDocumentTotals(data.items, data.discountType, data.discountValue, { regime, seller, buyer, frozen, gstDefaultRate: data.gstRate, margin });
     return success(c, {
+      ...(doc.tax.regime === 'margin' && seesMargin
+        ? {
+            marginCost: cost?.cost ?? null,
+            marginCostSource: cost?.source ?? null,
+            margin: marginOf(doc.total, cost?.cost),
+            marginVatRate: margin?.vatRate ?? null,
+            vatOnMargin: doc.tax.hiddenLines[0]?.amount ?? null,
+          }
+        : {}),
       regime: doc.tax.regime,
       treatment: doc.tax.treatment,
       taxLines: doc.tax.taxLines,
@@ -319,7 +376,7 @@ invoiceRoutes.post('/tax-preview', zValidator('json', taxPreviewSchema), async (
       defaultRate: doc.tax.regime === 'vat' || doc.tax.regime === 'sales_tax' ? doc.tax.defaultRate : null,
     });
   } catch (e) {
-    if (e instanceof TaxConfigError) return error(c, e.message, 400);
+    if (e instanceof TaxConfigError || e instanceof MarginSchemeError) return error(c, e.message, 400);
     console.error('Error previewing invoice tax:', e);
     return error(c, 'Failed to preview tax', 500);
   }
@@ -341,6 +398,7 @@ invoiceRoutes.get('/:id', async (c) => {
           i.subtotal, i.discount_type, i.discount_value, i.discount_amount,
           i.taxable_amount, i.tax_type, i.cgst, i.sgst, i.igst, i.vat_amount,
           i.tax_regime, i.tax_breakdown, i.seller_tax_id, i.buyer_tax_id, i.place_of_supply, i.tax_notes,
+          i.margin_cost, i.margin_cost_source, i.margin_vat_rate, i.margin_wording,
           i.total_tax, i.total, i.currency, i.status, i.due_date,
           i.issue_date, i.terms,
           i.paid_amount, i.balance_due, i.notes, i.bank_details, i.created_by,
@@ -391,7 +449,7 @@ invoiceRoutes.get('/:id', async (c) => {
     if (!bankDetails && Object.keys(agencyBank.details).length > 0) bankDetails = JSON.stringify(agencyBank.details);
 
     return success(c, {
-      ...invoice,
+      ...(canSeeMargin(c.get('role')) ? invoice : stripMarginFigures(invoice)),
       bank_details: bankDetails ?? null,
       bank_country: agencyBank.country,
       items: items.results || [],
@@ -449,9 +507,9 @@ invoiceRoutes.put('/:id', zValidator('json', updateInvoiceSchema), async (c) => 
   try {
     // Verify invoice exists and is draft
     const invoice = await tenantDb
-      .prepare('SELECT id, status, invoice_number, tax_regime, tax_type, tax_breakdown, tax_notes, place_of_supply, seller_tax_id, buyer_tax_id, cgst, paid_amount FROM invoices WHERE id = ?1')
+      .prepare('SELECT id, contact_id, currency, discount_type, discount_value, status, invoice_number, tax_regime, tax_type, tax_breakdown, tax_notes, place_of_supply, seller_tax_id, buyer_tax_id, cgst, paid_amount, margin_cost, margin_cost_source, margin_vat_rate, margin_wording FROM invoices WHERE id = ?1')
       .bind(invoiceId)
-      .first<{ id: string; status: string; invoice_number: string; tax_regime: string; tax_type: string; tax_breakdown: string | null; tax_notes: string | null; place_of_supply: string | null; seller_tax_id: string | null; buyer_tax_id: string | null; cgst: number | null; paid_amount: number }>();
+      .first<{ id: string; contact_id: string; currency: string | null; discount_type: string | null; discount_value: number | null; status: string; invoice_number: string; tax_regime: string; tax_type: string; tax_breakdown: string | null; tax_notes: string | null; place_of_supply: string | null; seller_tax_id: string | null; buyer_tax_id: string | null; cgst: number | null; paid_amount: number; margin_cost: number | null; margin_cost_source: string | null; margin_vat_rate: number | null; margin_wording: string | null }>();
 
     if (!invoice) {
       return notFound(c, 'Invoice');
@@ -470,15 +528,73 @@ invoiceRoutes.put('/:id', zValidator('json', updateInvoiceSchema), async (c) => 
     if (data.discountType !== undefined) updateData.discount_type = data.discountType;
     if (data.discountValue !== undefined) updateData.discount_value = data.discountValue;
 
+    // R152: a draft can move into or out of the margin scheme, and a margin draft's cost can be typed (finance rights only).
+    const wasMargin = invoice.tax_regime === 'margin';
+    const switching = data.taxRegime !== undefined && (data.taxRegime === 'margin') !== wasMargin;
+    const typedCost = data.marginCost;
+    if (typedCost !== undefined && !canSeeMargin(role)) return forbidden(c, 'Only staff with finance rights can record the cost');
+    if (typedCost !== undefined && !wasMargin && !(switching && data.taxRegime === 'margin')) {
+      return error(c, 'The cost is recorded on margin-scheme invoices only', 400);
+    }
+    let lineItems = data.items && data.items.length > 0 ? data.items : null;
+    if (!lineItems && (switching || (wasMargin && typedCost !== undefined))) {
+      if (switching && data.taxRegime === 'standard') {
+        return error(c, 'Send the lines again when leaving the margin scheme, so the tax can be worked out', 400);
+      }
+      const stored = await tenantDb
+        .prepare('SELECT description, hsn_code, quantity, rate, discount_percent FROM invoice_items WHERE invoice_id = ?1 ORDER BY sort_order')
+        .bind(invoiceId)
+        .all<{ description: string; hsn_code: string | null; quantity: number; rate: number; discount_percent: number | null }>();
+      lineItems = (stored.results ?? []).map((r) => ({
+        description: r.description, hsnCode: r.hsn_code ?? undefined, quantity: r.quantity, rate: r.rate, discountPercent: r.discount_percent ?? 0,
+      }));
+    }
+    const discountType = data.discountType ?? (data.items ? undefined : ((invoice.discount_type as 'percentage' | 'fixed' | null) ?? undefined));
+    const discountValue = data.discountValue ?? (data.items ? 0 : invoice.discount_value ?? 0);
+
     // If items provided, recalculate totals
-    if (data.items && data.items.length > 0) {
-      // The invoice keeps the regime and rules it was issued under (settings may have changed since).
-      const buyer = await loadTaxBuyer(tenantDb, (await tenantDb.prepare('SELECT contact_id FROM invoices WHERE id = ?1').bind(invoiceId).first<{ contact_id: string }>())!.contact_id);
-      const { seller } = await loadTaxSettings(tenantDb);
-      const frozen = frozenRulesFromInvoice(invoice);
-      const doc = computeDocumentTotals(data.items, data.discountType, data.discountValue ?? 0, {
-        regime: frozen.regime, seller, buyer: buyer ?? {}, frozen, gstDefaultRate: data.gstRate,
+    if (lineItems && lineItems.length > 0) {
+      // The invoice keeps the regime and rules it was issued under (settings may have changed since), unless the draft is moved.
+      const buyer = await loadTaxBuyer(tenantDb, invoice.contact_id);
+      let frozen: ReturnType<typeof frozenRulesFromInvoice> | null = null;
+      let regime: TaxRegime;
+      let seller;
+      let margin: MarginInput | null = null;
+      let marginCost: MarginCost | null = null;
+      const currency = invoice.currency ?? (await loadLocaleContext(tenantDb)).currency;
+      if (switching) {
+        const ctx = await loadInvoiceTaxContext(c.env, c.get('tenantId'), tenantDb, { origin: 'manual', request: data.taxRegime });
+        regime = ctx.regime;
+        seller = ctx.seller;
+        margin = ctx.margin;
+        if (margin) {
+          marginCost = await resolveMarginCost(tenantDb, {
+            scheme: ctx.scheme, currency, manualCost: typedCost, seatBookingId: await bookingOfInvoice(tenantDb, invoiceId),
+          });
+          margin = { ...margin, cost: marginCost.cost };
+        }
+      } else {
+        seller = (await loadTaxSettings(tenantDb)).seller;
+        frozen = frozenRulesFromInvoice(invoice);
+        regime = frozen.regime;
+        if (wasMargin) {
+          marginCost = typedCost !== undefined && typedCost !== null
+            ? { cost: Math.round(typedCost * 100) / 100, source: 'manual' }
+            : typedCost === null
+              ? { cost: null, source: 'manual' }
+              : { cost: invoice.margin_cost, source: invoice.margin_cost_source as MarginCost['source'] };
+          margin = { wording: invoice.margin_wording, cost: marginCost.cost, vatRate: invoice.margin_vat_rate };
+        }
+      }
+      const doc = computeDocumentTotals(lineItems, discountType, discountValue, {
+        regime, seller, buyer: buyer ?? {}, frozen, gstDefaultRate: data.gstRate, margin,
       });
+      if (switching) {
+        // A new regime replaces everything the old one stored: breakdown, tax ids, place of supply, notes.
+        Object.assign(updateData, taxColumns(doc.tax));
+      }
+      Object.assign(updateData, marginColumns(regime, margin, marginCost));
+      data.items = lineItems;
       const totals = {
         subtotal: doc.subtotal, discountAmount: doc.discountAmount, taxableAmount: doc.taxableAmount,
         cgst: doc.tax.cgst, sgst: doc.tax.sgst, igst: doc.tax.igst, vatAmount: doc.tax.vatAmount,
@@ -496,7 +612,7 @@ invoiceRoutes.put('/:id', zValidator('json', updateInvoiceSchema), async (c) => 
       updateData.total = totals.total;
       updateData.balance_due = totals.total - (invoice.paid_amount || 0);
       updateData.tax_type = doc.tax.treatment;
-      updateData.tax_breakdown = JSON.stringify(doc.tax.taxLines);
+      updateData.tax_breakdown = JSON.stringify([...doc.tax.taxLines, ...doc.tax.hiddenLines]);
 
       // Delete existing items and create new ones
       await tenantDb
@@ -557,6 +673,7 @@ invoiceRoutes.put('/:id', zValidator('json', updateInvoiceSchema), async (c) => 
 
     return success(c, { id: invoiceId, ...updateData });
   } catch (err) {
+    if (err instanceof TaxConfigError || err instanceof MarginSchemeError) return error(c, err.message, 400);
     console.error('Error updating invoice:', err);
     return error(c, 'Failed to update invoice', 500);
   }
@@ -667,7 +784,8 @@ invoiceRoutes.post('/:id/duplicate', async (c) => {
           contact_id, lead_id, type, subtotal, discount_type, discount_value,
           taxable_amount, tax_type, cgst, sgst, igst, vat_amount, total_tax,
           total, currency, notes, bank_details,
-          tax_regime, tax_breakdown, seller_tax_id, buyer_tax_id, place_of_supply, tax_notes
+          tax_regime, tax_breakdown, seller_tax_id, buyer_tax_id, place_of_supply, tax_notes,
+          margin_cost, margin_cost_source, margin_vat_rate, margin_wording
         FROM invoices WHERE id = ?1`
       )
       .bind(invoiceId)
@@ -703,11 +821,12 @@ invoiceRoutes.post('/:id/duplicate', async (c) => {
           tax_type, cgst, sgst, igst, vat_amount, total_tax, total,
           currency, status, paid_amount, balance_due, notes, bank_details,
           created_by, created_at, updated_at,
-          tax_regime, tax_breakdown, seller_tax_id, buyer_tax_id, place_of_supply, tax_notes
+          tax_regime, tax_breakdown, seller_tax_id, buyer_tax_id, place_of_supply, tax_notes,
+          margin_cost, margin_cost_source, margin_vat_rate, margin_wording
         ) VALUES (
           ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
           ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26,
-          ?27, ?28, ?29, ?30, ?31, ?32
+          ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35, ?36
         )`
       )
       .bind(
@@ -742,7 +861,11 @@ invoiceRoutes.post('/:id/duplicate', async (c) => {
         invoice.seller_tax_id ?? null,
         invoice.buyer_tax_id ?? null,
         invoice.place_of_supply ?? null,
-        invoice.tax_notes ?? null
+        invoice.tax_notes ?? null,
+        invoice.margin_cost ?? null,
+        invoice.margin_cost_source ?? null,
+        invoice.margin_vat_rate ?? null,
+        invoice.margin_wording ?? null
       )
       .run();
 
@@ -1155,7 +1278,9 @@ invoiceRoutes.post('/from-itinerary', zValidator('json', fromItinerarySchema), a
 
     // Tax follows the agency's own tax system. 18% is the GST default for travel services (India);
     // VAT and sales tax lines take the agency's configured rate, and a no-tax agency gets none.
-    const { regime, seller } = await loadTaxSettings(tenantDb);
+    // R152: the margin scheme applies when the agency's settings say so (the cost is the itinerary's own cost).
+    const taxCtx = await loadInvoiceTaxContext(c.env, c.get('tenantId'), tenantDb, { origin: 'itinerary' });
+    const { regime, seller } = taxCtx;
 
     for (const day of (days.results || [])) {
       const items = await tenantDb
@@ -1187,9 +1312,15 @@ invoiceRoutes.post('/from-itinerary', zValidator('json', fromItinerarySchema), a
       return notFound(c, 'Contact');
     }
 
+    const invoiceCurrency = (await loadLocaleContext(tenantDb)).currency;
+    let marginCost: MarginCost | null = null;
+    if (regime === 'margin' && taxCtx.margin) {
+      marginCost = await resolveMarginCost(tenantDb, { scheme: taxCtx.scheme, currency: invoiceCurrency, itineraryId });
+      taxCtx.margin = { ...taxCtx.margin, cost: marginCost.cost };
+    }
     let doc;
     try {
-      doc = computeDocumentTotals(invoiceItems.map((i) => ({ ...i, discountPercent: 0 })), undefined, 0, { regime, seller, buyer });
+      doc = computeDocumentTotals(invoiceItems.map((i) => ({ ...i, discountPercent: 0 })), undefined, 0, { regime, seller, buyer, margin: taxCtx.margin });
     } catch (e) {
       if (e instanceof TaxConfigError) return error(c, e.message, 400);
       throw e;
@@ -1222,13 +1353,21 @@ invoiceRoutes.post('/from-itinerary', zValidator('json', fromItinerarySchema), a
         invoiceId, itinerary.contact_id, itinerary.lead_id, invoiceNumber, 'tax_invoice',
         totals.subtotal, totals.taxableAmount, taxCols.tax_type, totals.cgst, totals.sgst,
         totals.igst, totals.vatAmount, totals.totalTax, totals.total,
-        (await loadLocaleContext(tenantDb)).currency, 'draft', 0, totals.total,
+        invoiceCurrency, 'draft', 0, totals.total,
         JSON.stringify({ generatedFromItinerary: itineraryId }),
         userId, now, now,
         taxCols.tax_regime, taxCols.tax_breakdown, taxCols.seller_tax_id, taxCols.buyer_tax_id,
         taxCols.place_of_supply, taxCols.tax_notes
       )
       .run();
+
+    if (regime === 'margin') {
+      const m = marginColumns(regime, taxCtx.margin, marginCost);
+      await tenantDb
+        .prepare('UPDATE invoices SET margin_cost = ?1, margin_cost_source = ?2, margin_vat_rate = ?3, margin_wording = ?4 WHERE id = ?5')
+        .bind(m.margin_cost, m.margin_cost_source, m.margin_vat_rate, m.margin_wording, invoiceId)
+        .run();
+    }
 
     // Create line items
     for (let i = 0; i < invoiceItems.length; i++) {

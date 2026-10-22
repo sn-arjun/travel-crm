@@ -779,7 +779,7 @@ driver.post('/trips/:id/status', zValidator('json', updateTripStatusSchema), asy
       const completedTrip = await db.prepare('SELECT * FROM trip_assignments WHERE id = ?').bind(tripId).first();
       if (completedTrip && !completedTrip.invoice_id && completedTrip.contact_id) {
         const { generateTripInvoice } = await import('../services/trip-invoice-generator');
-        await generateTripInvoice(db, completedTrip, (completedTrip.assigned_by as string) ?? driverId);
+        await generateTripInvoice(db, completedTrip, (completedTrip.assigned_by as string) ?? driverId, { env: c.env, tenantId: c.get('tenantId') });
       }
     } catch {
       // Invoice generation failure should not block status update

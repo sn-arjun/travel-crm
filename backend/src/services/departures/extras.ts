@@ -20,6 +20,7 @@ import { getPassengers } from './passengers';
 import { loadDepartureContext, requireBookingRow, type DepartureContext } from './seat-support';
 import { rowToExtra } from './tours';
 import { refreshDraft, type InvoiceActorLike } from './booking-invoice';
+import { MarginSchemeError } from '../margin-scheme';
 import { createInvoice, InvoiceContactNotFound, type CreateInvoiceItemInput } from '../domain/invoices';
 import { TaxConfigError } from '../tax-calculator';
 import type { Env } from '../../types';
@@ -500,7 +501,7 @@ export async function invoiceExtras(env: Env, tenantId: string, db: D1Database, 
   let createdNow = false;
   try {
     if (openId) {
-      total = await refreshDraft(db, openId, booking.contact_id, items);
+      total = await refreshDraft(db, openId, booking.contact_id, items, { currency });
       // A link made for the old amount must not be reused.
       await db
         .prepare(
@@ -520,6 +521,7 @@ export async function invoiceExtras(env: Env, tenantId: string, db: D1Database, 
           type: 'tax_invoice',
           items,
           currency,
+          origin: 'extras',
           notes: t(lang, 'extras.invoice.notes', { tour: dep.tour.title, code: dep.row.code }),
         },
         { userId: actor.userId, depth: actor.depth, waiter: actor.waiter },
@@ -530,7 +532,7 @@ export async function invoiceExtras(env: Env, tenantId: string, db: D1Database, 
       createdNow = true;
     }
   } catch (e) {
-    if (e instanceof TaxConfigError) throw new DepartureError(409, 'TAX_CONFIG', e.message);
+    if (e instanceof TaxConfigError || e instanceof MarginSchemeError) throw new DepartureError(409, 'TAX_CONFIG', e.message);
     if (e instanceof InvoiceContactNotFound) throw new DepartureError(404, 'CONTACT_NOT_FOUND', 'Contact not found');
     throw e;
   }

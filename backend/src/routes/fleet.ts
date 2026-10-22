@@ -1565,7 +1565,7 @@ fleet.put('/trips/:id/status', zValidator('json', tripStatusSchema), async (c) =
       const completedTrip = await db.prepare('SELECT * FROM trip_assignments WHERE id = ?').bind(id).first();
       if (completedTrip && !completedTrip.invoice_id && completedTrip.contact_id) {
         const { generateTripInvoice } = await import('../services/trip-invoice-generator');
-        await generateTripInvoice(db, completedTrip, userId);
+        await generateTripInvoice(db, completedTrip, userId, { env: c.env, tenantId: c.get('tenantId') });
       }
     } catch {
       // Invoice generation failure should not block status update
@@ -2330,7 +2330,7 @@ fleet.post('/trips/:id/generate-invoice', async (c) => {
 
   try {
     const { generateTripInvoice } = await import('../services/trip-invoice-generator');
-    const invoice = await generateTripInvoice(db, trip, userId);
+    const invoice = await generateTripInvoice(db, trip, userId, { env: c.env, tenantId: c.get('tenantId') });
     return created(c, invoice);
   } catch (err: any) {
     return error(c, err.message || 'Failed to generate invoice', 500);

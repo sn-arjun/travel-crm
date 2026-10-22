@@ -382,12 +382,16 @@ export const invoices = sqliteTable('invoices', {
   discountAmount: real('discount_amount').default(0),
   taxableAmount: real('taxable_amount').default(0),
   taxType: text('tax_type'), // treatment: cgst_sgst, igst, export_zero, vat, reverse_charge, sales_tax, none
-  taxRegime: text('tax_regime').notNull().default('gst'), // gst, vat, sales_tax, none (R201)
+  taxRegime: text('tax_regime').notNull().default('gst'), // gst, vat, sales_tax, none (R201), margin (R152)
   taxBreakdown: text('tax_breakdown'), // JSON [{code, rate, base, amount, label}]
   sellerTaxId: text('seller_tax_id'),
   buyerTaxId: text('buyer_tax_id'),
   placeOfSupply: text('place_of_supply'),
   taxNotes: text('tax_notes'),
+  marginCost: real('margin_cost'), // margin scheme: what the services cost the agency, NULL = not recorded (R152)
+  marginCostSource: text('margin_cost_source'), // departure, itinerary, manual
+  marginVatRate: real('margin_vat_rate'), // the agency's own rate when it entered one, never defaulted
+  marginWording: text('margin_wording'), // the legal mention at the time of issue
   cgst: real('cgst').default(0),
   sgst: real('sgst').default(0),
   igst: real('igst').default(0),
