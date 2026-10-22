@@ -6,16 +6,16 @@
  * compose, itinerary, one social post (a single platform), natural-language search and a lead score recalculation, and 1 for the
  * insights page that generates on open: 9 in all, which leaves 3 spare. The smart follow-ups, briefing and health score pages are
  * not opened (they also generate on open), so those features are named in the closing "not shown running here" scene.
- * The spec counts every non-GET request to /api/v1/ai/ and to the AI-backed social route and closes the take before a 7th.
- * It is never retried automatically.
+ * The spec uses film-kit's aiGuard: it counts every AI request the browser makes (see isAiRequest) plus the 2 server-side reads of
+ * the message read, and blocks the one that would pass the budget of 7 (the 6 planned + 1 spare). It is never retried automatically.
  */
 import type { Locator, Page } from '@playwright/test';
 
-import { asUser, beat, clickOn, expect, glance, inbound, pause, pickRelation, recordFilm, settle, typeInto } from './film-kit';
+import { aiGuard, asUser, beat, clickOn, expect, glance, inbound, pause, pickRelation, recordFilm, settle, typeInto } from './film-kit';
 
 const test = asUser();
 const LIVE = process.env.SHOWCASE_AI === '1';
-const BUDGET = 5; // counted POSTs: extract, compose, social, search (+ the 2 server-side requests of the message read = 6 in this take)
+const BUDGET = 7; // extract, compose, social, search (4 from the browser) + the 2 server-side requests of the message read = 6 planned, 1 spare
 
 /** Click the one action button, then wait until the page has its answer (the busy label goes and the button is usable again). */
 async function run(page: Page, button: Locator): Promise<void> {
@@ -29,20 +29,13 @@ async function run(page: Page, button: Locator): Promise<void> {
 test('film:ai-session', async ({ page, context }, testInfo) => {
   test.skip(!LIVE, 'live AI session: needs SHOWCASE_AI=1, an --ai stack and the owner\'s approval');
   test.setTimeout(30 * 60_000);
-  let spent = 0;
-  page.on('request', (r) => {
-    if (r.method() === 'GET' && /\/api\/v1\/ai\/(?!settings|usage)/.test(r.url())) console.log(`  [ai] open ${r.url().replace(/^.*\/api\/v1/, '')}`);
-    if (r.method() !== 'GET' && /\/api\/v1\/(ai\/|marketing\/social)/.test(r.url())) {
-      spent++;
-      console.log(`  [ai] request ${spent}/${BUDGET}: ${r.url().replace(/^.*\/api\/v1/, '')}`);
-      if (spent > BUDGET) { console.error(`  [ai] budget exceeded (${spent} > ${BUDGET}): closing the take`); void page.context().close(); }
-    }
-  });
+  const ai = await aiGuard(page, { budget: BUDGET, live: LIVE, onExceed: 'close' });
   await recordFilm(page, context, 'ai-session', testInfo, async () => {
     await page.goto('/dashboard');
     await settle(page, 1500);
 
     await beat(page, 'ai-read', async () => {
+      ai.server(2); // the message read: two model calls made by the server, not the browser
       await inbound({ from: '+919847033221', fromName: 'Rhea Kapoor', body: 'Hi! Two of us want a 6-night Sri Lanka trip in late February, beaches and a tea estate, around 2.2 lakh in total. Can you help?' });
       const card = page.getByTestId('attention-list').getByText(/Create contact and lead for Rhea Kapoor/);
       await expect(card).toBeVisible({ timeout: 60_000 });
@@ -90,6 +83,6 @@ test('film:ai-session', async ({ page, context }, testInfo) => {
       await run(page, page.getByRole('button', { name: /^Search$/ }));
     });
 
-    console.log(`  [ai] take used ${spent} of ${BUDGET} counted requests (plus the message read and the insights page open: check Settings > AI usage; the session total must stay at or under 12)`);
+    ai.report(); // the session total must stay at or under 12: check Settings > AI usage afterwards
   });
 });

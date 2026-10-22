@@ -102,20 +102,24 @@ export const anonymous = base.extend({ storageState: async ({}, provide) => { aw
 
 // ─── Narration manifest ──────────────────────────────────────────
 
-interface Beat { id: string; narration: string; seconds: number; from: 'tts' | 'estimate'; played: boolean }
+interface Beat { id: string; narration: string; seconds: number; /** playback speed of the scene in the clip: the recording holds this many times longer */ speed: number; from: 'tts' | 'estimate'; played: boolean }
 let film = '';
+let activeGuard: AiGuard | null = null;
 let beats = new Map<string, Beat>();
 let current = '';
 const BURN = process.env.FILM_BURN_CAPTIONS === '1';
 const WORDS_PER_SECOND = 2.55; // af_heart at Kokoro's default speed, measured on the pilot
 
-function loadBeats(name: string): Map<string, Beat> {
-  const clipFile = path.join(REPO, 'studio', 'clips', `${name}.json`);
+/** Playback speeds a scene may have (studio/src/kit/types.ts). */
+const SPEEDS = [1, 1.5, 2, 3, 4];
+
+function loadBeats(name: string, clipName = name): Map<string, Beat> {
+  const clipFile = path.join(REPO, 'studio', 'clips', `${clipName}.json`);
   if (!fs.existsSync(clipFile)) throw new Error(`no clip ${clipFile}`);
-  const clip = JSON.parse(fs.readFileSync(clipFile, 'utf8')) as { recording?: string; scenes: { type: string; step?: string; narration?: string; recording?: string }[] };
-  const manifestFile = path.join(REPO, 'studio', 'out', 'narration', name, 'narration.json');
+  const clip = JSON.parse(fs.readFileSync(clipFile, 'utf8')) as { recording?: string; scenes: { type: string; step?: string; narration?: string; recording?: string; speed?: number }[] };
+  const manifestFile = path.join(REPO, 'studio', 'out', 'narration', clipName, 'narration.json');
   const manifest = fs.existsSync(manifestFile) ? (JSON.parse(fs.readFileSync(manifestFile, 'utf8')) as { lines: { id: string; duration: number; text: string }[] }) : null;
-  if (!manifest) console.warn(`  [film] no narration manifest for ${name}: pacing from a word-count estimate (run: node studio/src/build.mjs ${name} --no-render)`);
+  if (!manifest) console.warn(`  [film] no narration manifest for ${name}: pacing from a word-count estimate (run: node studio/src/build.mjs ${clipName} --no-render)`);
   const out = new Map<string, Beat>();
   clip.scenes.forEach((s, i) => {
     if (!s.step || (s.recording ?? clip.recording) !== name) return;
@@ -124,7 +128,9 @@ function loadBeats(name: string): Map<string, Beat> {
     const fromTts = !!line && line.text === text;
     if (line && !fromTts) console.warn(`  [film] narration for step ${s.step} changed since the manifest was built: estimating`);
     const seconds = fromTts ? line!.duration : text.split(/\s+/).filter(Boolean).length / WORDS_PER_SECOND + 0.3;
-    out.set(s.step, { id: s.step, narration: text, seconds, from: fromTts ? 'tts' : 'estimate', played: false });
+    const speed = s.speed ?? 1;
+    if (!SPEEDS.includes(speed)) throw new Error(`scene ${i} (${s.step}) of ${clipName}: speed must be one of ${SPEEDS.join(', ')} (got ${speed})`);
+    out.set(s.step, { id: s.step, narration: text, seconds, speed, from: fromTts ? 'tts' : 'estimate', played: false });
   });
   return out;
 }
@@ -135,6 +141,8 @@ const sc = (page: Page, fn: string, args: unknown[] = []) =>
 /**
  * One scene of the film. Runs `body` while the scene's narration plays (in the final cut), then holds until the narration would
  * have ended (+0.65 s: the 0.25 s lead-in and 0.4 s tail the timeline adds), checks the page, and marks the scene's end.
+ * A scene played at `speed` in the clip is recorded that many times longer ((narration + 0.65 s) x speed): the cut plays it back
+ * faster, so the narration still fits and the data entry reads as quick.
  */
 export async function beat(page: Page, id: string, body?: () => Promise<void>, o: { extraMs?: number; refusalShown?: boolean; leave?: () => Promise<void> } = {}): Promise<void> {
   const b = beats.get(id);
@@ -142,10 +150,11 @@ export async function beat(page: Page, id: string, body?: () => Promise<void>, o
   if (b.played) throw new Error(`beat "${id}" played twice`);
   b.played = true;
   current = id;
-  mark(`step:${id}`, { narration: b.narration.slice(0, 80), seconds: +b.seconds.toFixed(2), from: b.from });
+  mark(`step:${id}`, { narration: b.narration.slice(0, 80), seconds: +b.seconds.toFixed(2), speed: b.speed, from: b.from });
   if (BURN) await sc(page, 'say', [b.narration, id]);
   const t0 = Date.now();
-  const target = (b.seconds + 0.65) * 1000 * PACE + (o.extraMs ?? 0);
+  const target = (b.seconds + 0.65) * b.speed * 1000 * PACE + (o.extraMs ?? 0);
+  activeGuard?.check();
   if (body) await body();
   const left = target - (Date.now() - t0);
   if (left > 0) await page.waitForTimeout(left);
@@ -154,6 +163,7 @@ export async function beat(page: Page, id: string, body?: () => Promise<void>, o
   if (o.leave) { mark(`step-end:${id}`); await o.leave(); }
   // A scene that shows a refusal on purpose (seat limit, upgrade prompt) skips the on-screen error check; HTTP refusals it expects
   // are declared with allowHttp() and everything else still counts.
+  activeGuard?.check();
   if (!o.refusalShown) await assertClean(page, id);
   if (BURN) await sc(page, 'clearSay');
   if (!o.leave) mark(`step-end:${id}`);
@@ -201,15 +211,215 @@ export async function search(page: Page, placeholder: RegExp | string, term: str
   await settle(page, 1200);
 }
 
+// ─── Sidebar navigation on camera ────────────────────────────────
+
+/** The sidebar link to `href` (nav-config.ts is its source: desktop/src/components/layout/nav-config.ts). */
+function navLink(page: Page, href: string): Locator {
+  return page.locator(`aside nav a[href="${href}"]`).first();
+}
+
+/**
+ * Go to a page by clicking its real sidebar link: the pointer travels to the link, clicks, and the page loads. Unlike visit() there
+ * is no silent fallback to a direct load: a link that is not in the sidebar (plan, role, feature switch, collapsed sidebar) throws,
+ * so the film never shows a navigation the product cannot do.
+ */
+export async function navTo(page: Page, href: string, ms = 1100): Promise<void> {
+  const link = navLink(page, href);
+  if (!(await link.count())) throw new Error(`navTo: no sidebar link to ${href} (hidden by plan, role or feature switch, or the sidebar is collapsed)`);
+  await clickOn(page, link);
+  await page.waitForURL((u) => u.pathname === href.split('?')[0], { timeout: 25_000 });
+  await settle(page, ms);
+}
+
+/** Sweep the pointer over several sidebar links without clicking (shows the viewer what the menu holds). */
+export async function hoverNav(page: Page, hrefs: string[], dwellMs = 450): Promise<void> {
+  for (const href of hrefs) {
+    const link = navLink(page, href);
+    if (!(await link.count())) throw new Error(`hoverNav: no sidebar link to ${href}`);
+    await hoverOn(page, link, dwellMs);
+  }
+}
+
+/** Click a sub-tab of the current page by its visible name. */
+export async function tab(page: Page, name: string | RegExp, ms = 900): Promise<void> {
+  const t = page.getByRole('tab', { name }).first();
+  await t.waitFor({ state: 'visible', timeout: 10_000 }); // throws with the locator in the message when the tab is not there
+  await clickOn(page, t);
+  await settle(page, ms);
+}
+
+// ─── A page in a phone, a PDF on screen ─────────────────────────
+
+/**
+ * Show a page of the app inside a phone-sized frame (390 x 844) on a plain backdrop, like showMail does for an email. The page is the
+ * real one (same origin as the app, signed in as the film's user); at that width its responsive layout is what the viewer sees.
+ */
+export async function showInPhoneFrame(page: Page, url: string, o: { label?: string } = {}): Promise<void> {
+  const abs = new URL(url, BASE_URL);
+  if (abs.origin !== new URL(BASE_URL).origin) throw new Error(`showInPhoneFrame: ${url} is not a page of the app (${new URL(BASE_URL).origin})`);
+  const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c);
+  const doc = `<!doctype html><html><head><meta charset="utf-8"><title>phone</title>
+<style>html,body{margin:0;height:100%}body{display:flex;align-items:center;justify-content:center;gap:64px;background:radial-gradient(1200px 700px at 15% 10%,#E0E3FF 0%,transparent 60%),linear-gradient(135deg,#F4F5FF,#F8F7FF);font-family:system-ui,sans-serif}
+.phone{box-sizing:content-box;width:390px;height:844px;border:16px solid #111117;border-radius:56px;overflow:hidden;background:#fff;box-shadow:0 40px 90px rgba(55,48,163,.35),0 0 0 3px #2A2A35}
+.phone iframe{width:390px;height:844px;border:0;display:block}.label{font-size:34px;font-weight:700;color:#111117;max-width:520px;line-height:1.2}</style></head><body>
+<div class="phone"><iframe id="phone" src="${esc(abs.toString())}"></iframe></div>${o.label ? `<div class="label">${esc(o.label)}</div>` : ''}</body></html>`;
+  await page.setContent(doc, { waitUntil: 'load' });
+  await page.frameLocator('#phone').locator('body').waitFor({ timeout: 25_000 });
+  await settle(page, 1500);
+}
+
+/** Where pdfjs-dist is installed (desktop first, then the repo root), or null. */
+function pdfjsDir(): string | null {
+  for (const base of [path.join(REPO, 'desktop', 'node_modules'), path.join(REPO, 'node_modules')]) {
+    const dir = path.join(base, 'pdfjs-dist');
+    if (fs.existsSync(path.join(dir, 'package.json'))) return dir;
+  }
+  return null;
+}
+export const hasPdfjs = (): boolean => pdfjsDir() !== null;
+
+/**
+ * Render a PDF (e.g. a download the film just triggered) page by page on screen with pdf.js, so the viewer reads the document.
+ * pdf.js comes from node_modules/pdfjs-dist through page.route on a made-up host: nothing is fetched from a CDN.
+ * Needs the `pdfjs-dist` devDependency of desktop; without it this throws a clear message. Returns the number of pages shown.
+ */
+export async function showPdf(page: Page, file: string, o: { scale?: number; maxPages?: number } = {}): Promise<number> {
+  const dir = pdfjsDir();
+  if (!dir) throw new Error('showPdf: the "pdfjs-dist" package is not installed (add it as a devDependency of desktop: cd desktop && npm i -D pdfjs-dist)');
+  const lib = ['pdf.min.mjs', 'pdf.mjs'].map((f) => path.join(dir, 'build', f)).find((f) => fs.existsSync(f));
+  const worker = ['pdf.worker.min.mjs', 'pdf.worker.mjs'].map((f) => path.join(dir, 'build', f)).find((f) => fs.existsSync(f));
+  if (!lib || !worker) throw new Error(`showPdf: ${dir} has no ES module build (build/pdf.min.mjs and build/pdf.worker.min.mjs); pdfjs-dist 4 or newer is needed`);
+  if (!fs.existsSync(file)) throw new Error(`showPdf: no such file ${file}`);
+  const HOST = 'https://pdfjs.film.invalid';
+  await page.route(`${HOST}/**`, (route) => {
+    const which = route.request().url().includes('worker') ? worker : lib;
+    return route.fulfill({ status: 200, contentType: 'text/javascript', headers: { 'access-control-allow-origin': '*' }, body: fs.readFileSync(which) });
+  });
+  const data = fs.readFileSync(file).toString('base64');
+  const doc = `<!doctype html><html><head><meta charset="utf-8"><title>pdf</title>
+<style>html,body{margin:0}body{background:#4B4B55;padding:28px 0;display:flex;flex-direction:column;align-items:center;gap:24px}canvas{display:block;box-shadow:0 10px 40px rgba(0,0,0,.45);background:#fff}</style></head><body>
+<script type="module">
+  try {
+    const pdfjs = await import('${HOST}/pdf.mjs');
+    // a module worker from a blob: the made-up host cannot be a Worker URL (cross-origin)
+    const src = await (await fetch('${HOST}/pdf.worker.mjs')).text();
+    pdfjs.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+    const bin = atob('${data}'); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const pdf = await pdfjs.getDocument({ data: bytes }).promise;
+    const last = Math.min(pdf.numPages, ${o.maxPages ?? 50});
+    for (let n = 1; n <= last; n++) {
+      const pg = await pdf.getPage(n);
+      const base = pg.getViewport({ scale: 1 });
+      const vp = pg.getViewport({ scale: ${o.scale ?? 0} || Math.min(1.6, 1000 / base.width) });
+      const c = document.createElement('canvas'); c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+      document.body.appendChild(c);
+      await pg.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+    }
+    window.__pdfPages = last;
+  } catch (e) { window.__pdfError = String(e && e.message || e); }
+</script></body></html>`;
+  await page.setContent(doc, { waitUntil: 'load' });
+  await page.waitForFunction(() => (window as any).__pdfPages !== undefined || (window as any).__pdfError !== undefined, undefined, { timeout: 30_000 });
+  const err = await page.evaluate(() => (window as any).__pdfError as string | undefined);
+  if (err) throw new Error(`showPdf: pdf.js could not render ${path.basename(file)}: ${err}`);
+  const pages = await page.evaluate(() => (window as any).__pdfPages as number);
+  await pause(page, 600);
+  return pages;
+}
+
+// ─── AI request guard ────────────────────────────────────────────
+
+/**
+ * Whether a browser request makes the server call a model (a billed request): every non-GET under /api/v1/ai/ except the settings
+ * page, the social-post and suggestion generators, and the GETs that generate when the page opens (BI forecasts, insights).
+ */
+export function isAiRequest(method: string, url: string): boolean {
+  const p = new URL(url, 'http://x').pathname.replace(/^\/api\/v1/, '');
+  if (/^\/marketing\/social-content\/generate/.test(p) || p === '/marketing/suggestions/generate') return true;
+  if (/^\/ai\/(bi\/(cash-flow-forecast|destination-profitability|lost-deal-analysis|seasonal-demand|team-performance)|intelligence\/insights)/.test(p)) return true;
+  return method !== 'GET' && /^\/ai\//.test(p) && !/^\/ai\/settings/.test(p);
+}
+
+export interface AiGuard {
+  /** AI requests so far (browser requests let through, plus server(n) reads). Never above the budget. */
+  readonly used: number;
+  /** Count n requests the server makes on its own (e.g. 2 for an inbound message read); throws before the total would pass the budget. */
+  server(n: number): void;
+  /** Throws if a request went over the budget (it was aborted before it left the browser). */
+  check(): void;
+  /** Log the totals, end the guard (beat() stops checking it), then check(). */
+  report(): void;
+}
+
+/**
+ * Hard budget for AI requests in a take. Counts the AI requests the browser makes (isAiRequest), aborts the one that would pass
+ * `budget` before it leaves the browser, and fails the take at the next beat or check(). `live: false` means no AI session is
+ * approved: the budget is 0. beat() runs check() before and after each scene. Await it before the spec adds routes of its own.
+ * `onExceed: 'close'` also closes the browser context at once (a take that must not go on).
+ */
+export async function aiGuard(page: Page, o: { budget: number; live: boolean; onExceed?: 'fail' | 'close' }): Promise<AiGuard> {
+  const budget = o.live ? o.budget : 0;
+  let browser = 0; let server = 0;
+  const blocked: string[] = [];
+  const verdict = new WeakMap<object, boolean>(); // per request: let through (true) or over budget (false); decided once
+  const label = (method: string, url: string) => `${method} ${url.replace(/^.*\/api\/v1/, '')}`;
+  const total = () => browser + server;
+  const admit = (r: { method(): string; url(): string }): boolean => {
+    const known = verdict.get(r);
+    if (known !== undefined) return known;
+    let ok = true;
+    if (total() >= budget) {
+      ok = false;
+      blocked.push(label(r.method(), r.url()));
+      console.error(`  [ai] budget ${budget} reached: ${label(r.method(), r.url())} is not sent`);
+      if (o.onExceed === 'close') void page.context().close();
+    } else {
+      browser++;
+      console.log(`  [ai] request ${total()}/${budget}: ${label(r.method(), r.url())}`);
+    }
+    verdict.set(r, ok);
+    return ok;
+  };
+  const guard: AiGuard = {
+    get used() { return total(); },
+    server(n) {
+      if (total() + n > budget) { blocked.push(`server-side read x${n}`); guard.check(); }
+      server += n;
+      console.log(`  [ai] server-side x${n}: ${total()}/${budget}`);
+    },
+    check() {
+      if (blocked.length) throw new Error(`AI budget ${budget} exceeded by: ${blocked.join(', ')}. Those requests were not sent.`);
+    },
+    report() {
+      console.log(`  [ai] take used ${total()} of ${budget} AI requests (browser ${browser}, server ${server}); compare with Settings > AI usage`);
+      if (activeGuard === guard) activeGuard = null; // the take is over
+      guard.check();
+    },
+  };
+  // count on the 'request' event (it fires for every request, also one that a spec's own route answers) ...
+  page.on('request', (r) => { if (isAiRequest(r.method(), r.url())) admit(r); });
+  // ... and stop an over-budget one before it leaves the browser (a route the spec adds later runs first; one that answers by itself
+  // never reaches the network anyway, and the count above still sees it)
+  await page.context().route((u) => /\/api\/v1\/(ai|marketing)\//.test(u.pathname), async (route) => {
+    const r = route.request();
+    if (isAiRequest(r.method(), r.url()) && !admit(r)) { await route.abort('blockedbyclient'); return; }
+    await route.fallback();
+  });
+  activeGuard = guard;
+  return guard;
+}
+
 // ─── Envelope ────────────────────────────────────────────────────
 
 /**
  * The recording around one film: overlays (cursor only), listeners, marks, the saved video in desktop/showcase/.work/<name>.webm.
  * Throws at the end if any scene of the clip was not played, so a dry run catches a spec and clip that drifted apart.
+ * A clip can be recorded in several parts: each part is its own spec and recording `name`, and `o.clip` names the clip whose scenes
+ * (those with `recording: name`) it plays (default: the clip called `name`).
  */
-export async function recordFilm(page: Page, context: BrowserContext, name: string, testInfo: TestInfo, body: (page: Page) => Promise<void>): Promise<void> {
-  film = name;
-  beats = loadBeats(name);
+export async function recordFilm(page: Page, context: BrowserContext, name: string, testInfo: TestInfo, body: (page: Page) => Promise<void>, o: { clip?: string } = {}): Promise<void> {
+  film = o.clip ?? name;
+  beats = loadBeats(name, o.clip ?? name);
   // Product observation (reported, not fixed): the app asks for a softphone token on every page even where calling is not on
   // (Indian agencies), and the API answers 403. It is invisible on screen, so the take allows it.
   allowHttp(/\/api\/v1\/voip\/token(\?|$)/, [403]);
@@ -221,7 +431,7 @@ export async function recordFilm(page: Page, context: BrowserContext, name: stri
     await body(page);
     await pause(page, 600);
     const missed = [...beats.values()].filter((b) => !b.played).map((b) => b.id);
-    if (missed.length) throw new Error(`steps in studio/clips/${name}.json never played: ${missed.join(', ')}`);
+    if (missed.length) throw new Error(`steps in studio/clips/${film}.json never played: ${missed.join(', ')}`);
     finished = true;
   } finally {
     fs.mkdirSync(WORK_DIR, { recursive: true });
