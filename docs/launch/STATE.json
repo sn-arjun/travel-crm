@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-22T01:16:46.071Z",
+  "updated": "2026-10-22T01:34:06.943Z",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -348,6 +348,12 @@
           "head": "0e8cbab",
           "what": "leads pipeline board: GET /leads/board with column counts and values (agency currency, mixed flagged), board settings API, List/Board toggle, HTML5 drag-and-drop on the shared KanbanBoard, keyboard Move to, optimistic moves via the status route, Lost reason + Won confirm; no settings screen for board columns yet",
           "gates": "merged line backend 130/2464, desktop 111/1708, lint PASS, i18n PASS; e2e 41"
+        },
+        "R163": {
+          "status": "merged",
+          "head": "786510e",
+          "what": "film tooling: per-scene speed + SpeedBadge, beat x speed, multi-part clips, navTo/hoverNav/tab, showInPhoneFrame, aiGuard (ai-session budget 7), showPdf (needs pdfjs-dist), record-films --clip, driver-* recordings, record-driver -Test/-AgencyCode, coverage skips prospect clips",
+          "gates": "desktop typecheck 0, lint PASS, vitest 1708, coverage OK, film-kit.spec 8 passed 1 skipped (pdf), fixture 4x render OK"
         }
       }
     }
