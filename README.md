@@ -9,7 +9,7 @@ What works today, feature by feature, is in [docs/FEATURES.md](docs/FEATURES.md)
 ```
 Agency staff                           Drivers                  Platform owner           Visitors
 Desktop app (desktop/)                 Driver app               Super admin console      Landing page
-Electron + Next.js                     (Flutter, Android)       (super-admin/, Next.js   (landing/, static)
+Electron + Next.js                     (Flutter, Android)       (super-admin/, Next.js   (landing/, Astro)
         |                              packages/driver_app      on Cloudflare Workers)
         +------------------------------+                              |
                                        v                              v
@@ -26,7 +26,7 @@ Terraform (terraform/) builds the cloud side; oci-provisioner/ runs agency WordP
 | `desktop/` | The app agency staff use: Next.js 16 + React 19, packaged with Electron. Tests, e2e and the local stack launcher live here. |
 | `backend/` | The API: Cloudflare Workers, Hono, zod, Drizzle, D1. Migrations in `drizzle/master` and `drizzle/tenant`. |
 | `super-admin/` | The operator console, built with OpenNext for Cloudflare Workers. It has its own login. |
-| `landing/` | Static marketing site. `node landing/scripts/build.mjs` writes `landing/dist`. Settings in `landing/config.js`. |
+| `landing/` | Marketing site (Astro, static). `npm ci && npm run build` in `landing/` writes `landing/dist`. Settings in `landing/public/config.js`. See [landing/README.md](landing/README.md). |
 | `packages/driver_app`, `packages/shared` | Flutter driver app and its shared Dart code. |
 | `packages/shared-ts` | Shared TypeScript types (`@travelcrm/shared`). |
 | `studio/` | Video studio for demo and marketing films. Separate npm project, not part of the workspace. |
@@ -102,7 +102,7 @@ Each agency has its own D1 database; the master database only holds the registry
 | Super admin | `cd super-admin && npx tsc --noEmit && npm run lint && npm run build` |
 | End-to-end (Playwright) | Start a stack, then from `desktop/`: `E2E_BASE_URL=http://localhost:3110 E2E_API_URL=http://localhost:8797/api/v1 npx playwright test e2e/leads.spec.ts` (slot 1; a full run is `npx playwright test`) |
 | Packaged installer smoke | `npm -w travelcrm-desktop run build:desktop`, start a stack with `--no-build`, then `cd desktop && E2E_API_URL=http://localhost:8797/api/v1 npm run test:e2e:electron` |
-| Landing page | `node landing/scripts/build.mjs && node landing/scripts/check-links.mjs` |
+| Landing page | `cd landing && npm ci && npm run build && node scripts/check-links.mjs` |
 | Driver app (Windows, x86 PowerShell) | `"C:/Windows/SysWOW64/WindowsPowerShell/v1.0/powershell.exe" -Command "cd packages/driver_app; flutter analyze; flutter test"` |
 | Clean setup works | `node scripts/fresh-clone-check.mjs` clones the last commit to a temporary folder, runs one root `npm ci` and the backend and desktop checks, then deletes it. It takes several minutes; commit first, because only committed files are cloned. |
 
@@ -113,7 +113,7 @@ Never weaken or skip a test to get a green run; fix the cause.
 - **Desktop installer:** `npm -w travelcrm-desktop run build:desktop` writes the installer for the machine it runs on (NSIS on Windows) to `desktop/release/`. It is unsigned unless a code-signing certificate is configured. `TRAVELCRM_UPDATE_URL` sets the update feed.
 - **Driver app:** `npm run build:android:driver` builds a release APK. It needs an untracked `packages/driver_app/android/key.properties` (copy `key.properties.example`).
 - **Backend and console:** generate the Worker config (`gen-wrangler.mjs --env production`), then `npm run deploy:api` and `npm run deploy:admin`. `npm run infra` applies Terraform. The GitHub workflows in `.github/workflows` run the checks on every push; the deploy workflows start only by hand (`workflow_dispatch`).
-- **Landing page:** `landing/dist` from `node landing/scripts/build.mjs`, published by the `landing.yml` workflow.
+- **Landing page:** `landing/dist` from `npm run build` in `landing/`, published by the `landing.yml` workflow.
 
 ## Environment variables
 
@@ -124,7 +124,7 @@ Each app has its own example file with names and one-line purposes (never real v
 | Backend (Worker secrets and settings) | [backend/.dev.vars.example](backend/.dev.vars.example) |
 | Desktop (Next.js and Electron) | [desktop/.env.example](desktop/.env.example) |
 | Super admin console | [super-admin/.dev.vars.example](super-admin/.dev.vars.example) |
-| Landing page | `landing/config.js` (public values only) |
+| Landing page | `landing/public/config.js` (public values only) |
 | Everything else (Flutter, Terraform, CI) | [.env.example](.env.example) |
 
 ## Where things are documented
