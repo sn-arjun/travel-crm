@@ -129,6 +129,8 @@ export interface ReportQuery<T> {
   total: number;
   /** True when the server holds more rows than were loaded. */
   hasMore: boolean;
+  /** Totals and notices some reports add beside their rows (R152); null for the others. */
+  summary: Record<string, unknown> | null;
   retry: () => void;
 }
 
@@ -157,6 +159,7 @@ export function useReport<T>(
     previousRows: null,
     total: 0,
     hasMore: false,
+    summary: null,
   });
   const [retryKey, setRetryKey] = React.useState(0);
 
@@ -189,11 +192,12 @@ export function useReport<T>(
           previousRows: wantPrevious && env.previousRows ? env.previousRows : null,
           total: Math.max(Number(env.meta?.total) || 0, rows.length),
           hasMore: env.meta?.hasMore === true,
+          summary: env.summary ?? null,
         });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setState({ rows: [], loading: false, error: errorMessage(err), previousRows: null, total: 0, hasMore: false });
+        setState({ rows: [], loading: false, error: errorMessage(err), previousRows: null, total: 0, hasMore: false, summary: null });
       });
     return () => {
       cancelled = true;
@@ -428,6 +432,7 @@ export function ReportSection<T>({
   comparable,
   kpis,
   emptyMessage,
+  footer,
   children,
 }: {
   reportId: string;
@@ -437,6 +442,8 @@ export function ReportSection<T>({
   comparable?: boolean;
   kpis?: (rows: T[], previousRows: T[] | null) => ReportKpi[];
   emptyMessage?: string;
+  /** Rendered under the rows with the report's summary (R152), for reports that add one. */
+  footer?: (summary: Record<string, unknown> | null) => React.ReactNode;
   children: (rows: T[]) => React.ReactNode;
 }) {
   const q = useReport<T>(reportId, params, { ignoreRange, withPrevious: comparable });
@@ -475,6 +482,7 @@ export function ReportSection<T>({
     <div className="space-y-ds-4">
       {kpis && <ReportKpis items={kpis(q.rows, q.previousRows)} />}
       {children(q.rows)}
+      {footer?.(q.summary)}
       {q.hasMore && (
         <p className="text-center text-sm text-ds-foreground-muted" data-testid="report-more-rows">
           {`Showing the first ${formatLocaleNumber(q.rows.length)} of ${formatLocaleNumber(q.total)} rows. Export the report to get every row.`}

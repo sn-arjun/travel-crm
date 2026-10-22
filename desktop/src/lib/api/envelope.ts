@@ -33,6 +33,8 @@ export interface ReportEnvelope<T = unknown, C = unknown, M = unknown> {
   meta: M | undefined;
   /** Full previous-period rows, present when the request asked for `compare=true`. */
   previousRows?: T[];
+  /** Figures a report adds beside its rows (totals, notices), when it has any. */
+  summary?: Record<string, unknown>;
 }
 
 function isObject(v: unknown): v is Json {
@@ -137,11 +139,13 @@ export function unwrapReport<T = unknown, C = unknown, M = unknown>(res: unknown
   const columns = Array.isArray(inner.columns) ? inner.columns : Array.isArray(res.columns) ? res.columns : [];
   const meta = (inner.meta ?? res.meta) as M | undefined;
   const prev = inner.previous_period_rows ?? res.previous_period_rows;
+  const summary = inner.summary ?? res.summary;
   return {
     data: rows as T[],
     columns: columns as C[],
     meta,
     ...(Array.isArray(prev) ? { previousRows: prev as T[] } : {}),
+    ...(isObject(summary) ? { summary: summary as Record<string, unknown> } : {}),
   };
 }
 

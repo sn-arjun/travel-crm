@@ -39,6 +39,9 @@ import {
   type OutstandingResponse,
 } from '@/lib/api/reports';
 import { formatDisplayDate } from '@/lib/dates';
+import { useFeatureGate } from '@/hooks/use-feature-gate';
+import { useT } from '@/lib/i18n';
+import { MarginPointer, MarginReportTab } from './_margin-report';
 
 interface RevenueRow {
   status: string;
@@ -354,11 +357,12 @@ function PnlTab() {
   );
 }
 
-function TaxTab() {
+function TaxTab({ onOpenMargin }: { onOpenMargin: () => void }) {
   return (
     <ReportSection<TaxRow>
       reportId="tax_report"
       comparable
+      footer={(summary) => <MarginPointer summary={summary} onOpen={onOpenMargin} />}
       kpis={(rows, prev) => [
         { label: 'Tax Collected', value: formatReportCurrency(sumBy(rows, (r) => r.total_tax)), delta: deltaOf(rows, prev, (r) => r.total_tax) },
         { label: 'Taxable Revenue', value: formatReportCurrency(sumBy(rows, (r) => r.total_revenue)), delta: deltaOf(rows, prev, (r) => r.total_revenue) },
@@ -494,6 +498,8 @@ function DailyCashTab() {
 
 export default function FinancialReportsPage() {
   const [tab, setTab] = React.useState('revenue');
+  const t = useT();
+  const marginGate = useFeatureGate('margin_scheme');
   return (
     <ReportPageTemplate
       title="Financial Reports"
@@ -519,15 +525,17 @@ export default function FinancialReportsPage() {
           <TabsTrigger value="payment-methods">Payment Methods</TabsTrigger>
           <TabsTrigger value="refunds">Refunds</TabsTrigger>
           <TabsTrigger value="daily-cash">Daily Cash</TabsTrigger>
+          {marginGate.enabled && <TabsTrigger value="margin">{t('margin.report.tab')}</TabsTrigger>}
         </TabsList>
         <TabsContent value="revenue"><RevenueTab /></TabsContent>
         <TabsContent value="collections"><CollectionsTab /></TabsContent>
         <TabsContent value="receivables"><ReceivablesTab /></TabsContent>
         <TabsContent value="pnl"><PnlTab /></TabsContent>
-        <TabsContent value="tax"><TaxTab /></TabsContent>
+        <TabsContent value="tax"><TaxTab onOpenMargin={() => setTab('margin')} /></TabsContent>
         <TabsContent value="payment-methods"><PaymentMethodsTab /></TabsContent>
         <TabsContent value="refunds"><RefundsTab /></TabsContent>
         <TabsContent value="daily-cash"><DailyCashTab /></TabsContent>
+        {marginGate.enabled && <TabsContent value="margin"><MarginReportTab /></TabsContent>}
       </Tabs>
     </ReportPageTemplate>
   );
