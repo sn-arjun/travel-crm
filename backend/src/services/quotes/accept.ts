@@ -121,6 +121,8 @@ export interface AcceptAnswer {
 
 export interface AcceptBlock {
   enabled: true;
+  /** The agency's language for the page (en or nl); the visitor's own choice, if any, wins on the page. */
+  language: TextLanguage;
   /** null: the page uses its own translated default. */
   label: string | null;
   requireName: boolean;
@@ -186,7 +188,7 @@ export async function buildAcceptBlock(env: Env, tenantId: string, db: D1Databas
   const settings = await acceptableSettings(env, tenantId, db);
   if (!settings) return null;
   const { state, plan } = await acceptState(env, tenantId, db, itin, settings);
-  const block: AcceptBlock = { enabled: true, label: settings.label || null, requireName: settings.requireName, requireTerms: settings.requireTerms, state };
+  const block: AcceptBlock = { enabled: true, language: await agencyDefaultLanguage(db), label: settings.label || null, requireName: settings.requireName, requireTerms: settings.requireTerms, state };
   if (plan) {
     const dep = await loadDepartureContext(db, plan.departureId);
     const left = await seatsLeft(db, plan.departureId, dep.row.capacity);

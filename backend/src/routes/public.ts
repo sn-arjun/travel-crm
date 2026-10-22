@@ -190,7 +190,7 @@ publicRoutes.get('/quotation/:token', async (c) => {
     },
     days: daysWithItems,
     viewCount: (itin.viewCount || 0) + 1,
-    ...(accept ? { accept, language: lang } : {}),
+    ...(accept ? { accept } : {}),
   });
 });
 
