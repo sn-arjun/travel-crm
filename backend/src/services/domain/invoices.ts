@@ -39,7 +39,8 @@ export interface CreateInvoiceInput {
 }
 
 export interface InvoiceActor {
-  userId: string;
+  /** null when a public page creates the invoice (the booking page): no staff member did it, so no activity entry is written. */
+  userId: string | null;
   /** Automation depth of whatever is creating the invoice (0 for a person). */
   depth?: number;
   /** Let follow-on automations run after the response instead of before it. */
@@ -194,10 +195,12 @@ export async function createInvoice(
 
   // Log activity
   const db = drizzle(tenantDb);
-  await logActivity(db, {
-    userId: actor.userId, action: 'invoice_created', entityType: 'invoice', entityId: invoiceId,
-    details: JSON.stringify({ invoiceNumber, contactId: data.contactId }),
-  });
+  if (actor.userId) {
+    await logActivity(db, {
+      userId: actor.userId, action: 'invoice_created', entityType: 'invoice', entityId: invoiceId,
+      details: JSON.stringify({ invoiceNumber, contactId: data.contactId }),
+    });
+  }
 
   // Notify lead owner if invoice is linked to a lead (TICKET-166)
   if (data.leadId) {

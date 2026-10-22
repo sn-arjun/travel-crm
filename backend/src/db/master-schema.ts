@@ -327,6 +327,20 @@ export const quotationLinks = sqliteTable('quotation_links', {
   index('idx_quotation_links_tenant').on(table.tenantId),
 ]);
 
+// --- Public Links (R148: random-token links to the public booking and self-service pages) ---
+export const publicLinks = sqliteTable('public_links', {
+  token: text('token').primaryKey(), // 128 random bits, base64url; never a UUIDv7
+  tenantId: text('tenant_id').notNull(),
+  kind: text('kind').notNull(), // departure_booking, booking_self_service, passenger_self_service
+  entityId: text('entity_id').notNull(),
+  isActive: integer('is_active').notNull().default(1),
+  expiresAt: text('expires_at'),
+  createdAt: text('created_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`),
+  lastUsedAt: text('last_used_at'),
+}, (table) => [
+  index('idx_public_links_entity').on(table.tenantId, table.kind, table.entityId),
+]);
+
 export const tenantUsers = sqliteTable('tenant_users', {
   id: text('id').primaryKey(), // UUIDv7
   tenantId: text('tenant_id').notNull().references(() => tenants.id),

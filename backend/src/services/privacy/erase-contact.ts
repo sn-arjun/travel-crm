@@ -19,6 +19,7 @@ import {
   bindsFor,
 } from './registry';
 import { tenantKeyFromRef } from './export-contact';
+import { revokeSelfServiceFor } from '../public-links';
 
 /**
  * R208: erase one contact's personal data.
@@ -196,6 +197,14 @@ export async function eraseContact(
       .bind(tenantId, ...chunk)
       .run();
   }
+
+  // The self-service pages of the contact's seat bookings and passengers (R148) stop working too. The departure's booking page is not personal.
+  const seatRows = await db.prepare(`SELECT id FROM seat_bookings WHERE id IN ${SEAT_BOOKINGS}`).bind(...bindsFor(SEAT_BOOKINGS, contactId)).all<{ id: string }>();
+  const passengerRows = await db.prepare(`SELECT id FROM seat_passengers WHERE id IN ${SEAT_PASSENGERS}`).bind(...bindsFor(SEAT_PASSENGERS, contactId)).all<{ id: string }>();
+  await revokeSelfServiceFor(env, tenantId, {
+    seatBookingIds: (seatRows.results ?? []).map((r) => r.id),
+    passengerIds: (passengerRows.results ?? []).map((r) => r.id),
+  });
 
   // ---- 3. One atomic batch of deletes and rewrites. Dependents first, because the id sets are sub-selects.
   const now = new Date().toISOString();

@@ -9,12 +9,13 @@ import type { ZodType } from 'zod';
 import { zValidator } from '../utils/validator';
 import type { AppContext } from '../types';
 import { success, notFound } from '../utils/response';
-import { requirePermission } from '../middleware/rbac';
+import { rbac, requirePermission } from '../middleware/rbac';
 import { logActivity } from '../utils/activity-logger';
 import { guarded, DepartureError } from '../services/departures/common';
 import { bulkConfirm, cancelBooking, changeSeats, confirmBooking, getBookingDetail, moveBooking } from '../services/departures/seats';
 import { offerBooking, runWaitlistStep } from '../services/departures/waitlist';
 import { replacePassengers } from '../services/departures/passengers';
+import { createBookingInvoice } from '../services/departures/booking-invoice';
 import { announceSeats, emitCapacityEvents, loadDepartureContext, requireBookingRow, seatCtxFromRequest } from '../services/departures/seat-support';
 import {
   bulkConfirmBodySchema, cancelBodySchema, changeSeatsBodySchema, confirmBodySchema, moveBodySchema, passengersBodySchema,
@@ -114,6 +115,20 @@ seatBookings.put('/:id/passengers', requirePermission('departures', 'edit'), zVa
     await announceSeats(ctx, row.departure_id, 'seat_booking.passengers_changed');
     await log(c, 'update', id, { passengers: passengers.length });
     return success(c, await getBookingDetail(db, id));
+  }),
+);
+
+// The booking's invoice (R148): made from the passengers' bands, room supplements and seat surcharge, or refreshed while still a draft.
+seatBookings.post('/:id/invoice', rbac(['admin', 'sales_manager', 'accountant']), (c) =>
+  guarded(c, async () => {
+    const id = c.req.param('id');
+    const db = c.get('tenantDb');
+    const row = await requireBookingRow(db, id);
+    const ctx = seatCtxFromRequest(c);
+    const result = await createBookingInvoice(c.env, c.get('tenantId'), db, id, { userId: c.get('userId'), depth: ctx.depth, waiter: ctx.waiter });
+    await log(c, 'update', id, { invoice: result.invoiceNumber, created: result.created });
+    await announceSeats(ctx, row.departure_id, 'seat_booking.invoiced');
+    return success(c, { ...result, booking: await getBookingDetail(db, id) });
   }),
 );
 

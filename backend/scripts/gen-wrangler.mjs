@@ -176,6 +176,8 @@ export const OPTIONAL_PLAIN_VARS = [
   'EMAIL_FROM_NAME',
   'PLATFORM_SUPPORT_EMAIL',
   'QUOTES_URL',
+  'PUBLIC_PAGES_URL', // base of the public booking pages (default: APP_URL)
+  'TURNSTILE_SITE_KEY', // public by design: the booking page shows the Turnstile widget with it
   'SUPER_ADMIN_EMAIL', // receives call fraud / spend-spike alerts
   'PLATFORM_TAX_STATE',
   'PLATFORM_TAX_ID',

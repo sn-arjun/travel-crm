@@ -115,6 +115,7 @@ export const PRIVACY_NOT_PERSONAL: Record<string, string> = {
   contact_segments: 'segment definitions (filters), no contact rows',
   driver_otp_log: 'driver (staff) login codes',
   quotation_links: 'master table; erasure sets is_active = 0 for the contact itineraries (erase-contact.ts step 2)',
+  public_links: 'master table (R148): a random token to a departure booking page (not personal) or to a booking or passenger self-service page; erasure sets is_active = 0 for the contact seat bookings and passengers (erase-contact.ts step 2)',
   addon_orders: 'master table (R206): an agency buying add-ons from the platform; invoice_id is the platform invoice, not a customer invoice',
   tours: 'product data: tour definitions, no people (R139)',
   tour_stops: 'product data: default stops of a tour, no people (R139)',

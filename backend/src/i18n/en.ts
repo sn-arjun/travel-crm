@@ -275,6 +275,30 @@ export const en = {
   'chatCapture.submit': 'Continue',
   'chatCapture.skip': 'Not now',
   'chatCapture.error': 'Please check your details and try again.',
+
+  // ---- public booking page (R148) ----
+  'booking.invoice.band': '{tour} ({date}): {band}',
+  'booking.invoice.room': 'Room supplement: {room}',
+  'booking.invoice.seat': 'Preferred seat supplement',
+  'booking.invoice.notes': 'Seats on {tour}, departure {code}',
+  'public.booking.notFound': 'This booking page is not available',
+  'public.booking.expired': 'This booking link has expired',
+  'public.booking.closed': 'Booking for this departure is closed',
+  'public.booking.rejected': 'We could not accept this form. Please reload the page and try again.',
+  'public.booking.tooFast': 'Please take a moment to fill in the form, then send it again.',
+  'public.booking.invalid': 'Please check the details you entered',
+  'public.booking.termsRequired': 'Please accept the terms to book',
+  'public.booking.contactRequired': 'Enter your name and an email address or phone number',
+  'public.booking.emailInvalid': 'Enter a valid email address',
+  'public.booking.phoneInvalid': 'Enter a valid phone number',
+  'public.booking.passengerInvalid': 'Some passenger details are missing or not valid',
+  'public.booking.noSeats': 'Not enough seats are left on this departure',
+  'public.booking.seatTaken': 'That seat is already taken',
+  'public.booking.tooMany': 'You can book up to {max} seats at once',
+  'public.booking.inProgress': 'This booking is already being processed',
+  'public.booking.captcha': 'The security check failed. Please try again.',
+  'public.booking.bandMismatch': 'The age does not match the chosen age group',
+  'public.booking.tooLarge': 'The form is too large',
 } as const;
 
 export type MessageKey = keyof typeof en;

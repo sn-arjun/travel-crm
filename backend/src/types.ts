@@ -82,6 +82,14 @@ export interface Env {
   SUPER_ADMIN_EMAIL?: string;
   APP_URL?: string;
   QUOTES_URL?: string;
+  /** R148: base of the public booking and self-service pages (default: APP_URL, giving APP_URL/book and APP_URL/trip). */
+  PUBLIC_PAGES_URL?: string;
+  /** R148: Cloudflare Turnstile secret for the public booking form. Unset = honeypot and fill-time checks only. */
+  TURNSTILE_SECRET_KEY?: string;
+  /** R148: Turnstile site key handed to the booking page so it can show the widget (public by design). */
+  TURNSTILE_SITE_KEY?: string;
+  /** R148: minimum seconds between opening the booking form and submitting it (default 3; 0 in test mode). */
+  PUBLIC_BOOKING_MIN_FILL_SECONDS?: string;
   API_PUBLIC_URL?: string;
   /** R131: Cloudflare Email Service sending binding (`[[send_email]] name = "EMAIL"`). Absent locally unless declared. */
   EMAIL?: {

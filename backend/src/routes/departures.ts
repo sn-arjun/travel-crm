@@ -30,6 +30,9 @@ import {
   manifestQuerySchema, roomAssignmentsSchema, pricesBodySchema, stopsBodySchema, updateDepartureSchema, vehiclesBodySchema,
 } from '../validators/departures';
 import { bookingListSchema, requestSeatsBodySchema } from '../validators/seat-bookings';
+import { activeLinkFor, createLink, revoke } from '../services/public-links';
+import { resolveFeature } from '../services/features/resolve';
+import { bookingUrl } from '../utils/app-urls';
 
 const departures = new Hono<AppContext>();
 
@@ -214,6 +217,46 @@ departures.post('/:id/bookings', requirePermission('departures', 'create'), zVal
     const booking = await requestSeats(seatCtxFromRequest(c), { ...body, departureId: c.req.param('id'), source: 'staff' });
     await logActivity(c.get('tenantDb'), { userId: c.get('userId'), action: 'create', entityType: 'seat_booking', entityId: booking.id, details: JSON.stringify({ status: booking.status, seats: booking.seats }) });
     return created(c, booking);
+  }),
+);
+
+// ---- public booking page (R148): the link behind the "Public page" card. The page itself is routes/public-booking.ts.
+
+departures.get('/:id/public-link', requirePermission('departures', 'view'), (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    const id = c.req.param('id');
+    const row = await getDepartureRow(db, id);
+    if (!row) return notFound(c, 'Departure');
+    const available = (await resolveFeature(c.env, c.get('tenantId'), 'public_booking')).enabled;
+    const token = row.public_booking_enabled ? await activeLinkFor(c.env, 'departure_booking', id, c.get('tenantId')) : null;
+    return success(c, { available, enabled: !!token, url: token ? bookingUrl(c.env, token) : null });
+  }),
+);
+
+// Switches the page on for this departure and returns its address (the same address while it stays on).
+departures.post('/:id/public-link', requireFeature('public_booking'), requirePermission('departures', 'edit'), (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    const id = c.req.param('id');
+    if (!(await getDepartureRow(db, id))) return notFound(c, 'Departure');
+    const token = await createLink(c.env, 'departure_booking', id, c.get('tenantId'));
+    await db.prepare('UPDATE departures SET public_booking_enabled = 1, updated_at = ? WHERE id = ?').bind(new Date().toISOString(), id).run();
+    await logActivity(db, { userId: c.get('userId'), action: 'update', entityType: 'departure', entityId: id, details: JSON.stringify({ publicPage: 'enabled' }) });
+    return success(c, { available: true, enabled: true, url: bookingUrl(c.env, token) });
+  }),
+);
+
+// Switches the page off and stops its address; switching on again makes a new address.
+departures.delete('/:id/public-link', requirePermission('departures', 'edit'), (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    const id = c.req.param('id');
+    if (!(await getDepartureRow(db, id))) return notFound(c, 'Departure');
+    await revoke(c.env, 'departure_booking', id, c.get('tenantId'));
+    await db.prepare('UPDATE departures SET public_booking_enabled = 0, updated_at = ? WHERE id = ?').bind(new Date().toISOString(), id).run();
+    await logActivity(db, { userId: c.get('userId'), action: 'update', entityType: 'departure', entityId: id, details: JSON.stringify({ publicPage: 'disabled' }) });
+    return success(c, { available: true, enabled: false, url: null });
   }),
 );
 

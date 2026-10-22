@@ -95,6 +95,7 @@ import aiIntelligenceRoutes from './routes/ai-intelligence';
 import chatbotRoutes from './routes/chatbot';
 import { publicChatbotRoutes, chatbotWebhookRoutes } from './routes/public-chatbot';
 import { publicEnquiryRoutes, adminEnquiryRoutes } from './routes/public-enquiries';
+import { publicBookingRoutes } from './routes/public-booking';
 import businessIntelligenceRoutes from './routes/business-intelligence';
 import aiSettingsRoutes from './routes/ai-settings';
 import whatsappCampaignRoutes from './routes/whatsapp-campaigns';
@@ -156,7 +157,7 @@ app.use(
     // the route itself enforces each agency's allow-list (no cookies or staff credentials are involved there).
     origin: (origin, c) => (/^\/api(\/v1)?\/public\/chatbot\//.test(c.req.path) ? origin || null : resolveCorsOrigin(origin, c.env as any)),
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization', 'X-Refresh-Token', 'X-Tenant-Id'],
+    allowHeaders: ['Content-Type', 'Authorization', 'X-Refresh-Token', 'X-Tenant-Id', 'Idempotency-Key'],
     exposeHeaders: ['Content-Length', 'X-Request-Id', 'X-RateLimit-Remaining', 'X-RateLimit-Reset'],
     maxAge: 86400,
     credentials: true,
@@ -209,6 +210,9 @@ app.route('/api/v1/public/chatbot', publicChatbotRoutes);
 app.route('/api/public/chatbot', publicChatbotRoutes);
 app.route('/api/v1/public/enquiries', publicEnquiryRoutes);
 app.route('/api/public/enquiries', publicEnquiryRoutes);
+// The booking page of a departure (R148): the token names the departure, no login.
+app.route('/api/v1/public/departures', publicBookingRoutes);
+app.route('/api/public/departures', publicBookingRoutes);
 
 // Subscription billing: gateway webhooks (signature is the credential) and the local mock checkout
 app.route('/api/v1/billing', billingPublicRoutes);
