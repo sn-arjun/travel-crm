@@ -145,6 +145,8 @@ test.describe('Extras and the traveller self-service page', () => {
     await guest.waitForURL(/\/trip\//, { timeout: 30_000 });
     await expect(guest.getByTestId('pay-nothing')).toBeVisible({ timeout: 20_000 });
     await expect(guest.getByTestId('pay-extras-paid')).toContainText('100');
+    // R164-1: the way back from the pay page says what happened
+    await expect(guest.getByTestId('payment-return')).toHaveAttribute('data-state', 'paid');
     await anon.close();
 
     // ---- staff see the travellers, the extras on the manifest, the paid extras invoice and the sales

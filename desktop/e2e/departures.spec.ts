@@ -203,4 +203,35 @@ test.describe('Group departures', () => {
     const listRow = page.locator('table tbody tr').filter({ has: page.getByTestId('seats-bar') }).first();
     await expect(listRow).toBeVisible({ timeout: 15_000 });
   });
+
+  // R164-2: a tour can have its own age bands; the form starts them from the agency's and saves them on the tour.
+  test('a tour with its own age bands: adults from 13', async ({ page }) => {
+    const stamp = Date.now().toString(36).toUpperCase();
+    expect((await api('PUT', '/departures/settings', { enabled: true })).success).toBe(true);
+    await page.goto('/tours/new');
+    await page.locator('#tour-title').fill(`Teen Tour ${stamp}`);
+    await page.locator('#tour-code').fill(`TT-${stamp}`);
+    await page.getByRole('tab', { name: /^Prices/ }).click();
+    await expect(page.getByTestId('tour-bands-inherit')).toContainText('Adult');
+    await page.getByTestId('tour-custom-bands').click();
+    const rows = page.getByTestId('age-band-row');
+    await expect(rows).toHaveCount(3);
+    await rows.first().locator('input[type="number"]').fill('13');
+    await page.getByTestId('tour-save').click();
+    await page.waitForURL(/\/tours\/[0-9a-f-]{36}$/);
+    const tourId = page.url().split('/').pop() as string;
+
+    const stored = (await api('GET', `/tours/${tourId}`)).data;
+    expect(stored.ageBands.map((b: { key: string; minAge: number }) => [b.key, b.minAge])).toEqual([['adult', 13], ['child', 2], ['infant', 0]]);
+
+    // the edit form shows them back, and switching back to the agency's bands clears them
+    await page.goto(`/tours/${tourId}/edit`);
+    await page.getByRole('tab', { name: /^Prices/ }).click();
+    await expect(page.getByTestId('tour-custom-bands')).toBeChecked();
+    await expect(page.getByTestId('age-band-row').first().locator('input[type="number"]')).toHaveValue('13');
+    await page.getByTestId('tour-custom-bands').click();
+    await page.getByTestId('tour-save').click();
+    await page.waitForURL(/\/tours\/[0-9a-f-]{36}$/);
+    expect((await api('GET', `/tours/${tourId}`)).data.ageBands).toBeNull();
+  });
 });
