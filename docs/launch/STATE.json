@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-22T03:34:51.983Z",
+  "updated": "2026-10-22T03:53:26.917Z",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -378,6 +378,12 @@
           "head": "842c995",
           "what": "quote accept and book: tenant 0063 accepted fields (IP hash only), quotes.accept setting, public accept with rate limit and single-claim idempotency, seats by confirm mode (waitlist if full), invoice from quote lines + deposit link or bank details, staff mark-accepted API, /q/[token] accept sheet + badge; zero-quantity lines hidden on public quote and PDF; quote.accepted custom trigger added",
           "gates": "merged line backend 2580, desktop 1734, lint PASS, i18n PASS; e2e 49 passed 2 skipped"
+        },
+        "R164": {
+          "status": "merged",
+          "head": "158ac0c",
+          "what": "payment return states on /book and /trip, tour-level age bands (tenant 0064), company language select writes default_language + all languages, admin tenant create takes language, TEST_MODE mock pay page frameable + showInPhoneFrame allowOrigins, narration-gate regex fix + self-check, plural count strings",
+          "gates": "merged line backend 2585, desktop 1744, lint PASS, i18n PASS, super-admin tsc PASS, narration-gate self-check ok"
         }
       }
     }
