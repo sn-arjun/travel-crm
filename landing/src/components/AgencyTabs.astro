@@ -1,0 +1,72 @@
+---
+import { AGENCIES } from '../data/content';
+---
+<section id="agency" class="dark" aria-labelledby="agency-h">
+  <div class="wrap section">
+    <p class="eyebrow">CHOOSE YOUR ROUTE</p>
+    <h2 id="agency-h" class="h2">Built for your kind of agency.</h2>
+    <div role="tablist" aria-label="Agency type" class="routes" data-tabs>
+      {AGENCIES.map((a, i) => (
+        <button type="button" role="tab" id={`atab-${a.k}`} aria-controls={`apanel-${a.k}`} aria-selected={i === 0 ? 'true' : 'false'} tabindex={i === 0 ? 0 : -1}>
+          <span class="mono code">{a.code}</span><span class="label">{a.label}</span><span class="sub">{a.sub}</span>
+        </button>
+      ))}
+    </div>
+    {AGENCIES.map((a, i) => (
+      <div role="tabpanel" id={`apanel-${a.k}`} aria-labelledby={`atab-${a.k}`} hidden={i !== 0} class="panel">
+        <div class="left">
+          <span class="plan mono">{a.plan}</span>
+          <h3>{a.promise}</h3>
+          <ol>{a.features.map((t, j) => <li><span class="mono">{String(j + 1).padStart(2, '0')}</span><span>{t}</span></li>)}</ol>
+        </div>
+        <figure aria-label={a.sceneLabel}>
+          <div class="top"><span class="title">{a.sceneTitle}</span><span class="mono meta">{a.sceneMeta}</span></div>
+          {a.seats && (
+            <div class="seats">
+              <div class="mono sline"><span>SEATS · {a.seats[0] + a.seats[1]} OF {a.seats[2]} TAKEN · {a.seats[1]} ON HOLD</span><strong>{a.seats[2] - a.seats[0] - a.seats[1]} LEFT</strong></div>
+              <div class="grid" aria-hidden="true">
+                {Array.from({ length: a.seats[2] }, (_, k) => <span class={`seat ${k < a.seats![0] ? 'b' : k < a.seats![0] + a.seats![1] ? 'h' : 'f'} rowIn`} style={`animation-delay:${k * 22}ms`}></span>)}
+              </div>
+              <div class="mono key"><span><i class="b"></i> Booked</span><span><i class="h"></i> On hold</span><span><i class="f"></i> Free</span></div>
+            </div>
+          )}
+          <div class="rows">
+            {a.scene.map(([x, y, bg, fg], k) => <div class="flip" style={`background:${bg};color:${fg};animation-delay:${120 + k * 110}ms`}><span>{x}</span><strong>{y}</strong></div>)}
+          </div>
+          <figcaption class="mono">Example data.</figcaption>
+        </figure>
+      </div>
+    ))}
+  </div>
+</section>
+<style>
+  .routes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 10px; margin: 32px 0 36px; }
+  .routes button { font: inherit; text-align: left; cursor: pointer; border: 1px solid var(--flapline); background: var(--flap); color: var(--boardtext); border-radius: 12px; padding: 16px 18px; min-height: 44px; display: grid; gap: 4px; }
+  .routes button[aria-selected="true"] { background: var(--amber); color: #121518; border-color: var(--amber); }
+  .code { font-size: 11px; letter-spacing: .12em; opacity: .75; }
+  .label { font-family: var(--display); font-weight: 800; font-size: 26px; line-height: 1; text-transform: uppercase; }
+  .sub { font-size: 14px; opacity: .8; }
+  .panel { display: flex; flex-wrap: wrap; gap: 40px; align-items: flex-start; }
+  .left { flex: 1 1 440px; min-width: 0; }
+  .plan { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .1em; border: 1px solid var(--amber); color: var(--amber); padding: 4px 8px; border-radius: 4px; }
+  h3 { margin: 14px 0 0; font-family: var(--display); font-weight: 800; font-size: clamp(32px, 3.4vw, 46px); line-height: 1; text-transform: uppercase; text-wrap: balance; }
+  ol { list-style: none; margin: 24px 0 0; padding: 0; border-top: 1px solid var(--flapline); }
+  ol li { display: grid; grid-template-columns: 40px minmax(0,1fr); gap: 12px; padding: 13px 0; border-bottom: 1px solid #1F2428; font-size: 16px; line-height: 1.45; }
+  ol .mono { font-weight: 600; color: var(--amber); }
+  figure { flex: 1 1 500px; min-width: 0; margin: 0; background: #0D0F11; border: 1px solid var(--flapline); border-radius: 14px; padding: 18px; box-shadow: 0 30px 80px rgba(0,0,0,.4); }
+  .top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  .title { font-family: var(--display); font-weight: 800; font-size: 24px; letter-spacing: .06em; color: var(--amber); }
+  .meta { font-size: 12px; color: var(--boardmute); letter-spacing: .08em; }
+  .seats { margin-bottom: 16px; }
+  .sline { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--boardmute); margin-bottom: 8px; }
+  .sline strong { color: var(--amber); font-weight: 600; }
+  .grid { display: grid; grid-template-columns: repeat(10, minmax(0,1fr)); gap: 5px; }
+  .seat { height: 18px; border-radius: 5px 5px 2px 2px; transform-origin: 50% 100%; }
+  .b { background: var(--amber); } .h { background: var(--runway); } .f { background: var(--flapline); }
+  .key { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; font-size: 11px; color: var(--boardmute); }
+  .key i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; }
+  .rows { display: grid; gap: 8px; }
+  .rows > div { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border-radius: 8px; font-family: var(--mono); font-size: 13px; transform-origin: 50% 0; }
+  .rows strong { font-weight: 600; }
+  figcaption { margin-top: 12px; font-size: 12px; color: var(--boardmute); }
+</style>

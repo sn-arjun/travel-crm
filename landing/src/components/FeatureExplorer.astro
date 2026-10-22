@@ -1,0 +1,53 @@
+---
+import { MODULES, FEATURE_TOTAL, PLAN_TAG, slug } from '../data/features';
+---
+<section id="features" class="cardbg" aria-labelledby="features-h">
+  <div class="wrap section">
+    <div class="head">
+      <div>
+        <p class="eyebrow">LEGEND · {FEATURE_TOTAL} FEATURES IN {MODULES.length} MODULES</p>
+        <h2 id="features-h" class="h2" style="max-width:18ch">Everything an agency runs, in one place.</h2>
+      </div>
+      <p class="lede" style="max-width:40ch;font-size:16px">Pick a module to see every feature in it and the plan it starts on.</p>
+    </div>
+    <div role="tablist" aria-label="Feature modules" class="tabs" data-tabs>
+      {MODULES.map((m, i) => (
+        <button type="button" role="tab" id={`ftab-${m.k}`} aria-controls={`fpanel-${m.k}`} aria-selected={i === 0 ? 'true' : 'false'} tabindex={i === 0 ? 0 : -1}>
+          <span class="code">{String(i + 1).padStart(2, '0')}</span>{m.label}<span class="count">{m.items.length}</span>
+        </button>
+      ))}
+    </div>
+    {MODULES.map((m, i) => (
+      <div role="tabpanel" id={`fpanel-${m.k}`} aria-labelledby={`ftab-${m.k}`} hidden={i !== 0} class="panel">
+        <div class="ph">
+          <h3 class="h3">{m.title}</h3>
+          <p>{m.line}</p>
+        </div>
+        <ul>
+          {m.items.map(([name, p]) => (
+            <li class="rowIn"><svg class="check" aria-hidden="true" width="16" height="16" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg><span>{name}</span><span class={`tag p${p}`}>{PLAN_TAG[p]}</span></li>
+          ))}
+        </ul>
+        <p class="foot">The tag shows the first plan that includes the feature. <a href={`/features/#${slug(m)}`}>All {m.title.toLowerCase()} features</a> · <a href="/pricing/#compare">Compare every feature by plan</a>.</p>
+      </div>
+    ))}
+  </div>
+</section>
+<style>
+  .tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 12px; border-bottom: 2px solid var(--ink); scrollbar-width: thin; }
+  .tabs button { flex: 0 0 auto; font: inherit; font-family: var(--mono); font-weight: 600; font-size: 13px; letter-spacing: .04em; border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 8px; padding: 10px 12px; min-height: 44px; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; }
+  .tabs button[aria-selected="true"] { background: var(--board); color: var(--amber); border-color: var(--board); }
+  .code { opacity: .6; }
+  .count { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--chip); }
+  .tabs button[aria-selected="true"] .count { background: #2A2F35; }
+  .panel { padding-top: 28px; }
+  .ph { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px 24px; margin-bottom: 14px; }
+  .ph p { margin: 0; font-size: 16px; color: var(--ink2); max-width: 60ch; }
+  ul { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 0 44px; }
+  li { display: grid; grid-template-columns: 18px minmax(0,1fr) auto; gap: 10px; align-items: start; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 15px; line-height: 1.45; }
+  .tag { font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: .06em; padding: 3px 7px; border-radius: 4px; white-space: nowrap; }
+  .p1 { background: var(--chip); color: var(--ink2); }
+  .p2 { background: var(--runway); color: #fff; }
+  .p3 { background: var(--board); color: var(--amber); }
+  .foot { margin: 20px 0 0; font-size: 14px; color: var(--ink2); }
+</style>

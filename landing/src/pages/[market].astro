@@ -1,0 +1,21 @@
+---
+import Base from '../layouts/Base.astro';
+import HomeBody from '../components/HomeBody.astro';
+import { MARKETS, type Market } from '../data/markets';
+import { SOFTWARE_LD, FAQ_LD, CRUMBS_LD, MARKET_ALTERNATES } from '../data/seo';
+
+export function getStaticPaths() {
+  return MARKETS.map((m) => ({ params: { market: m.path.replaceAll('/', '') }, props: { m } }));
+}
+const { m } = Astro.props as { m: Market };
+const site = Astro.site!;
+---
+<Base
+  title={m.seo.title}
+  description={m.seo.description}
+  alternates={MARKET_ALTERNATES}
+  jsonLd={[SOFTWARE_LD(site, [m.key]), FAQ_LD(), CRUMBS_LD(site, [['Home', '/'], [m.name, m.path]])]}
+  market={m.key}
+>
+  <HomeBody market={m.key} faqFirst="price" hero={{ eyebrow: `CRM for travel agencies · ${m.name}`, title: m.seo.hero, titleAccent: '', line: m.seo.heroLine, compact: true }} />
+</Base>

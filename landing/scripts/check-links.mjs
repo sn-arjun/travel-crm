@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 /**
- * Link checker for the landing page (no dependencies).
+ * Link checker for the landing site (no dependencies). Run it after `npm run build`.
  *
- * Starts a static server on landing/ (files in landing/public/ are served from the site root, the way the
- * hosting publishes them), crawls every internal page starting at index.html, and fails when:
+ * Starts a static server on landing/dist/ (the built site, the way the hosting publishes it: /x/ serves
+ * x/index.html), crawls every internal page starting at /, and fails when:
  *   - an internal href, src or stylesheet link answers anything but 200,
  *   - a link is "#" on its own (a call to action that goes nowhere),
  *   - an in-page link (#id) points at an id that does not exist on that page,
- *   - a sitemap.xml entry has no matching page.
+ *   - a sitemap entry has no matching page,
+ *   - an hreflang alternate is missing or does not link back (alternates must be reciprocal).
  * External links (http/https to other hosts, mailto:, tel:) are listed, not fetched.
  *
  * Usage: node landing/scripts/check-links.mjs
@@ -17,17 +18,21 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const publicDir = path.join(root, 'public');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist');
+if (!fs.existsSync(path.join(root, 'index.html'))) {
+  console.error('landing/dist is missing: run `npm run build` in landing/ first');
+  process.exit(1);
+}
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml',
   '.png': 'image/png', '.jpg': 'image/jpeg', '.xml': 'application/xml', '.txt': 'text/plain',
+  '.woff2': 'font/woff2', '.woff': 'font/woff', '.json': 'application/json',
 };
 
 function resolveFile(urlPath) {
   let p = decodeURIComponent(urlPath.split('?')[0]);
   if (p.endsWith('/')) p += 'index.html';
-  const candidates = [path.join(root, p), path.join(publicDir, p)];
+  const candidates = [path.join(root, p)];
   for (const c of candidates) {
     const norm = path.normalize(c);
     if (!norm.startsWith(root)) continue;
@@ -70,7 +75,9 @@ async function get(base, urlPath) {
 async function main() {
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;
-  const queue = ['/index.html'];
+  const queue = ['/'];
+  const isPage = (t) => t.endsWith('.html') || t.endsWith('/');
+  const alternates = new Map();
   const seen = new Set();
   const pageIds = new Map();
 
@@ -82,6 +89,8 @@ async function main() {
     checked++;
     if (status !== 200) { problems.push(`${page}: HTTP ${status}`); continue; }
     pageIds.set(page, idsOf(body));
+    const alts = [...body.matchAll(/<link rel="alternate" hreflang="([^"]+)" href="([^"]+)"/g)].map((m) => [m[1], new URL(m[2]).pathname]);
+    if (alts.length) alternates.set(page, alts);
 
     for (const { attr, value } of extract(body)) {
       if (value === '' && attr === 'href') { problems.push(`${page}: empty href`); continue; }
@@ -103,11 +112,11 @@ async function main() {
       const res = await get(base, target + url.search);
       checked++;
       if (res.status !== 200) { problems.push(`${page}: ${attr}="${value}" -> HTTP ${res.status}`); continue; }
-      if (url.hash && target.endsWith('.html')) {
+      if (url.hash && isPage(target)) {
         const ids = idsOf(res.body);
         if (!ids.has(decodeURIComponent(url.hash.slice(1)))) problems.push(`${page}: ${value} has no matching id on ${target}`);
       }
-      if (target.endsWith('.html') && !seen.has(target)) queue.push(target);
+      if (isPage(target) && !seen.has(target)) queue.push(target);
       if (target.endsWith('.css')) {
         for (const m of res.body.matchAll(/url\(\s*['"]?([^'")]+)['"]?\s*\)/g)) {
           const ref = m[1];
@@ -120,15 +129,29 @@ async function main() {
     }
   }
 
-  // sitemap: every <loc> path must exist
-  const sm = await get(base, '/sitemap.xml');
-  if (sm.status !== 200) problems.push('/sitemap.xml: missing');
+  // sitemap: the index lists the sitemaps; every <loc> in them must exist
+  const index = await get(base, '/sitemap-index.xml');
+  if (index.status !== 200) problems.push('/sitemap-index.xml: missing');
   else {
-    for (const m of sm.body.matchAll(/<loc>([^<]+)<\/loc>/g)) {
-      const p = new URL(m[1]).pathname;
-      const r = await get(base, p);
-      checked++;
-      if (r.status !== 200) problems.push(`sitemap.xml: ${m[1]} -> ${p} is HTTP ${r.status}`);
+    for (const sm of index.body.matchAll(/<loc>([^<]+)<\/loc>/g)) {
+      const smPath = new URL(sm[1]).pathname;
+      const file = await get(base, smPath);
+      if (file.status !== 200) { problems.push(`sitemap-index.xml: ${smPath} is HTTP ${file.status}`); continue; }
+      for (const m of file.body.matchAll(/<loc>([^<]+)<\/loc>/g)) {
+        const p = new URL(m[1]).pathname;
+        const r = await get(base, p);
+        checked++;
+        if (r.status !== 200) problems.push(`${smPath}: ${m[1]} -> ${p} is HTTP ${r.status}`);
+      }
+    }
+  }
+  // hreflang: every alternate exists, lists the page itself, and links back
+  for (const [page, alts] of alternates) {
+    if (!alts.some(([, p]) => p === page)) problems.push(`${page}: hreflang alternates do not include the page itself`);
+    for (const [lang, p] of alts) {
+      const back = alternates.get(p);
+      if (!back) problems.push(`${page}: hreflang ${lang} -> ${p} has no alternates of its own`);
+      else if (!back.some(([, q]) => q === page)) problems.push(`${page}: hreflang ${lang} -> ${p} does not link back`);
     }
   }
   // robots.txt names the sitemap

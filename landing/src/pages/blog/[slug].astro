@@ -1,0 +1,52 @@
+---
+import { render } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import PostList from '../../components/PostList.astro';
+import { posts, readingMinutes, fmtDate, tagSlug, type Post } from '../../data/blog';
+import { CRUMBS_LD } from '../../data/seo';
+export async function getStaticPaths() {
+  const list = await posts();
+  return list.map((p) => ({ params: { slug: p.id }, props: { post: p, related: list.filter((o) => o.id !== p.id && o.data.tags.some((t) => p.data.tags.includes(t))).slice(0, 2) } }));
+}
+const { post, related } = Astro.props as { post: Post; related: Post[] };
+const { Content } = await render(post);
+const site = Astro.site!;
+const url = new URL(`/blog/${post.id}/`, site).href;
+const ld = {
+  '@context': 'https://schema.org', '@type': 'BlogPosting', headline: post.data.title, description: post.data.description,
+  datePublished: post.data.date.toISOString(), dateModified: post.data.date.toISOString(), mainEntityOfPage: url, url,
+  image: new URL('/og-image.png', site).href, author: { '@type': 'Organization', name: 'TravelCRM Pro' },
+  publisher: { '@type': 'Organization', name: 'TravelCRM Pro', logo: { '@type': 'ImageObject', url: new URL('/favicon.svg', site).href } },
+  keywords: post.data.tags.join(', '),
+};
+---
+<Base title={post.data.title} description={post.data.description} type="article" jsonLd={[ld, CRUMBS_LD(site, [['Home', '/'], ['Blog', '/blog/'], [post.data.title, `/blog/${post.id}/`]])]}>
+  <article>
+    <header class="dark"><div class="wrap section top">
+      <nav aria-label="Breadcrumb" class="crumbs mono"><a href="/">Home</a> / <a href="/blog/">Blog</a></nav>
+      <h1 class="h2">{post.data.title}</h1>
+      <p class="mono meta"><time datetime={post.data.date.toISOString().slice(0, 10)}>{fmtDate(post.data.date)}</time> · {readingMinutes(post)} min read · {post.data.tags.map((t, i) => <>{i ? ', ' : ''}<a href={`/blog/tag/${tagSlug(t)}/`}>#{t}</a></>)}</p>
+    </div></header>
+    <div class="wrap prose"><Content /></div>
+  </article>
+  <aside class="wrap section cta" aria-label="Try it">
+    <div class="box"><p class="eyebrow">NOW BOARDING</p><p class="big">See this on your own enquiry in a 20-minute demo.</p><a class="btn btn--amber" href="/#enquire">Book a demo</a></div>
+    {related.length > 0 && <><h2 class="h3" style="margin-top:56px;margin-bottom:20px">Read next</h2><PostList list={related} /></>}
+  </aside>
+</Base>
+<style>
+  .top { padding-bottom: 56px; }
+  .crumbs { font-size: 13px; color: var(--boardmute); margin-bottom: 14px; }
+  .crumbs a, .meta a { color: var(--boardmute); }
+  .meta { margin: 18px 0 0; font-size: 13px; color: var(--boardmute); }
+  .prose { max-width: 760px; padding-top: 48px; font-size: 18px; line-height: 1.7; }
+  .prose :global(h2) { font-family: var(--display); font-weight: 800; font-size: 32px; text-transform: uppercase; line-height: 1.05; margin: 40px 0 10px; }
+  .prose :global(p), .prose :global(li) { color: var(--ink); }
+  .prose :global(ol), .prose :global(ul) { padding-left: 24px; }
+  .prose :global(li) { margin-bottom: 8px; }
+  .prose :global(strong) { font-weight: 700; }
+  .cta { padding-top: 48px; }
+  .box { background: var(--board); color: var(--boardtext); border-radius: 16px; padding: 28px; display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; }
+  .box .eyebrow { flex-basis: 100%; }
+  .big { margin: 0; font-family: var(--display); font-weight: 900; font-size: clamp(28px, 3vw, 40px); text-transform: uppercase; line-height: 1; flex: 1 1 360px; }
+</style>

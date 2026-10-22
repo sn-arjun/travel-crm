@@ -1,0 +1,74 @@
+---
+import { BOARD, STATUS } from '../data/content';
+interface Props { eyebrow?: string; title?: string; titleAccent?: string; line?: string; compact?: boolean }
+const {
+  eyebrow = 'CRM for travel agencies and tour operators',
+  title = 'Every enquiry read.',
+  titleAccent = 'The next step ready to approve.',
+  compact = false,
+  line = 'TravelCRM Pro reads the WhatsApp messages, emails and website forms that reach your agency and prepares the next step: a new lead, a drafted reply, a payment to record. You click Apply. Then it carries you from the quote to the invoice to the hotel voucher.',
+} = Astro.props;
+const rows = BOARD.map((r, i) => ({ time: r[0], guest: r[1], via: r[3], delay: r[5] + 's', chars: [...r[2].padEnd(9, ' ')].map((c, j) => ({ c: c === ' ' ? ' ' : c, d: 250 + i * 140 + j * 45 })), s: [...r[4]].map((k) => STATUS[k]) }));
+---
+<section class="hero dark" aria-labelledby="hero-h">
+  <div class="wrap grid">
+    <div class="copy">
+      <p class="eyebrow">{eyebrow}</p>
+      <h1 id="hero-h" class:list={['h1', { compact }]}>{title} <span>{titleAccent}</span></h1>
+      <p class="lede">{line}</p>
+      <div class="ctas">
+        <a href="#enquire" class="btn btn--amber">Book a 20-minute demo <span aria-hidden="true">→</span></a>
+        <a href="#enquire" class="btn btn--ghost">Request a 14-day trial</a>
+      </div>
+      <p class="small">Demo on sample data. Nothing reaches a customer unless you allow it.</p>
+    </div>
+    <figure class="board" aria-label="Example departures board: enquiries moving from quoted to booked to paid">
+      <div class="top"><span class="title">DEPARTURES</span><span class="meta">TODAY'S ENQUIRIES · 10:52</span></div>
+      <div class="scroll">
+        <div role="table" aria-label="Today's enquiries" class="table">
+          <div role="row" class="row head"><span role="columnheader">TIME</span><span role="columnheader">GUEST</span><span role="columnheader">DESTINATION</span><span role="columnheader">VIA</span><span role="columnheader">STATUS</span></div>
+          {rows.map((r) => (
+            <div role="row" class="row">
+              <span role="cell" class="mute">{r.time}</span>
+              <span role="cell" class="guest">{r.guest}</span>
+              <span role="cell" class="dest">{r.chars.map((ch) => <span class="tile" style={`animation-delay:${ch.d}ms`}>{ch.c}</span>)}</span>
+              <span role="cell" class="via">{r.via}</span>
+              <span role="cell" class="win"><span class="stack" style={`animation-delay:${r.delay}`}>{r.s.map(([t, c]) => <span style={`color:${c}`}>{t}</span>)}</span></span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <figcaption>Example data. Your board fills with your own enquiries.</figcaption>
+    </figure>
+  </div>
+</section>
+<style>
+  .hero { padding-bottom: 72px; }
+  .grid { display: flex; flex-wrap: wrap; gap: 48px; align-items: center; padding-top: 40px; }
+  .copy { flex: 1 1 480px; min-width: 0; }
+  .copy .eyebrow { color: var(--boardmute); margin-bottom: 18px; }
+  .h1 span { color: var(--amber); }
+  .h1.compact { font-size: clamp(44px, 5.2vw, 76px); }
+  .copy .eyebrow + .h1 { overflow-wrap: anywhere; }
+  .lede { margin-top: 26px; font-size: 19px; max-width: 52ch; }
+  .ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
+  .small { margin: 16px 0 0; font-size: 14px; color: var(--boardmute); }
+  .board { flex: 1 1 560px; min-width: 0; margin: 0; background: #0D0F11; border: 1px solid var(--flapline); border-radius: 14px; padding: 18px 18px 14px; box-shadow: 0 30px 80px rgba(0,0,0,.45); }
+  .top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+  .title { font-family: var(--display); font-weight: 800; font-size: 26px; letter-spacing: .06em; color: var(--amber); }
+  .meta, figcaption { font-family: var(--mono); font-size: 12px; color: var(--boardmute); letter-spacing: .08em; }
+  figcaption { margin-top: 12px; letter-spacing: 0; }
+  .scroll { overflow-x: auto; }
+  .table { min-width: 560px; font-family: var(--mono); }
+  .row { display: grid; grid-template-columns: 54px minmax(0,1.3fr) 236px 36px 104px; gap: 10px; align-items: center; padding: 9px 4px; border-bottom: 1px solid #1A1E22; font-size: 14px; }
+  .row.head { padding: 0 4px 8px; font-size: 11px; letter-spacing: .1em; color: var(--boardmute); border-bottom-color: var(--flapline); }
+  .mute, .via { color: var(--boardmute); }
+  .via { font-size: 11px; }
+  .guest { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dest { display: flex; gap: 2px; }
+  .dest .tile { width: 24px; height: 30px; font-size: 16px; color: #F4F1E8; }
+  .win { height: 28px; overflow: hidden; perspective: 300px; }
+  .stack { display: block; animation: statusCycle 9s infinite; transform-origin: 50% 14px; }
+  .stack > span { display: block; height: 28px; line-height: 28px; font-weight: 600; letter-spacing: .06em; }
+  @keyframes statusCycle { 0%,28% { transform: translateY(0) rotateX(0); } 31% { transform: translateY(0) rotateX(88deg); } 31.01% { transform: translateY(-28px) rotateX(-88deg); } 34%,61% { transform: translateY(-28px) rotateX(0); } 64% { transform: translateY(-28px) rotateX(88deg); } 64.01% { transform: translateY(-56px) rotateX(-88deg); } 67%,94% { transform: translateY(-56px) rotateX(0); } 97% { transform: translateY(-56px) rotateX(88deg); } 97.01% { transform: translateY(0) rotateX(-88deg); } 100% { transform: translateY(0) rotateX(0); } }
+</style>

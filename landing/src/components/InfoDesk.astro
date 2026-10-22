@@ -1,0 +1,62 @@
+---
+import { FAQS, TOPICS, TOPIC_TAG, type Topic } from '../data/content';
+interface Props { first?: Topic; only?: Topic[]; heading?: string }
+const { first, only, heading = 'Ask at the desk.' } = Astro.props;
+let items = only ? FAQS.filter((f) => only.includes(f.t)) : FAQS;
+if (first) items = [...items.filter((f) => f.t === first), ...items.filter((f) => f.t !== first)];
+const topics = TOPICS.filter(([k]) => k === 'all' || items.some((f) => f.t === k));
+---
+<section id="faq" class="cardbg" aria-labelledby="faq-h">
+  <div class="wrap section">
+    <div class="head">
+      <div>
+        <p class="eyebrow"><span class="i" aria-hidden="true">i</span>INFORMATION DESK · {items.length} ANSWERS</p>
+        <h2 id="faq-h" class="h2">{heading}</h2>
+      </div>
+      <label class="search mono">SEARCH THE DESK
+        <span class="field">
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 18 18"><circle cx="7.5" cy="7.5" r="5.5" fill="none" stroke-width="2"></circle><path d="M12 12l4.5 4.5" stroke-width="2" stroke-linecap="round"></path></svg>
+          <input type="search" data-desk-search placeholder="Try deposit, VAT or departures" autocomplete="off">
+        </span>
+      </label>
+    </div>
+    {topics.length > 2 && (
+      <div role="group" aria-label="Topics" class="chips">
+        {topics.map(([k, label]) => <button type="button" data-topic={k} aria-pressed={k === 'all' ? 'true' : 'false'}>{label}<span class="mono" data-count>{k === 'all' ? items.length : items.filter((f) => f.t === k).length}</span></button>)}
+      </div>
+    )}
+    <div class="cards">
+      {items.map((f) => (
+        <details class="card" data-faq={f.t}>
+          <summary><span class="tag mono">{TOPIC_TAG[f.t]}</span><span class="q">{f.q}</span><span class="chev mono" aria-hidden="true">+</span></summary>
+          <p>{f.a}</p>
+        </details>
+      ))}
+    </div>
+    <p class="empty" data-desk-empty hidden>Nothing at the desk matches “<span data-desk-query></span>”. Write it on your boarding pass and we will answer it in your demo.</p>
+  </div>
+</section>
+<style>
+  .i { display: inline-block; background: var(--board); color: var(--amber); padding: 3px 7px; border-radius: 4px; margin-right: 8px; }
+  .search { flex: 0 1 440px; display: grid; gap: 8px; font-size: 12px; letter-spacing: .1em; color: var(--ink2); }
+  .field { position: relative; display: block; }
+  .field svg { position: absolute; left: 14px; top: 15px; }
+  .field svg * { stroke: var(--ink2); }
+  input { width: 100%; font: inherit; font-family: var(--body); font-size: 16px; letter-spacing: 0; padding: 12px 14px 12px 42px; min-height: 48px; border-radius: 10px; border: 2px solid var(--ink); background: var(--paper); color: var(--ink); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 28px; }
+  .chips button { font: inherit; font-size: 14px; font-weight: 600; border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 999px; padding: 9px 15px; min-height: 44px; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; }
+  .chips button[aria-pressed="true"] { background: var(--board); color: var(--amber); border-color: var(--board); }
+  .chips .mono { font-size: 11px; opacity: .7; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 12px 16px; align-items: start; }
+  .card { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; }
+  .card[open] { border-color: var(--ink); }
+  summary { cursor: pointer; list-style: none; display: grid; grid-template-columns: 54px minmax(0,1fr) 20px; gap: 12px; align-items: center; padding: 14px 16px; min-height: 60px; }
+  summary::-webkit-details-marker { display: none; }
+  .tag { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-align: center; background: var(--board); color: var(--amber); padding: 4px 0; border-radius: 4px; }
+  .q { font-weight: 600; font-size: 17px; line-height: 1.35; }
+  .chev { font-size: 22px; line-height: 1; color: var(--ink2); transition: transform .2s ease; }
+  .card[open] .chev { transform: rotate(45deg); }
+  .card p { margin: 0; padding: 0 18px 18px 82px; font-size: 15px; line-height: 1.6; color: var(--ink2); }
+  .empty { margin: 8px 0 0; padding: 18px; border: 1px dashed var(--line); border-radius: 12px; font-size: 16px; color: var(--ink2); }
+  @media (max-width: 520px) { .card p { padding-left: 18px; } }
+</style>

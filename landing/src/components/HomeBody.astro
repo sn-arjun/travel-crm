@@ -1,0 +1,30 @@
+---
+import Hero from './Hero.astro';
+import Facts from './Facts.astro';
+import TripStory from './TripStory.astro';
+import FeatureExplorer from './FeatureExplorer.astro';
+import AgencyTabs from './AgencyTabs.astro';
+import ExchangeBoard from './ExchangeBoard.astro';
+import PricingCards from './PricingCards.astro';
+import CompareTable from './CompareTable.astro';
+import FoundingBand from './FoundingBand.astro';
+import InfoDesk from './InfoDesk.astro';
+import BoardingPass from './BoardingPass.astro';
+import type { MarketKey } from '../data/markets';
+import type { Topic } from '../data/content';
+interface Props { market: MarketKey; hero?: { eyebrow?: string; title?: string; titleAccent?: string; line?: string; compact?: boolean }; faqFirst?: Topic }
+const { market, hero = {}, faqFirst } = Astro.props;
+---
+<Hero {...hero} />
+<Facts />
+<TripStory />
+<FeatureExplorer />
+<AgencyTabs />
+<ExchangeBoard market={market} />
+<section id="pricing" class="wrap section">
+  <PricingCards market={market} />
+  <CompareTable market={market} />
+</section>
+<FoundingBand />
+<InfoDesk first={faqFirst} />
+<BoardingPass />

@@ -1,0 +1,24 @@
+---
+import Base from '../../layouts/Base.astro';
+import PostList from '../../components/PostList.astro';
+import { posts, tagSlug } from '../../data/blog';
+import { CRUMBS_LD } from '../../data/seo';
+const list = await posts();
+const tags = [...new Set(list.flatMap((p) => p.data.tags))].sort();
+const site = Astro.site!;
+---
+<Base title="Blog · running a travel agency" description="Practical guides for travel agencies and tour operators: quoting from rate cards, selling group departures, answering WhatsApp enquiries and more." jsonLd={[CRUMBS_LD(site, [['Home', '/'], ['Blog', '/blog/']])]}>
+  <section class="dark"><div class="wrap section top">
+    <p class="eyebrow">ARRIVALS · FIELD NOTES</p>
+    <h1 class="h1">The agency logbook.</h1>
+    <p class="lede" style="margin-top:20px">How-to guides for running a travel agency, from the first enquiry to the last check-in.</p>
+    <nav aria-label="Topics" class="topics">{tags.map((t) => <a href={`/blog/tag/${tagSlug(t)}/`} class="mono">#{t}</a>)}</nav>
+  </div></section>
+  <div class="wrap section"><PostList list={list} /></div>
+</Base>
+<style>
+  .top { padding-bottom: 64px; }
+  .topics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
+  .topics a { color: var(--boardtext); border: 1px solid var(--flapline); border-radius: 999px; padding: 8px 14px; min-height: 44px; display: inline-flex; align-items: center; text-decoration: none; font-size: 13px; }
+  .topics a:hover { color: var(--amber); border-color: var(--amber); }
+</style>
