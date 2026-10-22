@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-22T02:48:41.712Z",
+  "updated": "2026-10-22T02:56:59.527Z",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -366,6 +366,12 @@
           "head": "8e34550",
           "what": "margin-scheme invoices: tenant 0062 margin cost/source/rate/wording, regime on all invoice paths (create, booking, extras, from-itinerary, trips, AI extraction, credit notes), no VAT line, editable wording with presets marked for accountant, no default rate, margin report + tax report pointer, staff-only margin view",
           "gates": "merged line backend 133/2525 (after rate-limit window fix and room-suggestion order fix), desktop 114/1734, lint PASS, i18n PASS; e2e 94"
+        },
+        "R154": {
+          "status": "merged",
+          "head": "470ef91",
+          "what": "departure-relative messages: shared hub sender with consent rule, rules CRUD/preview/send, 13 departure variables per person, departures.messages job (idempotent, cap/opt-out/no-address skips, suggest mode), starter rules en/nl, Settings > Group tours scheduled messages",
+          "gates": "merged line backend 2557, desktop 1734, i18n PASS"
         }
       }
     }
@@ -451,6 +457,7 @@
     "R132: default email routing is Cloudflare for platform mail with SendGrid fallback; it takes effect only after Cloudflare Email Sending onboarding for the platform domain (until then mail goes through SendGrid automatically). Switch or roll back from the console Email page. Note: turning \"customer reply addresses\" off also refuses replies to addresses already sent."
   ],
   "todo": [
+    "NEXT (2026-10-22): R155 quote accept running in .claude/worktrees/R155 (slot 5); then R164 (docs/readiness/batches/R164-film-blockers.json); then seed + dry run + record the Skanda film per prospects/skanda/SPEC-PLAN.md. Sweeps R156-R162 after.",
     "Push: only on an explicit owner \"push\" (repo is public; owner will make it private later). Secret scan done before it.",
     "Re-record website (after domain) and driver (on an emulator).",
     "Skanda Travels client demo film: plan in prospects/skanda/ (gitignored), then record with the driver app on the Resizable_Experimental emulator."
