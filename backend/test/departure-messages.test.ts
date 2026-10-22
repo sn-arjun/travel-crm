@@ -503,6 +503,10 @@ describe('the departure variables', () => {
     expect(vars.room_type).toBe('Double');
     // another passenger of the same booking has another pickup
     expect((await resolveVariables(DB, b.contactId, undefined, {}, undefined, { seatBookingId: b.id, passengerId: b.passengers[0].id })).pickup_time).toBe('07:40');
+    // a 12 hour clock locale writes 7:00 am, a 24 hour one 07:00
+    await DB.prepare("UPDATE settings SET value = 'en-IN' WHERE key = 'locale'").run();
+    expect((await resolveVariables(DB, b.contactId, undefined, {}, undefined, ctx)).pickup_time).toBe('7:00 am');
+    await DB.prepare("UPDATE settings SET value = 'en-GB' WHERE key = 'locale'").run();
     // without a departure context the variables stay empty, as before
     expect((await resolveVariables(DB, b.contactId)).pickup_time).toBeUndefined();
   });

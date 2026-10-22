@@ -33,7 +33,9 @@ const clockTime = (hhmm: string | null | undefined, locale: string): string | nu
   const m = /^(\d{1,2}):(\d{2})/.exec(hhmm ?? '');
   if (!m) return null;
   try {
-    return new Date(Date.UTC(2000, 0, 1, Number(m[1]), Number(m[2]))).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+    // 07:00 on a 24 hour clock, 7:00 am on a 12 hour one
+    const twelve = !!new Intl.DateTimeFormat(locale, { hour: 'numeric', timeZone: 'UTC' }).resolvedOptions().hour12;
+    return new Date(Date.UTC(2000, 0, 1, Number(m[1]), Number(m[2]))).toLocaleTimeString(locale, { hour: twelve ? 'numeric' : '2-digit', minute: '2-digit', timeZone: 'UTC' });
   } catch {
     return `${m[1].padStart(2, '0')}:${m[2]}`;
   }

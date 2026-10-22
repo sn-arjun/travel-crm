@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { AlertCircle, Plus, Trash2 } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 
 import { PageContainer } from '@/components/layout/page-container';
@@ -16,6 +17,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { GroupToursGate } from '../../departures/_components/group-tours-gate';
 import { SimpleSelect } from '../../departures/_components/simple-select';
 import { IntField } from './_components/int-field';
+import { MessageRules } from './_components/message-rules';
 import { PassengerFieldsCard } from './_components/passenger-fields-card';
 
 function Row({ label, hint, htmlFor, children }: { label: string; hint?: string; htmlFor?: string; children: React.ReactNode }) {
@@ -38,6 +40,14 @@ function SwitchRow({ label, hint, checked, onChange, disabled, testId }: { label
       <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} aria-label={label} data-testid={testId} />
     </label>
   );
+}
+
+/** The scheduled messages. A suggestion's link (?tab=messages&rule=...&departure=...) opens the preview of that rule on that departure. */
+function ScheduledMessagesSection() {
+  const params = useSearchParams();
+  const ruleId = params.get('rule');
+  const initial = ruleId && params.get('tab') === 'messages' ? { ruleId, departureId: params.get('departure') } : null;
+  return <MessageRules initialPreview={initial} />;
 }
 
 function GroupToursSettingsForm() {
@@ -183,6 +193,10 @@ function GroupToursSettingsForm() {
           </Row>
         </div>
       </SectionCard>
+
+      <React.Suspense fallback={<Skeleton className="h-24 w-full" />}>
+        <ScheduledMessagesSection />
+      </React.Suspense>
 
       <PassengerFieldsCard value={form.passengerFields} onChange={(v) => set('passengerFields', v)} disabled={ro} />
 

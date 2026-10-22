@@ -19,6 +19,7 @@ import { formatExactCurrency } from '@/lib/format';
 import { useLocale } from '@/lib/locale';
 import { useT } from '@/lib/i18n';
 import { SeatsBar } from '../../departures/_components/seats-bar';
+import { MessageRules } from '../../settings/group-tours/_components/message-rules';
 
 export default function TourDetailPage() {
   const t = useT();
@@ -26,7 +27,7 @@ export default function TourDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
   const locale = useLocale();
-  const { settings } = useGroupTours();
+  const { settings, enabled: groupToursOn } = useGroupTours();
   const canEdit = usePermission('departures', 'edit');
   const canCreate = usePermission('departures', 'create');
   const canDelete = usePermission('departures', 'delete');
@@ -126,6 +127,7 @@ export default function TourDetailPage() {
             ? [{ label: t('tours.detail.remove'), icon: <Archive aria-hidden="true" />, destructive: true, onSelect: () => void archiveOrDelete() }]
             : []
         }
+        related={groupToursOn ? [{ title: t('departureMessages.section.tourTitle'), content: <MessageRules tourId={id} bare /> }] : undefined}
         overview={
           <div className="grid gap-ds-4 lg:grid-cols-2">
             <SectionCard title={t('tours.detail.summary')}>

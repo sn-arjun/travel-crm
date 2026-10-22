@@ -70,9 +70,10 @@ export function DepartureCombobox({
   excludeId,
   tourId,
   destination,
+  anyStatus,
   placeholder,
   ...props
-}: PickerProps & { excludeId?: string; tourId?: string; destination?: string }) {
+}: PickerProps & { excludeId?: string; tourId?: string; destination?: string; /** List departures of every status, not only the open ones. */ anyStatus?: boolean }) {
   const t = useT();
   return (
     <RelationCombobox<Departure>
@@ -80,7 +81,7 @@ export function DepartureCombobox({
       onChange={(id) => props.onChange(id)}
       fetcher={async (q) => {
         const p = departuresApi.pager();
-        const r = await p.fetch(1, 50, { ...departuresApi.listParams({ status: 'open', q, tour: tourId, destination }) });
+        const r = await p.fetch(1, 50, { ...departuresApi.listParams({ status: anyStatus ? undefined : 'open', q, tour: tourId, destination }) });
         const items = r.data.filter((d) => d.id !== excludeId);
         return { items, total: items.length };
       }}

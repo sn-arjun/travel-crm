@@ -1,0 +1,4 @@
+[
+  "src/app/(app)/communication/templates/_components",
+  "src/lib/api/departure-messages.ts"
+]

@@ -13,6 +13,7 @@ import {
 import { contactsApi } from '@/lib/api/contacts';
 import type { Contact } from '@travelcrm/shared';
 import { templatesApi } from '@/lib/api/templates';
+import { DepartureVariables } from '../_components/departure-variables';
 
 type TemplateChannel = 'email' | 'sms' | 'whatsapp';
 
@@ -252,6 +253,8 @@ export default function NewTemplatePage() {
                     </Button>
                   </CardContent>
                 </Card>
+
+                <DepartureVariables onInsert={insertVariable} />
               </div>
             </div>
 
