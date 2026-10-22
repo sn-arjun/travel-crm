@@ -45,13 +45,24 @@ function memoryAllow(key: string, limit: number, windowMs: number): boolean {
   return true;
 }
 
-/** KV fixed window (read + write per call): only for low-volume endpoints. */
+/**
+ * KV window (read + write per call): only for low-volume endpoints. The window starts at the key's first request, like
+ * memoryAllow, rather than at a clock boundary, so a burst that straddles a boundary cannot get twice the limit through.
+ */
 async function kvAllow(cache: KVNamespace, key: string, limit: number, windowMs: number): Promise<boolean> {
-  const windowKey = `${key}:${Math.floor(Date.now() / windowMs)}`;
-  const current = await cache.get(windowKey);
-  const count = current ? parseInt(current, 10) : 0;
-  if (count >= limit) return false;
-  await cache.put(windowKey, String(count + 1), { expirationTtl: Math.max(60, Math.ceil(windowMs / 1000)) });
+  const windowKey = `${key}:w`;
+  const now = Date.now();
+  let entry: { count: number; start: number } | null = null;
+  try {
+    entry = await cache.get<{ count: number; start: number }>(windowKey, 'json');
+  } catch {
+    entry = null;
+  }
+  if (!entry || typeof entry.start !== 'number' || now - entry.start >= windowMs) entry = { count: 0, start: now };
+  if (entry.count >= limit) return false;
+  entry.count += 1;
+  const ttl = Math.max(60, Math.ceil((entry.start + windowMs - now) / 1000) + 1);
+  await cache.put(windowKey, JSON.stringify(entry), { expirationTtl: ttl });
   return true;
 }
 
