@@ -85,6 +85,8 @@ const tourBase = {
   depositValue: z.number().min(0).max(1_000_000).nullable().optional(),
   passengerFields: z.array(passengerFieldSchema).max(60).nullable().optional(),
   roomTypes: z.array(roomTypeSchema).max(30).nullable().optional(),
+  // The tour's own age bands (R164); null or empty = the agency's bands. Checked by parseBands when saved.
+  ageBands: z.array(z.object({ key: z.string().max(30).optional(), label: z.string().trim().max(40).optional(), minAge: z.number() })).max(8).nullable().optional(),
   terms: z.string().max(20000).nullable().optional(),
   status: z.enum(['active', 'archived']).optional(),
 };

@@ -9,7 +9,7 @@ import {
   fitsSql, loadDepartureContext, requireBookingRow, type DepartureContext, type SeatCtx,
 } from './seat-support';
 import { seatsInUse } from './capacity';
-import { ageOn, bandForAge, loadAgencyBands } from '../pricing/age-bands';
+import { ageOn, bandForAge, loadBandsForTour } from '../pricing/age-bands';
 import type { PassengerInput } from '../../validators/seat-bookings';
 
 type Row = Record<string, any>;
@@ -130,7 +130,7 @@ export async function preparePassengers(db: D1Database, dep: DepartureContext, i
 
   const [{ results: stopRows }, bands, ownRows, { results: takenSeats }] = await Promise.all([
     db.prepare('SELECT id FROM departure_stops WHERE departure_id = ?').bind(dep.row.id).all<{ id: string }>(),
-    loadAgencyBands(db),
+    loadBandsForTour(db, dep.row.tour_id),
     bookingId ? db.prepare('SELECT id FROM seat_passengers WHERE seat_booking_id = ?').bind(bookingId).all<{ id: string }>() : Promise.resolve({ results: [] as Array<{ id: string }> }),
     db
       .prepare(`SELECT seat_number FROM seat_passengers WHERE departure_id = ? AND status = 'active' AND seat_number IS NOT NULL AND seat_booking_id != ?`)

@@ -24,7 +24,7 @@ import { resolve as resolveLink } from '../services/public-links';
 import { loadDepartureContext, seatsLeft, type DepartureContext, type SeatCtx } from '../services/departures/seat-support';
 import { DepartureError } from '../services/departures/common';
 import { requestSeats } from '../services/departures/seats';
-import { ageOn, bandForAge, loadAgencyBands } from '../services/pricing/age-bands';
+import { ageOn, bandForAge, loadBandsForTour } from '../services/pricing/age-bands';
 import { getDepartureStops } from '../services/departures/departures';
 import { effectivePrices } from '../services/departures/tours';
 import { getGroupToursSettings, type PassengerFieldDef } from '../services/departures/settings';
@@ -212,7 +212,7 @@ async function buildProjection(c: Context<AppContext>, page: PageCtx) {
     getDepartureStops(db, dep.row.id),
     dayTitles(db, (dep.tour.itinerary_template_id as string | null) ?? null),
     termsText(db, dep),
-    loadAgencyBands(db),
+    loadBandsForTour(db, dep.row.tour_id),
     seatsLeft(db, dep.row.id, dep.row.capacity),
   ]);
 
@@ -435,7 +435,7 @@ publicBookingRoutes.post('/:token/bookings', bookIpLimit, bookTokenLimit, async 
   const stops = collects('pickupPoint') ? await getDepartureStops(db, dep.row.id) : [];
   const refToStop = new Map<string, string>();
   for (const s of stops) if (s.kind === 'pickup' || s.kind === 'both') refToStop.set(await stopRef(s.id), s.id);
-  const bands = await loadAgencyBands(db);
+  const bands = await loadBandsForTour(db, dep.row.tour_id);
   const bandKeys = new Set(bands.map((b) => b.key));
   const priced = (await effectivePrices(db, dep.row.tour_id, dep.row.id)).filter((p) => p.kind === 'age_band');
   for (const p of priced) bandKeys.add(p.key);

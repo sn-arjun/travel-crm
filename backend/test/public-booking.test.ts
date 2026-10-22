@@ -625,3 +625,54 @@ describe('privacy', () => {
     expect((await pubGet(dep.token)).status).toBe(200);
   });
 });
+
+// R164-2: a tour can carry its own age bands; the booking page and passengers read them before the agency's.
+describe('tour age bands', () => {
+  const twelveYearOld = (seen: Seen, band: string) => [
+    { band: 'adult', firstName: 'Eva', lastName: 'de Vries', pickupPoint: seen.ref },
+    { band, firstName: 'Noor', lastName: 'de Vries', ageYears: 12, pickupPoint: seen.ref },
+  ];
+
+  it('a tour with adults from 13 prices a 12-year-old as a child while the agency says 12+', async () => {
+    const dep = await makeDeparture();
+    // Before: the agency's bands (adult from 12) decide.
+    let seen = await openPage(dep.token);
+    expect(seen.page.prices.bands.map((b: any) => [b.key, b.minAge, b.maxAge])).toEqual([['adult', 12, null], ['child', 2, 11], ['infant', 0, 1]]);
+    let res = await pubPost(dep.token, bookingBody(seen, { passengers: twelveYearOld(seen, 'child') }));
+    expect(res.status).toBe(400);
+
+    // The tour's own bands: saved, validated and read back.
+    const put = await staff('PUT', `/tours/${dep.tourId}`, { ageBands: [{ label: 'Adult', minAge: 13 }, { key: 'child', label: 'Child', minAge: 2 }, { key: 'infant', label: 'Infant', minAge: 0 }] });
+    expect(put.status).toBe(200);
+    const saved = (await json(put)).data.ageBands;
+    expect(saved.map((b: any) => [b.key, b.minAge])).toEqual([['adult', 13], ['child', 2], ['infant', 0]]);
+    expect((await json(await staff('GET', `/tours/${dep.tourId}`))).data.ageBands).toHaveLength(3);
+    expect((await staff('PUT', `/tours/${dep.tourId}`, { ageBands: [{ label: 'Adult', minAge: 13 }] })).status).toBe(400); // no band from age 0
+
+    seen = await openPage(dep.token);
+    expect(seen.page.prices.bands.map((b: any) => [b.key, b.amount, b.minAge, b.maxAge])).toEqual([['adult', 1000, 13, null], ['child', 600, 2, 12], ['infant', 0, 0, 1]]);
+
+    res = await pubPost(dep.token, bookingBody(seen, { passengers: twelveYearOld(seen, 'adult') }));
+    expect(res.status).toBe(400);
+    expect((await json(res)).error.errors).toEqual([{ index: 1, field: 'band' }]);
+    res = await pubPost(dep.token, bookingBody(seen, { passengers: twelveYearOld(seen, 'child') }));
+    expect(res.status).toBe(201);
+    const booking = (await rows('SELECT id FROM seat_bookings WHERE departure_id = ?', dep.id))[0];
+    const bands = (await rows('SELECT band_key FROM seat_passengers WHERE seat_booking_id = ? ORDER BY created_at, id', booking.id)).map((r) => r.band_key);
+    expect(bands).toEqual(['adult', 'child']);
+
+
+    // Back to the agency's bands.
+    expect((await staff('PUT', `/tours/${dep.tourId}`, { ageBands: null })).status).toBe(200);
+    seen = await openPage(dep.token);
+    expect(seen.page.prices.bands.map((b: any) => [b.key, b.minAge])).toEqual([['adult', 12], ['child', 2], ['infant', 0]]);
+  });
+
+  it('another tour is unaffected', async () => {
+    const own = await makeDeparture();
+    const other = await makeDeparture();
+    expect((await staff('PUT', `/tours/${own.tourId}`, { ageBands: [{ key: 'adult', label: 'Adult', minAge: 15 }, { key: 'child', label: 'Child', minAge: 2 }, { key: 'infant', label: 'Infant', minAge: 0 }] })).status).toBe(200);
+    expect((await openPage(other.token)).page.prices.bands.map((b: any) => b.minAge)).toEqual([12, 2, 0]);
+    expect((await openPage(own.token)).page.prices.bands.map((b: any) => b.minAge)).toEqual([15, 2, 0]);
+  });
+});

@@ -13,7 +13,7 @@ import { createLink, type PublicLinkKind } from '../public-links';
 import { sha256Hex } from '../billing/gateway';
 import { tripUrl } from '../../utils/app-urls';
 import { getTenantTimeZone, localDateString } from '../../utils/tz';
-import { ageOn, bandForAge, loadAgencyBands } from '../pricing/age-bands';
+import { ageOn, bandForAge, loadBandsForTour } from '../pricing/age-bands';
 import { generateId } from '../../utils/uuid';
 import { parseJson, DepartureError, nowIso } from './common';
 import { getBookingRow, loadDepartureContext, announceSeats, type DepartureContext } from './seat-support';
@@ -218,7 +218,7 @@ export async function buildTripView(trip: TripCtx, now = new Date()): Promise<Tr
   const today = localDateString(tz, now);
   const { core, fields } = selfServiceFields(dep);
   const [bands, catalogue, taken, locale] = await Promise.all([
-    loadAgencyBands(db),
+    loadBandsForTour(db, dep.row.tour_id),
     loadEffectiveExtras(db, dep.row.tour_id, dep.row.id),
     takenByExtra(db, dep.row.id),
     loadLocaleContext(db),
@@ -370,7 +370,7 @@ export async function saveTravellers(env: Env, trip: TripCtx, input: TravellerIn
   const byRef = new Map<string, Row>();
   for (const p of passengers) byRef.set(await refOf('passenger', p.id), p);
   const problems: TravellerProblem[] = [];
-  const bands = await loadAgencyBands(db);
+  const bands = await loadBandsForTour(db, dep.row.tour_id);
   const startDate: string = dep.row.start_date;
 
   interface Plan { p: Row; first: string; last: string; gender: string | null; dob: string | null; band: string | null; meal: string | null; saved: Record<string, unknown>; docNumber: string | null; docExpiry: string | null; docType: string | null; nationality: string | null }

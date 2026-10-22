@@ -2747,6 +2747,7 @@ export const tours = sqliteTable('tours', {
   depositValue: real('deposit_value'),
   passengerFields: text('passenger_fields'), // JSON override of the agency list
   roomTypes: text('room_types'), // JSON override of the agency list
+  ageBands: text('age_bands'), // R164: the tour's own age bands (JSON); NULL = the agency's bands
   terms: text('terms'),
   status: text('status').notNull().default('active'), // active, archived
   createdBy: text('created_by').references(() => users.id),

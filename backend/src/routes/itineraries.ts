@@ -25,7 +25,7 @@ import { success, created, paginated, error, notFound } from '../utils/response'
 import { requireFeature } from '../middleware/feature-gate';
 import { getDepartureSummary } from '../services/departures/capacity';
 import { AcceptError, markAccepted } from '../services/quotes/accept';
-import { bandsFromColumn, bandsFor, countByBand, fillQuantities, loadAgencyBands } from '../services/pricing/age-bands';
+import { bandsFromColumn, bandsFor, countByBand, fillQuantities, loadAgencyBands, loadDepartureTourBands } from '../services/pricing/age-bands';
 import { paxFromAges, paxFromLead, paxFromTravellers, travelDateFor, type ResolvedPax } from '../services/pricing/quote-fill';
 
 const itineraryRoutes = new Hono<AppContext>();
@@ -421,7 +421,9 @@ itineraryRoutes.get('/:id', requirePermission('itineraries', 'view'), async (c) 
   if (!full.departureId) return success(c, { ...full, departure: null, seats: null });
   const departure = await getDepartureSummary(c.get('tenantDb'), full.departureId);
   const requested = full.seatsRequested ?? null;
-  return success(c, { ...full, departure, seats: departure && { requested, left: departure.seats.left, fits: requested === null || requested <= departure.seats.left } });
+  // The bands the quote is priced by: the tour's own when it has them (R164), so the editor shows the same ranges the fill uses.
+  const tourBands = await loadDepartureTourBands(c.get('tenantDb'), full.departureId);
+  return success(c, { ...full, ...(tourBands ? { ageBands: tourBands } : {}), departure, seats: departure && { requested, left: departure.seats.left, fits: requested === null || requested <= departure.seats.left } });
 });
 
 // ============================================================
@@ -775,7 +777,9 @@ itineraryRoutes.post('/:id/fill-quantities', requireFeature('age_band_pricing'),
   const [itin] = await db.select().from(itineraries).where(and(eq(itineraries.id, id), eq(itineraries.isDeleted, 0)));
   if (!itin) return notFound(c, 'Itinerary');
 
-  const bands = bandsFor(bandsFromColumn(itin.ageBands), await loadAgencyBands(tenantDb));
+  // A quote for a departure follows that tour's bands when the tour has its own, then the quote's own snapshot, then the agency's (R164).
+  const tourBands = await loadDepartureTourBands(tenantDb, itin.departureId);
+  const bands = tourBands ?? bandsFor(bandsFromColumn(itin.ageBands), await loadAgencyBands(tenantDb));
   const travelDate = await travelDateFor(tenantDb, { departureId: itin.departureId, leadId: itin.leadId });
 
   let pax: ResolvedPax | null;
@@ -825,7 +829,7 @@ itineraryRoutes.post('/:id/fill-quantities', requireFeature('age_band_pricing'),
   const paxAges = { adults: pax.adults ?? 0, ages: pax.ages ?? [], children: pax.children ?? 0, infants: pax.infants ?? 0, source: pax.source };
   await db
     .update(itineraries)
-    .set({ ...totals, ageBands: itin.ageBands ?? JSON.stringify(bands), paxAges: JSON.stringify(paxAges), updatedAt: now })
+    .set({ ...totals, ageBands: tourBands ? JSON.stringify(bands) : itin.ageBands ?? JSON.stringify(bands), paxAges: JSON.stringify(paxAges), updatedAt: now })
     .where(eq(itineraries.id, id));
 
   await logActivity(db, {

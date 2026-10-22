@@ -216,3 +216,36 @@ export function bandsFromColumn(value: string | null | undefined): AgeBand[] | n
     return null;
   }
 }
+
+// ---------------------------------------------------------------- a tour's own list (R164-2)
+
+/** The tour's own band list (tours.age_bands), or null when it uses the agency's. */
+export async function loadTourBands(db: D1Database, tourId: string | null | undefined): Promise<AgeBand[] | null> {
+  if (!tourId) return null;
+  try {
+    const row = await db.prepare('SELECT age_bands FROM tours WHERE id = ?').bind(tourId).first<{ age_bands: string | null }>();
+    return bandsFromColumn(row?.age_bands);
+  } catch {
+    return null;
+  }
+}
+
+/** The tour's own bands of the tour a departure belongs to, or null. */
+export async function loadDepartureTourBands(db: D1Database, departureId: string | null | undefined): Promise<AgeBand[] | null> {
+  if (!departureId) return null;
+  try {
+    const row = await db.prepare('SELECT t.age_bands FROM departures d JOIN tours t ON t.id = d.tour_id WHERE d.id = ?').bind(departureId).first<{ age_bands: string | null }>();
+    return bandsFromColumn(row?.age_bands);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The bands in force for a tour: its own list when it has a usable one, else the agency's. Everything a departure shows or
+ * computes by age (the booking page, passengers, the booking invoice, extras band prices) reads them from here.
+ */
+export async function loadBandsForTour(db: D1Database, tourId: string | null | undefined): Promise<AgeBand[]> {
+  const own = await loadTourBands(db, tourId);
+  return own ? own.slice().sort(byOldestFirst) : loadAgencyBands(db);
+}

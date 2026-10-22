@@ -358,4 +358,28 @@ describe('age bands on templates and quotes', () => {
     expect(lines.some((l) => l.description.includes('Tour child'))).toBe(false);
     expect(lines.some((l) => l.description.includes('Tour adult'))).toBe(true);
   });
+  it('R164-2: a quote linked to a departure of a tour with its own bands is filled by those bands', async () => {
+    await setFlag(true);
+    const tour = await call('POST', '/tours', admin, { code: 'AB164', title: 'Own bands tour', durationDays: 3, currency: 'EUR', ageBands: [{ key: 'adult', label: 'Adult', minAge: 13 }, { key: 'child', label: 'Child', minAge: 2 }, { key: 'infant', label: 'Infant', minAge: 0 }] });
+    expect(tour.status).toBe(201);
+    const dep = await call('POST', '/departures', admin, { tourId: (await data(tour)).id, startDate: '2033-06-10', capacityMode: 'manual', capacity: 20 });
+    expect(dep.status).toBe(201);
+    const depId = (await data(dep)).id;
+    expect((await call('POST', `/departures/${depId}/status`, admin, { status: 'open' })).status).toBe(200);
+
+    const made = await call('POST', '/itinerary-templates/create-from', admin, { templateId, leadId, title: 'For the tour' });
+    const id = (await data(made)).id;
+    // Not linked yet: the agency's bands (adult from 12) put the 12-year-old among the adults.
+    const before = await data(await call('POST', `/itineraries/${id}/fill-quantities`, admin, { source: 'ages', adults: 1, ages: [12] }));
+    expect(before.counts).toEqual({ adult: 2, child: 0, infant: 0 });
+
+    expect((await call('PUT', `/itineraries/${id}/departure`, admin, { departureId: depId, seatsRequested: 2 })).status).toBe(200);
+    const after = await data(await call('POST', `/itineraries/${id}/fill-quantities`, admin, { source: 'ages', adults: 1, ages: [12] }));
+    expect(after.counts).toEqual({ adult: 1, child: 1, infant: 0 });
+    expect(after.bands.map((b: any) => b.minAge)).toEqual([13, 2, 0]);
+    expect((await call('POST', `/itineraries/${id}/fill-quantities?apply=1`, admin, { source: 'ages', adults: 1, ages: [12] })).status).toBe(200);
+    expect(await quantities(id)).toMatchObject({ 'Tour adult': 1, 'Tour child': 1 });
+    const shown = await data(await call('GET', `/itineraries/${id}`, admin));
+    expect(shown.ageBands.map((b: any) => b.minAge)).toEqual([13, 2, 0]);
+  });
 });

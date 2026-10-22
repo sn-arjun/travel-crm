@@ -11,6 +11,7 @@ import type {
   CreateTourInput, ExtraInput, PriceInput, StopInput, UpdateTourInput,
 } from '../../validators/departures';
 import type { ConfirmMode, DepositType, PassengerFieldDef, RoomTypeDef } from './settings';
+import { bandsFromColumn, parseBands, type AgeBand } from '../pricing/age-bands';
 
 type Row = Record<string, any>;
 
@@ -32,6 +33,8 @@ export interface Tour {
   depositValue: number | null;
   passengerFields: PassengerFieldDef[] | null;
   roomTypes: RoomTypeDef[] | null;
+  /** The tour's own age bands, else null: the agency's apply (R164). */
+  ageBands: AgeBand[] | null;
   terms: string | null;
   status: 'active' | 'archived';
   createdBy: string | null;
@@ -59,6 +62,7 @@ export function rowToTour(r: Row): Tour {
     depositValue: r.deposit_value ?? null,
     passengerFields: r.passenger_fields ? parseJson<PassengerFieldDef[] | null>(r.passenger_fields, null) : null,
     roomTypes: r.room_types ? parseJson<RoomTypeDef[] | null>(r.room_types, null) : null,
+    ageBands: bandsFromColumn(r.age_bands),
     terms: r.terms ?? null,
     status: r.status,
     createdBy: r.created_by ?? null,
@@ -213,6 +217,7 @@ export async function createTour(db: D1Database, input: CreateTourInput, userId:
     throw new DepartureError(409, 'CODE_TAKEN', `The tour code "${code}" is already in use`);
   }
   await assertExists(db, 'itinerary_templates', input.itineraryTemplateId, 'The itinerary template');
+  const ageBands = ageBandsColumn(input.ageBands);
   const id = generateId();
   const now = nowIso();
   try {
@@ -220,15 +225,15 @@ export async function createTour(db: D1Database, input: CreateTourInput, userId:
       .prepare(
         `INSERT INTO tours (id, code, title, description, destination, itinerary_template_id, duration_days, currency, default_capacity,
            booking_cutoff_days, extras_cutoff_days, hold_expiry_hours, confirm_mode, deposit_type, deposit_value, passenger_fields,
-           room_types, terms, status, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           room_types, age_bands, terms, status, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         id, code, input.title, input.description ?? null, input.destination ?? null, input.itineraryTemplateId ?? null,
         input.durationDays ?? null, input.currency ? input.currency.toUpperCase() : null, input.defaultCapacity ?? null,
         input.bookingCutoffDays ?? null, input.extrasCutoffDays ?? null, input.holdExpiryHours ?? null, input.confirmMode ?? null,
         input.depositType ?? null, input.depositValue ?? null, jsonOrNull(input.passengerFields), jsonOrNull(input.roomTypes),
-        input.terms ?? null, input.status ?? 'active', userId, now, now,
+        ageBands, input.terms ?? null, input.status ?? 'active', userId, now, now,
       )
       .run();
   } catch (e) {
@@ -238,11 +243,19 @@ export async function createTour(db: D1Database, input: CreateTourInput, userId:
   return id;
 }
 
+/** The stored form of a submitted band list: validated, ordered, null for none (the agency's bands apply). */
+function ageBandsColumn(input: unknown): string | null {
+  if (input === null || input === undefined || (Array.isArray(input) && input.length === 0)) return null;
+  const parsed = parseBands(input);
+  if (parsed.error) throw new DepartureError(400, 'INVALID_AGE_BANDS', parsed.error);
+  return JSON.stringify(parsed.bands);
+}
+
 const TOUR_COLUMNS: Record<string, string> = {
   code: 'code', title: 'title', description: 'description', destination: 'destination', itineraryTemplateId: 'itinerary_template_id',
   durationDays: 'duration_days', currency: 'currency', defaultCapacity: 'default_capacity', bookingCutoffDays: 'booking_cutoff_days',
   extrasCutoffDays: 'extras_cutoff_days', holdExpiryHours: 'hold_expiry_hours', confirmMode: 'confirm_mode', depositType: 'deposit_type',
-  depositValue: 'deposit_value', passengerFields: 'passenger_fields', roomTypes: 'room_types', terms: 'terms', status: 'status',
+  depositValue: 'deposit_value', passengerFields: 'passenger_fields', roomTypes: 'room_types', ageBands: 'age_bands', terms: 'terms', status: 'status',
 };
 
 export async function updateTour(db: D1Database, id: string, input: UpdateTourInput): Promise<boolean> {
@@ -262,6 +275,7 @@ export async function updateTour(db: D1Database, id: string, input: UpdateTourIn
     if (!column || value === undefined) continue;
     sets.push(`${column} = ?`);
     if (key === 'passengerFields' || key === 'roomTypes') binds.push(jsonOrNull(value));
+    else if (key === 'ageBands') binds.push(ageBandsColumn(value));
     else if (key === 'code') binds.push((value as string).trim());
     else if (key === 'currency') binds.push(value ? String(value).toUpperCase() : null);
     else binds.push(value);

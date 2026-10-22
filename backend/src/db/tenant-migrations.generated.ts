@@ -1156,5 +1156,11 @@ export const TENANT_MIGRATIONS: BundledMigration[] = [
       "ALTER TABLE itineraries ADD COLUMN accepted_ip_hash TEXT",
       "ALTER TABLE itineraries ADD COLUMN accepted_invoice_id TEXT"
     ]
+  },
+  {
+    "name": "0064_tour_age_bands.sql",
+    "queries": [
+      "-- R164: a tour can carry its own age bands (same shape as itinerary_templates.age_bands).\n--\n-- tours.age_bands  the tour's own band list (JSON); NULL = use the agency's bands (setting pricing.age_bands).\n-- Resolution for a departure: the tour's bands, then the agency's.\nALTER TABLE tours ADD COLUMN age_bands TEXT"
+    ]
   }
 ];
