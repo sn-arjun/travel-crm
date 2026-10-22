@@ -20,19 +20,20 @@ import {
 import { createTripsFromDeparture, departureHeadcount, type CoachCtx } from '../services/fleet/coach-trips';
 import { requireFeature } from '../middleware/feature-gate';
 import { getGroupToursSettings, putGroupToursSettings } from '../services/departures/settings';
-import { announceSeats, emit, seatCtxFromRequest } from '../services/departures/seat-support';
+import { announceSeats, emit, loadDepartureContext, seatCtxFromRequest } from '../services/departures/seat-support';
 import { buildManifest, manifestCsv, manifestPdf, saveRoomGroups, suggestRooms } from '../services/departures/manifest';
 import { hasPermission, type Role } from '../constants/permissions';
 import { getBookingDetail, listBookings, requestSeats } from '../services/departures/seats';
 import { runWaitlistStep } from '../services/departures/waitlist';
 import {
-  bulkDepartureSchema, costsBodySchema, createDepartureSchema, departureListSchema, departureStatusBodySchema, groupToursSettingsSchema,
+  bulkDepartureSchema, costsBodySchema, extrasBodySchema, createDepartureSchema, departureListSchema, departureStatusBodySchema, groupToursSettingsSchema,
   manifestQuerySchema, roomAssignmentsSchema, pricesBodySchema, stopsBodySchema, updateDepartureSchema, vehiclesBodySchema,
 } from '../validators/departures';
 import { bookingListSchema, requestSeatsBodySchema } from '../validators/seat-bookings';
 import { activeLinkFor, createLink, revoke } from '../services/public-links';
 import { resolveFeature } from '../services/features/resolve';
 import { bookingUrl } from '../utils/app-urls';
+import { extrasOverview, replaceDepartureExtras } from '../services/departures/extras';
 
 const departures = new Hono<AppContext>();
 
@@ -257,6 +258,27 @@ departures.delete('/:id/public-link', requirePermission('departures', 'edit'), (
     await db.prepare('UPDATE departures SET public_booking_enabled = 0, updated_at = ? WHERE id = ?').bind(new Date().toISOString(), id).run();
     await logActivity(db, { userId: c.get('userId'), action: 'update', entityType: 'departure', entityId: id, details: JSON.stringify({ publicPage: 'disabled' }) });
     return success(c, { available: true, enabled: false, url: null });
+  }),
+);
+
+// ---- extras (R150): what the departure sells (the tour's catalogue with this departure's overrides), the sales, and what each passenger chose
+
+departures.get('/:id/extras', requirePermission('departures', 'view'), (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    return success(c, await extrasOverview(db, await loadDepartureContext(db, c.req.param('id'))));
+  }),
+);
+
+departures.put('/:id/extras', requirePermission('departures', 'edit'), zValidator('json', extrasBodySchema), (c) =>
+  guarded(c, async () => {
+    const db = c.get('tenantDb');
+    const id = c.req.param('id');
+    const row = await getDepartureRow(db, id);
+    if (!row) return notFound(c, 'Departure');
+    await replaceDepartureExtras(db, row.tour_id, id, c.req.valid('json').extras);
+    await logActivity(db, { userId: c.get('userId'), action: 'update', entityType: 'departure', entityId: id, details: JSON.stringify({ extras: c.req.valid('json').extras.length }) });
+    return success(c, await extrasOverview(db, await loadDepartureContext(db, id)));
   }),
 );
 

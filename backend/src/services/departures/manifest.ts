@@ -12,6 +12,7 @@ import { agencyDefaultLanguage, t, type TextLanguage } from '../../i18n';
 import { loadLocaleContext } from '../../utils/money';
 import { parseJson, toBool } from './common';
 import { loadDepartureContext } from './seat-support';
+import { choicesText } from './extras';
 
 type Row = Record<string, any>;
 
@@ -110,6 +111,22 @@ async function loadPassengers(db: D1Database, departureId: string, bookings: 'al
   return results ?? [];
 }
 
+/** What each passenger chose, as one line of text per passenger id (R150). Only passengers with a live choice are present. */
+async function loadChoicesText(db: D1Database, departureId: string, unpaidMark: string): Promise<Map<string, string>> {
+  const { results } = await db
+    .prepare(
+      `SELECT pe.seat_passenger_id, pe.quantity, pe.status, te.title, te.day_number FROM passenger_extras pe JOIN tour_extras te ON te.id = pe.tour_extra_id
+       WHERE pe.departure_id = ? AND pe.status != 'cancelled' ORDER BY COALESCE(te.day_number, 0), te.title, pe.created_at`,
+    )
+    .bind(departureId)
+    .all<Row>();
+  const grouped = new Map<string, Array<{ title: string; quantity: number; dayNumber: number | null; status: 'selected' | 'invoiced' | 'paid' | 'cancelled' }>>();
+  for (const r of results ?? []) {
+    grouped.set(r.seat_passenger_id, [...(grouped.get(r.seat_passenger_id) ?? []), { title: r.title, quantity: r.quantity, dayNumber: r.day_number ?? null, status: r.status }]);
+  }
+  return new Map([...grouped].map(([id, list]) => [id, choicesText(list, unpaidMark)]));
+}
+
 export async function buildManifest(db: D1Database, departureId: string, view: ManifestView, opts: ManifestOptions): Promise<Manifest> {
   const dep = await loadDepartureContext(db, departureId);
   const language = opts.language ?? (await agencyDefaultLanguage(db));
@@ -121,6 +138,7 @@ export async function buildManifest(db: D1Database, departureId: string, view: M
     loadLocaleContext(db, opts.userId),
   ]);
   const stops = stopRows ?? [];
+  const choicesBy = view === 'full' ? await loadChoicesText(db, departureId, L('manifest.extras.unpaid')) : new Map<string, string>();
   const roomLabels = new Map(dep.effective.roomTypes.map((r) => [r.key, r.label]));
   const docsLabel = (s: string | null): string => L(`manifest.docs.${s ?? 'unknown'}`);
   const genderLabel = (g: string | null): string => (g ? L(`manifest.gender.${g}`) : '');
@@ -204,6 +222,7 @@ export async function buildManifest(db: D1Database, departureId: string, view: M
       { key: 'sharing', label: L('manifest.col.sharing') },
       { key: 'seatNumber', label: L('manifest.col.seatNumber') },
       { key: 'meal', label: L('manifest.col.meal') },
+      ...(choicesBy.size ? [{ key: 'extras', label: L('manifest.col.extras') }] : []),
       { key: 'documents', label: L('manifest.col.documents') },
       ...agencyFields.map((f) => ({ key: `field:${f.key}`, label: f.label })),
     ];
@@ -227,6 +246,7 @@ export async function buildManifest(db: D1Database, departureId: string, view: M
         sharing: sharingOf(p),
         seatNumber: p.seat_number ?? '',
         meal: p.meal_preference ?? '',
+        ...(choicesBy.size ? { extras: choicesBy.get(p.id) ?? '' } : {}),
         documents: docsLabel(p.documents_status),
         ...meta(p),
       };

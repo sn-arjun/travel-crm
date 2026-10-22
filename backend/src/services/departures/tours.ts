@@ -416,8 +416,10 @@ export async function getTourExtras(db: D1Database, tourId: string) {
  * switched off when passengers already chose it (their choices keep pointing at it).
  */
 export async function replaceTourExtras(db: D1Database, tourId: string, extras: ExtraInput[]): Promise<void> {
-  const { results } = await db.prepare('SELECT id FROM tour_extras WHERE tour_id = ?').bind(tourId).all<{ id: string }>();
+  const { results } = await db.prepare('SELECT id, departure_id FROM tour_extras WHERE tour_id = ?').bind(tourId).all<{ id: string; departure_id: string | null }>();
   const existing = new Set((results ?? []).map((r) => r.id));
+  // Rows of a departure belong to that departure's Extras tab (R150): leaving them out of this list does not remove them.
+  const departureRows = new Set((results ?? []).filter((r) => r.departure_id).map((r) => r.id));
   const seen = new Set<string>();
   for (const e of extras) {
     if (e.id) {
@@ -429,7 +431,7 @@ export async function replaceTourExtras(db: D1Database, tourId: string, extras: 
     await assertExists(db, 'rate_cards', e.rateCardId, 'The rate card');
     await assertExists(db, 'suppliers', e.supplierId, 'The supplier');
   }
-  const removed = [...existing].filter((id) => !seen.has(id));
+  const removed = [...existing].filter((id) => !seen.has(id) && !departureRows.has(id));
   const statements: D1PreparedStatement[] = [];
   for (const part of chunk(removed)) {
     statements.push(

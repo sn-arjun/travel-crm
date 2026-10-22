@@ -198,7 +198,7 @@ export async function createBookingInvoice(env: Env, tenantId: string, db: D1Dat
 }
 
 /** Recomputes a draft invoice from new lines: totals, tax and items, in one batch. Returns the new total. */
-async function refreshDraft(db: D1Database, invoiceId: string, contactId: string, items: CreateInvoiceItemInput[]): Promise<number> {
+export async function refreshDraft(db: D1Database, invoiceId: string, contactId: string, items: CreateInvoiceItemInput[]): Promise<number> {
   const buyer = await loadTaxBuyer(db, contactId);
   if (!buyer) throw new DepartureError(404, 'CONTACT_NOT_FOUND', 'Contact not found');
   const { regime, seller } = await loadTaxSettings(db);
@@ -269,6 +269,7 @@ export async function createDepositLink(
   amount: number,
   contact: { name: string | null; email: string | null; phone: string | null },
   apiBase: string,
+  purpose: 'deposit' | 'balance' | 'custom' = 'deposit',
 ): Promise<DepositLink | null> {
   const value = round2(amount);
   if (!(value > 0)) return null;
@@ -289,7 +290,7 @@ export async function createDepositLink(
     customerName: contact.name,
     customerEmail: contact.email,
     customerPhone: contact.phone,
-    purpose: 'deposit' as const,
+    purpose,
     ...(stripeMethods ? { paymentMethodTypes: stripeMethods } : {}),
   };
   let link;
@@ -313,9 +314,9 @@ export async function createDepositLink(
   await db
     .prepare(
       `UPDATE invoices SET payment_link = ?1, payment_link_id = ?2, payment_link_url = ?1, payment_link_status = 'created', payment_link_gateway = ?5,
-         payment_link_amount = ?6, payment_link_purpose = 'deposit', updated_at = ?3 WHERE id = ?4`,
+         payment_link_amount = ?6, payment_link_purpose = ?7, updated_at = ?3 WHERE id = ?4`,
     )
-    .bind(link.url, link.id, nowIso(), invoice.id, account.gateway, value)
+    .bind(link.url, link.id, nowIso(), invoice.id, account.gateway, value, purpose)
     .run();
   return { url: link.url, gateway: account.gateway, amount: value, currency: invoice.currency };
 }

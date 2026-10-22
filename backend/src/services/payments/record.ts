@@ -96,6 +96,15 @@ export async function recordInvoicePayment(
     .bind(newPaidAmount, Math.max(0, newBalanceDue), newStatus, now, invoice.id)
     .run();
 
+  // Extras on this invoice are paid when it is (R150). Loaded on use: the departures domain imports the invoice domain.
+  if (newStatus === 'paid') {
+    try {
+      await (await import('../departures/extras')).markExtrasPaid(tenantDb, invoice.id);
+    } catch (err) {
+      console.error('[payments] extras not marked paid:', err instanceof Error ? err.message : err);
+    }
+  }
+
   const meta = await tenantDb
     .prepare('SELECT created_by, lead_id FROM invoices WHERE id = ?')
     .bind(invoice.id)

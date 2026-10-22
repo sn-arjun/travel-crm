@@ -299,6 +299,20 @@ export const en = {
   'public.booking.captcha': 'The security check failed. Please try again.',
   'public.booking.bandMismatch': 'The age does not match the chosen age group',
   'public.booking.tooLarge': 'The form is too large',
+  'extras.invoice.line': '{extra}: {name}',
+  'extras.invoice.lineDay': '{extra} (day {day}): {name}',
+  'extras.invoice.notes': 'Extras on {tour}, departure {code}',
+  'manifest.col.extras': 'Extras',
+  'manifest.extras.unpaid': '(unpaid)',
+  'public.trip.notEditable': 'This booking can no longer be changed online',
+  'public.trip.invalid': 'Please check the details you entered',
+  'public.trip.extraClosed': 'The cut-off for {extra} has passed. Please contact the agency to change it.',
+  'public.trip.extraFull': '{extra} is fully booked',
+  'public.trip.extraInvalid': 'One of the extras could not be chosen',
+  'public.trip.required': 'Please fill in the required details of every traveller',
+  'public.trip.nothingDue': 'There is nothing to pay right now',
+  'public.trip.paymentUnavailable': 'Online payment is not available. Please pay by bank transfer or contact the agency.',
+  'public.trip.rejected': 'We could not accept this request. Please reload the page and try again.',
 } as const;
 
 export type MessageKey = keyof typeof en;
