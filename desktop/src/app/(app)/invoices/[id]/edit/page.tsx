@@ -15,6 +15,7 @@ import { invoicesApi, type InvoiceLineItem, type UpdateInvoiceRequest } from '@/
 import { toast } from 'sonner';
 import { formatCurrency } from '@/lib/utils';
 import { parseLocalDate, toLocalDateString } from '@/lib/dates';
+import { regimeRequest, type RegimeChoice } from '../../_margin-controls';
 import {
   LineItemsEditor, TaxAndTotal, fetchContactOptions, newLineItem, resolveContact, type LineItem,
 } from '../../_form-shared';
@@ -43,6 +44,9 @@ export default function EditInvoicePage() {
   const [initialized, setInitialized] = React.useState(false);
   const [defaultValues, setDefaultValues] = React.useState<InvoiceFormValues | null>(null);
   const [priceErrors, setPriceErrors] = React.useState<Set<number>>(new Set());
+  // R152: 'default' keeps the regime the draft was issued under; the cost is sent only when typed here
+  const [regime, setRegime] = React.useState<RegimeChoice>('default');
+  const [marginCost, setMarginCost] = React.useState<number | undefined>(undefined);
 
   const { data: invoice, loading, error } = useApiQuery(() => invoicesApi.getDetail(invoiceId), [invoiceId]);
 
@@ -164,6 +168,8 @@ export default function EditInvoicePage() {
           discountValue: v.discountValue && v.discountValue > 0 ? v.discountValue : 0,
           notes: v.notes || undefined,
           gstRate: parseFloat(v.gstRate) || 0,
+          taxRegime: regimeRequest(regime),
+          ...(marginCost !== undefined && regime !== 'standard' && { marginCost }),
         };
 
         const result = await invoicesApi.update(invoiceId, request);
@@ -254,6 +260,11 @@ export default function EditInvoicePage() {
                     currency={currency}
                     baseTotal={subtotal - discountAmount}
                     onGstRateChange={(r) => form.setValue('gstRate', r, { shouldDirty: true })}
+                    regime={regime}
+                    onRegimeChange={setRegime}
+                    marginCost={marginCost}
+                    onMarginCostChange={setMarginCost}
+                    editing
                   />
                 </div>
               </div>

@@ -27,6 +27,7 @@ import { useT } from '@/lib/i18n';
 import { paymentMethodLabel, usePaymentMethodOptions } from '@/lib/payment-methods';
 import { NoteDialog } from './_note-dialog';
 import { PaymentLinkCard } from './_payment-link';
+import { MarginSummary } from './_margin-summary';
 
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
@@ -198,10 +199,13 @@ export default function InvoiceDetailPage() {
   const addressLine = contact
     ? [contact.address, contact.city, contact.state, contact.country].filter(Boolean).join(', ')
     : '';
-  const gstin = invoice.buyerTaxId
-    ?? (contact?.customFields
-      ? Object.entries(contact.customFields).find(([key]) => /gst/i.test(key))?.[1]
-      : undefined);
+  // A margin-scheme invoice prints no VAT number of the buyer (R152)
+  const gstin = invoice.taxRegime === 'margin'
+    ? undefined
+    : invoice.buyerTaxId
+      ?? (contact?.customFields
+        ? Object.entries(contact.customFields).find(([key]) => /gst/i.test(key))?.[1]
+        : undefined);
   const billEmail = contact?.email ?? invoice.contactEmail ?? undefined;
   const billPhone = contact?.phone
     ? `${contact.countryCode ?? ''} ${contact.phone}`.trim()
@@ -392,6 +396,8 @@ export default function InvoiceDetailPage() {
                 )}
               </div>
             </SectionCard>
+
+            <MarginSummary invoice={invoice} />
           </div>
         }
         related={[

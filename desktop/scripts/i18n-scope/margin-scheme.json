@@ -1,0 +1,6 @@
+[
+  "src/app/(app)/invoices/_margin-controls.tsx",
+  "src/app/(app)/invoices/[id]/_margin-summary.tsx",
+  "src/app/(app)/settings/invoice-defaults/_margin-card.tsx",
+  "src/app/(app)/reports/financial/_margin-report.tsx"
+]

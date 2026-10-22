@@ -14,6 +14,8 @@ import { invoicesApi, type InvoiceLineItem, type CreateInvoiceRequest } from '@/
 import { toast } from 'sonner';
 import { formatCurrency } from '@/lib/utils';
 import { toLocalDateString } from '@/lib/dates';
+import type { RegimeChoice } from '../_margin-controls';
+import { regimeRequest } from '../_margin-controls';
 import {
   LineItemsEditor, TaxAndTotal, fetchContactOptions, fetchLeadOptions, newLineItem, resolveContact, resolveLead,
   type LineItem,
@@ -40,6 +42,9 @@ export default function NewInvoicePage() {
   const router = useRouter();
   const [lineItems, setLineItems] = React.useState<LineItem[]>([newLineItem(lineIdCounter++)]);
   const [priceErrors, setPriceErrors] = React.useState<Set<number>>(new Set());
+  // R152: the tax treatment and the cost typed for a margin-scheme invoice (undefined = taken from the departure or itinerary)
+  const [regime, setRegime] = React.useState<RegimeChoice>('default');
+  const [marginCost, setMarginCost] = React.useState<number | undefined>(undefined);
 
   function updateLineItem(id: number, field: keyof LineItem, value: string | number | undefined) {
     setLineItems((prev) => prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)));
@@ -114,6 +119,8 @@ export default function NewInvoicePage() {
           notes: v.notes || undefined,
           currency: v.currency,
           gstRate: parseFloat(v.gstRate) || 0,
+          taxRegime: regimeRequest(regime),
+          marginCost: regime === 'standard' ? undefined : marginCost,
         };
 
         const result = await invoicesApi.create(request);
@@ -247,6 +254,10 @@ export default function NewInvoicePage() {
                     currency={currency}
                     baseTotal={subtotal - discountAmount}
                     onGstRateChange={(r) => form.setValue('gstRate', r, { shouldDirty: true })}
+                    regime={regime}
+                    onRegimeChange={setRegime}
+                    marginCost={marginCost}
+                    onMarginCostChange={setMarginCost}
                   />
                 </div>
               </div>

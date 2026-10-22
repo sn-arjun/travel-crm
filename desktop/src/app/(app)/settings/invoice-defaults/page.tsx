@@ -21,6 +21,8 @@ import { useApiQuery } from '@/hooks/use-api';
 import { PageContainer } from '@/components/layout/page-container';
 import { useT } from '@/lib/i18n';
 import { PaymentsCard } from './_payments-card';
+import { MarginSchemeCard } from './_margin-card';
+import { useFeatureGate } from '@/hooks/use-feature-gate';
 import { useLocale } from '@/lib/locale';
 import { bankCountryOf, bankFieldError, bankFieldsFor, type BankField } from '@/lib/bank-details';
 
@@ -60,7 +62,7 @@ const schema = z.object({
   salesTaxRate: z.string().refine((v) => v === '' || (Number(v) >= 0 && Number(v) <= 100), 'Enter a rate between 0 and 100'),
   sellerTaxId: z.string().max(50).optional(),
   taxLabel: z.string().max(30).optional(),
-  taxSystem: z.enum(['gst', 'vat', 'sales_tax', 'none']),
+  taxSystem: z.enum(['gst', 'vat', 'sales_tax', 'none', 'margin']),
   defaultTaxRate: z.string().refine((v) => v !== '' && Number(v) >= 0 && Number(v) <= 100, 'Enter a rate between 0 and 100'),
   defaultDueDays: z.string().refine((v) => /^\d+$/.test(v) && Number(v) >= 1 && Number(v) <= 365, 'Enter 1–365 days'),
   defaultPaymentTerms: z.string().optional(),
@@ -71,6 +73,7 @@ export default function InvoiceDefaultsPage() {
   const router = useRouter();
   const t = useT();
   const { country: localeCountry, currency } = useLocale();
+  const marginGate = useFeatureGate('margin_scheme');
   const { data: response, loading } = useApiQuery(() => settingsApi.invoiceDefaults.get(), []);
 
   const d = React.useMemo(() => {
@@ -191,8 +194,12 @@ export default function InvoiceDefaultsPage() {
                     <SelectItem value="vat">VAT</SelectItem>
                     <SelectItem value="sales_tax">Sales Tax</SelectItem>
                     <SelectItem value="none">None</SelectItem>
+                    {(marginGate.enabled || taxSystem === 'margin') && (
+                      <SelectItem value="margin">{t('margin.taxSystem.option')}</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
+                {taxSystem === 'margin' && <p className="mt-ds-1 text-xs text-ds-foreground-muted">{t('margin.taxSystem.hint')}</p>}
               </FormRow>
               <FormRow name="country" label="Country" hint="Your business country. A buyer in another country gets an export (GST) or reverse-charge (VAT) invoice.">
                 <Input {...form.register('country')} id="country" placeholder="e.g., India, United Kingdom, AE" />
@@ -238,6 +245,8 @@ export default function InvoiceDefaultsPage() {
               )}
             </div>
           </SectionCard>
+
+          <MarginSchemeCard />
 
           <SectionCard title="Payment" description="Default due date and terms for new invoices" required>
             <div className="grid gap-ds-4 sm:grid-cols-2">

@@ -122,7 +122,17 @@ export interface CreateFollowUpSequenceRequest {
 
 export type UpdateFollowUpSequenceRequest = Partial<CreateFollowUpSequenceRequest>;
 
-export type TaxSystem = 'gst' | 'vat' | 'sales_tax' | 'none';
+export type TaxSystem = 'gst' | 'vat' | 'sales_tax' | 'none' | 'margin';
+
+/** Settings > Invoice defaults > Margin scheme (R152, design 4.5). Nothing is defaulted: no wording, no rate. */
+export interface MarginSchemeSettings {
+  enabled: boolean;
+  defaultFor: 'none' | 'tour_bookings' | 'all_invoices';
+  wording: string;
+  /** Percent; null until the agency enters its own rate. */
+  vatRate: number | null;
+  costSource: 'auto' | 'manual';
+}
 
 export interface InvoiceDefaults {
   bankName: string;
@@ -407,6 +417,11 @@ export const settingsApi = {
 
     update: (data: InvoiceDefaults) =>
       client.put<ApiResponse<{ message: string }>>(API_ENDPOINTS.settings.invoiceDefaults, toInvoiceDefaults(data)),
+  },
+
+  marginScheme: {
+    get: () => client.get<ApiResponse<MarginSchemeSettings>>('/settings/margin-scheme'),
+    update: (data: Partial<MarginSchemeSettings>) => client.put<ApiResponse<MarginSchemeSettings>>('/settings/margin-scheme', data),
   },
 
   numberingConfig: {

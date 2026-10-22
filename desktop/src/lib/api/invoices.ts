@@ -30,6 +30,10 @@ export interface CreateInvoiceRequest {
   currency?: string;
   /** GST only: the rate for items without their own taxRate; VAT and sales tax use the agency's rate. */
   gstRate?: number;
+  /** R152: 'margin' = margin scheme, 'standard' = the agency's ordinary regime; omitted = the agency's settings decide. */
+  taxRegime?: 'margin' | 'standard';
+  /** R152: the cost of the sold services, for a margin invoice; omitted = taken from the departure or itinerary. */
+  marginCost?: number | null;
 }
 
 export interface UpdateInvoiceRequest {
@@ -43,9 +47,12 @@ export interface UpdateInvoiceRequest {
   notes?: string;
   customFields?: Record<string, unknown>;
   gstRate?: number;
+  /** R152: move a draft into ('margin') or out of ('standard') the margin scheme; omitted = unchanged. */
+  taxRegime?: 'margin' | 'standard';
+  marginCost?: number | null;
 }
 
-export type TaxRegime = 'gst' | 'vat' | 'sales_tax' | 'none';
+export type TaxRegime = 'gst' | 'vat' | 'sales_tax' | 'none' | 'margin';
 
 export interface TaxBreakdownLine {
   code: string;
@@ -71,6 +78,12 @@ export interface TaxPreview {
   total: number;
   /** Rate a line gets without its own (VAT / sales tax); null under GST, where the user picks one. */
   defaultRate: number | null;
+  /** Margin scheme, for staff who can edit invoices only (R152). */
+  marginCost?: number | null;
+  marginCostSource?: 'departure' | 'itinerary' | 'manual' | null;
+  margin?: number | null;
+  marginVatRate?: number | null;
+  vatOnMargin?: number | null;
 }
 
 export interface TaxPreviewRequest {
@@ -81,6 +94,10 @@ export interface TaxPreviewRequest {
   discountValue?: number;
   /** GST only: the rate for lines that carry none. */
   gstRate?: number;
+  /** R152: preview the margin scheme or the ordinary regime. */
+  taxRegime?: 'margin' | 'standard';
+  marginCost?: number | null;
+  origin?: 'booking' | 'extras' | 'itinerary' | 'trip' | 'manual';
 }
 
 /** A line on an invoice, as shown on the detail page. */
@@ -169,6 +186,13 @@ export interface InvoiceDetail {
   sellerTaxId: string | null;
   buyerTaxId: string | null;
   placeOfSupply: string | null;
+  /** Margin scheme (R152). The cost, its source and the VAT on the margin are null for staff without finance rights. */
+  marginCost: number | null;
+  marginCostSource: 'departure' | 'itinerary' | 'manual' | null;
+  marginVatRate: number | null;
+  marginWording: string | null;
+  /** The hidden MARGIN_VAT entry of the breakdown: the margin and the VAT on it, or null when the inputs were missing. */
+  marginVat: { base: number; rate: number; amount: number } | null;
   totalAmount: number;
   paidAmount: number;
   balanceDue: number;
@@ -203,7 +227,18 @@ function asRows(v: unknown): RawRow[] {
 }
 
 function parseRegime(v: unknown): TaxRegime {
-  return v === 'vat' || v === 'sales_tax' || v === 'none' ? v : 'gst';
+  return v === 'vat' || v === 'sales_tax' || v === 'none' || v === 'margin' ? v : 'gst';
+}
+
+function isHidden(e: unknown): boolean {
+  return !!e && typeof e === 'object' && (e as RawRow).hidden === true;
+}
+
+/** The hidden MARGIN_VAT entry (R152): complete only when the cost and the agency's rate were known. */
+function readMarginVat(entries: unknown[]): InvoiceDetail['marginVat'] {
+  const e = entries.find((x) => isHidden(x) && (x as RawRow).code === 'MARGIN_VAT') as RawRow | undefined;
+  if (!e || e.status === 'inputs_missing') return null;
+  return { base: numOf(e.base), rate: numOf(e.rate), amount: numOf(e.amount) };
 }
 
 /** The API stores JSON text; accept text or an already parsed array. */
@@ -267,6 +302,7 @@ export function normalizeInvoiceDetail(input: unknown): InvoiceDetail | null {
   const paid = numOf(pick(raw, 'paidAmount', 'paid_amount'));
   const balance = pick(raw, 'balanceDue', 'balance_due');
   const discountType = pick(raw, 'discountType', 'discount_type');
+  const breakdown = parseJsonArray(pick(raw, 'taxBreakdown', 'tax_breakdown'));
   return {
     id: String(raw.id ?? ''),
     invoiceNumber: String(pick(raw, 'invoiceNumber', 'invoice_number') ?? ''),
@@ -289,11 +325,17 @@ export function normalizeInvoiceDetail(input: unknown): InvoiceDetail | null {
     igst: numOf(raw.igst),
     totalTax: numOf(pick(raw, 'totalTax', 'total_tax')),
     taxRegime: parseRegime(pick(raw, 'taxRegime', 'tax_regime')),
-    taxBreakdown: parseJsonArray(pick(raw, 'taxBreakdown', 'tax_breakdown')).map(normalizeTaxLine),
+    // Hidden entries (the VAT on the margin) are never lines of the invoice
+    taxBreakdown: breakdown.filter((e) => !isHidden(e)).map(normalizeTaxLine),
     taxNotes: parseJsonArray(pick(raw, 'taxNotes', 'tax_notes')).map(String),
     sellerTaxId: strOrNull(pick(raw, 'sellerTaxId', 'seller_tax_id')),
     buyerTaxId: strOrNull(pick(raw, 'buyerTaxId', 'buyer_tax_id')),
     placeOfSupply: strOrNull(pick(raw, 'placeOfSupply', 'place_of_supply')),
+    marginCost: pick(raw, 'marginCost', 'margin_cost') == null ? null : numOf(pick(raw, 'marginCost', 'margin_cost')),
+    marginCostSource: ((s) => (s === 'departure' || s === 'itinerary' || s === 'manual' ? s : null))(strOrNull(pick(raw, 'marginCostSource', 'margin_cost_source'))),
+    marginVatRate: pick(raw, 'marginVatRate', 'margin_vat_rate') == null ? null : numOf(pick(raw, 'marginVatRate', 'margin_vat_rate')),
+    marginWording: strOrNull(pick(raw, 'marginWording', 'margin_wording')),
+    marginVat: readMarginVat(breakdown),
     totalAmount: total,
     paidAmount: paid,
     balanceDue: balance === undefined || balance === null ? total - paid : numOf(balance),

@@ -15,6 +15,7 @@ import { leadsApi } from '@/lib/api/leads';
 import { hsnCodesApi, type HsnCode } from '@/lib/api/hsn-codes';
 import { unwrapList } from '@/lib/api/envelope';
 import type { Contact, Lead } from '@travelcrm/shared';
+import { MarginFigures, RegimeSelect, regimeRequest, type RegimeChoice } from './_margin-controls';
 
 export interface LineItem {
   id: number;
@@ -56,17 +57,20 @@ interface TaxPreviewArgs {
   discountType: 'percentage' | 'fixed';
   discountValue: number;
   gstRate: string;
+  /** R152: the tax treatment picked on the form and the cost typed for a margin invoice. */
+  regime?: RegimeChoice;
+  marginCost?: number;
 }
 
 /**
  * Tax for the lines on screen, computed by the API (regime, tax lines, notes, total) a moment after
  * the user stops typing. The form holds no tax rules of its own.
  */
-export function useTaxPreview({ contactId, invoiceId, items, discountType, discountValue, gstRate }: TaxPreviewArgs) {
+export function useTaxPreview({ contactId, invoiceId, items, discountType, discountValue, gstRate, regime = 'default', marginCost }: TaxPreviewArgs) {
   const [preview, setPreview] = React.useState<TaxPreview | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const key = JSON.stringify([
-    contactId, invoiceId, discountType, discountValue, gstRate,
+    contactId, invoiceId, discountType, discountValue, gstRate, regime, marginCost,
     items.map((i) => [i.quantity, i.unitPrice]),
   ]);
 
@@ -86,6 +90,8 @@ export function useTaxPreview({ contactId, invoiceId, items, discountType, disco
           discountType,
           discountValue,
           gstRate: parseFloat(gstRate) || 0,
+          taxRegime: regimeRequest(regime),
+          marginCost,
         })
         .then((p) => {
           if (cancelled) return;
@@ -119,7 +125,7 @@ interface TaxRowsProps {
 /** The tax part of the totals block: the GST rate picker (GST only), the lines the API returned and any notes. */
 export function TaxRows({ preview, error, currency, gstRate, onGstRateChange }: TaxRowsProps) {
   const regime = preview?.regime;
-  const zeroRated = preview?.treatment === 'export_zero' || preview?.treatment === 'reverse_charge';
+  const zeroRated = preview?.treatment === 'export_zero' || preview?.treatment === 'reverse_charge' || regime === 'margin';
   return (
     <>
       {(regime === 'gst' || !preview) && !error && !zeroRated && (
@@ -138,7 +144,7 @@ export function TaxRows({ preview, error, currency, gstRate, onGstRateChange }: 
       {error && (
         <p role="alert" className="text-xs text-ds-danger">{error}</p>
       )}
-      {preview && preview.taxLines.length === 0 && (
+      {preview && preview.taxLines.length === 0 && regime !== 'margin' && (
         <div className="flex items-center justify-between gap-ds-2">
           <span className="text-sm text-ds-foreground-muted">{regime === 'none' ? 'No tax' : 'Tax'}</span>
           <span className="text-sm font-medium w-24 text-right">{formatCurrency(0, currency)}</span>
@@ -162,19 +168,28 @@ interface TaxAndTotalProps extends TaxPreviewArgs {
   /** Subtotal less discount: shown as the total until the API answers. */
   baseTotal: number;
   onGstRateChange: (rate: string) => void;
+  /** R152: set to show the tax treatment picker and, for a margin invoice, the cost. */
+  onRegimeChange?: (regime: RegimeChoice) => void;
+  onMarginCostChange?: (cost: number | undefined) => void;
+  /** Editing a draft: the first choice means "as issued". */
+  editing?: boolean;
 }
 
 /** Tax lines and the grand total of the totals block, both worked out by the API. */
-export function TaxAndTotal({ currency, baseTotal, onGstRateChange, ...args }: TaxAndTotalProps) {
+export function TaxAndTotal({ currency, baseTotal, onGstRateChange, onRegimeChange, onMarginCostChange, editing, ...args }: TaxAndTotalProps) {
   const { preview, error } = useTaxPreview(args);
   return (
     <>
+      {onRegimeChange && <RegimeSelect value={args.regime ?? 'default'} onChange={onRegimeChange} editing={editing} />}
       <TaxRows preview={preview} error={error} currency={currency} gstRate={args.gstRate} onGstRateChange={onGstRateChange} />
       <Separator />
       <div className="flex justify-between text-base">
         <span className="font-semibold">Total</span>
         <span className="font-bold text-lg">{formatCurrency(preview?.total ?? baseTotal, currency)}</span>
       </div>
+      {onMarginCostChange && (
+        <MarginFigures preview={preview} currency={currency} cost={args.marginCost} onCostChange={onMarginCostChange} />
+      )}
     </>
   );
 }
