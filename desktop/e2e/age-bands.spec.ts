@@ -55,7 +55,7 @@ async function createQuote(page: Page, leadTitle: string, title: string, party?:
   await dialog.getByRole('button', { name: /Create itinerary/i }).click();
   await page.waitForURL(/\/itineraries\/[0-9a-f-]{20,}$/, { timeout: 15_000 });
   await waitForLoad(page);
-  return page.url().match(/\/itineraries\/([0-9a-f-]{20,})$/)![1];
+  return page.url().match(/\/itineraries\/([0-9a-f-]{20,})$/)![1]!;
 }
 
 test.describe('Age-band pricing', () => {
