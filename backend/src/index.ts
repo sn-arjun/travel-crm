@@ -49,6 +49,7 @@ import assistantRoutes from './routes/assistant';
 import automationRoutes from './routes/automations';
 import tourRoutes from './routes/tours';
 import departureRoutes from './routes/departures';
+import departureMessageRuleRoutes from './routes/departure-message-rules';
 import seatBookingRoutes from './routes/seat-bookings';
 import { setRootApp } from './app-ref';
 import { verifyAccessToken } from './utils/jwt';
@@ -288,6 +289,7 @@ for (const prefix of ['/api/v1', '/api']) {
   app.use(`${prefix}/tours/*`, requireFeature('group_departures'));
   app.use(`${prefix}/departures/*`, requireFeature('group_departures'));
   app.use(`${prefix}/seat-bookings/*`, requireFeature('group_departures'));
+  app.use(`${prefix}/departure-message-rules/*`, requireFeature('group_departures'));
 }
 
 // AI assistant — feature gate + usage cap
@@ -364,6 +366,7 @@ const routeMounts: Array<[string, typeof authRoutes]> = [
   ['tours', tourRoutes],
   ['departures', departureRoutes],
   ['seat-bookings', seatBookingRoutes],
+  ['departure-message-rules', departureMessageRuleRoutes],
   ['admin/auth', adminAuthRoutes],
   ['admin/tenants', adminTenantsRoutes],
   ['admin/enquiries', adminEnquiryRoutes],

@@ -20,6 +20,7 @@ import {
 import { createTripsFromDeparture, departureHeadcount, type CoachCtx } from '../services/fleet/coach-trips';
 import { requireFeature } from '../middleware/feature-gate';
 import { getGroupToursSettings, putGroupToursSettings } from '../services/departures/settings';
+import { seedDefaultRules } from '../services/departures/scheduled-messages';
 import { announceSeats, emit, loadDepartureContext, seatCtxFromRequest } from '../services/departures/seat-support';
 import { buildManifest, manifestCsv, manifestPdf, saveRoomGroups, suggestRooms } from '../services/departures/manifest';
 import { hasPermission, type Role } from '../constants/permissions';
@@ -52,7 +53,10 @@ departures.get('/settings', requirePermission('departures', 'view'), async (c) =
 
 departures.put('/settings', rbac(['admin']), zValidator('json', groupToursSettingsSchema), async (c) => {
   const db = c.get('tenantDb');
+  const before = await getGroupToursSettings(db);
   const saved = await putGroupToursSettings(db, c.req.valid('json'), c.get('userId'));
+  // The first time group tours are switched on the agency gets the three inactive starter rules for departure messages (R154).
+  if (saved.enabled && !before.enabled) await seedDefaultRules(db, c.get('userId'));
   await logActivity(db, { userId: c.get('userId'), action: 'update', entityType: 'setting', details: JSON.stringify({ key: 'group_tours' }) });
   return success(c, saved);
 });

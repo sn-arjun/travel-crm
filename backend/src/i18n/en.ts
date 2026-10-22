@@ -313,6 +313,27 @@ export const en = {
   'public.trip.nothingDue': 'There is nothing to pay right now',
   'public.trip.paymentUnavailable': 'Online payment is not available. Please pay by bank transfer or contact the agency.',
   'public.trip.rejected': 'We could not accept this request. Please reload the page and try again.',
+
+  // ---- departure-relative messages (R154) ----
+  'departureMessages.default.extras.name': 'Extras reminder',
+  'departureMessages.default.extras.subject': 'Extras for {tour_name}',
+  'departureMessages.default.extras.content': 'Hi {first_name}, {tour_name} leaves on {departure_date}. You can still choose extras for {passenger_names} here: {extras_link}',
+  'departureMessages.default.pickup.name': 'Pickup time',
+  'departureMessages.default.pickup.subject': 'Your pickup time for {tour_name}',
+  'departureMessages.default.pickup.content': 'Hi {first_name}, your pickup for {tour_name} on {departure_date} is at {pickup_time} at {pickup_point} ({pickup_address}). Your tour leader is {tour_leader_name}, {tour_leader_phone}.',
+  'departureMessages.default.review.name': 'Review request',
+  'departureMessages.default.review.subject': 'How was {tour_name}?',
+  'departureMessages.default.review.content': 'Hi {first_name}, we hope you enjoyed {tour_name}. We would love to hear how it was.',
+  'departureMessages.templatePrefix': 'Departure',
+  'departureMessages.capNotice.title': 'Departure messages held back',
+  'departureMessages.capNotice.body_one': '{count} message of "{rule}" for {code} was not sent because the monthly message allowance is used up. It goes out automatically if the allowance is raised in time.',
+  'departureMessages.capNotice.body_other': '{count} messages of "{rule}" for {code} were not sent because the monthly message allowance is used up. They go out automatically if the allowance is raised in time.',
+  'departureMessages.suggest.title_one': 'Review and send {count} message: {rule}',
+  'departureMessages.suggest.title_other': 'Review and send {count} messages: {rule}',
+  'departureMessages.suggest.reason': '{code} ({date}): the send time of this rule has come',
+  'departureMessages.suggest.button': 'Review messages',
+  'departureMessages.suggest.departure': 'Departure',
+  'departureMessages.suggest.messages': 'Messages',
 } as const;
 
 export type MessageKey = keyof typeof en;

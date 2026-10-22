@@ -21,6 +21,7 @@ import { generateId } from '../utils/uuid';
 import { RECIPES, RECIPES_BY_KEY } from '../services/automation/recipes';
 import { loadRuleStates, automationsPaused, PAUSE_SETTING_KEY } from '../services/automation/engine';
 import { emitEvent } from '../services/automation/events';
+import { runDepartureMessages } from '../services/departures/scheduled-messages';
 import { localDateString, getTenantTimeZone } from '../utils/tz';
 import { loadLocaleContext } from '../utils/money';
 import {
@@ -220,6 +221,8 @@ automationRoutes.post('/run-scheduled', requirePermission('automations', 'create
   const db = c.get('tenantDb');
   const day = localDateString(await getTenantTimeZone(db));
   await emitEvent(c.env, c.get('tenantId'), db, { type: 'schedule.tick', entityType: 'schedule', entityId: day, actorId: c.get('userId') });
+  // Departure messages whose send moment has come (R154); the cron job does the same every five minutes.
+  if (!(await automationsPaused(db))) await runDepartureMessages(c.env, c.get('tenantId'), db);
   return success(c, { ran: true });
 });
 

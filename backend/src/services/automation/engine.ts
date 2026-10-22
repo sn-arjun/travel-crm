@@ -324,6 +324,24 @@ async function handleProposal(
   }
 }
 
+/**
+ * A proposal made by a scheduled job instead of an event (R154): the same guards and dedupe as an event-driven one, always as a
+ * pending suggestion for a person to act on. Returns true when a new suggestion was made.
+ */
+export async function submitScheduledProposal(
+  env: Env,
+  tenantId: string,
+  db: D1Database,
+  recipe: Pick<Recipe, 'key'>,
+  proposal: Proposal,
+): Promise<boolean> {
+  const before = await db.prepare('SELECT 1 AS hit FROM assistant_suggestions WHERE dedupe_key = ?').bind(proposal.dedupeKey).first();
+  if (before) return false;
+  const event: DomainEvent = { id: generateId(), type: 'schedule.tick', entityType: proposal.entityType, entityId: proposal.entityId, payload: {}, actorId: null, depth: 0 };
+  await handleProposal(env, tenantId, db, { key: recipe.key, autoEligible: false }, { mode: 'suggest', settings: {}, updatedBy: null }, proposal, event, Date.now());
+  return true;
+}
+
 // ── Suggestions: apply, dismiss, undo ────────────────────────
 
 export interface Clicker {

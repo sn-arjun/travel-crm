@@ -2234,6 +2234,25 @@ const collectDepartureDetails: Recipe = {
   },
 };
 
+/**
+ * Departure-relative messages (R154). The rules themselves (what, to whom, how many days before or after, and whether they go out on their own or
+ * wait for a click) are edited under Settings > Group tours; the cron job departures.messages does the work. This entry puts them on the
+ * automations page: switching it off pauses every rule, and the rules' own modes decide the rest.
+ */
+const scheduledDepartureMessages: Recipe = {
+  key: 'departures.scheduled_messages',
+  area: 'Group departures',
+  title: 'Messages before and after a departure',
+  description: 'Sends a template to everyone on a departure a set number of days before or after it (pickup time, extras reminder, review request), each person with their own details. Each rule is set to send by itself or to wait for a click; the rules are under Settings > Group tours.',
+  triggers: ['schedule.tick'],
+  defaultMode: 'suggest',
+  autoEligible: false,
+  featureKey: 'group_departures',
+  async evaluate() {
+    return []; // the cron job departures.messages does the work, rule by rule
+  },
+};
+
 export const RECIPES: Recipe[] = [
   readMessages,
   replyAfterCapture,
@@ -2274,6 +2293,7 @@ export const RECIPES: Recipe[] = [
   holdExpiring,
   seatsLow,
   collectDepartureDetails,
+  scheduledDepartureMessages,
 ];
 
 export const RECIPES_BY_KEY: Record<string, Recipe> = Object.fromEntries(RECIPES.map((recipe) => [recipe.key, recipe]));

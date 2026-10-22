@@ -31,12 +31,14 @@ import { pollRegulatory } from '../services/voip/regulatory';
 import { importTenantUsage } from '../services/voip/metering';
 import { checkFollowUpReminders } from '../services/follow-up-reminders';
 import { runScheduledAutomationsForTenant } from '../services/automation/schedule';
+import { automationsPaused } from '../services/automation/engine';
 import { processCampaignScheduler } from './campaign-scheduler';
 import { retryPendingRecordings, runRecordingRetention } from '../services/voip/recordings';
 import { processOverdueTasks } from './overdue-tasks';
 import { sweepWordpressSites } from '../services/wordpress/sites';
 import { processFleetAlerts } from './fleet-alerts';
 import { expireHoldsForTenant, runDepartureLifecycle } from '../services/departures/waitlist';
+import { runDepartureMessages } from '../services/departures/scheduled-messages';
 import { purgePlatformMailLog } from '../services/mail/platform-log';
 import {
   processBirthdaysForTenant,
@@ -45,6 +47,12 @@ import {
   processMissingVisaDocsForTenant,
   processTripRemindersForTenant,
 } from './auto-reminders';
+
+/** The departure messages job does nothing while the workspace has paused all automations. */
+async function runDepartureMessagesUnlessPaused(env: Env, tenantId: string, db: D1Database, now: Date): Promise<unknown> {
+  if (await automationsPaused(db)) return { paused: true };
+  return runDepartureMessages(env, tenantId, db, now);
+}
 
 export type JobSet = 'every5' | 'hourly' | 'daily';
 
@@ -98,6 +106,8 @@ const EVERY5_JOBS: TenantJob[] = [
   { name: 'departures.expire-holds', period: 'tick', run: (env, id, db, now) => expireHoldsForTenant(env, id, db, now) },
   // R143: departures close at their booking cut-off date, depart on their start date and complete the day after they end.
   { name: 'departures.lifecycle', period: 'local-day', run: (env, id, db, now) => runDepartureLifecycle(env, id, db, now) },
+  // R154: departure-relative messages (N days before or after a departure) whose send moment has come. Idempotent per rule, departure, booking and passenger. Honours automations_paused.
+  { name: 'departures.messages', period: 'tick', run: (env, id, db, now) => runDepartureMessagesUnlessPaused(env, id, db, now) },
 ];
 
 const HOURLY_JOBS: TenantJob[] = [
