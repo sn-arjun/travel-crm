@@ -4,6 +4,7 @@ import { C, softGradient, R } from './theme';
 import { ease, lerp } from './anim';
 import { Callout } from './Callout';
 import { LowerThird } from './LowerThird';
+import { SpeedBadge } from './SpeedBadge';
 import type { CalloutSpec, LowerThirdSpec, Zoom } from './types';
 
 export const WIN_W = 1560; // window width; height follows the source aspect minus the cropped bottom strip
@@ -12,11 +13,12 @@ export const WIN_W = 1560; // window width; height follows the source aspect min
  * If the scene is longer than the segment the video slows (never below 0.8x) then holds the last frame.
  * cropBottom trims the source's burned-in caption strip (fraction of height).
  */
-export const ScreenClip: React.FC<{ src: string; in: number; out: number; cropBottom?: number; zoom?: Zoom; callout?: CalloutSpec; lowerThird?: LowerThirdSpec; srcW?: number; srcH?: number }> = ({ src, in: tin, out, cropBottom = 0.14, zoom, callout, lowerThird, srcW = 1920, srcH = 1080 }) => {
+export const ScreenClip: React.FC<{ src: string; in: number; out: number; cropBottom?: number; zoom?: Zoom; callout?: CalloutSpec; lowerThird?: LowerThirdSpec; srcW?: number; srcH?: number; speed?: number; speedLabel?: string | false }> = ({ src, in: tin, out, cropBottom = 0.14, zoom, callout, lowerThird, srcW = 1920, srcH = 1080, speed = 1, speedLabel }) => {
   const frame = useCurrentFrame(); const { fps, durationInFrames } = useVideoConfig(); const t = frame / fps;
   const vw = WIN_W, vh = (WIN_W * srcH) / srcW, wh = Math.round(vh * (1 - cropBottom));
   const segLen = out - tin, sceneLen = durationInFrames / fps;
-  const rate = sceneLen > segLen ? Math.max(0.8, segLen / sceneLen) : 1; // slow slightly, never speed up
+  const shown = segLen / speed; // screen time of the segment at the scene's speed
+  const rate = speed * (sceneLen > shown ? Math.max(0.8, shown / sceneLen) : 1); // slow slightly below the scene speed, never faster
   const playFrames = Math.max(1, Math.floor((segLen / rate) * fps));
   let z = 1, ox = 0.5, oy = 0.5;
   if (zoom) { const p = ease((t - zoom.start) / Math.max(0.01, zoom.end - zoom.start)); z = lerp(1, zoom.scale, p); ox = zoom.x; oy = zoom.y; }
@@ -32,6 +34,7 @@ export const ScreenClip: React.FC<{ src: string; in: number; out: number; cropBo
           </Freeze>
           {callout && <Callout x={callout.x * vw} y={callout.y * vh} label={callout.label} at={callout.at} r={callout.r ?? 54} labelSide={callout.side} />}
         </div>
+        {speed > 1 && <SpeedBadge speed={speed} label={speedLabel} />}
       </div>
     </div>
   );

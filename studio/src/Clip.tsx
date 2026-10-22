@@ -11,11 +11,11 @@ const SceneBody: React.FC<{ s: Scene }> = ({ s }) => {
   switch (s.type) {
     case 'logo': return <LogoSting />;
     case 'title': return <TitleCard title={s.title} subtitle={s.subtitle} kicker={s.kicker} />;
-    case 'screen': return <ScreenClip src={s.src} in={s.in} out={s.out} cropBottom={s.cropBottom} zoom={s.zoom} callout={s.callout} lowerThird={s.lowerThird} />;
+    case 'screen': return <ScreenClip src={s.src} in={s.in} out={s.out} cropBottom={s.cropBottom} zoom={s.zoom} callout={s.callout} lowerThird={s.lowerThird} speed={s.speed} speedLabel={s.speedLabel} />;
     case 'flow': return <FlowDiagram steps={s.steps} heading={s.heading} />;
     case 'plans': return <PlanMatrix rows={s.rows} heading={s.heading} />;
     case 'end': return <EndCard headline={s.headline} cta={s.cta} url={s.url} />;
-    case 'phone': return <PhoneClip src={s.src} in={s.in} out={s.out} srcW={s.srcW} srcH={s.srcH} heading={s.heading} sub={s.sub} lowerThird={s.lowerThird} />;
+    case 'phone': return <PhoneClip src={s.src} in={s.in} out={s.out} srcW={s.srcW} srcH={s.srcH} heading={s.heading} sub={s.sub} lowerThird={s.lowerThird} speed={s.speed} speedLabel={s.speedLabel} />;
   }
 };
 

@@ -8,7 +8,7 @@
 //   out = the time of mark "step-end:<id>"
 // `zoom: { focus: "<id>", scale }` and `callout: { focus: "<id>", label }` take x, y and timing from mark
 // "focus:<id>" (its data.box is the element's box as fractions of the frame).
-// The driver app writes desktop/showcase/.work/driver-marks.json instead; phone scenes there use `markText`
+// The driver app (recordings named driver or driver-<variant>) writes desktop/showcase/.work/<name>-marks.json instead; phone scenes there use `markText`
 // (a substring of a CAPTION or CARD mark): in = that mark, out = the next CAPTION / CARD / done mark.
 // `trimIn` / `trimOut` shift in / out (seconds); `maxLen` keeps only the first N seconds of a step (short excerpts for the hero cut).
 // Legacy clips keep `source` + explicit `in` / `out` (pilot-assistant.json) and are passed through untouched.
@@ -34,7 +34,8 @@ export function listClips() {
 
 /** Where a recording's video and marks live. */
 export function recordingPaths(name) {
-  if (name === 'driver') return { video: path.join(WORK, 'driver.mp4'), marks: path.join(WORK, 'driver-marks.json'), driver: true };
+  // `driver` and any `driver-<variant>` (record-driver.ps1 -Out driver-<variant>) are Android emulator recordings
+  if (name === 'driver' || name.startsWith('driver-')) return { video: path.join(WORK, `${name}.mp4`), marks: path.join(WORK, `${name}-marks.json`), driver: true };
   const mp4 = path.join(FILMS, `${name}.mp4`);
   const webm = path.join(WORK, `${name}.webm`);
   return { video: fs.existsSync(mp4) ? mp4 : webm, marks: path.join(WORK, `marks-${name}.json`), driver: false };

@@ -79,7 +79,9 @@ resolved.scenes.forEach((s, i) => {
   const isVideo = s.type === 'screen' || s.type === 'phone';
   const audioAt = s.audioAt ?? (isVideo ? 0.25 : 0.4);
   const need = n ? audioAt + n.duration + PAD : 0;
-  const segLen = isVideo && s.in !== undefined ? s.out - s.in : 0;
+  const speed = isVideo ? s.speed ?? 1 : 1;
+  if (![1, 1.5, 2, 3, 4].includes(speed)) throw new Error(`scene ${i}: speed must be 1, 1.5, 2, 3 or 4 (got ${speed})`);
+  const segLen = isVideo && s.in !== undefined ? (s.out - s.in) / speed : 0; // screen time of the recorded segment
   const minDur = { logo: 2.6, title: 3.5, screen: segLen, phone: segLen, flow: 6, plans: 6, end: 4 }[s.type] ?? 3;
   let dur = Math.max(s.dur ?? 0, minDur, need);
   if (s.type === 'end') dur = Math.max(dur, need + 0.8);
@@ -88,7 +90,7 @@ resolved.scenes.forEach((s, i) => {
   if (isVideo) {
     if (s.recording) { sc.src = srcFor.get(s.recording) ?? 'missing.mp4'; sc.cropBottom = s.cropBottom ?? clip.cropBottom ?? 0; const z = sizeFor.get(s.recording); if (z && s.type === 'phone') { sc.srcW = z.width; sc.srcH = z.height; } }
     else { sc.src = legacySrc; sc.cropBottom = s.cropBottom ?? clip.cropBottom ?? 0.14; }
-    if (sc.in === undefined) { sc.in = 0; sc.out = Math.max(1, need); }
+    if (sc.in === undefined) { sc.in = 0; sc.out = Math.max(1, need * speed); }
   }
   if (n) { sc.audio = `${clipId}/${n.file}`; sc.audioDur = n.duration; sc.audioAt = audioAt; captions.push(...chunkCaptionsNode(n.text, t + audioAt, n.duration)); }
   scenes.push(sc); t += dur;

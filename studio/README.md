@@ -23,10 +23,13 @@ Create `clips/<id>.json`. Copy `clips/pilot-assistant.json`. Scenes play in orde
 |---|---|
 | `logo` | `dur` |
 | `title` | `title`, `subtitle`, `kicker`, `narration` |
-| `screen` | `in`, `out` (seconds of `source`), `narration`, `lowerThird {feature, role, plan}`, `zoom {x,y,scale,start,end}`, `callout {x,y,label,at,r,side}`, `chapter` |
+| `screen` | `in`, `out` (seconds of `source`), `narration`, `lowerThird {feature, role, plan}`, `zoom {x,y,scale,start,end}`, `callout {x,y,label,at,r,side}`, `chapter`, `speed`, `speedLabel` |
+| `phone` | `recording`, `markText` or `in`/`out`, `heading`, `sub`, `lowerThird`, `speed`, `speedLabel` |
 | `flow` | `heading`, `steps [{label, sub}]`, `narration` |
 | `plans` | `heading`, `rows [{label, plans:[basic,pro,enterprise]}]` (PlanMatrix) |
 | `end` | `headline`, `cta`, `url`, `narration` |
+
+`speed` (screen and phone scenes; 1, 1.5, 2, 3 or 4, default 1) plays the recorded segment faster, and `speedLabel` (default `Sped up {speed}x`, `false` hides it) is the pill shown at the top right of the window while it does. A scene lasts at least (`out` - `in`) / `speed`; the narration is never sped up, and a scene without `speed` renders exactly as before. For a narration-paced recording the spec does not change: `beat()` reads the speed from the clip and holds for (narration + 0.65 s) x speed. A clip that is not in `docs/videos/films.json` (a prospect film, `studio/clips/prospect-*.json`, gitignored) declares `film: { stack, targetSec }` so `scripts/showcase/record-films.mjs --clip <id>` can record it; see the runbook's section 6b.
 
 `source` is relative to the repo root; `cropBottom` (default 0.14) hides the caption strip burned into the existing recordings so it does not double up with ours. Zoom and callout x,y are fractions (0..1) of the source frame; `start`, `end` and `at` are seconds into the scene. Pick segments by extracting frames (`ffmpeg -ss T -i src -frames:v 1`) and looking at them before writing narration.
 

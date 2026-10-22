@@ -11,3 +11,4 @@ export { PlanMatrix } from './PlanMatrix';
 export { FlowDiagram } from './FlowDiagram';
 export { EndCard } from './EndCard';
 export { PhoneClip } from './PhoneClip';
+export { SpeedBadge } from './SpeedBadge';
