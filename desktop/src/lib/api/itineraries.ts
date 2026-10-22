@@ -3,6 +3,7 @@ import { client, type ApiResponse, type PaginatedResponse } from './client';
 import { API_ENDPOINTS } from './config';
 import type { Itinerary } from '@travelcrm/shared';
 import { unwrapEntity } from './envelope';
+import type { AgeBand } from '../age-bands';
 
 export interface ItineraryItem {
   id?: string;
@@ -18,7 +19,8 @@ export interface ItineraryItem {
   taxRate?: number;
   taxAmount?: number;
   quantity?: number;
-  paxType?: 'adult' | 'child' | 'infant';
+  /** A band key of the agency or of the quote (adult, child, infant, child_6, ...) or per_person (R149). */
+  paxType?: string;
   timeStart?: string;
   timeEnd?: string;
   sortOrder?: number;
@@ -137,6 +139,10 @@ export interface ItineraryDetail {
   /** The group departure the quote is for and its seats; null when none is linked (R146). */
   departure?: DepartureSummary | null;
   seats?: QuoteSeats | null;
+  /** The band list the quantities were filled with; null = the agency's bands (R149). */
+  ageBands?: AgeBand[] | null;
+  /** What the last fill used (R149). */
+  paxAges?: { adults?: number; ages?: number[]; children?: number; infants?: number; source?: string } | null;
 }
 
 /** Message of a thrown `ApiError` (a plain `{ status, message }` object) or `Error`; `fallback` otherwise. */
@@ -202,6 +208,8 @@ export interface ItineraryTemplate {
   durationDays?: number | null;
   category?: string | null;
   templateData?: ItineraryTemplateData | string | null;
+  /** The template's own bands; null = the agency's (R149). */
+  ageBands?: AgeBand[] | null;
   createdAt: string;
   updatedAt?: string;
 }
@@ -242,9 +250,51 @@ export const itineraryTemplatesApi = {
   delete: (id: string) =>
     client.delete<ApiResponse<void>>(API_ENDPOINTS.itineraryTemplates.byId(id)),
 
-  createFrom: (data: { templateId: string; leadId: string; title: string }) =>
+  /** adults and ages fill the band quantities of the new quote (R149; ignored while age-band pricing is off). */
+  createFrom: (data: { templateId: string; leadId: string; title: string; adults?: number; ages?: number[] }) =>
     client.post<ApiResponse<{ id: string }>>(API_ENDPOINTS.itineraryTemplates.createFrom, data),
+
+  /** The template's own bands (null = the agency's) and the band of lines, as {day, item, paxType} by position (R149). */
+  saveAgeBands: (id: string, data: { ageBands?: Array<{ key?: string; label: string; minAge: number }> | null; lines?: Array<{ day: number; item: number; paxType: string | null }> }) =>
+    client.put<ApiResponse<{ id: string; ageBands: AgeBand[] | null }>>(`${API_ENDPOINTS.itineraryTemplates.byId(id)}/age-bands`, data),
 };
+
+export interface AgeBandsSettings {
+  bands: AgeBand[];
+  defaults: AgeBand[];
+  isDefault: boolean;
+}
+
+/** The agency's age bands (Settings > Itinerary defaults, R149). */
+export const ageBandsApi = {
+  get: () => client.get<ApiResponse<AgeBandsSettings>>('/settings/age-bands'),
+  /** null (or an empty list) goes back to adult, child and infant. */
+  save: (bands: Array<{ key?: string; label: string; minAge: number }> | null) =>
+    client.put<ApiResponse<AgeBandsSettings>>('/settings/age-bands', { bands }),
+};
+
+export type FillSource = 'ages' | 'travellers' | 'lead';
+
+export interface FillQuantitiesRequest {
+  source: FillSource;
+  adults?: number;
+  ages?: number[];
+  travellerIds?: string[];
+}
+
+export interface FillQuantitiesResult {
+  source: FillSource;
+  applied: boolean;
+  travelDate: string;
+  bands: AgeBand[];
+  counts: Record<string, number>;
+  total: number;
+  adults: number;
+  ages: number[];
+  /** Travellers without a date of birth, counted as adults. */
+  unknown: number;
+  lines: Array<{ id: string; title: string; paxType: string | null; from: number; to: number }>;
+}
 
 export const itinerariesApi = {
   list: (params?: {
@@ -285,6 +335,10 @@ export const itinerariesApi = {
 
   createShareLink: (id: string, data?: ShareLinkRequest) =>
     client.post<ApiResponse<ShareLinkResponse>>(API_ENDPOINTS.itineraries.shareLink(id), data),
+
+  /** Previews (default) or applies (apply: true) the band quantities from ages, linked travellers or the lead (R149). */
+  fillQuantities: (id: string, data: FillQuantitiesRequest, apply = false) =>
+    client.post<ApiResponse<FillQuantitiesResult>>(`${API_ENDPOINTS.itineraries.byId(id)}/fill-quantities${apply ? '?apply=1' : ''}`, data),
 
   revokeShareLink: (id: string) =>
     client.delete<ApiResponse<void>>(API_ENDPOINTS.itineraries.shareLink(id)),

@@ -37,6 +37,10 @@ import {
 import { useAuthStore } from '@/stores/auth-store';
 import { getApiBaseUrl } from '@/lib/api/config';
 import { DeparturePanel } from './_components/departure-panel';
+import { FillQuantitiesDialog } from './_components/fill-quantities-dialog';
+import { useFeatureGate } from '@/hooks/use-feature-gate';
+import { usePermission } from '@/hooks/use-permission';
+import { useT } from '@/lib/i18n';
 
 /** Trip facts the itinerary borrows from its lead. */
 interface LeadTrip {
@@ -120,6 +124,12 @@ export default function ItineraryDetailPage() {
   // RBAC: get user role from auth store
   const role = useAuthStore((s) => s.user?.role ?? '') as string;
   const canSeeCost = role === 'admin' || role === 'sales_manager' || role === 'manager';
+
+  const t = useT();
+  // Fill quantities (R149): band lines take their quantities from ages, travellers or the lead.
+  const bandsGate = useFeatureGate('age_band_pricing');
+  const canEditQuote = usePermission('itineraries', 'edit');
+  const [fillOpen, setFillOpen] = React.useState(false);
 
   const [sendDialogOpen, setSendDialogOpen] = React.useState(false);
   const [sendChannel, setSendChannel] = React.useState<'email' | 'whatsapp'>('email');
@@ -344,6 +354,11 @@ export default function ItineraryDetailPage() {
             <Button variant="outline" size="sm" onClick={() => router.push(`/itineraries/${id}/edit`)}>
               <Pencil className="size-4 me-1" aria-hidden="true" /> Edit
             </Button>
+            {bandsGate.enabled && canEditQuote && (
+              <Button variant="outline" size="sm" onClick={() => setFillOpen(true)} data-testid="fill-quantities-action">
+                <Users className="size-4 me-1" aria-hidden="true" /> {t('itineraries.fill.action')}
+              </Button>
+            )}
             <Button variant="outline" size="sm" disabled={deleteLoading} onClick={() => openSend('email')}>
               <Mail className="size-4 me-1" aria-hidden="true" /> Email
             </Button>
@@ -384,6 +399,17 @@ export default function ItineraryDetailPage() {
         variables={messageVariables}
       />
       {confirmDialog}
+
+      {bandsGate.enabled && (
+        <FillQuantitiesDialog
+          itineraryId={id}
+          open={fillOpen}
+          onOpenChange={setFillOpen}
+          contactId={itinerary.contact?.id ?? null}
+          leadAdults={leadTrip?.paxAdults ?? null}
+          onApplied={() => void refetchItinerary({ silent: true })}
+        />
+      )}
 
       <AssistantPanel leadId={leadId ?? undefined} entityType="itinerary" entityId={id} />
 

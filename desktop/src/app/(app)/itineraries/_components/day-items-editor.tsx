@@ -7,7 +7,10 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CurrencyInput } from '@/components/ui/currency-input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
+import { PER_PERSON, bandRange, type AgeBand } from '@/lib/age-bands';
 import type { ItineraryItem } from '@/lib/api/itineraries';
 import type { RateCard } from '@/lib/api/rate-cards';
 import { RateCardPicker, rateCardSelling } from './rate-card-picker';
@@ -28,10 +31,15 @@ interface DayItemsEditorProps {
   items: ItineraryItem[];
   onChange: (items: ItineraryItem[]) => void;
   currency?: string;
+  /** The age bands in force for the quote; when given, each line can be priced by a band or per person (R149). */
+  bands?: AgeBand[];
 }
 
+const FIXED = '__fixed';
+
 /** Items of one itinerary day: edit name, quantity and prices, apply a rate card, add or remove. */
-export function DayItemsEditor({ items, onChange, currency = getLocaleContext().currency }: DayItemsEditorProps) {
+export function DayItemsEditor({ items, onChange, currency = getLocaleContext().currency, bands }: DayItemsEditorProps) {
+  const t = useT();
   const [pickerIndex, setPickerIndex] = React.useState<number | null>(null);
 
   function patch(index: number, change: Partial<ItineraryItem>) {
@@ -83,9 +91,13 @@ export function DayItemsEditor({ items, onChange, currency = getLocaleContext().
               <div className="grid grid-cols-[4rem_1fr_1fr_auto] items-center gap-ds-2">
                 <Input
                   type="number"
-                  min={1}
+                  min={item.paxType ? 0 : 1}
                   value={item.quantity ?? 1}
-                  onChange={(e) => patch(index, { quantity: Math.max(1, Math.floor(Number(e.target.value)) || 1) })}
+                  onChange={(e) => {
+                    const n = Math.floor(Number(e.target.value));
+                    // A band line may be 0: nobody of that age travels.
+                    patch(index, { quantity: item.paxType ? Math.max(0, Number.isFinite(n) ? n : 0) : Math.max(1, n || 1) });
+                  }}
                   aria-label="Quantity"
                   className="h-8 text-xs"
                 />
@@ -127,6 +139,29 @@ export function DayItemsEditor({ items, onChange, currency = getLocaleContext().
                   </Button>
                 </div>
               </div>
+              {bands && (
+                <div className="flex items-center gap-ds-2">
+                  <span className="shrink-0 text-xs text-ds-foreground-muted">{t('itineraries.pricedBy.label')}</span>
+                  <Select
+                    value={item.paxType ?? FIXED}
+                    onValueChange={(v) => patch(index, v === FIXED ? { paxType: undefined } : { paxType: v })}
+                  >
+                    <SelectTrigger className="h-8 w-56 text-xs" aria-label={t('itineraries.pricedBy.aria')} data-testid="item-priced-by">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={FIXED}>{t('itineraries.pricedBy.fixed')}</SelectItem>
+                      <SelectItem value={PER_PERSON}>{t('itineraries.pricedBy.perPerson')}</SelectItem>
+                      {bands.map((b) => (
+                        <SelectItem key={b.key} value={b.key}>{`${b.label} (${bandRange(bands, b.key)})`}</SelectItem>
+                      ))}
+                      {item.paxType && item.paxType !== PER_PERSON && !bands.some((b) => b.key === item.paxType) && (
+                        <SelectItem value={item.paxType}>{t('itineraries.pricedBy.unknownBand', { key: item.paxType })}</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
           </div>
         );

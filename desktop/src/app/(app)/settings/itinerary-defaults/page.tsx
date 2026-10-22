@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 import { settingsApi } from '@/lib/api/settings';
 import { useApiQuery } from '@/hooks/use-api';
 import { PageContainer } from '@/components/layout/page-container';
+import { AgeBandsCard } from '../../itineraries/_components/age-bands-card';
 
 const percent = (message: string) =>
   z.string().refine((v) => v !== '' && Number(v) >= 0 && Number(v) <= 100, message);
@@ -138,6 +139,8 @@ export default function ItineraryDefaultsPage() {
               </FormRow>
             </div>
           </SectionCard>
+
+          <AgeBandsCard />
         </>
       )}
     />

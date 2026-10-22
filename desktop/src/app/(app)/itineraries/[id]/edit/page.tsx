@@ -25,10 +25,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/layout/page-header';
 import { useApiQuery } from '@/hooks/use-api';
 import {
-  itinerariesApi, toItineraryDetail, formatDestination, errorMessage,
+  itinerariesApi, ageBandsApi, toItineraryDetail, formatDestination, errorMessage,
   type UpdateItineraryRequest, type ItineraryItem, type ItineraryDay,
 } from '@/lib/api/itineraries';
 import { useUnsavedChanges } from '@/hooks/use-unsaved-changes';
+import { useFeatureGate } from '@/hooks/use-feature-gate';
+import { unwrapEntity } from '@/lib/api/envelope';
+import { DEFAULT_AGE_BANDS, bandsFor, type AgeBand } from '@/lib/age-bands';
 import { formatDisplayDate, parseLocalDate, toLocalDateString } from '@/lib/dates';
 import { DayImageUploader, imageFromKey, uploadDayImage, type DayImage } from '../../_components/day-images';
 import { DayItemsEditor } from '../../_components/day-items-editor';
@@ -94,6 +97,7 @@ function SortableDayCard({
   item,
   index,
   currency,
+  bands,
   updateDayItem,
   removeDayItem,
   onUploadImages,
@@ -103,6 +107,8 @@ function SortableDayCard({
   item: DayItem;
   index: number;
   currency?: string;
+  /** Age bands in force for the quote, when age-band pricing is on (R149). */
+  bands?: AgeBand[];
   updateDayItem: <K extends keyof DayItem>(index: number, field: K, value: DayItem[K]) => void;
   removeDayItem: (index: number) => void;
   onUploadImages: (index: number, files: FileList) => void;
@@ -183,6 +189,7 @@ function SortableDayCard({
         <DayItemsEditor
           items={item.items ?? []}
           currency={currency}
+          bands={bands}
           onChange={(items) => updateDayItem(index, 'items', items)}
         />
 
@@ -213,6 +220,15 @@ export default function ItineraryEditPage() {
     () => itinerariesApi.getById(id).then(toItineraryDetail),
     [id],
   );
+
+  // The bands the lines can be priced by: the quote's own snapshot, else the agency's (R149).
+  const bandsGate = useFeatureGate('age_band_pricing');
+  const [agencyBands, setAgencyBands] = React.useState<AgeBand[] | null>(null);
+  React.useEffect(() => {
+    if (!bandsGate.enabled) return;
+    ageBandsApi.get().then((res) => setAgencyBands(unwrapEntity<{ bands: AgeBand[] }>(res).bands)).catch(() => setAgencyBands(DEFAULT_AGE_BANDS));
+  }, [bandsGate.enabled]);
+  const lineBands = bandsGate.enabled && agencyBands ? bandsFor(itinerary?.ageBands, agencyBands) : undefined;
 
   const [isSaving, setIsSaving] = React.useState(false);
   const updateItinerary = React.useCallback(
@@ -617,6 +633,7 @@ export default function ItineraryEditPage() {
                     item={item}
                     index={idx}
                     currency={form.currency}
+                    bands={lineBands}
                     updateDayItem={updateDayItem}
                     removeDayItem={removeDayItem}
                     onUploadImages={uploadDayImages}

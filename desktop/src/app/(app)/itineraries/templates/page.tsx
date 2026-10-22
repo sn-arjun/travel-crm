@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Copy, Eye, FileText, MapPin, Plus, Trash2 } from 'lucide-react';
+import { Copy, Eye, FileText, MapPin, Plus, Trash2, Users } from 'lucide-react';
 import { ListPage } from '@/components/domain';
 import { Button, Tag, Input, Label, Textarea, useConfirm } from '@/components/ui';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -16,6 +16,11 @@ import { unwrapEntity, unwrapList } from '@/lib/api/envelope';
 import { toast } from 'sonner';
 import { formatDisplayDate, toLocalDateString } from '@/lib/dates';
 import { LeadCombobox } from '../_components/lead-combobox';
+import { TemplateBandsDialog } from './_components/template-bands-dialog';
+import { useFeatureGate } from '@/hooks/use-feature-gate';
+import { usePermission } from '@/hooks/use-permission';
+import { parseAgesText } from '@/lib/age-bands';
+import { useT } from '@/lib/i18n';
 
 const MAX_TEMPLATE_DAYS = 60;
 
@@ -43,6 +48,13 @@ function exportTemplatesCsv(rows: ItineraryTemplate[]) {
 export default function ItineraryTemplatesPage() {
   const router = useRouter();
   const { confirm, dialog: confirmDialog } = useConfirm();
+  const t = useT();
+  // Age-band pricing (R149): the template's bands and lines, and who is travelling when a quote is made from it.
+  const bandsGate = useFeatureGate('age_band_pricing');
+  const canEditTemplates = usePermission('itineraries', 'edit');
+  const [bandsOpen, setBandsOpen] = React.useState(false);
+  const [partyAdults, setPartyAdults] = React.useState('');
+  const [partyAges, setPartyAges] = React.useState('');
   const [selectedTemplate, setSelectedTemplate] = React.useState<ItineraryTemplate | null>(null);
   const [refreshKey, setRefreshKey] = React.useState(0);
 
@@ -73,6 +85,16 @@ export default function ItineraryTemplatesPage() {
     }
   }
 
+  /** Who is travelling, when the user filled it in: the quote then gets its band quantities straight away. */
+  function partyPayload(): { adults?: number; ages?: number[] } {
+    if (!bandsGate.enabled) return {};
+    const ages = parseAgesText(partyAges);
+    const adults = Number(partyAdults);
+    const hasAdults = partyAdults.trim() !== '' && Number.isInteger(adults) && adults >= 0;
+    if (!hasAdults && ages.length === 0) return {};
+    return { ...(hasAdults ? { adults } : {}), ages };
+  }
+
   async function handleCreateFromTemplate() {
     if (!selectedTemplate || !newTitle.trim()) {
       toast.error('Please enter a title');
@@ -86,7 +108,12 @@ export default function ItineraryTemplatesPage() {
     setIsCreating(true);
     try {
       const result = unwrapEntity<{ id?: string }>(
-        await itineraryTemplatesApi.createFrom({ templateId: selectedTemplate.id, leadId: newLeadId, title: newTitle.trim() }),
+        await itineraryTemplatesApi.createFrom({
+          templateId: selectedTemplate.id,
+          leadId: newLeadId,
+          title: newTitle.trim(),
+          ...partyPayload(),
+        }),
       );
       toast.success('Itinerary created from template');
       setIsCreateDialogOpen(false);
@@ -310,7 +337,7 @@ export default function ItineraryTemplatesPage() {
 
       {/* Preview dialog */}
       <Dialog
-        open={!!selectedTemplate && !isCreateDialogOpen}
+        open={!!selectedTemplate && !isCreateDialogOpen && !bandsOpen}
         onOpenChange={(open) => !open && setSelectedTemplate(null)}
       >
         <DialogContent className="max-w-lg">
@@ -355,6 +382,11 @@ export default function ItineraryTemplatesPage() {
                 <Button variant="outline" onClick={() => setSelectedTemplate(null)}>
                   Close
                 </Button>
+                {bandsGate.enabled && canEditTemplates && (
+                  <Button variant="outline" onClick={() => setBandsOpen(true)} data-testid="template-age-bands">
+                    <Users className="me-ds-1" aria-hidden="true" /> {t('ageBands.template.open')}
+                  </Button>
+                )}
                 <Button
                   onClick={() => {
                     setNewTitle(`${selectedTemplate.title} - Copy`);
@@ -374,7 +406,7 @@ export default function ItineraryTemplatesPage() {
         open={isCreateDialogOpen}
         onOpenChange={(open) => {
           setIsCreateDialogOpen(open);
-          if (!open) setNewLeadId(null);
+          if (!open) { setNewLeadId(null); setPartyAdults(''); setPartyAges(''); }
         }}
       >
         <DialogContent className="max-w-md">
@@ -399,6 +431,22 @@ export default function ItineraryTemplatesPage() {
               <Label>Link to lead *</Label>
               <LeadCombobox value={newLeadId} onChange={setNewLeadId} required aria-label="Link to lead" />
             </div>
+            {bandsGate.enabled && (
+              <div className="space-y-ds-2" data-testid="create-party">
+                <p className="text-sm font-medium">{t('ageBands.create.title')}</p>
+                <div className="grid gap-ds-3 sm:grid-cols-[7rem_1fr]">
+                  <div className="space-y-ds-1">
+                    <Label htmlFor="partyAdults">{t('ageBands.create.adults')}</Label>
+                    <Input id="partyAdults" type="number" min={0} value={partyAdults} onChange={(e) => setPartyAdults(e.target.value)} />
+                  </div>
+                  <div className="space-y-ds-1">
+                    <Label htmlFor="partyAges">{t('ageBands.create.ages')}</Label>
+                    <Input id="partyAges" value={partyAges} onChange={(e) => setPartyAges(e.target.value)} placeholder={t('ageBands.create.agesPlaceholder')} />
+                  </div>
+                </div>
+                <p className="text-xs text-ds-foreground-muted">{t('ageBands.create.hint')}</p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button
@@ -518,6 +566,13 @@ export default function ItineraryTemplatesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TemplateBandsDialog
+        template={selectedTemplate}
+        open={bandsOpen}
+        onOpenChange={setBandsOpen}
+        onSaved={() => { if (selectedTemplate) void openPreview(selectedTemplate); setRefreshKey((k) => k + 1); }}
+      />
 
       {confirmDialog}
     </>

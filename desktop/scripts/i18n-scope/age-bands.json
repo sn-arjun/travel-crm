@@ -1,0 +1,6 @@
+[
+  "src/app/(app)/itineraries/_components/age-bands-editor.tsx",
+  "src/app/(app)/itineraries/_components/age-bands-card.tsx",
+  "src/app/(app)/itineraries/[id]/_components/fill-quantities-dialog.tsx",
+  "src/app/(app)/itineraries/templates/_components/template-bands-dialog.tsx"
+]
