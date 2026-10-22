@@ -1,7 +1,7 @@
 import { client } from './client';
 import { unwrapEntity, unwrapList } from './envelope';
 import { CursorPager } from './cursor-pager';
-import type { Price, Stop } from './tours';
+import type { Price, Stop, TourExtra } from './tours';
 
 // Group departures (R139 / R143 API, R144 screens): the agency settings, departures, seat bookings and passengers.
 
@@ -277,6 +277,74 @@ export interface CoachTrip {
   dropDatetime: string | null;
 }
 
+/** One extra of a departure's effective catalogue (R150): the tour's rows with this departure's own rows laid over them. */
+export interface DepartureExtra extends TourExtra {
+  id: string;
+  source: 'tour_wide' | 'tour' | 'departure';
+  sold: number;
+  left: number | null;
+  revenue: number;
+  paid: number;
+  cutoffAt: string | null;
+  open: boolean;
+  listPrice: number;
+}
+
+export interface PassengerChoice {
+  id: string;
+  seatPassengerId: string;
+  tourExtraId: string;
+  title: string;
+  dayNumber: number | null;
+  quantity: number;
+  unitPrice: number;
+  currency: string | null;
+  status: 'selected' | 'invoiced' | 'paid' | 'cancelled';
+  invoiceId: string | null;
+  selectedVia: 'staff' | 'self_service';
+}
+
+export interface ExtrasOverview {
+  currency: string;
+  extras: DepartureExtra[];
+  /** The departure's own rows, as the tab edits them. */
+  own: TourExtra[];
+  passengers: Array<{ id: string; bookingId: string; name: string; bandKey: string | null; contactName: string | null; choices: PassengerChoice[] }>;
+}
+
+export interface ChoiceInput {
+  passengerId: string;
+  extraId: string;
+  quantity: number;
+}
+
+export interface ExtrasInvoice {
+  invoiceId: string;
+  invoiceNumber: string;
+  currency: string;
+  total: number;
+  created: boolean;
+}
+
+export interface RefundSuggestion {
+  passengerExtraId: string;
+  seatPassengerId: string;
+  title: string;
+  quantity: number;
+  amount: number;
+  currency: string | null;
+  invoiceId: string | null;
+}
+
+/** The self-service address of a booking or a passenger (R150). detailsLink and extrasLink open the page on a step. */
+export interface SelfServiceLink {
+  scope: 'booking' | 'passenger';
+  token: string;
+  tripUrl: string;
+  detailsLink: string;
+  extrasLink: string;
+}
+
 export interface HoldSeatsInput {
   leadId?: string;
   contact?: { contactId?: string; name?: string; phone?: string; email?: string };
@@ -408,6 +476,11 @@ export const departuresApi = {
   /** Switches the public page off: the address stops working. */
   disablePublicLink: async (id: string) => unwrapEntity<PublicPageLink>(await client.delete<unknown>(`/departures/${id}/public-link`)),
 
+  /** What the departure sells (the tour's extras with its own overrides), how much is sold, and what each passenger chose. */
+  getExtras: async (id: string) => unwrapEntity<ExtrasOverview>(await client.get<unknown>(`/departures/${id}/extras`)),
+  /** Replaces the departure's own extras (overrides and additions). */
+  replaceExtras: async (id: string, extras: TourExtra[]) => unwrapEntity<ExtrasOverview>(await client.put<unknown>(`/departures/${id}/extras`, { extras })),
+
   /** Holds seats (or joins the waitlist when the departure is full and the agency has one). */
   holdSeats: async (departureId: string, input: HoldSeatsInput) =>
     unwrapEntity<SeatBookingDetail>(await client.post<unknown>(`/departures/${departureId}/bookings`, input)),
@@ -426,6 +499,16 @@ export const seatBookingsApi = {
   move: async (id: string, toDepartureId: string) =>
     unwrapEntity<SeatBookingDetail>(await client.post<unknown>(`/seat-bookings/${id}/move`, { toDepartureId })),
   changeSeats: async (id: string, seats: number) => unwrapEntity<SeatBookingDetail>(await client.put<unknown>(`/seat-bookings/${id}/seats`, { seats })),
+  /** The address where the party adds traveller details, picks extras and pays; the same address while it stays active. */
+  selfServiceLink: async (id: string, scope: 'booking' | 'passenger' = 'booking', passengerId?: string) =>
+    unwrapEntity<SelfServiceLink>(await client.post<unknown>(`/seat-bookings/${id}/self-service-link`, { scope, ...(passengerId ? { passengerId } : {}) })),
+  stopSelfServiceLinks: async (id: string) => unwrapEntity<{ stopped: number }>(await client.delete<unknown>(`/seat-bookings/${id}/self-service-link`)),
+  /** Sets the extras of some passengers of a booking (all of them without passengerIds). Staff are not held to the cut-off. */
+  setExtras: async (id: string, choices: ChoiceInput[], passengerIds?: string[]) =>
+    unwrapEntity<{ changed: number; refunds: RefundSuggestion[]; invoice: ExtrasInvoice | null; choices: PassengerChoice[] }>(
+      await client.put<unknown>(`/seat-bookings/${id}/extras`, { choices, ...(passengerIds ? { passengerIds } : {}) }),
+    ),
+  extrasInvoice: async (id: string) => unwrapEntity<{ invoice: ExtrasInvoice | null; choices: PassengerChoice[] }>(await client.post<unknown>(`/seat-bookings/${id}/extras-invoice`, {})),
   replacePassengers: async (id: string, passengers: PassengerInput[], createTravellers?: boolean) =>
     unwrapEntity<SeatBookingDetail>(await client.put<unknown>(`/seat-bookings/${id}/passengers`, { passengers, ...(createTravellers ? { createTravellers } : {}) })),
 };

@@ -249,13 +249,21 @@ export default function TourDetailPage() {
               )}
             </SectionCard>
 
-            {tour.extras.length > 0 && (
+            {tour.extras.some((x) => !x.departureId) && (
               <SectionCard title={t('tours.detail.extras')} className="lg:col-span-2">
-                <ul className="divide-y divide-ds-border text-sm">
-                  {tour.extras.map((x, i) => (
-                    <li key={x.id ?? i} className="flex items-center justify-between py-ds-2">
-                      <span>{x.title}</span>
-                      <span className="tabular-nums">{formatExactCurrency(x.price, x.currency ?? currency)}</span>
+                <ul className="divide-y divide-ds-border text-sm" data-testid="tour-extras">
+                  {tour.extras.filter((x) => !x.departureId).map((x, i) => (
+                    <li key={x.id ?? i} className="flex items-center justify-between gap-ds-3 py-ds-2">
+                      <span>
+                        {x.title}
+                        {x.dayNumber ? <span className="ms-ds-2 text-ds-foreground-muted">{t('extras.detail.day', { day: x.dayNumber })}</span> : null}
+                        {x.capacity ? <span className="ms-ds-2 text-ds-foreground-muted">{t('extras.detail.places', { count: x.capacity })}</span> : null}
+                        {x.isActive === false ? <span className="ms-ds-2 text-ds-foreground-muted">{t('extras.detail.off')}</span> : null}
+                      </span>
+                      <span className="tabular-nums">
+                        {x.price <= 0 && x.rateCardId ? t('extras.detail.fromRateCard') : formatExactCurrency(x.price, x.currency ?? currency)}
+                        {x.bandPrices && Object.keys(x.bandPrices).length > 0 ? <span className="ms-ds-2 text-ds-foreground-muted">{t('extras.detail.perBand')}</span> : null}
+                      </span>
                     </li>
                   ))}
                 </ul>

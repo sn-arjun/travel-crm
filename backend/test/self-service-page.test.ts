@@ -150,7 +150,8 @@ describe('the links', () => {
 
   it('a passenger link shows only that passenger and cannot read or write another', async () => {
     const trip = await makeTrip();
-    const all = await view((await linkOf(trip.bookingId)).token);
+    const bookingToken = (await linkOf(trip.bookingId)).token;
+    const all = await view(bookingToken);
     expect(all.passengers.map((p: any) => p.firstName)).toEqual(['Eva', 'Jan', 'Sanne']);
     const jan = await linkOf(trip.bookingId, { scope: 'passenger', passengerId: trip.passengerIds[1] });
     const seen = await view(jan.token);
@@ -169,6 +170,15 @@ describe('the links', () => {
     const mine = await pub('PUT', jan.token, '/extras', { choices: [{ passengerRef: seen.passengers[0].ref, extraRef: extraRef(seen, 'Dinner'), quantity: 2 }] });
     expect(mine.status).toBe(200);
     expect((await rows('SELECT seat_passenger_id, quantity FROM passenger_extras WHERE departure_id = ?', trip.depId))).toEqual([{ seat_passenger_id: trip.passengerIds[1], quantity: 2 }]);
+
+    // The link of one traveller shows what that person chose and nothing of the booking's invoices; paying is for the whole booking.
+    // (Eva's own choice, made on the booking link, is not part of Jan's total.)
+    expect((await pub('PUT', bookingToken, '/extras', { choices: [{ passengerRef: pick(all, 'Eva').ref, extraRef: extraRef(all, 'Gondola'), quantity: 1 }, { passengerRef: pick(all, 'Jan').ref, extraRef: extraRef(all, 'Dinner'), quantity: 2 }] })).status).toBe(200);
+    const personal = await view(jan.token);
+    expect(personal.invoice).toBeNull();
+    expect(personal.deposit).toBeNull();
+    expect(personal.extrasMoney).toEqual({ total: 50, paid: 0, unpaid: 50 });
+    expect((await pub('POST', jan.token, '/pay', { what: 'extras' })).status).toBe(409);
   });
 
   it('answers the same 404 for an unknown token, a token of another kind, a revoked link, a cancelled booking and a feature that is off', async () => {

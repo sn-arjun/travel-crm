@@ -71,6 +71,11 @@ export interface TourExtra {
   description?: string | null;
   price: number;
   currency?: string | null;
+  /** Price per age band key; a band not listed pays the price above. */
+  bandPrices?: Record<string, number> | null;
+  rateCardId?: string | null;
+  supplierId?: string | null;
+  sortOrder?: number;
   capacity?: number | null;
   cutoffHoursBefore?: number | null;
   refundableUntilHours?: number | null;

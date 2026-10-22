@@ -285,18 +285,22 @@ export async function buildTripView(trip: TripCtx, now = new Date()): Promise<Tr
     };
   });
 
-  // Money. The booking invoice, then what the extras come to.
-  const invoice = booking.invoice_id
+  // Money. The booking invoice, then what the extras come to. A passenger's own link sees what that person chose and nothing of the booking.
+  const personal = trip.scope === 'passenger';
+  const invoice = booking.invoice_id && !personal
     ? await db.prepare('SELECT invoice_number, total, paid_amount, balance_due, status, currency FROM invoices WHERE id = ?').bind(booking.invoice_id).first<Row>()
     : null;
-  const { results: moneyRows } = await db
-    .prepare(
-      `SELECT pe.status, COALESCE(SUM(pe.quantity * pe.unit_price), 0) AS amount
-       FROM passenger_extras pe JOIN seat_passengers sp ON sp.id = pe.seat_passenger_id
-       WHERE sp.seat_booking_id = ? AND sp.status = 'active' AND pe.status != 'cancelled' GROUP BY pe.status`,
-    )
-    .bind(booking.id)
-    .all<{ status: string; amount: number }>();
+  // The choices of the people in this link (a passenger link: that one person).
+  const scopeIds = passengers.map((p) => p.id as string);
+  const { results: moneyRows } = scopeIds.length
+    ? await db
+        .prepare(
+          `SELECT pe.status, COALESCE(SUM(pe.quantity * pe.unit_price), 0) AS amount
+           FROM passenger_extras pe WHERE pe.seat_passenger_id IN (${scopeIds.map(() => '?').join(',')}) AND pe.status != 'cancelled' GROUP BY pe.status`,
+        )
+        .bind(...scopeIds)
+        .all<{ status: string; amount: number }>()
+    : { results: [] as Array<{ status: string; amount: number }> };
   const byStatus = new Map((moneyRows ?? []).map((r) => [r.status, r.amount]));
   const extrasPaid = round2(byStatus.get('paid') ?? 0);
   const extrasUnpaid = round2((byStatus.get('selected') ?? 0) + (byStatus.get('invoiced') ?? 0));

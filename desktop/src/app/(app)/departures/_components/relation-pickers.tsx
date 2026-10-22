@@ -9,6 +9,8 @@ import { itineraryTemplatesApi } from '@/lib/api/itineraries';
 import { fleetApi } from '@/lib/api/fleet';
 import { usersApi } from '@/lib/api/users';
 import { suppliersApi } from '@/lib/api/suppliers';
+import { rateCardsApi, type RateCard } from '@/lib/api/rate-cards';
+import { formatExactCurrency } from '@/lib/format';
 import { travellersApi } from '@/lib/api/visa';
 import { toursApi, type Tour } from '@/lib/api/tours';
 import { departuresApi, type Departure } from '@/lib/api/departures';
@@ -301,6 +303,25 @@ export function TravellerCombobox({
       placeholder={placeholder ?? t('departures.pickers.traveller')}
       searchPlaceholder={t('departures.pickers.travellerSearch')}
       emptyText={t('departures.pickers.travellerEmpty')}
+    />
+  );
+}
+
+/** The rate card an extra takes its price from when it has none of its own. */
+export function RateCardCombobox({ placeholder, ...props }: PickerProps) {
+  const t = useT();
+  return (
+    <RelationCombobox<RateCard>
+      {...props}
+      onChange={(id) => props.onChange(id)}
+      fetcher={async (q, p) => page<RateCard>(await rateCardsApi.list({ search: q || undefined, page: p, limit: 20, isActive: true }), 20)}
+      getOptionId={(x) => x.id}
+      getOptionLabel={(x) => x.name}
+      getOptionDescription={(x) => (x.sellingPrice ? formatExactCurrency(x.sellingPrice, x.currency) : undefined)}
+      resolveSelected={async (id) => unwrapEntity<RateCard>(await rateCardsApi.getById(id))}
+      placeholder={placeholder ?? t('extras.pickers.rateCard')}
+      searchPlaceholder={t('extras.pickers.rateCardSearch')}
+      emptyText={t('extras.pickers.rateCardEmpty')}
     />
   );
 }

@@ -771,6 +771,8 @@ publicTripRoutes.post('/:token/pay', tripPayLimit, async (c) => {
   const { trip, lang } = page;
   const json = await readJson(c, lang);
   if (json instanceof Response) return json;
+  // Paying is for the whole booking: the link of one traveller does not reach the booking's invoices.
+  if (trip.scope === 'passenger') return fail(c, 409, 'NOT_EDITABLE', lang, 'public.trip.notEditable');
   const parsed = paySchema.safeParse(json);
   if (!parsed.success) return fail(c, 400, 'INVALID', lang, 'public.trip.invalid');
   const apiBase = (c.env.API_PUBLIC_URL?.trim() || new URL(c.req.url).origin).replace(/\/+$/, '');

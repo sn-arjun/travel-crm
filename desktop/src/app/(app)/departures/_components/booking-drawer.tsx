@@ -16,6 +16,7 @@ import { formatDisplayDateTime } from '@/lib/dates';
 import { useT } from '@/lib/i18n';
 import { useAuthStore } from '@/stores/auth-store';
 import { HoldCountdown } from './hold-countdown';
+import { TravellerLinkDialog } from './traveller-link-dialog';
 import { useBookingActions } from './booking-actions';
 import { inputsFromRows, PassengersEditor, rowFromPassenger, type PassengerRow } from './passengers-editor';
 
@@ -51,6 +52,7 @@ export function BookingDrawer({ bookingId, departure, fields, roomTypes, preferr
   const [createTravellers, setCreateTravellers] = React.useState(false);
   const [seatsDraft, setSeatsDraft] = React.useState(1);
   const [invoicing, setInvoicing] = React.useState(false);
+  const [linkOpen, setLinkOpen] = React.useState(false);
   const role = useAuthStore((s) => s.user?.role as string | undefined);
   // The invoice route is for these roles only (the same rule as the Invoices page).
   const canInvoice = role !== undefined && INVOICE_ROLES.includes(role);
@@ -243,6 +245,16 @@ export function BookingDrawer({ bookingId, departure, fields, roomTypes, preferr
                       {t(booking.invoiceId ? 'departures.invoice.update' : 'departures.invoice.create')}
                     </Button>
                   )}
+                  {(booking.status === 'held' || booking.status === 'confirmed') && (
+                    <Button size="sm" variant="outline" disabled={actions.busy} onClick={() => setLinkOpen(true)} data-testid="drawer-traveller-link">
+                      {t('extras.link.button')}
+                    </Button>
+                  )}
+                  {(booking.status === 'held' || booking.status === 'confirmed') && (
+                    <Button size="sm" variant="outline" disabled={actions.busy} onClick={() => setLinkOpen(true)} data-testid="drawer-traveller-link">
+                      {t('extras.link.button')}
+                    </Button>
+                  )}
                   <Button size="sm" variant="outline" disabled={actions.busy} onClick={() => actions.askMove(booking)}>
                     {t('departures.booking.move')}
                   </Button>
@@ -294,6 +306,7 @@ export function BookingDrawer({ bookingId, departure, fields, roomTypes, preferr
           )}
         </div>
         {actions.dialogs}
+        {booking && <TravellerLinkDialog booking={booking} open={linkOpen} onOpenChange={setLinkOpen} />}
       </SheetContent>
     </Sheet>
   );

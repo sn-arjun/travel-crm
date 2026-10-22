@@ -24,6 +24,7 @@ import { CoachTripsButton } from '../_components/coach-trips-button';
 import { ManifestTab } from '../_components/manifest-tab';
 import { DepartureOverview } from '../_components/departure-overview';
 import { DepartureCostsTab, DeparturePricesTab, DepartureStopsTab } from '../_components/departure-data-tabs';
+import { DepartureExtrasTab } from '../_components/extras-tab';
 import { HoldSeatsDialog } from '../_components/hold-seats-dialog';
 import { PublicPageCard } from '../_components/public-page-card';
 import { DepartureStatusMenu } from '../_components/status-menu';
@@ -167,6 +168,7 @@ export default function DepartureDetailPage() {
           <TabsTrigger value="waitlist">{t('departures.tabs.waitlist', { count: departure.seats.waitlisted })}</TabsTrigger>
           <TabsTrigger value="stops">{t('departures.tabs.stops')}</TabsTrigger>
           <TabsTrigger value="prices">{t('departures.tabs.prices')}</TabsTrigger>
+          <TabsTrigger value="extras">{t('extras.tab')}</TabsTrigger>
           <TabsTrigger value="costs">{t('departures.tabs.costs')}</TabsTrigger>
           <TabsTrigger value="manifest">{t('departures.tabs.manifest')}</TabsTrigger>
         </TabsList>
@@ -200,6 +202,10 @@ export default function DepartureDetailPage() {
 
         <TabsContent value="prices" className="pt-ds-4">
           <DeparturePricesTab departure={departure} canEdit={canEdit} currency={currency} roomTypes={roomTypes} />
+        </TabsContent>
+
+        <TabsContent value="extras" className="pt-ds-4">
+          <DepartureExtrasTab departure={departure} canEdit={canEdit} currency={currency} refreshKey={refreshKey} onChanged={changed} />
         </TabsContent>
 
         <TabsContent value="costs" className="pt-ds-4">
