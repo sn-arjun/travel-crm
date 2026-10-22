@@ -1,0 +1,44 @@
+{
+  "id": "R164",
+  "title": "Gaps found while planning the tour-operator demo: payment return on the booking page, tour-level age bands, Dutch language choices, test pay page in a frame, record-films gate regex, plural toast",
+  "tier": 4,
+  "why": "The film director read the merged code for every on-camera screen and found product bugs and gaps an agency would hit, plus two tooling blockers. All generic; no prospect content.",
+  "items": [
+    {
+      "id": "R164-1",
+      "bug": "After paying on the test (or real) gateway, the customer is sent back to the public booking page with ?payment=paid, which the page ignores: it shows an empty booking form again.",
+      "fix": "The booking page (/book/[token], R148) and the traveller page (/trip/[token], R150) read the return parameters (paid, cancelled, failed) and show the right state: a paid confirmation with the booking reference and what happens next, or a clear retry. Never re-show an empty form after a payment.",
+      "test": "e2e: book, pay on the test gateway, land on the confirmation state; cancel path shows retry. Unit test for the return-state parsing."
+    },
+    {
+      "id": "R164-2",
+      "gap": "Tours cannot have their own age bands; the booking page, self-service extras and booking invoice always use the agency bands. Operators use different bands per tour (for example adults 12+ on one tour, 13+ or 15+ on others).",
+      "fix": "Optional age bands on a tour (same shape and editor as R149's agency and template bands). Resolution order: tour bands, then agency bands. Used by the public booking page, passengers, the booking invoice, extras band prices and fill-quantities for quotes linked to a departure of that tour. Tour form gets the bands editor (reuse R149's age-bands-editor).",
+      "migration": "none if a JSON column already exists on tours; otherwise add tenant migration 0064 (0063 is reserved for R155).",
+      "test": "backend: a tour with 13+ adults prices a 12-year-old as child on its booking page while the agency says 12+; desktop unit test for resolution order."
+    },
+    {
+      "id": "R164-3",
+      "gap": "The company Language select has no Dutch option, so an agency cannot make Dutch its default from the app. A Netherlands agency is provisioned in Dutch with no way to choose English at creation.",
+      "fix": "Add every supported language (en, nl, hi, ar as the catalogue allows) to the company default-language select and to the user profile language select, from one shared list. In the super-admin tenant creation (and POST /admin/tenants), allow choosing the default language, defaulting by country as R136 does (NL -> nl) but overridable (for example an NL agency whose team works in English).",
+      "test": "e2e or unit: set company language to Dutch and back; backend test: provisioning an NL agency with language en gives an English admin and agency default."
+    },
+    {
+      "id": "R164-4",
+      "blocker": "The API sends X-Frame-Options: SAMEORIGIN (backend/src/index.ts around line 149), so the test gateway's pay page cannot be shown inside the films' phone frame (film-kit showInPhoneFrame), which runs on the web app's origin.",
+      "fix": "Only in TEST_MODE and only for the mock gateway's pay page routes, send Content-Security-Policy frame-ancestors with the API's own origin and APP_URL's origin instead of X-Frame-Options. Production headers unchanged (a test proves it). If showInPhoneFrame needs a generic option for cross-origin pages, add it in desktop/e2e/showcase/films/film-kit.ts.",
+      "test": "backend test: TEST_MODE pay page has frame-ancestors with APP_URL; production keeps X-Frame-Options SAMEORIGIN and mock routes 404."
+    },
+    {
+      "id": "R164-5",
+      "bug": "scripts/showcase/record-films.mjs around line 78: the regex /^n(d+)$/ is missing its backslash (should match a part number with \\d+), so the speed-aware length gate never counts a part's scenes.",
+      "fix": "Fix the regex and add a tiny self-check (node script or unit test) that a multi-part clip's part gate counts only its own scenes."
+    },
+    {
+      "id": "R164-6",
+      "bug": "Toast reads '1 coach trips created' (departure page, Create coach trips).",
+      "fix": "Use the i18n plural form (en and nl, ar) like other count toasts. Sweep the R139-R154 desktop code for other count strings built without plurals and fix those too."
+    }
+  ],
+  "gates": ["backend tsc + vitest", "desktop typecheck + vitest + lint-gate + i18n-check", "super-admin tsc/lint/build (R164-3 touches it)", "targeted e2e: public-booking, self-service-extras, departures, settings-company, super-admin"]
+}
