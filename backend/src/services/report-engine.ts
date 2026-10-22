@@ -271,6 +271,20 @@ export class ReportEngine {
             }
         };
 
+        if (report.summarize) {
+            // Totals cover the whole period, not the page that was asked for
+            const allSql = currentReq.query.replace(/\s*LIMIT \? OFFSET \?\s*$/, '');
+            const all = await db.prepare(allSql).bind(...currentReq.bindings.slice(0, -2)).all<Record<string, any>>();
+            const columnType: 'date' | 'timestamp' = report.dateColumnType === 'date' ? 'date' : 'timestamp';
+            const bounds = params.date_from && params.date_to && !report.ignoreDateRange
+                ? {
+                    from: normalizeDateBound(params.date_from, 'from', columnType, timeZone),
+                    to: normalizeDateBound(params.date_to, 'to', columnType, timeZone),
+                }
+                : null;
+            response.summary = await report.summarize({ db, rows: all.results ?? [], params, bounds });
+        }
+
         if (results.length > 2) {
             const prevData = results[2].results as Record<string, any>[];
             // Format prev data as a keyed map for easier lookup if grouped, or just single object if aggregated

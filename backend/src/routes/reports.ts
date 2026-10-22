@@ -314,7 +314,7 @@ reportRoutes.get('/:id', async (c) => {
 
     // Try cache first (keyed by the caller's data-visibility scope, never shared across scopes)
     const cacheScope = reportCacheScope(role, userId);
-    const kv = (c.env as any).REPORT_CACHE;
+    const kv = reportRegistry.get(id)?.noCache ? undefined : (c.env as any).REPORT_CACHE;
     if (kv && tenantId) {
       const cache = new ReportCache(kv);
       const cached = await cache.get(tenantId, id, params, cacheScope);

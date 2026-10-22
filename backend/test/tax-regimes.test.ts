@@ -263,6 +263,21 @@ describe('computeInvoiceTax arithmetic', () => {
     expect(r.taxLines.map((t) => t.code)).toEqual(['CGST', 'SGST']);
   });
 
+  it('golden margin invoice (R152): total is the price, no tax line, the wording is the only note, the VAT on the margin stays hidden', () => {
+    const r = computeInvoiceTax({
+      regime: 'margin', seller: { country: 'NL', vatRate: 21, taxId: 'NL1' }, buyer: { taxId: 'NL2', isBusiness: true, country: 'NL' },
+      lines: [{ amount: 1210, taxRate: 21 }],
+      margin: { wording: 'Bijzondere regeling reisbureaus', cost: 910, vatRate: 21 },
+    });
+    expect([r.regime, r.treatment, r.totalTax, r.taxLines, r.notes]).toEqual(['margin', 'margin', 0, [], ['Bijzondere regeling reisbureaus']]);
+    expect(r.lines).toEqual([{ taxableAmount: 1210, taxRate: 0, taxAmount: 0 }]);
+    expect(r.hiddenLines).toEqual([{ code: 'MARGIN_VAT', hidden: true, base: 300, rate: 21, amount: 52.07 }]);
+    expect([r.sellerTaxId, r.buyerTaxId]).toEqual([null, null]);
+    // The same lines under VAT are unchanged by the new regime
+    const vat = computeInvoiceTax({ regime: 'vat', seller: { country: 'NL', vatRate: 21 }, buyer: {}, lines: [{ amount: 1000 }] });
+    expect([vat.totalTax, vat.hiddenLines]).toEqual([210, []]);
+  });
+
   it('exempt lines carry no tax and sales tax without a rate throws', () => {
     const r = computeInvoiceTax({ regime: 'vat', seller, buyer: {}, lines: [{ amount: 100, exempt: true }, { amount: 100 }] });
     expect(r.totalTax).toBe(20);

@@ -17,6 +17,8 @@ export interface ReportResult {
         per_page: number;
         hasMore?: boolean;
     };
+    /** Figures a report adds beside its rows (totals, notices); only reports with a `summarize` hook have it. */
+    summary?: Record<string, any>;
     previous_period?: Record<string, any>;
     previous_period_rows?: Record<string, any>[];
     changes?: Record<string, any>;
@@ -35,6 +37,15 @@ export interface ReportParams {
     compare?: string; // e.g. 'true'
     // Support for arbitrary dynamic filters
     [key: string]: any;
+}
+
+/** What a report's `summarize` hook gets: every row of the period (not one page) and the date bounds the report ran with. */
+export interface ReportSummaryContext {
+    db: import('@cloudflare/workers-types').D1Database;
+    rows: Record<string, any>[];
+    params: ReportParams;
+    /** Bounds in the form of the report's date column (dates, or UTC instants), when a range was given. */
+    bounds: { from: string; to: string } | null;
 }
 
 export interface DrillDownConfig {
@@ -62,4 +73,8 @@ export interface ReportDefinition {
     dateColumnType?: 'timestamp' | 'date'; // 'date' = local calendar date column (YYYY-MM-DD); default timestamp (UTC ISO)
     ownerColumn?: string; // Column limiting a salesperson to their own rows (default 'assigned_to')
     drillDown?: DrillDownConfig[];
+    /** Never served from the report cache: the figures depend on settings and costs that change between two looks (R152). */
+    noCache?: boolean;
+    /** Adds `summary` to the result (R152: totals over complete rows, accountant notice). */
+    summarize?: (ctx: ReportSummaryContext) => Promise<Record<string, any>>;
 }
