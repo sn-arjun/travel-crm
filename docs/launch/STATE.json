@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-22T00:59:09.728Z",
+  "updated": "2026-10-22T01:16:46.071Z",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -342,6 +342,12 @@
           "head": "9d5024e",
           "what": "public booking page: master 0031 public_links (random 128-bit tokens), public GET/POST with honeypot, signed form token, Turnstile option, idempotency key, rate limits, uniform 404; creates contact, website lead, band-priced passengers, held seats, consent; booking invoice + deposit link; /book/[token] en/nl; staff Public page card + iframe snippet; PUBLIC_PAGES_URL/TURNSTILE keys in gen-wrangler",
           "gates": "merged line backend 129/2456, desktop 110/1691, lint PASS, i18n PASS, gen-wrangler self-test PASS; e2e public-booking 2, tenant-isolation 9/9 after fixing stale plan-gate test"
+        },
+        "R153": {
+          "status": "merged",
+          "head": "0e8cbab",
+          "what": "leads pipeline board: GET /leads/board with column counts and values (agency currency, mixed flagged), board settings API, List/Board toggle, HTML5 drag-and-drop on the shared KanbanBoard, keyboard Move to, optimistic moves via the status route, Lost reason + Won confirm; no settings screen for board columns yet",
+          "gates": "merged line backend 130/2464, desktop 111/1708, lint PASS, i18n PASS; e2e 41"
         }
       }
     }
