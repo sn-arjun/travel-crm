@@ -1,0 +1,62 @@
+{
+  "id": "R163",
+  "title": "Film tooling: per-scene speed, multi-part recordings, sidebar navigation helpers, phone frame, PDF viewer, AI request guard, driver recording parameters",
+  "tier": 4,
+  "why": "The owner found the master film rushed: no visible navigation, AI results never opened, automations not shown. New films (starting with a prospect demo) need sped-up data entry with a visible marker, sidebar navigation on camera, opened PDFs and phone-sized pages, and a hard AI request budget. Everything here is generic; prospect content stays in the gitignored prospects/ folder.",
+  "source": "prospects/skanda/SPEC-PLAN.md section 3 (G1-G8). G9 (customer email in the local outbox) is already done by R142.",
+  "items": [
+    {
+      "id": "R163-G1",
+      "what": "Per-scene playback speed in the studio",
+      "files": ["studio/src/build.mjs", "studio/src/Clip.tsx", "studio/src/kit/ScreenClip.tsx", "studio/src/kit/PhoneClip.tsx", "studio/src/kit/types.ts", "studio/src/kit/SpeedBadge.tsx (new)", "studio README clip schema"],
+      "detail": "screen and phone scenes accept speed (1, 1.5, 2, 3 or 4; default 1) and speedLabel (default 'Sped up {speed}x'; false hides it). build.mjs: the recorded segment's screen time is (out - in) / speed, used for minDur; keep speed and speedLabel on the timeline scene. ScreenClip/PhoneClip: rate = speed * (sceneLen > segLen / speed ? max(0.8, (segLen / speed) / sceneLen) : 1); playFrames = floor((segLen / rate) * fps); pass playbackRate to OffthreadVideo. When speed > 1 render SpeedBadge (small pill, top right of the window, fades in over 8 frames). Narration is never sped up. A scene without speed renders exactly as today.",
+      "test": "A render of an existing catalogue clip is unchanged (compare the timeline JSON before and after); a small fixture clip with a 4x scene renders with the badge and the right duration."
+    },
+    {
+      "id": "R163-G2",
+      "what": "film-kit additions",
+      "files": ["desktop/e2e/showcase/films/film-kit.ts"],
+      "detail": "beat() holds for (narration seconds + 0.65) x speed of its scene; loadBeats reads speed from the clip scene. recordFilm(page, context, name, testInfo, body, { clip }) loads the beats of clip `clip` (default name) whose scenes' recording is `name`, so one clip can be recorded in several parts. navTo(page, href), hoverNav(page, hrefs, dwellMs), tab(page, name): visible sidebar navigation and sub-tabs using the real sidebar (desktop/src/components/layout/nav-config.ts). showInPhoneFrame(page, url): like showMail, a phone-sized frame around a same-origin page. showPdf(page, file): renders a downloaded PDF's pages with pdf.js, loaded from node_modules through page.route (no CDN). aiGuard(page, { budget, live }): counts AI requests the browser makes (non-GET under /api/v1/ai/ except /ai/settings, plus /marketing/social-content/generate*, /marketing/suggestions/generate, and the GETs that generate on open: /ai/bi/(cash-flow-forecast|destination-profitability|lost-deal-analysis|seasonal-demand|team-performance), /ai/intelligence/insights*), plus server(n) for server-side reads; throws before the count exceeds budget; report() logs it. Generalise the counter in ai-session.spec.ts and make ai-session use aiGuard.",
+      "dependency": "pdfjs-dist is needed as a devDependency of desktop. Do NOT run npm install (node_modules are junctions into the main checkout). Check whether pdfjs-dist (or another PDF renderer) is already installed anywhere under node_modules; if yes use it; if not, stop that one helper and report that the orchestrator must add the dependency in the main checkout.",
+      "test": "A small Playwright spec under desktop/e2e/showcase/films/ (or a unit test) that exercises beat speed, navTo/tab on a local stack, showInPhoneFrame and aiGuard (budget 0 throws on a fake AI request intercepted by page.route, so no live AI call)."
+    },
+    {
+      "id": "R163-G3",
+      "what": "record-films.mjs",
+      "files": ["scripts/showcase/record-films.mjs"],
+      "detail": "The raw-take duration gate sums line x speed per scene. --clip <id> records a film that is not in docs/videos/films.json when its clip carries film: { stack, targetSec }, so prospect films use the same retake, gate and render path."
+    },
+    {
+      "id": "R163-G4",
+      "what": "resolve.mjs driver recordings",
+      "files": ["studio/src/resolve.mjs"],
+      "detail": "A recording named driver-* is a driver recording: video desktop/showcase/.work/<name>.mp4, marks desktop/showcase/.work/<name>-marks.json (today only the exact name driver is special)."
+    },
+    {
+      "id": "R163-G5",
+      "what": "record-driver.ps1 parameters",
+      "files": ["scripts/record-driver.ps1"],
+      "detail": "Parameters -Test (integration test file, default integration_test/demo_flow_test.dart), -AgencyCode (passed as --dart-define=AGENCY_CODE), and the marks file named after -Out (<base>-marks.json; unchanged driver-marks.json for the default). Flutter only through the x86 PowerShell (the script already does this)."
+    },
+    {
+      "id": "R163-G6",
+      "what": "coverage check skips prospect clips",
+      "files": ["docs/videos/coverage.mjs"],
+      "detail": "Skip studio/clips/prospect-*.json (gitignored)."
+    },
+    {
+      "id": "R163-G7",
+      "what": ".gitignore",
+      "files": [".gitignore"],
+      "detail": "Add packages/driver_app/integration_test/prospect_*."
+    },
+    {
+      "id": "R163-G8",
+      "what": "Docs",
+      "files": ["docs/videos/RECORDING-RUNBOOK.md", "studio README"],
+      "detail": "A short 'Prospect films' section (files live in gitignored prospects/<name>/, studio/clips/prospect-*.json and desktop/e2e/showcase/films/prospect-*.spec.ts are gitignored, the --clip path, the AI guard) and the speed field in the clip schema."
+    }
+  ],
+  "rules": ["No prospect names or content in any committed file.", "Catalogue films must behave exactly as before: node docs/videos/coverage.mjs prints OK; a scene without speed is unchanged.", "No live AI requests; no rendering of the full catalogue (one small fixture render only).", "studio/ is its own npm project: do not install anything there either; report a missing dependency."],
+  "gates": ["desktop npm run typecheck + node scripts/lint-gate.mjs", "studio: its own typecheck if it has one (check studio/package.json scripts)", "node docs/videos/coverage.mjs", "the new tooling test", "one fixture render through node studio/src/build.mjs"]
+}
