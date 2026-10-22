@@ -20,7 +20,7 @@ batch's list, so parallel batches do not collide. Every list names the files it 
 - `needs native review` (the default for anything machine-made)
 - `reviewed` (a native speaker has read the whole file; add the reviewer's initials and the date)
 
-Current lists: `docs/i18n/nl-review/foundation.md` (batch R136), `docs/i18n/nl-review/R138.md` (batch R138), `docs/i18n/nl-review/R140.md` (batch R140), `docs/i18n/nl-review/R144.md` (batch R144), `docs/i18n/nl-review/R142.md` (batch R142), `docs/i18n/nl-review/R145.md` (batch R145), `docs/i18n/nl-review/R141.md` (batch R141), `docs/i18n/nl-review/R147.md` (batch R147), `docs/i18n/nl-review/R146.md` (batch R146), `docs/i18n/nl-review/R151.md` (batch R151), `docs/i18n/nl-review/R149.md` (batch R149).
+Current lists: `docs/i18n/nl-review/foundation.md` (batch R136), `docs/i18n/nl-review/R138.md` (batch R138), `docs/i18n/nl-review/R140.md` (batch R140), `docs/i18n/nl-review/R144.md` (batch R144), `docs/i18n/nl-review/R142.md` (batch R142), `docs/i18n/nl-review/R145.md` (batch R145), `docs/i18n/nl-review/R141.md` (batch R141), `docs/i18n/nl-review/R147.md` (batch R147), `docs/i18n/nl-review/R146.md` (batch R146), `docs/i18n/nl-review/R151.md` (batch R151), `docs/i18n/nl-review/R149.md` (batch R149), `docs/i18n/nl-review/R148.md` (batch R148).
 
 ## How to review a file
 
