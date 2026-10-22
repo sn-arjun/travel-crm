@@ -98,14 +98,14 @@ test('kit: showInPhoneFrame puts a real app page in a 390 px frame', async ({ pa
 
 test('kit: showPdf renders the pages with pdf.js from node_modules', async ({ page }) => {
   test.skip(!hasPdfjs(), 'pdfjs-dist is not installed: add it as a devDependency of desktop');
-  const pages = await showPdf(page, path.join(REPO, 'desktop', 'e2e', 'fixtures', 'nair-family-passports.pdf'));
+  const pages = await showPdf(page, path.join(REPO, 'desktop', 'e2e', 'showcase', 'fixtures', 'nair-family-passports.pdf'));
   expect(pages).toBeGreaterThan(0);
   expect(await page.locator('canvas').count()).toBe(pages);
 });
 
 test('kit: showPdf says what is missing when pdfjs-dist is not installed', async ({ page }) => {
   test.skip(hasPdfjs(), 'pdfjs-dist is installed');
-  await expect(showPdf(page, path.join(REPO, 'desktop', 'e2e', 'fixtures', 'nair-family-passports.pdf'))).rejects.toThrow(/pdfjs-dist.*not installed/);
+  await expect(showPdf(page, path.join(REPO, 'desktop', 'e2e', 'showcase', 'fixtures', 'nair-family-passports.pdf'))).rejects.toThrow(/pdfjs-dist.*not installed/);
 });
 
 test('kit: isAiRequest knows what spends AI', () => {
