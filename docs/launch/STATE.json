@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-21T23:56:04.157Z",
+  "updated": "2026-10-22T00:00:48.605Z",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -324,6 +324,12 @@
           "head": "9521df7",
           "what": "seats left on calendar/lead/quote, manifest (pickup/rooming/full, CSV/PDF, room suggestions), tour reports, editable seat number/room/documents, live departure:seats_changed, create coach trips button",
           "gates": "merged line backend 124/2389 x2 (after mock-gateway rate-count test fix), desktop 108/1664, lint PASS, i18n PASS; e2e 10 new + 89"
+        },
+        "R151": {
+          "status": "merged",
+          "head": "3eef4f5",
+          "what": "chat widget contact capture: tenant 0061 (config + conversation consent), public contact route with origin allow-list + rate limit, consent rows, lead-from-conversation service, widget form, settings tab, visitor panel; widget.js served cross-origin (was blocked by CORP); carry: super admin opens agency KYC files with audit",
+          "gates": "merged line backend 126/2405, desktop 108/1664, lint PASS, i18n PASS, super-admin tsc PASS; e2e chatbot 21 passed"
         }
       }
     }
