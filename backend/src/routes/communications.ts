@@ -22,13 +22,10 @@ import { substituteVariables, resolveVariables } from '../services/template-engi
 import {
   AllowanceExhausted,
   allowanceExhaustedResponse,
-  insideFreeWhatsAppWindow,
-  meterUsage,
-  whatsappMeterChannel,
-  refundUsage,
   type MeterChannel,
 } from '../services/metering/meter';
-import { metaCategoryForTemplate, whatsappTemplateJob } from '../services/messaging/whatsapp-sender';
+import { whatsappTemplateJob } from '../services/messaging/whatsapp-sender';
+import { HubError, meterOutboundMessage, sendHubMessage } from '../services/messaging/hub';
 import { resolveReplyTo } from '../services/mail/delivery';
 import { inboundDomain } from '../services/mail/reply-token';
 
@@ -43,14 +40,7 @@ async function meterOutbound(
   channel: 'whatsapp' | 'sms' | 'email',
   opts: { contactId?: string; template?: boolean; templateCategory?: string | null } = {},
 ): Promise<MeterChannel | null> {
-  if (channel === 'whatsapp' && !opts.template && opts.contactId && (await insideFreeWhatsAppWindow(c.get('tenantDb'), opts.contactId))) {
-    return null;
-  }
-  // R130: a marketing template takes the marketing WhatsApp allowance, everything else paid the utility one.
-  const meterChannel: MeterChannel =
-    channel === 'whatsapp' ? whatsappMeterChannel(opts.template ? metaCategoryForTemplate(opts.templateCategory) : 'utility') : channel;
-  await meterUsage(c.env, c.get('tenantId'), meterChannel);
-  return meterChannel;
+  return meterOutboundMessage(c.env, c.get('tenantId'), c.get('tenantDb'), channel, opts);
 }
 
 /** R128: where a customer's reply to a Communication Hub email goes: the agency's receiving address, else the sending user. */
@@ -121,78 +111,20 @@ communicationRoutes.post(
   requirePermission('communications', 'create'),
   zValidator('json', sendMessageSchema),
   async (c) => {
-    const db = drizzle(c.get('tenantDb'));
     const userId = c.get('userId');
     const body = c.req.valid('json');
 
     try {
-      // Verify contact exists
-      const contact = await db
-        .select()
-        .from(contacts)
-        .where(eq(contacts.id, body.contact_id))
-        .limit(1)
-        .then(rows => rows[0]);
-
-      if (!contact) {
-        return notFound(c, 'Contact');
-      }
-
-      // Verify we have destination info
-      let destination = '';
-      if (body.channel === 'sms' || body.channel === 'whatsapp') {
-        destination = contact.phone || '';
-        if (!destination) {
-          return error(c, 'Contact has no phone number', 400);
-        }
-      } else if (body.channel === 'email') {
-        destination = contact.email || '';
-        if (!destination) {
-          return error(c, 'Contact has no email address', 400);
-        }
-      }
-
-      const metered = await meterOutbound(c, body.channel, { contactId: body.contact_id });
-
-      // Create message log entry
-      const messageId = generateId();
-      const now = new Date().toISOString();
-
-      await db.insert(messageLog).values({
-        id: messageId,
+      const sent = await sendHubMessage(c.env, c.get('tenantId'), c.get('tenantDb'), {
         contactId: body.contact_id,
-        leadId: body.lead_id || null,
+        leadId: body.lead_id,
         channel: body.channel,
-        templateId: null,
-        subject: null,
-        content: body.message,
-        status: 'queued',
-        externalId: null,
-        errorMessage: null,
-        sentBy: userId,
-        sentAt: null,
-        deliveredAt: null,
-        readAt: null,
-        createdAt: now,
+        body: body.message,
+        purpose: 'service',
+        actorId: userId,
+        mediaUrl: body.media_url,
       });
-
-      // Queue message
-      await c.env.SMS_QUEUE.send({
-        type: body.channel === 'email' ? 'email' : 'sms',
-        data: {
-          to: destination,
-          ...(body.channel === 'email' && { subject: 'Message', html: body.message, replyTo: await hubReplyTo(c, body.contact_id, body.lead_id) }),
-          ...(body.channel !== 'email' && { body: body.message }),
-          messageLogId: messageId,
-          contactId: body.contact_id,
-          tenantId: c.get('tenantId'),
-          channel: body.channel,
-          metered: true,
-          refundOnFailure: metered !== null,
-          ...(metered && { meterChannel: metered }),
-          ...(body.media_url && { mediaUrl: body.media_url }),
-        },
-      });
+      const messageId = sent.messageId;
 
       await emitFromRequest(c, {
         type: 'message.sent',
@@ -207,6 +139,7 @@ communicationRoutes.post(
       });
     } catch (err) {
       if (err instanceof AllowanceExhausted) return allowanceExhaustedResponse(c, err);
+      if (err instanceof HubError) return err.status === 404 ? notFound(c, 'Contact') : error(c, err.message, err.status);
       console.error('Error sending message:', err);
       return error(c, 'Failed to send message', 500);
     }
