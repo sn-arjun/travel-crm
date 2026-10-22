@@ -2,7 +2,7 @@
   "program": "launch-readiness",
   "plan": "C:/Users/Admin/.claude/plans/magical-tumbling-swan.md",
   "branch": "launch-readiness",
-  "updated": "2026-10-22T01:34:06.943Z",
+  "updated": "2026-10-22T02:02:23.405Z",
   "baseline": {
     "measuredAt": "2026-10-09T18:50+05:30",
     "tag": "pre-launch-baseline",
@@ -354,6 +354,12 @@
           "head": "786510e",
           "what": "film tooling: per-scene speed + SpeedBadge, beat x speed, multi-part clips, navTo/hoverNav/tab, showInPhoneFrame, aiGuard (ai-session budget 7), showPdf (needs pdfjs-dist), record-films --clip, driver-* recordings, record-driver -Test/-AgencyCode, coverage skips prospect clips",
           "gates": "desktop typecheck 0, lint PASS, vitest 1708, coverage OK, film-kit.spec 8 passed 1 skipped (pdf), fixture 4x render OK"
+        },
+        "R150": {
+          "status": "merged",
+          "head": "f93751d",
+          "what": "extras and traveller self-service: catalogue tour-wide/tour/departure with band and rate-card prices, capacity, cut-off, extras invoice per booking, paid status via shared recorder, refund suggestion; self-service links (booking/passenger), /public/booking routes with masked documents + rate limits, /trip/[token] 3-step page en/nl, collect_details recipe drafts the link",
+          "gates": "merged line backend 132/2493, desktop 112/1718, lint PASS, i18n PASS; e2e self-service-extras 2 + public-booking, manifest, travellers, visa"
         }
       }
     }
