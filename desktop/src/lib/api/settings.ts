@@ -57,6 +57,8 @@ function fromCompanyKeys(raw: Record<string, string | null> | null | undefined):
   for (const [field, key] of Object.entries(COMPANY_KEYS)) {
     (out as unknown as Record<string, string>)[field] = r[key] ?? '';
   }
+  // The language the API uses for the agency's documents and messages is `default_language` (R136); the older `language` key is the fallback.
+  out.language = r.default_language || r.language || '';
   return out;
 }
 
@@ -66,6 +68,8 @@ function toCompanyKeys(data: UpdateCompanySettingsRequest): Record<string, strin
     const key = COMPANY_KEYS[field as keyof typeof COMPANY_KEYS];
     if (key && value !== undefined) out[key] = value;
   }
+  // Choosing the company language sets the agency default the API reads (R164-3).
+  if (data.language) out.default_language = data.language;
   return out;
 }
 

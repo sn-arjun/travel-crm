@@ -1,6 +1,7 @@
 'use client';
 
 import { defaultCountryCode } from '@/lib/phone';
+import { LANGUAGES } from '@/lib/i18n';
 import { useLocale } from '@/lib/locale';
 import { getLocaleContext } from '@/lib/locale';
 import { currencyOptions, timezoneOptions, systemTimeZone } from '@/lib/locale-options';
@@ -273,9 +274,9 @@ export default function CompanySettingsPage() {
                 <Select value={form.watch('language')} onValueChange={(v) => form.setValue('language', v, { shouldDirty: true })}>
                   <SelectTrigger id="language"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="en">English</SelectItem>
-                    <SelectItem value="hi">हिंदी (Hindi)</SelectItem>
-                    <SelectItem value="ar">العربية (Arabic)</SelectItem>
+                    {LANGUAGES.filter((lang) => lang.enabled).map((lang) => (
+                      <SelectItem key={lang.code} value={lang.code}>{lang.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </FormRow>

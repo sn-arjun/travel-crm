@@ -328,6 +328,40 @@ describe('tenant provisioning (POST /admin/tenants)', () => {
     }
   });
 
+// R164-3: the console can choose the agency's default language; without a choice a Netherlands agency starts in Dutch (R136).
+  it('a Netherlands agency created with language en gets an English admin and agency default; without a choice it is Dutch', async () => {
+    const singleEnv = { ...testEnv, TENANCY_MODE: 'single' };
+    const keysBefore = new Set(((await testEnv.MASTER_DB.prepare('SELECT key FROM settings').all()).results as any[]).map((r) => r.key));
+    const nlAgency = (key: string, over: Record<string, unknown> = {}) => agency(key, { country: 'Netherlands', currency: 'EUR', timezone: 'Europe/Amsterdam', taxSystem: 'vat', region: 'eu', ...over });
+    const languageOf = async (email: string) => (await masterRow(`SELECT language FROM users WHERE email = ?`, email)).language;
+    const setting = async (key: string) => (await masterRow(`SELECT value FROM settings WHERE key = ?`, key))?.value ?? null;
+    try {
+      const english = await create(singleEnv, nlAgency('nl-en', { language: 'en' }));
+      expect(english.res.status).toBe(201);
+      expect(await languageOf('owner-nl-en@r104.test')).toBe('en');
+      expect(await setting('default_language')).toBeNull(); // English is the default a missing setting stands for
+      expect(await setting('locale')).toBe('en-NL');
+      expect(JSON.parse((await masterRow('SELECT settings FROM tenants WHERE id = ?', english.json.data.tenantId)).settings).language).toBe('en');
+      await cleanSharedDb(keysBefore, 'owner-nl-en@r104.test');
+
+      const dutch = await create(singleEnv, nlAgency('nl-nl'));
+      expect(dutch.res.status).toBe(201);
+      expect(await languageOf('owner-nl-nl@r104.test')).toBe('nl');
+      expect(await setting('default_language')).toBe('nl');
+      expect(await setting('locale')).toBe('nl-NL');
+      await cleanSharedDb(keysBefore, 'owner-nl-nl@r104.test');
+
+      // Another country can choose Dutch too.
+      const belgian = await create(singleEnv, agency('be-nl', { country: 'Belgium', currency: 'EUR', timezone: 'Europe/Brussels', taxSystem: 'vat', region: 'eu', language: 'nl' }));
+      expect(belgian.res.status).toBe(201);
+      expect(await languageOf('owner-be-nl@r104.test')).toBe('nl');
+      expect(await setting('default_language')).toBe('nl');
+    } finally {
+      await cleanSharedDb(keysBefore, 'owner-be-nl@r104.test').catch(() => undefined);
+    }
+    expect((await call(singleEnv, 'POST', '/admin/tenants', superToken, agency('bad-lang', { language: 'klingon' }))).status).toBe(400);
+  });
+
   /** In single-database mode the shared database is MASTER_DB: remove what the agency added so other test files see the old state. */
   async function cleanSharedDb(keysBefore: Set<string>, ownerEmail: string) {
     const user = await masterRow(`SELECT id FROM users WHERE email = ?`, ownerEmail);

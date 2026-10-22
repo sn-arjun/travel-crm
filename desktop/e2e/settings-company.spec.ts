@@ -28,7 +28,7 @@ const PNG_1X1 = Buffer.from(
 const COMPANY_KEYS = [
   'company_name', 'company_email', 'company_phone', 'company_website', 'company_address',
   'company_city', 'company_state', 'company_postal_code', 'company_country', 'gstin',
-  'timezone', 'currency', 'language', 'company_logo',
+  'timezone', 'currency', 'language', 'default_language', 'company_logo',
 ];
 
 let snapshot: {
@@ -221,7 +221,11 @@ test.describe('Settings — company configuration', () => {
     await page.locator('#country').fill(co.country);
     await pick(page, page.locator('#currency'), 'US Dollar (USD)');
     await pick(page, page.locator('#timezone'), 'Asia/Dubai (GST)');
-    await pick(page, page.locator('#language'), 'हिंदी (Hindi)');
+    // Every supported language is offered, Dutch included (R164-3); the choice is the agency default the API reads.
+    await page.locator('#language').click();
+    for (const name of ['English', 'हिन्दी', 'العربية', 'Nederlands']) await expect(page.getByRole('option', { name })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await pick(page, page.locator('#language'), 'Nederlands');
 
     await save(page);
     await expectToast(page, 'Company settings saved successfully');
@@ -242,7 +246,8 @@ test.describe('Settings — company configuration', () => {
       company_country: co.country,
       currency: 'USD',
       timezone: 'Asia/Dubai',
-      language: 'hi',
+      language: 'nl',
+      default_language: 'nl',
     });
 
     // Edit form is pre-filled with every saved value.
@@ -260,7 +265,7 @@ test.describe('Settings — company configuration', () => {
     await expect(page.locator('#country')).toHaveValue(co.country);
     await expect(page.locator('#currency')).toContainText('US Dollar (USD)');
     await expect(page.locator('#timezone')).toContainText('Asia/Dubai (GST)');
-    await expect(page.locator('#language')).toContainText('हिंदी (Hindi)');
+    await expect(page.locator('#language')).toContainText('Nederlands');
 
     // Edit the GSTIN and persist it.
     await page.locator('#gstin').fill('27AAPFU0939F1ZV');

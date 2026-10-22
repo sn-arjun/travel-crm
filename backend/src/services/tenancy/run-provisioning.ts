@@ -85,6 +85,7 @@ export async function runProvisioning(
       currency: readSetting(tenant.settings, 'currency') ?? 'INR',
       timezone: readSetting(tenant.settings, 'timezone') ?? 'Asia/Kolkata',
       taxSystem: readSetting(tenant.settings, 'taxSystem') ?? 'gst',
+      language: readSetting(tenant.settings, 'language') ?? undefined,
     });
 
     step = 'binding';

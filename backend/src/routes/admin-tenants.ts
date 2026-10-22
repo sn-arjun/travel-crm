@@ -9,6 +9,7 @@ import { generateId } from '../utils/uuid';
 import { sendTransactional } from '../services/mail/transactional';
 import { appUrl } from '../utils/app-urls';
 import { REGIONS } from '../services/tenancy/provisioner';
+import { UI_LANGUAGES } from '../i18n';
 import { getCatalogue, activePriceFrom, marketForCountry } from '../services/plans/catalogue';
 import { runProvisioning, type ProvisionOutcome, type TenantRow } from '../services/tenancy/run-provisioning';
 
@@ -30,6 +31,8 @@ const createSchema = z.object({
   currency: z.string().trim().min(3).max(3).default('INR'),
   timezone: z.string().trim().min(2).max(64).default('Asia/Kolkata'),
   taxSystem: z.enum(['gst', 'vat', 'sales_tax', 'none']).default('gst'),
+  // The agency's default language and its admin's own. Left out: Dutch for a Netherlands agency, else English (R136); sent: that language (R164-3).
+  language: z.enum(UI_LANGUAGES).optional(),
   region: z.enum(REGIONS).default('in'),
 });
 
@@ -125,7 +128,7 @@ app.post('/', zValidator('json', createSchema), async (c) => {
           body.slug,
           body.plan,
           planPrice?.includedUsers ?? 5,
-          JSON.stringify({ currency: body.currency.toUpperCase(), timezone: body.timezone, taxSystem: body.taxSystem }),
+          JSON.stringify({ currency: body.currency.toUpperCase(), timezone: body.timezone, taxSystem: body.taxSystem, ...(body.language ? { language: body.language } : {}) }),
           body.ownerEmail.toLowerCase(),
           body.ownerName,
           body.country,

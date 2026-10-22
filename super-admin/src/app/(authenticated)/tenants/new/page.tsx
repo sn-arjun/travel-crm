@@ -26,6 +26,7 @@ const INITIAL_DATA: WizardData = {
     currency: 'INR',
     taxSystem: 'gst',
     region: 'in',
+    language: '',
   },
   plan: 'trial',
 };
@@ -56,6 +57,7 @@ export default function OnboardTenantPage() {
           timezone: data.company.timezone,
           taxSystem: data.company.taxSystem,
           region: data.company.region,
+          ...(data.company.language ? { language: data.company.language } : {}),
         }),
       });
       const result = (await res.json()) as ProvisionOutcome & { error?: string };

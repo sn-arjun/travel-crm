@@ -84,6 +84,17 @@ describe('Settings API Module', () => {
       expect(lastCall().method).toBe('PUT');
       expect(lastCall().body).toEqual({ company_name: 'Updated Co', company_postal_code: '110001', gstin: 'G1' });
     });
+
+    it('R164-3: the company language is the agency default_language the API reads, Dutch included', async () => {
+      fetchMock.mockResolvedValue(ok({ message: 'Settings updated' }));
+      await settingsApi.company.update({ language: 'nl' });
+      expect(lastCall().body).toEqual({ language: 'nl', default_language: 'nl' });
+
+      fetchMock.mockClear();
+      fetchMock.mockResolvedValue(ok({ default_language: 'nl', language: 'en' }));
+      const result = await settingsApi.company.get();
+      expect('data' in result && result.data).toMatchObject({ language: 'nl' });
+    });
   });
 
   describe('logo', () => {

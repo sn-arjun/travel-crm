@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { WizardData } from '../page';
 import { Loader2, CheckCircle2 } from 'lucide-react';
 import { PLATFORM_DOMAIN } from '@/lib/domain';
+import { AGENCY_LANGUAGES } from './company-details';
 
 interface Props {
   data: WizardData;
@@ -27,6 +28,7 @@ export function ReviewStep({ data, onProvision, isProvisioning, provisionStep, o
           <Row label="Owner" value={`${data.company.ownerName} (${data.company.ownerEmail})`} />
           <Row label="Location" value={`${data.company.country} (${data.company.timezone}), data region ${data.company.region.toUpperCase()}`} />
           <Row label="Currency / tax" value={`${data.company.currency} / ${data.company.taxSystem}`} />
+          <Row label="Language" value={AGENCY_LANGUAGES.find((l) => l.value === data.company.language)?.label ?? 'Automatic (Dutch for the Netherlands, else English)'} />
         </Section>
 
         <Section title="Plan">

@@ -16,7 +16,17 @@ export interface CompanyData {
   currency: string;
   taxSystem: 'gst' | 'vat' | 'sales_tax' | 'none';
   region: 'in' | 'eu' | 'uk' | 'us' | 'au' | 'gulf';
+  /** The agency's default language and its admin's own. '' = automatic: Dutch for a Netherlands agency, else English. */
+  language: '' | 'en' | 'nl' | 'hi' | 'ar';
 }
+
+/** The languages the product ships; keep in step with UI_LANGUAGES in backend/src/i18n/index.ts. */
+export const AGENCY_LANGUAGES: ReadonlyArray<{ value: CompanyData['language']; label: string }> = [
+  { value: 'en', label: 'English' },
+  { value: 'nl', label: 'Nederlands (Dutch)' },
+  { value: 'hi', label: 'हिन्दी (Hindi)' },
+  { value: 'ar', label: 'العربية (Arabic)' },
+];
 
 interface Props {
   data: CompanyData;
@@ -42,6 +52,7 @@ export function CompanyDetailsStep({ data, onNext }: Props) {
     currency: data.currency || 'INR',
     taxSystem: data.taxSystem || 'gst',
     region: data.region || 'in',
+    language: data.language || '',
   });
   const [errors, setErrors] = useState<Partial<Record<keyof CompanyData, string>>>({});
 
@@ -117,6 +128,15 @@ export function CompanyDetailsStep({ data, onNext }: Props) {
             </select>
           </Field>
         </div>
+        <Field label="Default language">
+          <select className="w-full rounded-md border bg-background px-3 py-2 text-sm" value={form.language} onChange={(e) => setForm({ ...form, language: e.target.value as CompanyData['language'] })} data-testid="tenant-language">
+            <option value="">Automatic (Dutch for the Netherlands, else English)</option>
+            {AGENCY_LANGUAGES.map((l) => (
+              <option key={l.value} value={l.value}>{l.label}</option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">The language of the agency documents and of its first administrator. Staff can still pick their own.</p>
+        </Field>
         <div className="flex justify-end pt-4">
           <Button onClick={handleNext}>Next: Select Plan</Button>
         </div>
