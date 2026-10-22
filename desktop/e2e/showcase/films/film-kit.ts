@@ -252,11 +252,13 @@ export async function tab(page: Page, name: string | RegExp, ms = 900): Promise<
 
 /**
  * Show a page of the app inside a phone-sized frame (390 x 844) on a plain backdrop, like showMail does for an email. The page is the
- * real one (same origin as the app, signed in as the film's user); at that width its responsive layout is what the viewer sees.
+ * real one (same origin as the app, signed in as the film's user; a page of another origin, such as the test gateway's pay page on the API,
+ * needs allowOrigins: [new URL(API_URL).origin], and the API frames it only in test mode, see mock-pay-frame.ts); at that width its responsive layout is what the viewer sees.
  */
-export async function showInPhoneFrame(page: Page, url: string, o: { label?: string } = {}): Promise<void> {
+export async function showInPhoneFrame(page: Page, url: string, o: { label?: string; allowOrigins?: string[] } = {}): Promise<void> {
   const abs = new URL(url, BASE_URL);
-  if (abs.origin !== new URL(BASE_URL).origin) throw new Error(`showInPhoneFrame: ${url} is not a page of the app (${new URL(BASE_URL).origin})`);
+  const allowed = [BASE_URL, ...(o.allowOrigins ?? [])].map((u) => new URL(u).origin);
+  if (!allowed.includes(abs.origin)) throw new Error(`showInPhoneFrame: ${url} is not a page of the app (${new URL(BASE_URL).origin})`);
   const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c);
   const doc = `<!doctype html><html><head><meta charset="utf-8"><title>phone</title>
 <style>html,body{margin:0;height:100%}body{display:flex;align-items:center;justify-content:center;gap:64px;background:radial-gradient(1200px 700px at 15% 10%,#E0E3FF 0%,transparent 60%),linear-gradient(135deg,#F4F5FF,#F8F7FF);font-family:system-ui,sans-serif}

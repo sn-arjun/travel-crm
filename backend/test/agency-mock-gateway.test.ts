@@ -269,4 +269,24 @@ describe('R142 test gateway for agency payment links', () => {
     const create = await call('POST', `/invoices/${inv.id}/payment-link`, admin, { gateway: 'mock' }, prodEnv);
     expect(create.status).toBe(400);
   });
+  // R164-4: the films show the pay page in a phone frame that lives on the web app's origin.
+  it('test mode lets the web app frame the pay page; production keeps X-Frame-Options and has no mock pay page', async () => {
+    const inv = await newInvoice('EUR', 500);
+    const { data } = await makeLink(inv.id);
+    const page = await raw('GET', data.url);
+    expect(page.status).toBe(200);
+    expect(page.headers.get('X-Frame-Options')).toBeNull();
+    expect(page.headers.get('Content-Security-Policy')).toBe(`frame-ancestors 'self' http://localhost ${new URL(testEnv.APP_URL).origin}`);
+    // the form post (a message page or a redirect) is framed the same way, other routes are not
+    const posted = await pay(data.url, 'method=ideal&action=cancel');
+    expect(posted.headers.get('X-Frame-Options')).toBeNull();
+    const health = await raw('GET', 'http://localhost/api/v1/health');
+    expect(health.headers.get('X-Frame-Options')).toBe('SAMEORIGIN');
+    expect(health.headers.get('Content-Security-Policy')).toBeNull();
+
+    const prod = await raw('GET', data.url, { e: prodEnv });
+    expect(prod.status).toBe(404);
+    expect(prod.headers.get('X-Frame-Options')).toBe('SAMEORIGIN');
+    expect(prod.headers.get('Content-Security-Policy') ?? '').not.toContain('frame-ancestors');
+  });
 });

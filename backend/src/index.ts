@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import { HTTPException } from 'hono/http-exception';
 import { prettyJSON } from 'hono/pretty-json';
 import { secureHeaders } from 'hono/secure-headers';
+import { mockPayFrameHeaders } from './middleware/mock-pay-frame';
 import type { AppContext, Env } from './types';
 import { error } from './utils/response';
 import { resolveCorsOrigin } from './utils/cors';
@@ -147,6 +148,7 @@ app.use('*', requestLogger);
 app.use('*', prettyJSON());
 // The embeddable chat script is loaded by agencies' own websites, so unlike every other response it must not carry
 // Cross-Origin-Resource-Policy: same-origin (browsers refuse a cross-origin script tag with it).
+app.use('*', mockPayFrameHeaders); // test mode only, the mock pay page only: frame-ancestors instead of X-Frame-Options (R164-4)
 const strictHeaders = secureHeaders();
 const embedHeaders = secureHeaders({ crossOriginResourcePolicy: 'cross-origin' });
 app.use('*', (c, next) => (/\/public\/chatbot\/[^/]+\/widget\.js$/.test(c.req.path) ? embedHeaders(c, next) : strictHeaders(c, next)));
