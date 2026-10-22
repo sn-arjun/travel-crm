@@ -483,6 +483,17 @@ export async function invoiceExtras(env: Env, tenantId: string, db: D1Database, 
   });
   const currency = ((dep.tour.currency as string | null) ?? (await loadLocaleContext(db)).currency).toUpperCase();
 
+  // Nothing changed since the invoice was made: leave it (and the payment link made for it) as it is.
+  if (openId && lines.every((r) => r.status === 'invoiced')) {
+    const current = await db.prepare('SELECT description, quantity, rate FROM invoice_items WHERE invoice_id = ? ORDER BY sort_order, rowid').bind(openId).all<{ description: string; quantity: number; rate: number }>();
+    const same = (current.results ?? []).length === items.length
+      && (current.results ?? []).every((c, i) => c.description === items[i].description && c.quantity === items[i].quantity && c.rate === items[i].rate);
+    if (same) {
+      const inv = (await db.prepare('SELECT invoice_number, total, currency FROM invoices WHERE id = ?').bind(openId).first<{ invoice_number: string; total: number; currency: string }>())!;
+      return { invoiceId: openId, invoiceNumber: inv.invoice_number, currency: inv.currency, total: inv.total, created: false };
+    }
+  }
+
   let invoiceId: string;
   let invoiceNumber: string;
   let total: number;

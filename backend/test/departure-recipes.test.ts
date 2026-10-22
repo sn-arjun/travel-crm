@@ -313,11 +313,17 @@ describe('departures.hold_expiring', () => {
 });
 
 describe('departures.collect_details and departure awareness of the older recipes', () => {
-  it('collect_details is listed but proposes nothing until the self-service link exists', async () => {
+  it('collect_details drafts the message with the self-service link of the booking (R150)', async () => {
     const dep = await makeDeparture(5);
-    const b = await hold(dep, 'No Link Yet', 1);
+    const b = await hold(dep, 'With Link', 1);
     expect((await call('POST', `/seat-bookings/${b.id}/confirm`, admin)).status).toBe(200);
-    expect(await suggestions('departures.collect_details', b.id)).toHaveLength(0);
+    const [draft] = await suggestions('departures.collect_details', b.id);
+    expect(draft).toMatchObject({ action_type: 'draft_reply' });
+    expect(draft.params.body).toMatch(/\/trip\/[A-Za-z0-9_-]{22}/);
+    // The address in the draft is the booking's own: asking again gives the same one.
+    const link = await call('POST', `/seat-bookings/${b.id}/self-service-link`, admin, { scope: 'booking' });
+    expect(link.status).toBe(200);
+    expect(draft.params.body).toContain((await json(link)).data.tripUrl);
   });
 
   it('travellers.collect_details counts the seats of the booking, not the lead\'s own passenger count', async () => {

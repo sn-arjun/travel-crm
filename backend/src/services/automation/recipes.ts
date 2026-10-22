@@ -11,6 +11,7 @@ import { analyzeMessage, type MessageAnalysis, type MessageEntities } from './me
 import type { DomainEvent, Proposal, Recipe, RecipeContext } from './types';
 import { formatMoney, loadLocaleContext } from '../../utils/money';
 import { loadDepartureContext } from '../departures/seat-support';
+import { resolveFeature } from '../features/resolve';
 import { nextFittingWaitlist } from '../departures/waitlist';
 import { seatsLeft } from '../departures/seat-support';
 import { childAgesFromMessages } from '../pricing/quote-fill';
@@ -2186,18 +2187,25 @@ const seatsLow: Recipe = {
 };
 
 /**
- * The self-service link of a booking (details, extras, pay) exists from R150. Until then no link can be built, so the
- * collect-details recipe is listed but proposes nothing.
+ * The self-service address of a booking (details, extras, pay), made now when it does not exist yet (the same address while it stays
+ * active). null when the agency's plan has no public pages, so nothing is proposed that could not be sent.
  */
-async function selfServiceLink(_ctx: RecipeContext, _booking: BookingRow): Promise<string | null> {
-  return null;
+async function selfServiceLink(ctx: RecipeContext, booking: BookingRow): Promise<string | null> {
+  try {
+    if (!(await resolveFeature(ctx.env, ctx.tenantId, 'public_booking')).enabled) return null;
+    const { createSelfServiceLink } = await import('../departures/self-service');
+    return (await createSelfServiceLink(ctx.env, ctx.tenantId, ctx.db, booking.id, 'booking')).tripUrl;
+  } catch (err) {
+    console.error('[recipes] self-service link not made:', err instanceof Error ? err.message : err);
+    return null;
+  }
 }
 
 const collectDepartureDetails: Recipe = {
   key: 'departures.collect_details',
   area: 'Group departures',
   title: 'Send the self-service link when seats are confirmed',
-  description: 'Drafts a message with the link where the customer adds passenger details, extras and payment. Needs the booking page (a later release); until then nothing is proposed.',
+  description: 'Drafts a message with the link where the customer adds passenger details, extras and payment. Needs the public pages feature of the plan.',
   triggers: ['seat_booking.confirmed'],
   defaultMode: 'suggest',
   autoEligible: false,

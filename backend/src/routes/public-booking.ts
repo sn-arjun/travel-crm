@@ -24,11 +24,13 @@ import { resolve as resolveLink } from '../services/public-links';
 import { loadDepartureContext, seatsLeft, type DepartureContext, type SeatCtx } from '../services/departures/seat-support';
 import { DepartureError } from '../services/departures/common';
 import { requestSeats } from '../services/departures/seats';
-import { ageOn, bandFor } from '../services/departures/passengers';
+import { ageOn, bandForAge, loadAgencyBands } from '../services/pricing/age-bands';
 import { getDepartureStops } from '../services/departures/departures';
 import { effectivePrices } from '../services/departures/tours';
 import { getGroupToursSettings, type PassengerFieldDef } from '../services/departures/settings';
 import { bankInstructions, bookingDeposit, createBookingInvoice, createDepositLink } from '../services/departures/booking-invoice';
+import { invoiceExtras, loadEffectiveExtras, MAX_EXTRA_QUANTITY, setChoices } from '../services/departures/extras';
+import { buildTripView, loadTrip, payFor, refOf, saveTravellers, type LinkScope, type TripCtx } from '../services/departures/self-service';
 import { grantMarketing, recordConsent } from '../services/privacy/consent';
 import { readWidgetConfig } from './public-chatbot';
 import { hmacSha256Hex, safeEqual, sha256Hex } from '../services/billing/gateway';
@@ -115,40 +117,6 @@ async function loadPage(c: Context<AppContext>, opts: { allowClosed: boolean }):
   const status = dep.row.status as string;
   if (!(status === 'open' || (opts.allowClosed && status === 'closed'))) return notFound(c);
   return { tenantId: link.tenantId, db, dep };
-}
-
-// ---------------------------------------------------------------- age bands
-
-interface Band {
-  key: string;
-  label: string | null;
-  minAge: number;
-}
-
-const DEFAULT_BANDS: Band[] = [
-  { key: 'adult', label: null, minAge: 12 },
-  { key: 'child', label: null, minAge: 2 },
-  { key: 'infant', label: null, minAge: 0 },
-];
-
-/**
- * The agency's age bands, highest first. Hook for R150: today this reads the agency list (setting pricing.age_bands) or the built-in
- * adult, child and infant, exactly as the passengers service does; R149 and R150 move both onto the shared age-band module.
- */
-async function loadBands(db: D1Database): Promise<Band[]> {
-  let stored: unknown = null;
-  try {
-    const row = await db.prepare(`SELECT value FROM settings WHERE key = 'pricing.age_bands'`).first<{ value: string | null }>();
-    stored = row?.value ? JSON.parse(row.value) : null;
-  } catch {
-    stored = null;
-  }
-  const list = Array.isArray(stored)
-    ? stored
-        .filter((b): b is { key: string; label?: unknown; minAge: number } => typeof b?.key === 'string' && Number.isFinite(b?.minAge))
-        .map((b) => ({ key: b.key, label: typeof b.label === 'string' && b.label.trim() ? b.label.trim() : null, minAge: b.minAge }))
-    : [];
-  return (list.length ? list : DEFAULT_BANDS).slice().sort((a, b) => b.minAge - a.minAge);
 }
 
 // ---------------------------------------------------------------- the projection
@@ -244,7 +212,7 @@ async function buildProjection(c: Context<AppContext>, page: PageCtx) {
     getDepartureStops(db, dep.row.id),
     dayTitles(db, (dep.tour.itinerary_template_id as string | null) ?? null),
     termsText(db, dep),
-    loadBands(db),
+    loadAgencyBands(db),
     seatsLeft(db, dep.row.id, dep.row.capacity),
   ]);
 
@@ -254,7 +222,7 @@ async function buildProjection(c: Context<AppContext>, page: PageCtx) {
   // Bands: the priced ones; when the tour has no band prices every band is offered unpriced.
   const bandPrices = prices.filter((p) => p.kind === 'age_band');
   const shown = bandPrices.length ? bands.filter((b) => bandPrices.some((p) => p.key === b.key)) : bands;
-  const bandOut = shown.map((b) => {
+  const bandOut: Array<{ key: string; label: string | null; minAge: number; maxAge: number | null; amount: number | null }> = shown.map((b) => {
     const higher = bands.filter((o) => o.minAge > b.minAge).sort((x, y) => x.minAge - y.minAge)[0];
     const price = bandPrices.find((p) => p.key === b.key);
     return { key: b.key, label: price?.label || b.label, minAge: b.minAge, maxAge: higher ? higher.minAge - 1 : null, amount: price ? price.amount : null };
@@ -467,7 +435,7 @@ publicBookingRoutes.post('/:token/bookings', bookIpLimit, bookTokenLimit, async 
   const stops = collects('pickupPoint') ? await getDepartureStops(db, dep.row.id) : [];
   const refToStop = new Map<string, string>();
   for (const s of stops) if (s.kind === 'pickup' || s.kind === 'both') refToStop.set(await stopRef(s.id), s.id);
-  const bands = await loadBands(db);
+  const bands = await loadAgencyBands(db);
   const bandKeys = new Set(bands.map((b) => b.key));
   const priced = (await effectivePrices(db, dep.row.tour_id, dep.row.id)).filter((p) => p.kind === 'age_band');
   for (const p of priced) bandKeys.add(p.key);
@@ -485,7 +453,7 @@ publicBookingRoutes.post('/:token/bookings', bookIpLimit, bookTokenLimit, async 
     const age = dob ? ageOn(dob, startDate) : p.ageYears ?? null;
     if (dob && dob > startDate) bad('dateOfBirth');
     if (age !== null) {
-      const computed = bandFor(bands, age);
+      const computed = bandForAge(bands, age);
       if (computed && computed !== p.band) bad('band');
     } else if (p.band !== topBand && bandKeys.has(p.band)) {
       // Anything but the top (adult) band must show an age, so a child fare cannot be claimed for an adult.
@@ -609,4 +577,217 @@ publicBookingRoutes.post('/:token/bookings', bookIpLimit, bookTokenLimit, async 
     }
   }
   return answer(201, { success: true, data: out });
+});
+
+// ================================================================ the traveller self-service page (R150)
+//
+//   GET /api/v1/public/booking/:token             the booking (or one traveller): details to collect, extras, money
+//   PUT /api/v1/public/booking/:token/passengers  save the travellers' details (and their travellers records)
+//   PUT /api/v1/public/booking/:token/extras      choose extras per person; the extras invoice follows
+//   POST /api/v1/public/booking/:token/pay        a payment link (or the bank details) for the extras, the balance or the deposit
+//
+// The token (master public_links, kind booking_self_service or passenger_self_service) names one seat booking or one passenger. The
+// same gates and the same uniform 404 as the booking page apply, except that the departure's own public-page switch is not needed (a
+// party booked by staff gets a link too); a passenger link sees and changes that passenger only, and ids reach the page as opaque
+// references.
+
+export const publicTripRoutes = new Hono<AppContext>();
+
+publicTripRoutes.use('*', async (c, next) => {
+  c.header('X-Robots-Tag', 'noindex, nofollow');
+  c.header('Cache-Control', 'no-store');
+  await next();
+});
+
+/** 60 reads / minute / IP. */
+const tripReadLimit = rateLimit({ limit: 60, windowMs: 60 * 1000, keyFn: (c) => `rl:pubtrip-get:${ip(c)}` });
+/** 30 writes / minute / token. */
+const tripWriteLimit = rateLimit({ limit: 30, windowMs: 60 * 1000, keyFn: (c) => `rl:pubtrip-write:${tokenOf(c)}` });
+/** 5 pay requests / minute / token. */
+const tripPayLimit = rateLimit({ limit: 5, windowMs: 60 * 1000, keyFn: (c) => `rl:pubtrip-pay:${tokenOf(c)}` });
+
+const TRIP_MAX_BODY_BYTES = 64 * 1024;
+
+const waiterOf = (c: Context<AppContext>): SeatCtx['waiter'] => {
+  try {
+    return c.executionCtx;
+  } catch {
+    return undefined;
+  }
+};
+
+/** token -> tenant (master) -> agency database -> plan features -> booking. A refusal is returned as a Response. */
+async function loadTripPage(c: Context<AppContext>): Promise<{ trip: TripCtx; lang: TextLanguage } | Response> {
+  const waiter = waiterOf(c);
+  const token = c.req.param('token') ?? '';
+  let scope: LinkScope = 'booking';
+  let link = await resolveLink(c.env, token, 'booking_self_service', waiter);
+  if (!link) {
+    scope = 'passenger';
+    link = await resolveLink(c.env, token, 'passenger_self_service', waiter);
+  }
+  if (!link) return notFound(c);
+  if (link.status === 'expired') return fail(c, 410, 'EXPIRED', 'en', 'public.booking.expired');
+
+  const db = await resolveTenantDb(c.env, link.tenantId);
+  if (!db) return notFound(c);
+  const [publicBooking, groupDepartures] = await Promise.all([
+    resolveFeature(c.env, link.tenantId, 'public_booking'),
+    resolveFeature(c.env, link.tenantId, 'group_departures'),
+  ]);
+  if (!publicBooking.enabled || !groupDepartures.enabled) return notFound(c);
+
+  const trip = await loadTrip(db, link.tenantId, scope, link.entityId);
+  if (!trip) return notFound(c);
+  return { trip, lang: await agencyDefaultLanguage(db) };
+}
+
+async function readJson(c: Context<AppContext>, lang: TextLanguage): Promise<unknown | Response> {
+  if (Number(c.req.header('Content-Length') || 0) > TRIP_MAX_BODY_BYTES) return fail(c, 413, 'TOO_LARGE', lang, 'public.booking.tooLarge');
+  const raw = await c.req.text();
+  if (new TextEncoder().encode(raw).length > TRIP_MAX_BODY_BYTES) return fail(c, 413, 'TOO_LARGE', lang, 'public.booking.tooLarge');
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return fail(c, 400, 'INVALID', lang, 'public.trip.invalid');
+  }
+}
+
+/** The page: the booking's own view plus the agency branding, locale and language (a fixed projection). */
+async function tripProjection(c: Context<AppContext>, trip: TripCtx) {
+  const [view, branding, locale, language, days] = await Promise.all([
+    buildTripView(trip),
+    agencyBranding(c.env, trip.tenantId, trip.db),
+    loadLocaleContext(trip.db),
+    agencyDefaultLanguage(trip.db),
+    dayTitles(trip.db, (trip.dep.tour.itinerary_template_id as string | null) ?? null),
+  ]);
+  return {
+    ...view,
+    agency: branding,
+    days,
+    locale: { locale: locale.locale, timeZone: locale.timezone, country: locale.country, phoneDefaultCountry: locale.phoneDefaultCountry },
+    language: { default: language, available: LANGUAGES },
+  };
+}
+
+/** Reads the booking again after a write, so the page is built from what is stored. */
+async function reloadTrip(trip: TripCtx): Promise<TripCtx> {
+  const fresh = await loadTrip(trip.db, trip.tenantId, trip.scope, trip.scope === 'booking' ? trip.booking.id : trip.passengers[0].id);
+  return fresh ?? trip;
+}
+
+publicTripRoutes.get('/:token', tripReadLimit, async (c) => {
+  const page = await loadTripPage(c);
+  if (page instanceof Response) return page;
+  return c.json({ success: true, data: await tripProjection(c, page.trip) });
+});
+
+const travellerSchema = z.object({
+  ref: z.string().min(1).max(40),
+  firstName: text(80).optional(),
+  lastName: text(80).optional(),
+  gender: z.enum(['male', 'female', 'other', '']).nullish(),
+  dateOfBirth: z.string().max(10).nullish(),
+  mealPreference: text(60).nullish(),
+  values: z.record(z.string().max(40), z.union([z.string().max(300), z.boolean(), z.null()])).optional(),
+});
+const travellersSchema = z.object({ passengers: z.array(travellerSchema).min(1).max(MAX_PARTY) });
+
+publicTripRoutes.put('/:token/passengers', tripWriteLimit, async (c) => {
+  const page = await loadTripPage(c);
+  if (page instanceof Response) return page;
+  const { trip, lang } = page;
+  const json = await readJson(c, lang);
+  if (json instanceof Response) return json;
+  const parsed = travellersSchema.safeParse(json);
+  if (!parsed.success) return fail(c, 400, 'INVALID', lang, 'public.trip.invalid');
+  try {
+    await saveTravellers(c.env, trip, parsed.data.passengers.map((p) => ({ ...p, gender: p.gender ?? undefined, dateOfBirth: p.dateOfBirth ?? undefined })));
+  } catch (e) {
+    if (e instanceof DepartureError && e.code === 'PASSENGER_INVALID') {
+      return fail(c, 400, 'PASSENGER_INVALID', lang, 'public.trip.required', { errors: (e.details?.errors as unknown[] | undefined) ?? [] });
+    }
+    throw e;
+  }
+  return c.json({ success: true, data: await tripProjection(c, await reloadTrip(trip)) });
+});
+
+const choicesSchema = z.object({
+  choices: z
+    .array(z.object({ passengerRef: z.string().min(1).max(40), extraRef: z.string().min(1).max(40), quantity: z.number().int().min(0).max(MAX_EXTRA_QUANTITY) }))
+    .max(600),
+});
+
+publicTripRoutes.put('/:token/extras', tripWriteLimit, async (c) => {
+  const page = await loadTripPage(c);
+  if (page instanceof Response) return page;
+  const { trip, lang } = page;
+  const json = await readJson(c, lang);
+  if (json instanceof Response) return json;
+  const parsed = choicesSchema.safeParse(json);
+  if (!parsed.success) return fail(c, 400, 'INVALID', lang, 'public.trip.invalid');
+
+  const passengerByRef = new Map<string, string>();
+  for (const p of trip.passengers) passengerByRef.set(await refOf('passenger', p.id), p.id);
+  const catalogue = await loadEffectiveExtras(trip.db, trip.dep.row.tour_id, trip.dep.row.id);
+  const extraByRef = new Map<string, string>();
+  for (const e of catalogue) extraByRef.set(await refOf('extra', e.id), e.id);
+  const choices: Array<{ passengerId: string; extraId: string; quantity: number }> = [];
+  for (const ch of parsed.data.choices) {
+    const passengerId = passengerByRef.get(ch.passengerRef);
+    const extraId = extraByRef.get(ch.extraRef);
+    if (!passengerId || !extraId) return fail(c, 400, 'INVALID_EXTRA', lang, 'public.trip.extraInvalid');
+    choices.push({ passengerId, extraId, quantity: ch.quantity });
+  }
+
+  let invoice: Awaited<ReturnType<typeof invoiceExtras>> = null;
+  try {
+    await setChoices(trip.db, trip.booking.id, choices, { via: 'self_service', enforceCutoff: true, passengerIds: trip.passengers.map((p) => p.id as string) });
+    try {
+      invoice = await invoiceExtras(c.env, trip.tenantId, trip.db, trip.booking.id, { userId: null, waiter: waiterOf(c) });
+    } catch (e) {
+      // The choices are saved whatever happens here; the agency finishes the invoice by hand.
+      if (!(e instanceof DepartureError)) console.error('[public-trip] extras invoice failed:', e);
+    }
+  } catch (e) {
+    if (e instanceof DepartureError) {
+      if (e.code === 'EXTRAS_CLOSED') return fail(c, 409, 'EXTRAS_CLOSED', lang, 'public.trip.extraClosed', {}, { extra: String(e.details?.extra ?? '') });
+      if (e.code === 'EXTRA_FULL') return fail(c, 409, 'EXTRA_FULL', lang, 'public.trip.extraFull', { left: e.details?.left ?? 0 }, { extra: String(e.details?.extra ?? '') });
+      if (e.code === 'INVALID_EXTRA') return fail(c, 400, 'INVALID_EXTRA', lang, 'public.trip.extraInvalid');
+      if (e.code === 'BOOKING_NOT_EDITABLE') return fail(c, 409, 'NOT_EDITABLE', lang, 'public.trip.notEditable');
+    }
+    throw e;
+  }
+  const data = await tripProjection(c, await reloadTrip(trip));
+  return c.json({ success: true, data: { ...data, invoiceCreated: invoice ? { number: invoice.invoiceNumber, total: invoice.total, currency: invoice.currency } : null } });
+});
+
+const paySchema = z.object({ what: z.enum(['extras', 'balance', 'deposit']) });
+
+publicTripRoutes.post('/:token/pay', tripPayLimit, async (c) => {
+  const page = await loadTripPage(c);
+  if (page instanceof Response) return page;
+  const { trip, lang } = page;
+  const json = await readJson(c, lang);
+  if (json instanceof Response) return json;
+  const parsed = paySchema.safeParse(json);
+  if (!parsed.success) return fail(c, 400, 'INVALID', lang, 'public.trip.invalid');
+  const apiBase = (c.env.API_PUBLIC_URL?.trim() || new URL(c.req.url).origin).replace(/\/+$/, '');
+  try {
+    const result = await payFor(c.env, trip, parsed.data.what, apiBase, { userId: null, waiter: waiterOf(c) });
+    if (result.kind === 'link') {
+      return c.json({ success: true, data: { payment: { url: result.url, amount: result.amount, currency: result.currency }, reference: result.invoiceNumber } });
+    }
+    if (result.kind === 'bank') {
+      return c.json({ success: true, data: { bank: { ...result.bank, amount: result.amount, currency: result.currency }, reference: result.invoiceNumber } });
+    }
+    return c.json({ success: true, data: { unavailable: true, amount: result.amount, currency: result.currency, reference: result.invoiceNumber, message: t(lang, 'public.trip.paymentUnavailable') } });
+  } catch (e) {
+    if (e instanceof DepartureError) {
+      if (e.code === 'NOTHING_DUE') return fail(c, 409, 'NOTHING_DUE', lang, 'public.trip.nothingDue');
+      if (e.code === 'BOOKING_NOT_EDITABLE') return fail(c, 409, 'NOT_EDITABLE', lang, 'public.trip.notEditable');
+    }
+    throw e;
+  }
 });

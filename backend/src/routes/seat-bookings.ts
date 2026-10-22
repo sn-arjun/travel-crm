@@ -5,6 +5,7 @@
 
 import { Hono } from 'hono';
 import type { Context } from 'hono';
+import { z } from 'zod';
 import type { ZodType } from 'zod';
 import { zValidator } from '../utils/validator';
 import type { AppContext } from '../types';
@@ -16,6 +17,10 @@ import { bulkConfirm, cancelBooking, changeSeats, confirmBooking, getBookingDeta
 import { offerBooking, runWaitlistStep } from '../services/departures/waitlist';
 import { replacePassengers } from '../services/departures/passengers';
 import { createBookingInvoice } from '../services/departures/booking-invoice';
+import { getBookingChoices, invoiceExtras, MAX_EXTRA_QUANTITY, setChoices } from '../services/departures/extras';
+import { createSelfServiceLink } from '../services/departures/self-service';
+import { requireFeature } from '../middleware/feature-gate';
+import { revoke, revokeSelfServiceFor } from '../services/public-links';
 import { announceSeats, emitCapacityEvents, loadDepartureContext, requireBookingRow, seatCtxFromRequest } from '../services/departures/seat-support';
 import {
   bulkConfirmBodySchema, cancelBodySchema, changeSeatsBodySchema, confirmBodySchema, moveBodySchema, passengersBodySchema,
@@ -129,6 +134,83 @@ seatBookings.post('/:id/invoice', rbac(['admin', 'sales_manager', 'accountant'])
     await log(c, 'update', id, { invoice: result.invoiceNumber, created: result.created });
     await announceSeats(ctx, row.departure_id, 'seat_booking.invoiced');
     return success(c, { ...result, booking: await getBookingDetail(db, id) });
+  }),
+);
+
+// ---- the self-service link (R150): one address per booking, or per passenger, where the party adds traveller details, picks extras and pays.
+// The staff screen sends it through the Communication Hub (SendMessageDialog) with a template that uses {{details_link}} / {{extras_link}}.
+
+const selfServiceLinkSchema = z.object({ scope: z.enum(['booking', 'passenger']).default('booking'), passengerId: z.string().min(1).max(64).optional() });
+
+seatBookings.post('/:id/self-service-link', requireFeature('public_booking'), requirePermission('departures', 'edit'), (c) =>
+  guarded(c, async () => {
+    const id = c.req.param('id');
+    const db = c.get('tenantDb');
+    await requireBookingRow(db, id);
+    const body = await optionalBody(c, selfServiceLinkSchema);
+    const link = await createSelfServiceLink(c.env, c.get('tenantId'), db, id, body.scope, body.passengerId);
+    await log(c, 'update', id, { selfServiceLink: body.scope });
+    return success(c, link);
+  }),
+);
+
+// Stops every self-service address of the booking and of its passengers.
+seatBookings.delete('/:id/self-service-link', requirePermission('departures', 'edit'), (c) =>
+  guarded(c, async () => {
+    const id = c.req.param('id');
+    const db = c.get('tenantDb');
+    await requireBookingRow(db, id);
+    const { results } = await db.prepare('SELECT id FROM seat_passengers WHERE seat_booking_id = ?').bind(id).all<{ id: string }>();
+    const stopped =
+      (await revoke(c.env, 'booking_self_service', id, c.get('tenantId'))) +
+      (await revokeSelfServiceFor(c.env, c.get('tenantId'), { seatBookingIds: [], passengerIds: (results ?? []).map((r) => r.id) }));
+    await log(c, 'update', id, { selfServiceLink: 'stopped', stopped });
+    return success(c, { stopped });
+  }),
+);
+
+// ---- extras chosen for the booking's passengers (R150). Staff are not held to the cut-off.
+
+seatBookings.get('/:id/extras', requirePermission('departures', 'view'), (c) =>
+  guarded(c, async () => {
+    const id = c.req.param('id');
+    await requireBookingRow(c.get('tenantDb'), id);
+    return success(c, { choices: await getBookingChoices(c.get('tenantDb'), id) });
+  }),
+);
+
+const staffChoicesSchema = z.object({
+  choices: z.array(z.object({ passengerId: z.string().min(1).max(64), extraId: z.string().min(1).max(64), quantity: z.number().int().min(0).max(MAX_EXTRA_QUANTITY) })).max(600),
+  /** The passengers whose choices these are; the others keep theirs. Omitted: every passenger of the booking. */
+  passengerIds: z.array(z.string().min(1).max(64)).max(100).optional(),
+  /** Make or refresh the extras invoice afterwards (default). */
+  invoice: z.boolean().optional(),
+});
+
+seatBookings.put('/:id/extras', requirePermission('departures', 'edit'), zValidator('json', staffChoicesSchema), (c) =>
+  guarded(c, async () => {
+    const id = c.req.param('id');
+    const db = c.get('tenantDb');
+    await requireBookingRow(db, id);
+    const body = c.req.valid('json');
+    const result = await setChoices(db, id, body.choices, { via: 'staff', enforceCutoff: false, passengerIds: body.passengerIds });
+    const ctx = seatCtxFromRequest(c);
+    const invoice = body.invoice === false ? null : await invoiceExtras(c.env, c.get('tenantId'), db, id, { userId: c.get('userId'), depth: ctx.depth, waiter: ctx.waiter });
+    await log(c, 'update', id, { extras: result.changed });
+    return success(c, { ...result, invoice, choices: await getBookingChoices(db, id) });
+  }),
+);
+
+// The extras invoice (one per booking, refreshed while nothing is paid on it).
+seatBookings.post('/:id/extras-invoice', rbac(['admin', 'sales_manager', 'accountant']), (c) =>
+  guarded(c, async () => {
+    const id = c.req.param('id');
+    const db = c.get('tenantDb');
+    await requireBookingRow(db, id);
+    const ctx = seatCtxFromRequest(c);
+    const invoice = await invoiceExtras(c.env, c.get('tenantId'), db, id, { userId: c.get('userId'), depth: ctx.depth, waiter: ctx.waiter });
+    if (invoice) await log(c, 'update', id, { extrasInvoice: invoice.invoiceNumber, created: invoice.created });
+    return success(c, { invoice, choices: await getBookingChoices(db, id) });
   }),
 );
 

@@ -22,7 +22,9 @@ export async function resolveVariables(
   db: D1Database,
   contactId: string,
   leadId?: string,
-  tenantSettings?: Record<string, string>
+  tenantSettings?: Record<string, string>,
+  /** Self-service addresses of a booking (R150): the staff screen supplies them, the templates use {details_link} and {extras_link}. */
+  selfService?: { details_link?: string | null; extras_link?: string | null },
 ): Promise<Record<string, string | null>> {
   const drizzleDb = drizzle(db);
 
@@ -38,6 +40,8 @@ export async function resolveVariables(
     agent_name: null,
     company_name: null,
     company_phone: null,
+    details_link: selfService?.details_link ?? null,
+    extras_link: selfService?.extras_link ?? null,
   };
 
   try {

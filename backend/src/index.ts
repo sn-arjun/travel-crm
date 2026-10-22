@@ -95,7 +95,7 @@ import aiIntelligenceRoutes from './routes/ai-intelligence';
 import chatbotRoutes from './routes/chatbot';
 import { publicChatbotRoutes, chatbotWebhookRoutes } from './routes/public-chatbot';
 import { publicEnquiryRoutes, adminEnquiryRoutes } from './routes/public-enquiries';
-import { publicBookingRoutes } from './routes/public-booking';
+import { publicBookingRoutes, publicTripRoutes } from './routes/public-booking';
 import businessIntelligenceRoutes from './routes/business-intelligence';
 import aiSettingsRoutes from './routes/ai-settings';
 import whatsappCampaignRoutes from './routes/whatsapp-campaigns';
@@ -213,6 +213,9 @@ app.route('/api/public/enquiries', publicEnquiryRoutes);
 // The booking page of a departure (R148): the token names the departure, no login.
 app.route('/api/v1/public/departures', publicBookingRoutes);
 app.route('/api/public/departures', publicBookingRoutes);
+// The traveller self-service page of a booking or a traveller (R150): the token names the booking, no login.
+app.route('/api/v1/public/booking', publicTripRoutes);
+app.route('/api/public/booking', publicTripRoutes);
 
 // Subscription billing: gateway webhooks (signature is the credential) and the local mock checkout
 app.route('/api/v1/billing', billingPublicRoutes);
