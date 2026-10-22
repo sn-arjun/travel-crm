@@ -1122,6 +1122,14 @@ export const TENANT_MIGRATIONS: BundledMigration[] = [
     ]
   },
   {
+    "name": "0060_age_bands.sql",
+    "queries": [
+      "-- R149: age-band pricing on templates and quotes (design 4.2 and 14).\n--\n-- itinerary_templates.age_bands  the template's own band list (JSON); NULL = use the agency's bands (setting pricing.age_bands).\n-- itineraries.age_bands          snapshot of the band list the quantities were filled with (JSON); NULL = the agency's bands.\n-- itineraries.pax_ages           what the last fill used: {\"adults\":2,\"ages\":[8,5],\"source\":\"ages\"} (JSON).\nALTER TABLE itinerary_templates ADD COLUMN age_bands TEXT",
+      "ALTER TABLE itineraries ADD COLUMN age_bands TEXT",
+      "ALTER TABLE itineraries ADD COLUMN pax_ages TEXT"
+    ]
+  },
+  {
     "name": "0061_chatbot_contact_capture.sql",
     "queries": [
       "-- R151: the website chat can ask the visitor for name, email and phone.\n--\n-- chatbot_config.contact_capture is the agency's setting (JSON, design 4.8); NULL means \"never ask\" (today's behaviour).\n-- The conversation keeps the consent the visitor gave: when, the exact text shown, and whether the marketing box was ticked.\n-- Consent rows (contact_consents) are written as soon as the conversation belongs to a contact.\nALTER TABLE chatbot_config ADD COLUMN contact_capture TEXT",

@@ -399,7 +399,14 @@ const createItineraryFromTemplate: ActionDefinition = {
   module: 'itineraries',
   permission: 'create',
   risk: 'medium',
-  schema: z.object({ templateId: z.string().min(1), leadId: z.string().min(1), title: z.string().min(1).max(200) }),
+  // adults and ages (R149) come from the message reader so the quote already has the band quantities.
+  schema: z.object({
+    templateId: z.string().min(1),
+    leadId: z.string().min(1),
+    title: z.string().min(1).max(200),
+    adults: z.number().int().min(0).max(200).optional(),
+    ages: z.array(z.number().min(0).max(120)).max(100).optional(),
+  }),
   async execute(ctx, p) {
     const res = must(await ctx.api('POST', '/itinerary-templates/create-from', p), 'Could not create the itinerary');
     return {

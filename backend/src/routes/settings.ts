@@ -19,6 +19,8 @@ import { DEFAULT_VAT_RATES, loadTaxSettings, normalizeCountry } from '../service
 import { normalizeBankDetails, validateBankDetails } from '../utils/bank-details';
 import { loadPaymentDefaults, normalizePaymentDefaults, PAYMENT_DEFAULTS_KEY } from '../services/payments/accounts';
 import { STRIPE_METHOD_CURRENCIES } from '../services/payments/agency-gateway';
+import { requireFeature } from '../middleware/feature-gate';
+import { AGE_BANDS_SETTING_KEY, DEFAULT_AGE_BANDS, loadAgencyBands, parseBands } from '../services/pricing/age-bands';
 
 const settingsRoutes = new Hono<AppContext>();
 
@@ -411,6 +413,48 @@ settingsRoutes.put(
     return success(c, { message: 'Itinerary defaults updated', defaults: body });
   }
 );
+
+// ============================================================
+// GET / PUT /age-bands — The agency's age bands for template lines and quote quantities (R149, design 4.2)
+// ============================================================
+
+async function ageBandsPayload(db: D1Database) {
+  const row = await db.prepare('SELECT value FROM settings WHERE key = ?').bind(AGE_BANDS_SETTING_KEY).first<{ value: string | null }>();
+  return { bands: await loadAgencyBands(db), defaults: DEFAULT_AGE_BANDS, isDefault: !row?.value };
+}
+
+settingsRoutes.get('/age-bands', requireFeature('age_band_pricing'), async (c) => success(c, await ageBandsPayload(c.get('tenantDb'))));
+
+const ageBandsSchema = z.object({
+  // null (or an empty list) goes back to adult, child and infant.
+  bands: z.array(z.object({ key: z.string().max(30).optional(), label: z.string().trim().max(40).optional(), minAge: z.number() })).max(8).nullable(),
+});
+
+settingsRoutes.put('/age-bands', requireFeature('age_band_pricing'), rbac(['admin']), zValidator('json', ageBandsSchema), async (c) => {
+  const db = drizzle(c.get('tenantDb'));
+  const userId = c.get('userId');
+  const { bands } = c.req.valid('json');
+  const now = new Date().toISOString();
+
+  if (!bands || bands.length === 0) {
+    await db.delete(settings).where(eq(settings.key, AGE_BANDS_SETTING_KEY));
+  } else {
+    const parsed = parseBands(bands);
+    if (parsed.error) return error(c, parsed.error, 400);
+    const value = JSON.stringify(parsed.bands);
+    const [existing] = await db.select().from(settings).where(eq(settings.key, AGE_BANDS_SETTING_KEY)).limit(1);
+    if (existing) await db.update(settings).set({ value, updatedBy: userId, updatedAt: now }).where(eq(settings.key, AGE_BANDS_SETTING_KEY));
+    else await db.insert(settings).values({ key: AGE_BANDS_SETTING_KEY, value, updatedBy: userId, updatedAt: now });
+  }
+  await logActivity(db, {
+    userId,
+    action: 'update_settings',
+    entityType: 'settings',
+    details: JSON.stringify({ key: AGE_BANDS_SETTING_KEY }),
+    ipAddress: c.get('clientIp'),
+  });
+  return success(c, await ageBandsPayload(c.get('tenantDb')));
+});
 
 // ============================================================
 // GET /invoice-defaults — Get invoice default settings (TICKET-126)

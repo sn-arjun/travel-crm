@@ -9,6 +9,7 @@ import {
   fitsSql, loadDepartureContext, requireBookingRow, type DepartureContext, type SeatCtx,
 } from './seat-support';
 import { seatsInUse } from './capacity';
+import { ageOn, bandForAge, loadAgencyBands } from '../pricing/age-bands';
 import type { PassengerInput } from '../../validators/seat-bookings';
 
 type Row = Record<string, any>;
@@ -73,29 +74,8 @@ export async function getPassengers(db: D1Database, bookingId: string): Promise<
 
 // ---------------------------------------------------------------- age bands
 
-interface AgeBand { key: string; minAge: number }
-
-const DEFAULT_BANDS: AgeBand[] = [{ key: 'adult', minAge: 12 }, { key: 'child', minAge: 2 }, { key: 'infant', minAge: 0 }];
-
-/** The agency's age bands (setting pricing.age_bands, R149) or the built-in adult, child and infant. R149 replaces this with the shared module. */
-async function loadBands(db: D1Database): Promise<AgeBand[]> {
-  const row = await db.prepare(`SELECT value FROM settings WHERE key = 'pricing.age_bands'`).first<{ value: string | null }>();
-  const stored = parseJson<unknown>(row?.value, null);
-  const list = Array.isArray(stored) ? stored.filter((b): b is AgeBand => typeof b?.key === 'string' && Number.isFinite(b?.minAge)) : [];
-  return (list.length ? list : DEFAULT_BANDS).slice().sort((a, b) => b.minAge - a.minAge);
-}
-
-/** Whole years on `onDate` for someone born on `dob` (both 'YYYY-MM-DD'). */
-export function ageOn(dob: string, onDate: string): number {
-  const [by, bm, bd] = dob.slice(0, 10).split('-').map(Number);
-  const [y, m, d] = onDate.slice(0, 10).split('-').map(Number);
-  return y - by - (m < bm || (m === bm && d < bd) ? 1 : 0);
-}
-
-export function bandFor(bands: AgeBand[], age: number | null): string | null {
-  if (age === null || age < 0) return null;
-  return bands.find((b) => age >= b.minAge)?.key ?? null;
-}
+// The resolver is shared with templates and quotes (R149); these names stay for the callers and tests that already use them.
+export { ageOn, bandForAge as bandFor };
 
 // ---------------------------------------------------------------- validation
 
@@ -150,7 +130,7 @@ export async function preparePassengers(db: D1Database, dep: DepartureContext, i
 
   const [{ results: stopRows }, bands, ownRows, { results: takenSeats }] = await Promise.all([
     db.prepare('SELECT id FROM departure_stops WHERE departure_id = ?').bind(dep.row.id).all<{ id: string }>(),
-    loadBands(db),
+    loadAgencyBands(db),
     bookingId ? db.prepare('SELECT id FROM seat_passengers WHERE seat_booking_id = ?').bind(bookingId).all<{ id: string }>() : Promise.resolve({ results: [] as Array<{ id: string }> }),
     db
       .prepare(`SELECT seat_number FROM seat_passengers WHERE departure_id = ? AND status = 'active' AND seat_number IS NOT NULL AND seat_booking_id != ?`)
@@ -208,7 +188,7 @@ export async function preparePassengers(db: D1Database, dep: DepartureContext, i
       gender: p.gender ?? null,
       dateOfBirth: p.dateOfBirth ?? null,
       ageYears: p.dateOfBirth ? null : (p.ageYears ?? null),
-      bandKey: bandFor(bands, age),
+      bandKey: bandForAge(bands, age),
       pickupStopId: p.pickupStopId ?? null,
       roomType: p.roomType ?? null,
       shareOk: !!p.shareOk,

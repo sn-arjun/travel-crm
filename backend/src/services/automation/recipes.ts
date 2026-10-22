@@ -13,6 +13,10 @@ import { formatMoney, loadLocaleContext } from '../../utils/money';
 import { loadDepartureContext } from '../departures/seat-support';
 import { nextFittingWaitlist } from '../departures/waitlist';
 import { seatsLeft } from '../departures/seat-support';
+import { childAgesFromMessages } from '../pricing/quote-fill';
+
+/** "8 and 5", "9, 6 and 2". */
+const joinAgesText = (ages: number[]): string => (ages.length < 2 ? ages.join('') : `${ages.slice(0, -1).join(', ')} and ${ages[ages.length - 1]}`);
 
 const OPEN_LEAD_SQL = `status NOT IN ('won', 'lost', 'booking_confirmed', 'completed') AND COALESCE(is_deleted, 0) = 0`;
 
@@ -497,11 +501,17 @@ const suggestTemplate: Recipe = {
     if (!best) return [];
 
     const contact = await loadContact(ctx, lead.contact_id);
+    // R149: the children's ages the message reader found, so the one-click quote already has the band quantities.
+    const messageIds = Array.isArray(event.payload.sourceMessageIds) ? (event.payload.sourceMessageIds as string[]) : undefined;
+    const ages = await childAgesFromMessages(ctx.db, lead.id, lead.contact_id, messageIds);
+    const adults = lead.pax_adults ?? 1;
+    const party = ages.length > 0 ? { adults, ages } : {};
+    const partyNote = ages.length > 0 ? `${adults} adult${adults === 1 ? '' : 's'}, ${ages.length === 1 ? 'child' : 'children'} ${joinAgesText(ages)}` : null;
     return [{
       action: 'create_itinerary_from_template',
       title: `Build the itinerary from "${best.title}"`,
-      reason: `Closest template: ${best.why.join(', ')}`,
-      params: { templateId: best.id, leadId: lead.id, title: `${contact?.name ?? lead.title}: ${best.title}`.slice(0, 200) },
+      reason: `Closest template: ${[...best.why, ...(partyNote ? [partyNote] : [])].join(', ')}`,
+      params: { templateId: best.id, leadId: lead.id, title: `${contact?.name ?? lead.title}: ${best.title}`.slice(0, 200), ...party },
       entityType: 'lead',
       entityId: lead.id,
       contactId: lead.contact_id,

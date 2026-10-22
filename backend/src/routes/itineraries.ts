@@ -24,6 +24,8 @@ import { agencyEmailHtml, escapeHtml, queueAgencyEmail, textToHtml } from '../se
 import { success, created, paginated, error, notFound } from '../utils/response';
 import { requireFeature } from '../middleware/feature-gate';
 import { getDepartureSummary } from '../services/departures/capacity';
+import { bandsFromColumn, bandsFor, countByBand, fillQuantities, loadAgencyBands } from '../services/pricing/age-bands';
+import { paxFromAges, paxFromLead, paxFromTravellers, travelDateFor, type ResolvedPax } from '../services/pricing/quote-fill';
 
 const itineraryRoutes = new Hono<AppContext>();
 
@@ -44,8 +46,10 @@ const itineraryItemSchema = z.object({
   markupValue: z.number().optional().nullable(),
   taxRate: z.number().min(0).optional().default(0),
   taxAmount: z.number().min(0).optional().default(0),
-  quantity: z.number().int().min(1).optional().default(1),
-  paxType: z.enum(['adult', 'child', 'infant']).optional().nullable(),
+  // 0 is a band nobody falls in (R149).
+  quantity: z.number().int().min(0).optional().default(1),
+  // A band key of the agency (adult, child, infant or its own) or per_person (R149).
+  paxType: z.string().regex(/^[a-z0-9_]{1,30}$/).optional().nullable(),
   timeStart: z.string().optional().nullable(),
   timeEnd: z.string().optional().nullable(),
   sortOrder: z.number().int().optional().default(0),
@@ -107,12 +111,24 @@ const cloneSchema = z.object({
 
 const shareLinkSchema = z.object({});
 
+const fillQuantitiesSchema = z.object({
+  source: z.enum(['ages', 'travellers', 'lead']),
+  adults: z.number().int().min(0).max(200).optional(),
+  ages: z.array(z.number().min(0).max(120)).max(100).optional(),
+  travellerIds: z.array(z.string().min(1)).max(100).optional(),
+});
+
+function parseJsonColumn(value: string | null | undefined): unknown {
+  if (!value) return null;
+  try { return JSON.parse(value); } catch { return null; }
+}
+
 // ============================================================
 // Helper: Calculate totals from days/items
 // ============================================================
 
 function calculateTotals(
-  days: Array<{ items: Array<{ costPrice?: number; sellingPrice?: number; taxRate?: number; quantity?: number }> }>,
+  days: Array<{ items: Array<{ costPrice?: number | null; sellingPrice?: number | null; taxRate?: number | null; quantity?: number | null }> }>,
   markupType?: string | null,
   markupValue?: number | null
 ) {
@@ -122,7 +138,7 @@ function calculateTotals(
 
   for (const day of days) {
     for (const item of day.items) {
-      const qty = item.quantity || 1;
+      const qty = item.quantity ?? 1;
       const cost = (item.costPrice || 0) * qty;
       const selling = (item.sellingPrice || 0) * qty;
       const tax = selling * ((item.taxRate || 0) / 100);
@@ -189,6 +205,8 @@ async function getFullItinerary(db: ReturnType<typeof drizzle>, itineraryId: str
     ...itin,
     inclusions: itin.inclusions ? JSON.parse(itin.inclusions) : [],
     exclusions: itin.exclusions ? JSON.parse(itin.exclusions) : [],
+    ageBands: bandsFromColumn(itin.ageBands),
+    paxAges: parseJsonColumn(itin.paxAges),
     isDeleted: !!itin.isDeleted,
     shareLinkActive: !!itin.shareLinkActive,
     days: daysWithItems,
@@ -352,7 +370,7 @@ itineraryRoutes.post('/', requirePermission('itineraries', 'create'), zValidator
         markupValue: item.markupValue || null,
         taxRate: item.taxRate || 0,
         taxAmount: item.taxAmount || 0,
-        quantity: item.quantity || 1,
+        quantity: item.quantity ?? 1,
         paxType: item.paxType || null,
         timeStart: item.timeStart || null,
         timeEnd: item.timeEnd || null,
@@ -467,7 +485,7 @@ itineraryRoutes.put('/:id', requirePermission('itineraries', 'edit'), zValidator
           markupValue: item.markupValue || null,
           taxRate: item.taxRate || 0,
           taxAmount: item.taxAmount || 0,
-          quantity: item.quantity || 1,
+          quantity: item.quantity ?? 1,
           paxType: item.paxType || null,
           timeStart: item.timeStart || null,
           timeEnd: item.timeEnd || null,
@@ -566,6 +584,8 @@ itineraryRoutes.post('/:id/clone', requirePermission('itineraries', 'create'), z
     grandTotal: original.grandTotal,
     markupType: original.markupType,
     markupValue: original.markupValue,
+    ageBands: original.ageBands ? JSON.stringify(original.ageBands) : null,
+    paxAges: original.paxAges ? JSON.stringify(original.paxAges) : null,
     createdBy: userId,
     createdAt: now,
     updatedAt: now,
@@ -676,6 +696,8 @@ itineraryRoutes.post('/:id/new-version', requirePermission('itineraries', 'creat
     grandTotal: original.grandTotal,
     markupType: original.markupType,
     markupValue: original.markupValue,
+    ageBands: original.ageBands ? JSON.stringify(original.ageBands) : null,
+    paxAges: original.paxAges ? JSON.stringify(original.paxAges) : null,
     createdBy: userId,
     createdAt: now,
     updatedAt: now,
@@ -734,6 +756,85 @@ itineraryRoutes.post('/:id/new-version', requirePermission('itineraries', 'creat
   });
 
   return created(c, { id: newId, version: newVersion });
+});
+
+// ============================================================
+// POST /:id/fill-quantities — Fill the band quantities from ages, travellers or the lead (R149, design 14)
+// ============================================================
+
+itineraryRoutes.post('/:id/fill-quantities', requireFeature('age_band_pricing'), requirePermission('itineraries', 'edit'), zValidator('json', fillQuantitiesSchema), async (c) => {
+  const tenantDb = c.get('tenantDb');
+  const db = drizzle(tenantDb);
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const body = c.req.valid('json');
+  const apply = ['1', 'true'].includes(c.req.query('apply') ?? '');
+
+  const [itin] = await db.select().from(itineraries).where(and(eq(itineraries.id, id), eq(itineraries.isDeleted, 0)));
+  if (!itin) return notFound(c, 'Itinerary');
+
+  const bands = bandsFor(bandsFromColumn(itin.ageBands), await loadAgencyBands(tenantDb));
+  const travelDate = await travelDateFor(tenantDb, { departureId: itin.departureId, leadId: itin.leadId });
+
+  let pax: ResolvedPax | null;
+  if (body.source === 'ages') {
+    let adults = body.adults;
+    if (adults === undefined) adults = (await tenantDb.prepare('SELECT pax_adults FROM leads WHERE id = ?').bind(itin.leadId).first<{ pax_adults: number | null }>())?.pax_adults ?? 1;
+    pax = paxFromAges(adults, body.ages ?? []);
+  } else if (body.source === 'travellers') {
+    if (!body.travellerIds?.length) return error(c, 'Pick at least one traveller', 400, { code: 'NO_TRAVELLERS' });
+    pax = await paxFromTravellers(tenantDb, body.travellerIds, travelDate);
+  } else {
+    pax = await paxFromLead(tenantDb, itin.leadId);
+  }
+  if (!pax) return notFound(c, 'Lead');
+
+  const items = await tenantDb
+    .prepare(
+      `SELECT i.id, i.title, i.pax_type, i.quantity FROM itinerary_items i JOIN itinerary_days d ON d.id = i.day_id
+       WHERE d.itinerary_id = ? ORDER BY d.day_number, i.sort_order`,
+    )
+    .bind(id)
+    .all<{ id: string; title: string; pax_type: string | null; quantity: number | null }>();
+  const rows = items.results ?? [];
+  const changes = fillQuantities(rows.map((r) => ({ id: r.id, paxType: r.pax_type, quantity: r.quantity })), bands, pax);
+  const titleOf = new Map(rows.map((r) => [r.id, r]));
+  const { counts, total } = countByBand(bands, pax);
+  const summary = {
+    source: pax.source,
+    travelDate,
+    bands,
+    counts,
+    total,
+    adults: pax.adults ?? 0,
+    ages: pax.ages ?? [],
+    unknown: pax.unknown,
+    lines: changes.map((ch) => ({ ...ch, title: titleOf.get(ch.id)?.title ?? '', paxType: titleOf.get(ch.id)?.pax_type ?? null })),
+  };
+  if (!apply) return success(c, { ...summary, applied: false });
+
+  const now = new Date().toISOString();
+  const statements = changes.map((ch) => tenantDb.prepare('UPDATE itinerary_items SET quantity = ? WHERE id = ?').bind(ch.to, ch.id));
+  for (let i = 0; i < statements.length; i += 80) await tenantDb.batch(statements.slice(i, i + 80));
+
+  // Totals from the lines as they now stand, with the quote's own markup.
+  const full = await getFullItinerary(db, id);
+  const totals = calculateTotals(full?.days ?? [], itin.markupType, itin.markupValue);
+  const paxAges = { adults: pax.adults ?? 0, ages: pax.ages ?? [], children: pax.children ?? 0, infants: pax.infants ?? 0, source: pax.source };
+  await db
+    .update(itineraries)
+    .set({ ...totals, ageBands: itin.ageBands ?? JSON.stringify(bands), paxAges: JSON.stringify(paxAges), updatedAt: now })
+    .where(eq(itineraries.id, id));
+
+  await logActivity(db, {
+    userId,
+    action: 'update',
+    entityType: 'itinerary',
+    entityId: id,
+    details: JSON.stringify({ fillQuantities: body.source, lines: changes.length }),
+    ipAddress: c.get('clientIp'),
+  });
+  return success(c, { ...summary, applied: true, totals });
 });
 
 // ============================================================

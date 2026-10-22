@@ -253,6 +253,8 @@ export const itineraries = sqliteTable('itineraries', {
   lastViewedAt: text('last_viewed_at'),
   departureId: text('departure_id').references((): AnySQLiteColumn => departures.id), // R139: the group departure the quote is for
   seatsRequested: integer('seats_requested'),
+  ageBands: text('age_bands'), // R149: JSON snapshot of the band list the quantities were filled with; NULL = the agency's bands
+  paxAges: text('pax_ages'), // R149: JSON {adults, ages, source} used for the last fill
   isDeleted: integer('is_deleted').default(0),
   createdBy: text('created_by').references(() => users.id),
   createdAt: text('created_at').default(timestamp),
@@ -297,7 +299,7 @@ export const itineraryItems = sqliteTable('itinerary_items', {
   taxRate: real('tax_rate').default(0),
   taxAmount: real('tax_amount').default(0),
   quantity: integer('quantity').default(1),
-  paxType: text('pax_type'), // adult, child, infant
+  paxType: text('pax_type'), // a band key (adult, child, infant or the agency's own, R149) or per_person
   timeStart: text('time_start'),
   timeEnd: text('time_end'),
   sortOrder: integer('sort_order').default(0),
@@ -321,6 +323,7 @@ export const itineraryTemplates = sqliteTable('itinerary_templates', {
   durationDays: integer('duration_days'),
   category: text('category'), // beach, mountain, heritage, adventure, honeymoon, family, corporate, pilgrimage, custom
   templateData: text('template_data'), // full JSON snapshot of days+items
+  ageBands: text('age_bands'), // R149: the template's own band list (JSON); NULL = the agency's bands
   isSystem: integer('is_system').default(0),
   createdBy: text('created_by').references(() => users.id),
   createdAt: text('created_at').default(timestamp),

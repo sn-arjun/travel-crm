@@ -1164,6 +1164,8 @@ invoiceRoutes.post('/from-itinerary', zValidator('json', fromItinerarySchema), a
         .all<Record<string, any>>();
 
       for (const item of (items.results || [])) {
+        // A band line nobody falls in (quantity 0, R149) is not invoiced.
+        if (item.quantity === 0) continue;
         const itemType = ((item.type as string) || 'activity').toLowerCase();
         invoiceItems.push({
           description: `Day ${day.day_number}: ${item.title || item.description || itemType}`,
