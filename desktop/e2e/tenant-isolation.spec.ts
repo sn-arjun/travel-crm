@@ -241,15 +241,22 @@ test.describe('Tenant isolation: three agencies, three plans', () => {
   });
 
   test("plan gates follow each agency's own plan", async () => {
-    // ai_intelligence is an enterprise-only feature in the plan catalogue (R109).
-    for (const k of ['A', 'B'] as Key[]) {
-      const gated = await get(k, '/ai/intelligence/anything');
-      expect(gated.status, `${PLANS[k]} must be refused`).toBe(403);
+    // Plan catalogue since master 0026 (docs/PRICING.md): ai_chatbot is Enterprise only, ai_intelligence is Pro and up.
+    const refused = async (k: Key, path: string) => {
+      const gated = await get(k, path);
+      expect(gated.status, `${PLANS[k]} must be refused ${path}`).toBe(403);
       expect(gated.json.upgrade).toBe(true);
       expect(gated.json.currentPlan).toBe(PLANS[k]);
-    }
-    const open = await get('C', '/ai/intelligence/anything');
-    expect(open.status, 'enterprise passes the gate').not.toBe(403);
+    };
+    const passes = async (k: Key, path: string) =>
+      expect((await get(k, path)).status, `${PLANS[k]} passes the gate on ${path}`).not.toBe(403);
+
+    await refused('A', '/chatbot/anything');
+    await refused('B', '/chatbot/anything');
+    await passes('C', '/chatbot/anything');
+    await refused('A', '/ai/intelligence/anything');
+    await passes('B', '/ai/intelligence/anything');
+    await passes('C', '/ai/intelligence/anything');
   });
 
   test("realtime: a broadcast in one agency is not received by another agency's socket", async () => {
