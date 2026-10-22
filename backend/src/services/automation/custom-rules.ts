@@ -21,6 +21,7 @@ export const CUSTOM_TRIGGERS = [
   { value: 'lead.status_changed', label: 'A lead changes status' },
   { value: 'message.received', label: 'A customer message arrives on a lead' },
   { value: 'itinerary.sent', label: 'A quote is sent' },
+  { value: 'quote.accepted', label: 'A customer accepts a quote' },
   { value: 'payment.recorded', label: 'A payment is recorded' },
 ] as const;
 
