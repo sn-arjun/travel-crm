@@ -20,6 +20,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { narrationSeconds as partSeconds } from './narration-gate.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const desktop = path.join(root, 'desktop');
@@ -75,10 +76,7 @@ function narrationSeconds(f) {
   if (!fs.existsSync(m)) return null;
   const clipFile = path.join(studio, 'clips', `${clipName}.json`);
   const clip = fs.existsSync(clipFile) ? JSON.parse(fs.readFileSync(clipFile, 'utf8')) : { scenes: [] };
-  const sceneOf = (line) => clip.scenes[Number(/^n(d+)$/.exec(line.id)?.[1])];
-  const mine = (s) => !f.clip || (s && (s.recording ?? clip.recording) === f.id);
-  const speedOf = (s) => (s && (s.type === 'screen' || s.type === 'phone') ? s.speed ?? 1 : 1);
-  return JSON.parse(fs.readFileSync(m, 'utf8')).lines.reduce((n, l) => { const s = sceneOf(l); return mine(s) ? n + (l.duration + 0.65) * speedOf(s) : n; }, 0);
+  return partSeconds(f, clip, JSON.parse(fs.readFileSync(m, 'utf8')).lines);
 }
 function reseed() {
   must(run(node, ['--no-warnings', path.join(root, 'backend/scripts/seed-demo.mjs')]), 'seed-demo');
