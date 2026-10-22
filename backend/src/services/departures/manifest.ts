@@ -472,13 +472,23 @@ export function suggestRoomGroups(passengers: RoomCandidate[], occupancy: Map<st
   const out: RoomSuggestion[] = [];
   for (const [type, list] of [...byType.entries()].sort((a, b) => naturalCompare(a[0], b[0]))) {
     const size = occupancy.get(type)!;
-    const pool = list.slice().sort((a, b) => naturalCompare(a.bookingId, b.bookingId));
+    // People who asked for a same-gender room are placed first, so the result does not depend on booking order (an
+    // unconstrained passenger taken first could otherwise use up the only match of a constrained one); then larger
+    // parties, so a booking's own members fill a room before a solo traveller takes one of them.
+    const partySize = new Map<string, number>();
+    for (const p of list) partySize.set(p.bookingId, (partySize.get(p.bookingId) ?? 0) + 1);
+    const pool = list.slice().sort((a, b) =>
+      Number(b.shareGender) - Number(a.shareGender)
+      || partySize.get(b.bookingId)! - partySize.get(a.bookingId)!
+      || naturalCompare(a.bookingId, b.bookingId));
     const taken = new Set<string>();
     for (const p of pool) {
       if (taken.has(p.id)) continue;
       const room = [p];
       taken.add(p.id);
-      for (const q of pool) {
+      // Same booking first, then the rest in pool order.
+      const order = [...pool.filter((q) => q.bookingId === p.bookingId), ...pool.filter((q) => q.bookingId !== p.bookingId)];
+      for (const q of order) {
         if (room.length >= size) break;
         if (taken.has(q.id)) continue;
         if ((p.shareGender || q.shareGender) && (!p.gender || p.gender !== q.gender)) continue;

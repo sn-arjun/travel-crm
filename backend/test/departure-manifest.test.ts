@@ -110,6 +110,27 @@ describe('pure rules', () => {
     );
     expect(out.map((r) => [r.room, r.passengers.map((x) => x.id)])).toEqual([['10', ['a', 'c']], ['11', ['b', 'd']]]);
   });
+
+  it('gives the same pairs whatever the booking order, so a same-gender request is not used up by someone else', () => {
+    const p = (id: string, bookingId: string, gender: string, shareGender = false) => ({
+      id, name: id, bookingId, gender, roomType: 'double', shareOk: true, shareGender, roomGroup: null as string | null,
+    });
+    const ida = p('ida', 'b2', 'female', true);
+    const jan = p('jan', 'b1', 'male');
+    const kim = p('kim', 'b3', 'female');
+    for (const order of [[ida, jan, kim], [jan, ida, kim], [kim, jan, ida], [jan, kim, ida]]) {
+      const out = suggestRoomGroups(order, new Map([['double', 2]]));
+      expect(out.map((r) => r.passengers.map((x) => x.id).sort())).toEqual([['ida', 'kim']]);
+    }
+  });
+
+  it('keeps people of one booking together before pairing across bookings', () => {
+    const p = (id: string, bookingId: string) => ({
+      id, name: id, bookingId, gender: 'female', roomType: 'double', shareOk: true, shareGender: false, roomGroup: null as string | null,
+    });
+    const out = suggestRoomGroups([p('a1', 'b1'), p('x', 'b0'), p('a2', 'b1')], new Map([['double', 2]]));
+    expect(out.map((r) => r.passengers.map((x) => x.id).sort())).toContainEqual(['a1', 'a2']);
+  });
 });
 
 describe('pickup list', () => {
