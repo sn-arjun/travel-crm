@@ -25,6 +25,7 @@ import { ManifestTab } from '../_components/manifest-tab';
 import { DepartureOverview } from '../_components/departure-overview';
 import { DepartureCostsTab, DeparturePricesTab, DepartureStopsTab } from '../_components/departure-data-tabs';
 import { HoldSeatsDialog } from '../_components/hold-seats-dialog';
+import { PublicPageCard } from '../_components/public-page-card';
 import { DepartureStatusMenu } from '../_components/status-menu';
 import { WaitlistPanel } from '../_components/waitlist-panel';
 
@@ -172,6 +173,9 @@ export default function DepartureDetailPage() {
 
         <TabsContent value="overview" className="pt-ds-4">
           <DepartureOverview key={departure.updatedAt ?? departure.id} departure={departure} tour={tour} settings={settings} canEdit={canEdit} onSaved={(d) => { setDeparture(d); }} />
+          <div className="pt-ds-4">
+            <PublicPageCard departure={departure} canEdit={canEdit} />
+          </div>
         </TabsContent>
 
         <TabsContent value="bookings" className="pt-ds-4">

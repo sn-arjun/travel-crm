@@ -165,6 +165,8 @@ export interface SeatBooking {
   departureId: string;
   leadId: string;
   contactId: string;
+  /** The booking's invoice, once one was made (R148). */
+  invoiceId?: string | null;
   status: SeatBookingStatus;
   seats: number;
   holdExpiresAt: string | null;
@@ -290,6 +292,23 @@ export interface BulkConfirmResult {
   failed: number;
 }
 
+/** The public booking page of a departure (R148): `url` is set while the page is on. `available` is false when the plan has no public booking. */
+export interface PublicPageLink {
+  available: boolean;
+  enabled: boolean;
+  url: string | null;
+}
+
+/** The invoice of a seat booking (R148). `created` is false when an existing draft was refreshed from the passengers. */
+export interface BookingInvoice {
+  invoiceId: string;
+  invoiceNumber: string;
+  currency: string;
+  total: number;
+  created: boolean;
+  booking: SeatBookingDetail;
+}
+
 export const departuresApi = {
   getSettings: async () => unwrapEntity<GroupToursSettings>(await client.get<unknown>('/departures/settings')),
 
@@ -382,6 +401,13 @@ export const departuresApi = {
   holdForLead: async (leadId: string, departureId: string, seats: number) =>
     unwrapEntity<SeatBooking>(await client.post<unknown>(`/leads/${leadId}/hold-seats`, { departureId, seats })),
 
+  /** The address of the departure's public booking page, when it is on. */
+  publicLink: async (id: string) => unwrapEntity<PublicPageLink>(await client.get<unknown>(`/departures/${id}/public-link`)),
+  /** Switches the public page on (the same address while it stays on). */
+  enablePublicLink: async (id: string) => unwrapEntity<PublicPageLink>(await client.post<unknown>(`/departures/${id}/public-link`, {})),
+  /** Switches the public page off: the address stops working. */
+  disablePublicLink: async (id: string) => unwrapEntity<PublicPageLink>(await client.delete<unknown>(`/departures/${id}/public-link`)),
+
   /** Holds seats (or joins the waitlist when the departure is full and the agency has one). */
   holdSeats: async (departureId: string, input: HoldSeatsInput) =>
     unwrapEntity<SeatBookingDetail>(await client.post<unknown>(`/departures/${departureId}/bookings`, input)),
@@ -389,6 +415,8 @@ export const departuresApi = {
 
 export const seatBookingsApi = {
   get: async (id: string) => unwrapEntity<SeatBookingDetail>(await client.get<unknown>(`/seat-bookings/${id}`)),
+  /** Makes the booking's invoice from its passengers, or refreshes it while it is still a draft. */
+  invoice: async (id: string) => unwrapEntity<BookingInvoice>(await client.post<unknown>(`/seat-bookings/${id}/invoice`, {})),
   confirm: async (id: string) => unwrapEntity<SeatBookingDetail>(await client.post<unknown>(`/seat-bookings/${id}/confirm`, {})),
   bulkConfirm: async (ids: string[]) => unwrapEntity<BulkConfirmResult>(await client.post<unknown>('/seat-bookings/bulk-confirm', { ids })),
   cancel: async (id: string, reason?: string) =>

@@ -10,12 +10,23 @@ import {
 import {
   seatBookingsApi, type DepartureDetail, type PassengerFieldDef, type RoomTypeDef, type SeatBookingDetail,
 } from '@/lib/api/departures';
+import { apiErrorCode } from '@/lib/api/departures';
 import { bookingStatusLabel, bookingStatusTone, departureErrorText } from '@/lib/departures';
 import { formatDisplayDateTime } from '@/lib/dates';
 import { useT } from '@/lib/i18n';
+import { useAuthStore } from '@/stores/auth-store';
 import { HoldCountdown } from './hold-countdown';
 import { useBookingActions } from './booking-actions';
 import { inputsFromRows, PassengersEditor, rowFromPassenger, type PassengerRow } from './passengers-editor';
+
+const INVOICE_ROLES = ['admin', 'sales_manager', 'accountant'];
+
+/** Error codes of POST /seat-bookings/:id/invoice and the sentence that explains each. */
+const INVOICE_ERRORS: Record<string, string> = {
+  INVOICE_LOCKED: 'departures.invoice.locked',
+  NOTHING_TO_INVOICE: 'departures.invoice.nothing',
+  BOOKING_NOT_INVOICEABLE: 'departures.invoice.notAllowed',
+};
 
 interface BookingDrawerProps {
   bookingId: string | null;
@@ -39,6 +50,10 @@ export function BookingDrawer({ bookingId, departure, fields, roomTypes, preferr
   const [saving, setSaving] = React.useState(false);
   const [createTravellers, setCreateTravellers] = React.useState(false);
   const [seatsDraft, setSeatsDraft] = React.useState(1);
+  const [invoicing, setInvoicing] = React.useState(false);
+  const role = useAuthStore((s) => s.user?.role as string | undefined);
+  // The invoice route is for these roles only (the same rule as the Invoices page).
+  const canInvoice = role !== undefined && INVOICE_ROLES.includes(role);
 
   const apply = React.useCallback((b: SeatBookingDetail) => {
     setBooking(b);
@@ -89,6 +104,24 @@ export function BookingDrawer({ bookingId, departure, fields, roomTypes, preferr
       toast.error(departureErrorText(err, t, 'departures.booking.passengersFailed'));
     } finally {
       setSaving(false);
+    }
+  }
+
+  /** Makes the invoice from the passengers' bands, room supplements and seat surcharge, or refreshes it while it is a draft. */
+  async function createInvoice() {
+    if (!booking) return;
+    const existed = Boolean(booking.invoiceId);
+    setInvoicing(true);
+    try {
+      const result = await seatBookingsApi.invoice(booking.id);
+      apply(result.booking);
+      toast.success(t(existed ? 'departures.invoice.updated' : 'departures.invoice.created', { number: result.invoiceNumber }));
+      onChanged();
+    } catch (err) {
+      const known = INVOICE_ERRORS[apiErrorCode(err) ?? ''];
+      toast.error(known ? t(known) : departureErrorText(err, t, 'departures.invoice.failed'));
+    } finally {
+      setInvoicing(false);
     }
   }
 
@@ -162,6 +195,16 @@ export function BookingDrawer({ bookingId, departure, fields, roomTypes, preferr
                   <dt className="text-ds-foreground-muted">{t('departures.booking.created')}</dt>
                   <dd>{formatDisplayDateTime(booking.createdAt)}</dd>
                 </div>
+                {booking.invoiceId && (
+                  <div>
+                    <dt className="text-ds-foreground-muted">{t('departures.invoice.title')}</dt>
+                    <dd>
+                      <Link href={`/invoices/${booking.invoiceId}`} className="text-ds-primary hover:underline" data-testid="drawer-invoice-link">
+                        {t('departures.invoice.view')}
+                      </Link>
+                    </dd>
+                  </div>
+                )}
                 {booking.confirmedAt && (
                   <div>
                     <dt className="text-ds-foreground-muted">{t('departures.booking.confirmedAt')}</dt>
@@ -192,6 +235,12 @@ export function BookingDrawer({ bookingId, departure, fields, roomTypes, preferr
                   {booking.status === 'waitlisted' && (
                     <Button size="sm" disabled={actions.busy} onClick={() => void actions.offer(booking)} data-testid="drawer-offer">
                       {t('departures.booking.offer')}
+                    </Button>
+                  )}
+                  {(booking.status === 'held' || booking.status === 'confirmed') && canInvoice && (
+                    <Button size="sm" variant="outline" disabled={actions.busy || invoicing} onClick={() => void createInvoice()} data-testid="drawer-create-invoice">
+                      {invoicing && <Spinner className="size-4" />}
+                      {t(booking.invoiceId ? 'departures.invoice.update' : 'departures.invoice.create')}
                     </Button>
                   )}
                   <Button size="sm" variant="outline" disabled={actions.busy} onClick={() => actions.askMove(booking)}>
