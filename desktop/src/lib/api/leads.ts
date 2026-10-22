@@ -116,6 +116,29 @@ export interface LeadFollowUp {
   assignedTo: string;
 }
 
+/** Columns of the Leads page board (design 4.7); admins and sales managers change them. */
+export interface LeadBoardSettings {
+  columns: string[];
+  showValue: boolean;
+  /** Every status a column can show. */
+  available?: string[];
+}
+
+export interface LeadBoardParams {
+  search?: string;
+  status?: string;
+  priority?: string;
+  assignedTo?: string;
+  unassigned?: string;
+  source?: string;
+  destination?: string;
+  travelDateFrom?: string;
+  travelDateTo?: string;
+  /** Page of one column when `status` names a single column ("load more"). */
+  page?: number;
+  limit?: number;
+}
+
 export const leadsApi = {
   list: (params?: {
     page?: number;
@@ -129,6 +152,16 @@ export const leadsApi = {
     sortOrder?: 'asc' | 'desc';
   }) =>
     client.get<ApiResponse<PaginatedResponse<Lead>>>(API_ENDPOINTS.leads.list, { params }),
+
+  /** The pipeline board: a column per status with its count, value and first leads. Raw envelope; read with boardFromResponse. */
+  board: (params?: LeadBoardParams | Record<string, string | number | boolean>) =>
+    client.get<unknown>(`${API_ENDPOINTS.leads.list}/board`, { params: params as Record<string, string | number | boolean | undefined> }),
+
+  getBoardSettings: () =>
+    client.get<ApiResponse<LeadBoardSettings>>(`${API_ENDPOINTS.leads.list}/board-settings`),
+
+  saveBoardSettings: (data: { columns: string[]; showValue?: boolean }) =>
+    client.put<ApiResponse<LeadBoardSettings>>(`${API_ENDPOINTS.leads.list}/board-settings`, data),
 
   getById: (id: string) =>
     client.get<ApiResponse<Lead>>(API_ENDPOINTS.leads.byId(id)),

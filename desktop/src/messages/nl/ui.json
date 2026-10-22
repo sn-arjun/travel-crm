@@ -102,6 +102,7 @@
   "ui.fileUpload.anyType": "Elk bestandstype",
   "ui.fileUpload.max": "(max. {size})",
   "ui.kanban.addCard": "Kaart toevoegen",
+  "ui.kanban.column": "{title}, {count}",
   "ui.statCard.vsLastPeriod": "t.o.v. vorige periode",
   "ui.chart.empty": "Geen gegevens om weer te geven",
   "ui.command.title": "Opdrachtenpalet",
