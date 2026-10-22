@@ -5,12 +5,13 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 /**
- * The frame around the public pages: the product header and footer. The booking page (/book/...) is the agency's page, shown in its own
- * branding and often inside an iframe on the agency's website, so it gets no product chrome at all.
+ * The frame around the public pages: the product header and footer. The booking page (/book/...) and the traveller self-service page (/trip/...)
+ * are the agency's pages, shown in its own branding (the booking page often inside an iframe on the agency's website), so they get no
+ * product chrome at all.
  */
 export function PublicShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  if (pathname?.startsWith('/book/')) {
+  if (pathname?.startsWith('/book/') || pathname?.startsWith('/trip/')) {
     return <div className="min-h-screen bg-ds-background">{children}</div>;
   }
   return (

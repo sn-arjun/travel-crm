@@ -250,11 +250,6 @@ export function BookingDrawer({ bookingId, departure, fields, roomTypes, preferr
                       {t('extras.link.button')}
                     </Button>
                   )}
-                  {(booking.status === 'held' || booking.status === 'confirmed') && (
-                    <Button size="sm" variant="outline" disabled={actions.busy} onClick={() => setLinkOpen(true)} data-testid="drawer-traveller-link">
-                      {t('extras.link.button')}
-                    </Button>
-                  )}
                   <Button size="sm" variant="outline" disabled={actions.busy} onClick={() => actions.askMove(booking)}>
                     {t('departures.booking.move')}
                   </Button>

@@ -82,7 +82,7 @@ test.describe('Extras and the traveller self-service page', () => {
     const url = await linkDialog.getByTestId('traveller-link-url').inputValue();
     expect(url).toMatch(/\/trip\/[A-Za-z0-9_-]{22}$/);
     await linkDialog.getByTestId('traveller-link-send').click();
-    const hub = page.getByRole('dialog').filter({ hasText: /Choose how to reach/i });
+    const hub = page.getByRole('dialog').filter({ hasText: `To: Family ${stamp}` });
     await expect(hub).toBeVisible({ timeout: 15_000 });
     await hub.getByRole('button', { name: /Email/ }).first().click();
     await hub.getByText('Traveller details and extras', { exact: true }).click();
@@ -174,7 +174,9 @@ test.describe('Extras and the traveller self-service page', () => {
     expect(Number(invoice.total)).toBe(100);
     expect(invoice.status).toBe('paid');
 
-    const report = (await api('GET', '/reports/extras_sales?per_page=100&date_from=2000-01-01&date_to=2099-12-31')).data.data as Array<{ extra: string; quantity: number; revenue: number }>;
+    // The report answer is cached per set of parameters: a page size of its own keeps a repeated run from reading an older answer.
+    const pageSize = 100 + (parseInt(stamp, 36) % 100);
+    const report = (await api('GET', `/reports/extras_sales?per_page=${pageSize}&date_from=2000-01-01&date_to=2099-12-31`)).data.data as Array<{ extra: string; quantity: number; revenue: number }>;
     expect(report.find((r) => r.extra === gondola)).toMatchObject({ quantity: 1, revenue: 50 });
     expect(report.find((r) => r.extra === dinner)).toMatchObject({ quantity: 2, revenue: 50 });
   });
