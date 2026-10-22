@@ -7,8 +7,10 @@ import { getApiBaseUrl } from '@/lib/api/config';
 import type { PublicPage } from '@/lib/booking-form';
 import { useI18n } from '@/lib/i18n';
 import { setLocaleContext } from '@/lib/locale';
+import { forgetPendingPayment, parsePaymentReturn, paymentReturnAddress, recallPendingPayment, withoutPaymentReturn, type PaymentReturn } from '@/lib/payment-return';
 import { BookingForm } from './_components/booking-form';
 import { Confirmation, type BookingResult } from './_components/confirmation';
+import { PaymentReturnCard } from './_components/payment-return';
 import { PublicI18n, startLanguage } from './_components/public-i18n';
 import { AgencyBar, Loading, StateScreen, TourHeader } from './_components/tour-header';
 
@@ -41,6 +43,8 @@ function BookingPageContent() {
   const [result, setResult] = React.useState<BookingResult | null>(null);
   const [formKey, setFormKey] = React.useState(0);
   const first = React.useRef(true);
+  // Back from the payment page (?payment=success|failed|cancelled): the answer is shown instead of an empty form (R164-1).
+  const [paymentReturn, setPaymentReturn] = React.useState<PaymentReturn | null>(() => (typeof window === 'undefined' ? null : parsePaymentReturn(window.location.search)));
 
   const load = React.useCallback(
     async (signal?: AbortSignal) => {
@@ -87,11 +91,26 @@ function BookingPageContent() {
       {state.kind === 'loading' && <Loading />}
       {(state.kind === 'missing' || state.kind === 'gone') && <StateScreen kind={state.kind} />}
       {state.kind === 'error' && <StateScreen kind="error" onRetry={retry} />}
-      {page && page.state === 'closed' && <StateScreen kind="closed" agency={page.agency} />}
-      {page && page.state === 'open' && result && (
+      {page && paymentReturn && (
+        <PaymentReturnCard
+          result={paymentReturn}
+          agency={page.agency}
+          pending={paymentReturn.state === 'paid' ? null : recallPendingPayment(token, paymentReturn.reference)}
+          returnTo={typeof window === 'undefined' ? '' : paymentReturnAddress(window.location.href, paymentReturn.reference)}
+          onAnother={() => {
+            forgetPendingPayment(token);
+            window.history.replaceState(null, '', withoutPaymentReturn(window.location.href));
+            setPaymentReturn(null);
+            setFormKey((k) => k + 1);
+          }}
+        />
+      )}
+      {page && !paymentReturn && page.state === 'closed' && <StateScreen kind="closed" agency={page.agency} />}
+      {page && !paymentReturn && page.state === 'open' && result && (
         <Confirmation
           page={page}
           result={result}
+          token={token}
           onAnother={() => {
             setResult(null);
             setFormKey((k) => k + 1);
@@ -99,7 +118,7 @@ function BookingPageContent() {
           }}
         />
       )}
-      {page && page.state === 'open' && !result && (
+      {page && !paymentReturn && page.state === 'open' && !result && (
         <>
           <TourHeader page={page} />
           <BookingForm
@@ -112,7 +131,7 @@ function BookingPageContent() {
           />
         </>
       )}
-      {page && (page.agency.email || page.agency.phone) && page.state === 'open' && <AgencyContact agency={page.agency} />}
+      {page && (page.agency.email || page.agency.phone) && (page.state === 'open' || paymentReturn) && <AgencyContact agency={page.agency} />}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui';
 import { formatDisplayDateTime } from '@/lib/dates';
 import { paymentHref, type PublicPage } from '@/lib/booking-form';
 import { useT } from '@/lib/i18n';
+import { paymentReturnAddress, rememberPendingPayment } from '@/lib/payment-return';
 import { brandStyle, money } from './booking-ui';
 
 /** The answer of POST /public/departures/:token/bookings. */
@@ -25,11 +26,16 @@ export interface BookingResult {
 const BANK_FIELDS = new Set(['accountName', 'bankName', 'iban', 'bic', 'sortCode', 'accountNumber', 'routingNumber', 'bsb', 'swift', 'ifsc', 'upiId', 'branch']);
 
 /** What the visitor sees after booking: the reference, until when the seats are held, and how to pay the deposit. */
-export function Confirmation({ page, result, onAnother }: { page: PublicPage; result: BookingResult; onAnother: () => void }) {
+export function Confirmation({ page, result, token, onAnother }: { page: PublicPage; result: BookingResult; token: string; onAnother: () => void }) {
   const t = useT();
   const agency = page.agency.name || t('booking.agency.fallback');
   const until = result.holdExpiresAt ? formatDisplayDateTime(result.holdExpiresAt) : '';
-  const returnTo = typeof window !== 'undefined' ? window.location.href : '';
+  // The pay page sends the customer back here with the answer; the reference in the address is what the page shows then (R164-1).
+  const returnTo = typeof window !== 'undefined' ? paymentReturnAddress(window.location.href, result.reference) : '';
+  const payment = result.payment;
+  React.useEffect(() => {
+    if (payment) rememberPendingPayment(token, { reference: result.reference, url: payment.url, amount: payment.amount, currency: payment.currency });
+  }, [token, payment, result.reference]);
   const money2 = (n: number) => money(n, { currency: result.currency });
   const Icon = result.status === 'waitlisted' ? Clock : CheckCircle2;
 

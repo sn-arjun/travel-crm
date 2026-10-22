@@ -7,6 +7,8 @@ import { Check } from 'lucide-react';
 import { formatDisplayDate } from '@/lib/dates';
 import { startStep, type TripPage, type TripStep } from '@/lib/extras';
 import { useI18n } from '@/lib/i18n';
+import { parsePaymentReturn, type PaymentReturn } from '@/lib/payment-return';
+import { PaymentReturnCard } from '@/app/(public)/book/[token]/_components/payment-return';
 import { PublicI18n } from '@/app/(public)/book/[token]/_components/public-i18n';
 import { AgencyBar, Loading, StateScreen } from '@/app/(public)/book/[token]/_components/tour-header';
 import { ExtrasStep } from './_components/extras-step';
@@ -53,6 +55,8 @@ function TripSteps({ page, token, onPage }: { page: TripPage; token: string; onP
     return steps.includes(wanted) ? wanted : 'travellers';
   });
   const [notice, setNotice] = React.useState<string | null>(null);
+  // Back from the payment page: the answer shows above the pay step, whose own buttons are the way to try again (R164-1).
+  const [paymentReturn] = React.useState<PaymentReturn | null>(() => (typeof window === 'undefined' ? null : parsePaymentReturn(window.location.search)));
 
   const done: Record<TripStep, boolean> = {
     travellers: page.passengers.every((p) => travellerComplete(page, p)),
@@ -95,6 +99,7 @@ function TripSteps({ page, token, onPage }: { page: TripPage; token: string; onP
         })}
       </nav>
 
+      {paymentReturn && step === 'pay' && <PaymentReturnCard banner result={paymentReturn} agency={page.agency} />}
       {notice && <p role="status" className="rounded-md bg-ds-success-subtle px-ds-3 py-ds-2 text-sm text-ds-success-on-subtle" data-testid="trip-notice">{notice}</p>}
 
       {step === 'travellers' && (
