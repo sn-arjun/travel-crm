@@ -88,6 +88,18 @@ export function bandsFor(ownBands: unknown, agencyBands: AgeBand[]): AgeBand[] {
   return own.bands.length > 0 && !own.error ? own.bands : agencyBands.slice().sort(byOldestFirst);
 }
 
+/**
+ * The bands in force where several lists may apply (R164-2): the first usable list among `layers`, most specific first (a tour's
+ * own bands, then a quote's or template's snapshot), else the agency's. Mirrors the resolution order of the API.
+ */
+export function resolveBands(layers: unknown[], agencyBands: AgeBand[]): AgeBand[] {
+  for (const layer of layers) {
+    const own = parseBands(layer);
+    if (own.bands.length > 0 && !own.error) return own.bands;
+  }
+  return agencyBands.slice().sort(byOldestFirst);
+}
+
 /** The key of the band an age falls in, or null for an unknown age. */
 export function bandForAge(bands: BandLike[], age: number | null | undefined): string | null {
   if (age === null || age === undefined || !Number.isFinite(age) || age < 0) return null;

@@ -14,6 +14,7 @@ import { useGroupTours } from '@/hooks/use-group-tours';
 import { useLocale } from '@/lib/locale';
 import { currencyOptions } from '@/lib/locale-options';
 import { toursApi, type TourDetail, type TourInput } from '@/lib/api/tours';
+import { rowsFromBands, rowsToRequest, type BandRow } from '../../itineraries/_components/age-bands-editor';
 import type { ConfirmMode, DepositType } from '@/lib/api/departures';
 import { departureErrorText } from '@/lib/departures';
 import { useT } from '@/lib/i18n';
@@ -22,6 +23,7 @@ import { SimpleSelect } from '../../departures/_components/simple-select';
 import { StopsEditor, fromStopRows, toStopRows, type StopRow } from '../../departures/_components/stops-editor';
 import { PricesEditor, fromPriceRows, toPriceRows, type PriceRow } from '../../departures/_components/prices-editor';
 import { ExtrasEditor, fromExtraRows, toExtraRows, type ExtraRow } from './extras-editor';
+import { TourAgeBands, tourBandsError, tourBandsInForce, useAgencyBands } from './tour-age-bands';
 
 interface Details {
   title: string;
@@ -113,6 +115,8 @@ export function TourForm({ tourId }: { tourId?: string }) {
   const [stops, setStops] = React.useState<StopRow[]>([]);
   const [prices, setPrices] = React.useState<PriceRow[]>([]);
   const [extras, setExtras] = React.useState<ExtraRow[]>([]);
+  const agencyBands = useAgencyBands();
+  const [ownBands, setOwnBands] = React.useState<{ custom: boolean; rows: BandRow[] }>({ custom: false, rows: [] });
   const [tab, setTab] = React.useState('details');
   const [saving, setSaving] = React.useState(false);
   const [errors, setErrors] = React.useState<{ title?: string; code?: string }>({});
@@ -129,6 +133,7 @@ export function TourForm({ tourId }: { tourId?: string }) {
         setCodeTouched(true);
         setStops(toStopRows(tour.stops));
         setPrices(toPriceRows(tour.prices));
+        setOwnBands(tour.ageBands && tour.ageBands.length > 0 ? { custom: true, rows: rowsFromBands(tour.ageBands) } : { custom: false, rows: [] });
         // Extras of one departure belong to that departure; the tour form edits the tour's own catalogue.
         setExtras(toExtraRows(tour.extras.filter((x) => !x.departureId)));
       })
@@ -149,6 +154,11 @@ export function TourForm({ tourId }: { tourId?: string }) {
     if (!details.code.trim()) next.code = t('tours.form.errors.code');
     else if (!CODE_PATTERN.test(details.code.trim()) || details.code.trim().length > 24) next.code = t('tours.form.errors.codeFormat');
     setErrors(next);
+    if (!next.title && !next.code && tourBandsError(ownBands.custom, ownBands.rows)) {
+      setTab('prices');
+      toast.error(t('tours.bands.invalid'));
+      return false;
+    }
     if (next.title || next.code) {
       setTab('details');
       toast.error(t('tours.form.errors.fix'));
@@ -162,7 +172,7 @@ export function TourForm({ tourId }: { tourId?: string }) {
     setSaving(true);
     let savedId = tourId;
     try {
-      const input = inputFrom(details);
+      const input = { ...inputFrom(details), ageBands: ownBands.custom ? rowsToRequest(ownBands.rows) : null };
       const saved = editing ? await toursApi.update(tourId as string, input) : await toursApi.create(input);
       savedId = saved.id;
       const currency = details.currency || null;
@@ -398,9 +408,14 @@ export function TourForm({ tourId }: { tourId?: string }) {
         </TabsContent>
 
         <TabsContent value="prices" className="pt-ds-4">
-          <SectionCard title={t('tours.form.pricesTitle')} description={t('tours.form.pricesDescription', { currency })}>
-            <PricesEditor value={prices} onChange={setPrices} currency={currency} roomTypes={roomTypes} />
-          </SectionCard>
+          <div className="space-y-ds-4">
+            <SectionCard title={t('tours.bands.title')} description={t('tours.bands.description')}>
+              <TourAgeBands custom={ownBands.custom} rows={ownBands.rows} agencyBands={agencyBands} onChange={setOwnBands} disabled={saving} />
+            </SectionCard>
+            <SectionCard title={t('tours.form.pricesTitle')} description={t('tours.form.pricesDescription', { currency })}>
+              <PricesEditor value={prices} onChange={setPrices} currency={currency} roomTypes={roomTypes} bands={tourBandsInForce(ownBands.custom, ownBands.rows, agencyBands)} />
+            </SectionCard>
+          </div>
         </TabsContent>
 
         <TabsContent value="extras" className="pt-ds-4">

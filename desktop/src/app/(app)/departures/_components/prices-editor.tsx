@@ -40,6 +40,8 @@ interface PricesEditorProps {
   onChange: (rows: PriceRow[]) => void;
   currency: string;
   roomTypes: readonly RoomTypeDef[];
+  /** The age bands in force (a tour's own, else the agency's); without them the built-in three are offered. */
+  bands?: ReadonlyArray<{ key: string; label: string }>;
   disabled?: boolean;
 }
 
@@ -47,8 +49,10 @@ interface PricesEditorProps {
  * The price list of a tour (or the overrides of one departure): a price per age band, supplements per room type, a preferred-seat
  * surcharge and free-form extras. Amounts are in the tour's currency.
  */
-export function PricesEditor({ value, onChange, currency, roomTypes, disabled }: PricesEditorProps) {
+export function PricesEditor({ value, onChange, currency, roomTypes, bands, disabled }: PricesEditorProps) {
   const t = useT();
+  const bandKeys = bands && bands.length > 0 ? bands.map((b) => b.key) : DEFAULT_BAND_KEYS;
+  const nameOfBand = (key: string) => bands?.find((b) => b.key === key)?.label ?? bandLabel(key, t);
   const patch = (key: string, change: Partial<PriceRow>) => onChange(value.map((r) => (r._key === key ? { ...r, ...change } : r)));
   const taken = value.map((r) => r.key);
 
@@ -57,8 +61,8 @@ export function PricesEditor({ value, onChange, currency, roomTypes, disabled }:
     let key = '';
     let label: string | null = null;
     if (kind === 'age_band') {
-      key = DEFAULT_BAND_KEYS.find((k) => !used.has(k)) ?? '';
-      label = key ? bandLabel(key, t) : null;
+      key = bandKeys.find((k) => !used.has(k)) ?? '';
+      label = key ? nameOfBand(key) : null;
     } else if (kind === 'room_supplement') {
       const room = roomTypes.find((r) => !used.has(r.key));
       key = room?.key ?? '';
@@ -94,8 +98,8 @@ export function PricesEditor({ value, onChange, currency, roomTypes, disabled }:
                 disabled={disabled}
                 aria-label={t('tours.prices.item')}
                 placeholder={t('tours.prices.pick')}
-                onChange={(v) => patch(row._key, { key: v ?? '', label: v ? bandLabel(v, t) : null })}
-                options={[...new Set([...DEFAULT_BAND_KEYS, ...(row.key ? [row.key] : [])])].map((k) => ({ value: k, label: bandLabel(k, t) }))}
+                onChange={(v) => patch(row._key, { key: v ?? '', label: v ? nameOfBand(v) : null })}
+                options={[...new Set([...bandKeys, ...(row.key ? [row.key] : [])])].map((k) => ({ value: k, label: nameOfBand(k) }))}
               />
             ) : row.kind === 'room_supplement' ? (
               <SimpleSelect

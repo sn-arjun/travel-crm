@@ -2,6 +2,7 @@ import { client } from './client';
 import { unwrapEntity } from './envelope';
 import { CursorPager, toCursorPage, type CursorPage } from './cursor-pager';
 import type { ConfirmMode, DepositType, PassengerFieldDef, RoomTypeDef } from './departures';
+import type { AgeBand } from '../age-bands';
 
 // Tours (R139 API, R144 screens): the product an agency sells departure after departure.
 
@@ -27,6 +28,8 @@ export interface Tour {
   depositValue: number | null;
   passengerFields: PassengerFieldDef[] | null;
   roomTypes: RoomTypeDef[] | null;
+  /** The tour's own age bands (R164); null = the agency's bands apply. */
+  ageBands: AgeBand[] | null;
   terms: string | null;
   status: TourStatus;
   createdAt: string | null;
@@ -96,7 +99,10 @@ export type TourInput = Partial<
     | 'bookingCutoffDays' | 'extrasCutoffDays' | 'holdExpiryHours' | 'confirmMode' | 'depositType' | 'depositValue'
     | 'passengerFields' | 'roomTypes' | 'terms' | 'status'
   >
->;
+> & {
+  /** The tour's own bands as typed (keys optional on new bands); null or empty = use the agency's. */
+  ageBands?: Array<{ key?: string; label: string; minAge: number }> | null;
+};
 
 export interface TourListParams {
   q?: string;

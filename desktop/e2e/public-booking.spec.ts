@@ -123,7 +123,28 @@ test.describe('Public booking page', () => {
     await guest.getByTestId('confirmation-pay').click();
     await expect(guest.getByTestId('mock-amount')).toContainText('1,047');
     await guest.getByRole('button', { name: /^Pay / }).click();
-    await guest.waitForURL(/\/book\//); // back on the booking page, as the return address says
+    await guest.waitForURL(/\/book\/.*payment=success/); // back on the booking page, as the return address says
+
+    // R164-1: the paid confirmation with the reference, never the empty form again (also after a reload)
+    for (const reload of [true, false]) {
+      await expect(guest.getByTestId('payment-return')).toHaveAttribute('data-state', 'paid');
+      await expect(guest.getByTestId('payment-return-title')).toHaveText('Payment received');
+      await expect(guest.getByTestId('payment-return-reference')).toHaveText(reference);
+      await expect(guest.getByTestId('payment-return-next')).toBeVisible();
+      await expect(guest.getByTestId('booking-submit')).toHaveCount(0);
+      if (reload) await guest.reload();
+    }
+
+    // a cancelled or failed payment offers the way back to the payment page (remembered in this browser), else the agency's contact
+    await guest.goto(`${url}?payment=cancelled&ref=${reference}`);
+    await expect(guest.getByTestId('payment-return')).toHaveAttribute('data-state', 'cancelled');
+    await expect(guest.getByTestId('payment-return-retry')).toHaveAttribute('href', /mock-pay\/.*return=/);
+    await expect(guest.getByTestId('booking-submit')).toHaveCount(0);
+    await guest.evaluate(() => window.sessionStorage.clear());
+    await guest.goto(`${url}?payment=failed&ref=${reference}`);
+    await expect(guest.getByTestId('payment-return')).toHaveAttribute('data-state', 'failed');
+    await expect(guest.getByTestId('payment-return-contact')).toBeVisible();
+    await expect(guest.getByTestId('booking-submit')).toHaveCount(0);
     await anon.close();
 
     // ---- staff see the lead, the held booking, the passengers and the payment

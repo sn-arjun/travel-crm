@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  DEFAULT_AGE_BANDS, PER_PERSON, ageOn, ageOnFractional, bandForAge, bandRange, bandsFor, countByBand, fillQuantities, parseAgesText, parseBands,
+  DEFAULT_AGE_BANDS, PER_PERSON, ageOn, ageOnFractional, bandForAge, bandRange, bandsFor, countByBand, fillQuantities, parseAgesText, parseBands, resolveBands,
 } from './age-bands';
 
 // The same table as backend/test/age-bands.test.ts ("pure resolver"): both sides must agree.
@@ -93,5 +93,30 @@ describe('display helpers', () => {
     expect(parseAgesText('8, 5 and 11')).toEqual([8, 5, 11]);
     expect(parseAgesText('')).toEqual([]);
     expect(parseAgesText('8,5 200')).toEqual([8, 5]);
+  });
+});
+
+describe('resolveBands (R164-2: tour bands, then quote or template bands, then the agency)', () => {
+  const TOUR = [
+    { key: 'adult', label: 'Adult', minAge: 13 },
+    { key: 'child', label: 'Child', minAge: 2 },
+    { key: 'infant', label: 'Infant', minAge: 0 },
+  ];
+
+  it('prefers the tour, then the snapshot, then the agency', () => {
+    expect(resolveBands([TOUR, FOUR_BANDS], DEFAULT_AGE_BANDS)).toEqual(TOUR);
+    expect(resolveBands([null, FOUR_BANDS], DEFAULT_AGE_BANDS).map((b) => b.minAge)).toEqual([12, 6, 4, 0]);
+    expect(resolveBands([null, undefined], DEFAULT_AGE_BANDS).map((b) => b.minAge)).toEqual([12, 2, 0]);
+    expect(resolveBands([], DEFAULT_AGE_BANDS)).toEqual(DEFAULT_AGE_BANDS);
+  });
+
+  it('skips a layer that is not a usable list', () => {
+    expect(resolveBands([[{ key: 'adult', label: 'Adult', minAge: 13 }], TOUR], DEFAULT_AGE_BANDS)).toEqual(TOUR); // no band from age 0
+    expect(resolveBands(['junk', []], DEFAULT_AGE_BANDS)).toEqual(DEFAULT_AGE_BANDS);
+  });
+
+  it('puts a 12-year-old among the children on a tour whose adults start at 13', () => {
+    expect(bandForAge(resolveBands([TOUR], DEFAULT_AGE_BANDS), 12)).toBe('child');
+    expect(bandForAge(resolveBands([null], DEFAULT_AGE_BANDS), 12)).toBe('adult');
   });
 });
