@@ -15,6 +15,7 @@ import {
   itineraries,
   pushTokens,
   notifications,
+  settings,
 } from '../db/tenant-schema';
 import { requirePermission } from '../middleware/rbac';
 import { rbac } from '../middleware/rbac';
@@ -23,6 +24,7 @@ import { logActivity } from '../utils/activity-logger';
 import { logLeadActivity } from '../utils/lead-activity-logger';
 import { createLead } from '../services/domain/leads';
 import { loadLocaleContext } from '../utils/money';
+import { resolveFeature } from '../services/features/resolve';
 import { emitFromRequest, requestDepth } from '../services/automation/events';
 import { success, created, paginated, error, notFound } from '../utils/response';
 
@@ -483,6 +485,195 @@ leadRoutes.get('/unassigned', requirePermission('leads', 'view'), async (c) => {
     .all<Record<string, unknown>>();
 
   return success(c, await parseLeadsFor(c, rows.results));
+});
+
+// ============================================================
+// Pipeline board (R153, design 4.7 and 13.2)
+// ============================================================
+
+/** Every status a lead can be in, in pipeline order. */
+const BOARD_STATUSES = ['new', 'contacted', 'qualified', 'requirement_gathered', 'proposal_sent', 'negotiation', 'won', 'booking_confirmed', 'completed', 'lost', 'on_hold'] as const;
+/** The columns a new agency sees: the statuses staff can pick today, without on_hold. */
+const DEFAULT_BOARD_COLUMNS = ['new', 'contacted', 'qualified', 'proposal_sent', 'negotiation', 'won', 'lost'];
+const BOARD_SETTING_KEY = 'leads.board';
+const BOARD_PAGE_SIZE = 20;
+
+interface BoardSettings { columns: string[]; showValue: boolean }
+
+function normalizeBoardSettings(raw: unknown): BoardSettings {
+  const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const wanted = Array.isArray(obj.columns) ? obj.columns : [];
+  const columns = [...new Set(wanted.filter((s): s is string => typeof s === 'string' && (BOARD_STATUSES as readonly string[]).includes(s)))];
+  return { columns: columns.length ? columns : [...DEFAULT_BOARD_COLUMNS], showValue: obj.showValue !== false };
+}
+
+async function loadBoardSettings(db: D1Database): Promise<BoardSettings> {
+  const row = await db.prepare('SELECT value FROM settings WHERE key = ?').bind(BOARD_SETTING_KEY).first<{ value: string | null }>();
+  let parsed: unknown = null;
+  try { parsed = row?.value ? JSON.parse(row.value) : null; } catch { parsed = null; }
+  return normalizeBoardSettings(parsed);
+}
+
+const boardSettingsSchema = z.object({
+  columns: z.array(z.enum(BOARD_STATUSES)).min(1).max(BOARD_STATUSES.length),
+  showValue: z.boolean().optional(),
+});
+
+async function boardSettingsPayload(db: D1Database) {
+  return { ...(await loadBoardSettings(db)), available: BOARD_STATUSES, defaults: { columns: DEFAULT_BOARD_COLUMNS, showValue: true } };
+}
+
+leadRoutes.get('/board-settings', requirePermission('leads', 'view'), async (c) => success(c, await boardSettingsPayload(c.get('tenantDb'))));
+
+leadRoutes.put('/board-settings', rbac(['admin', 'sales_manager']), zValidator('json', boardSettingsSchema), async (c) => {
+  const tenantDb = c.get('tenantDb');
+  const db = drizzle(tenantDb);
+  const userId = c.get('userId');
+  const body = c.req.valid('json');
+  const value = JSON.stringify(normalizeBoardSettings({ columns: body.columns, showValue: body.showValue ?? true }));
+  const now = new Date().toISOString();
+  const [existing] = await db.select().from(settings).where(eq(settings.key, BOARD_SETTING_KEY)).limit(1);
+  if (existing) await db.update(settings).set({ value, updatedBy: userId, updatedAt: now }).where(eq(settings.key, BOARD_SETTING_KEY));
+  else await db.insert(settings).values({ key: BOARD_SETTING_KEY, value, updatedBy: userId, updatedAt: now });
+  await logActivity(db, { userId, action: 'update_settings', entityType: 'settings', details: JSON.stringify({ key: BOARD_SETTING_KEY }), ipAddress: c.get('clientIp') });
+  return success(c, await boardSettingsPayload(tenantDb));
+});
+
+/** The pipeline board: a column per configured status, each with its count, value and first page of leads. */
+leadRoutes.get('/board', requirePermission('leads', 'view'), async (c) => {
+  const tenantDb = c.get('tenantDb');
+  const userId = c.get('userId');
+  const role = c.get('role');
+  const q = c.req.query();
+  const csv = (v: string | undefined) => (v ? v.split(',').map((s) => s.trim()).filter(Boolean) : []);
+
+  // The same filters as the list (and the same visibility rules), minus the status, which the columns carry.
+  const conditions: string[] = ['l.is_deleted = 0'];
+  const bindings: unknown[] = [];
+  if (role === 'salesperson') {
+    conditions.push('l.assigned_to = ?');
+    bindings.push(userId);
+  }
+  const search = q.search || q.q;
+  if (search) {
+    conditions.push('(l.rowid IN (SELECT rowid FROM leads_fts WHERE leads_fts MATCH ?) OR c.name LIKE ?)');
+    bindings.push(`"${search.replace(/"/g, '""')}"*`, `%${search}%`);
+  }
+  const priorities = csv(q.priority).slice(0, 10);
+  if (priorities.length) {
+    conditions.push(`l.priority IN (${priorities.map(() => '?').join(',')})`);
+    bindings.push(...priorities);
+  }
+  if (q.unassigned === '1' || q.unassigned === 'true') conditions.push('l.assigned_to IS NULL');
+  else if (q.assignedTo) {
+    conditions.push('l.assigned_to = ?');
+    bindings.push(q.assignedTo);
+  }
+  if (q.source) {
+    conditions.push('l.source = ?');
+    bindings.push(q.source);
+  }
+  if (q.tripType) {
+    conditions.push('l.trip_type = ?');
+    bindings.push(q.tripType);
+  }
+  if (q.destination) {
+    // destination holds a JSON array of names.
+    conditions.push("l.destination LIKE ? ESCAPE '\\'");
+    bindings.push(`%"${q.destination.replace(/[\\%_]/g, '\\$&').replace(/"/g, '')}"%`);
+  }
+  if (q.travelDateFrom) {
+    conditions.push('l.travel_date >= ?');
+    bindings.push(q.travelDateFrom);
+  }
+  if (q.travelDateTo) {
+    conditions.push('l.travel_date <= ?');
+    bindings.push(q.travelDateTo);
+  }
+  const where = conditions.join(' AND ');
+
+  // Columns: the configured ones, or exactly the statuses asked for (also how "load more" asks for one column).
+  const settingsNow = await loadBoardSettings(tenantDb);
+  const asked = csv(q.status).filter((s) => (BOARD_STATUSES as readonly string[]).includes(s));
+  const statuses = asked.length
+    ? [...settingsNow.columns.filter((s) => asked.includes(s)), ...BOARD_STATUSES.filter((s) => asked.includes(s) && !settingsNow.columns.includes(s))]
+    : settingsNow.columns;
+
+  const pageNum = Math.max(1, parseInt(q.page ?? '1', 10) || 1);
+  const limitNum = Math.min(50, Math.max(1, parseInt(q.limit ?? String(BOARD_PAGE_SIZE), 10) || BOARD_PAGE_SIZE));
+  const from = (pageNum - 1) * limitNum;
+  const marks = statuses.map(() => '?').join(',');
+
+  const locale = await loadLocaleContext(tenantDb);
+  const agencyCurrency = locale.currency;
+  const seatsOn = (await resolveFeature(c.env, c.get('tenantId'), 'group_departures')).enabled;
+
+  const [sums, rows] = await Promise.all([
+    tenantDb
+      .prepare(`
+        SELECT l.status AS status, COALESCE(NULLIF(l.currency, ''), ?) AS cur, COUNT(*) AS n,
+               COALESCE(SUM(COALESCE(NULLIF(l.estimated_value, 0), l.budget, 0)), 0) AS total
+        FROM leads l LEFT JOIN contacts c ON l.contact_id = c.id
+        WHERE ${where} AND l.status IN (${marks})
+        GROUP BY l.status, cur
+      `)
+      .bind(agencyCurrency, ...bindings, ...statuses)
+      .all<{ status: string; cur: string; n: number; total: number }>(),
+    tenantDb
+      .prepare(`
+        SELECT t.*${seatsOn ? `,
+          (SELECT SUM(sb.seats) FROM seat_bookings sb WHERE sb.lead_id = t.id AND sb.status IN ('held', 'confirmed')) AS seats_total,
+          (SELECT MIN(CASE sb.status WHEN 'confirmed' THEN 1 ELSE 2 END) FROM seat_bookings sb WHERE sb.lead_id = t.id AND sb.status IN ('held', 'confirmed')) AS seats_rank` : ''}
+        FROM (
+          SELECT l.*, c.name AS contact_name, c.phone AS contact_phone, c.email AS contact_email, u.name AS assigned_to_name,
+                 ROW_NUMBER() OVER (PARTITION BY l.status ORDER BY l.created_at DESC, l.id DESC) AS board_rn
+          FROM leads l
+          LEFT JOIN contacts c ON l.contact_id = c.id
+          LEFT JOIN users u ON l.assigned_to = u.id
+          WHERE ${where} AND l.status IN (${marks})
+        ) t
+        WHERE t.board_rn > ? AND t.board_rn <= ?
+        ORDER BY t.board_rn
+      `)
+      .bind(...bindings, ...statuses, from, from + limitNum)
+      .all<Record<string, unknown>>(),
+  ]);
+
+  const parsed = await parseLeadsFor(c, rows.results);
+  const byStatus = new Map<string, Array<ReturnType<typeof parseLead> & { seats?: number; seatStatus?: string }>>();
+  rows.results.forEach((raw, i) => {
+    const lead: ReturnType<typeof parseLead> & { seats?: number; seatStatus?: string } = parsed[i];
+    if (seatsOn && Number(raw.seats_total) > 0) {
+      lead.seats = Number(raw.seats_total);
+      lead.seatStatus = Number(raw.seats_rank) === 1 ? 'confirmed' : 'held';
+    }
+    const list = byStatus.get(String(raw.status)) ?? [];
+    list.push(lead);
+    byStatus.set(String(raw.status), list);
+  });
+
+  const columns = statuses.map((status) => {
+    let count = 0;
+    let value = 0;
+    let otherCurrencyCount = 0;
+    for (const s of sums.results) {
+      if (s.status !== status) continue;
+      count += s.n;
+      if (s.cur === agencyCurrency) value += s.total;
+      else otherCurrencyCount += s.n;
+    }
+    return {
+      status,
+      count,
+      value: Math.round(value * 100) / 100,
+      currency: agencyCurrency,
+      mixedCurrencies: otherCurrencyCount > 0,
+      otherCurrencyCount,
+      leads: byStatus.get(status) ?? [],
+    };
+  });
+
+  return success(c, { columns, showValue: settingsNow.showValue, currency: agencyCurrency, page: pageNum, limit: limitNum });
 });
 
 // ============================================================
