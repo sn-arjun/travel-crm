@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { emitFromRequest, requestDepth } from '../services/automation/events';
-import { createInvoice, InvoiceContactNotFound } from '../services/domain/invoices';
+import { createInvoice, InvoiceContactNotFound, itineraryInvoiceItems } from '../services/domain/invoices';
 import { zValidator } from '../utils/validator';
 import { z } from 'zod';
 import type { AppContext } from '../types';
@@ -1254,54 +1254,14 @@ invoiceRoutes.post('/from-itinerary', zValidator('json', fromItinerarySchema), a
       return notFound(c, 'Itinerary');
     }
 
-    // Fetch itinerary days and items
-    const days = await tenantDb
-      .prepare('SELECT * FROM itinerary_days WHERE itinerary_id = ?1 ORDER BY day_number')
-      .bind(itineraryId)
-      .all<Record<string, any>>();
-
-    // HSN code mapping
-    const hsnCodes: Record<string, string> = {
-      hotel: '996311',
-      accommodation: '996311',
-      transport: '996411',
-      vehicle: '996411',
-      activity: '998551',
-      sightseeing: '998551',
-      meal: '996331',
-      food: '996331',
-      flight: '997221',
-      visa: '997121',
-    };
-
-    const invoiceItems: Array<{ description: string; hsnCode: string; quantity: number; rate: number; discountPercent: number; taxRate?: number }> = [];
-
     // Tax follows the agency's own tax system. 18% is the GST default for travel services (India);
     // VAT and sales tax lines take the agency's configured rate, and a no-tax agency gets none.
     // R152: the margin scheme applies when the agency's settings say so (the cost is the itinerary's own cost).
     const taxCtx = await loadInvoiceTaxContext(c.env, c.get('tenantId'), tenantDb, { origin: 'itinerary' });
     const { regime, seller } = taxCtx;
 
-    for (const day of (days.results || [])) {
-      const items = await tenantDb
-        .prepare('SELECT * FROM itinerary_items WHERE day_id = ?1 ORDER BY sort_order')
-        .bind(day.id)
-        .all<Record<string, any>>();
-
-      for (const item of (items.results || [])) {
-        // A band line nobody falls in (quantity 0, R149) is not invoiced.
-        if (item.quantity === 0) continue;
-        const itemType = ((item.type as string) || 'activity').toLowerCase();
-        invoiceItems.push({
-          description: `Day ${day.day_number}: ${item.title || item.description || itemType}`,
-          hsnCode: hsnCodes[itemType] || '999799',
-          quantity: (item.quantity as number) || 1,
-          rate: (item.selling_price as number) || (item.cost as number) || 0,
-          discountPercent: 0,
-          taxRate: regime === 'gst' ? 18 : undefined,
-        });
-      }
-    }
+    // A band line nobody falls in (quantity 0, R149) is not invoiced (R155: the lines are built by the shared helper).
+    const invoiceItems = await itineraryInvoiceItems(tenantDb, itineraryId, regime);
 
     if (invoiceItems.length === 0) {
       return error(c, 'No items found in itinerary to generate invoice', 400);

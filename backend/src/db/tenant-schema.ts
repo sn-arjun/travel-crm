@@ -255,6 +255,11 @@ export const itineraries = sqliteTable('itineraries', {
   seatsRequested: integer('seats_requested'),
   ageBands: text('age_bands'), // R149: JSON snapshot of the band list the quantities were filled with; NULL = the agency's bands
   paxAges: text('pax_ages'), // R149: JSON {adults, ages, source} used for the last fill
+  acceptedAt: text('accepted_at'), // R155: set once, by the first acceptance
+  acceptedVia: text('accepted_via'), // share_link, staff, message
+  acceptedName: text('accepted_name'),
+  acceptedIpHash: text('accepted_ip_hash'), // SHA-256 of IP + tenant id, never the raw IP
+  acceptedInvoiceId: text('accepted_invoice_id'),
   isDeleted: integer('is_deleted').default(0),
   createdBy: text('created_by').references(() => users.id),
   createdAt: text('created_at').default(timestamp),

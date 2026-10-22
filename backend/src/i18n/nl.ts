@@ -198,6 +198,12 @@ export const nl: Record<MessageKey, string> = {
   'public.quotation.notFound': 'Offerte niet gevonden',
   'public.quotation.revoked': 'Deze offertelink is ingetrokken',
   'public.quotation.expired': 'Deze offerte is verlopen',
+  'public.quotation.full': 'De plaatsen van deze vertrekdatum zijn niet meer beschikbaar. Neem contact op met uw reisadviseur.',
+  'public.quotation.notAccepted': 'Deze offerte kan niet online worden geaccepteerd.',
+  'quotes.accept.notifyTitle': 'Offerte geaccepteerd',
+  'quotes.accept.notifyBody': '{name} heeft de offerte "{title}" geaccepteerd',
+  'quotes.accept.timeline': 'Offerte "{title}" online geaccepteerd door {name}',
+  'quotes.accept.timelineStaff': 'Offerte "{title}" door medewerker als geaccepteerd gemarkeerd ({via})',
   // ---- testbetaalpagina (R142; alleen lokale en testomgevingen) ----
   'mockpay.title': 'Testbetaling',
   'mockpay.banner': 'Testbetaalpagina. Er gaat geen geld heen en er wordt geen echte betaalprovider benaderd.',

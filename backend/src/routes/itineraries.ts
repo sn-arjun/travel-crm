@@ -24,6 +24,7 @@ import { agencyEmailHtml, escapeHtml, queueAgencyEmail, textToHtml } from '../se
 import { success, created, paginated, error, notFound } from '../utils/response';
 import { requireFeature } from '../middleware/feature-gate';
 import { getDepartureSummary } from '../services/departures/capacity';
+import { AcceptError, markAccepted } from '../services/quotes/accept';
 import { bandsFromColumn, bandsFor, countByBand, fillQuantities, loadAgencyBands } from '../services/pricing/age-bands';
 import { paxFromAges, paxFromLead, paxFromTravellers, travelDateFor, type ResolvedPax } from '../services/pricing/quote-fill';
 
@@ -203,6 +204,7 @@ async function getFullItinerary(db: ReturnType<typeof drizzle>, itineraryId: str
 
   return {
     ...itin,
+    acceptedIpHash: undefined, // R155: kept for the audit trail, never sent to the app
     inclusions: itin.inclusions ? JSON.parse(itin.inclusions) : [],
     exclusions: itin.exclusions ? JSON.parse(itin.exclusions) : [],
     ageBands: bandsFromColumn(itin.ageBands),
@@ -1062,6 +1064,36 @@ itineraryRoutes.delete('/:id/share-link', requirePermission('itineraries', 'edit
 });
 
 // ============================================================
+// POST /:id/mark-accepted — Staff record an acceptance that came by message or call (R155)
+// ============================================================
+
+const markAcceptedSchema = z.object({
+  via: z.enum(['staff', 'message']).optional(),
+  name: z.string().trim().max(120).optional(),
+});
+
+itineraryRoutes.post('/:id/mark-accepted', requirePermission('itineraries', 'edit'), zValidator('json', markAcceptedSchema), async (c) => {
+  const body = c.req.valid('json');
+  let waiter: { waitUntil(promise: Promise<unknown>): void } | undefined;
+  try {
+    waiter = c.executionCtx;
+  } catch {
+    waiter = undefined;
+  }
+  try {
+    const res = await markAccepted(
+      { env: c.env, tenantId: c.get('tenantId'), db: c.get('tenantDb'), waiter },
+      c.req.param('id'),
+      { via: body.via ?? 'staff', name: body.name, userId: c.get('userId') },
+    );
+    return success(c, { id: c.req.param('id'), ...res });
+  } catch (e) {
+    if (e instanceof AcceptError) return e.status === 404 ? notFound(c, 'Itinerary') : error(c, e.message, e.status, { code: e.code });
+    throw e;
+  }
+});
+
+// ============================================================
 // GET /:id/pdf — Generate quotation PDF (TICKET-097)
 // ============================================================
 
@@ -1149,7 +1181,8 @@ itineraryRoutes.get('/:id/pdf', requirePermission('itineraries', 'view'), async 
       y -= 14;
     }
 
-    for (const item of day.items) {
+    // A line for an age band nobody falls in (quantity 0, R149) stays in the builder but is not printed for the customer (R155).
+    for (const item of day.items.filter((i) => i.quantity !== 0)) {
       checkPageBreak(30);
       const typeLabel: Record<string, string> = { hotel: '[Hotel]', transport: '[Transport]', activity: '[Activity]', meal: '[Meal]', flight: '[Flight]' };
       const label = typeLabel[item.type] || '[*]';

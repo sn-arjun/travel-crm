@@ -19,6 +19,7 @@ import { DEFAULT_VAT_RATES, loadTaxSettings, normalizeCountry } from '../service
 import {
   DEFAULT_MARGIN_SCHEME, loadMarginScheme, MARGIN_FEATURE, MARGIN_SCHEME_KEY, normalizeMarginScheme, marginSchemeAllowed,
 } from '../services/margin-scheme';
+import { DEFAULT_QUOTE_ACCEPT, loadQuoteAccept, normalizeQuoteAccept, QUOTE_ACCEPT_FEATURE, QUOTES_ACCEPT_KEY } from '../services/quotes/accept';
 import { normalizeBankDetails, validateBankDetails } from '../utils/bank-details';
 import { loadPaymentDefaults, normalizePaymentDefaults, PAYMENT_DEFAULTS_KEY } from '../services/payments/accounts';
 import { STRIPE_METHOD_CURRENCIES } from '../services/payments/agency-gateway';
@@ -522,6 +523,43 @@ settingsRoutes.get('/invoice-defaults', async (c) => {
   }
 
   return success(c, result);
+});
+
+// ============================================================
+// GET / PUT /quotes-accept — Accept and book on the shared quote page (R155, design 4.6)
+// ============================================================
+
+settingsRoutes.get('/quotes-accept', requireFeature(QUOTE_ACCEPT_FEATURE), async (c) => {
+  return success(c, { ...(await loadQuoteAccept(c.get('tenantDb'))), defaults: DEFAULT_QUOTE_ACCEPT });
+});
+
+const quotesAcceptSchema = z.object({
+  enabled: z.boolean().optional(),
+  label: z.string().trim().max(60).optional(),
+  requireName: z.boolean().optional(),
+  requireTerms: z.boolean().optional(),
+  holdSeats: z.boolean().optional(),
+  createInvoice: z.enum(['none', 'proforma', 'invoice']).optional(),
+  offerDeposit: z.boolean().optional(),
+});
+
+settingsRoutes.put('/quotes-accept', requireFeature(QUOTE_ACCEPT_FEATURE), rbac(['admin']), zValidator('json', quotesAcceptSchema), async (c) => {
+  const db = drizzle(c.get('tenantDb'));
+  const userId = c.get('userId');
+  const next = normalizeQuoteAccept({ ...(await loadQuoteAccept(c.get('tenantDb'))), ...c.req.valid('json') });
+  const value = JSON.stringify(next);
+  const now = new Date().toISOString();
+  const [existing] = await db.select().from(settings).where(eq(settings.key, QUOTES_ACCEPT_KEY)).limit(1);
+  if (existing) await db.update(settings).set({ value, updatedBy: userId, updatedAt: now }).where(eq(settings.key, QUOTES_ACCEPT_KEY));
+  else await db.insert(settings).values({ key: QUOTES_ACCEPT_KEY, value, updatedBy: userId, updatedAt: now });
+  await logActivity(db, {
+    userId,
+    action: 'update_settings',
+    entityType: 'settings',
+    details: JSON.stringify({ key: QUOTES_ACCEPT_KEY }),
+    ipAddress: c.get('clientIp'),
+  });
+  return success(c, { ...next, defaults: DEFAULT_QUOTE_ACCEPT });
 });
 
 // ============================================================

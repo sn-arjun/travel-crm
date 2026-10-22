@@ -67,7 +67,46 @@ export class InvoiceContactNotFound extends Error {
   }
 }
 
-export type CreatedInvoice = Awaited<ReturnType<typeof createInvoice>>;
+const ITEM_HSN: Record<string, string> = {
+  hotel: '996311',
+  accommodation: '996311',
+  transport: '996411',
+  vehicle: '996411',
+  activity: '998551',
+  sightseeing: '998551',
+  meal: '996331',
+  food: '996331',
+  flight: '997221',
+  visa: '997121',
+};
+
+/**
+ * The invoice lines of a quote: one per itinerary item, "Day N: title", in day order. A band line nobody falls in (quantity 0, R149)
+ * is left out. `regime` is the agency's tax regime: under GST the lines carry the travel-services default of 18%; under any other
+ * regime the rate is left to the tax calculator. Used by POST /invoices/from-itinerary and by quote acceptance (R155).
+ */
+export async function itineraryInvoiceItems(tenantDb: D1Database, itineraryId: string, regime: string): Promise<CreateInvoiceItemInput[]> {
+  const days = await tenantDb.prepare('SELECT * FROM itinerary_days WHERE itinerary_id = ?1 ORDER BY day_number').bind(itineraryId).all<Record<string, any>>();
+  const out: CreateInvoiceItemInput[] = [];
+  for (const day of days.results || []) {
+    const items = await tenantDb.prepare('SELECT * FROM itinerary_items WHERE day_id = ?1 ORDER BY sort_order').bind(day.id).all<Record<string, any>>();
+    for (const item of items.results || []) {
+      if (item.quantity === 0) continue;
+      const itemType = ((item.type as string) || 'activity').toLowerCase();
+      out.push({
+        description: `Day ${day.day_number}: ${item.title || item.description || itemType}`,
+        hsnCode: ITEM_HSN[itemType] || '999799',
+        quantity: (item.quantity as number) || 1,
+        rate: (item.selling_price as number) || (item.cost as number) || 0,
+        discountPercent: 0,
+        taxRate: regime === 'gst' ? 18 : undefined,
+      });
+    }
+  }
+  return out;
+}
+
+export type CreatedInvoice= Awaited<ReturnType<typeof createInvoice>>;
 
 /**
  * Create an invoice: numbering, tax (agency regime and buyer), line items, bank snapshot, activity entry, lead-owner

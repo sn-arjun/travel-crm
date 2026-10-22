@@ -198,6 +198,12 @@ export const en = {
   'public.quotation.notFound': 'Quotation not found',
   'public.quotation.revoked': 'This quotation link has been revoked',
   'public.quotation.expired': 'This quotation has expired',
+  'public.quotation.full': 'The seats of this departure are no longer available. Please contact your travel agent.',
+  'public.quotation.notAccepted': 'This quotation can not be accepted online.',
+  'quotes.accept.notifyTitle': 'Quote accepted',
+  'quotes.accept.notifyBody': '{name} accepted the quote "{title}"',
+  'quotes.accept.timeline': 'Quote "{title}" accepted online by {name}',
+  'quotes.accept.timelineStaff': 'Quote "{title}" marked as accepted by staff ({via})',
   // ---- test payment page (R142; local and test stacks only) ----
   'mockpay.title': 'Test payment',
   'mockpay.banner': 'Test payment page. No money moves and no real payment provider is contacted.',
