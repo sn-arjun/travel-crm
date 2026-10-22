@@ -1,0 +1,85 @@
+---
+import { MODULES, FEATURE_TOTAL } from '../data/features';
+import { MARKET, PLAN_META, num, type MarketKey } from '../data/markets';
+import { bindings } from '../scripts/bind';
+interface Props { market: MarketKey; maxHeight?: string }
+const { market, maxHeight = '780px' } = Astro.props;
+const b = bindings(MARKET[market]);
+const limits: [string, string[], boolean][] = [
+  ['Users included', [0, 1, 2].map((i) => `usersN.${i}`), true],
+  ['Extra user, per year', [0, 1, 2].map((i) => `extra.${i}`), true],
+  ['AI credits a month', PLAN_META.map((p) => num(p.ai)), false],
+  ['WhatsApp template messages a month', PLAN_META.map((p) => num(p.wa)), false],
+  ['Emails a month', PLAN_META.map((p) => num(p.mail)), false],
+  ['Websites', PLAN_META.map((p) => String(p.web)), false],
+];
+---
+<div id="compare" class="compare">
+  <div class="chead">
+    <h3>Compare every feature.</h3>
+    <p>{FEATURE_TOTAL} features · prices for <span data-bind="region">{b.region}</span> · tap a module to fold it</p>
+  </div>
+  <div class="box" tabindex="0" role="region" aria-label="Feature comparison by plan" style={`max-height:${maxHeight}`}>
+    <table>
+      <thead>
+        <tr>
+          <th scope="col" class="fcol mono">FEATURE</th>
+          {PLAN_META.map((p, i) => <th scope="col" class={'popular' in p ? 'pop' : ''}><span class="pn">{p.name}</span><span class="mono pp"><span data-bind={`price.${i}`}>{b[`price.${i}`]}</span> / yr</span></th>)}
+        </tr>
+      </thead>
+      <tbody class="grp">
+        <tr class="gh"><th colspan="4" scope="colgroup" class="mono">00 · PLAN LIMITS</th></tr>
+        {limits.map(([name, vals, bound]) => (
+          <tr><th scope="row">{name}</th>{vals.map((v, i) => <td class={i === 1 ? 'pro' : ''}>{bound ? <span data-bind={v}>{b[v]}</span> : v}</td>)}</tr>
+        ))}
+      </tbody>
+      {MODULES.map((m, mi) => (
+        <tbody class="grp" data-fold>
+          <tr class="gh"><th colspan="4" scope="colgroup"><button type="button" class="mono fold" aria-expanded="true"><span>{String(mi + 1).padStart(2, '0')} · {m.title.toUpperCase()}</span><span class="n">{m.items.length} features <span class="chev" aria-hidden="true">▾</span></span></button></th></tr>
+          {m.items.map(([name, p]) => (
+            <tr class="fr"><th scope="row">{name}</th>{PLAN_META.map((pm, i) => {
+              const ok = i + 1 >= p;
+              return <td class={`${ok ? 'yes' : 'no'} ${i === 1 ? 'pro' : ''}`}><span aria-hidden="true">{ok ? '✓' : '—'}</span><span class="sr-only">{ok ? 'Included in' : 'Not in'} {pm.name}</span></td>;
+            })}</tr>
+          ))}
+        </tbody>
+      ))}
+    </table>
+  </div>
+  <p class="legend">✓ included · — not in this plan. Usage limits reset every month.</p>
+</div>
+<script>
+  document.querySelectorAll<HTMLButtonElement>('.compare .fold').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const open = btn.getAttribute('aria-expanded') !== 'true';
+      btn.setAttribute('aria-expanded', String(open));
+      btn.closest('tbody')!.querySelectorAll<HTMLElement>('.fr').forEach((r) => { r.hidden = !open; });
+    });
+  });
+</script>
+<style>
+  .compare { margin-top: 72px; }
+  .chead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 12px 24px; margin-bottom: 18px; }
+  h3 { margin: 0; font-family: var(--display); font-weight: 900; font-size: clamp(36px, 4.4vw, 56px); line-height: .95; text-transform: uppercase; }
+  .chead p, .legend { margin: 0; font-size: 14px; color: var(--ink2); }
+  .legend { margin-top: 14px; font-size: 13px; }
+  .box { position: relative; overflow: auto; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+  table { width: 100%; min-width: 660px; border-collapse: collapse; font-size: 14px; }
+  thead th { position: sticky; top: 0; z-index: 3; background: var(--board); color: var(--boardtext); padding: 12px 8px; text-align: center; border-left: 1px solid var(--flapline); width: 132px; }
+  thead th.fcol { text-align: left; padding: 14px 16px; font-size: 12px; letter-spacing: .1em; color: var(--boardmute); font-weight: 400; vertical-align: bottom; border-left: 0; width: auto; }
+  thead th.pop { background: #2A2410; }
+  .pn { display: block; font-family: var(--display); font-weight: 800; font-size: 22px; text-transform: uppercase; }
+  thead th.pop .pn { color: var(--amber); }
+  .pp { display: block; font-size: 12px; color: var(--boardmute); font-weight: 400; }
+  .gh th { background: var(--chip); border-top: 1px solid var(--line); padding: 0; text-align: left; font-weight: 600; font-size: 13px; letter-spacing: .06em; }
+  .grp:first-of-type .gh th { padding: 12px 16px; }
+  .fold { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 16px; min-height: 44px; background: transparent; border: 0; color: inherit; font: inherit; font-family: var(--mono); font-weight: 600; letter-spacing: .06em; cursor: pointer; text-align: left; }
+  .n { display: inline-flex; gap: 10px; align-items: center; color: var(--ink2); font-weight: 500; }
+  .chev { display: inline-block; transition: transform .2s ease; }
+  .fold[aria-expanded="false"] .chev { transform: rotate(-90deg); }
+  tbody th[scope="row"] { text-align: left; font-weight: 400; padding: 10px 16px; line-height: 1.4; border-top: 1px solid var(--line); }
+  td { text-align: center; padding: 10px 6px; border-top: 1px solid var(--line); border-left: 1px solid var(--line); font-family: var(--mono); font-weight: 600; font-size: 13px; }
+  td.pro { background: rgba(255,178,26,.08); }
+  td.yes { color: var(--paid); }
+  td.no { color: var(--ink2); }
+</style>

@@ -27,9 +27,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: npm
+          cache-dependency-path: landing/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: landing
+      - name: Type-check (astro check)
+        run: npm run check
+        working-directory: landing
+      - name: Build the site (astro build, then the domain and required-file check)
+        run: npm run build
+        working-directory: landing
       - run: node landing/scripts/check-links.mjs
-      - name: Assemble site (public/ published at the root)
-        run: node landing/scripts/build.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: landing-dist
@@ -46,7 +54,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node landing/scripts/build.mjs
+          cache: npm
+          cache-dependency-path: landing/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: landing
+      - run: npm run build
+        working-directory: landing
       - name: wrangler pages deploy
         run: npx --yes wrangler@3 pages deploy landing/dist --project-name travelcrm-landing --branch master
         env:

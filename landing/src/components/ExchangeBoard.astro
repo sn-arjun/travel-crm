@@ -1,0 +1,103 @@
+---
+import { MARKETS, money, type MarketKey } from '../data/markets';
+interface Props { market: MarketKey }
+const { market } = Astro.props;
+---
+<section id="markets" class="dark" aria-labelledby="markets-h">
+  <div class="wrap section">
+    <div class="head">
+      <div><p class="eyebrow">EXCHANGE · FIVE MARKETS</p>
+      <h2 id="markets-h" class="h2" style="max-width:16ch">Your currency. Your tax. Your language.</h2></div>
+      <p class="lede" style="max-width:42ch;font-size:16px">Invoices, tax and payment methods follow your agency's country. Pick a market to see its invoice and prices.</p>
+    </div>
+    <div class="split">
+      <div class="board">
+        <div class="top"><span class="title">EXCHANGE</span><span class="mono meta">TAX · PAYMENTS · LANGUAGE · PRICE FROM</span></div>
+        <div class="scroll">
+          <div role="group" aria-label="Pick your market" class="table">
+            <div aria-hidden="true" class="row head"><span></span><span>MARKET</span><span>CUR</span><span>TAX</span><span>PAY</span><span>LANG</span><span class="end">FROM</span></div>
+            {MARKETS.map((m, i) => (
+              <button type="button" class="row" data-pick-market={m.key} aria-pressed={m.key === market ? 'true' : 'false'} aria-label={`${m.board.market}: ${m.board.tax}, ${m.board.pay}, from ${money(m, m.plans[0][0])} a year`}>
+                <span class="mark" aria-hidden="true">▶</span>
+                <span class="tiles">{[...m.board.market.padEnd(9, ' ')].map((c, j) => <span class="tile" style={`animation-delay:${120 + i * 90 + j * 40}ms`}>{c === ' ' ? ' ' : c}</span>)}</span>
+                <span class="cur">{m.sym}</span><span class="det"><span>{m.board.tax}</span><span>{m.board.pay}</span><span>{m.board.lang}</span></span><span class="end from">{money(m, m.plans[0][0])}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <p class="mono note">Founding price a year for Basic. Pick a row to change the prices below.</p>
+      </div>
+      <div class="invoices">
+        {MARKETS.map((m) => (
+          <figure data-market-panel={m.key} hidden={m.key !== market} aria-label={`Example ${m.invoice.title.toLowerCase()} for ${m.name}`}>
+            <div class="paper">
+              <div class="ihead">
+                <div><div class="ititle">{m.invoice.title}</div><div class="mono ino">{m.invoice.no} · {m.invoice.date}</div></div>
+                <div class="mono from-agency">{m.invoice.agency}<br>{m.invoice.taxId}</div>
+              </div>
+              <div class="lines">
+                {m.invoice.lines.map(([a, b], i) => <div class={`flip ${i ? 'sub' : ''}`} style={`animation-delay:${80 + i * 90}ms`}><span>{a}</span><span class="mono amt">{b}</span></div>)}
+                <div class="total mono"><span>{m.invoice.totalLabel}</span><span>{m.invoice.total}</span></div>
+              </div>
+              <div class="ifoot"><span class="pay">{m.invoice.pay} ▸</span><span class="mono fine">{m.invoice.foot}</span></div>
+            </div>
+            <span class="paid pm stamp mono" aria-hidden="true">{m.invoice.stamp}</span>
+            <figcaption class="mono">Example invoice. Your own details, numbering and tax ID print on it.</figcaption>
+          </figure>
+        ))}
+      </div>
+    </div>
+  </div>
+</section>
+<style>
+  .split { display: flex; flex-wrap: wrap; gap: 40px; align-items: flex-start; }
+  .board { flex: 1 1 700px; min-width: 0; background: #0D0F11; border: 1px solid var(--flapline); border-radius: 14px; padding: 18px 18px 12px; box-shadow: 0 30px 80px rgba(0,0,0,.4); }
+  .top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .title { font-family: var(--display); font-weight: 800; font-size: 26px; letter-spacing: .06em; color: var(--amber); }
+  .meta { font-size: 12px; color: var(--boardmute); letter-spacing: .08em; }
+  .scroll { overflow-x: auto; }
+  .table { min-width: 640px; font-family: var(--mono); }
+  .det { display: contents; }
+  .row { width: 100%; font: inherit; text-align: left; border: 0; border-bottom: 1px solid #1A1E22; background: transparent; color: var(--boardtext); display: grid; grid-template-columns: 18px 184px 34px minmax(0,1fr) minmax(0,1.25fr) 60px 82px; gap: 10px; align-items: center; padding: 10px 6px; min-height: 54px; font-size: 13px; border-radius: 6px; }
+  button.row { cursor: pointer; }
+  button.row:hover { background: #16191C; }
+  .row.head { min-height: 0; padding: 0 6px 8px; font-size: 11px; letter-spacing: .1em; color: var(--boardmute); border-bottom-color: var(--flapline); border-radius: 0; }
+  .mark { color: var(--amber); visibility: hidden; }
+  .tiles { display: flex; gap: 2px; }
+  .tiles .tile { width: 18px; height: 26px; font-size: 14px; color: #F4F1E8; }
+  .cur { font-weight: 600; }
+  .end { justify-self: end; }
+  .from { font-weight: 600; }
+  .row[aria-pressed="true"] { background: #1F1A0C; color: var(--amber); }
+  .row[aria-pressed="true"] .mark { visibility: visible; }
+  .row[aria-pressed="true"] .tile { color: var(--amber); }
+  .note { margin: 10px 0 0; font-size: 12px; color: var(--boardmute); }
+  .invoices { flex: 1 1 340px; min-width: 0; }
+  figure { margin: 0; position: relative; padding-top: 14px; }
+  .paper { background: #FFFDF7; color: #15181B; border-radius: 6px; padding: 24px 24px 20px; box-shadow: 0 30px 80px rgba(0,0,0,.45); transform: rotate(-1deg); }
+  .ihead { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+  .ititle { font-family: var(--display); font-weight: 900; font-size: 30px; line-height: 1; text-transform: uppercase; }
+  .ino { margin-top: 4px; font-size: 12px; color: #6B6150; }
+  .from-agency { text-align: right; font-size: 11px; line-height: 1.5; color: #6B6150; padding-right: 92px; }
+  .lines { margin-top: 18px; border-top: 2px solid #15181B; }
+  .lines > .flip { display: flex; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid #E6DFCC; font-size: 15px; transform-origin: 50% 0; }
+  .sub { color: #4E565E; }
+  .amt { font-weight: 600; white-space: nowrap; }
+  .total { display: flex; justify-content: space-between; gap: 12px; padding: 14px 0 0; font-weight: 600; font-size: 20px; }
+  .ifoot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+  .pay { background: var(--board); color: var(--amber); font-weight: 700; font-size: 14px; padding: 10px 14px; border-radius: 8px; }
+  .fine { font-size: 11px; color: #6B6150; max-width: 30ch; text-align: right; }
+  .paid { position: absolute; right: 14px; top: 0; width: 100px; height: 100px; border: 3px double var(--paid); color: var(--paid); border-radius: 50%; display: flex; align-items: center; justify-content: center; text-align: center; font-weight: 700; font-size: 11px; line-height: 1.35; white-space: pre-line; background: rgba(255,253,247,.88); }
+  figcaption { margin-top: 18px; font-size: 12px; color: var(--boardmute); }
+  @media (max-width: 700px) {
+    .table { min-width: 0; }
+    .row.head { display: none; }
+    .row { grid-template-columns: 14px minmax(0,1fr) auto; row-gap: 6px; padding: 12px 6px; }
+    .cur { display: none; }
+    .det { display: flex; flex-wrap: wrap; gap: 4px 12px; grid-column: 2 / -1; grid-row: 2; font-size: 12px; color: var(--boardmute); }
+    .row[aria-pressed="true"] .det { color: var(--amber); }
+    .from { grid-column: 3; grid-row: 1; }
+    .tiles .tile { width: 16px; height: 24px; font-size: 13px; }
+  }
+  @media (max-width: 520px) { .from-agency { padding-right: 0; text-align: left; } .paid { width: 84px; height: 84px; font-size: 10px; top: -6px; } }
+</style>

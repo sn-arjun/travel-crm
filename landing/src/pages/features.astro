@@ -1,0 +1,48 @@
+---
+import Base from '../layouts/Base.astro';
+import { MODULES, FEATURE_TOTAL, PLAN_TAG, slug } from '../data/features';
+import { CRUMBS_LD } from '../data/seo';
+const site = Astro.site!;
+---
+<Base
+  title={`All ${FEATURE_TOTAL} features · travel agency CRM`}
+  description="Every TravelCRM Pro feature by module: sales, quotation, operations, group departures, finance, marketing, website, reports, platform and support, with the plan each one starts on."
+  jsonLd={[CRUMBS_LD(site, [['Home', '/'], ['Features', '/features/']])]}
+>
+  <section class="dark">
+    <div class="wrap section top">
+      <p class="eyebrow">LEGEND · {FEATURE_TOTAL} FEATURES IN {MODULES.length} MODULES</p>
+      <h1 class="h1">Every feature, on one board.</h1>
+      <nav aria-label="Modules" class="jump">{MODULES.map((m, i) => <a href={`#${slug(m)}`}><span class="mono">{String(i + 1).padStart(2, '0')}</span> {m.title} <span class="mono n">{m.items.length}</span></a>)}</nav>
+    </div>
+  </section>
+  <div class="wrap section">
+    {MODULES.map((m, i) => (
+      <section id={slug(m)} class="mod" aria-labelledby={`h-${m.k}`}>
+        <div class="mh"><span class="code mono">{String(i + 1).padStart(2, '0')}</span><h2 id={`h-${m.k}`} class="h3">{m.title}</h2><p>{m.line}</p></div>
+        <ul>
+          {m.items.map(([name, p]) => <li><svg class="check" aria-hidden="true" width="16" height="16" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg><span>{name}</span><span class={`tag p${p}`}>{PLAN_TAG[p]}</span></li>)}
+        </ul>
+      </section>
+    ))}
+    <p class="cta"><a href="/pricing/#compare" class="btn btn--amber">Compare plans</a> <a href="/#enquire" class="btn btn--ghost dark-ghost">Book a demo</a></p>
+  </div>
+</Base>
+<style>
+  .top { padding-bottom: 60px; }
+  .h1 { margin-top: 12px; }
+  .jump { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 32px; }
+  .jump a { color: var(--boardtext); text-decoration: none; border: 1px solid var(--flapline); background: var(--flap); border-radius: 8px; padding: 10px 12px; min-height: 44px; display: inline-flex; gap: 8px; align-items: center; font-size: 14px; }
+  .jump a:hover { border-color: var(--amber); color: var(--amber); }
+  .jump .mono { opacity: .7; font-size: 12px; }
+  .mod { padding: 28px 0 40px; border-top: 2px solid var(--ink); scroll-margin-top: 16px; }
+  .mh { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 18px; margin-bottom: 12px; }
+  .mh p { margin: 0; color: var(--ink2); flex: 1 1 320px; }
+  .code { background: var(--board); color: var(--amber); padding: 4px 7px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+  ul { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 0 44px; }
+  li { display: grid; grid-template-columns: 18px minmax(0,1fr) auto; gap: 10px; align-items: start; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+  .tag { font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: .06em; padding: 3px 7px; border-radius: 4px; white-space: nowrap; }
+  .p1 { background: var(--chip); color: var(--ink2); } .p2 { background: var(--runway); color: #fff; } .p3 { background: var(--board); color: var(--amber); }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
+  .dark-ghost { color: var(--ink); border-color: var(--line); }
+</style>

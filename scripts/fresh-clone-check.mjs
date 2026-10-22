@@ -83,6 +83,8 @@ const steps = [
   ['super-admin next build', npm, ['-w', 'super-admin', 'run', 'build'], '.'],
   ['super-admin OpenNext build', npx, ['opennextjs-cloudflare', 'build'], 'super-admin'],
   ['desktop web OpenNext build', npm, ['-w', 'travelcrm-desktop', 'run', 'build:web'], '.'],
+  ['landing npm ci', npm, ['ci', '--no-audit', '--no-fund'], 'landing'],
+  ['landing build', npm, ['run', 'build'], 'landing'],
   ['landing link check', node, ['landing/scripts/check-links.mjs'], '.'],
   ['gen-wrangler self-test', node, ['scripts/gen-wrangler.selftest.mjs'], 'backend'],
   ['deploy scripts self-test', node, ['scripts/shell-scripts.selftest.mjs'], '.'],

@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!-- YOUR-DOMAIN.example is the placeholder token: scripts/build.mjs replaces it with the domain set in config.js. -->
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://YOUR-DOMAIN.example/</loc><lastmod>2026-10-15</lastmod><priority>1.0</priority></url>
-  <url><loc>https://YOUR-DOMAIN.example/legal/privacy.html</loc><lastmod>2026-10-15</lastmod><priority>0.3</priority></url>
-  <url><loc>https://YOUR-DOMAIN.example/legal/terms.html</loc><lastmod>2026-10-15</lastmod><priority>0.3</priority></url>
-  <url><loc>https://YOUR-DOMAIN.example/legal/dpa.html</loc><lastmod>2026-10-15</lastmod><priority>0.3</priority></url>
-  <url><loc>https://YOUR-DOMAIN.example/legal/subprocessors.html</loc><lastmod>2026-10-15</lastmod><priority>0.3</priority></url>
-</urlset>

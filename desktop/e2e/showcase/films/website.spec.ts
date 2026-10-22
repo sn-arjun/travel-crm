@@ -1,5 +1,6 @@
 /**
- * Film website: the landing page (served from landing/ under a stand-in origin, its API calls proxied to the local stack) and the
+ * Film website: the landing page (the built site in landing/dist/, so run `npm run build` in landing/ first; served under a stand-in
+ * origin, its API calls proxied to the local stack) and the
  * agency website tools in the console (studio/clips/website.json). Multi-agency stack + console + film-prep --operator/--agencies.
  * Creating a site only queues it locally (no WordPress server runs here); the film says what happens next and shows "queued".
  */
@@ -12,9 +13,9 @@ import { admin, agency, anonymous as test, API_URL, beat, clickOn, CONSOLE_URL, 
 
 const LANDING = 'http://landing.travelcrm.local';
 const OPERATOR = { email: 'asha.rao@travelcrm.example', password: 'Console-Operator-2026' };
-const TYPES: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.json': 'application/json', '.xml': 'application/xml', '.txt': 'text/plain' };
+const TYPES: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.json': 'application/json', '.xml': 'application/xml', '.txt': 'text/plain', '.woff2': 'font/woff2', '.woff': 'font/woff' };
 
-/** Serve landing/ at LANDING; config.js gets a same-origin API base, and /api/* is forwarded to the local stack. */
+/** Serve landing/dist at LANDING (/x/ serves x/index.html); config.js gets a same-origin API base, and /api/* is forwarded to the local stack. */
 async function serveLanding(page: Page): Promise<void> {
   const apiOrigin = new URL(API_URL).origin;
   await page.route(`${LANDING}/**`, async (route) => {
@@ -24,9 +25,10 @@ async function serveLanding(page: Page): Promise<void> {
       await route.fulfill({ response: res });
       return;
     }
-    const rel = decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname);
-    const file = path.join(REPO, 'landing', rel);
-    if (!file.startsWith(path.join(REPO, 'landing')) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { await route.fulfill({ status: 404, body: 'not found' }); return; }
+    const rel = decodeURIComponent(url.pathname.endsWith('/') ? url.pathname + 'index.html' : url.pathname);
+    const dist = path.join(REPO, 'landing', 'dist');
+    const file = path.join(dist, rel);
+    if (!file.startsWith(dist) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { await route.fulfill({ status: 404, body: 'not found' }); return; }
     let body: Buffer | string = fs.readFileSync(file);
     if (rel === '/config.js') body = body.toString('utf8').replace(/apiBase:\s*[^,\n]+,/, "apiBase: '',");
     await route.fulfill({ status: 200, contentType: TYPES[path.extname(file)] ?? 'application/octet-stream', body });
@@ -61,7 +63,7 @@ test('film:website', async ({ page, context }, testInfo) => {
       const send = page.locator('#enquiry-form button[type="submit"]');
       await focus(page, 'send', send);
       await clickOn(page, send);
-      await expect(page.locator('h3:visible', { hasText: /We have your request/i }).first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.locator('#enquiry-success')).toBeVisible({ timeout: 15_000 });
     });
 
     await beat(page, 'landing-legal', async () => {

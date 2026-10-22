@@ -3,7 +3,7 @@ User-agent: *
 Allow: /
 
 # Sitemaps
-Sitemap: https://YOUR-DOMAIN.example/sitemap.xml
+Sitemap: https://YOUR-DOMAIN.example/sitemap-index.xml
 
 # Block admin paths
 Disallow: /admin/

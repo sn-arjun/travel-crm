@@ -1,0 +1,25 @@
+---
+import Base from '../layouts/Base.astro';
+const rows: [string, string, string][] = [['--:--', 'THIS PAGE', 'CANCELLED'], ['NOW', 'HOME', 'BOARDING'], ['NOW', 'PRICING', 'ON TIME']];
+---
+<Base title="Flight not found" description="This page does not exist. Head back to the TravelCRM Pro home page." noindex>
+  <section class="dark">
+    <div class="wrap section">
+      <p class="eyebrow">ERROR 404</p>
+      <h1 class="h1">Flight not found.</h1>
+      <div class="board mono" role="table" aria-label="Where to go instead">
+        {rows.map(([t, d, s], i) => <div role="row" class="row"><span role="cell">{t}</span><span role="cell" class="d">{[...d].map((c, j) => <span class="tile" style={`animation-delay:${i * 160 + j * 40}ms`}>{c === ' ' ? ' ' : c}</span>)}</span><span role="cell" class={i ? 'ok' : 'x'}>{s}</span></div>)}
+      </div>
+      <p class="ctas"><a class="btn btn--amber" href="/">Go to the home page</a> <a class="btn btn--ghost" href="/pricing/">See pricing</a></p>
+    </div>
+  </section>
+</Base>
+<style>
+  .board { margin-top: 36px; background: #0D0F11; border: 1px solid var(--flapline); border-radius: 14px; padding: 12px 18px; max-width: 720px; }
+  .row { display: grid; grid-template-columns: 70px minmax(0,1fr) 110px; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid #1A1E22; font-size: 14px; }
+  .row:last-child { border-bottom: 0; }
+  .d { display: flex; gap: 2px; flex-wrap: wrap; }
+  .d .tile { width: 22px; height: 30px; font-size: 15px; color: #F4F1E8; }
+  .x { color: var(--red); font-weight: 600; } .ok { color: var(--paid); font-weight: 600; }
+  .ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
+</style>

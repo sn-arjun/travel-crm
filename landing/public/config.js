@@ -5,8 +5,9 @@
  * Nothing here is a secret: this file is public. Never put an API key or secret in it.
  */
 // OWNER: PLACEHOLDER DOMAIN. The domain is not decided yet; this is the ONE place the landing site names it.
-// scripts/build.mjs also replaces the token YOUR-DOMAIN.example in index.html, sitemap.xml and robots.txt with
-// this value (or with the LANDING_DOMAIN environment variable, if set). Everything below is derived from it.
+// The build uses it as the site address (canonical URLs, sitemap, hreflang), and scripts/postbuild.mjs replaces the
+// token YOUR-DOMAIN.example in the built files with it (or with the LANDING_DOMAIN environment variable, if set).
+// Everything below is derived from it.
 var TRAVELCRM_DOMAIN = 'YOUR-DOMAIN.example';
 
 window.TRAVELCRM_CONFIG = {

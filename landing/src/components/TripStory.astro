@@ -1,0 +1,73 @@
+---
+import { TRIP } from '../data/content';
+---
+<section id="trip" class="wrap section" aria-labelledby="trip-h">
+  <p class="eyebrow">ONE TRIP · FIVE STOPS</p>
+  <h2 id="trip-h" class="h2 narrow">From the first message to the hotel voucher.</h2>
+  <p class="lede intro">The Mehta family writes on WhatsApp on a Tuesday morning. Scroll to follow their trip through TravelCRM Pro.</p>
+  <div class="trip">
+    <aside class="side hideNarrow dark" aria-label="Trip progress">
+      <div class="mono so">TRIP TRV-0142 · SO FAR</div>
+      {TRIP.map((d, i) => <div class="ck"><span class={`tick t${i + 1}`} aria-hidden="true">✓</span><span class="mono">{d.check}</span></div>)}
+      <p>Ticks fill in as you scroll.</p>
+    </aside>
+    <div class="rail">
+      <svg aria-hidden="true" viewBox="0 0 24 1000" preserveAspectRatio="none">
+        <path d="M12 0 L12 1000" fill="none" class="track" stroke-width="2" stroke-dasharray="6 8" vector-effect="non-scaling-stroke"></path>
+        <path class="progress" pathLength="1" d="M12 0 L12 1000" fill="none" stroke-width="3" vector-effect="non-scaling-stroke"></path>
+      </svg>
+      <ol>
+        {TRIP.map((d, i) => (
+          <li style={`view-timeline-name:--d${i + 1}`}>
+            <span class="no" aria-hidden="true">{d.no}</span>
+            <div class="top">
+              <div class="txt">
+                <div class="mono when">{d.when}</div>
+                <h3>{d.title}</h3>
+                <p>{d.text}</p>
+              </div>
+              <span class="pm stampIn postmark" aria-hidden="true" style={`border-color:${d.pmColor};color:${d.pmColor}`}>{d.pm}</span>
+            </div>
+            <div class="scene rise">
+              {d.scene.map((s) => <div style={`background:${s.bg};color:${s.fg}`}><span>{s.a}</span><span class="mono b">{s.b}</span></div>)}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </div>
+</section>
+<style>
+  .narrow { max-width: 16ch; margin-bottom: 18px; }
+  .intro { margin-bottom: 60px; }
+  .trip { display: flex; flex-wrap: wrap; gap: 48px; align-items: flex-start; timeline-scope: --d1, --d2, --d3, --d4, --d5; }
+  .side { position: sticky; top: 24px; flex: 0 1 280px; min-width: 0; border-radius: 14px; padding: 20px; }
+  .so { font-size: 12px; color: var(--amber); margin-bottom: 12px; letter-spacing: .1em; }
+  .ck { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid #1F2428; font-size: 13px; }
+  .side p { margin: 12px 0 0; font-size: 12px; color: var(--boardmute); }
+  .tick { width: 24px; height: 24px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; background: var(--amber); color: #121518; }
+  .rail { position: relative; flex: 1 1 560px; min-width: 0; padding-left: 48px; }
+  .rail svg { position: absolute; left: 0; top: 0; width: 24px; height: 100%; overflow: visible; }
+  .track { stroke: var(--line); }
+  .progress { stroke: var(--amber); stroke-dasharray: 1; stroke-dashoffset: 0; }
+  ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 64px; }
+  li { position: relative; }
+  .no { position: absolute; left: -44px; top: 2px; font-family: var(--mono); font-weight: 600; font-size: 13px; background: var(--board); color: var(--amber); padding: 4px 7px; border-radius: 4px; }
+  .top { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: flex-start; justify-content: space-between; }
+  .txt { flex: 1 1 360px; min-width: 0; }
+  .when { font-size: 13px; letter-spacing: .1em; color: var(--ink2); }
+  h3 { margin: 6px 0 10px; font-family: var(--display); font-weight: 800; font-size: clamp(32px, 3.4vw, 44px); line-height: 1; text-transform: uppercase; }
+  .txt p { margin: 0; font-size: 17px; line-height: 1.6; color: var(--ink2); max-width: 54ch; }
+  .postmark { flex: 0 0 auto; width: 108px; height: 108px; border: 3px double; border-radius: 50%; display: flex; align-items: center; justify-content: center; text-align: center; font-family: var(--mono); font-weight: 600; font-size: 12px; line-height: 1.35; white-space: pre-line; }
+  .scene { margin-top: 18px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; box-shadow: 0 18px 40px rgba(18,21,24,.06); display: grid; gap: 10px; }
+  .scene > div { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 10px; border-radius: 8px; font-size: 15px; }
+  .b { font-size: 12px; font-weight: 600; }
+  @supports (animation-timeline: view()) {
+    .progress { animation: draw linear both; animation-timeline: view(); animation-range: entry 10% exit 70%; }
+    @keyframes draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+    .tick { animation: tick linear both; animation-range: entry 30% cover 40%; }
+    @keyframes tick { from { background: var(--chip); color: transparent; } to { background: var(--amber); color: #121518; } }
+    .t1 { animation-timeline: --d1; } .t2 { animation-timeline: --d2; } .t3 { animation-timeline: --d3; } .t4 { animation-timeline: --d4; } .t5 { animation-timeline: --d5; }
+  }
+  @media (max-width: 900px) { .side { position: static; } }
+</style>

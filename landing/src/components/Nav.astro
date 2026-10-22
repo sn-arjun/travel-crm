@@ -1,0 +1,53 @@
+---
+const links: [string, string][] = [['/#trip', 'How it works'], ['/features/', 'Features'], ['/#agency', 'For your agency'], ['/pricing/', 'Pricing'], ['/compare/', 'Compare'], ['/blog/', 'Blog']];
+const logo = [...'TRAVELCRM'];
+---
+<header class="nav dark">
+  <nav aria-label="Main" class="wrap bar">
+    <a href="/" class="logo" aria-label="TravelCRM Pro home">
+      {logo.map((c, i) => <span class="tile" aria-hidden="true" style={`animation-delay:${i * 50}ms`}>{c}</span>)}
+      <span class="tile pro" aria-hidden="true" style="animation-delay:520ms">PRO</span>
+    </a>
+    <details class="menu">
+      <summary aria-label="Menu"><span aria-hidden="true">☰</span> Menu</summary>
+      <div class="links">
+        {links.map(([href, label]) => <a href={href}>{label}</a>)}
+      </div>
+    </details>
+    <a href="/#enquire" class="btn btn--amber cta">Book a demo</a>
+  </nav>
+</header>
+<style>
+  .nav { position: relative; z-index: 20; }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 28px; padding-top: 22px; padding-bottom: 22px; }
+  .logo { display: flex; align-items: center; gap: 3px; text-decoration: none; }
+  .logo .tile { width: 20px; height: 28px; font-size: 15px; color: var(--boardtext); }
+  .logo .pro { width: auto; margin-left: 6px; padding: 0 7px; background: var(--amber); color: #121518; font-size: 13px; }
+  .logo .pro::after { opacity: .2; }
+  .menu { flex: 1 1 auto; }
+  .menu summary { display: none; }
+  .links { display: flex; flex-wrap: wrap; gap: 4px 22px; font-size: 15px; }
+  .links a { color: var(--boardtext); text-decoration: none; min-height: 44px; display: inline-flex; align-items: center; }
+  .links a:hover { color: var(--amber); }
+  .cta { font-size: 15px; padding: 11px 18px; min-height: 44px; white-space: nowrap; }
+  @media (max-width: 900px) {
+    .bar { flex-wrap: nowrap; gap: 12px; }
+    .menu { flex: 0 0 auto; margin-left: auto; }
+    .menu .links { position: absolute; left: 0; right: 0; top: 100%; background: var(--board); padding: 4px var(--gutter) 16px; border-bottom: 1px solid var(--flapline); box-shadow: 0 20px 40px rgba(0,0,0,.35); }
+    .menu summary { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; border: 1px solid #3A4048; border-radius: 8px; cursor: pointer; list-style: none; font-weight: 600; }
+    .menu summary::-webkit-details-marker { display: none; }
+    .menu:not([open]) .links { display: none; }
+    .links { flex-direction: column; gap: 0; padding-top: 8px; }
+    .links a { border-bottom: 1px solid var(--flapline); }
+  }
+  @media (max-width: 560px) { .cta { display: none; } }
+  @media (min-width: 901px) { .menu > .links { display: flex !important; } }
+</style>
+<script>
+  // Above the phone breakpoint the menu is always open; below it, it starts closed.
+  const menu = document.querySelector<HTMLDetailsElement>('.nav .menu');
+  const mq = window.matchMedia('(min-width: 901px)');
+  const sync = () => { if (menu) menu.open = mq.matches; };
+  sync();
+  mq.addEventListener('change', sync);
+</script>
