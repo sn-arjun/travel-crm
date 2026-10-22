@@ -4,14 +4,15 @@
 
 .DESCRIPTION
   boot emulator if needed -> adb reverse -> location + geo fix -> clean status bar -> run
-  integration_test/demo_flow_test.dart (Flutter via the x86 PowerShell) -> on `DEMO_MARK ready` start
+  the integration test (default integration_test/demo_flow_test.dart, see -Test; Flutter via the x86 PowerShell) -> on `DEMO_MARK ready` start
   `adb shell screenrecord --display-id <id> --bit-rate 8000000` -> on `DEMO_MARK GEO` move the emulator
-  -> stop recording when the test exits -> pull the MP4 and write driver-marks.json.
+  -> stop recording when the test exits -> pull the MP4 and write <name of -Out>-marks.json (driver-marks.json for the default -Out).
 
   The trip must exist: run `node backend/scripts/seed-demo.mjs --live-trip` first (writes the handoff file).
 
 .EXAMPLE
   pwsh -File scripts/record-driver.ps1 -Slot 2
+  pwsh -File scripts/record-driver.ps1 -Slot 2 -Test integration_test/other_flow_test.dart -AgencyCode ABC123 -Out desktop/showcase/.work/driver-other.mp4   # marks: driver-other-marks.json
   pwsh -File scripts/record-driver.ps1 -ApiPort 8807 -Handoff desktop/showcase/.handoff.json -Out desktop/showcase/.work/driver.mp4
 
 .NOTES
@@ -23,6 +24,8 @@ param(
   [int]$ApiPort = 0,                      # default 8787 + 10*Slot
   [string]$Handoff = '',                  # default desktop/showcase/.handoff.json
   [string]$Out = '',                      # default desktop/showcase/.work/driver.mp4
+  [string]$Test = 'integration_test/demo_flow_test.dart',   # integration test file, relative to packages/driver_app
+  [string]$AgencyCode = '',               # passed to the app as --dart-define=AGENCY_CODE
   [string]$Avd = 'Resizable_Experimental',
   [string]$Serial = 'emulator-5554',
   [int]$Pace = 100,
@@ -41,7 +44,7 @@ if (-not $Out) { $Out = Join-Path $repo 'desktop/showcase/.work/driver.mp4' }
 if ($ApiPort -eq 0) { $ApiPort = 8787 + 10 * $Slot }
 $workDir = Split-Path $Out -Parent
 New-Item -ItemType Directory -Force $workDir | Out-Null
-$marksFile = Join-Path $workDir 'driver-marks.json'
+$marksFile = Join-Path $workDir ([IO.Path]::GetFileNameWithoutExtension($Out) + '-marks.json')   # driver.mp4 -> driver-marks.json
 $logFile = Join-Path $workDir 'driver-flutter.log'
 $pkg = 'com.travelcrm.driver_app'
 $sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } elseif ($env:ANDROID_SDK_ROOT) { $env:ANDROID_SDK_ROOT } else { Join-Path $env:LOCALAPPDATA 'Android\Sdk' }
@@ -116,9 +119,10 @@ Adb shell rm -f /sdcard/driver.mp4 | Out-Null
 
 # ── 4. run the flow, react to its marks ─────────────────────
 $driverDir = Join-Path $repo 'packages/driver_app'
-$flutterCmd = "cd '$driverDir'; flutter test integration_test/demo_flow_test.dart -d $Serial " +
+$agencyDefine = if ($AgencyCode) { " --dart-define=AGENCY_CODE=$AgencyCode" } else { '' }
+$flutterCmd = "cd '$driverDir'; flutter test $Test -d $Serial " +
   "--dart-define=API_BASE_URL=http://localhost:8787 --dart-define=ENVIRONMENT=dev " +
-  "--dart-define=TRIP_ID=$tripId --dart-define=DRIVER_PHONE=$phone --dart-define=OTP=$otp --dart-define=PACE_PERCENT=$Pace 2>&1; exit `$LASTEXITCODE"
+  "--dart-define=TRIP_ID=$tripId --dart-define=DRIVER_PHONE=$phone --dart-define=OTP=$otp --dart-define=PACE_PERCENT=$Pace$agencyDefine 2>&1; exit `$LASTEXITCODE"
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = $x86ps
 $psi.Arguments = "-NoProfile -Command `"$flutterCmd`""

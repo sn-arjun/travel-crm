@@ -7,6 +7,7 @@
  *   node scripts/showcase/record-films.mjs --slot 2 --films area-leads,area-finance
  *   node scripts/showcase/record-films.mjs --slot 2 --group multi --render    record, then render + gate each film
  *   node scripts/showcase/record-films.mjs --render-only --films area-leads   render a film that is already recorded
+ *   node scripts/showcase/record-films.mjs --slot 2 --clip <id>               a film that is not in films.json (its clip carries film: { stack, targetSec })
  *   flags: --retakes 2 (max, default 2)  --pace 0.3 (dry run: fast, nothing kept)  --no-reseed  --dry (print only)
  *
  * Per film: (1) narration manifest: studio `build.mjs <film> --no-render` (Kokoro TTS, hash-cached), so the take is paced to the
@@ -49,8 +50,17 @@ const must = (code, what) => { if (code !== 0) throw new Error(`${what} (exit ${
 
 const group = val('group');
 const only = val('films')?.split(',');
-let films = catalogue.filter((f) => (only ? only.includes(f.id) : f.stack === group));
-if (!films.length) { console.error(`nothing to do: --group single|multi|driver|ai or --films id,id (ids: ${catalogue.map((f) => f.id).join(', ')})`); process.exit(2); }
+const clipId = val('clip');
+let films;
+if (clipId) {
+  // a film outside the catalogue (a prospect film): the clip says how to record it, then it takes the same retake, gate and render path
+  const clipFile = path.join(studio, 'clips', `${clipId}.json`);
+  if (!fs.existsSync(clipFile)) { console.error(`no clip ${clipFile}`); process.exit(2); }
+  const meta = JSON.parse(fs.readFileSync(clipFile, 'utf8')).film;
+  if (!meta || !meta.stack || !meta.targetSec) { console.error(`${clipId}.json needs film: { stack, targetSec } to be recorded with --clip`); process.exit(2); }
+  films = [{ id: clipId, title: clipId, shorts: false, ...meta }];
+} else films = catalogue.filter((f) => (only ? only.includes(f.id) : f.stack === group));
+if (!films.length) { console.error(`nothing to do: --group single|multi|driver|ai, --clip id or --films id,id (ids: ${catalogue.map((f) => f.id).join(', ')})`); process.exit(2); }
 films = films.filter((f) => {
   if (f.stack === 'cut') { log(`${f.id} is a cut (nothing to record): node studio/src/${f.id === 'master' ? 'master.mjs' : `build.mjs ${f.id}`}`); return false; }
   if (f.stack === 'ai' && !flag('ai')) { log(`${f.id} needs live AI: skipped (owner approval, a stack started with --ai, and --ai here)`); return false; }
@@ -58,10 +68,17 @@ films = films.filter((f) => {
   return true;
 });
 
-function narrationSeconds(id) {
-  const m = path.join(studio, 'out/narration', id, 'narration.json');
+/** Expected raw-take length: each line holds (narration + 0.65 s) x the speed of its scene (sped-up scenes take longer to record). */
+function narrationSeconds(f) {
+  const clipName = f.clip ?? f.id; // a film recorded in parts names the clip its recording belongs to
+  const m = path.join(studio, 'out/narration', clipName, 'narration.json');
   if (!fs.existsSync(m)) return null;
-  return JSON.parse(fs.readFileSync(m, 'utf8')).lines.reduce((n, l) => n + l.duration + 0.65, 0);
+  const clipFile = path.join(studio, 'clips', `${clipName}.json`);
+  const clip = fs.existsSync(clipFile) ? JSON.parse(fs.readFileSync(clipFile, 'utf8')) : { scenes: [] };
+  const sceneOf = (line) => clip.scenes[Number(/^n(d+)$/.exec(line.id)?.[1])];
+  const mine = (s) => !f.clip || (s && (s.recording ?? clip.recording) === f.id);
+  const speedOf = (s) => (s && (s.type === 'screen' || s.type === 'phone') ? s.speed ?? 1 : 1);
+  return JSON.parse(fs.readFileSync(m, 'utf8')).lines.reduce((n, l) => { const s = sceneOf(l); return mine(s) ? n + (l.duration + 0.65) * speedOf(s) : n; }, 0);
 }
 function reseed() {
   must(run(node, ['--no-warnings', path.join(root, 'backend/scripts/seed-demo.mjs')]), 'seed-demo');
@@ -76,8 +93,8 @@ for (const f of films) {
   try {
     if (!flag('render-only')) {
       log(`${f.id}: narration manifest`);
-      must(run(node, ['src/build.mjs', f.id, '--no-render'], studio), 'narration');
-      const need = narrationSeconds(f.id);
+      must(run(node, ['src/build.mjs', f.clip ?? f.id, '--no-render'], studio), 'narration');
+      const need = narrationSeconds(f);
       for (let attempt = 0; attempt <= retakes && !r.recorded; attempt++) {
         r.attempts = attempt + 1;
         if (attempt > 0 && f.stack === 'single' && !flag('no-reseed')) { log(`${f.id}: reseed before retake ${attempt}`); reseed(); }

@@ -184,6 +184,27 @@ cd desktop && node scripts/fix-stack.mjs down --slot 2                          
 1. Read the real total in Settings > AI usage and write it in the report.
 2. Dry-run the page flow **without** `--ai` and with `SHOWCASE_AI` unset first. The spec then skips, so step through the pages by hand, or temporarily drop the `test.skip`. Without AI the pages only show their "AI is not configured" notice.
 
+## 6b. Prospect films (a demo film for one prospective customer)
+
+A prospect film is built and recorded with the same tools as the catalogue, but nothing about the prospect is ever committed (the repo is public).
+
+- **Where things live.** Research, plans and drafts: `prospects/<name>/` (gitignored). The clip: `studio/clips/prospect-<name>.json` (gitignored). The recording spec: `desktop/e2e/showcase/films/prospect-<name>.spec.ts` (gitignored). Driver-app tests for it: `packages/driver_app/integration_test/prospect_*` (gitignored). Raw takes and renders go to the usual gitignored `.work` and `studio/out` folders. `node docs/videos/coverage.mjs` skips `prospect-*` clips.
+- **Record and render it.** The clip is not in `docs/videos/films.json`, so it describes itself with a `film` object, and `--clip` records it through the same retake, gate and render path as a catalogue film:
+
+  ```json
+  { "film": { "stack": "single", "targetSec": 240, "shorts": false }, "recording": "prospect-<name>", "scenes": [ ... ] }
+  ```
+
+  ```bash
+  node scripts/showcase/record-films.mjs --slot 2 --clip prospect-<name> --render
+  ```
+
+  A film that is recorded in several parts gives each scene its own `recording`, has one spec per part, and calls `recordFilm(page, context, '<part name>', testInfo, body, { clip: '<clip id>' })`. Record each part with `--clip <id>` pointing at a clip entry whose `film.clip` names the clip (the raw-take gate then counts only that part's scenes), or by hand: `build.mjs <clip> --no-render`, then `npx playwright test --config=e2e/showcase/films/playwright.films.config.ts --grep film:<part>`.
+- **Speed.** A `screen` or `phone` scene takes `speed` (1, 1.5, 2, 3 or 4; default 1) and `speedLabel` (default `Sped up {speed}x`; `false` hides it). The film shows a small pill at the top right of the window while it plays faster. The spec does not change: `beat()` reads the scene's speed from the clip and holds for (narration + 0.65 s) x speed, so a long data-entry step is recorded at normal pace, played back quickly, and the narration is never sped up. The raw-take length gate in `record-films.mjs` sums each line times its scene's speed.
+- **Film-kit helpers for on-camera navigation** (`desktop/e2e/showcase/films/film-kit.ts`): `navTo(page, href)` and `hoverNav(page, hrefs)` use the real sidebar (and throw if a link is not there instead of loading the page directly), `tab(page, name)` clicks a sub-tab, `showInPhoneFrame(page, url)` shows an app page in a 390 px phone, and `showPdf(page, file)` renders a downloaded PDF with pdf.js from `node_modules/pdfjs-dist` (the `pdfjs-dist` devDependency of `desktop`; no CDN). `desktop/e2e/showcase/films/film-kit.spec.ts` (`--grep "kit:"`) exercises them.
+- **The AI guard.** A prospect film must show what the AI does without spending the owner's AI budget by accident. `aiGuard(page, { budget, live })` counts every AI request the browser makes (non-GET under `/api/v1/ai/` except `/ai/settings`, the social-content and suggestion generators, and the pages that generate when opened: the BI forecasts and the insights page), `guard.server(n)` adds the model calls the server makes on its own, a request that would pass the budget is aborted before it leaves the browser, and `beat()` fails the take at the next scene. `live: false` means no budget. Live AI still needs the owner's yes, a stack started with `--ai` and `SHOWCASE_AI=1` (section 6); `ai-session.spec.ts` is the model to copy. End the take with `guard.report()`.
+- **Driver app for a prospect.** `scripts/record-driver.ps1 -Test integration_test/prospect_<name>.dart -AgencyCode <code> -Out desktop/showcase/.work/driver-<name>.mp4` records another flow and writes `driver-<name>-marks.json`. A clip scene then uses `"recording": "driver-<name>"` (any name starting with `driver-` is a driver recording) with `markText`, as for `driver`.
+
 ## 7. Report back
 
 1. Each film: number of takes, and whether it was recorded and rendered.

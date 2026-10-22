@@ -37,7 +37,8 @@ const spec = (rec) => {
   return specText.get(rec);
 };
 
-const clipFiles = fs.readdirSync(clipsDir).filter((f) => f.endsWith('.json') && f !== 'master.json');
+// prospect-*.json are gitignored sales films (their content stays outside the repo): not part of the catalogue
+const clipFiles = fs.readdirSync(clipsDir).filter((f) => f.endsWith('.json') && f !== 'master.json' && !f.startsWith('prospect-'));
 for (const file of clipFiles) {
   const id = file.replace(/\.json$/, '');
   const clip = JSON.parse(fs.readFileSync(path.join(clipsDir, file), 'utf8'));

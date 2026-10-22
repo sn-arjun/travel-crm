@@ -4,6 +4,7 @@ product-requirment/
 # Sales prospects: client research, personalised demo films, outreach drafts (the repo is public)
 prospects/
 studio/clips/prospect-*.json
+packages/driver_app/integration_test/prospect_*
 desktop/e2e/showcase/films/prospect-*.spec.ts
 
 # Flutter/Dart
