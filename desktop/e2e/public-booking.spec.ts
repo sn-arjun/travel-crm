@@ -19,6 +19,16 @@ const dobFor = (departure: string, years: number) => {
 };
 
 test.describe('Public booking page', () => {
+  // The spec sets the shared agency to no tax so totals are plain; put the earlier tax system back so later specs
+  // (settings-company, invoices) see the agency as they left it.
+  let before: Record<string, unknown> = {};
+  test.beforeAll(async () => {
+    before = ((await api('GET', '/settings/invoice-defaults')).data ?? {}) as Record<string, unknown>;
+  });
+  test.afterAll(async () => {
+    if (before.tax_system) await api('PUT', '/settings/invoice-defaults', { tax_system: before.tax_system, default_tax_type: before.tax_system });
+  });
+
   test('staff switch it on, a visitor books and pays the deposit, staff see everything', async ({ page, browser }) => {
     test.setTimeout(240_000);
     const stamp = Date.now().toString(36).toUpperCase();
