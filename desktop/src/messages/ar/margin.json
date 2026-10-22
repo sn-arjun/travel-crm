@@ -67,7 +67,8 @@
   "margin.report.marginIn": "الهامش ({currency})",
   "margin.report.vat": "ضريبة القيمة المضافة على الهامش",
   "margin.report.vatIn": "ضريبة القيمة المضافة على الهامش ({currency})",
-  "margin.report.completeHint": "{count} فواتير بتكلفة مسجلة",
+  "margin.report.completeHint_one": "{count} فاتورة بتكلفة مسجلة",
+  "margin.report.completeHint_other": "{count} فواتير بتكلفة مسجلة",
   "margin.report.vatHint": "محسوبة من نسبتك الضريبية",
   "margin.report.vatBlankHint": "فارغ: أدخل نسبة الضريبة في الإعدادات",
   "margin.report.incomplete": "التكاليف غير مسجلة",
@@ -82,7 +83,9 @@
   "margin.report.col.status": "الحالة",
   "margin.report.costsMissing": "التكاليف غير مسجلة",
   "margin.report.noRate": "عمود الضريبة فارغ لأن نسبة الضريبة غير محددة. أدخل نسبتك ضمن الإعدادات > إعدادات الفواتير.",
-  "margin.report.creditNotes": "{count} إشعارات دائنة على فواتير نظام الهامش ({total}) غير محسومة في هذه الإجماليات.",
-  "margin.report.pointer": "{count} فواتير بنظام الهامش ليست ضمن الضرائب أعلاه: فهي لا تحمل بند ضريبة.",
+  "margin.report.creditNotes_one": "{count} إشعار دائن على فواتير نظام الهامش ({total}) غير محسوم في هذه الإجماليات.",
+  "margin.report.creditNotes_other": "{count} إشعارات دائنة على فواتير نظام الهامش ({total}) غير محسومة في هذه الإجماليات.",
+  "margin.report.pointer_one": "{count} فاتورة بنظام الهامش ليست ضمن الضرائب أعلاه: فهي لا تحمل بند ضريبة.",
+  "margin.report.pointer_other": "{count} فواتير بنظام الهامش ليست ضمن الضرائب أعلاه: فهي لا تحمل بند ضريبة.",
   "margin.report.pointerOpen": "فتح تقرير نظام الهامش"
 }

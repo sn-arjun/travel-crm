@@ -67,7 +67,8 @@
   "margin.report.marginIn": "Margin ({currency})",
   "margin.report.vat": "VAT on the margin",
   "margin.report.vatIn": "VAT on the margin ({currency})",
-  "margin.report.completeHint": "{count} invoices with a recorded cost",
+  "margin.report.completeHint_one": "{count} invoice with a recorded cost",
+  "margin.report.completeHint_other": "{count} invoices with a recorded cost",
   "margin.report.vatHint": "Computed from your VAT rate",
   "margin.report.vatBlankHint": "Blank: enter your VAT rate in Settings",
   "margin.report.incomplete": "Costs not recorded",
@@ -82,7 +83,9 @@
   "margin.report.col.status": "Status",
   "margin.report.costsMissing": "Costs not recorded",
   "margin.report.noRate": "The VAT column is blank because no VAT rate is set. Enter your rate under Settings > Invoice defaults.",
-  "margin.report.creditNotes": "{count} credit notes against margin invoices ({total}) are not netted in these totals.",
-  "margin.report.pointer": "{count} margin-scheme invoices are not in the taxes above: they carry no tax line.",
+  "margin.report.creditNotes_one": "{count} credit note against margin invoices ({total}) is not netted in these totals.",
+  "margin.report.creditNotes_other": "{count} credit notes against margin invoices ({total}) are not netted in these totals.",
+  "margin.report.pointer_one": "{count} margin-scheme invoice is not in the taxes above: it carries no tax line.",
+  "margin.report.pointer_other": "{count} margin-scheme invoices are not in the taxes above: they carry no tax line.",
   "margin.report.pointerOpen": "Open the margin scheme report"
 }

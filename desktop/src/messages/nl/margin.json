@@ -67,7 +67,8 @@
   "margin.report.marginIn": "Marge ({currency})",
   "margin.report.vat": "Btw over de marge",
   "margin.report.vatIn": "Btw over de marge ({currency})",
-  "margin.report.completeHint": "{count} facturen met vastgelegde kosten",
+  "margin.report.completeHint_one": "{count} factuur met vastgelegde kosten",
+  "margin.report.completeHint_other": "{count} facturen met vastgelegde kosten",
   "margin.report.vatHint": "Berekend met uw btw-tarief",
   "margin.report.vatBlankHint": "Leeg: voer uw btw-tarief in bij Instellingen",
   "margin.report.incomplete": "Kosten niet vastgelegd",
@@ -82,7 +83,9 @@
   "margin.report.col.status": "Status",
   "margin.report.costsMissing": "Kosten niet vastgelegd",
   "margin.report.noRate": "De btw-kolom is leeg omdat er geen btw-tarief is ingesteld. Voer uw tarief in onder Instellingen > Factuurstandaarden.",
-  "margin.report.creditNotes": "{count} creditnota's op facturen onder de margeregeling ({total}) zijn niet in deze totalen verrekend.",
-  "margin.report.pointer": "{count} facturen onder de margeregeling staan niet in de belastingen hierboven: ze hebben geen belastingregel.",
+  "margin.report.creditNotes_one": "{count} creditnota op facturen onder de margeregeling ({total}) is niet in deze totalen verrekend.",
+  "margin.report.creditNotes_other": "{count} creditnota's op facturen onder de margeregeling ({total}) zijn niet in deze totalen verrekend.",
+  "margin.report.pointer_one": "{count} factuur onder de margeregeling staat niet in de belastingen hierboven: ze heeft geen belastingregel.",
+  "margin.report.pointer_other": "{count} facturen onder de margeregeling staan niet in de belastingen hierboven: ze hebben geen belastingregel.",
   "margin.report.pointerOpen": "Open het margerapport"
 }
